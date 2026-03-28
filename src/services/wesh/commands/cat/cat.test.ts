@@ -52,10 +52,16 @@ describe('wesh cat', () => {
   it('reads from stdin when no file is given', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'cat',
-      stdinText: 'hello\nworld\n',
+      stdinText: `\
+hello
+world
+`,
     });
 
-    expect(stdout.text).toBe('hello\nworld\n');
+    expect(stdout.text).toBe(`\
+hello
+world
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -82,7 +88,10 @@ describe('wesh cat', () => {
       stdinText: 'stdin line\n',
     });
 
-    expect(stdout.text).toBe('stdin line\nfile line\n');
+    expect(stdout.text).toBe(`\
+stdin line
+file line
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -114,40 +123,62 @@ describe('wesh cat', () => {
   });
 
   it('numbers all output lines with -n', async () => {
-    await writeFile({ name: 'number.txt', data: 'alpha\n\nbeta\n' });
+    await writeFile({ name: 'number.txt', data: `\
+alpha
+
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'cat -n number.txt',
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('     1  alpha\n     2  \n     3  beta\n');
+    expect(stdout.text).toBe(`\
+     1  alpha
+     2  
+     3  beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('numbers only nonblank lines with -b even when -n is also present', async () => {
-    await writeFile({ name: 'nonblank.txt', data: 'alpha\n\nbeta\n' });
+    await writeFile({ name: 'nonblank.txt', data: `\
+alpha
+
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'cat -bn nonblank.txt',
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('     1  alpha\n\n     2  beta\n');
+    expect(stdout.text).toBe(`\
+     1  alpha
+
+     2  beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('shows line endings with -E', async () => {
-    await writeFile({ name: 'ends.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ name: 'ends.txt', data: `\
+alpha
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'cat -E ends.txt',
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('alpha$\nbeta$\n');
+    expect(stdout.text).toBe(`\
+alpha$
+beta$
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -179,14 +210,23 @@ describe('wesh cat', () => {
   });
 
   it('squeezes repeated blank lines with -s', async () => {
-    await writeFile({ name: 'squeeze.txt', data: 'alpha\n\n\nbeta\n' });
+    await writeFile({ name: 'squeeze.txt', data: `\
+alpha
+
+
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'cat -s squeeze.txt',
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('alpha\n\nbeta\n');
+    expect(stdout.text).toBe(`\
+alpha
+
+beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -251,7 +291,10 @@ describe('wesh cat', () => {
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('     1  ^A^I$\n     2  $\n');
+    expect(stdout.text).toBe(`\
+     1  ^A^I$
+     2  $
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

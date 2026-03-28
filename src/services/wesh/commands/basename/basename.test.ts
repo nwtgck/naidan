@@ -49,7 +49,10 @@ describe('basename command', () => {
     expect(single.stderr.text).toBe('');
     expect(single.result.exitCode).toBe(0);
 
-    expect(multiple.stdout.text).toBe('stdio\nstr2\n');
+    expect(multiple.stdout.text).toBe(`\
+stdio
+str2
+`);
     expect(multiple.stderr.text).toBe('');
     expect(multiple.result.exitCode).toBe(0);
   });

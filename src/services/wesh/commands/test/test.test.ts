@@ -81,7 +81,11 @@ test alpha != beta
 echo $?`,
     });
 
-    expect(stdout.text).toBe('0\n0\n0\n');
+    expect(stdout.text).toBe(`\
+0
+0
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -97,7 +101,11 @@ echo $?
 echo $?`,
     });
 
-    expect(stdout.text).toBe('1\n0\n1\n');
+    expect(stdout.text).toBe(`\
+1
+0
+1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -113,7 +121,11 @@ test "" -o value -a ""
 echo $?`,
     });
 
-    expect(stdout.text).toBe('1\n0\n1\n');
+    expect(stdout.text).toBe(`\
+1
+0
+1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -129,7 +141,11 @@ test 3 -le 1
 echo $?`,
     });
 
-    expect(stdout.text).toBe('0\n0\n1\n');
+    expect(stdout.text).toBe(`\
+0
+0
+1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -143,7 +159,10 @@ echo $?
 echo $?`,
     });
 
-    expect(stdout.text).toBe('0\n1\n');
+    expect(stdout.text).toBe(`\
+0
+1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -172,7 +191,12 @@ test -L missing.link
 echo $?`,
     });
 
-    expect(stdout.text).toBe('0\n0\n0\n1\n');
+    expect(stdout.text).toBe(`\
+0
+0
+0
+1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -226,7 +250,12 @@ test -c tty.dev
 echo $?`,
     });
 
-    expect(stdout.text).toBe('0\n0\n0\n0\n');
+    expect(stdout.text).toBe(`\
+0
+0
+0
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -248,7 +277,11 @@ test right.txt -ot left.txt
 echo $?`,
     });
 
-    expect(stdout.text).toBe('1\n1\n1\n');
+    expect(stdout.text).toBe(`\
+1
+1
+1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -268,7 +301,12 @@ test -z ""
 echo $?`,
     });
 
-    expect(stdout.text).toBe('0\n0\n1\n0\n');
+    expect(stdout.text).toBe(`\
+0
+0
+1
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -285,7 +323,10 @@ test -f root.txt
 echo $?`,
     });
 
-    expect(stdout.text).toBe('0\n0\n');
+    expect(stdout.text).toBe(`\
+0
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -301,7 +342,11 @@ test value extra
 echo $?`,
     });
 
-    expect(stdout.text).toBe('2\n2\n2\n');
+    expect(stdout.text).toBe(`\
+2
+2
+2
+`);
     expect(stderr.text).toContain("test: expected integer after '-eq'");
     expect(stderr.text).toContain('usage: test EXPRESSION');
     expect(stderr.text).toContain("[: missing ']'");

@@ -720,7 +720,11 @@ describe('transformers-js.worker', () => {
           {
             role: 'tool',
             tool_call_id: 'call_1',
-            content: 'Exit Code: 0\nSTDOUT:\nfile-a\n',
+            content: `\
+Exit Code: 0
+STDOUT:
+file-a
+`,
           },
         ],
         vi.fn(),

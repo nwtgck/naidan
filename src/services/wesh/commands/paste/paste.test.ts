@@ -78,11 +78,18 @@ describe('wesh paste', () => {
   it('merges files in parallel and serially', async () => {
     await writeFile({
       path: 'left.txt',
-      data: 'a\nb\n',
+      data: `\
+a
+b
+`,
     });
     await writeFile({
       path: 'right.txt',
-      data: '1\n2\n3\n',
+      data: `\
+1
+2
+3
+`,
     });
 
     const parallel = await execute({ script: 'paste left.txt right.txt' });
@@ -93,13 +100,20 @@ describe('wesh paste', () => {
     expect(parallel.result.exitCode).toBe(0);
     expect(serial.result.exitCode).toBe(0);
     expect(parallel.stdout.text).toBe('a\t1\nb\t2\n\t3\n');
-    expect(serial.stdout.text).toBe('a,b\n1,2;3\n');
+    expect(serial.stdout.text).toBe(`\
+a,b
+1,2;3
+`);
   });
 
   it('accepts stdin input', async () => {
     const { result, stdout, stderr } = await execute({
       script: "paste -s -d ',;' -",
-      stdinText: 'alpha\nbeta\ngamma\n',
+      stdinText: `\
+alpha
+beta
+gamma
+`,
     });
 
     expect(stderr.text).toBe('');
@@ -110,7 +124,12 @@ describe('wesh paste', () => {
   it('consumes repeated stdin operands sequentially', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'paste - -',
-      stdinText: 'a\nb\nc\nd\n',
+      stdinText: `\
+a
+b
+c
+d
+`,
     });
 
     expect(stderr.text).toBe('');

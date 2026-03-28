@@ -66,7 +66,10 @@ describe('wesh shell builtins', () => {
   });
 
   it('supports exec with persistent read-write file descriptors for read -u', async () => {
-    await writeFile({ name: 'fd.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ name: 'fd.txt', data: `\
+alpha
+beta
+` });
 
     const executed = await execute({
       script: `\

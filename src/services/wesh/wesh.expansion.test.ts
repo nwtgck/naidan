@@ -82,7 +82,10 @@ describe('wesh shell expansion', () => {
       script: 'for item in $GREETING; do echo "<$item>"; done',
     });
 
-    expect(stdout.text).toBe('<hello>\n<world>\n');
+    expect(stdout.text).toBe(`\
+<hello>
+<world>
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -397,7 +400,13 @@ echo "\${FOO:+present}"
 echo "\${#FOO}"`,
     });
 
-    expect(stdout.text).toBe('fallback\nfallback\n\npresent\n9\n');
+    expect(stdout.text).toBe(`\
+fallback
+fallback
+
+present
+9
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -410,7 +419,10 @@ echo "\${CREATED:=made}"
 echo "$CREATED"`,
     });
 
-    expect(stdout.text).toBe('made\nmade\n');
+    expect(stdout.text).toBe(`\
+made
+made
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

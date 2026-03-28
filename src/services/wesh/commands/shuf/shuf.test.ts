@@ -63,7 +63,10 @@ describe('wesh shuf', () => {
   it('prints help and rejects invalid options', async () => {
     const help = await execute({ script: 'shuf --help' });
     const invalid = await execute({ script: 'shuf -x' });
-    const extra = await execute({ script: 'shuf - -', stdinText: 'one\ntwo\n' });
+    const extra = await execute({ script: 'shuf - -', stdinText: `\
+one
+two
+` });
 
     expect(help.stdout.text).toContain('Randomly shuffle lines');
     expect(help.stdout.text).toContain('usage: shuf [OPTION]... [FILE]');
@@ -82,7 +85,11 @@ describe('wesh shuf', () => {
   it('shuffles file input and honors -n without depending on exact order', async () => {
     await writeFile({
       path: 'input.txt',
-      data: 'alpha\nbeta\ngamma\n',
+      data: `\
+alpha
+beta
+gamma
+`,
     });
 
     const { result, stdout, stderr } = await execute({
@@ -101,7 +108,11 @@ describe('wesh shuf', () => {
   it('shuffles stdin input', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'shuf',
-      stdinText: 'red\ngreen\nblue\n',
+      stdinText: `\
+red
+green
+blue
+`,
     });
 
     expect(stderr.text).toBe('');

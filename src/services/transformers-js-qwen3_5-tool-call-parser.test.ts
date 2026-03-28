@@ -43,8 +43,16 @@ true
   });
 
   it('handles a Qwen3.5 tool call split across tokens', () => {
-    parser.feed({ output: '<tool_call>\n<function=shell_execute>\n<parameter=shell_script>\n' });
-    parser.feed({ output: 'pwd\n</parameter>\n</function>\n</tool_call>' });
+    parser.feed({ output: `\
+<tool_call>
+<function=shell_execute>
+<parameter=shell_script>
+` });
+    parser.feed({ output: `\
+pwd
+</parameter>
+</function>
+</tool_call>` });
 
     const calls = parser.drainToolCalls();
     expect(calls).toHaveLength(1);

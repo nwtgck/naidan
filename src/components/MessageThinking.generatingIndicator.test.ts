@@ -133,7 +133,10 @@ describe('MessageThinking — trailingInline (GeneratingIndicator integration)',
     it('does not render a trailing newline before the indicator', () => {
       // Thinking text that ends with a newline — without trimEnd, indicator would
       // appear on the next line as the first character of an empty flex row.
-      const message = createMessage('<think>Line one\nLine two\n');
+      const message = createMessage(`\
+<think>Line one
+Line two
+`);
       const wrapper = mount(MessageThinking, {
         props: { message, trailingInline: TrailingStub },
       });

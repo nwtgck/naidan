@@ -218,7 +218,9 @@ deep.txt
       script: 'ls dir missing',
     });
 
-    expect(stdout.text).toContain('dir:\nfile.txt');
+    expect(stdout.text).toContain(`\
+dir:
+file.txt`);
     expect(stderr.text).toContain('ls: missing:');
     expect(result.exitCode).toBe(1);
   });

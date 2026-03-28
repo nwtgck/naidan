@@ -79,7 +79,15 @@ describe('transformers-js-qwen3_5', () => {
 
   it('builds tool continuation prompts from the previously decoded history', () => {
     const prompt = buildQwen3_5ToolContinuationPrompt({
-      promptHistory: '<|im_start|>user\nhello<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n<tool_call>...</tool_call>',
+      promptHistory: `\
+<|im_start|>user
+hello<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+<tool_call>...</tool_call>`,
       messages: [
         {
           role: 'tool',
@@ -90,7 +98,13 @@ describe('transformers-js-qwen3_5', () => {
     });
 
     expect(prompt).toContain('<tool_call>...</tool_call>');
-    expect(prompt).toContain('<tool_response>\nExit Code: 0\n</tool_response>');
-    expect(prompt).toContain('<|im_start|>assistant\n<think>\n');
+    expect(prompt).toContain(`\
+<tool_response>
+Exit Code: 0
+</tool_response>`);
+    expect(prompt).toContain(`\
+<|im_start|>assistant
+<think>
+`);
   });
 });

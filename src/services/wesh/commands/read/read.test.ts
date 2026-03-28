@@ -191,7 +191,10 @@ echo "$value"`,
       stdinText: 'partial-without-newline',
     });
 
-    expect(stdout.text).toBe('1\npartial-without-newline\n');
+    expect(stdout.text).toBe(`\
+1
+partial-without-newline
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

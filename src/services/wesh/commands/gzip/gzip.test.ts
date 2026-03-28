@@ -70,7 +70,10 @@ cat plain.txt`,
       stdinText: '',
     });
 
-    expect(stdout.text).toBe('hello gzip\nhello gzip\n');
+    expect(stdout.text).toBe(`\
+hello gzip
+hello gzip
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -87,7 +90,10 @@ echo $?`,
       stdinText: '',
     });
 
-    expect(stdout.text).toBe('keep me\n0\n');
+    expect(stdout.text).toBe(`\
+keep me
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

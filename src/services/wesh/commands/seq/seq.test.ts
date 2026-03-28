@@ -49,12 +49,32 @@ describe('seq command', () => {
     const width = await execute({ script: 'seq -w 8 10' });
     const format = await execute({ script: "seq -f '%.2f' 1 2" });
 
-    expect(one.stdout.text).toBe('1\n2\n3\n');
-    expect(two.stdout.text).toBe('2\n3\n4\n5\n');
-    expect(three.stdout.text).toBe('5\n3\n1\n');
+    expect(one.stdout.text).toBe(`\
+1
+2
+3
+`);
+    expect(two.stdout.text).toBe(`\
+2
+3
+4
+5
+`);
+    expect(three.stdout.text).toBe(`\
+5
+3
+1
+`);
     expect(sep.stdout.text).toBe('1,2,3');
-    expect(width.stdout.text).toBe('08\n09\n10\n');
-    expect(format.stdout.text).toBe('1.00\n2.00\n');
+    expect(width.stdout.text).toBe(`\
+08
+09
+10
+`);
+    expect(format.stdout.text).toBe(`\
+1.00
+2.00
+`);
 
     expect(one.stderr.text).toBe('');
     expect(two.stderr.text).toBe('');
@@ -101,7 +121,10 @@ describe('seq command', () => {
     const format = await execute({ script: "seq -f%.1f 1 2" });
     const separator = await execute({ script: "seq -s, 1 3" });
 
-    expect(format.stdout.text).toBe('1.0\n2.0\n');
+    expect(format.stdout.text).toBe(`\
+1.0
+2.0
+`);
     expect(format.stderr.text).toBe('');
     expect(format.result.exitCode).toBe(0);
 

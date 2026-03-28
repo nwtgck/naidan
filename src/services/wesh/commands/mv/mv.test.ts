@@ -103,7 +103,10 @@ cat dest/second.txt`,
 
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(stdout.text).toBe('first\nsecond\n');
+    expect(stdout.text).toBe(`\
+first
+second
+`);
   });
 
   it('supports --target-directory as a long option alias', async () => {
@@ -120,7 +123,10 @@ cat dest/second.txt`,
 
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(stdout.text).toBe('first\nsecond\n');
+    expect(stdout.text).toBe(`\
+first
+second
+`);
   });
 
   it('supports -T to forbid treating the destination as a directory', async () => {
@@ -161,7 +167,10 @@ test -e source.txt
 echo $?`,
     });
 
-    expect(stdout.text).toBe('dest\n0\n');
+    expect(stdout.text).toBe(`\
+dest
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -178,7 +187,10 @@ test -e source.txt
 echo $?`,
     });
 
-    expect(stdout.text).toBe('dest\n0\n');
+    expect(stdout.text).toBe(`\
+dest
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -221,7 +233,10 @@ echo $?
 cat dest/present.txt`,
     });
 
-    expect(stdout.text).toBe('1\npresent\n');
+    expect(stdout.text).toBe(`\
+1
+present
+`);
     expect(stderr.text).toContain('mv: missing.txt:');
     expect(result.exitCode).toBe(0);
   });

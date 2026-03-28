@@ -121,7 +121,10 @@ describe('wesh vfs mounts', () => {
     await append.close();
 
     const data = await readAllFileBytes({ files: wesh.kernel, path: '/append.txt' });
-    expect(new TextDecoder().decode(data)).toBe('first\nsecond\n');
+    expect(new TextDecoder().decode(data)).toBe(`\
+first
+second
+`);
   });
 
   it('rejects unlink and rmdir mutations on read-only mounts', async () => {

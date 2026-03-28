@@ -90,7 +90,12 @@ describe('OpenAIProvider Integration Tests', () => {
     it('should normalize endpoint URL by removing trailing slash', async () => {
       await startServer((_req, res) => {
         res.writeHead(200);
-        res.end('data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n');
+        res.end(`\
+data: {"choices":[{"delta":{"content":"OK"}}]}
+
+data: [DONE]
+
+`);
       });
 
       const provider = new OpenAIProvider({ endpoint: `${baseUrl}/` });
@@ -266,7 +271,12 @@ describe('OpenAIProvider Integration Tests', () => {
     it('should handle complex parameters in chat request', async () => {
       await startServer((_req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-        res.end('data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n');
+        res.end(`\
+data: {"choices":[{"delta":{"content":"OK"}}]}
+
+data: [DONE]
+
+`);
       });
 
       const provider = new OpenAIProvider({ endpoint: baseUrl });

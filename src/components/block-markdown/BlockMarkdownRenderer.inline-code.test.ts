@@ -61,7 +61,10 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
   });
 
   it('renders block code with <pre> and <code> correctly', () => {
-    const content = '```js\nconsole.log(1);\n```';
+    const content = `\
+\`\`\`js
+console.log(1);
+\`\`\``;
     const wrapper = mount(BlockMarkdownRenderer, {
       props: { content }
     });
@@ -75,7 +78,12 @@ describe('BlockMarkdownRenderer: Inline Code Styling', () => {
   });
 
   it('distinguishes between inline code and block code in the same content', () => {
-    const content = 'Use `inline` or:\n\n```js\nblock();\n```';
+    const content = `\
+Use \`inline\` or:
+
+\`\`\`js
+block();
+\`\`\``;
     const wrapper = mount(BlockMarkdownRenderer, {
       props: { content }
     });

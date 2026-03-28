@@ -184,7 +184,10 @@ Closing paragraph.
   describe('no trailingInline', () => {
     it('renders normally without trailingInline prop', () => {
       const wrapper = mount(BlockMarkdownRenderer, {
-        props: { content: '* item 1\n* item 2\n' },
+        props: { content: `\
+* item 1
+* item 2
+` },
       });
       expect(wrapper.findAll('[data-testid="trailing-stub"]')).toHaveLength(0);
       expect(wrapper.findAll('li')).toHaveLength(2);

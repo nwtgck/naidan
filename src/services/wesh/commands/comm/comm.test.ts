@@ -78,11 +78,19 @@ describe('wesh comm', () => {
   it('compares sorted files and supports column suppression', async () => {
     await writeFile({
       path: 'left.txt',
-      data: 'alpha\nbeta\ndelta\n',
+      data: `\
+alpha
+beta
+delta
+`,
     });
     await writeFile({
       path: 'right.txt',
-      data: 'beta\ngamma\ndelta\n',
+      data: `\
+beta
+gamma
+delta
+`,
     });
 
     const plain = await execute({ script: 'comm left.txt right.txt' });
@@ -104,7 +112,10 @@ describe('wesh comm', () => {
 
     const { result, stdout, stderr } = await execute({
       script: 'comm - right.txt',
-      stdinText: 'alpha\nbeta\n',
+      stdinText: `\
+alpha
+beta
+`,
     });
 
     expect(stderr.text).toBe('');
@@ -115,7 +126,10 @@ describe('wesh comm', () => {
   it('rejects repeated stdin operands', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'comm - -',
-      stdinText: 'alpha\nbeta\n',
+      stdinText: `\
+alpha
+beta
+`,
     });
 
     expect(stdout.text).toBe('');

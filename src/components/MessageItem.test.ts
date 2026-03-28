@@ -46,7 +46,10 @@ describe('MessageItem Rendering', () => {
   });
 
   it('applies syntax highlighting to code blocks', () => {
-    const message = createMessage('```python\nprint("hello")\n```');
+    const message = createMessage(`\
+\`\`\`python
+print("hello")
+\`\`\``);
     const wrapper = mount(MessageItem, { props: { message } });
 
     const html = wrapper.html();
@@ -196,7 +199,10 @@ describe('MessageItem Rendering', () => {
   });
 
   it('toggles mermaid display modes', async () => {
-    const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+    const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
     const wrapper = mount(MessageItem, { props: { message } });
     await nextTick();
 
@@ -217,7 +223,10 @@ describe('MessageItem Rendering', () => {
 
   describe('Mermaid UI Design Consistency', () => {
     it('has the correct layout structure and classes for positioning', async () => {
-      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
@@ -228,7 +237,10 @@ describe('MessageItem Rendering', () => {
     });
 
     it('contains Mermaid mode buttons', async () => {
-      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
@@ -240,7 +252,10 @@ describe('MessageItem Rendering', () => {
 
     it('handles Mermaid copy button click', async () => {
       vi.useFakeTimers();
-      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
       const wrapper = mount(MessageItem, {
         props: { message },
         attachTo: document.body,
@@ -273,7 +288,10 @@ describe('MessageItem Rendering', () => {
     });
 
     it('has the correct design classes for Mermaid copy button', async () => {
-      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
@@ -285,7 +303,10 @@ describe('MessageItem Rendering', () => {
   });
   describe('Code Block Toolbar', () => {
     it('renders the code block toolbar with language label and copy button', () => {
-      const message = createMessage('```javascript\nconst a = 1;\n```');
+      const message = createMessage(`\
+\`\`\`javascript
+const a = 1;
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       const html = wrapper.html();
 
@@ -299,7 +320,10 @@ describe('MessageItem Rendering', () => {
     });
 
     it('ensures correct styling classes are applied to avoid white frame', () => {
-      const message = createMessage('```python\nprint("test")\n```');
+      const message = createMessage(`\
+\`\`\`python
+print("test")
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       const html = wrapper.html();
 
@@ -315,7 +339,10 @@ describe('MessageItem Rendering', () => {
     it('handles copy button click and visual feedback', async () => {
       vi.useFakeTimers();
 
-      const message = createMessage('```typescript\nconst x: number = 42;\n```');
+      const message = createMessage(`\
+\`\`\`typescript
+const x: number = 42;
+\`\`\``);
       const wrapper = mount(MessageItem, {
         props: { message },
         attachTo: document.body,
@@ -349,7 +376,10 @@ describe('MessageItem Rendering', () => {
     });
 
     it('has the correct design classes for standard code block copy button', () => {
-      const message = createMessage('```js\nconsole.log(1);\n```');
+      const message = createMessage(`\
+\`\`\`js
+console.log(1);
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       const copyBtn = wrapper.find('button[title="Copy code"]');
 

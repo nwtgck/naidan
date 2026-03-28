@@ -61,7 +61,10 @@ describe('wesh wc', () => {
   it('counts stdin with the default columns and no filename', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'wc',
-      stdinText: 'alpha beta\nsecond\n',
+      stdinText: `\
+alpha beta
+second
+`,
     });
 
     expect(stdout.text).toBe('       2       3      18\n');
@@ -78,7 +81,12 @@ describe('wesh wc', () => {
       stdinText: 'one two\n',
     });
 
-    expect(stdout.text).toBe('       1 -\n       1 first.txt\n       1 second.txt\n       3 total\n');
+    expect(stdout.text).toBe(`\
+       1 -
+       1 first.txt
+       1 second.txt
+       3 total
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -96,7 +104,10 @@ describe('wesh wc', () => {
 
   it('supports bytes, chars, and max line length selections', async () => {
     await writeFile({ path: 'emoji.txt', data: '😀' });
-    await writeFile({ path: 'long.txt', data: 'ab\nabcd\n' });
+    await writeFile({ path: 'long.txt', data: `\
+ab
+abcd
+` });
 
     const charsAndBytes = await execute({
       script: 'wc -cm emoji.txt',
@@ -116,7 +127,10 @@ describe('wesh wc', () => {
   });
 
   it('supports GNU-style long counting options', async () => {
-    await writeFile({ path: 'sample.txt', data: 'alpha beta\nsecond\n' });
+    await writeFile({ path: 'sample.txt', data: `\
+alpha beta
+second
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'wc --lines --words --bytes sample.txt',
@@ -129,7 +143,10 @@ describe('wesh wc', () => {
   });
 
   it('reads root-relative files correctly from /', async () => {
-    await writeFile({ path: 'sample.txt', data: 'alpha beta\nsecond\n' });
+    await writeFile({ path: 'sample.txt', data: `\
+alpha beta
+second
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'cd /; wc sample.txt',
@@ -150,7 +167,11 @@ describe('wesh wc', () => {
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('       1       1       6 first.txt\n       1       2      11 second.txt\n       2       3      17 total\n');
+    expect(stdout.text).toBe(`\
+       1       1       6 first.txt
+       1       2      11 second.txt
+       2       3      17 total
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -191,7 +212,10 @@ describe('wesh wc', () => {
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('       1       1       6 present.txt\n       1       1       6 total\n');
+    expect(stdout.text).toBe(`\
+       1       1       6 present.txt
+       1       1       6 total
+`);
     expect(stderr.text).toContain('wc: missing.txt:');
     expect(result.exitCode).toBe(1);
   });

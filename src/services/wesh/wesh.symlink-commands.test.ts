@@ -53,7 +53,9 @@ describe('wesh symlink commands', () => {
     const linked = await execute({ script: 'ln -s /target.txt alias.txt && readlink alias.txt && cat alias.txt' });
 
     expect(linked.stderr.text).toBe('');
-    expect(linked.stdout.text).toBe('/target.txt\nhello through link');
+    expect(linked.stdout.text).toBe(`\
+/target.txt
+hello through link`);
     expect(linked.result.exitCode).toBe(0);
   });
 
@@ -84,7 +86,9 @@ cat current.txt`,
     });
 
     expect(replaced.stderr.text).toBe('');
-    expect(replaced.stdout.text).toBe('/second.txt\nsecond');
+    expect(replaced.stdout.text).toBe(`\
+/second.txt
+second`);
     expect(replaced.result.exitCode).toBe(0);
   });
 

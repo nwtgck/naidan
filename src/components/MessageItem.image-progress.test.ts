@@ -67,7 +67,10 @@ describe('MessageItem Image Generation Progress', () => {
   it('shows incremented progress after some images are generated (OPFS mode)', async () => {
     const responseMarker = `${SENTINEL_IMAGE_RESPONSE_PREFIX} {"count":4} -->`;
     // Simulate two images already generated (OPFS mode uses markdown code blocks)
-    const block = '```naidan_experimental_image\n{"binaryObjectId":"4dbb8a9f-d41f-4d18-b145-73ffcbf1661a", "displayWidth": 100, "displayHeight": 100, "prompt": "test"}\n```';
+    const block = `\
+\`\`\`naidan_experimental_image
+{"binaryObjectId":"4dbb8a9f-d41f-4d18-b145-73ffcbf1661a", "displayWidth": 100, "displayHeight": 100, "prompt": "test"}
+\`\`\``;
     const content = responseMarker + SENTINEL_IMAGE_PENDING + '\n\n' + block + '\n\n' + block;
     const message = createMessage(content);
 

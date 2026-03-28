@@ -5,6 +5,7 @@ import globals from 'globals';
 import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-init.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
+import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
 import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
 import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
 
@@ -162,6 +163,7 @@ export default tseslint.config(
   },
   ensureFileProtocolInit,
   forceSwitchForUnion,
+  preferMultilineTemplateLiterals,
   requireTestOnlyExport,
   requireDefineExposeTestOnly,
   {

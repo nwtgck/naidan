@@ -87,7 +87,10 @@ beta
 `,
     });
 
-    expect(stdout.text).toBe('alpha\nbeta\n');
+    expect(stdout.text).toBe(`\
+alpha
+beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -102,7 +105,10 @@ beta
 `,
     });
 
-    expect(stdout.text).toBe('      2 alpha\n      1 beta\n');
+    expect(stdout.text).toBe(`\
+      2 alpha
+      1 beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -120,7 +126,10 @@ gamma
 `,
     });
 
-    expect(stdout.text).toBe('alpha\nbeta\n');
+    expect(stdout.text).toBe(`\
+alpha
+beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -138,7 +147,10 @@ delta
 `,
     });
 
-    expect(stdout.text).toBe('beta\ndelta\n');
+    expect(stdout.text).toBe(`\
+beta
+delta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -153,7 +165,10 @@ c other something
 `,
     });
 
-    expect(stdout.text).toBe('a prefix ABCDEF\nc other something\n');
+    expect(stdout.text).toBe(`\
+a prefix ABCDEF
+c other something
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -168,7 +183,10 @@ c other something
 `,
     });
 
-    expect(stdout.text).toBe('a prefix ABCDEF\nc other something\n');
+    expect(stdout.text).toBe(`\
+a prefix ABCDEF
+c other something
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -183,7 +201,10 @@ beta
 `,
     });
 
-    expect(stdout.text).toBe('alpha\nbeta\n');
+    expect(stdout.text).toBe(`\
+alpha
+beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -206,7 +227,10 @@ beta
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(await readFileText({ path: 'output.txt' })).toBe('alpha\nbeta\n');
+    expect(await readFileText({ path: 'output.txt' })).toBe(`\
+alpha
+beta
+`);
   });
 
   it('supports root-relative input and output paths from /', async () => {
@@ -227,7 +251,10 @@ beta
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(await readFileText({ path: 'output.txt' })).toBe('alpha\nbeta\n');
+    expect(await readFileText({ path: 'output.txt' })).toBe(`\
+alpha
+beta
+`);
   });
 
   it('supports zero-terminated records with -z', async () => {
@@ -244,20 +271,35 @@ beta
   it('supports GNU-style long output selection options', async () => {
     const repeated = await execute({
       script: 'uniq --repeated',
-      stdinText: 'alpha\nalpha\nbeta\n',
+      stdinText: `\
+alpha
+alpha
+beta
+`,
     });
     const unique = await execute({
       script: 'uniq --unique',
-      stdinText: 'alpha\nalpha\nbeta\n',
+      stdinText: `\
+alpha
+alpha
+beta
+`,
     });
     const count = await execute({
       script: 'uniq --count',
-      stdinText: 'alpha\nalpha\nbeta\n',
+      stdinText: `\
+alpha
+alpha
+beta
+`,
     });
 
     expect(repeated.stdout.text).toBe('alpha\n');
     expect(unique.stdout.text).toBe('beta\n');
-    expect(count.stdout.text).toBe('      2 alpha\n      1 beta\n');
+    expect(count.stdout.text).toBe(`\
+      2 alpha
+      1 beta
+`);
     expect(repeated.stderr.text).toBe('');
     expect(unique.stderr.text).toBe('');
     expect(count.stderr.text).toBe('');

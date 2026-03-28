@@ -354,7 +354,10 @@ done`,
     controller!.close();
 
     const result = await resultPromise;
-    expect(outputChunks.join('')).toBe('<alpha>\n<beta>\n');
+    expect(outputChunks.join('')).toBe(`\
+<alpha>
+<beta>
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -642,7 +645,10 @@ echo "<$value>"`,
       stderr: stderr.handle,
     });
 
-    expect(stdout.text).toBe('<one\ntwo>\n');
+    expect(stdout.text).toBe(`\
+<one
+two>
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -1211,7 +1217,11 @@ tempfn`,
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'cat <<EOF\nhello\nworld\nEOF', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    await wesh.execute({ script: `\
+cat <<EOF
+hello
+world
+EOF`, stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('hello');
     expect(stdout.text).toContain('world');
   });

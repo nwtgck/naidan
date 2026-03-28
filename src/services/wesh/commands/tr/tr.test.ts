@@ -56,10 +56,14 @@ describe('wesh tr', () => {
   it('preserves embedded newlines instead of treating stdin as line oriented', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'tr a X',
-      stdinText: 'a\na',
+      stdinText: `\
+a
+a`,
     });
 
-    expect(stdout.text).toBe('X\nX');
+    expect(stdout.text).toBe(`\
+X
+X`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -89,7 +93,9 @@ describe('wesh tr', () => {
   it('supports escape sequences and octal escapes in sets', async () => {
     const { result, stdout, stderr } = await execute({
       script: String.raw`tr '\141\n' 'X_'`,
-      stdinText: 'a\na',
+      stdinText: `\
+a
+a`,
     });
 
     expect(stdout.text).toBe('X_X');

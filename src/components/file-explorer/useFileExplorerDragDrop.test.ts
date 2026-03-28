@@ -73,7 +73,9 @@ describe('useFileExplorerDragDrop', () => {
     onDragStart({ event, entries: [makeEntry('a.txt'), makeEntry('b.txt')] });
     expect(event.dataTransfer!.effectAllowed).toBe('move');
     expect((event.dataTransfer!.setData as ReturnType<typeof vi.fn>).mock.calls[0]).toEqual([
-      'text/plain', 'a.txt\nb.txt',
+      'text/plain', `\
+a.txt
+b.txt`,
     ]);
   });
 

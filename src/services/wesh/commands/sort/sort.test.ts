@@ -81,10 +81,16 @@ describe('wesh sort', () => {
     const { result, stdout, stderr } = await execute({
       script: `\
 sort`,
-      stdinText: 'beta\nalpha\n',
+      stdinText: `\
+beta
+alpha
+`,
     });
 
-    expect(stdout.text).toBe('alpha\nbeta\n');
+    expect(stdout.text).toBe(`\
+alpha
+beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -95,10 +101,17 @@ sort`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort file.txt -`,
-      stdinText: 'gamma\nalpha\n',
+      stdinText: `\
+gamma
+alpha
+`,
     });
 
-    expect(stdout.text).toBe('alpha\nbeta\ngamma\n');
+    expect(stdout.text).toBe(`\
+alpha
+beta
+gamma
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -107,10 +120,16 @@ sort file.txt -`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -n`,
-      stdinText: 'b2\na2\n',
+      stdinText: `\
+b2
+a2
+`,
     });
 
-    expect(stdout.text).toBe('a2\nb2\n');
+    expect(stdout.text).toBe(`\
+a2
+b2
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -118,10 +137,18 @@ sort -n`,
   it('supports GNU-style long sort options', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'sort --numeric-sort --reverse',
-      stdinText: '2\n10\n1\n',
+      stdinText: `\
+2
+10
+1
+`,
     });
 
-    expect(stdout.text).toBe('10\n2\n1\n');
+    expect(stdout.text).toBe(`\
+10
+2
+1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -130,10 +157,16 @@ sort -n`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -sn`,
-      stdinText: 'b2\na2\n',
+      stdinText: `\
+b2
+a2
+`,
     });
 
-    expect(stdout.text).toBe('b2\na2\n');
+    expect(stdout.text).toBe(`\
+b2
+a2
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -142,10 +175,17 @@ sort -sn`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -n -u`,
-      stdinText: '02\n2\n1\n',
+      stdinText: `\
+02
+2
+1
+`,
     });
 
-    expect(stdout.text).toBe('1\n02\n');
+    expect(stdout.text).toBe(`\
+1
+02
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -154,10 +194,18 @@ sort -n -u`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -r`,
-      stdinText: 'beta\nalpha\ngamma\n',
+      stdinText: `\
+beta
+alpha
+gamma
+`,
     });
 
-    expect(stdout.text).toBe('gamma\nbeta\nalpha\n');
+    expect(stdout.text).toBe(`\
+gamma
+beta
+alpha
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -166,10 +214,16 @@ sort -r`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -b -t: -k2,2`,
-      stdinText: 'row: b\nrow:a\n',
+      stdinText: `\
+row: b
+row:a
+`,
     });
 
-    expect(stdout.text).toBe('row:a\nrow: b\n');
+    expect(stdout.text).toBe(`\
+row:a
+row: b
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -177,10 +231,16 @@ sort -b -t: -k2,2`,
   it('supports GNU-style long key and field-separator options', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'sort --ignore-leading-blanks --field-separator=: --key=2,2',
-      stdinText: 'row: b\nrow:a\n',
+      stdinText: `\
+row: b
+row:a
+`,
     });
 
-    expect(stdout.text).toBe('row:a\nrow: b\n');
+    expect(stdout.text).toBe(`\
+row:a
+row: b
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -189,10 +249,16 @@ sort -b -t: -k2,2`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -d`,
-      stdinText: 'a!b\na1b\n',
+      stdinText: `\
+a!b
+a1b
+`,
     });
 
-    expect(stdout.text).toBe('a1b\na!b\n');
+    expect(stdout.text).toBe(`\
+a1b
+a!b
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -213,10 +279,18 @@ sort -i`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -g`,
-      stdinText: '2e2\n9\n10\n',
+      stdinText: `\
+2e2
+9
+10
+`,
     });
 
-    expect(stdout.text).toBe('9\n10\n2e2\n');
+    expect(stdout.text).toBe(`\
+9
+10
+2e2
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -225,10 +299,18 @@ sort -g`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -h`,
-      stdinText: '2K\n500\n1K\n',
+      stdinText: `\
+2K
+500
+1K
+`,
     });
 
-    expect(stdout.text).toBe('500\n1K\n2K\n');
+    expect(stdout.text).toBe(`\
+500
+1K
+2K
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -237,10 +319,18 @@ sort -h`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -M`,
-      stdinText: 'Dec\nFeb\nJan\n',
+      stdinText: `\
+Dec
+Feb
+Jan
+`,
     });
 
-    expect(stdout.text).toBe('Jan\nFeb\nDec\n');
+    expect(stdout.text).toBe(`\
+Jan
+Feb
+Dec
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -249,17 +339,31 @@ sort -M`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -V`,
-      stdinText: 'v1.10\nv1.2\nv1.9\n',
+      stdinText: `\
+v1.10
+v1.2
+v1.9
+`,
     });
 
-    expect(stdout.text).toBe('v1.2\nv1.9\nv1.10\n');
+    expect(stdout.text).toBe(`\
+v1.2
+v1.9
+v1.10
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports merge mode with already sorted files', async () => {
-    await writeFile({ path: 'left.txt', data: 'a\nc\n' });
-    await writeFile({ path: 'right.txt', data: 'b\nd\n' });
+    await writeFile({ path: 'left.txt', data: `\
+a
+c
+` });
+    await writeFile({ path: 'right.txt', data: `\
+b
+d
+` });
 
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -267,27 +371,46 @@ sort -m left.txt right.txt`,
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('a\nb\nc\nd\n');
+    expect(stdout.text).toBe(`\
+a
+b
+c
+d
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports merge mode together with key selection', async () => {
-    await writeFile({ path: 'left.txt', data: 'a2\nb1\n' });
-    await writeFile({ path: 'right.txt', data: 'a3\nb0\n' });
+    await writeFile({ path: 'left.txt', data: `\
+a2
+b1
+` });
+    await writeFile({ path: 'right.txt', data: `\
+a3
+b0
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'sort -m -k1,1 left.txt right.txt',
       stdinText: undefined,
     });
 
-    expect(stdout.text).toBe('a2\na3\nb0\nb1\n');
+    expect(stdout.text).toBe(`\
+a2
+a3
+b0
+b1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('writes output to a file with -o', async () => {
-    await writeFile({ path: 'input.txt', data: 'beta\nalpha\n' });
+    await writeFile({ path: 'input.txt', data: `\
+beta
+alpha
+` });
 
     const { result, stdout, stderr } = await execute({
       script: `\
@@ -298,11 +421,17 @@ sort -o output.txt input.txt`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(await readFile({ path: 'output.txt' })).toBe('alpha\nbeta\n');
+    expect(await readFile({ path: 'output.txt' })).toBe(`\
+alpha
+beta
+`);
   });
 
   it('supports the long --output form', async () => {
-    await writeFile({ path: 'input.txt', data: 'beta\nalpha\n' });
+    await writeFile({ path: 'input.txt', data: `\
+beta
+alpha
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'sort --output=output.txt input.txt',
@@ -312,11 +441,17 @@ sort -o output.txt input.txt`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(await readFile({ path: 'output.txt' })).toBe('alpha\nbeta\n');
+    expect(await readFile({ path: 'output.txt' })).toBe(`\
+alpha
+beta
+`);
   });
 
   it('supports root-relative input and output paths from /', async () => {
-    await writeFile({ path: 'root-input.txt', data: 'beta\nalpha\n' });
+    await writeFile({ path: 'root-input.txt', data: `\
+beta
+alpha
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'cd /; sort /root-input.txt -o root-output.txt',
@@ -326,7 +461,10 @@ sort -o output.txt input.txt`,
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(await readFile({ path: 'root-output.txt' })).toBe('alpha\nbeta\n');
+    expect(await readFile({ path: 'root-output.txt' })).toBe(`\
+alpha
+beta
+`);
   });
 
   it('supports zero-terminated input and output with -z', async () => {
@@ -345,7 +483,10 @@ sort -z`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -c`,
-      stdinText: 'beta\nalpha\n',
+      stdinText: `\
+beta
+alpha
+`,
     });
 
     expect(stdout.text).toBe('');
@@ -357,7 +498,10 @@ sort -c`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort -C`,
-      stdinText: 'beta\nalpha\n',
+      stdinText: `\
+beta
+alpha
+`,
     });
 
     expect(stdout.text).toBe('');
@@ -369,7 +513,10 @@ sort -C`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort --check`,
-      stdinText: 'beta\nalpha\n',
+      stdinText: `\
+beta
+alpha
+`,
     });
 
     expect(stdout.text).toBe('');
@@ -381,7 +528,10 @@ sort --check`,
     const { result, stdout, stderr } = await execute({
       script: `\
 sort --check=quiet`,
-      stdinText: 'beta\nalpha\n',
+      stdinText: `\
+beta
+alpha
+`,
     });
 
     expect(stdout.text).toBe('');

@@ -112,7 +112,11 @@ describe('wesh find', () => {
 
     const { result, stdout, stderr } = await execute({ script: 'find src' });
 
-    expect(stdout.text).toBe('src\nsrc/app.ts\nsrc/readme.md\n');
+    expect(stdout.text).toBe(`\
+src
+src/app.ts
+src/readme.md
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -126,7 +130,10 @@ describe('wesh find', () => {
       script: 'find src \\( -name "*.ts" -o -name "*.md" \\) -type f',
     });
 
-    expect(stdout.text).toBe('src/app.ts\nsrc/readme.md\n');
+    expect(stdout.text).toBe(`\
+src/app.ts
+src/readme.md
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -250,7 +257,10 @@ describe('wesh find', () => {
       script: 'find src -empty',
     });
 
-    expect(stdout.text).toBe('src/empty.txt\nsrc/empty-dir\n');
+    expect(stdout.text).toBe(`\
+src/empty.txt
+src/empty-dir
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -287,12 +297,20 @@ describe('wesh find', () => {
     const allBits = await execute({
       script: 'find src -perm -111',
     });
-    expect(allBits.stdout.text).toBe('src\nsrc/dir\nsrc/link\n');
+    expect(allBits.stdout.text).toBe(`\
+src
+src/dir
+src/link
+`);
 
     const anyBits = await execute({
       script: 'find src -perm /001',
     });
-    expect(anyBits.stdout.text).toBe('src\nsrc/dir\nsrc/link\n');
+    expect(anyBits.stdout.text).toBe(`\
+src
+src/dir
+src/link
+`);
   });
 
   it('supports -regex against the displayed path', async () => {
@@ -347,7 +365,10 @@ describe('wesh find', () => {
       script: 'find src -name "*.ts"',
     });
 
-    expect(stdout.text).toBe('src/app.ts\nsrc/main.ts\n');
+    expect(stdout.text).toBe(`\
+src/app.ts
+src/main.ts
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -376,7 +397,11 @@ describe('wesh find', () => {
       script: 'find src -name "file[123].txt"',
     });
 
-    expect(stdout.text).toBe('src/file1.txt\nsrc/file2.txt\nsrc/file3.txt\n');
+    expect(stdout.text).toBe(`\
+src/file1.txt
+src/file2.txt
+src/file3.txt
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

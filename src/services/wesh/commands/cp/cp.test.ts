@@ -380,7 +380,9 @@ echo $?
 cat dest/present.txt`,
     });
 
-    expect(copied.stdout.text).toBe('1\npresent');
+    expect(copied.stdout.text).toBe(`\
+1
+present`);
     expect(copied.stderr.text).toContain('cp: missing.txt:');
     expect(copied.result.exitCode).toBe(0);
   });

@@ -107,7 +107,10 @@ describe('OllamaProvider', () => {
           read: vi.fn()
             .mockResolvedValueOnce({
               done: false,
-              value: new TextEncoder().encode('{"message":{"content":"Hi"}}\n{"message":{"content":" there"},"done":true}\n'),
+              value: new TextEncoder().encode(`\
+{"message":{"content":"Hi"}}
+{"message":{"content":" there"},"done":true}
+`),
             })
             .mockResolvedValueOnce({ done: true }),
         }),
@@ -135,7 +138,10 @@ describe('OllamaProvider', () => {
           read: vi.fn()
             .mockResolvedValueOnce({
               done: false,
-              value: new TextEncoder().encode('{"invalid json on purpose": true\n{"message":{"content":"valid"}}\n'),
+              value: new TextEncoder().encode(`\
+{"invalid json on purpose": true
+{"message":{"content":"valid"}}
+`),
             })
             .mockResolvedValueOnce({ done: true }),
         }),

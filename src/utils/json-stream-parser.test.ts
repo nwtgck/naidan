@@ -105,7 +105,10 @@ describe('parseConcatenatedJson', () => {
     // Note: The current parser is brace-depth based.
     // If there's text between objects that contains braces, it might fail.
     // But basic whitespace should be fine.
-    const input = '  {"a": 1}  \n\n  {"b": 2}  ';
+    const input = `\
+  {"a": 1}  
+
+  {"b": 2}  `;
     const results = parseConcatenatedJson(input);
     expect(results).toHaveLength(2);
     if (results[0]?.success) expect(results[0].data).toEqual({ a: 1 });

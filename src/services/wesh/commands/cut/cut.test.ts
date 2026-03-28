@@ -69,7 +69,10 @@ x\ty
 `,
     });
 
-    expect(stdout.text).toBe('a\nx\n');
+    expect(stdout.text).toBe(`\
+a
+x
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -85,7 +88,10 @@ x,y
 `,
     });
 
-    expect(stdout.text).toBe('b|c\ny\n');
+    expect(stdout.text).toBe(`\
+b|c
+y
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -120,7 +126,10 @@ single
   it('supports --only-delimited as a long alias for -s', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'cut --only-delimited --fields=1 --delimiter=,',
-      stdinText: 'a,b\nsingle\n',
+      stdinText: `\
+a,b
+single
+`,
     });
 
     expect(stdout.text).toBe('a\n');
@@ -131,10 +140,16 @@ single
   it('passes lines without delimiters through unchanged in field mode by default', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'cut -f1 -d,',
-      stdinText: 'a,b\nsingle\n',
+      stdinText: `\
+a,b
+single
+`,
     });
 
-    expect(stdout.text).toBe('a\nsingle\n');
+    expect(stdout.text).toBe(`\
+a
+single
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -212,7 +227,10 @@ single
       stdinText: 's1\ts2\n',
     });
 
-    expect(stdout.text).toBe('s1\nf1\n');
+    expect(stdout.text).toBe(`\
+s1
+f1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

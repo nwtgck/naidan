@@ -48,11 +48,18 @@ describe('wesh core command parsing', () => {
   }
 
   it('supports legacy head -N syntax', async () => {
-    await writeFile({ name: 'head.txt', data: 'a\nb\nc\n' });
+    await writeFile({ name: 'head.txt', data: `\
+a
+b
+c
+` });
 
     const { result, stdout, stderr } = await execute({ script: 'head -2 head.txt' });
 
-    expect(stdout.text).toBe('a\nb\n');
+    expect(stdout.text).toBe(`\
+a
+b
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -68,21 +75,35 @@ describe('wesh core command parsing', () => {
   });
 
   it('supports legacy tail -N syntax', async () => {
-    await writeFile({ name: 'tail.txt', data: 'a\nb\nc\n' });
+    await writeFile({ name: 'tail.txt', data: `\
+a
+b
+c
+` });
 
     const { result, stdout, stderr } = await execute({ script: 'tail -2 tail.txt' });
 
-    expect(stdout.text).toBe('b\nc\n');
+    expect(stdout.text).toBe(`\
+b
+c
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports tail +N syntax to start from a specific line', async () => {
-    await writeFile({ name: 'tail-plus.txt', data: 'a\nb\nc\n' });
+    await writeFile({ name: 'tail-plus.txt', data: `\
+a
+b
+c
+` });
 
     const { result, stdout, stderr } = await execute({ script: 'tail +2 tail-plus.txt' });
 
-    expect(stdout.text).toBe('b\nc\n');
+    expect(stdout.text).toBe(`\
+b
+c
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -139,7 +160,10 @@ describe('wesh core command parsing', () => {
   it('executes shebang scripts through the resolved interpreter', async () => {
     await writeFile({
       name: 'hello.sh',
-      data: '#!/bin/sh\necho shebang\n',
+      data: `\
+#!/bin/sh
+echo shebang
+`,
     });
 
     const { result, stdout, stderr } = await execute({ script: './hello.sh' });
