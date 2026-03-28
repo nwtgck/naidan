@@ -1,3 +1,5 @@
+import type { ExplorerDirectory } from './explorer-directory';
+
 export type EntryKind = 'file' | 'directory';
 export type MimeCategory = 'text' | 'image' | 'video' | 'audio' | 'binary';
 export type ViewMode = 'icon' | 'list' | 'column';
@@ -12,10 +14,12 @@ export interface FileExplorerEntry {
   name: string;
   kind: EntryKind;
   handle: FileSystemHandle;
+  directory: ExplorerDirectory | undefined;  // set for directory entries
   size: number | undefined;
   lastModified: number | undefined;
   extension: string;
   mimeCategory: MimeCategory;
+  readOnly: boolean;  // true for read-only directories; always false for files
 }
 
 export interface SortConfig {
@@ -37,7 +41,7 @@ export type SelectionAction =
   | { type: 'clear' };
 
 export interface ColumnPaneState {
-  handle: FileSystemDirectoryHandle;
+  directory: ExplorerDirectory;
   entries: FileExplorerEntry[];
   selectedEntryName: string | undefined;
   isLoading: boolean;
@@ -56,7 +60,7 @@ export interface ContextMenuState {
 
 export interface ClipboardState {
   operation: ClipboardOperation | undefined;
-  sourceDirectory: FileSystemDirectoryHandle | undefined;
+  sourceDirectory: ExplorerDirectory | undefined;
   entries: FileExplorerEntry[];
 }
 
@@ -74,7 +78,7 @@ export interface PreviewState {
 
 export type DragState =
   | { status: 'idle' }
-  | { status: 'dragging'; entries: FileExplorerEntry[]; sourceDirectory: FileSystemDirectoryHandle }
+  | { status: 'dragging'; entries: FileExplorerEntry[]; sourceDirectory: ExplorerDirectory }
   | { status: 'over-target'; targetEntryName: string };
 
 export type ContextMenuAction =
@@ -99,10 +103,10 @@ export interface StatusBarInfo {
 
 export interface FileExplorerContext {
   // Navigation
-  root: FileSystemDirectoryHandle;
-  currentHandle: FileSystemDirectoryHandle;
-  pathSegments: Array<{ name: string; handle: FileSystemDirectoryHandle }>;
-  navigateToDirectory: ({ handle }: { handle: FileSystemDirectoryHandle }) => Promise<void>;
+  root: ExplorerDirectory;
+  currentDirectory: ExplorerDirectory;
+  pathSegments: Array<{ name: string; directory: ExplorerDirectory }>;
+  navigateToDirectory: ({ directory }: { directory: ExplorerDirectory }) => Promise<void>;
   navigateUp: () => Promise<void>;
   jumpToBreadcrumb: ({ index }: { index: number }) => Promise<void>;
   refresh: () => Promise<void>;
@@ -136,8 +140,8 @@ export interface FileExplorerContext {
   createFolder: ({ name }: { name: string }) => Promise<void>;
   deleteEntries: ({ entries }: { entries: FileExplorerEntry[] }) => Promise<void>;
   renameEntry: ({ entry, newName }: { entry: FileExplorerEntry; newName: string }) => Promise<void>;
-  moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: FileSystemDirectoryHandle }) => Promise<void>;
-  copyEntriesToDir: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: FileSystemDirectoryHandle }) => Promise<void>;
+  moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: ExplorerDirectory }) => Promise<void>;
+  copyEntriesToDir: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: ExplorerDirectory }) => Promise<void>;
   downloadEntry: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>;
   uploadFiles: ({ files }: { files: FileList | File[] }) => Promise<void>;
 
@@ -173,6 +177,9 @@ export interface FileExplorerContext {
   onDragLeaveEntry: () => void;
   onDropEntry: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>;
   onDragEnd: () => void;
+
+  // Read-only state of the current directory
+  readOnly: boolean;
 
   // Column view
   columnPanes: ColumnPaneState[];

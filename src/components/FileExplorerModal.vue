@@ -3,15 +3,18 @@ import { ref, onMounted } from 'vue';
 import { X, Loader2 } from 'lucide-vue-next';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import FileExplorer from './file-explorer/FileExplorer.vue';
+import { FsExplorerDirectory } from './file-explorer/explorer-directory';
+import type { ExplorerDirectory } from './file-explorer/explorer-directory';
 
 const { closeFileExplorer } = useFileExplorerModal();
 
-const rootHandle = ref<FileSystemDirectoryHandle | undefined>(undefined);
+const root = ref<ExplorerDirectory | undefined>(undefined);
 const loadError = ref<string | undefined>(undefined);
 
 onMounted(async () => {
   try {
-    rootHandle.value = await navigator.storage.getDirectory();
+    const handle = await navigator.storage.getDirectory();
+    root.value = new FsExplorerDirectory({ handle, readOnly: false });
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e);
   }
@@ -51,7 +54,7 @@ defineExpose({
         <div class="flex-1 overflow-hidden">
           <!-- Loading -->
           <div
-            v-if="!rootHandle && !loadError"
+            v-if="!root && !loadError"
             class="flex items-center justify-center h-full gap-2 text-gray-400"
           >
             <Loader2 class="w-5 h-5 animate-spin" />
@@ -68,8 +71,8 @@ defineExpose({
 
           <!-- Explorer -->
           <FileExplorer
-            v-else-if="rootHandle"
-            :root="rootHandle"
+            v-else-if="root"
+            :root="root"
             initial-view-mode="list"
             initial-preview-visibility="visible"
             class="h-full"

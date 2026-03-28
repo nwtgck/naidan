@@ -3,8 +3,9 @@ import { ref } from 'vue';
 import { flushPromises } from '@vue/test-utils';
 import { useFileExplorerNavigation } from './useFileExplorerNavigation';
 import type { SortConfig } from './types';
+import type { ExplorerDirectory, ExplorerChild } from './explorer-directory';
 
-// ---- Mock FileSystem API ----
+// ---- Mock ExplorerDirectory ----
 
 class MockFileSystemFileHandle {
   kind = 'file' as const;
@@ -25,28 +26,68 @@ class MockFileSystemFileHandle {
   }
 }
 
-class MockFileSystemDirectoryHandle {
-  kind = 'directory' as const;
-  entries = new Map<string, MockFileSystemDirectoryHandle | MockFileSystemFileHandle>();
+class MockExplorerDirectory implements ExplorerDirectory {
+  readonly readOnly = false;
+  private _entries = new Map<string, MockExplorerDirectory | MockFileSystemFileHandle>();
 
-  constructor(public name: string) {}
+  constructor(public readonly name: string) {}
 
-  async *values() {
-    for (const entry of this.entries.values()) {
-      yield entry;
+  async *children(): AsyncIterable<ExplorerChild> {
+    for (const [, entry] of this._entries) {
+      if (entry instanceof MockExplorerDirectory) {
+        yield { kind: 'directory', name: entry.name, readOnly: false, directory: entry };
+      } else {
+        yield { kind: 'file', name: entry.name, fileHandle: entry as unknown as FileSystemFileHandle };
+      }
     }
+  }
+
+  async subdir({ name }: { name: string }): Promise<ExplorerDirectory | null> {
+    const e = this._entries.get(name);
+    return e instanceof MockExplorerDirectory ? e : null;
+  }
+
+  async subdirCreate({ name }: { name: string }): Promise<ExplorerDirectory> {
+    let d = this._entries.get(name);
+    if (!(d instanceof MockExplorerDirectory)) {
+      d = new MockExplorerDirectory(name);
+      this._entries.set(name, d);
+    }
+    return d;
+  }
+
+  async file({ name }: { name: string }): Promise<FileSystemFileHandle | null> {
+    const e = this._entries.get(name);
+    return e instanceof MockExplorerDirectory ? null : (e as unknown as FileSystemFileHandle) ?? null;
+  }
+
+  async fileCreate({ name }: { name: string }): Promise<FileSystemFileHandle> {
+    let fh = this._entries.get(name);
+    if (!fh || fh instanceof MockExplorerDirectory) {
+      fh = new MockFileSystemFileHandle(name);
+      this._entries.set(name, fh);
+    }
+    return fh as unknown as FileSystemFileHandle;
+  }
+
+  async remove({ name }: { name: string; recursive: boolean }): Promise<void> {
+    this._entries.delete(name);
+  }
+
+  async isSameAs({ other }: { other: ExplorerDirectory }): Promise<boolean> {
+    return this === other;
   }
 
   addFile(name: string, size = 0, lastModified = 1000): MockFileSystemFileHandle {
     const fh = new MockFileSystemFileHandle(name, size, lastModified);
-    this.entries.set(name, fh);
+    this._entries.set(name, fh);
     return fh;
   }
 
-  addDir(name: string): MockFileSystemDirectoryHandle {
-    const dh = new MockFileSystemDirectoryHandle(name);
-    this.entries.set(name, dh);
-    return dh;
+  addDir(name: string): MockExplorerDirectory {
+    const d = new MockExplorerDirectory(name);
+    this._entries.set(name, d);
+    return d;
   }
 }
 
@@ -55,9 +96,9 @@ class MockFileSystemDirectoryHandle {
 const defaultSort = ref<SortConfig>({ field: 'name', direction: 'ascending' });
 const defaultFilter = ref<string>('');
 
-function makeNav(root: MockFileSystemDirectoryHandle) {
+function makeNav(root: MockExplorerDirectory) {
   return useFileExplorerNavigation({
-    root: root as unknown as FileSystemDirectoryHandle,
+    root,
     sortConfig: defaultSort,
     filterQuery: defaultFilter,
   });
@@ -66,10 +107,10 @@ function makeNav(root: MockFileSystemDirectoryHandle) {
 // ---- Tests ----
 
 describe('useFileExplorerNavigation', () => {
-  let root: MockFileSystemDirectoryHandle;
+  let root: MockExplorerDirectory;
 
   beforeEach(() => {
-    root = new MockFileSystemDirectoryHandle('root');
+    root = new MockExplorerDirectory('root');
     defaultSort.value = { field: 'name', direction: 'ascending' };
     defaultFilter.value = '';
   });
@@ -139,7 +180,7 @@ describe('useFileExplorerNavigation', () => {
     const sub = root.addDir('sub');
     const { pathSegments, navigateToDirectory } = makeNav(root);
     await flushPromises();
-    await navigateToDirectory({ handle: sub as unknown as FileSystemDirectoryHandle });
+    await navigateToDirectory({ directory: sub });
     expect(pathSegments.value).toHaveLength(2);
     expect(pathSegments.value[1]!.name).toBe('sub');
   });
@@ -149,7 +190,7 @@ describe('useFileExplorerNavigation', () => {
     sub.addFile('child.txt', 10);
     const { entries, navigateToDirectory } = makeNav(root);
     await flushPromises();
-    await navigateToDirectory({ handle: sub as unknown as FileSystemDirectoryHandle });
+    await navigateToDirectory({ directory: sub });
     expect(entries.value.some(e => e.name === 'child.txt')).toBe(true);
   });
 
@@ -158,7 +199,7 @@ describe('useFileExplorerNavigation', () => {
     root.addFile('top.txt');
     const { entries, pathSegments, navigateToDirectory, navigateUp } = makeNav(root);
     await flushPromises();
-    await navigateToDirectory({ handle: sub as unknown as FileSystemDirectoryHandle });
+    await navigateToDirectory({ directory: sub });
     await navigateUp();
     expect(pathSegments.value).toHaveLength(1);
     expect(entries.value.some(e => e.name === 'top.txt')).toBe(true);
@@ -177,8 +218,8 @@ describe('useFileExplorerNavigation', () => {
     root.addFile('root-file.txt');
     const { entries, pathSegments, navigateToDirectory, jumpToBreadcrumb } = makeNav(root);
     await flushPromises();
-    await navigateToDirectory({ handle: sub as unknown as FileSystemDirectoryHandle });
-    await navigateToDirectory({ handle: deep as unknown as FileSystemDirectoryHandle });
+    await navigateToDirectory({ directory: sub });
+    await navigateToDirectory({ directory: deep });
     expect(pathSegments.value).toHaveLength(3);
     // jump back to root (index 0)
     await jumpToBreadcrumb({ index: 0 });
@@ -190,7 +231,7 @@ describe('useFileExplorerNavigation', () => {
     const sub = root.addDir('sub');
     const { pathSegments, navigateToDirectory, jumpToBreadcrumb } = makeNav(root);
     await flushPromises();
-    await navigateToDirectory({ handle: sub as unknown as FileSystemDirectoryHandle });
+    await navigateToDirectory({ directory: sub });
     await jumpToBreadcrumb({ index: 1 }); // index of current (last) → no-op
     expect(pathSegments.value).toHaveLength(2);
   });
@@ -205,13 +246,13 @@ describe('useFileExplorerNavigation', () => {
     expect(entries.value.some(e => e.name === 'new.txt')).toBe(true);
   });
 
-  it('currentHandle reflects current directory', async () => {
+  it('currentDirectory reflects current directory', async () => {
     const sub = root.addDir('sub');
-    const { currentHandle, navigateToDirectory } = makeNav(root);
+    const { currentDirectory, navigateToDirectory } = makeNav(root);
     await flushPromises();
-    expect(currentHandle.value.name).toBe('root');
-    await navigateToDirectory({ handle: sub as unknown as FileSystemDirectoryHandle });
-    expect(currentHandle.value.name).toBe('sub');
+    expect(currentDirectory.value.name).toBe('root');
+    await navigateToDirectory({ directory: sub });
+    expect(currentDirectory.value.name).toBe('sub');
   });
 
   // ---- column view ----
@@ -220,7 +261,7 @@ describe('useFileExplorerNavigation', () => {
     const { columnPanes } = makeNav(root);
     await flushPromises();
     expect(columnPanes.value).toHaveLength(1);
-    expect(columnPanes.value[0]!.handle.name).toBe('root');
+    expect(columnPanes.value[0]!.directory.name).toBe('root');
   });
 
   it('selectColumnEntry adds a new pane for a directory', async () => {
@@ -230,7 +271,7 @@ describe('useFileExplorerNavigation', () => {
     await selectColumnEntry({ paneIndex: 0, entryName: 'sub' });
     await flushPromises();
     expect(columnPanes.value.length).toBeGreaterThanOrEqual(2);
-    expect(columnPanes.value[1]!.handle.name).toBe('sub');
+    expect(columnPanes.value[1]!.directory.name).toBe('sub');
   });
 
   it('selectColumnEntry updates selectedEntryName in pane', async () => {
@@ -261,13 +302,14 @@ describe('useFileExplorerNavigation', () => {
   });
 
   it('loadError is set on directory read failure', async () => {
-    const badRoot = new MockFileSystemDirectoryHandle('bad');
-    // Override values to throw before yielding anything
-    badRoot.values = async function*() {
-      yield* ((): never[] => {
+    const badRoot = new class extends MockExplorerDirectory {
+      // Override children to throw before yielding anything
+      override async *children(): AsyncIterable<ExplorerChild> {
         throw new Error('permission denied');
-      })();
-    };
+
+        yield* [];
+      }
+    }('bad');
     const { isLoading, loadError } = makeNav(badRoot);
     await flushPromises();
     expect(isLoading.value).toBe(false);

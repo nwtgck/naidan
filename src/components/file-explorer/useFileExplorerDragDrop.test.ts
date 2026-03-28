@@ -2,17 +2,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { useFileExplorerDragDrop } from './useFileExplorerDragDrop';
 import type { FileExplorerEntry } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 
 function makeEntry(name: string, kind: 'file' | 'directory' = 'file'): FileExplorerEntry {
   return {
     name,
     kind,
     handle: {} as FileSystemHandle,
+    directory: undefined,
     size: undefined,
     lastModified: undefined,
     extension: '',
     mimeCategory: 'binary',
+    readOnly: false,
   };
+}
+
+function makeDirEntry(name: string, directory: ExplorerDirectory): FileExplorerEntry {
+  return { ...makeEntry(name, 'directory'), directory };
 }
 
 function makeDragEvent(opts: { dataTransfer?: boolean } = {}): DragEvent {
@@ -29,19 +36,19 @@ function makeDragEvent(opts: { dataTransfer?: boolean } = {}): DragEvent {
   } as unknown as DragEvent;
 }
 
-const fakeDir = { name: 'root' } as FileSystemDirectoryHandle;
+const fakeDir = { name: 'root', readOnly: false } as unknown as ExplorerDirectory;
 
 describe('useFileExplorerDragDrop', () => {
-  let moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: FileSystemDirectoryHandle }) => Promise<void>;
-  let currentHandle: { readonly value: FileSystemDirectoryHandle };
+  let moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: ExplorerDirectory }) => Promise<void>;
+  let currentDirectory: { readonly value: ExplorerDirectory };
 
   beforeEach(() => {
     moveEntries = vi.fn().mockResolvedValue(undefined);
-    currentHandle = ref(fakeDir) as unknown as { readonly value: FileSystemDirectoryHandle };
+    currentDirectory = ref(fakeDir) as unknown as { readonly value: ExplorerDirectory };
   });
 
   function makeDnd() {
-    return useFileExplorerDragDrop({ moveEntries, currentHandle });
+    return useFileExplorerDragDrop({ moveEntries, currentDirectory });
   }
 
   // ---- initial state ----
@@ -134,7 +141,8 @@ describe('useFileExplorerDragDrop', () => {
   it('onDropEntry calls moveEntries with original entries — even after over-target transition', async () => {
     const { onDragStart, onDragOverEntry, onDropEntry } = makeDnd();
     const entries = [makeEntry('a.txt'), makeEntry('b.txt')];
-    const targetDir = makeEntry('subdir', 'directory');
+    const subDir = { name: 'subdir', readOnly: false } as unknown as ExplorerDirectory;
+    const targetDir = makeDirEntry('subdir', subDir);
 
     onDragStart({ event: makeDragEvent(), entries });
     onDragOverEntry({ event: makeDragEvent(), entry: targetDir });
@@ -144,7 +152,7 @@ describe('useFileExplorerDragDrop', () => {
 
     expect(moveEntries).toHaveBeenCalledWith({
       entries,
-      targetDir: targetDir.handle,
+      targetDir: subDir,
     });
   });
 

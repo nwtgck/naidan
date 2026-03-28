@@ -53,7 +53,7 @@ function onEntryClick({ entry, event }: { entry: FileExplorerEntry; event: Mouse
 async function onEntryDblClick({ entry }: { entry: FileExplorerEntry }): Promise<void> {
   switch (entry.kind) {
   case 'directory':
-    await ctx.navigateToDirectory({ handle: entry.handle as FileSystemDirectoryHandle });
+    await ctx.navigateToDirectory({ directory: entry.directory! });
     ctx.applySelection({ action: { type: 'clear' } });
     break;
   case 'file':

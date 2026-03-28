@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { useFileExplorerOperations } from './useFileExplorerOperations';
 import type { FileExplorerEntry } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 
 // --- Module-level mock instances (shared across all calls to useConfirm/useToast) ---
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
@@ -21,10 +22,12 @@ function makeEntry(name: string, kind: 'file' | 'directory' = 'file'): FileExplo
     name,
     kind,
     handle: {} as FileSystemHandle,
+    directory: undefined,
     size: 100,
     lastModified: Date.now(),
     extension: kind === 'file' ? name.split('.').pop() ?? '' : '',
     mimeCategory: 'binary',
+    readOnly: false,
   };
 }
 
@@ -48,52 +51,50 @@ function makeFileHandle(name: string, content: ArrayBuffer = new ArrayBuffer(0))
   } as unknown as FileSystemFileHandle;
 }
 
-function makeDirHandle(name: string): FileSystemDirectoryHandle & {
+type MockDir = ExplorerDirectory & {
   _files: Map<string, FileSystemFileHandle>;
-  _dirs: Map<string, FileSystemDirectoryHandle>;
-} {
-  const files = new Map<string, FileSystemFileHandle>();
-  const dirs = new Map<string, FileSystemDirectoryHandle>();
+  fileCreate: ReturnType<typeof vi.fn>;
+  subdirCreate: ReturnType<typeof vi.fn>;
+  remove: ReturnType<typeof vi.fn>;
+};
 
-  return {
-    kind: 'directory' as const,
+function makeDirHandle(name: string): MockDir {
+  const files = new Map<string, FileSystemFileHandle>();
+  const dirs = new Map<string, ExplorerDirectory>();
+
+  const mock: MockDir = {
     name,
+    readOnly: false,
     _files: files,
-    _dirs: dirs,
-    getFileHandle: vi.fn((n: string, opts?: { create?: boolean }) => {
-      if (!files.has(n)) {
-        if (!opts?.create) throw new Error(`File not found: ${n}`);
-        const fh = makeFileHandle(n);
-        files.set(n, fh);
-      }
-      return Promise.resolve(files.get(n)!);
+    async *children() {
+      for (const [fname, fh] of files) yield { kind: 'file' as const, name: fname, fileHandle: fh };
+    },
+    subdir: vi.fn(async ({ name: n }: { name: string }) => dirs.get(n) ?? null),
+    subdirCreate: vi.fn(async ({ name: n }: { name: string }) => {
+      if (!dirs.has(n)) dirs.set(n, makeDirHandle(n));
+      return dirs.get(n)!;
     }),
-    getDirectoryHandle: vi.fn((n: string, opts?: { create?: boolean }) => {
-      if (!dirs.has(n)) {
-        if (!opts?.create) throw new Error(`Dir not found: ${n}`);
-        const dh = makeDirHandle(n);
-        dirs.set(n, dh);
-      }
-      return Promise.resolve(dirs.get(n)!);
+    file: vi.fn(async ({ name: n }: { name: string }) => files.get(n) ?? null),
+    fileCreate: vi.fn(async ({ name: n }: { name: string }) => {
+      if (!files.has(n)) files.set(n, makeFileHandle(n));
+      return files.get(n)!;
     }),
-    removeEntry: vi.fn().mockResolvedValue(undefined),
-    values: vi.fn(async function*() {
-      for (const fh of files.values()) yield fh;
-      for (const dh of dirs.values()) yield dh;
-    }),
-  } as unknown as ReturnType<typeof makeDirHandle>;
+    remove: vi.fn().mockResolvedValue(undefined),
+    isSameAs: vi.fn().mockResolvedValue(false),
+  };
+  return mock;
 }
 
 // --- Tests ---
 
 describe('useFileExplorerOperations', () => {
-  let currentHandle: { readonly value: FileSystemDirectoryHandle };
+  let currentDirectory: { readonly value: ExplorerDirectory };
   let refresh: () => Promise<void>;
-  let dir: ReturnType<typeof makeDirHandle>;
+  let dir: MockDir;
 
   beforeEach(() => {
     dir = makeDirHandle('root');
-    currentHandle = ref(dir) as unknown as { readonly value: FileSystemDirectoryHandle };
+    currentDirectory = ref(dir) as unknown as { readonly value: ExplorerDirectory };
     refresh = vi.fn().mockResolvedValue(undefined);
     mockShowConfirm.mockReset();
     mockShowConfirm.mockResolvedValue(true);
@@ -101,7 +102,7 @@ describe('useFileExplorerOperations', () => {
   });
 
   function makeOps() {
-    return useFileExplorerOperations({ currentHandle, refresh });
+    return useFileExplorerOperations({ currentDirectory, refresh });
   }
 
   // ---- createFile ----
@@ -109,12 +110,12 @@ describe('useFileExplorerOperations', () => {
   it('createFile creates a file handle and refreshes', async () => {
     const ops = makeOps();
     await ops.createFile({ name: 'hello.txt' });
-    expect(dir.getFileHandle).toHaveBeenCalledWith('hello.txt', { create: true });
+    expect(dir.fileCreate).toHaveBeenCalledWith({ name: 'hello.txt' });
     expect(refresh).toHaveBeenCalled();
   });
 
   it('createFile shows toast on error', async () => {
-    dir.getFileHandle = vi.fn().mockRejectedValue(new Error('no permission'));
+    dir.fileCreate.mockRejectedValueOnce(new Error('no permission'));
     const ops = makeOps();
     await ops.createFile({ name: 'fail.txt' });
     expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('no permission') }));
@@ -125,24 +126,24 @@ describe('useFileExplorerOperations', () => {
   it('createFolder creates a directory handle and refreshes', async () => {
     const ops = makeOps();
     await ops.createFolder({ name: 'subdir' });
-    expect(dir.getDirectoryHandle).toHaveBeenCalledWith('subdir', { create: true });
+    expect(dir.subdirCreate).toHaveBeenCalledWith({ name: 'subdir' });
     expect(refresh).toHaveBeenCalled();
   });
 
   // ---- deleteEntries ----
 
-  it('deleteEntries calls removeEntry and refreshes', async () => {
+  it('deleteEntries calls remove and refreshes', async () => {
     const ops = makeOps();
     const entry = makeEntry('a.txt', 'file');
     await ops.deleteEntries({ entries: [entry] });
-    expect(dir.removeEntry).toHaveBeenCalledWith('a.txt', { recursive: true });
+    expect(dir.remove).toHaveBeenCalledWith({ name: 'a.txt', recursive: true });
     expect(refresh).toHaveBeenCalled();
   });
 
   it('deleteEntries does nothing for empty array', async () => {
     const ops = makeOps();
     await ops.deleteEntries({ entries: [] });
-    expect(dir.removeEntry).not.toHaveBeenCalled();
+    expect(dir.remove).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
   });
 
@@ -150,11 +151,11 @@ describe('useFileExplorerOperations', () => {
     mockShowConfirm.mockResolvedValueOnce(false);
     const ops = makeOps();
     await ops.deleteEntries({ entries: [makeEntry('a.txt')] });
-    expect(dir.removeEntry).not.toHaveBeenCalled();
+    expect(dir.remove).not.toHaveBeenCalled();
   });
 
   it('deleteEntries shows toast when removal fails', async () => {
-    dir.removeEntry = vi.fn().mockRejectedValue(new Error('locked'));
+    dir.remove.mockRejectedValueOnce(new Error('locked'));
     const ops = makeOps();
     await ops.deleteEntries({ entries: [makeEntry('a.txt')] });
     expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('Failed to delete') }));
@@ -179,7 +180,7 @@ describe('useFileExplorerOperations', () => {
     const ops = makeOps();
     ops.startRename({ entry: makeEntry('foo.txt') });
     await ops.renameEntry({ entry: makeEntry('foo.txt'), newName: 'foo.txt' });
-    expect(dir.getFileHandle).not.toHaveBeenCalled();
+    expect(dir.fileCreate).not.toHaveBeenCalled();
     expect(ops.renamingEntryName.value).toBeUndefined();
   });
 
@@ -187,7 +188,7 @@ describe('useFileExplorerOperations', () => {
     const ops = makeOps();
     ops.startRename({ entry: makeEntry('foo.txt') });
     await ops.renameEntry({ entry: makeEntry('foo.txt'), newName: '   ' });
-    expect(dir.getFileHandle).not.toHaveBeenCalled();
+    expect(dir.fileCreate).not.toHaveBeenCalled();
     expect(ops.renamingEntryName.value).toBeUndefined();
   });
 
@@ -203,8 +204,8 @@ describe('useFileExplorerOperations', () => {
     const entry: FileExplorerEntry = { ...makeEntry('foo.txt'), handle: fh as FileSystemHandle };
     await ops.renameEntry({ entry, newName: 'bar.txt' });
 
-    expect(dir.getFileHandle).toHaveBeenCalledWith('bar.txt', { create: true });
-    expect(dir.removeEntry).toHaveBeenCalledWith('foo.txt');
+    expect(dir.fileCreate).toHaveBeenCalledWith({ name: 'bar.txt' });
+    expect(dir.remove).toHaveBeenCalledWith({ name: 'foo.txt', recursive: false });
     expect(refresh).toHaveBeenCalled();
     expect(ops.renamingEntryName.value).toBeUndefined();
   });
@@ -220,8 +221,8 @@ describe('useFileExplorerOperations', () => {
     const entry: FileExplorerEntry = { ...makeEntry('a.txt'), handle: fh as FileSystemHandle };
     await ops.moveEntries({ entries: [entry], targetDir });
 
-    expect(targetDir.getFileHandle).toHaveBeenCalledWith('a.txt', { create: true });
-    expect(dir.removeEntry).toHaveBeenCalledWith('a.txt');
+    expect(targetDir.fileCreate).toHaveBeenCalledWith({ name: 'a.txt' });
+    expect(dir.remove).toHaveBeenCalledWith({ name: 'a.txt', recursive: false });
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -229,7 +230,7 @@ describe('useFileExplorerOperations', () => {
     const fh = makeFileHandle('a.txt');
     dir._files.set('a.txt', fh);
     const targetDir = makeDirHandle('target');
-    targetDir.getFileHandle = vi.fn().mockRejectedValue(new Error('fail'));
+    targetDir.fileCreate.mockRejectedValueOnce(new Error('fail'));
 
     const ops = makeOps();
     const entry: FileExplorerEntry = { ...makeEntry('a.txt'), handle: fh as FileSystemHandle };
@@ -248,8 +249,8 @@ describe('useFileExplorerOperations', () => {
     const entry: FileExplorerEntry = { ...makeEntry('a.txt'), handle: fh as FileSystemHandle };
     await ops.copyEntriesToDir({ entries: [entry], targetDir });
 
-    expect(targetDir.getFileHandle).toHaveBeenCalledWith('a.txt', { create: true });
-    expect(dir.removeEntry).not.toHaveBeenCalled();
+    expect(targetDir.fileCreate).toHaveBeenCalledWith({ name: 'a.txt' });
+    expect(dir.remove).not.toHaveBeenCalled();
     expect(refresh).toHaveBeenCalled();
   });
 
@@ -283,24 +284,24 @@ describe('useFileExplorerOperations', () => {
 
   // ---- uploadFiles ----
 
-  it('uploadFiles writes each file to currentHandle and refreshes', async () => {
+  it('uploadFiles writes each file to currentDirectory and refreshes', async () => {
     const ops = makeOps();
     const file = new File(['hello'], 'upload.txt', { type: 'text/plain' });
     await ops.uploadFiles({ files: [file] });
 
-    expect(dir.getFileHandle).toHaveBeenCalledWith('upload.txt', { create: true });
+    expect(dir.fileCreate).toHaveBeenCalledWith({ name: 'upload.txt' });
     expect(refresh).toHaveBeenCalled();
   });
 
   it('uploadFiles does nothing for empty array', async () => {
     const ops = makeOps();
     await ops.uploadFiles({ files: [] });
-    expect(dir.getFileHandle).not.toHaveBeenCalled();
+    expect(dir.fileCreate).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
   });
 
   it('uploadFiles shows toast when a file write fails', async () => {
-    dir.getFileHandle = vi.fn().mockRejectedValue(new Error('quota exceeded'));
+    dir.fileCreate.mockRejectedValueOnce(new Error('quota exceeded'));
     const ops = makeOps();
     const file = new File(['x'], 'fail.txt');
     await ops.uploadFiles({ files: [file] });

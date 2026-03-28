@@ -11,9 +11,10 @@ import FileExplorerContextMenu from './FileExplorerContextMenu.vue';
 import { useFileExplorer, FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import { useFileExplorerKeyboard } from './useFileExplorerKeyboard';
 import type { ViewMode, PreviewVisibility } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 
 const props = defineProps<{
-  root: FileSystemDirectoryHandle;
+  root: ExplorerDirectory;
   initialViewMode: ViewMode;
   initialPreviewVisibility: PreviewVisibility;
 }>();

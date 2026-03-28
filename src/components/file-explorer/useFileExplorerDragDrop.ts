@@ -1,12 +1,13 @@
 import { ref } from 'vue';
 import type { FileExplorerEntry, DragState } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 
 export function useFileExplorerDragDrop({
   moveEntries,
-  currentHandle,
+  currentDirectory,
 }: {
-  moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: FileSystemDirectoryHandle }) => Promise<void>;
-  currentHandle: { readonly value: FileSystemDirectoryHandle };
+  moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: ExplorerDirectory }) => Promise<void>;
+  currentDirectory: { readonly value: ExplorerDirectory };
 }) {
   const dragState = ref<DragState>({ status: 'idle' });
 
@@ -28,7 +29,7 @@ export function useFileExplorerDragDrop({
     dragState.value = {
       status: 'dragging',
       entries,
-      sourceDirectory: currentHandle.value,
+      sourceDirectory: currentDirectory.value,
     };
   }
 
@@ -75,7 +76,7 @@ export function useFileExplorerDragDrop({
       dragState.value = {
         status: 'dragging',
         entries: activeDragEntries.value,
-        sourceDirectory: currentHandle.value,
+        sourceDirectory: currentDirectory.value,
       };
       break;
     case 'dragging':
@@ -105,7 +106,7 @@ export function useFileExplorerDragDrop({
     activeDragEntries.value = [];
     dragState.value = { status: 'idle' };
 
-    const targetDir = entry.handle as FileSystemDirectoryHandle;
+    const targetDir = entry.directory!;
     if (entriesToMove.length > 0) {
       await moveEntries({ entries: entriesToMove, targetDir });
     }

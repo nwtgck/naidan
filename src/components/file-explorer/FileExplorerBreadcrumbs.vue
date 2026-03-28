@@ -28,9 +28,11 @@ async function confirmPathEdit(): Promise<void> {
     // Skip root name if it matches the first part
     const startIdx = parts[0] === (ctx.root.name || 'root') ? 1 : 0;
     for (let i = startIdx; i < parts.length; i++) {
-      current = await current.getDirectoryHandle(parts[i]!, { create: false });
+      const child = await current.subdir({ name: parts[i]! });
+      if (!child) return;
+      current = child;
     }
-    await ctx.navigateToDirectory({ handle: current });
+    await ctx.navigateToDirectory({ directory: current });
     ctx.applySelection({ action: { type: 'clear' } });
   } catch {
     // Invalid path — silently ignore

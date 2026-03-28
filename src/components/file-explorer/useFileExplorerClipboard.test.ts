@@ -1,20 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { useFileExplorerClipboard } from './useFileExplorerClipboard';
 import type { FileExplorerEntry } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 
 function makeEntry(name: string): FileExplorerEntry {
   return {
     name,
     kind: 'file',
     handle: {} as FileSystemHandle,
+    directory: undefined,
     size: undefined,
     lastModified: undefined,
     extension: '.txt',
     mimeCategory: 'text',
+    readOnly: false,
   };
 }
 
-const fakeDir = {} as FileSystemDirectoryHandle;
+const fakeDir = {} as ExplorerDirectory;
 
 describe('useFileExplorerClipboard', () => {
   it('starts empty', () => {

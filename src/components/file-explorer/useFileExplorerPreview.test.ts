@@ -22,10 +22,12 @@ function makeEntry(overrides: Partial<FileExplorerEntry> & { name: string }): Fi
   return {
     kind: 'file',
     handle: {} as FileSystemHandle,
+    directory: undefined,
     size: 100,
     lastModified: Date.now(),
     extension: '',
     mimeCategory: 'binary',
+    readOnly: false,
     ...overrides,
   };
 }

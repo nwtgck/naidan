@@ -7,10 +7,12 @@ function makeEntry(name: string): FileExplorerEntry {
     name,
     kind: 'file',
     handle: {} as FileSystemHandle,
+    directory: undefined,
     size: undefined,
     lastModified: undefined,
     extension: '.txt',
     mimeCategory: 'text',
+    readOnly: false,
   };
 }
 

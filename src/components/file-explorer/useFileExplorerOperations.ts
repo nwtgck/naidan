@@ -1,14 +1,15 @@
 import { ref } from 'vue';
 import type { FileExplorerEntry } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 import { copyDirectoryHandle, copyFileHandle } from './utils';
 import { useConfirm } from '@/composables/useConfirm';
 import { useToast } from '@/composables/useToast';
 
 export function useFileExplorerOperations({
-  currentHandle,
+  currentDirectory,
   refresh,
 }: {
-  currentHandle: { readonly value: FileSystemDirectoryHandle };
+  currentDirectory: { readonly value: ExplorerDirectory };
   refresh: () => Promise<void>;
 }) {
   const { showConfirm } = useConfirm();
@@ -17,7 +18,7 @@ export function useFileExplorerOperations({
 
   async function createFile({ name }: { name: string }): Promise<void> {
     try {
-      const fh = await currentHandle.value.getFileHandle(name, { create: true });
+      const fh = await currentDirectory.value.fileCreate({ name });
       const writable = await (fh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
       await writable.close();
       await refresh();
@@ -28,7 +29,7 @@ export function useFileExplorerOperations({
 
   async function createFolder({ name }: { name: string }): Promise<void> {
     try {
-      await currentHandle.value.getDirectoryHandle(name, { create: true });
+      await currentDirectory.value.subdirCreate({ name });
       await refresh();
     } catch (e) {
       addToast({ message: `Failed to create folder: ${e instanceof Error ? e.message : String(e)}` });
@@ -62,7 +63,7 @@ export function useFileExplorerOperations({
     let failed = 0;
     for (const entry of entries) {
       try {
-        await currentHandle.value.removeEntry(entry.name, { recursive: true });
+        await currentDirectory.value.remove({ name: entry.name, recursive: true });
       } catch {
         failed++;
       }
@@ -91,27 +92,21 @@ export function useFileExplorerOperations({
       case 'file': {
         const fh = entry.handle as FileSystemFileHandle;
         const file = await fh.getFile();
-        const destFh = await currentHandle.value.getFileHandle(trimmed, { create: true });
+        const destFh = await currentDirectory.value.fileCreate({ name: trimmed });
         const writable = await (destFh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
         await writable.write(await file.arrayBuffer());
         await writable.close();
-        await currentHandle.value.removeEntry(entry.name);
+        await currentDirectory.value.remove({ name: entry.name, recursive: false });
         break;
       }
       case 'directory': {
-        // Copy tree into new-named dir, then remove original
-        const destDir = await currentHandle.value.getDirectoryHandle(trimmed, { create: true });
+        const destDir = await currentDirectory.value.subdirCreate({ name: trimmed });
         const srcDir = entry.handle as FileSystemDirectoryHandle;
         for await (const child of srcDir.values()) {
           switch (child.kind) {
-          case 'file': {
-            const file = await (child as FileSystemFileHandle).getFile();
-            const destFh = await destDir.getFileHandle(child.name, { create: true });
-            const writable = await (destFh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
-            await writable.write(await file.arrayBuffer());
-            await writable.close();
+          case 'file':
+            await copyFileHandle({ source: child as FileSystemFileHandle, targetDir: destDir });
             break;
-          }
           case 'directory':
             await copyDirectoryHandle({
               source: child as FileSystemDirectoryHandle,
@@ -125,7 +120,7 @@ export function useFileExplorerOperations({
           }
           }
         }
-        await currentHandle.value.removeEntry(entry.name, { recursive: true });
+        await currentDirectory.value.remove({ name: entry.name, recursive: true });
         break;
       }
       default: {
@@ -146,7 +141,7 @@ export function useFileExplorerOperations({
     targetDir,
   }: {
     entries: FileExplorerEntry[];
-    targetDir: FileSystemDirectoryHandle;
+    targetDir: ExplorerDirectory;
   }): Promise<void> {
     let failed = 0;
     for (const entry of entries) {
@@ -154,11 +149,11 @@ export function useFileExplorerOperations({
         switch (entry.kind) {
         case 'file':
           await copyFileHandle({ source: entry.handle as FileSystemFileHandle, targetDir });
-          await currentHandle.value.removeEntry(entry.name);
+          await currentDirectory.value.remove({ name: entry.name, recursive: false });
           break;
         case 'directory':
           await copyDirectoryHandle({ source: entry.handle as FileSystemDirectoryHandle, targetDir, signal: undefined });
-          await currentHandle.value.removeEntry(entry.name, { recursive: true });
+          await currentDirectory.value.remove({ name: entry.name, recursive: true });
           break;
         default: {
           const _ex: never = entry.kind;
@@ -180,7 +175,7 @@ export function useFileExplorerOperations({
     targetDir,
   }: {
     entries: FileExplorerEntry[];
-    targetDir: FileSystemDirectoryHandle;
+    targetDir: ExplorerDirectory;
   }): Promise<void> {
     let failed = 0;
     for (const entry of entries) {
@@ -245,7 +240,7 @@ export function useFileExplorerOperations({
     let failed = 0;
     for (const file of fileArray) {
       try {
-        const fh = await currentHandle.value.getFileHandle(file.name, { create: true });
+        const fh = await currentDirectory.value.fileCreate({ name: file.name });
         const writable = await (fh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
         await writable.write(await file.arrayBuffer());
         await writable.close();

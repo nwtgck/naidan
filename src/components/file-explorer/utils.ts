@@ -1,4 +1,5 @@
 import type { FileExplorerEntry, MimeCategory, SortConfig } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 import { EXTENSION_MIME_MAP } from './constants';
 
 export function getFileExtension({ name }: { name: string }): string {
@@ -97,7 +98,8 @@ export function filterEntries({
 }
 
 /**
- * Recursively copy a FileSystemDirectoryHandle tree into a target directory.
+ * Recursively copy a FileSystemDirectoryHandle tree into an ExplorerDirectory target.
+ * Reads from the raw source handle; writes through the ExplorerDirectory abstraction.
  */
 export async function copyDirectoryHandle({
   source,
@@ -105,17 +107,17 @@ export async function copyDirectoryHandle({
   signal,
 }: {
   source: FileSystemDirectoryHandle;
-  targetDir: FileSystemDirectoryHandle;
+  targetDir: ExplorerDirectory;
   signal: AbortSignal | undefined;
 }): Promise<void> {
-  const destDir = await targetDir.getDirectoryHandle(source.name, { create: true });
+  const destDir = await targetDir.subdirCreate({ name: source.name });
   for await (const entry of source.values()) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     switch (entry.kind) {
     case 'file': {
       const fh = entry as FileSystemFileHandle;
       const file = await fh.getFile();
-      const destFh = await destDir.getFileHandle(entry.name, { create: true });
+      const destFh = await destDir.fileCreate({ name: entry.name });
       const writable = await (destFh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
       await writable.write(await file.arrayBuffer());
       await writable.close();
@@ -133,17 +135,17 @@ export async function copyDirectoryHandle({
 }
 
 /**
- * Copy a single FileSystemFileHandle into a target directory.
+ * Copy a single FileSystemFileHandle into an ExplorerDirectory target.
  */
 export async function copyFileHandle({
   source,
   targetDir,
 }: {
   source: FileSystemFileHandle;
-  targetDir: FileSystemDirectoryHandle;
+  targetDir: ExplorerDirectory;
 }): Promise<void> {
   const file = await source.getFile();
-  const destFh = await targetDir.getFileHandle(source.name, { create: true });
+  const destFh = await targetDir.fileCreate({ name: source.name });
   const writable = await (destFh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
   await writable.write(await file.arrayBuffer());
   await writable.close();

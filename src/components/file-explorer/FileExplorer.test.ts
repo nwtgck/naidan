@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
+import type { ExplorerDirectory, ExplorerChild } from './explorer-directory';
 
-// ---- Mock file system ----
+// ---- Mock ExplorerDirectory ----
 
 class MockFileSystemFileHandle {
   kind = 'file' as const;
@@ -33,56 +34,67 @@ class MockFileSystemFileHandle {
   }
 }
 
-class MockFileSystemDirectoryHandle {
-  kind = 'directory' as const;
-  entries = new Map<string, MockFileSystemDirectoryHandle | MockFileSystemFileHandle>();
+class MockExplorerDirectory implements ExplorerDirectory {
+  readonly readOnly = false;
+  private _entries = new Map<string, MockExplorerDirectory | MockFileSystemFileHandle>();
 
-  constructor(public name: string) {}
+  constructor(public readonly name: string) {}
 
-  async *values() {
-    for (const entry of this.entries.values()) {
-      yield entry;
+  async *children(): AsyncIterable<ExplorerChild> {
+    for (const [, entry] of this._entries) {
+      if (entry instanceof MockExplorerDirectory) {
+        yield { kind: 'directory', name: entry.name, readOnly: false, directory: entry };
+      } else {
+        yield { kind: 'file', name: entry.name, fileHandle: entry as unknown as FileSystemFileHandle };
+      }
     }
   }
 
-  async getFileHandle(name: string, opts?: { create?: boolean }) {
-    if (opts?.create) {
-      const fh = new MockFileSystemFileHandle(name);
-      this.entries.set(name, fh);
-      return fh;
-    }
-    const fh = this.entries.get(name);
-    if (!fh || fh.kind !== 'file') throw new Error(`Not found: ${name}`);
-    return fh as MockFileSystemFileHandle;
+  async subdir({ name }: { name: string }): Promise<ExplorerDirectory | null> {
+    const e = this._entries.get(name);
+    return e instanceof MockExplorerDirectory ? e : null;
   }
 
-  async getDirectoryHandle(name: string, opts?: { create?: boolean }) {
-    if (opts?.create) {
-      const existing = this.entries.get(name);
-      if (existing && existing.kind === 'directory') return existing as MockFileSystemDirectoryHandle;
-      const dh = new MockFileSystemDirectoryHandle(name);
-      this.entries.set(name, dh);
-      return dh;
-    }
-    const dh = this.entries.get(name);
-    if (!dh || dh.kind !== 'directory') throw new Error(`Not found: ${name}`);
-    return dh as MockFileSystemDirectoryHandle;
+  async subdirCreate({ name }: { name: string }): Promise<ExplorerDirectory> {
+    const existing = this._entries.get(name);
+    if (existing instanceof MockExplorerDirectory) return existing;
+    const d = new MockExplorerDirectory(name);
+    this._entries.set(name, d);
+    return d;
   }
 
-  async removeEntry(name: string, _opts?: { recursive?: boolean }) {
-    this.entries.delete(name);
+  async file({ name }: { name: string }): Promise<FileSystemFileHandle | null> {
+    const e = this._entries.get(name);
+    return e instanceof MockExplorerDirectory ? null : (e as unknown as FileSystemFileHandle) ?? null;
+  }
+
+  async fileCreate({ name }: { name: string }): Promise<FileSystemFileHandle> {
+    let fh = this._entries.get(name);
+    if (!fh || fh instanceof MockExplorerDirectory) {
+      fh = new MockFileSystemFileHandle(name);
+      this._entries.set(name, fh);
+    }
+    return fh as unknown as FileSystemFileHandle;
+  }
+
+  async remove({ name }: { name: string; recursive: boolean }): Promise<void> {
+    this._entries.delete(name);
+  }
+
+  async isSameAs({ other }: { other: ExplorerDirectory }): Promise<boolean> {
+    return this === other;
   }
 
   addFile(name: string, size = 0, content = ''): MockFileSystemFileHandle {
     const fh = new MockFileSystemFileHandle(name, size, content);
-    this.entries.set(name, fh);
+    this._entries.set(name, fh);
     return fh;
   }
 
-  addDir(name: string): MockFileSystemDirectoryHandle {
-    const dh = new MockFileSystemDirectoryHandle(name);
-    this.entries.set(name, dh);
-    return dh;
+  addDir(name: string): MockExplorerDirectory {
+    const d = new MockExplorerDirectory(name);
+    this._entries.set(name, d);
+    return d;
   }
 }
 
@@ -107,13 +119,13 @@ vi.mock('@/composables/useToast', () => ({
 // ---- Helpers ----
 
 function makeRoot() {
-  return new MockFileSystemDirectoryHandle('root');
+  return new MockExplorerDirectory('root');
 }
 
-function mountExplorer(root: MockFileSystemDirectoryHandle, overrides: Record<string, unknown> = {}) {
+function mountExplorer(root: MockExplorerDirectory, overrides: Record<string, unknown> = {}) {
   return mount(FileExplorer, {
     props: {
-      root: root as unknown as FileSystemDirectoryHandle,
+      root,
       initialViewMode: 'list',
       initialPreviewVisibility: 'visible',
       ...overrides,
@@ -123,7 +135,7 @@ function mountExplorer(root: MockFileSystemDirectoryHandle, overrides: Record<st
 }
 
 describe('FileExplorer.vue', () => {
-  let root: MockFileSystemDirectoryHandle;
+  let root: MockExplorerDirectory;
   let wrappers: ReturnType<typeof mount>[] = [];
 
   function tracked(wrapper: ReturnType<typeof mount>) {

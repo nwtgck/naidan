@@ -91,7 +91,7 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
         event.preventDefault();
         switch (focused.kind) {
         case 'directory':
-          await ctx.navigateToDirectory({ handle: focused.handle as FileSystemDirectoryHandle });
+          await ctx.navigateToDirectory({ directory: focused.directory! });
           ctx.applySelection({ action: { type: 'clear' } });
           break;
         case 'file':

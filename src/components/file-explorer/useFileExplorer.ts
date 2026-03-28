@@ -9,6 +9,7 @@ import type {
   SelectionAction,
   ContextMenuAction,
 } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 import { useFileExplorerNavigation } from './useFileExplorerNavigation';
 import { useFileExplorerSelection } from './useFileExplorerSelection';
 import { useFileExplorerOperations } from './useFileExplorerOperations';
@@ -22,7 +23,7 @@ import { usePrompt } from '@/composables/usePrompt';
 export const FILE_EXPLORER_INJECTION_KEY: InjectionKey<FileExplorerContext> =
   Symbol('FileExplorerContext');
 
-export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
+export function useFileExplorer({ root }: { root: ExplorerDirectory }) {
   const { addToast } = useToast();
   const { showPrompt } = usePrompt();
 
@@ -60,7 +61,7 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
 
   // --- Operations ---
   const ops = useFileExplorerOperations({
-    currentHandle: nav.currentHandle as { readonly value: FileSystemDirectoryHandle },
+    currentDirectory: nav.currentDirectory,
     refresh: nav.refresh,
   });
 
@@ -76,7 +77,7 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
   // --- Drag and drop ---
   const dnd = useFileExplorerDragDrop({
     moveEntries: ops.moveEntries,
-    currentHandle: nav.currentHandle as { readonly value: FileSystemDirectoryHandle },
+    currentDirectory: nav.currentDirectory,
   });
 
   // --- View mode ---
@@ -127,7 +128,7 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
         const entry = targetCtx.entry;
         switch (entry.kind) {
         case 'directory':
-          await nav.navigateToDirectory({ handle: entry.handle as FileSystemDirectoryHandle });
+          await nav.navigateToDirectory({ directory: entry.directory! });
           sel.clearSelectionForNewDirectory();
           break;
         case 'file':
@@ -185,7 +186,7 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
     case 'copy': {
       switch (targetCtx.kind) {
       case 'entry':
-        clipboard.clipboardCopy({ entries: targetCtx.selectedEntries, sourceDirectory: nav.currentHandle.value });
+        clipboard.clipboardCopy({ entries: targetCtx.selectedEntries, sourceDirectory: nav.currentDirectory.value });
         break;
       case 'background':
         break;
@@ -199,7 +200,7 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
     case 'cut': {
       switch (targetCtx.kind) {
       case 'entry':
-        clipboard.clipboardCut({ entries: targetCtx.selectedEntries, sourceDirectory: nav.currentHandle.value });
+        clipboard.clipboardCut({ entries: targetCtx.selectedEntries, sourceDirectory: nav.currentDirectory.value });
         break;
       case 'background':
         break;
@@ -289,10 +290,10 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
 
     switch (cb.operation) {
     case 'copy':
-      await ops.copyEntriesToDir({ entries: cb.entries, targetDir: nav.currentHandle.value });
+      await ops.copyEntriesToDir({ entries: cb.entries, targetDir: nav.currentDirectory.value });
       break;
     case 'cut':
-      await ops.moveEntries({ entries: cb.entries, targetDir: nav.currentHandle.value });
+      await ops.moveEntries({ entries: cb.entries, targetDir: nav.currentDirectory.value });
       clipboard.clearClipboard();
       break;
     default: {
@@ -305,8 +306,11 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
   const context: FileExplorerContext = {
     // Navigation
     root,
-    get currentHandle() {
-      return nav.currentHandle.value;
+    get currentDirectory() {
+      return nav.currentDirectory.value;
+    },
+    get readOnly() {
+      return nav.currentDirectory.value.readOnly;
     },
     get pathSegments() {
       return nav.pathSegments.value;
@@ -397,9 +401,9 @@ export function useFileExplorer({ root }: { root: FileSystemDirectoryHandle }) {
       return clipboard.clipboardState.value;
     },
     clipboardCut: ({ entries }: { entries: FileExplorerEntry[] }) =>
-      clipboard.clipboardCut({ entries, sourceDirectory: nav.currentHandle.value }),
+      clipboard.clipboardCut({ entries, sourceDirectory: nav.currentDirectory.value }),
     clipboardCopy: ({ entries }: { entries: FileExplorerEntry[] }) =>
-      clipboard.clipboardCopy({ entries, sourceDirectory: nav.currentHandle.value }),
+      clipboard.clipboardCopy({ entries, sourceDirectory: nav.currentDirectory.value }),
     clipboardPaste,
 
     // Drag and drop

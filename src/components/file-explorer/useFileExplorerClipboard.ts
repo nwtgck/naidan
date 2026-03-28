@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import type { FileExplorerEntry, ClipboardState } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 
 export function useFileExplorerClipboard() {
   const clipboardState = ref<ClipboardState>({
@@ -17,7 +18,7 @@ export function useFileExplorerClipboard() {
     sourceDirectory,
   }: {
     entries: FileExplorerEntry[];
-    sourceDirectory: FileSystemDirectoryHandle;
+    sourceDirectory: ExplorerDirectory;
   }): void {
     clipboardState.value = { operation: 'cut', sourceDirectory, entries: [...entries] };
   }
@@ -27,7 +28,7 @@ export function useFileExplorerClipboard() {
     sourceDirectory,
   }: {
     entries: FileExplorerEntry[];
-    sourceDirectory: FileSystemDirectoryHandle;
+    sourceDirectory: ExplorerDirectory;
   }): void {
     clipboardState.value = { operation: 'copy', sourceDirectory, entries: [...entries] };
   }

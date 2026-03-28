@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useFileExplorerKeyboard } from './useFileExplorerKeyboard';
 import type { FileExplorerContext, FileExplorerEntry, ContextMenuTarget } from './types';
+import type { ExplorerDirectory } from './explorer-directory';
 
 // ---- helpers ----
 
@@ -9,11 +10,17 @@ function makeEntry(name: string, kind: 'file' | 'directory' = 'file'): FileExplo
     name,
     kind,
     handle: {} as FileSystemHandle,
+    directory: undefined,
     size: undefined,
     lastModified: undefined,
     extension: '.txt',
     mimeCategory: 'text',
+    readOnly: false,
   };
+}
+
+function makeDirEntry(name: string, directory: ExplorerDirectory): FileExplorerEntry {
+  return { ...makeEntry(name, 'directory'), directory };
 }
 
 function makeKey(key: string, opts: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {}): KeyboardEvent {
@@ -30,8 +37,9 @@ function makeKey(key: string, opts: { ctrlKey?: boolean; metaKey?: boolean; shif
 function makeCtx(overrides: Partial<FileExplorerContext> = {}): FileExplorerContext {
   const entries = [makeEntry('alpha'), makeEntry('bravo'), makeEntry('charlie')];
   return {
-    root: {} as FileSystemDirectoryHandle,
-    currentHandle: {} as FileSystemDirectoryHandle,
+    root: {} as ExplorerDirectory,
+    currentDirectory: {} as ExplorerDirectory,
+    readOnly: false,
     pathSegments: [],
     navigateToDirectory: vi.fn().mockResolvedValue(undefined),
     navigateUp: vi.fn().mockResolvedValue(undefined),
@@ -228,7 +236,8 @@ describe('useFileExplorerKeyboard', () => {
   // ---- Enter ----
 
   it('Enter navigates into directory', async () => {
-    const dir = makeEntry('docs', 'directory');
+    const docsDir = { name: 'docs', readOnly: false } as unknown as ExplorerDirectory;
+    const dir = makeDirEntry('docs', docsDir);
     const entries = [dir];
     ctx = makeCtx({
       sortedFilteredEntries: entries,
@@ -236,7 +245,7 @@ describe('useFileExplorerKeyboard', () => {
     });
     ({ handleKeyDown } = useFileExplorerKeyboard({ ctx }));
     await handleKeyDown({ event: makeKey('Enter') });
-    expect(ctx.navigateToDirectory).toHaveBeenCalledWith({ handle: dir.handle });
+    expect(ctx.navigateToDirectory).toHaveBeenCalledWith({ directory: docsDir });
     expect(ctx.applySelection).toHaveBeenCalledWith({ action: { type: 'clear' } });
   });
 

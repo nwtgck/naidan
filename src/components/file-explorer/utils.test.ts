@@ -8,10 +8,12 @@ function makeEntry(overrides: Partial<FileExplorerEntry> & { name: string }): Fi
   return {
     kind: 'file',
     handle: {} as FileSystemHandle,
+    directory: undefined,
     size: undefined,
     lastModified: undefined,
     extension: '',
     mimeCategory: 'binary',
+    readOnly: false,
     ...overrides,
   };
 }
