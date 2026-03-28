@@ -35,7 +35,7 @@ class MockFileSystemFileHandle {
 }
 
 class MockExplorerDirectory implements ExplorerDirectory {
-  readonly readOnly = false;
+  readonly readOnly: boolean = false;
   private _entries = new Map<string, MockExplorerDirectory | MockFileSystemFileHandle>();
 
   constructor(public readonly name: string) {}
@@ -558,5 +558,95 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain('added-after.txt');
+  });
+
+  // ---- readOnly UI ----
+
+  describe('readOnly directory', () => {
+    class ReadOnlyMockExplorerDirectory extends MockExplorerDirectory {
+      override readonly readOnly = true;
+
+      override async *children(): AsyncIterable<import('./explorer-directory').ExplorerChild> {
+        for await (const child of super.children()) {
+          yield child.kind === 'file'
+            ? { ...child, readOnly: true }
+            : { ...child, readOnly: true };
+        }
+      }
+    }
+
+    function mountReadOnlyExplorer() {
+      const ro = new ReadOnlyMockExplorerDirectory('ro-root');
+      ro.addFile('locked.txt');
+      ro.addDir('locked-dir');
+      return tracked(mountExplorer(ro as unknown as MockExplorerDirectory));
+    }
+
+    it('toolbar hides upload, new file, and new folder buttons when readOnly', async () => {
+      const wrapper = mountReadOnlyExplorer();
+      await flushPromises();
+
+      expect(wrapper.find('[data-testid="upload-button"]').exists()).toBe(false);
+      expect(wrapper.find('button[title="New File"]').exists()).toBe(false);
+      expect(wrapper.find('button[title="New Folder"]').exists()).toBe(false);
+    });
+
+    it('toolbar still shows refresh and view-mode buttons when readOnly', async () => {
+      const wrapper = mountReadOnlyExplorer();
+      await flushPromises();
+
+      expect(wrapper.find('button[title="Refresh"]').exists()).toBe(true);
+      expect(wrapper.find('[data-testid="view-list"]').exists()).toBe(true);
+    });
+
+    it('context menu on background excludes write actions when readOnly', async () => {
+      const wrapper = mountReadOnlyExplorer();
+      await flushPromises();
+
+      await wrapper.find('[data-testid="list-view"]').trigger('contextmenu', { clientX: 50, clientY: 50 });
+      await flushPromises();
+
+      const menu = document.body.querySelector('[data-testid="context-menu"]');
+      expect(menu).not.toBeNull();
+      const labels = Array.from(menu!.querySelectorAll('button')).map(b => b.textContent?.trim());
+      expect(labels).not.toContain('New File');
+      expect(labels).not.toContain('New Folder');
+      expect(labels).toContain('Select All');
+    });
+
+    it('context menu on entry excludes rename, cut, delete when readOnly', async () => {
+      const wrapper = mountReadOnlyExplorer();
+      await flushPromises();
+
+      await wrapper.find('[data-testid="entry-item-locked.txt"]').trigger('contextmenu', { clientX: 50, clientY: 50 });
+      await flushPromises();
+
+      const menu = document.body.querySelector('[data-testid="context-menu"]');
+      expect(menu).not.toBeNull();
+      const labels = Array.from(menu!.querySelectorAll('button')).map(b => b.textContent?.trim());
+      expect(labels).not.toContain('Rename');
+      expect(labels).not.toContain('Cut');
+      expect(labels).not.toContain('Delete');
+      expect(labels).toContain('Open');
+      expect(labels).toContain('Copy');
+    });
+
+    it('lock icon is shown on readOnly file entries', async () => {
+      const wrapper = mountReadOnlyExplorer();
+      await flushPromises();
+
+      const lockIcons = wrapper.findAll('[data-testid="entry-lock-icon"]');
+      expect(lockIcons.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('lock icon is shown on readOnly directory entries', async () => {
+      const wrapper = mountReadOnlyExplorer();
+      await flushPromises();
+
+      // All entries are readOnly so all should have lock icons
+      const entries = wrapper.findAll('[data-testid^="entry-item-"]');
+      const locks = wrapper.findAll('[data-testid="entry-lock-icon"]');
+      expect(locks.length).toBe(entries.length);
+    });
   });
 });
