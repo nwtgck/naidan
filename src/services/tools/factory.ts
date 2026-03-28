@@ -5,11 +5,10 @@ import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh-worker-client';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
-import { generateId } from '@/utils/id';
-import { OPFS_TMP_DIR } from '@/models/constants';
 import type { WeshMount } from '@/services/wesh/types';
 import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
 import { buildShellDescription } from './shell-description';
+import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 
 /**
  * Dynamically creates and returns a list of enabled tools based on settings.
@@ -40,12 +39,9 @@ export async function getEnabledTools({
         break;
       }
 
-      // Create a unique writable /tmp directory for this session.
+      // Create a unique writable /tmp directory inside this page owner's scope.
       // The root `/` uses a virtual read-only handle — no real OPFS dir needed.
-      // TODO: clean up naidan-tmp/<chatId>-* dirs on session dispose
-      const opfsRoot = await navigator.storage.getDirectory();
-      const tmpBase = await opfsRoot.getDirectoryHandle(OPFS_TMP_DIR, { create: true });
-      const tmpHandle = await tmpBase.getDirectoryHandle(`${chatId}-${generateId()}`, { create: true });
+      const tmpHandle = await getOPFSTmpManager().createTmpDirectory({ prefix: chatId });
 
       // Resolve mounts from settings (global) + chatMounts (per-chat)
       const allMounts = [...settings.mounts, ...(chatMounts ?? [])];

@@ -2,13 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockCreateClient = vi.fn()
 const mockCheckOPFSSupport = vi.fn()
-const mockGetDirectory = vi.fn()
 const mockGetVolumeDirectoryHandle = vi.fn()
-const mockGenerateId = vi.fn()
 const mockAbortOngoingScans = vi.fn()
 const mockGetVolumeExtensions = vi.fn()
 const mockIsVolumeScanned = vi.fn()
 const mockStartVolumeExtensionScan = vi.fn()
+const mockCreateTmpDirectory = vi.fn()
 
 vi.mock('@/services/wesh-worker-client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mockCreateClient,
@@ -24,8 +23,10 @@ vi.mock('@/services/storage', () => ({
   },
 }))
 
-vi.mock('@/utils/id', () => ({
-  generateId: mockGenerateId,
+vi.mock('@/services/opfs-tmp-manager', () => ({
+  getOPFSTmpManager: () => ({
+    createTmpDirectory: mockCreateTmpDirectory,
+  }),
 }))
 
 vi.mock('./volume-extension-cache', () => ({
@@ -38,16 +39,12 @@ vi.mock('./volume-extension-cache', () => ({
 function setupStandardMocks({
   tmpHandle,
   volumeHandle,
-  generateIdSuffix,
 }: {
   tmpHandle: FileSystemDirectoryHandle
   volumeHandle: FileSystemDirectoryHandle
-  generateIdSuffix: string
 }) {
   mockCheckOPFSSupport.mockResolvedValue(true)
-  mockGenerateId.mockReturnValueOnce(generateIdSuffix)
-  const tmpBase = { getDirectoryHandle: vi.fn().mockResolvedValue(tmpHandle) }
-  mockGetDirectory.mockResolvedValueOnce({ getDirectoryHandle: vi.fn().mockResolvedValue(tmpBase) })
+  mockCreateTmpDirectory.mockResolvedValueOnce(tmpHandle)
   mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle)
   mockCreateClient.mockResolvedValue({
     startExecution: vi.fn(),
@@ -64,11 +61,6 @@ function setupStandardMocks({
 describe('getEnabledTools shell_execute', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.stubGlobal('navigator', {
-      storage: {
-        getDirectory: mockGetDirectory,
-      },
-    })
     mockGetVolumeExtensions.mockReturnValue(new Set<string>())
     mockIsVolumeScanned.mockReturnValue(false)
   })
@@ -80,14 +72,9 @@ describe('getEnabledTools shell_execute', () => {
     const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle
 
     mockCheckOPFSSupport.mockResolvedValue(true)
-    mockGenerateId
-      .mockReturnValueOnce('id-a')
-      .mockReturnValueOnce('id-b')
-    const mockTmpBaseA = { getDirectoryHandle: vi.fn().mockResolvedValue(tmpHandleA) }
-    const mockTmpBaseB = { getDirectoryHandle: vi.fn().mockResolvedValue(tmpHandleB) }
-    mockGetDirectory
-      .mockResolvedValueOnce({ getDirectoryHandle: vi.fn().mockResolvedValue(mockTmpBaseA) })
-      .mockResolvedValueOnce({ getDirectoryHandle: vi.fn().mockResolvedValue(mockTmpBaseB) })
+    mockCreateTmpDirectory
+      .mockResolvedValueOnce(tmpHandleA)
+      .mockResolvedValueOnce(tmpHandleB)
     mockGetVolumeDirectoryHandle
       .mockResolvedValueOnce(volumeHandleA)
       .mockResolvedValueOnce(volumeHandleB)
@@ -159,7 +146,7 @@ Mounted directories:
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-x' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-x' } as FileSystemDirectoryHandle
 
-    setupStandardMocks({ tmpHandle, volumeHandle, generateIdSuffix: 'id-x' })
+    setupStandardMocks({ tmpHandle, volumeHandle })
 
     const { getEnabledTools } = await import('./factory')
 
@@ -196,7 +183,7 @@ Mounted directories:
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-s' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-s' } as FileSystemDirectoryHandle
 
-    setupStandardMocks({ tmpHandle, volumeHandle, generateIdSuffix: 'id-s' })
+    setupStandardMocks({ tmpHandle, volumeHandle })
     mockIsVolumeScanned.mockReturnValue(false)
 
     const { getEnabledTools } = await import('./factory')
@@ -219,7 +206,7 @@ Mounted directories:
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-r' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-r' } as FileSystemDirectoryHandle
 
-    setupStandardMocks({ tmpHandle, volumeHandle, generateIdSuffix: 'id-r' })
+    setupStandardMocks({ tmpHandle, volumeHandle })
     mockIsVolumeScanned.mockReturnValue(true)
 
     const { getEnabledTools } = await import('./factory')
@@ -239,7 +226,7 @@ Mounted directories:
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-d' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-d' } as FileSystemDirectoryHandle
 
-    setupStandardMocks({ tmpHandle, volumeHandle, generateIdSuffix: 'id-d' })
+    setupStandardMocks({ tmpHandle, volumeHandle })
     mockGetVolumeExtensions.mockReturnValue(new Set(['.docx', '.xlsx']))
 
     const { getEnabledTools } = await import('./factory')

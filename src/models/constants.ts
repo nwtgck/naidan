@@ -24,6 +24,8 @@ export const LOCK_CHAT_CONTENT_PREFIX = `${STORAGE_KEY_PREFIX}sync:lock:chat_con
 export const UNTITLED_CHAT_TITLE = 'New Chat';
 /** OPFS directory used for per-session shell /tmp scratch space. */
 export const OPFS_TMP_DIR = 'naidan-tmp';
+export const OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY = `${STORAGE_KEY_PREFIX}opfs_tmp:pending_owner_cleanups`;
+export const OPFS_TMP_CLEANUP_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock:opfs_tmp_cleanup`;
 export const NAIDAN_CACHE_DIRECTORY_NAME = 'naidan-cache';
 export const STANDALONE_WORKER_CACHE_DIRECTORY_NAME = 'standalone-workers';
 export const STANDALONE_WORKER_MANIFEST_SCRIPT_ID = 'naidan-standalone-worker-manifest';
