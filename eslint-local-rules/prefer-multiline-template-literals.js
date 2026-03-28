@@ -101,7 +101,7 @@ export const rule = {
 };
 
 export default {
-  files: ['**/*.test.ts'],
+  files: ['**/*.ts', '**/*.vue'],
   plugins: {
     'local-rules-multiline-template-literals': {
       rules: {

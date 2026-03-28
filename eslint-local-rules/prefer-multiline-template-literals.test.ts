@@ -3,6 +3,7 @@ import { ESLint } from 'eslint';
 import path from 'path';
 import fs from 'fs';
 import { rule } from './prefer-multiline-template-literals.js';
+import ruleConfig from './prefer-multiline-template-literals.js';
 import * as parser from '@typescript-eslint/parser';
 
 describe('prefer-multiline-template-literals rule', () => {
@@ -58,6 +59,10 @@ describe('prefer-multiline-template-literals rule', () => {
     const results = await eslintFix.lintFiles([testFilePath]);
     return results[0];
   }
+
+  it('applies to ts and vue files in the exported ESLint config', () => {
+    expect(ruleConfig.files).toEqual(['**/*.ts', '**/*.vue']);
+  });
 
   it('reports escaped multiline single-quoted strings', async () => {
     const code = `\

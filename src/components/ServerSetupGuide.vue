@@ -25,7 +25,9 @@ const ollamaServeCommand = computed(() => {
     case 'windows':
       return '$env:OLLAMA_ORIGINS="*"; ollama serve';
     case 'mac':
-      return 'brew services stop ollama\nOLLAMA_ORIGINS="*" ollama serve';
+      return `\
+brew services stop ollama
+OLLAMA_ORIGINS="*" ollama serve`;
     case 'linux':
       return 'OLLAMA_ORIGINS="*" ollama serve';
     default: {

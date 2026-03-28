@@ -243,9 +243,18 @@ function buildQwen3_5AssistantPrefix({
 }): string {
   switch (reasoningMode) {
   case 'enabled':
-    return '<|im_start|>assistant\n<think>\n';
+    return `\
+<|im_start|>assistant
+<think>
+`;
   case 'disabled':
-    return '<|im_start|>assistant\n<think>\n\n</think>\n\n';
+    return `\
+<|im_start|>assistant
+<think>
+
+</think>
+
+`;
   case 'default':
     return '<|im_start|>assistant';
   default: {

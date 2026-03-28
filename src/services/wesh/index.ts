@@ -61,8 +61,14 @@ const WESH_SHELL_SPECIAL_FILES = {
 } as const;
 
 const WESH_SHELL_SPECIAL_FILE_CONTENT = {
-  sh: '#!/bin/wesh\n# virtual sh entrypoint provided by wesh\n',
-  bash: '#!/bin/wesh\n# virtual bash entrypoint provided by wesh\n',
+  sh: `\
+#!/bin/wesh
+# virtual sh entrypoint provided by wesh
+`,
+  bash: `\
+#!/bin/wesh
+# virtual bash entrypoint provided by wesh
+`,
 } as const;
 
 function stripShebangLine({
