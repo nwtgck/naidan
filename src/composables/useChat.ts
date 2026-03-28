@@ -1378,7 +1378,7 @@ export function useChat() {
       }
       processThinking(assistantNode);
 
-      if ((e as Error).name === 'AbortError') {
+      if ((e as Error).name === 'AbortError' || (e as Error).message === 'Generation aborted') {
         assistantNode.content += '\n\n[Generation Aborted]';
         if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));

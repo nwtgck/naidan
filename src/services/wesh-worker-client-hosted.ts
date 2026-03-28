@@ -26,9 +26,6 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   initialEnv: Record<string, string>
   initialCwd?: string | undefined
 }): Promise<WeshWorkerClient> {
-  const worker = createFileProtocolCompatibleWeshWorker()
-  const remote = Comlink.wrap<IWeshWorker>(worker)
-
   const initRequest = weshWorkerInitRequestSchema.parse({
     rootHandle,
     mounts: mapWeshMountsToWorkerMounts({ mounts }),
@@ -37,42 +34,77 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     initialCwd,
   })
 
-  await remote.init({ request: initRequest })
+  const createRuntime = async () => {
+    const worker = createFileProtocolCompatibleWeshWorker()
+    const remote = Comlink.wrap<IWeshWorker>(worker)
+    await remote.init({ request: initRequest })
+    return { worker, remote }
+  }
+
+  const destroyRuntime = async ({ worker, remote }: {
+    worker: Worker
+    remote: Comlink.Remote<IWeshWorker>
+  }) => {
+    try {
+      await remote[Comlink.releaseProxy]()
+    } finally {
+      worker.terminate()
+    }
+  }
+
+  let runtime = await createRuntime()
 
   return {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest
       onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
     }) {
-      const response = await remote.startExecution(
+      const response = await runtime.remote.startExecution(
         request,
         onEvent ? Comlink.proxy(onEvent) : undefined,
       )
       return weshWorkerStartExecutionResponseSchema.parse(response)
     },
     async awaitExecution({ request }) {
-      const response = await remote.awaitExecution({ request })
+      const response = await runtime.remote.awaitExecution({ request })
       return weshWorkerExecutionSummarySchema.parse(response)
     },
     async interruptExecution({ request }) {
-      return remote.interruptExecution({ request })
+      return runtime.remote.interruptExecution({ request })
+    },
+    async cancelExecution({ request }) {
+      const activeRuntime = runtime
+      await activeRuntime.remote.interruptExecution({ request }).catch(() => false)
+
+      const stopped = await Promise.race([
+        activeRuntime.remote.awaitExecution({ request }).then(() => true).catch(() => true),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 150)),
+      ])
+
+      if (stopped) {
+        return true
+      }
+
+      runtime = await createRuntime()
+      await destroyRuntime(activeRuntime)
+      return true
     },
     async disposeExecution({ request }) {
-      await remote.disposeExecution({ request })
+      await runtime.remote.disposeExecution({ request })
     },
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
-      const response = await remote.execute({ request })
+      const response = await runtime.remote.execute({ request })
       return weshWorkerExecutionSummarySchema.parse(response)
     },
     async interrupt(_args: EmptyArgs) {
-      return remote.interrupt({})
+      return runtime.remote.interrupt({})
     },
     async dispose(_args: EmptyArgs) {
+      const activeRuntime = runtime
       try {
-        await remote.dispose({})
+        await activeRuntime.remote.dispose({})
       } finally {
-        await remote[Comlink.releaseProxy]()
-        worker.terminate()
+        await destroyRuntime(activeRuntime)
       }
     },
   }

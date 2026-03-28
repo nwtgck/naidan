@@ -18,6 +18,7 @@ describe('createWeshTool', () => {
         stderrTruncated: false,
       }),
       interruptExecution: vi.fn().mockResolvedValue(true),
+      cancelExecution: vi.fn().mockResolvedValue(true),
       disposeExecution: vi.fn().mockResolvedValue(undefined),
       execute: vi.fn().mockResolvedValue({
         exitCode: 0,
@@ -90,12 +91,16 @@ hello
       stderrTruncated: false,
     })
 
-    await tool.execute({
+    await expect(tool.execute({
       args: { shell_script: 'sleep 1' },
       signal: controller.signal,
-    })
+    })).rejects.toThrow('Generation aborted')
 
-    expect(client.interrupt).toHaveBeenCalledWith({})
+    expect(client.cancelExecution).toHaveBeenCalledWith({
+      request: {
+        executionId: 'exec-1',
+      },
+    })
   })
 
   it('passes through an explicit timeout override', async () => {

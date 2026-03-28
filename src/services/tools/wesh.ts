@@ -24,6 +24,12 @@ export function createWeshTool({
   defaultStdoutLimit,
   defaultStderrLimit,
 }: WeshToolOptions): Tool {
+  const createGenerationAbortedError = () => {
+    const error = new Error('Generation aborted');
+    error.name = 'AbortError';
+    return error;
+  };
+
   const mountList = mounts.length > 0
     ? `\n\nMounted directories:\n${mounts.map(m => `- ${m.path} (${m.readOnly ? 'read-only' : 'read-write'})`).join('\n')}`
     : '';
@@ -59,6 +65,7 @@ export function createWeshTool({
 
     async execute({ args, signal, onEvent }: { args: unknown; signal?: AbortSignal; onEvent?: (event: ToolExecutionEvent) => void | Promise<void> }) {
       let abortHandler: (() => void) | undefined;
+      let abortPromiseCleanup: (() => void) | undefined;
       let executionId: string | undefined;
       try {
         if (signal?.aborted) throw new Error('Generation aborted');
@@ -84,7 +91,7 @@ export function createWeshTool({
         if (signal) {
           abortHandler = () => {
             if (executionId) {
-              void client.interruptExecution({ request: { executionId } });
+              void client.cancelExecution({ request: { executionId } });
             } else {
               void client.interrupt({});
             }
@@ -128,6 +135,29 @@ export function createWeshTool({
         });
         executionId = started.executionId;
 
+        if (signal?.aborted) {
+          await client.cancelExecution({
+            request: {
+              executionId,
+            },
+          });
+          throw createGenerationAbortedError();
+        }
+
+        const abortPromise = signal ? new Promise<never>((_resolve, reject) => {
+          const onAbort = () => {
+            reject(createGenerationAbortedError());
+          };
+          abortPromiseCleanup = () => {
+            signal.removeEventListener('abort', onAbort);
+          };
+          if (signal.aborted) {
+            onAbort();
+            return;
+          }
+          signal.addEventListener('abort', onAbort, { once: true });
+        }) : undefined;
+
         let timedOut = false;
         const completion = client.awaitExecution({
           request: {
@@ -137,11 +167,15 @@ export function createWeshTool({
         const timeout = new Promise<'timeout'>(resolve => {
           setTimeout(() => resolve('timeout'), validated.timeoutMs);
         });
-        const outcome = await Promise.race([completion, timeout]);
+        const raceParticipants: Array<Promise<unknown>> = [completion, timeout];
+        if (abortPromise) {
+          raceParticipants.push(abortPromise);
+        }
+        const outcome = await Promise.race(raceParticipants);
 
         if (outcome === 'timeout') {
           timedOut = true;
-          await client.interruptExecution({
+          await client.cancelExecution({
             request: {
               executionId,
             },
@@ -174,6 +208,9 @@ export function createWeshTool({
           content,
         };
       } catch (error) {
+        if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Generation aborted')) {
+          throw error;
+        }
         return {
           status: 'error',
           code: 'execution_failed',
@@ -185,8 +222,9 @@ export function createWeshTool({
             request: {
               executionId,
             },
-          });
+          }).catch(() => {});
         }
+        abortPromiseCleanup?.();
         if (signal && abortHandler) {
           signal.removeEventListener('abort', abortHandler);
         }

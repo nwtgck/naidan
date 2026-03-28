@@ -44,6 +44,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       stderrTruncated: false,
     })
     const interruptExecution = vi.fn().mockResolvedValue(true)
+    const cancelExecution = vi.fn().mockResolvedValue(true)
     const disposeExecution = vi.fn().mockResolvedValue(undefined)
     const interrupt = vi.fn().mockResolvedValue(true)
     const dispose = vi.fn().mockResolvedValue(undefined)
@@ -53,6 +54,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       startExecution,
       awaitExecution,
       interruptExecution,
+      cancelExecution,
       disposeExecution,
       execute,
       interrupt,

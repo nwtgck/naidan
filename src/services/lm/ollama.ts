@@ -453,6 +453,8 @@ export class OllamaProvider implements LLMProvider {
               }
               }
             } catch (e) {
+              if (e instanceof Error && e.message === 'Generation aborted') throw e;
+
               const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };

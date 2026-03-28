@@ -85,6 +85,7 @@ export interface WeshWorkerClient {
   }): Promise<WeshWorkerStartExecutionResponse>
   awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
+  cancelExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
   disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
   interrupt(_args: EmptyArgs): Promise<boolean>

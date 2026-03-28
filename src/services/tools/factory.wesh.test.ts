@@ -49,7 +49,16 @@ function setupStandardMocks({
   const tmpBase = { getDirectoryHandle: vi.fn().mockResolvedValue(tmpHandle) }
   mockGetDirectory.mockResolvedValueOnce({ getDirectoryHandle: vi.fn().mockResolvedValue(tmpBase) })
   mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle)
-  mockCreateClient.mockResolvedValue({ execute: vi.fn(), interrupt: vi.fn(), dispose: vi.fn() })
+  mockCreateClient.mockResolvedValue({
+    startExecution: vi.fn(),
+    awaitExecution: vi.fn(),
+    interruptExecution: vi.fn(),
+    cancelExecution: vi.fn(),
+    disposeExecution: vi.fn(),
+    execute: vi.fn(),
+    interrupt: vi.fn(),
+    dispose: vi.fn(),
+  })
 }
 
 describe('getEnabledTools shell_execute', () => {
@@ -83,6 +92,11 @@ describe('getEnabledTools shell_execute', () => {
       .mockResolvedValueOnce(volumeHandleA)
       .mockResolvedValueOnce(volumeHandleB)
     mockCreateClient.mockResolvedValue({
+      startExecution: vi.fn(),
+      awaitExecution: vi.fn(),
+      interruptExecution: vi.fn(),
+      cancelExecution: vi.fn(),
+      disposeExecution: vi.fn(),
       execute: vi.fn(),
       interrupt: vi.fn(),
       dispose: vi.fn(),
