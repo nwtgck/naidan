@@ -182,7 +182,7 @@ export function openHandleReadStream({
           controller.close();
           return;
         }
-        controller.enqueue(new Uint8Array(buffer.subarray(0, bytesRead)));
+        controller.enqueue(bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead));
       } catch (e) {
         await handle.close();
         controller.error(e);

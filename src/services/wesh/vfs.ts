@@ -232,20 +232,21 @@ class StandardFileHandle implements WeshFileHandle {
 
 class FifoHandle implements WeshFileHandle {
   private buffer: Uint8Array[] = [];
+  private bufferHeadIndex = 0;
   private bufferSize = 0;
   private headOffset = 0;
   private waiters: Array<(val: void) => void> = [];
   private closed = false;
 
   async read(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
-    if (this.buffer.length === 0 && this.closed) return { bytesRead: 0 };
+    if (this.bufferHeadIndex >= this.buffer.length && this.closed) return { bytesRead: 0 };
 
-    while (this.buffer.length === 0) {
+    while (this.bufferHeadIndex >= this.buffer.length) {
       if (this.closed) return { bytesRead: 0 };
       await new Promise<void>(resolve => this.waiters.push(resolve));
     }
 
-    const chunk = this.buffer[0]!;
+    const chunk = this.buffer[this.bufferHeadIndex]!;
     const bufferOffset = options.offset ?? 0;
     const maxLen = options.length ?? (options.buffer.length - bufferOffset);
     const available = chunk.length - this.headOffset;
@@ -254,8 +255,15 @@ class FifoHandle implements WeshFileHandle {
     options.buffer.set(chunk.subarray(this.headOffset, this.headOffset + copyLen), bufferOffset);
 
     if (copyLen === available) {
-      this.buffer.shift();
+      this.bufferHeadIndex += 1;
       this.headOffset = 0;
+      if (this.bufferHeadIndex >= this.buffer.length) {
+        this.buffer = [];
+        this.bufferHeadIndex = 0;
+      } else if (this.bufferHeadIndex >= 32 && this.bufferHeadIndex * 2 >= this.buffer.length) {
+        this.buffer = this.buffer.slice(this.bufferHeadIndex);
+        this.bufferHeadIndex = 0;
+      }
     } else {
       this.headOffset += copyLen;
     }
