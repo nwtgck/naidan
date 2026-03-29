@@ -409,6 +409,51 @@ done`,
     expect(result.exitCode).toBe(0);
   });
 
+  it('keeps cloned stream output handles writable after closing the original reference', async () => {
+    const chunks: Uint8Array[] = [];
+    const handle = createWriteHandleFromStream({
+      target: new WritableStream<Uint8Array>({
+        write: async (chunk) => {
+          chunks.push(new Uint8Array(chunk));
+        },
+      }),
+    });
+    const clone = handle.cloneReference?.();
+    if (clone === undefined) {
+      throw new Error('Expected stream write handle to support cloneReference');
+    }
+
+    await handle.close();
+    const bytes = new TextEncoder().encode('alpha');
+    const result = await clone.write({ buffer: bytes });
+    await clone.close();
+
+    expect(result.bytesWritten).toBe(bytes.length);
+    expect(new TextDecoder().decode(chunks[0])).toBe('alpha');
+  });
+
+  it('unblocks pending reads when a stream input handle reference is closed', async () => {
+    let resumePull: (() => void) | undefined;
+    const handle = createReadHandleFromStream({
+      source: new ReadableStream<Uint8Array>({
+        async pull() {
+          await new Promise<void>(resolve => {
+            resumePull = resolve;
+          });
+        },
+      }),
+    });
+
+    const readPromise = handle.read({
+      buffer: new Uint8Array(16),
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await handle.close();
+    resumePull?.();
+
+    await expect(readPromise).resolves.toEqual({ bytesRead: 0 });
+  });
+
   it('supports shell functions and return', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();

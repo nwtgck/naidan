@@ -20,6 +20,8 @@ export interface WeshWriteResult {
   bytesWritten: number;
 }
 
+export type WeshFileHandleCloseSemantics = 'hard' | 'soft';
+
 export class WeshBrokenPipeError extends Error {
   constructor() {
     super('Broken pipe');
@@ -61,6 +63,10 @@ export interface WeshFileHandle {
    * Control device/handle specific operations (e.g. terminal size, blocking mode)
    */
   ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }>;
+
+  cloneReference?(): WeshFileHandle;
+
+  getCloseSemantics?(): WeshFileHandleCloseSemantics;
 }
 
 export type WeshWaitStatus =

@@ -12,6 +12,7 @@ import type {
   WeshWaitStatus,
   WeshProcessSignalDisposition,
   WeshShellOption,
+  WeshFileHandleCloseSemantics,
 } from './types';
 import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
@@ -219,6 +220,10 @@ class SharedFileHandle implements WeshFileHandle {
 
   async ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }> {
     return this.state.handle.ioctl(options);
+  }
+
+  getCloseSemantics(): WeshFileHandleCloseSemantics {
+    return 'soft';
   }
 }
 
@@ -1498,9 +1503,6 @@ usage: ${name} [-c command] [file [argument...]]
         },
       }),
     });
-    const captureStdout = this.createSharedFileHandle({
-      handle: captureHandle,
-    });
     const childEnvironment = await this.spawnChildExecutionEnvironment({
       parentEnvironment: environment,
       pgid: environment.pgid,
@@ -1514,14 +1516,14 @@ usage: ${name} [-c command] [file [argument...]]
       script: parsed.content,
       environment: childEnvironment,
       stdin,
-      stdout: captureStdout,
+      stdout: captureHandle,
       stderr,
     });
     const result = await this.runExitTrapIfNeeded({
       result: rawResult,
       environment: childEnvironment,
       stdin,
-      stdout: captureStdout,
+      stdout: captureHandle,
       stderr,
     });
     if (result.exitCode !== 0) {
@@ -3043,16 +3045,27 @@ usage: ${name} [-c command] [file [argument...]]
     stderr: WeshFileHandle;
   }): Map<number, WeshFileHandle> {
     const fds = new Map<number, WeshFileHandle>([
-      [0, this.createSharedFileHandle({ handle: stdin })],
-      [1, this.createSharedFileHandle({ handle: stdout })],
-      [2, this.createSharedFileHandle({ handle: stderr })],
+      [0, this.createPrimaryFileHandleReference({ handle: stdin })],
+      [1, this.createPrimaryFileHandleReference({ handle: stdout })],
+      [2, this.createPrimaryFileHandleReference({ handle: stderr })],
     ]);
 
     for (const [fd, handle] of this.shellFds.entries()) {
-      fds.set(fd, this.duplicateSharedFileHandle({ handle }));
+      fds.set(fd, this.cloneFileHandleReference({ handle }));
     }
 
     return fds;
+  }
+
+  private createPrimaryFileHandleReference({
+    handle,
+  }: {
+    handle: WeshFileHandle;
+  }): WeshFileHandle {
+    if (typeof handle.cloneReference === 'function') {
+      return handle;
+    }
+    return this.createSharedFileHandle({ handle });
   }
 
   private createSharedFileHandle({
@@ -3070,15 +3083,6 @@ usage: ${name} [-c command] [file [argument...]]
         closed: false,
       },
     });
-  }
-
-  private duplicateSharedFileHandle({
-    handle,
-  }: {
-    handle: WeshFileHandle;
-  }): SharedFileHandle {
-    const sharedHandle = this.createSharedFileHandle({ handle });
-    return sharedHandle.cloneReference();
   }
 
   private cloneFileHandleReference({
