@@ -231,6 +231,7 @@ describe('ChatArea UI States', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
   });
 
   afterEach(() => {
@@ -614,7 +615,7 @@ describe('ChatArea Scrolling Logic', () => {
     });
   }
 
-  it('should scroll to bottom when a new USER message is added', async () => {
+  it('should NOT scroll when a new USER message is added (scroll happens on first assistant message instead)', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -640,8 +641,8 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
 
-    // Should scroll to bottom (1000) via scrollToBottom()
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
+    // Should NOT scroll on user message — scrolling is deferred until the first assistant message appears
+    expect(scrollTopSetterSpy).not.toHaveBeenCalled();
   });
 
   it('should scroll to last USER message on initial load', async () => {
@@ -914,6 +915,7 @@ describe('ChatArea Focus', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
   });
 
   afterEach(() => {
@@ -991,6 +993,7 @@ describe('ChatArea Export Functionality', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
 
     // Setup browser API spies/mocks
     vi.spyOn(URL, 'createObjectURL').mockImplementation(mockCreateObjectURL as any);
@@ -1214,6 +1217,7 @@ describe('ChatArea Textarea Sizing', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
 
     // Mock window.innerHeight for 80vh calculation
     Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: mockWindowInnerHeight });
@@ -1751,6 +1755,7 @@ describe('ChatArea Welcome Screen & Suggestions', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
   });
 
   afterEach(() => {
@@ -1813,6 +1818,7 @@ describe('ChatArea Model Selection', () => {
     mockAvailableModels.value = ['model-1', 'model-2'];
     mockFetchingModels.value = false;
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
   });
 
   afterEach(() => {

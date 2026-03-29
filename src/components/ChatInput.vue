@@ -114,9 +114,6 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
   }
 }
 
-function scrollToBottom() {
-  emit('scroll-to-bottom');
-}
 
 const isImageMode = computed({
   get: () => currentChat.value ? _isImageMode({ chatId: currentChat.value.id }) : false,
@@ -875,7 +872,6 @@ async function handleSend() {
 
     nextTick(() => { // Ensure textarea is cleared before adjusting height
       adjustTextareaHeight();
-      scrollToBottom();
     });
   }
 

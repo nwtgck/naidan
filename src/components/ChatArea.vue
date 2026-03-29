@@ -79,6 +79,7 @@ const availableImageModels = computed(() => {
 
 const { setActiveFocusArea } = useLayout();
 type ChatInputVisibility = 'submerged' | 'peeking' | 'active';
+type ScrollForce = 'force' | 'if-near-bottom';
 const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
@@ -310,14 +311,12 @@ function handlePrint() {
   }
 }
 
-function scrollToBottom(force = true) {
-  if (currentChat.value && isProcessing(currentChat.value.id)) return;
-
+function scrollToBottom({ scrollForce, behavior }: { scrollForce: ScrollForce, behavior: ScrollBehavior }) {
   if (container.value) {
     const { scrollTop, scrollHeight, clientHeight } = container.value;
     // Only auto-scroll if forced (new message) or already near the bottom
-    if (force || scrollHeight - scrollTop - clientHeight < 150) {
-      container.value.scrollTop = scrollHeight;
+    if (scrollForce === 'force' || scrollHeight - scrollTop - clientHeight < 150) {
+      container.value.scrollTo({ top: scrollHeight, behavior });
     }
   }
 }
@@ -494,10 +493,10 @@ async function scrollToLatestUserMessage() {
       behavior: 'instant'
     });
     if (!didScroll) {
-      scrollToBottom();
+      scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
     }
   } else {
-    scrollToBottom();
+    scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
   }
 }
 
@@ -537,7 +536,6 @@ watch(
       switch (role) {
       case 'user':
         hasScrolledToAssistant.value = false;
-        scrollToBottom();
         break;
       case 'assistant': {
         if (!hasScrolledToAssistant.value) {
@@ -1002,7 +1000,7 @@ watch(
       :available-image-models="availableImageModels"
       :auto-send-prompt="autoSendPrompt"
       @auto-sent="emit('auto-sent')"
-      @scroll-to-bottom="scrollToBottom"
+      @scroll-to-bottom="(force) => scrollToBottom({ scrollForce: force ? 'force' : 'if-near-bottom', behavior: 'smooth' })"
     />
 
     <!-- Preview Modal -->
