@@ -51,6 +51,13 @@ const mockOpenFileExplorer = vi.fn();
 const mockEnsureChatTmpDirectory = vi.fn();
 const mockGetChatTmpDirectory = vi.fn();
 
+const mockSettings = ref<any>({ mounts: [] });
+vi.mock('../composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: mockSettings,
+  }),
+}));
+
 // Mock new composables and services
 vi.mock('../composables/useChatTools', () => ({
   useChatTools: () => ({
@@ -235,6 +242,7 @@ describe('ChatInput Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentChat.value = { id: 'chat-1', modelId: 'model-1' };
+    mockSettings.value = { mounts: [] };
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
   });
@@ -307,6 +315,50 @@ describe('ChatInput Integration', () => {
       initialPath: ['home', 'user', 'work'],
       title: 'Files',
     }));
+  });
+
+  it('mount explorer includes global settings mounts alongside chat mounts', async () => {
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-chat', mountPath: '/home/user/chat-vol', readOnly: false }],
+    };
+    mockSettings.value = {
+      mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
+    };
+
+    const { storageService } = await import('../services/storage');
+    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
+
+    const wrapper = getWrapper();
+    await nextTick();
+
+    await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
+    await flushPromises();
+
+    // Called once for chat mount and once for global mount
+    expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-chat' });
+    expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'explorer',
+      title: 'Files',
+    }));
+  });
+
+  it('mount badges do not include global settings mounts', async () => {
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      mounts: [],
+    };
+    mockSettings.value = {
+      mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
+    };
+
+    const wrapper = getWrapper();
+    await nextTick();
+
+    expect(wrapper.findAll('[data-testid="chat-mount-badge"]')).toHaveLength(0);
   });
 
   it('should update attachment and revoke old URL when ImageEditor saves', async () => {

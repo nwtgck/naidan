@@ -3,6 +3,7 @@ import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'v
 import { useChat } from '@/composables/useChat';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { useLayout } from '@/composables/useLayout';
+import { useSettings } from '@/composables/useSettings';
 import { generateId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
@@ -551,6 +552,16 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
   const tmpDirectory = await ensureChatTmpDirectory({ chatId: currentChat.value.id });
   await vfs.mount({ path: tmpDirectory.mountPath, handle: tmpDirectory.handle, readOnly: false });
   for (const m of mounts) {
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
+    if (!handle) continue;
+    await vfs.mount({ path: m.mountPath, handle, readOnly: m.readOnly });
+  }
+
+  // Also mount global settings mounts that are not already covered by a chat mount at the same path.
+  const { settings } = useSettings();
+  for (const m of settings.value.mounts) {
+    if (m.type !== 'volume') continue;
+    if (mounts.some(cm => cm.mountPath === m.mountPath)) continue;
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
     await vfs.mount({ path: m.mountPath, handle, readOnly: m.readOnly });
