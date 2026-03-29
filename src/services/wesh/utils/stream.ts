@@ -5,6 +5,7 @@ import type {
   WeshWriteResult,
   WeshStat,
 } from '@/services/wesh/types';
+import { WeshHandleCloseSignal } from './closeSignal';
 
 class StreamReadHandle implements WeshFileHandle {
   private readonly state: {
@@ -15,8 +16,7 @@ class StreamReadHandle implements WeshFileHandle {
     refCount: number;
     closed: boolean;
   };
-  private readonly closeListeners = new Set<() => void>();
-  private closed = false;
+  private readonly closeSignal = new WeshHandleCloseSignal({});
 
   constructor(options: {
     state: {
@@ -37,13 +37,13 @@ class StreamReadHandle implements WeshFileHandle {
     length?: number;
     position?: number;
   }): Promise<WeshIOResult> {
-    if (this.closed || (this.state.isDone && this.state.currentChunk === undefined)) {
+    if (this.closeSignal.closed || (this.state.isDone && this.state.currentChunk === undefined)) {
       return { bytesRead: 0 };
     }
 
     if (this.state.currentChunk === undefined) {
       try {
-        const result = await this.raceWithClose({
+        const result = await this.closeSignal.raceWithClose({
           operation: this.state.reader.read(),
           buildClosedResult: () => ({
             done: true as const,
@@ -90,15 +90,10 @@ class StreamReadHandle implements WeshFileHandle {
   }
 
   async close(): Promise<void> {
-    if (this.closed) {
+    if (this.closeSignal.closed) {
       return;
     }
-    this.closed = true;
-    const closeListeners = [...this.closeListeners];
-    this.closeListeners.clear();
-    for (const listener of closeListeners) {
-      listener();
-    }
+    this.closeSignal.close();
     this.state.refCount -= 1;
     if (this.state.refCount <= 0 && !this.state.closed) {
       this.state.closed = true;
@@ -138,54 +133,6 @@ class StreamReadHandle implements WeshFileHandle {
   getCloseSemantics(): WeshFileHandleCloseSemantics {
     return 'hard';
   }
-
-  private async raceWithClose<T>(options: {
-    operation: Promise<T>;
-    buildClosedResult: () => T;
-  }): Promise<T> {
-    if (this.closed) {
-      return options.buildClosedResult();
-    }
-
-    let closeListener: (() => void) | undefined;
-    const closePromise = new Promise<
-      | { kind: 'closed'; value: T }
-      | { kind: 'settled'; value: T }
-      | { kind: 'error'; error: unknown }
-    >(resolve => {
-      closeListener = () => resolve({
-        kind: 'closed',
-        value: options.buildClosedResult(),
-      });
-      this.closeListeners.add(closeListener);
-    });
-    const operationPromise = options.operation.then(
-      value => ({
-        kind: 'settled' as const,
-        value,
-      }),
-      error => ({
-        kind: 'error' as const,
-        error,
-      }),
-    );
-    const result = await Promise.race([operationPromise, closePromise]);
-    if (closeListener !== undefined) {
-      this.closeListeners.delete(closeListener);
-    }
-
-    switch (result.kind) {
-    case 'closed':
-    case 'settled':
-      return result.value;
-    case 'error':
-      throw result.error;
-    default: {
-      const _ex: never = result;
-      throw new Error(`Unhandled close race result: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
 }
 
 class StreamWriteHandle implements WeshFileHandle {
@@ -194,8 +141,7 @@ class StreamWriteHandle implements WeshFileHandle {
     refCount: number;
     closed: boolean;
   };
-  private readonly closeListeners = new Set<() => void>();
-  private closed = false;
+  private readonly closeSignal = new WeshHandleCloseSignal({});
 
   constructor(options: {
     state: {
@@ -221,7 +167,7 @@ class StreamWriteHandle implements WeshFileHandle {
     length: number | undefined;
     position?: number | undefined;
   }): Promise<WeshWriteResult> {
-    if (this.closed) {
+    if (this.closeSignal.closed) {
       return { bytesWritten: 0 };
     }
 
@@ -229,11 +175,11 @@ class StreamWriteHandle implements WeshFileHandle {
     const actualLength = length ?? (buffer.length - bufferOffset);
     const data = buffer.subarray(bufferOffset, bufferOffset + actualLength);
 
-    await this.raceWithClose({
+    await this.closeSignal.raceWithClose({
       operation: this.state.writer.write(new Uint8Array(data)),
       buildClosedResult: () => undefined,
     });
-    if (this.closed) {
+    if (this.closeSignal.closed) {
       return { bytesWritten: 0 };
     }
 
@@ -241,15 +187,10 @@ class StreamWriteHandle implements WeshFileHandle {
   }
 
   async close(): Promise<void> {
-    if (this.closed) {
+    if (this.closeSignal.closed) {
       return;
     }
-    this.closed = true;
-    const closeListeners = [...this.closeListeners];
-    this.closeListeners.clear();
-    for (const listener of closeListeners) {
-      listener();
-    }
+    this.closeSignal.close();
     this.state.refCount -= 1;
     if (this.state.refCount <= 0 && !this.state.closed) {
       this.state.closed = true;
@@ -286,54 +227,6 @@ class StreamWriteHandle implements WeshFileHandle {
 
   getCloseSemantics(): WeshFileHandleCloseSemantics {
     return 'hard';
-  }
-
-  private async raceWithClose<T>(options: {
-    operation: Promise<T>;
-    buildClosedResult: () => T;
-  }): Promise<T> {
-    if (this.closed) {
-      return options.buildClosedResult();
-    }
-
-    let closeListener: (() => void) | undefined;
-    const closePromise = new Promise<
-      | { kind: 'closed'; value: T }
-      | { kind: 'settled'; value: T }
-      | { kind: 'error'; error: unknown }
-    >(resolve => {
-      closeListener = () => resolve({
-        kind: 'closed',
-        value: options.buildClosedResult(),
-      });
-      this.closeListeners.add(closeListener);
-    });
-    const operationPromise = options.operation.then(
-      value => ({
-        kind: 'settled' as const,
-        value,
-      }),
-      error => ({
-        kind: 'error' as const,
-        error,
-      }),
-    );
-    const result = await Promise.race([operationPromise, closePromise]);
-    if (closeListener !== undefined) {
-      this.closeListeners.delete(closeListener);
-    }
-
-    switch (result.kind) {
-    case 'closed':
-    case 'settled':
-      return result.value;
-    case 'error':
-      throw result.error;
-    default: {
-      const _ex: never = result;
-      throw new Error(`Unhandled close race result: ${JSON.stringify(_ex)}`);
-    }
-    }
   }
 }
 

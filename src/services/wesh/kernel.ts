@@ -14,17 +14,16 @@ import type {
   WeshFileHandleCloseSemantics,
 } from './types';
 import { WeshBrokenPipeError, weshWaitStatusToExitCode } from './types';
+import { WeshHandleCloseSignal } from './utils/closeSignal';
 
-class WeshKernelProcessFileHandle implements WeshFileHandle {
-  private readonly state: {
+abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
+  protected readonly state: {
     handle: WeshFileHandle;
     refCount: number;
   };
-  private readonly kernel: WeshKernel;
-  private readonly pid: number;
-  private readonly closeSemantics: WeshFileHandleCloseSemantics;
-  private readonly closeListeners: Set<() => void> | undefined;
-  private closed = false;
+  protected readonly kernel: WeshKernel;
+  protected readonly pid: number;
+  protected closed = false;
 
   constructor({
     handle,
@@ -46,64 +45,13 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
     }
     this.kernel = kernel;
     this.pid = pid;
-    this.closeSemantics = handle instanceof WeshKernelProcessFileHandle
-      ? handle.closeSemantics
-      : handle.getCloseSemantics?.() ?? 'hard';
-    this.closeListeners = (() => {
-      switch (this.closeSemantics) {
-      case 'hard':
-        return undefined;
-      case 'soft':
-        return new Set<() => void>();
-      default: {
-        const _ex: never = this.closeSemantics;
-        throw new Error(`Unhandled close semantics: ${_ex}`);
-      }
-      }
-    })();
   }
 
-  async read(options: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
-  }): Promise<WeshIOResult> {
-    switch (this.closeSemantics) {
-    case 'hard':
-      return this.state.handle.read(options);
-    case 'soft':
-      return this.raceWithClose({
-        operation: this.state.handle.read(options),
-        buildClosedResult: () => ({ bytesRead: 0 }),
-      });
-    default: {
-      const _ex: never = this.closeSemantics;
-      throw new Error(`Unhandled close semantics: ${_ex}`);
-    }
-    }
-  }
-
-  async write(options: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+  protected async writeWithBrokenPipeHandling(options: {
+    operation: Promise<WeshWriteResult>;
   }): Promise<WeshWriteResult> {
     try {
-      switch (this.closeSemantics) {
-      case 'hard':
-        return await this.state.handle.write(options);
-      case 'soft':
-        return await this.raceWithClose({
-          operation: this.state.handle.write(options),
-          buildClosedResult: () => ({ bytesWritten: 0 }),
-        });
-      default: {
-        const _ex: never = this.closeSemantics;
-        throw new Error(`Unhandled close semantics: ${_ex}`);
-      }
-      }
+      return await options.operation;
     } catch (error: unknown) {
       if (error instanceof WeshBrokenPipeError) {
         await this.kernel.kill({
@@ -121,13 +69,7 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
       return;
     }
     this.closed = true;
-    if (this.closeListeners !== undefined) {
-      const closeListeners = [...this.closeListeners];
-      this.closeListeners.clear();
-      for (const listener of closeListeners) {
-        listener();
-      }
-    }
+    this.onClose();
     this.kernel.unregisterOwnedHandle({
       pid: this.pid,
       handle: this,
@@ -150,8 +92,50 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
     return this.state.handle.ioctl(options);
   }
 
+  protected onClose(): void {}
+
+  abstract read(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshIOResult>;
+
+  abstract write(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshWriteResult>;
+
+  abstract cloneReference(): WeshKernelProcessFileHandle;
+
+  abstract getCloseSemantics(): WeshFileHandleCloseSemantics;
+}
+
+class WeshKernelHardProcessFileHandle extends WeshKernelProcessFileHandle {
+  async read(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshIOResult> {
+    return this.state.handle.read(options);
+  }
+
+  async write(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshWriteResult> {
+    return this.writeWithBrokenPipeHandling({
+      operation: this.state.handle.write(options),
+    });
+  }
+
   cloneReference(): WeshKernelProcessFileHandle {
-    return new WeshKernelProcessFileHandle({
+    return new WeshKernelHardProcessFileHandle({
       handle: this,
       kernel: this.kernel,
       pid: this.pid,
@@ -159,59 +143,74 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
   }
 
   getCloseSemantics(): WeshFileHandleCloseSemantics {
-    return this.closeSemantics;
+    return 'hard';
+  }
+}
+
+class WeshKernelSoftProcessFileHandle extends WeshKernelProcessFileHandle {
+  private readonly closeSignal = new WeshHandleCloseSignal({});
+
+  async read(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshIOResult> {
+    return this.closeSignal.raceWithClose({
+      operation: this.state.handle.read(options),
+      buildClosedResult: () => ({ bytesRead: 0 }),
+    });
   }
 
-  private async raceWithClose<T>(options: {
-    operation: Promise<T>;
-    buildClosedResult: () => T;
-  }): Promise<T> {
-    if (this.closed) {
-      return options.buildClosedResult();
-    }
-
-    let closeListener: (() => void) | undefined;
-    const closePromise = new Promise<
-      | { kind: 'closed'; value: T }
-      | { kind: 'settled'; value: T }
-      | { kind: 'error'; error: unknown }
-    >(resolve => {
-      if (this.closeListeners === undefined) {
-        throw new Error('Close listeners are unavailable for hard-close handles');
-      }
-      closeListener = () => resolve({
-        kind: 'closed',
-        value: options.buildClosedResult(),
-      });
-      this.closeListeners.add(closeListener);
+  async write(options: {
+    buffer: Uint8Array;
+    offset?: number;
+    length?: number;
+    position?: number;
+  }): Promise<WeshWriteResult> {
+    return this.writeWithBrokenPipeHandling({
+      operation: this.closeSignal.raceWithClose({
+        operation: this.state.handle.write(options),
+        buildClosedResult: () => ({ bytesWritten: 0 }),
+      }),
     });
-    const operationPromise = options.operation.then(
-      value => ({
-        kind: 'settled' as const,
-        value,
-      }),
-      error => ({
-        kind: 'error' as const,
-        error,
-      }),
-    );
+  }
 
-    const result = await Promise.race([operationPromise, closePromise]);
-    if (closeListener !== undefined && this.closeListeners !== undefined) {
-      this.closeListeners.delete(closeListener);
-    }
+  cloneReference(): WeshKernelProcessFileHandle {
+    return new WeshKernelSoftProcessFileHandle({
+      handle: this,
+      kernel: this.kernel,
+      pid: this.pid,
+    });
+  }
 
-    switch (result.kind) {
-    case 'closed':
-    case 'settled':
-      return result.value;
-    case 'error':
-      throw result.error;
-    default: {
-      const _ex: never = result;
-      throw new Error(`Unhandled close race result: ${JSON.stringify(_ex)}`);
-    }
-    }
+  getCloseSemantics(): WeshFileHandleCloseSemantics {
+    return 'soft';
+  }
+
+  protected override onClose(): void {
+    this.closeSignal.close();
+  }
+}
+
+function createWeshKernelProcessFileHandle(options: {
+  handle: WeshFileHandle;
+  kernel: WeshKernel;
+  pid: number;
+}): WeshKernelProcessFileHandle {
+  const closeSemantics = options.handle instanceof WeshKernelProcessFileHandle
+    ? options.handle.getCloseSemantics()
+    : options.handle.getCloseSemantics?.() ?? 'hard';
+
+  switch (closeSemantics) {
+  case 'hard':
+    return new WeshKernelHardProcessFileHandle(options);
+  case 'soft':
+    return new WeshKernelSoftProcessFileHandle(options);
+  default: {
+    const _ex: never = closeSemantics;
+    throw new Error(`Unhandled close semantics: ${_ex}`);
+  }
   }
 }
 
@@ -491,7 +490,7 @@ export class WeshKernel {
     handle: WeshFileHandle;
     trackOwnership: boolean;
   }): WeshFileHandle {
-    const boundHandle = new WeshKernelProcessFileHandle({
+    const boundHandle = createWeshKernelProcessFileHandle({
       handle: options.handle,
       kernel: this,
       pid: options.pid,
