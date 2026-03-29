@@ -454,6 +454,46 @@ done`,
     await expect(readPromise).resolves.toEqual({ bytesRead: 0 });
   });
 
+  it('keeps cloned pipe output handles writable after closing the original reference', async () => {
+    const { read, write } = await wesh.kernel.pipe();
+    const clone = write.cloneReference?.();
+    if (clone === undefined) {
+      throw new Error('Expected pipe write handle to support cloneReference');
+    }
+
+    await write.close();
+    const bytes = new TextEncoder().encode('alpha');
+    const writeResult = await clone.write({ buffer: bytes });
+    await clone.close();
+
+    const readBuffer = new Uint8Array(16);
+    const readResult = await read.read({ buffer: readBuffer });
+    const eofResult = await read.read({ buffer: readBuffer });
+    await read.close();
+
+    expect(writeResult.bytesWritten).toBe(bytes.length);
+    expect(new TextDecoder().decode(readBuffer.subarray(0, readResult.bytesRead))).toBe('alpha');
+    expect(eofResult).toEqual({ bytesRead: 0 });
+  });
+
+  it('unblocks pending reads when a cloned pipe input handle reference is closed', async () => {
+    const { read, write } = await wesh.kernel.pipe();
+    const clone = read.cloneReference?.();
+    if (clone === undefined) {
+      throw new Error('Expected pipe read handle to support cloneReference');
+    }
+
+    const readPromise = clone.read({
+      buffer: new Uint8Array(16),
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await clone.close();
+    await write.close();
+    await read.close();
+
+    await expect(readPromise).resolves.toEqual({ bytesRead: 0 });
+  });
+
   it('supports shell functions and return', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();

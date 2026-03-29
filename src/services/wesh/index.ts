@@ -3099,6 +3099,16 @@ usage: ${name} [-c command] [file [argument...]]
     return handle;
   }
 
+  private isFileHandleReferenceCloneable({
+    handle,
+  }: {
+    handle: WeshFileHandle;
+  }): boolean {
+    return typeof (handle as WeshFileHandle & {
+      cloneReference?: () => WeshFileHandle;
+    }).cloneReference === 'function';
+  }
+
   private cloneFileDescriptorTable({
     fdTable,
   }: {
@@ -3208,7 +3218,7 @@ usage: ${name} [-c command] [file [argument...]]
             stderr: redirectedStderr,
           }).finally(() => write.close()),
         });
-        return this.createSharedFileHandle({ handle: read });
+        return this.createPrimaryFileHandleReference({ handle: read });
       case 'output':
         trackBackgroundTask({
           task: this.executeNode({
@@ -3219,7 +3229,7 @@ usage: ${name} [-c command] [file [argument...]]
             stderr: redirectedStderr,
           }).finally(() => read.close()),
         });
-        return this.createSharedFileHandle({ handle: write });
+        return this.createPrimaryFileHandleReference({ handle: write });
       default: {
         const _ex: never = redirection.target.type;
         throw new Error(`Unhandled redirection process substitution type: ${_ex}`);
@@ -3856,8 +3866,12 @@ usage: ${name} [-c command] [file [argument...]]
 
     for (let i = 0; i < commands.length; i++) {
       const cmd = commands[i]!;
-      const myStdin = i === 0 ? stdin : pipes[i-1]!.read;
-      const myStdout = i === commands.length - 1 ? stdout : pipes[i]!.write;
+      const myStdin = i === 0
+        ? stdin
+        : this.cloneFileHandleReference({ handle: pipes[i - 1]!.read });
+      const myStdout = i === commands.length - 1
+        ? stdout
+        : this.cloneFileHandleReference({ handle: pipes[i]!.write });
 
       const pipelineEnvironment = await this.spawnChildExecutionEnvironment({
         parentEnvironment: environment,
@@ -3876,14 +3890,21 @@ usage: ${name} [-c command] [file [argument...]]
           functionDepth,
         }).then(async res => {
           if (i < commands.length - 1) {
-            await pipes[i]!.write.close();
+            await myStdout.close();
           }
           if (i > 0) {
-            await pipes[i-1]!.read.close();
+            await myStdin.close();
           }
           return res;
         })
       );
+
+      if (i < commands.length - 1) {
+        await pipes[i]!.write.close();
+      }
+      if (i > 0) {
+        await pipes[i - 1]!.read.close();
+      }
     }
 
     const results = await this.runWithForegroundProcessGroup({
@@ -3956,7 +3977,10 @@ usage: ${name} [-c command] [file [argument...]]
             stdin, stdout: write, stderr
           }).finally(() => write.close());
 
-          this.vfs.registerSpecialFile({ path, handler: () => read });
+          this.vfs.registerSpecialFile({
+            path,
+            handler: () => this.cloneFileHandleReference({ handle: read }),
+          });
 
           procSubPostTaskCleanups.push(() => {
             this.vfs.unregisterSpecialFile({ path });
@@ -3975,7 +3999,10 @@ usage: ${name} [-c command] [file [argument...]]
             stdin: read, stdout, stderr
           }).finally(() => read.close());
 
-          this.vfs.registerSpecialFile({ path, handler: () => write });
+          this.vfs.registerSpecialFile({
+            path,
+            handler: () => this.cloneFileHandleReference({ handle: write }),
+          });
           procSubPreTaskCleanups.push(() => {
             write.close();
           });
@@ -4126,6 +4153,11 @@ usage: ${name} [-c command] [file [argument...]]
 
     if (boundStdin === undefined || boundStdout === undefined || boundStderr === undefined) {
       throw new Error('Missing standard file descriptor after process binding');
+    }
+
+    const inheritedStdin = environment.fds.get(0);
+    if (cmdStdin !== undefined && cmdStdin !== inheritedStdin && this.isFileHandleReferenceCloneable({ handle: cmdStdin })) {
+      await cmdStdin.close();
     }
 
     const context: WeshCommandContext = {
