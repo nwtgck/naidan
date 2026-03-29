@@ -9,6 +9,53 @@ import {
   createReadHandleFromStream,
   createWriteHandleFromStream,
 } from './utils/stream';
+import type { WeshFileHandle, WeshStat } from './types';
+
+function createBlockingWriteHandle() {
+  let closed = false;
+  let resolveWrite: ((value: { bytesWritten: number }) => void) | undefined;
+
+  const handle: WeshFileHandle = {
+    async read() {
+      throw new Error('File not open for reading');
+    },
+    async write({ length, buffer, offset }) {
+      if (closed) {
+        return { bytesWritten: 0 };
+      }
+      const actualOffset = offset ?? 0;
+      const actualLength = length ?? (buffer.length - actualOffset);
+      return new Promise<{ bytesWritten: number }>(resolve => {
+        resolveWrite = resolve;
+        void actualLength;
+      });
+    },
+    async close() {
+      closed = true;
+      resolveWrite?.({ bytesWritten: 0 });
+      resolveWrite = undefined;
+    },
+    async stat(): Promise<WeshStat> {
+      return {
+        size: 0,
+        mode: 0o600,
+        type: 'fifo',
+        mtime: Date.now(),
+        ino: 0,
+        uid: 0,
+        gid: 0,
+      };
+    },
+    async truncate() {},
+    async ioctl() {
+      return { ret: 0 };
+    },
+  };
+
+  return {
+    handle,
+  };
+}
 
 describe('Wesh Shell', () => {
   let wesh: Wesh;
@@ -1717,6 +1764,96 @@ sleep 1 | cat`,
       signal: 2,
     });
     expect(result.exitCode).toBe(130);
+  });
+
+  it('interrupts commands blocked on stdout writes', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createBlockingWriteHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: 'echo blocked-stdout',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await Promise.race([
+      execution,
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('interrupting blocked stdout write timed out')), 250);
+      }),
+    ]);
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+  });
+
+  it('interrupts commands blocked on stderr writes', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createBlockingWriteHandle();
+
+    const execution = wesh.execute({
+      script: 'echo blocked-stderr >&2',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await Promise.race([
+      execution,
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('interrupting blocked stderr write timed out')), 250);
+      }),
+    ]);
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+  });
+
+  it('interrupts foreground pipelines blocked on stdout writes', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createBlockingWriteHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: `\
+trap -- 'echo pipeline-blocked >&2' INT
+printf 'alpha\n' | cat`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await Promise.race([
+      execution,
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('interrupting blocked pipeline stdout write timed out')), 250);
+      }),
+    ]);
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+    expect(stderr.text).toContain('pipeline-blocked\n');
   });
 
   it('does not rewrite wait status when signaling an already terminated process', async () => {

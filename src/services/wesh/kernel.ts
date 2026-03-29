@@ -21,6 +21,7 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
   };
   private readonly kernel: WeshKernel;
   private readonly pid: number;
+  private readonly closeListeners = new Set<() => void>();
   private closed = false;
 
   constructor({
@@ -51,7 +52,10 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
     length?: number;
     position?: number;
   }): Promise<WeshIOResult> {
-    return this.state.handle.read(options);
+    return this.raceWithClose({
+      operation: this.state.handle.read(options),
+      buildClosedResult: () => ({ bytesRead: 0 }),
+    });
   }
 
   async write(options: {
@@ -61,7 +65,10 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
     position?: number;
   }): Promise<WeshWriteResult> {
     try {
-      return await this.state.handle.write(options);
+      return await this.raceWithClose({
+        operation: this.state.handle.write(options),
+        buildClosedResult: () => ({ bytesWritten: 0 }),
+      });
     } catch (error: unknown) {
       if (error instanceof WeshBrokenPipeError) {
         await this.kernel.kill({
@@ -79,6 +86,11 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
       return;
     }
     this.closed = true;
+    const closeListeners = [...this.closeListeners];
+    this.closeListeners.clear();
+    for (const listener of closeListeners) {
+      listener();
+    }
     this.kernel.unregisterOwnedHandle({
       pid: this.pid,
       handle: this,
@@ -99,6 +111,63 @@ class WeshKernelProcessFileHandle implements WeshFileHandle {
 
   async ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }> {
     return this.state.handle.ioctl(options);
+  }
+
+  cloneReference(): WeshKernelProcessFileHandle {
+    return new WeshKernelProcessFileHandle({
+      handle: this,
+      kernel: this.kernel,
+      pid: this.pid,
+    });
+  }
+
+  private async raceWithClose<T>(options: {
+    operation: Promise<T>;
+    buildClosedResult: () => T;
+  }): Promise<T> {
+    if (this.closed) {
+      return options.buildClosedResult();
+    }
+
+    let closeListener: (() => void) | undefined;
+    const closePromise = new Promise<
+      | { kind: 'closed'; value: T }
+      | { kind: 'settled'; value: T }
+      | { kind: 'error'; error: unknown }
+    >(resolve => {
+      closeListener = () => resolve({
+        kind: 'closed',
+        value: options.buildClosedResult(),
+      });
+      this.closeListeners.add(closeListener);
+    });
+    const operationPromise = options.operation.then(
+      value => ({
+        kind: 'settled' as const,
+        value,
+      }),
+      error => ({
+        kind: 'error' as const,
+        error,
+      }),
+    );
+
+    const result = await Promise.race([operationPromise, closePromise]);
+    if (closeListener !== undefined) {
+      this.closeListeners.delete(closeListener);
+    }
+
+    switch (result.kind) {
+    case 'closed':
+    case 'settled':
+      return result.value;
+    case 'error':
+      throw result.error;
+    default: {
+      const _ex: never = result;
+      throw new Error(`Unhandled close race result: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
 }
 
@@ -397,7 +466,9 @@ export class WeshKernel {
         fd,
         this.bindFileHandle({
           pid: options.pid,
-          handle,
+          handle: handle instanceof WeshKernelProcessFileHandle
+            ? handle
+            : this.createDuplicatedHandleReference({ handle }),
           trackOwnership: false,
         }),
       ]),
@@ -410,6 +481,15 @@ export class WeshKernel {
       read: new PipeHandle(state, 'r'),
       write: new PipeHandle(state, 'w')
     };
+  }
+
+  private createDuplicatedHandleReference(options: {
+    handle: WeshFileHandle;
+  }): WeshFileHandle {
+    if (typeof (options.handle as WeshFileHandle & { cloneReference?: () => WeshFileHandle }).cloneReference === 'function') {
+      return (options.handle as WeshFileHandle & { cloneReference: () => WeshFileHandle }).cloneReference();
+    }
+    return options.handle;
   }
 
   async open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle> {
@@ -506,14 +586,21 @@ export class WeshKernel {
     proc?.ownedHandles?.delete(options.handle);
   }
 
+  async closeProcessResources(options: {
+    pid: number;
+  }): Promise<void> {
+    const proc = this.processes.get(options.pid);
+    if (proc === undefined) {
+      return;
+    }
+    await this.closeProcessFileDescriptors({ proc });
+  }
+
   private async closeProcessFileDescriptors(options: {
     proc: WeshProcess;
   }): Promise<void> {
     const closedHandles = new Set<WeshFileHandle>();
-    for (const [fd, handle] of options.proc.fds.entries()) {
-      if (fd === 1 || fd === 2) {
-        continue;
-      }
+    for (const handle of options.proc.fds.values()) {
       if (closedHandles.has(handle)) {
         continue;
       }

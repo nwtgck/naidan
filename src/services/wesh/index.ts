@@ -276,7 +276,11 @@ export class Wesh {
     ['globstar', false],
     ['nullglob', false],
   ]);
-  private foregroundProcessGroupId: number | undefined;
+  private readonly foregroundProcessGroupScopes: Array<{
+    id: number;
+    pgid: number;
+  }> = [];
+  private nextForegroundProcessGroupScopeId = 1;
 
   private shellPid: number = 0;
 
@@ -352,12 +356,13 @@ export class Wesh {
   }
 
   async signalForegroundProcessGroup(options: { signal: number }): Promise<boolean> {
-    if (this.foregroundProcessGroupId === undefined) {
+    const foregroundProcessGroupId = this.foregroundProcessGroupScopes.at(-1)?.pgid;
+    if (foregroundProcessGroupId === undefined) {
       return false;
     }
 
     await this.kernel.killProcessGroup({
-      pgid: this.foregroundProcessGroupId,
+      pgid: foregroundProcessGroupId,
       signal: options.signal,
       excludedPids: [this.shellPid],
     });
@@ -1493,6 +1498,9 @@ usage: ${name} [-c command] [file [argument...]]
         },
       }),
     });
+    const captureStdout = this.createSharedFileHandle({
+      handle: captureHandle,
+    });
     const childEnvironment = await this.spawnChildExecutionEnvironment({
       parentEnvironment: environment,
       pgid: environment.pgid,
@@ -1506,14 +1514,14 @@ usage: ${name} [-c command] [file [argument...]]
       script: parsed.content,
       environment: childEnvironment,
       stdin,
-      stdout: captureHandle,
+      stdout: captureStdout,
       stderr,
     });
     const result = await this.runExitTrapIfNeeded({
       result: rawResult,
       environment: childEnvironment,
       stdin,
-      stdout: captureHandle,
+      stdout: captureStdout,
       stderr,
     });
     if (result.exitCode !== 0) {
@@ -3073,6 +3081,33 @@ usage: ${name} [-c command] [file [argument...]]
     return sharedHandle.cloneReference();
   }
 
+  private cloneFileHandleReference({
+    handle,
+  }: {
+    handle: WeshFileHandle;
+  }): WeshFileHandle {
+    const cloneReference = (handle as WeshFileHandle & {
+      cloneReference?: () => WeshFileHandle;
+    }).cloneReference;
+    if (typeof cloneReference === 'function') {
+      return cloneReference.call(handle);
+    }
+    return handle;
+  }
+
+  private cloneFileDescriptorTable({
+    fdTable,
+  }: {
+    fdTable: Map<number, WeshFileHandle>;
+  }): Map<number, WeshFileHandle> {
+    return new Map(
+      Array.from(fdTable.entries()).map(([fd, handle]) => [
+        fd,
+        this.cloneFileHandleReference({ handle }),
+      ]),
+    );
+  }
+
   private async setPersistentFd({
     fd,
     handle,
@@ -3141,7 +3176,7 @@ usage: ${name} [-c command] [file [argument...]]
         throw new Error(`${redirection.targetFd}: bad file descriptor`);
       }
 
-      return this.duplicateSharedFileHandle({ handle: duplicated });
+      return this.cloneFileHandleReference({ handle: duplicated });
     }
 
     if (redirection.target !== undefined && typeof redirection.target !== 'string') {
@@ -3316,13 +3351,19 @@ usage: ${name} [-c command] [file [argument...]]
         positionalArgs: [],
         lastBackgroundPid: undefined,
       });
+      const shellStdin = environment.fds.get(0);
+      const shellStdout = environment.fds.get(1);
+      const shellStderr = environment.fds.get(2);
+      if (shellStdin === undefined || shellStdout === undefined || shellStderr === undefined) {
+        throw new Error('Missing shell standard file descriptors');
+      }
 
       const result = await this.executeNode({
         node: rootNode,
         environment,
-        stdin: options.stdin,
-        stdout: options.stdout,
-        stderr: options.stderr
+        stdin: shellStdin,
+        stdout: shellStdout,
+        stderr: shellStderr,
       });
 
       this.cwd = environment.cwd;
@@ -3331,9 +3372,9 @@ usage: ${name} [-c command] [file [argument...]]
       return await this.runExitTrapIfNeeded({
         result,
         environment,
-        stdin: options.stdin,
-        stdout: options.stdout,
-        stderr: options.stderr,
+        stdin: shellStdin,
+        stdout: shellStdout,
+        stderr: shellStderr,
       });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -3877,7 +3918,8 @@ usage: ${name} [-c command] [file [argument...]]
       });
 
     const expandedArgs: string[] = [];
-    const procSubCleanups: Array<() => void> = [];
+    const procSubPreTaskCleanups: Array<() => void> = [];
+    const procSubPostTaskCleanups: Array<() => void> = [];
     const procSubTasks: Promise<unknown>[] = [];
     const openHandles: WeshFileHandle[] = [];
     const cmdFds = new Map(environment.fds);
@@ -3908,11 +3950,11 @@ usage: ${name} [-c command] [file [argument...]]
             node: arg.list,
             environment: subEnvironment,
             stdin, stdout: write, stderr
-          }).then(() => write.close());
+          }).finally(() => write.close());
 
           this.vfs.registerSpecialFile({ path, handler: () => read });
 
-          procSubCleanups.push(() => {
+          procSubPostTaskCleanups.push(() => {
             this.vfs.unregisterSpecialFile({ path });
             read.close();
           });
@@ -3927,12 +3969,15 @@ usage: ${name} [-c command] [file [argument...]]
             node: arg.list,
             environment: subEnvironment,
             stdin: read, stdout, stderr
-          }).then(() => read.close());
+          }).finally(() => read.close());
 
           this.vfs.registerSpecialFile({ path, handler: () => write });
-          procSubCleanups.push(() => {
-            this.vfs.unregisterSpecialFile({ path });
+          procSubPreTaskCleanups.push(() => {
             write.close();
+          });
+          procSubPostTaskCleanups.push(() => {
+            this.vfs.unregisterSpecialFile({ path });
+            read.close();
           });
           break;
         }
@@ -4298,11 +4343,17 @@ usage: ${name} [-c command] [file [argument...]]
       }
       throw error;
     } finally {
+      await this.kernel.closeProcessResources({ pid });
       for (const h of openHandles) {
         await h.close();
       }
+      for (const cleanup of procSubPreTaskCleanups) {
+        cleanup();
+      }
       await Promise.allSettled(procSubTasks);
-      for (const c of procSubCleanups) c();
+      for (const cleanup of procSubPostTaskCleanups) {
+        cleanup();
+      }
     }
   }
 
@@ -4850,7 +4901,9 @@ usage: ${name} [-c command] [file [argument...]]
       args: ['-c'],
       env: childEnvironment.env,
       cwd: childEnvironment.cwd,
-      fds: new Map(childEnvironment.fds),
+      fds: this.cloneFileDescriptorTable({
+        fdTable: childEnvironment.fds,
+      }),
       ppid: parentEnvironment.shellPid,
       pgid: pgid,
       signalDispositions: this.buildProcessSignalDispositions({
@@ -5007,12 +5060,18 @@ usage: ${name} [-c command] [file [argument...]]
     pgid: number;
     fn: () => Promise<T>;
   }): Promise<T> {
-    const previousForegroundProcessGroupId = this.foregroundProcessGroupId;
-    this.foregroundProcessGroupId = options.pgid;
+    const scopeId = this.nextForegroundProcessGroupScopeId++;
+    this.foregroundProcessGroupScopes.push({
+      id: scopeId,
+      pgid: options.pgid,
+    });
     try {
       return await options.fn();
     } finally {
-      this.foregroundProcessGroupId = previousForegroundProcessGroupId;
+      const scopeIndex = this.foregroundProcessGroupScopes.findIndex(scope => scope.id === scopeId);
+      if (scopeIndex >= 0) {
+        this.foregroundProcessGroupScopes.splice(scopeIndex, 1);
+      }
     }
   }
 
