@@ -727,6 +727,7 @@ describe('ImportExportService', () => {
         titleModelId: undefined,
         systemPrompt: undefined,
         lmParameters: undefined,
+        mounts: undefined,
       };
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify(groupDto));
 

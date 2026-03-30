@@ -65,7 +65,7 @@ describe('useChatWeshTerminalSessions', () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { __testOnly } = useChatWeshTerminalSessions();
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatId: undefined });
+      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: undefined });
 
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({ path: '/home/user/global', readOnly: true });
@@ -76,7 +76,7 @@ describe('useChatWeshTerminalSessions', () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { __testOnly } = useChatWeshTerminalSessions();
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatId: 'chat-1' });
+      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: 'chat-1' });
 
       expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
       expect(result[0]).toMatchObject({ path: '/tmp', handle: tmpHandle, readOnly: false });
@@ -90,7 +90,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'chat-vol-1', mountPath: '/home/user/chat', readOnly: false },
       ];
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatId: undefined });
+      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined });
 
       expect(result).toHaveLength(2);
       expect(result.some(m => m.path === '/home/user/global')).toBe(true);
@@ -106,12 +106,80 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'chat-vol-override', mountPath: '/home/user/global', readOnly: false },
       ];
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatId: undefined });
+      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined });
 
       // Only one mount at that path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
       expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'chat-vol-override' });
+    });
+
+    it('includes chat group mounts between global and chat mounts', async () => {
+      const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
+      const { __testOnly } = useChatWeshTerminalSessions();
+
+      const chatGroupMounts = [
+        { type: 'volume' as const, volumeId: 'group-vol-1', mountPath: '/home/user/group', readOnly: true },
+      ];
+      const chatMounts = [
+        { type: 'volume' as const, volumeId: 'chat-vol-1', mountPath: '/home/user/chat', readOnly: false },
+      ];
+
+      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined });
+
+      expect(result).toHaveLength(3);
+      expect(result.some(m => m.path === '/home/user/global')).toBe(true);
+      expect(result.some(m => m.path === '/home/user/group')).toBe(true);
+      expect(result.some(m => m.path === '/home/user/chat')).toBe(true);
+    });
+
+    it('chat group mount overrides global mount at the same path', async () => {
+      const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
+      const { __testOnly } = useChatWeshTerminalSessions();
+
+      const chatGroupMounts = [
+        { type: 'volume' as const, volumeId: 'group-vol-override', mountPath: '/home/user/global', readOnly: false },
+      ];
+
+      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined });
+
+      expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
+      expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
+      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'group-vol-override' });
+    });
+
+    it('chat mount overrides chat group mount at the same path', async () => {
+      const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
+      const { __testOnly } = useChatWeshTerminalSessions();
+
+      const chatGroupMounts = [
+        { type: 'volume' as const, volumeId: 'group-vol-1', mountPath: '/home/user/shared', readOnly: true },
+      ];
+      const chatMounts = [
+        { type: 'volume' as const, volumeId: 'chat-vol-override', mountPath: '/home/user/shared', readOnly: false },
+      ];
+
+      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined });
+
+      // Only one mount at the shared path, and it should be the chat one (readOnly: false)
+      expect(result.filter(m => m.path === '/home/user/shared')).toHaveLength(1);
+      expect(result.find(m => m.path === '/home/user/shared')).toMatchObject({ readOnly: false });
+      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'chat-vol-override' });
+    });
+
+    it('works with only chat group mounts and no chat-level mounts', async () => {
+      const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
+      const { __testOnly } = useChatWeshTerminalSessions();
+
+      const chatGroupMounts = [
+        { type: 'volume' as const, volumeId: 'group-vol-1', mountPath: '/home/user/group-only', readOnly: false },
+      ];
+
+      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined });
+
+      expect(result).toHaveLength(2); // global + group
+      expect(result.some(m => m.path === '/home/user/global')).toBe(true);
+      expect(result.some(m => m.path === '/home/user/group-only')).toBe(true);
     });
   });
 });

@@ -614,6 +614,31 @@ export function useChat() {
     }
   };
 
+  const addMountToChatGroup = async ({ groupId, mount }: { groupId: string; mount: import('@/models/types').Mount }) => {
+    await storageService.addMountToChatGroup({ groupId, mount });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = [...(_currentChatGroup.value.mounts ?? []), mount];
+    }
+  };
+
+  const removeMountFromChatGroup = async ({ groupId, volumeId }: { groupId: string; volumeId: string }) => {
+    await storageService.removeMountFromChatGroup({ groupId, volumeId });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = (_currentChatGroup.value.mounts ?? []).filter(
+        m => !(m.type === 'volume' && m.volumeId === volumeId)
+      );
+    }
+  };
+
+  const updateChatGroupMount = async ({ groupId, volumeId, mountPath, readOnly }: { groupId: string; volumeId: string; mountPath: string; readOnly: boolean }) => {
+    await storageService.updateChatGroupMount({ groupId, volumeId, mountPath, readOnly });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = (_currentChatGroup.value.mounts ?? []).map(m =>
+        m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m
+      );
+    }
+  };
+
   const createNewChat = async (options: {
     groupId: string | undefined;
     modelId: string | undefined;
@@ -659,6 +684,16 @@ export function useChat() {
     }
   };
 
+  function hasMountsForChat({ chat }: { chat: Pick<Chat, 'mounts' | 'groupId'> }): boolean {
+    if (settings.value.mounts && settings.value.mounts.length > 0) return true;
+    if (chat.mounts && chat.mounts.length > 0) return true;
+    if (chat.groupId) {
+      const group = chatGroups.value.find(g => g.id === chat.groupId);
+      if (group?.mounts && group.mounts.length > 0) return true;
+    }
+    return false;
+  }
+
   const openChat = async (id: string, leafId?: string): Promise<Chat | null> => {
     const { setToolEnabled, setCurrentChatId } = useChatTools();
     setCurrentChatId({ chatId: id });
@@ -673,7 +708,7 @@ export function useChat() {
       }
       _currentChatGroup.value = null;
       _currentChat.value = chat;
-      if (chat.mounts && chat.mounts.length > 0) {
+      if (hasMountsForChat({ chat })) {
         setToolEnabled({ name: 'shell_execute', enabled: true });
       }
       return chat;
@@ -692,7 +727,7 @@ export function useChat() {
       registerLiveInstance(reactiveChat);
       _currentChatGroup.value = null;
       _currentChat.value = reactiveChat;
-      if (loaded.mounts && loaded.mounts.length > 0) {
+      if (hasMountsForChat({ chat: loaded })) {
         setToolEnabled({ name: 'shell_execute', enabled: true });
       }
       return reactiveChat;
@@ -1203,9 +1238,15 @@ export function useChat() {
       const chatTmpDirectory = shellExecuteEnabled
         ? await ensureChatTmpDirectory({ chatId: mutableChat.id })
         : undefined;
+      const chatGroupMounts = mutableChat.groupId
+        ? (_currentChatGroup.value?.id === mutableChat.groupId
+          ? _currentChatGroup.value.mounts
+          : (await storageService.loadChatGroup(mutableChat.groupId))?.mounts)
+        : undefined;
       const enabledTools = await getEnabledTools({
         enabledNames: enabledToolNames.value,
         settings: settings.value as unknown as Settings,
+        chatGroupMounts,
         chatMounts: mutableChat.mounts,
         tmpHandle: chatTmpDirectory?.handle,
       });
@@ -2329,7 +2370,7 @@ export function useChat() {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount, addMountToChatGroup, removeMountFromChatGroup, updateChatGroupMount,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle, ensureChatTmpDirectory, getChatTmpDirectory,
     getVolatileToolOutput,
     chatFlow, isThinkingActive, isWaitingResponse,

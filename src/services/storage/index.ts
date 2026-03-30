@@ -406,6 +406,36 @@ export class StorageService {
     });
   }
 
+  async addMountToChatGroup({ groupId, mount }: { groupId: string; mount: Mount }): Promise<void> {
+    await this.updateChatGroup(groupId, (current) => {
+      if (!current) throw new Error(`Chat group not found: ${groupId}`);
+      const existing = current.mounts ?? [];
+      return { ...current, mounts: [...existing, mount] };
+    });
+  }
+
+  async removeMountFromChatGroup({ groupId, volumeId }: { groupId: string; volumeId: string }): Promise<void> {
+    await this.updateChatGroup(groupId, (current) => {
+      if (!current) throw new Error(`Chat group not found: ${groupId}`);
+      return {
+        ...current,
+        mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
+      };
+    });
+  }
+
+  async updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }: { groupId: string; volumeId: string; mountPath: string; readOnly: boolean }): Promise<void> {
+    await this.updateChatGroup(groupId, (current) => {
+      if (!current) throw new Error(`Chat group not found: ${groupId}`);
+      return {
+        ...current,
+        mounts: (current.mounts ?? []).map(m =>
+          m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m
+        ),
+      };
+    });
+  }
+
   async switchProvider(type: 'local' | 'opfs' | 'memory') {
     try {
       await this.synchronizer.withLock(async () => {

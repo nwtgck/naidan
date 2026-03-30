@@ -213,6 +213,7 @@ export const chatGroupToDomain = (
     titleModelId: dto.titleModelId,
     systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain(dto.lmParameters),
+    mounts: dto.mounts?.map(mountToDomain),
   };
 };
 
@@ -227,6 +228,7 @@ export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
   titleModelId: domain.titleModelId,
   systemPrompt: domain.systemPrompt,
   lmParameters: lmParametersToDto(domain.lmParameters),
+  mounts: domain.mounts?.map(mountToDto),
 });
 
 export const lmParametersToDomain = (

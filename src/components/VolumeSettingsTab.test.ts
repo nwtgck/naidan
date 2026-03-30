@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import VolumeSettingsTab from './VolumeSettingsTab.vue';
 import { storageService } from '@/services/storage';
@@ -52,12 +52,20 @@ function setupStorageMock(volumes: Volume[], mounts: Mount[]) {
   vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts } as any);
 }
 
+const mountedWrappers: ReturnType<typeof mount>[] = [];
+
 async function mountTab(volumes: Volume[], mounts: Mount[] = []) {
   setupStorageMock(volumes, mounts);
-  const wrapper = mount(VolumeSettingsTab);
+  const wrapper = mount(VolumeSettingsTab, { attachTo: document.body });
+  mountedWrappers.push(wrapper);
   await flushPromises();
   return wrapper;
 }
+
+afterEach(() => {
+  mountedWrappers.forEach(w => w.unmount());
+  mountedWrappers.length = 0;
+});
 
 // --- Tests ---
 

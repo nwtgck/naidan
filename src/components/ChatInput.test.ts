@@ -358,7 +358,7 @@ describe('ChatInput Integration', () => {
     const wrapper = getWrapper();
     await nextTick();
 
-    expect(wrapper.findAll('[data-testid="chat-mount-badge"]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-testid="mount-badge"]')).toHaveLength(0);
   });
 
   it('should update attachment and revoke old URL when ImageEditor saves', async () => {

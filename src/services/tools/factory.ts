@@ -11,16 +11,18 @@ import { buildShellDescription } from './shell-description';
 
 /**
  * Dynamically creates and returns a list of enabled tools based on settings.
- * chatMounts are per-chat mounts that are merged with global settings.mounts.
+ * Mount resolution order: global (settings.mounts) → group → chat (per-chat overrides).
  */
 export async function getEnabledTools({
   enabledNames,
   settings,
+  chatGroupMounts,
   chatMounts,
   tmpHandle,
 }: {
   enabledNames: string[];
   settings: Settings;
+  chatGroupMounts?: Mount[];
   chatMounts?: Mount[];
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
@@ -42,8 +44,8 @@ export async function getEnabledTools({
         break;
       }
 
-      // Resolve mounts from settings (global) + chatMounts (per-chat)
-      const allMounts = [...settings.mounts, ...(chatMounts ?? [])];
+      // Resolve mounts: global → chat group → chat (later entries win on path conflict)
+      const allMounts = [...settings.mounts, ...(chatGroupMounts ?? []), ...(chatMounts ?? [])];
       const resolvedMounts: WeshMount[] = [
         { path: '/tmp', handle: tmpHandle, readOnly: false },
       ];

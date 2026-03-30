@@ -234,6 +234,7 @@ export interface ChatGroup {
   titleModelId?: string;
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
+  mounts?: Mount[];
 }
 
 // Sidebar hierarchy - order is implicit by position in array

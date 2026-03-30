@@ -28,8 +28,9 @@ import {
   Square, Minimize2, Maximize2, Send,
   X, Image,
   ChevronDown, ChevronUp, Edit2, FileEdit,
-  Folder, Loader2, Lock, Unlock,
+  Loader2,
 } from 'lucide-vue-next';
+import MountBadgeList from './MountBadgeList.vue';
 import { useRouter } from 'vue-router';
 import type { Attachment, Chat, LmParameters } from '@/models/types';
 
@@ -1144,38 +1145,15 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       </div>
 
       <!-- Folder/File Mounts attached to this chat -->
-      <div v-if="currentChat?.mounts && currentChat.mounts.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="chat-mounts-preview">
-        <div
-          v-for="mount in currentChat.mounts"
-          :key="mount.volumeId"
-          class="flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-medium"
-          data-testid="chat-mount-badge"
-        >
-          <Folder class="w-3.5 h-3.5 shrink-0" />
-          <button
-            class="max-w-[120px] truncate mx-1 hover:underline focus:outline-none"
-            :title="`Browse ${mount.mountPath.replace(/^\/home\/user\//, '')}`"
-            data-testid="mount-open-explorer"
-            @click="handleOpenMountExplorer({ volumeId: mount.volumeId })"
-          >{{ mount.mountPath.replace(/^\/home\/user\//, '') }}</button>
-          <button
-            @click="handleToggleMountReadOnly({ volumeId: mount.volumeId, readOnly: !mount.readOnly })"
-            :title="mount.readOnly ? 'Read-only — click to allow write' : 'Read & write — click to restrict'"
-            class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
-            data-testid="mount-toggle-readonly"
-          >
-            <Lock v-if="mount.readOnly" class="w-3 h-3 text-green-500 dark:text-green-400" />
-            <Unlock v-else class="w-3 h-3 text-amber-500 dark:text-amber-400" />
-          </button>
-          <button
-            @click="handleDetachMount({ volumeId: mount.volumeId })"
-            title="Remove"
-            class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors text-blue-400 hover:text-red-500 dark:hover:text-red-400"
-            data-testid="mount-remove-btn"
-          >
-            <X class="w-3 h-3" />
-          </button>
-        </div>
+      <div v-if="currentChat?.mounts && currentChat.mounts.length > 0" class="px-4 pt-4" data-testid="chat-mounts-preview">
+        <MountBadgeList
+          :mounts="currentChat.mounts"
+          path-trim-prefix="/home/user/"
+          :show-explorer="true"
+          @toggle-read-only="handleToggleMountReadOnly"
+          @remove="handleDetachMount"
+          @open-explorer="handleOpenMountExplorer"
+        />
       </div>
 
       <!-- Attachment Previews -->

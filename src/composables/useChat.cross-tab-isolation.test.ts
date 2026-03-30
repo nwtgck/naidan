@@ -104,6 +104,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
         }),
         loadSettings: vi.fn().mockImplementation(async () => JSON.parse(JSON.stringify(getShared().settings))),
         listChatGroups: vi.fn().mockImplementation(async () => Array.from(getShared().groups.values()).map(g => JSON.parse(JSON.stringify(g)))),
+        loadChatGroup: vi.fn().mockResolvedValue(null),
         updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
           const s = getShared();
           const current = s.chats.get(id);

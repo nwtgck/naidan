@@ -6,8 +6,15 @@ import { useLayout } from '@/composables/useLayout';
 import {
   Settings2,
   MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus,
-  ChefHat, Search
+  ChefHat, Search, Folder,
 } from 'lucide-vue-next';
+import type { Mount } from '@/models/types';
+import VolumeCreator from './VolumeCreator.vue';
+import MountBadgeList from './MountBadgeList.vue';
+import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { VfsExplorerDirectory } from './file-explorer/explorer-directory';
+import { WeshVFS } from '@/services/wesh/vfs';
+import { storageService } from '@/services/storage';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 
@@ -32,9 +39,13 @@ const chatStore = useChat();
 const {
   currentChatGroup,
   fetchingModels,
+  addMountToChatGroup,
+  removeMountFromChatGroup,
+  updateChatGroupMount,
 } = chatStore;
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
+const { openFileExplorer } = useFileExplorerModal();
 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
@@ -50,6 +61,45 @@ const localSettings = ref<Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'auto
 
 // Recipe Export State
 const showExportModal = ref(false);
+
+// Folder (volume) management for chat group
+const chatGroupMounts = computed<readonly Mount[]>(() => currentChatGroup.value?.mounts ?? []);
+const existingChatGroupMountPaths = computed(() => chatGroupMounts.value.map(m => m.mountPath));
+
+async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
+  if (!currentChatGroup.value) return;
+  await addMountToChatGroup({
+    groupId: currentChatGroup.value.id,
+    mount: { type: 'volume', volumeId, mountPath, readOnly },
+  });
+}
+
+async function handleChatGroupMountRemove({ volumeId }: { volumeId: string }) {
+  if (!currentChatGroup.value) return;
+  await removeMountFromChatGroup({ groupId: currentChatGroup.value.id, volumeId });
+}
+
+async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
+  if (!currentChatGroup.value) return;
+  const mount = chatGroupMounts.value.find(m => m.volumeId === volumeId);
+  if (!mount) return;
+  await updateChatGroupMount({ groupId: currentChatGroup.value.id, volumeId, mountPath: mount.mountPath, readOnly });
+}
+
+async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {
+  const mounts = chatGroupMounts.value;
+  if (mounts.length === 0) return;
+  const vfs = new WeshVFS({ rootHandle: undefined });
+  for (const m of mounts) {
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
+    if (!handle) continue;
+    await vfs.mount({ path: m.mountPath, handle, readOnly: m.readOnly });
+  }
+  const rootDir = new VfsExplorerDirectory({ name: 'Files', path: '/', vfs });
+  const clickedMount = mounts.find(m => m.volumeId === volumeId);
+  const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
+  openFileExplorer({ kind: 'explorer', root: rootDir, initialPath, title: 'Folders' });
+}
 
 function handleCreateRecipe() {
   showExportModal.value = true;
@@ -678,6 +728,33 @@ defineExpose({
             <LmParametersEditor
               :model-value="localSettings.lmParameters"
               @update:model-value="val => { localSettings.lmParameters = val; saveChanges(); }"
+            />
+          </div>
+
+          <!-- Folders -->
+          <div class="space-y-3">
+            <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <Folder class="w-3 h-3" />
+              Folders
+            </label>
+
+            <!-- Active chat group mounts (badge style) -->
+            <div v-if="chatGroupMounts.length > 0" data-testid="chat-group-mounts">
+              <MountBadgeList
+                :mounts="chatGroupMounts"
+                path-trim-prefix="/home/user/"
+                :show-explorer="true"
+                @toggle-read-only="handleChatGroupMountToggleReadOnly"
+                @remove="handleChatGroupMountRemove"
+                @open-explorer="handleOpenChatGroupMountExplorer"
+              />
+            </div>
+
+            <!-- Add Folder / Copy Folder buttons -->
+            <VolumeCreator
+              :existing-mount-paths="existingChatGroupMountPaths"
+              mount-path-prefix="/home/user/"
+              @created="handleVolumeCreated"
             />
           </div>
         </div>

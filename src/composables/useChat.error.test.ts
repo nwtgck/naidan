@@ -19,6 +19,7 @@ vi.mock('../services/storage', () => ({
     getFile: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
     notify: vi.fn(),
     canPersistBinary: true,
     getCurrentType: vi.fn().mockReturnValue('local'),

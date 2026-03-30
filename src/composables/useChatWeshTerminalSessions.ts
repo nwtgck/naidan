@@ -14,9 +14,11 @@ const store = createWeshTerminalSessions({
 
 async function buildWorkerMountsForChat({
   chatMounts,
+  chatGroupMounts,
   chatId,
 }: {
   chatMounts: readonly Mount[];
+  chatGroupMounts: readonly Mount[] | undefined;
   chatId: string | undefined;
 }): Promise<WeshMount[]> {
   const { settings } = useSettings();
@@ -37,7 +39,21 @@ async function buildWorkerMountsForChat({
     result.push({ path: mount.mountPath, handle, readOnly: mount.readOnly });
   }
 
-  // Chat mounts override any global mount sharing the same path.
+  // Chat group mounts override any global mount sharing the same path.
+  for (const mount of chatGroupMounts ?? []) {
+    if (mount.type !== 'volume') continue;
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+    if (!handle) continue;
+    const existing = result.findIndex(m => m.path === mount.mountPath);
+    const entry: WeshMount = { path: mount.mountPath, handle, readOnly: mount.readOnly };
+    if (existing >= 0) {
+      result[existing] = entry;
+    } else {
+      result.push(entry);
+    }
+  }
+
+  // Chat mounts override any global or chat group mount sharing the same path.
   for (const mount of chatMounts) {
     if (mount.type !== 'volume') continue;
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
@@ -54,15 +70,17 @@ async function buildWorkerMountsForChat({
   return result;
 }
 
+type SessionArgs = { chatMounts: readonly Mount[]; chatGroupMounts: readonly Mount[] | undefined; chatId: string | undefined };
+
 export function useChatWeshTerminalSessions() {
   return {
     ...store,
-    createChatWorkerSession: ({ chatMounts, chatId }: { chatMounts: readonly Mount[]; chatId: string | undefined }) =>
-      store.createSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatId }) }),
-    ensureActiveSession: ({ chatMounts, chatId }: { chatMounts: readonly Mount[]; chatId: string | undefined }) =>
-      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatId }) }),
-    reopenSessionIfNeeded: ({ chatMounts, chatId }: { chatMounts: readonly Mount[]; chatId: string | undefined }) =>
-      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatId }) }),
+    createChatWorkerSession: ({ chatMounts, chatGroupMounts, chatId }: SessionArgs) =>
+      store.createSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId }) }),
+    ensureActiveSession: ({ chatMounts, chatGroupMounts, chatId }: SessionArgs) =>
+      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId }) }),
+    reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId }: SessionArgs) =>
+      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId }) }),
     __testOnly: {
       buildWorkerMountsForChat,
     },

@@ -92,7 +92,7 @@ describe('ChatWeshTerminalModal', () => {
     ];
 
     mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts, chatId: 'chat-1' },
+      props: { isOpen: true, chatMounts, chatGroupMounts: undefined, chatId: 'chat-1' },
     });
     await flushPromises();
 
@@ -111,7 +111,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('does not call ensureChatTmpDirectory when chatId is undefined', async () => {
     mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatId: undefined },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined },
     });
     await flushPromises();
 
@@ -120,7 +120,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('shows session tab and new session button when open with no chat mounts', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatId: undefined },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined },
     });
     await flushPromises();
 
@@ -131,7 +131,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('asks for confirmation before closing a session', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatId: undefined },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined },
     });
     await flushPromises();
 

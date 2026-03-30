@@ -44,6 +44,7 @@ vi.mock('../services/storage', () => ({
     updateChatGroup: vi.fn().mockResolvedValue(undefined),
     listChats: vi.fn().mockResolvedValue([]),
     listChatGroups: vi.fn().mockResolvedValue([]),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
   },
 }));
 

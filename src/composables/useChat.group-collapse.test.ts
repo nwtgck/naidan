@@ -17,6 +17,7 @@ vi.mock('../services/storage', () => ({
     deleteChat: vi.fn(),
     updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
     updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),

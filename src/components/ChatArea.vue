@@ -64,6 +64,7 @@ const {
 } = useLayout();
 const {
   currentChat,
+  currentChatGroup,
   generatingTitle,
   activeMessages,
   allMessages,
@@ -853,6 +854,7 @@ watch(
     <ChatWeshTerminalModal
       :is-open="isChatWeshTerminalOpen"
       :chat-mounts="currentChat?.mounts"
+      :chat-group-mounts="currentChatGroup?.mounts"
       :chat-id="currentChat?.id"
       @close="toggleChatWeshTerminal()"
     />

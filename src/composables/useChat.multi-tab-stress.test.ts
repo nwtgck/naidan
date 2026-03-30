@@ -60,6 +60,7 @@ vi.mock('../services/storage', () => ({
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
     updateHierarchy: vi.fn().mockResolvedValue(undefined),
     getSidebarStructure: vi.fn().mockImplementation(async () => {
       return [...mocks.mockRootItems];
