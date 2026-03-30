@@ -853,6 +853,7 @@ watch(
     <ChatWeshTerminalModal
       :is-open="isChatWeshTerminalOpen"
       :chat-mounts="currentChat?.mounts"
+      :chat-id="currentChat?.id"
       @close="toggleChatWeshTerminal()"
     />
 

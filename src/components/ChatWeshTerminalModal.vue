@@ -9,6 +9,7 @@ import type { Mount } from '@/models/types';
 const props = defineProps<{
   isOpen: boolean;
   chatMounts: readonly Mount[] | undefined;
+  chatId: string | undefined;
 }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 
@@ -27,7 +28,7 @@ const paneRef = ref<InstanceType<typeof WeshTerminalPane> | null>(null);
 
 watch(() => props.isOpen, async (open) => {
   if (!open) return;
-  await reopenSessionIfNeeded({ chatMounts: props.chatMounts ?? [] });
+  await reopenSessionIfNeeded({ chatMounts: props.chatMounts ?? [], chatId: props.chatId });
   await nextTick();
   paneRef.value?.focusInput();
 }, { immediate: true });
@@ -84,7 +85,7 @@ defineExpose({
           :active-session-id="activeSessionId"
           @update:active-session-id="(id) => (activeSessionId = id)"
           @run="({ script }) => runCommand({ script })"
-          @create-session="createChatWorkerSession({ chatMounts: chatMounts ?? [] })"
+          @create-session="createChatWorkerSession({ chatMounts: chatMounts ?? [], chatId })"
           @close-session="handleCloseSession"
           @cancel="({ sessionId }) => cancelRunningCommand({ sessionId })"
         />

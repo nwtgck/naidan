@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getVolumeDirectoryHandle: vi.fn().mockResolvedValue({} as FileSystemDirectoryHandle),
   getDirectory: vi.fn(),
   showConfirm: vi.fn(),
+  ensureChatTmpDirectory: vi.fn(),
 }));
 
 vi.mock('@/composables/useSettings', () => ({
@@ -41,6 +42,12 @@ vi.mock('@/composables/useConfirm', () => ({
   }),
 }));
 
+vi.mock('@/composables/useChat', () => ({
+  useChat: () => ({
+    ensureChatTmpDirectory: mocks.ensureChatTmpDirectory,
+  }),
+}));
+
 vi.mock('lucide-vue-next', () => ({
   X: { template: '<span>X</span>' },
   Terminal: { template: '<span>Terminal</span>' },
@@ -48,9 +55,12 @@ vi.mock('lucide-vue-next', () => ({
 }));
 
 describe('ChatWeshTerminalModal', () => {
+  const tmpHandle = { name: 'tmp' } as unknown as FileSystemDirectoryHandle;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.showConfirm.mockResolvedValue(true);
+    mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
     mocks.createClient.mockResolvedValue({
       startExecution: mocks.startExecution,
       awaitExecution: mocks.awaitExecution,
@@ -76,18 +86,20 @@ describe('ChatWeshTerminalModal', () => {
     });
   });
 
-  it('creates a session with combined global and chat mounts', async () => {
+  it('creates a session with /tmp, global, and chat mounts', async () => {
     const chatMounts = [
       { type: 'volume' as const, volumeId: 'chat-vol', mountPath: '/home/user/chat', readOnly: false },
     ];
 
     mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts },
+      props: { isOpen: true, chatMounts, chatId: 'chat-1' },
     });
     await flushPromises();
 
+    expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
     expect(mocks.createClient).toHaveBeenCalledWith(expect.objectContaining({
       mounts: expect.arrayContaining([
+        expect.objectContaining({ path: '/tmp', handle: tmpHandle, readOnly: false }),
         expect.objectContaining({ path: '/home/user/global', readOnly: true }),
         expect.objectContaining({ path: '/home/user/chat', readOnly: false }),
       ]),
@@ -97,9 +109,18 @@ describe('ChatWeshTerminalModal', () => {
     }));
   });
 
+  it('does not call ensureChatTmpDirectory when chatId is undefined', async () => {
+    mount(ChatWeshTerminalModal, {
+      props: { isOpen: true, chatMounts: [], chatId: undefined },
+    });
+    await flushPromises();
+
+    expect(mocks.ensureChatTmpDirectory).not.toHaveBeenCalled();
+  });
+
   it('shows session tab and new session button when open with no chat mounts', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [] },
+      props: { isOpen: true, chatMounts: [], chatId: undefined },
     });
     await flushPromises();
 
@@ -110,7 +131,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('asks for confirmation before closing a session', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [] },
+      props: { isOpen: true, chatMounts: [], chatId: undefined },
     });
     await flushPromises();
 

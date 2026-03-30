@@ -1,5 +1,6 @@
 import { storageService } from '@/services/storage';
 import { useSettings } from '@/composables/useSettings';
+import { useChat } from '@/composables/useChat';
 import { createWeshTerminalSessions } from '@/composables/useWeshTerminalSessions';
 import type { WeshMount } from '@/services/wesh/types';
 import type { Mount } from '@/models/types';
@@ -11,11 +12,24 @@ const store = createWeshTerminalSessions({
   initialCwd: '/home/user',
 });
 
-async function buildWorkerMountsForChat({ chatMounts }: { chatMounts: readonly Mount[] }): Promise<WeshMount[]> {
+async function buildWorkerMountsForChat({
+  chatMounts,
+  chatId,
+}: {
+  chatMounts: readonly Mount[];
+  chatId: string | undefined;
+}): Promise<WeshMount[]> {
   const { settings } = useSettings();
   const result: WeshMount[] = [];
 
-  // Global settings mounts first.
+  // /tmp first (same order as shell_execute tool), only when chatId is known.
+  if (chatId) {
+    const { ensureChatTmpDirectory } = useChat();
+    const tmp = await ensureChatTmpDirectory({ chatId });
+    result.push({ path: '/tmp', handle: tmp.handle, readOnly: false });
+  }
+
+  // Global settings mounts.
   for (const mount of settings.value.mounts) {
     if (mount.type !== 'volume') continue;
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
@@ -43,12 +57,12 @@ async function buildWorkerMountsForChat({ chatMounts }: { chatMounts: readonly M
 export function useChatWeshTerminalSessions() {
   return {
     ...store,
-    createChatWorkerSession: ({ chatMounts }: { chatMounts: readonly Mount[] }) =>
-      store.createSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts }) }),
-    ensureActiveSession: ({ chatMounts }: { chatMounts: readonly Mount[] }) =>
-      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts }) }),
-    reopenSessionIfNeeded: ({ chatMounts }: { chatMounts: readonly Mount[] }) =>
-      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts }) }),
+    createChatWorkerSession: ({ chatMounts, chatId }: { chatMounts: readonly Mount[]; chatId: string | undefined }) =>
+      store.createSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatId }) }),
+    ensureActiveSession: ({ chatMounts, chatId }: { chatMounts: readonly Mount[]; chatId: string | undefined }) =>
+      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatId }) }),
+    reopenSessionIfNeeded: ({ chatMounts, chatId }: { chatMounts: readonly Mount[]; chatId: string | undefined }) =>
+      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatId }) }),
     __testOnly: {
       buildWorkerMountsForChat,
     },
