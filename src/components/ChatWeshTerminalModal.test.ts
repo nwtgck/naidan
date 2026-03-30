@@ -92,8 +92,8 @@ describe('ChatWeshTerminalModal', () => {
         expect.objectContaining({ path: '/home/user/chat', readOnly: false }),
       ]),
       user: 'user',
-      initialEnv: {},
-      initialCwd: undefined,
+      initialEnv: { HOME: '/home/user' },
+      initialCwd: '/home/user',
     }));
   });
 
