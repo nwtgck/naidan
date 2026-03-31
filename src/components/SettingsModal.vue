@@ -17,7 +17,8 @@ import {
   CpuIcon, InfoIcon,
   ChefHatIcon,
   DownloadIcon, BrainCircuitIcon,
-  FolderIcon
+  FolderIcon,
+  FileIcon,
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
@@ -327,7 +328,7 @@ defineExpose({
               :class="activeTab === 'binary_objects' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-files"
             >
-              <File class="w-4 h-4" />
+              <FileIcon class="w-4 h-4" />
               Files
             </button>
             <button

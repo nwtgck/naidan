@@ -67,7 +67,7 @@ defineExpose({
 
         <div class="mt-4 flex items-center justify-between gap-4">
           <p class="text-[11px] font-medium leading-relaxed" :class="isFeatureEnabled({ feature: 'volume' }) ? 'text-red-800/80 dark:text-red-200/80' : 'text-gray-600 dark:text-gray-300'">
-            {{ isFeatureEnabled({ feature: 'volume' }) ? 'Experimental feature is active for this browser profile. Future updates may break compatibility.' : 'Hidden by default. Enable only if you want to try the experimental feature.' }}
+            {{ isFeatureEnabled({ feature: 'volume' }) ? 'Enabled by default for this browser profile. Disable it here if you need to hide the experimental feature.' : 'Disabled for this browser profile. Re-enable it here if you want to restore the experimental feature.' }}
           </p>
           <button
             @click="handleFeatureToggle({ feature: 'volume' })"
@@ -105,7 +105,7 @@ defineExpose({
 
         <div class="mt-4 flex items-center justify-between gap-4">
           <p class="text-[11px] font-medium leading-relaxed" :class="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'text-red-800/80 dark:text-red-200/80' : 'text-gray-600 dark:text-gray-300'">
-            {{ isFeatureEnabled({ feature: 'wesh_tool' }) ? 'Experimental feature is active for this browser profile. Future updates may break compatibility.' : 'Hidden by default. Enable only if you want to try the experimental feature.' }}
+            {{ isFeatureEnabled({ feature: 'wesh_tool' }) ? 'Enabled by default for this browser profile. Disable it here if you need to hide the experimental feature.' : 'Disabled for this browser profile. Re-enable it here if you want to restore the experimental feature.' }}
           </p>
           <button
             @click="handleFeatureToggle({ feature: 'wesh_tool' })"
@@ -123,7 +123,7 @@ defineExpose({
       <div class="flex items-start gap-3">
         <FlaskConicalIcon class="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
         <p class="text-[11px] font-medium text-amber-800/80 dark:text-amber-200/80 leading-relaxed">
-          Enabling an experimental feature requires acknowledging that future updates may break compatibility or remove the feature entirely.
+          Experimental features stay behind explicit feature flags so new flags can follow the same structure, even when current ones are enabled by default.
         </p>
       </div>
     </div>
