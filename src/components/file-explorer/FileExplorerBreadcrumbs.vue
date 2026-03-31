@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject, ref } from 'vue';
-import { ChevronRight, ChevronLeft } from 'lucide-vue-next';
+import { ChevronRightIcon, ChevronLeftIcon } from 'lucide-vue-next';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
@@ -65,7 +65,7 @@ defineExpose({
       data-testid="breadcrumb-back"
       @click="ctx.navigateUp()"
     >
-      <ChevronLeft class="w-3.5 h-3.5 text-gray-500" />
+      <ChevronLeftIcon class="w-3.5 h-3.5 text-gray-500" />
     </button>
 
     <!-- Editable path bar -->
@@ -95,7 +95,7 @@ defineExpose({
         >
           {{ seg.name }}
         </button>
-        <ChevronRight
+        <ChevronRightIcon
           v-if="i < ctx.pathSegments.length - 1"
           class="w-3 h-3 text-gray-300 dark:text-gray-600 shrink-0"
         />

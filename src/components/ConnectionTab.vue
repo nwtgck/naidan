@@ -6,9 +6,9 @@ import { useToast } from '@/composables/useToast';
 import type { ProviderProfile, Settings } from '@/models/types';
 import { capitalize, naturalSort } from '@/utils/string';
 import {
-  Loader2, Trash2, Globe, Bot, Type, Save,
-  CheckCircle2, BookmarkPlus,
-  Check, Activity, MessageSquareQuote, Plus, Link
+  Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
+  CheckCircle2Icon, BookmarkPlusIcon,
+  CheckIcon, ActivityIcon, MessageSquareQuoteIcon, PlusIcon, LinkIcon
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
@@ -289,7 +289,7 @@ defineExpose({
           <section class="space-y-6">
             <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
               <div class="flex items-center gap-2">
-                <Globe class="w-5 h-5 text-blue-500" />
+                <GlobeIcon class="w-5 h-5 text-blue-500" />
                 <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Endpoint Configuration</h2>
               </div>
               <button
@@ -298,8 +298,8 @@ defineExpose({
                 title="Copy URL with current settings"
                 data-testid="setting-copy-setup-url"
               >
-                <Check v-if="copied" class="w-3 h-3" />
-                <Link v-else class="w-3 h-3" />
+                <CheckIcon v-if="copied" class="w-3 h-3" />
+                <LinkIcon v-else class="w-3 h-3" />
                 <span>{{ copied ? 'URL Copied!' : 'Copy Setup URL' }}</span>
               </button>
             </div>
@@ -360,16 +360,16 @@ defineExpose({
                     data-testid="setting-check-connection"
                   >
                     <span class="relative w-4 h-4 flex items-center justify-center">
-                      <Loader2 v-if="isFetchingModels" class="w-4 h-4 animate-spin absolute" />
-                      <Check v-else-if="connectionSuccess" class="w-4 h-4 text-green-600 dark:text-green-400 animate-in zoom-in duration-300" />
-                      <Activity v-else class="w-4 h-4" />
+                      <Loader2Icon v-if="isFetchingModels" class="w-4 h-4 animate-spin absolute" />
+                      <CheckIcon v-else-if="connectionSuccess" class="w-4 h-4 text-green-600 dark:text-green-400 animate-in zoom-in duration-300" />
+                      <ActivityIcon v-else class="w-4 h-4" />
                     </span>
                     <span class="text-xs font-bold">{{ connectionSuccess ? 'Connected' : 'Check Connection' }}</span>
                   </button>
                 </div>
                 <!-- Info message about auto-connection check -->
                 <div class="flex items-start gap-3 p-4 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700/80 dark:text-blue-300/80 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/20 ml-1">
-                  <Globe class="w-4 h-4 shrink-0 mt-0.5" />
+                  <GlobeIcon class="w-4 h-4 shrink-0 mt-0.5" />
                   <p>Connection check is automatically performed only for localhost URLs.</p>
                 </div>
                 <!-- Error message container -->
@@ -387,7 +387,7 @@ defineExpose({
                     type="button"
                     class="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1"
                   >
-                    <Plus class="w-3 h-3" />
+                    <PlusIcon class="w-3 h-3" />
                     Add Header
                   </button>
                 </div>
@@ -414,7 +414,7 @@ defineExpose({
                       @click="removeHeader(index)"
                       class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                     >
-                      <Trash2 class="w-4 h-4" />
+                      <Trash2Icon class="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -425,7 +425,7 @@ defineExpose({
 
           <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
             <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-              <Bot class="w-5 h-5 text-blue-500" />
+              <BotIcon class="w-5 h-5 text-blue-500" />
               <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Model Selection</h2>
             </div>
 
@@ -450,7 +450,7 @@ defineExpose({
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-3">
                     <div class="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
-                      <Type class="w-4 h-4 text-blue-500" />
+                      <TypeIcon class="w-4 h-4 text-blue-500" />
                     </div>
                     <span class="text-sm font-bold text-gray-700 dark:text-gray-300">Auto-Title Generation</span>
                   </div>
@@ -485,7 +485,7 @@ defineExpose({
 
           <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">
             <div class="flex items-center gap-2 pb-3">
-              <MessageSquareQuote class="w-5 h-5 text-blue-500" />
+              <MessageSquareQuoteIcon class="w-5 h-5 text-blue-500" />
               <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Global Context & Parameters</h2>
             </div>
 
@@ -520,7 +520,7 @@ defineExpose({
         class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-6 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl md:rounded-2xl text-xs md:text-sm font-bold transition-all shadow-sm active:scale-95"
         data-testid="setting-save-provider-profile-button"
       >
-        <BookmarkPlus class="w-4 h-4" />
+        <BookmarkPlusIcon class="w-4 h-4" />
         <span>Save as New Profile</span>
       </button>
 
@@ -530,8 +530,8 @@ defineExpose({
         class="flex items-center justify-center gap-2 py-2.5 px-4 md:py-3 md:px-10 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs md:text-sm font-bold rounded-xl md:rounded-2xl shadow-lg shadow-blue-500/30 transition-all active:scale-95"
         data-testid="setting-save-button"
       >
-        <CheckCircle2 v-if="saveSuccess" class="w-4 h-4" />
-        <Save v-else class="w-4 h-4" />
+        <CheckCircle2Icon v-if="saveSuccess" class="w-4 h-4" />
+        <SaveIcon v-else class="w-4 h-4" />
         <span>{{ saveSuccess ? 'Settings Saved' : 'Save Changes' }}</span>
       </button>
     </div>

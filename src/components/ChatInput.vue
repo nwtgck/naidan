@@ -25,10 +25,10 @@ const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEd
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
 
 import {
-  Square, Minimize2, Maximize2, Send,
-  X, Image,
-  ChevronDown, ChevronUp, Edit2, FileEdit,
-  Loader2,
+  SquareIcon, Minimize2Icon, Maximize2Icon, SendIcon,
+  XIcon, ImageIcon,
+  ChevronDownIcon, ChevronUpIcon, Edit2Icon, FileEditIcon,
+  Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
 import { useRouter } from 'vue-router';
@@ -1118,7 +1118,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           <div class="px-3 pt-3 pb-2.5">
             <div class="flex items-center justify-between mb-2">
               <span class="flex items-center gap-1.5 text-xs font-bold text-blue-700 dark:text-blue-300">
-                <Loader2 class="w-3.5 h-3.5 animate-spin shrink-0" />
+                <Loader2Icon class="w-3.5 h-3.5 animate-spin shrink-0" />
                 Copying "{{ copy.name }}"
               </span>
               <div class="flex items-center gap-3">
@@ -1171,14 +1171,14 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-blue-500 shadow-sm transition-colors touch-visible"
               title="Edit Image"
             >
-              <Edit2 class="w-3 h-3" />
+              <Edit2Icon class="w-3 h-3" />
             </button>
             <button
               @click="removeAttachment(att.id)"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors touch-visible"
               title="Remove"
             >
-              <X class="w-3 h-3" />
+              <XIcon class="w-3 h-3" />
             </button>
           </div>
         </div>
@@ -1210,8 +1210,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           :title="isMaximized ? 'Minimize Input' : 'Maximize Input'"
           data-testid="maximize-button"
         >
-          <Minimize2 v-if="isMaximized" class="w-4 h-4" />
-          <Maximize2 v-else class="w-4 h-4" />
+          <Minimize2Icon v-if="isMaximized" class="w-4 h-4" />
+          <Maximize2Icon v-else class="w-4 h-4" />
         </button>
 
         <button
@@ -1220,8 +1220,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           :title="visibility === 'submerged' ? 'Show Input' : 'Hide Input'"
           data-testid="submerge-button"
         >
-          <ChevronUp v-if="visibility === 'submerged'" class="w-4 h-4" />
-          <ChevronDown v-else class="w-4 h-4" />
+          <ChevronUpIcon v-if="visibility === 'submerged'" class="w-4 h-4" />
+          <ChevronDownIcon v-else class="w-4 h-4" />
         </button>
 
         <button
@@ -1230,7 +1230,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           title="Open Advanced Editor"
           data-testid="open-advanced-editor-button"
         >
-          <FileEdit class="w-4 h-4" />
+          <FileEditIcon class="w-4 h-4" />
         </button>
       </div>
 
@@ -1290,12 +1290,12 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         >
           <template v-if="isCurrentChatStreaming">
             <span class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
-            <Square class="w-4 h-4 fill-white text-white" />
+            <SquareIcon class="w-4 h-4 fill-white text-white" />
           </template>
           <template v-else>
             <span class="text-[10px] font-bold opacity-90 hidden sm:inline tracking-wider">{{ sendShortcutText }}</span>
-            <Image v-if="isImageMode" class="w-4 h-4 text-white" />
-            <Send v-else class="w-4 h-4" />
+            <ImageIcon v-if="isImageMode" class="w-4 h-4 text-white" />
+            <SendIcon v-else class="w-4 h-4" />
           </template>
         </button>
       </div>

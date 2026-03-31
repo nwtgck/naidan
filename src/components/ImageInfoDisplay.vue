@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
-import { Info, Copy, Check } from 'lucide-vue-next';
+import { InfoIcon, CopyIcon, CheckIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
   /** The generation prompt */
@@ -74,7 +74,7 @@ defineExpose({
       title="Image Info"
       data-testid="image-info-button"
     >
-      <Info class="w-4 h-4" />
+      <InfoIcon class="w-4 h-4" />
     </button>
 
     <div
@@ -88,8 +88,8 @@ defineExpose({
           <div class="flex items-center justify-between">
             <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Prompt</span>
             <button @click="copyPrompt" class="text-gray-400 hover:text-blue-500 transition-colors" title="Copy Prompt">
-              <Check v-if="copiedPrompt" class="w-3 h-3 text-green-500" />
-              <Copy v-else class="w-3 h-3" />
+              <CheckIcon v-if="copiedPrompt" class="w-3 h-3 text-green-500" />
+              <CopyIcon v-else class="w-3 h-3" />
             </button>
           </div>
           <p class="text-xs text-gray-700 dark:text-gray-200 line-clamp-4 break-words leading-relaxed font-medium">
@@ -111,8 +111,8 @@ defineExpose({
             <div class="flex items-center justify-between">
               <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Seed</span>
               <button @click="copySeed" class="text-gray-400 hover:text-blue-500 transition-colors" title="Copy Seed">
-                <Check v-if="copiedSeed" class="w-2.5 h-2.5 text-green-500" />
-                <Copy v-else class="w-2.5 h-2.5" />
+                <CheckIcon v-if="copiedSeed" class="w-2.5 h-2.5 text-green-500" />
+                <CopyIcon v-else class="w-2.5 h-2.5" />
               </button>
             </div>
             <span class="text-xs font-mono text-gray-700 dark:text-gray-200 truncate">{{ seed }}</span>

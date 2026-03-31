@@ -42,9 +42,9 @@ vi.mock('@/composables/useConfirm', () => ({
 }));
 
 vi.mock('lucide-vue-next', () => ({
-  X: { template: '<span>X</span>' },
-  Terminal: { template: '<span>Terminal</span>' },
-  Plus: { template: '<span>Plus</span>' },
+  XIcon: { template: '<span>X</span>' },
+  TerminalIcon: { template: '<span>Terminal</span>' },
+  PlusIcon: { template: '<span>Plus</span>' },
 }));
 
 describe('DebugWeshTerminalModal', () => {

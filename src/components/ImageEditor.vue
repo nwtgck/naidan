@@ -2,11 +2,11 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import CustomDialog from './CustomDialog.vue';
 import {
-  Check, RotateCw, FlipHorizontal, FlipVertical,
-  RotateCcw, RefreshCcw, Undo2, Redo2,
-  Crop as CropIcon, Eraser, Square, Circle,
-  Link, Link2Off, PanelRight, ZoomIn, ZoomOut,
-  Pipette
+  CheckIcon, RotateCwIcon, FlipHorizontalIcon, FlipVerticalIcon,
+  RotateCcwIcon, RefreshCcwIcon, Undo2Icon, Redo2Icon,
+  CropIcon, EraserIcon, SquareIcon, CircleIcon,
+  LinkIcon, Link2OffIcon, PanelRightIcon, ZoomInIcon, ZoomOutIcon,
+  PipetteIcon
 } from 'lucide-vue-next';
 
 interface ImageEditorProps {
@@ -769,7 +769,7 @@ defineExpose({
           class="p-2 disabled:opacity-30 hover:bg-gray-700 rounded-lg transition-colors"
           title="Undo"
         >
-          <Undo2 class="w-4 h-4" />
+          <Undo2Icon class="w-4 h-4" />
         </button>
         <button
           @click="redo"
@@ -777,7 +777,7 @@ defineExpose({
           class="p-2 disabled:opacity-30 hover:bg-gray-700 rounded-lg transition-colors"
           title="Redo"
         >
-          <Redo2 class="w-4 h-4" />
+          <Redo2Icon class="w-4 h-4" />
         </button>
       </div>
 
@@ -789,7 +789,7 @@ defineExpose({
           :class="{ 'text-blue-500 bg-blue-500/10': isSidebarOpen }"
           title="Toggle Tools Sidebar"
         >
-          <PanelRight class="w-5 h-5" />
+          <PanelRightIcon class="w-5 h-5" />
         </button>
         <div class="w-px h-6 bg-gray-800 mx-1"></div>
         <button
@@ -804,7 +804,7 @@ defineExpose({
           data-testid="image-editor-finish-button"
           class="px-6 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-500/30 flex items-center gap-2"
         >
-          <Check class="w-4 h-4" />
+          <CheckIcon class="w-4 h-4" />
           <span>Finish</span>
         </button>
       </div>
@@ -881,7 +881,7 @@ defineExpose({
                   :class="selection.shape === 'rectangle' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
                   title="Rectangular Selection"
                 >
-                  <Square class="w-3.5 h-3.5" />
+                  <SquareIcon class="w-3.5 h-3.5" />
                 </button>
                 <button
                   @click="selection.shape = 'ellipse'"
@@ -889,7 +889,7 @@ defineExpose({
                   :class="selection.shape === 'ellipse' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'"
                   title="Elliptical Selection"
                 >
-                  <Circle class="w-3.5 h-3.5" />
+                  <CircleIcon class="w-3.5 h-3.5" />
                 </button>
               </div>
 
@@ -910,7 +910,7 @@ defineExpose({
                   class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
                   title="Fill everything outside selection"
                 >
-                  <Square class="w-3 h-3" />
+                  <SquareIcon class="w-3 h-3" />
                   <span>Mask Out</span>
                 </button>
                 <button
@@ -919,7 +919,7 @@ defineExpose({
                   class="w-full py-1.5 bg-gray-900/50 hover:bg-blue-600 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-2 px-2 border border-gray-700"
                   title="Fill selection area"
                 >
-                  <Eraser class="w-3 h-3" />
+                  <EraserIcon class="w-3 h-3" />
                   <span>Mask In</span>
                 </button>
               </div>
@@ -956,7 +956,7 @@ defineExpose({
                     :class="isPickingColor ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'"
                     title="Pick color from canvas"
                   >
-                    <Pipette class="w-3.5 h-3.5" />
+                    <PipetteIcon class="w-3.5 h-3.5" />
                   </button>
                 </div>
 
@@ -996,20 +996,20 @@ defineExpose({
             <div class="bg-gray-800 p-2 rounded-xl border border-gray-700">
               <div class="grid grid-cols-2 gap-1.5">
                 <button @click="applyTransform({ type: 'rotate-l' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" title="Rotate Left">
-                  <RotateCcw class="w-3.5 h-3.5" />
+                  <RotateCcwIcon class="w-3.5 h-3.5" />
                 </button>
                 <button @click="applyTransform({ type: 'rotate-r' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" title="Rotate Right">
-                  <RotateCw class="w-3.5 h-3.5" />
+                  <RotateCwIcon class="w-3.5 h-3.5" />
                 </button>
                 <button @click="applyTransform({ type: 'flip-h' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" title="Flip Horizontal">
-                  <FlipHorizontal class="w-3.5 h-3.5" />
+                  <FlipHorizontalIcon class="w-3.5 h-3.5" />
                 </button>
                 <button @click="applyTransform({ type: 'flip-v' })" class="p-1.5 bg-gray-900/50 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-center" title="Flip Vertical">
-                  <FlipVertical class="w-3.5 h-3.5" />
+                  <FlipVerticalIcon class="w-3.5 h-3.5" />
                 </button>
               </div>
               <button @click="initEditor" class="w-full mt-2 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition-colors text-[9px] font-bold border border-red-900/30 flex items-center justify-center gap-2" title="Reset Image">
-                <RefreshCcw class="w-2.5 h-2.5" />
+                <RefreshCcwIcon class="w-2.5 h-2.5" />
                 <span>Reset</span>
               </button>
             </div>
@@ -1031,7 +1031,7 @@ defineExpose({
                   :class="resizeLock === 'locked' ? 'text-blue-400 bg-gray-900' : 'text-gray-600'"
                   :title="resizeLock === 'locked' ? 'Maintain aspect ratio' : 'Free resizing'"
                 >
-                  <component :is="resizeLock === 'locked' ? Link : Link2Off" class="w-3 h-3" />
+                  <component :is="resizeLock === 'locked' ? LinkIcon : Link2OffIcon" class="w-3 h-3" />
                 </button>
                 <input
                   type="number"
@@ -1054,13 +1054,13 @@ defineExpose({
             <div class="bg-gray-800 p-2 rounded-xl border border-gray-700">
               <div class="flex items-center gap-1 bg-gray-900/50 p-1 rounded-lg">
                 <button @click="zoom = Math.max(0.1, zoom / 1.2)" class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" title="Zoom Out">
-                  <ZoomOut class="w-3.5 h-3.5" />
+                  <ZoomOutIcon class="w-3.5 h-3.5" />
                 </button>
                 <button @click="zoom = 1; panOffset = { x: 0, y: 0 }" class="px-2 text-[10px] font-bold text-gray-400 hover:text-white transition-colors flex-[2] text-center" title="Reset Zoom">
                   {{ Math.round(zoom * 100) }}%
                 </button>
                 <button @click="zoom = Math.min(10, zoom * 1.2)" class="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-md transition-colors flex-1 flex justify-center" title="Zoom In">
-                  <ZoomIn class="w-3.5 h-3.5" />
+                  <ZoomInIcon class="w-3.5 h-3.5" />
                 </button>
               </div>
               <p class="text-[8px] text-gray-500 mt-2 text-center leading-tight">

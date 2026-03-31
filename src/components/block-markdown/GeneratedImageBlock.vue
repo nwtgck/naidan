@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue';
 import { GeneratedImageBlockSchema, getDisplayDimensions } from '@/utils/image-generation';
 import { storageService } from '@/services/storage';
-import { Image as ImageIcon, AlertTriangle } from 'lucide-vue-next';
+import { ImageIcon, AlertTriangleIcon } from 'lucide-vue-next';
 import ImageDownloadButton from '@/components/ImageDownloadButton.vue';
 import ImageInfoDisplay from '@/components/ImageInfoDisplay.vue';
 import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
@@ -150,7 +150,7 @@ defineExpose({
       class="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-xs flex flex-col items-center justify-center"
       :style="{ width: `${displayDims.width}px`, maxWidth: '100%', aspectRatio: `${displayDims.width} / ${displayDims.height}` }"
     >
-      <AlertTriangle class="w-6 h-6 mb-2" />
+      <AlertTriangleIcon class="w-6 h-6 mb-2" />
       <span>{{ error }}</span>
     </div>
 

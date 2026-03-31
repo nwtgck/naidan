@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { Shapes, ChevronDown, ChevronUp } from 'lucide-vue-next';
+import { ShapesIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
 import type { ToolCallRecord } from '@/services/tools/types';
 import LmToolCall from './LmToolCall.vue';
 
@@ -40,11 +40,11 @@ defineExpose({
         <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
              :class="isExpanded ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500 group-hover/tool-group:text-blue-600'"
         >
-          <Shapes class="w-3.5 h-3.5" :class="isExpanded ? 'text-blue-600 dark:text-blue-400' : ''" />
+          <ShapesIcon class="w-3.5 h-3.5" :class="isExpanded ? 'text-blue-600 dark:text-blue-400' : ''" />
           <span>{{ isExpanded ? 'Tool Executions' : `Show Tools (${toolCalls.length})` }}</span>
         </div>        <div class="p-0.5 text-gray-400 group-hover/tool-group:text-gray-600 dark:group-hover/tool-group:text-gray-300 transition-colors">
-          <ChevronUp v-if="isExpanded" class="w-3.5 h-3.5" />
-          <ChevronDown v-else class="w-3.5 h-3.5" />
+          <ChevronUpIcon v-if="isExpanded" class="w-3.5 h-3.5" />
+          <ChevronDownIcon v-else class="w-3.5 h-3.5" />
         </div>
       </div>
 

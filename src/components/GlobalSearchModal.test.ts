@@ -86,17 +86,17 @@ vi.mock('../services/storage', () => ({
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
-  Search: { render: () => null },
-  X: { render: () => null },
-  Loader2: { render: () => null },
-  MessageSquare: { render: () => null },
-  CornerDownRight: { render: () => null },
-  Clock: { render: () => null },
-  GitBranch: { render: () => null },
-  Folder: { render: () => null },
-  Filter: { render: () => null },
-  Check: { render: () => null },
-  Eye: { render: () => null },
+  SearchIcon: { render: () => null },
+  XIcon: { render: () => null },
+  Loader2Icon: { render: () => null },
+  MessageSquareIcon: { render: () => null },
+  CornerDownRightIcon: { render: () => null },
+  ClockIcon: { render: () => null },
+  GitBranchIcon: { render: () => null },
+  FolderIcon: { render: () => null },
+  FilterIcon: { render: () => null },
+  CheckIcon: { render: () => null },
+  EyeIcon: { render: () => null },
 }));
 
 // Mock scrollIntoView

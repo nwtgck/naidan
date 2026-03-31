@@ -4,8 +4,8 @@ import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents
 import { useOPFSExplorer } from '@/composables/useOPFSExplorer';
 import { useLayout } from '@/composables/useLayout';
 import {
-  Terminal, Trash2, AlertCircle, X, Skull,
-  Info, AlertTriangle, Bug, MoreVertical, HardDrive,
+  TerminalIcon, Trash2Icon, AlertCircleIcon, XIcon, SkullIcon,
+  InfoIcon, AlertTriangleIcon, BugIcon, MoreVerticalIcon, HardDriveIcon,
 } from 'lucide-vue-next';
 
 const { events, eventCount, errorCount, clearEvents, addErrorEvent, addInfoEvent } = useGlobalEvents();
@@ -67,10 +67,10 @@ function getEventStyle(type: GlobalEvent['type']) {
 
 function getEventIcon(type: GlobalEvent['type']) {
   switch (type) {
-  case 'error': return AlertCircle;
-  case 'warn':  return AlertTriangle;
-  case 'info':  return Info;
-  default:      return Bug;
+  case 'error': return AlertCircleIcon;
+  case 'warn':  return AlertTriangleIcon;
+  case 'info':  return InfoIcon;
+  default:      return BugIcon;
   }
 }
 
@@ -108,7 +108,7 @@ defineExpose({
       class="flex items-center justify-between px-4 h-10 border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/80 dark:bg-black/40 backdrop-blur-sm sticky top-0 z-10"
     >
       <div class="flex items-center gap-2">
-        <Terminal class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        <TerminalIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
         <span class="text-[10px] font-bold text-gray-400 dark:text-gray-500 tracking-widest uppercase">System Events</span>
 
         <div
@@ -116,7 +116,7 @@ defineExpose({
           class="ml-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-500/20 border border-red-100 dark:border-red-500/50 text-[10px] font-bold text-red-600 dark:text-red-400 animate-pulse"
           data-testid="debug-error-badge"
         >
-          <AlertCircle class="w-3 h-3" />
+          <AlertCircleIcon class="w-3 h-3" />
           {{ errorCount }} Errors
         </div>
 
@@ -136,7 +136,7 @@ defineExpose({
           title="Clear Logs"
           data-testid="debug-clear-button"
         >
-          <Trash2 class="w-4 h-4" />
+          <Trash2Icon class="w-4 h-4" />
         </button>
 
         <!-- More Menu Toggle -->
@@ -147,7 +147,7 @@ defineExpose({
           data-testid="debug-menu-button"
           :class="{ 'text-blue-600 dark:text-white bg-gray-100 dark:bg-gray-700': isMenuOpen }"
         >
-          <MoreVertical class="w-4 h-4" />
+          <MoreVerticalIcon class="w-4 h-4" />
         </button>
 
         <!-- Dropdown Menu -->
@@ -162,7 +162,7 @@ defineExpose({
             class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             data-testid="trigger-test-info"
           >
-            <Info class="w-3.5 h-3.5" />
+            <InfoIcon class="w-3.5 h-3.5" />
             <span>Trigger Test Info</span>
           </button>
           <button
@@ -170,7 +170,7 @@ defineExpose({
             class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             data-testid="trigger-test-error"
           >
-            <Skull class="w-3.5 h-3.5" />
+            <SkullIcon class="w-3.5 h-3.5" />
             <span>Trigger Test Error</span>
           </button>
           <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
@@ -179,7 +179,7 @@ defineExpose({
             class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             data-testid="open-opfs-explorer"
           >
-            <HardDrive class="w-3.5 h-3.5" />
+            <HardDriveIcon class="w-3.5 h-3.5" />
             <span>Explore OPFS</span>
           </button>
         </div>
@@ -189,7 +189,7 @@ defineExpose({
           class="p-1.5 hover:text-gray-600 dark:hover:text-white text-gray-400 transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 ml-1"
           title="Close Panel"
         >
-          <X class="w-4 h-4" />
+          <XIcon class="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -197,7 +197,7 @@ defineExpose({
     <!-- Content Area -->
     <div class="h-[calc(100%-40px)] overflow-y-auto bg-gray-50/30 dark:bg-black/40 font-mono p-3 space-y-1.5" data-testid="debug-content-area">
       <div v-if="eventCount === 0" class="flex flex-col items-center justify-center h-full text-gray-400 gap-2">
-        <X class="w-8 h-8 opacity-20" />
+        <XIcon class="w-8 h-8 opacity-20" />
         <p class="text-xs font-bold uppercase tracking-widest">No events recorded</p>
       </div>
 

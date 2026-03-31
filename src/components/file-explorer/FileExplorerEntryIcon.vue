@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {
-  Folder, FileText, Image, Video, Music, File,
-  FileCode, FileJson, FileType,
+  FolderIcon, FileTextIcon, ImageIcon, VideoIcon, MusicIcon, FileIcon,
+  FileCodeIcon, FileJsonIcon, FileTypeIcon,
 } from 'lucide-vue-next';
 import type { EntryKind, MimeCategory } from './types';
 
@@ -20,7 +20,7 @@ const sizeClass = {
 
 function getIcon() {
   switch (props.kind) {
-  case 'directory': return Folder;
+  case 'directory': return FolderIcon;
   case 'file': break;
   default: {
     const _ex: never = props.kind;
@@ -29,14 +29,14 @@ function getIcon() {
   }
 
   switch (props.mimeCategory) {
-  case 'image': return Image;
-  case 'video': return Video;
-  case 'audio': return Music;
+  case 'image': return ImageIcon;
+  case 'video': return VideoIcon;
+  case 'audio': return MusicIcon;
   case 'text': {
     switch (props.extension) {
     case '.json':
     case '.jsonl':
-      return FileJson;
+      return FileJsonIcon;
     case '.ts':
     case '.tsx':
     case '.js':
@@ -53,22 +53,23 @@ function getIcon() {
     case '.c':
     case '.cpp':
     case '.cs':
-      return FileCode;
+      return FileCodeIcon;
     case '.md':
     case '.markdown':
-      return FileType;
+      return FileTypeIcon;
     default:
-      return FileText;
+      return FileTextIcon;
     }
   }
   case 'binary':
-    return File;
+    return FileIcon;
   default: {
     const _exhaustiveCheck: never = props.mimeCategory;
     void _exhaustiveCheck;
-    return File;
+    return FileIcon;
   }
   }
+
 }
 
 function getColorClass() {

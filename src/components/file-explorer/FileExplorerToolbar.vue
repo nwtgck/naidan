@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject, ref } from 'vue';
-import { LayoutGrid, List, Columns3, RefreshCw, Search, FilePlus, FolderPlus, Upload, Eye, EyeOff, X, Lock, LockOpen } from 'lucide-vue-next';
+import { LayoutGridIcon, ListIcon, Columns3Icon, RefreshCwIcon, SearchIcon, FilePlusIcon, FolderPlusIcon, UploadIcon, EyeIcon, EyeOffIcon, XIcon, LockIcon, LockOpenIcon } from 'lucide-vue-next';
 import FileExplorerBreadcrumbs from './FileExplorerBreadcrumbs.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import type { ViewMode } from './types';
@@ -26,9 +26,9 @@ async function handleFileInputChange(event: Event): Promise<void> {
 }
 
 const viewModes: Array<{ mode: ViewMode; icon: unknown; title: string }> = [
-  { mode: 'icon', icon: LayoutGrid, title: 'Icon view' },
-  { mode: 'list', icon: List, title: 'List view' },
-  { mode: 'column', icon: Columns3, title: 'Column view' },
+  { mode: 'icon', icon: LayoutGridIcon, title: 'Icon view' },
+  { mode: 'list', icon: ListIcon, title: 'List view' },
+  { mode: 'column', icon: Columns3Icon, title: 'Column view' },
 ];
 
 async function handleRefresh(): Promise<void> {
@@ -102,7 +102,7 @@ defineExpose({
           : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
         @click="ctx.togglePreviewVisibility()"
       >
-        <component :is="ctx.previewState.visibility === 'visible' ? Eye : EyeOff" class="w-3.5 h-3.5" />
+        <component :is="ctx.previewState.visibility === 'visible' ? EyeIcon : EyeOffIcon" class="w-3.5 h-3.5" />
       </button>
 
       <button
@@ -114,7 +114,7 @@ defineExpose({
           : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
         @click="ctx.toggleLock()"
       >
-        <component :is="ctx.isLocked ? Lock : LockOpen" class="w-3.5 h-3.5" />
+        <component :is="ctx.isLocked ? LockIcon : LockOpenIcon" class="w-3.5 h-3.5" />
       </button>
 
       <button
@@ -126,7 +126,7 @@ defineExpose({
           : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'"
         @click="toggleSearch"
       >
-        <Search class="w-3.5 h-3.5" />
+        <SearchIcon class="w-3.5 h-3.5" />
       </button>
 
       <button
@@ -139,7 +139,7 @@ defineExpose({
         :disabled="ctx.readOnly"
         @click="!ctx.readOnly && handleUploadClick()"
       >
-        <Upload class="w-3.5 h-3.5" />
+        <UploadIcon class="w-3.5 h-3.5" />
       </button>
       <input
         ref="fileInputRef"
@@ -160,7 +160,7 @@ defineExpose({
         :disabled="ctx.readOnly"
         @click="!ctx.readOnly && handleNewFile()"
       >
-        <FilePlus class="w-3.5 h-3.5" />
+        <FilePlusIcon class="w-3.5 h-3.5" />
       </button>
 
       <button
@@ -173,7 +173,7 @@ defineExpose({
         :disabled="ctx.readOnly"
         @click="!ctx.readOnly && handleNewFolder()"
       >
-        <FolderPlus class="w-3.5 h-3.5" />
+        <FolderPlusIcon class="w-3.5 h-3.5" />
       </button>
 
       <button
@@ -182,13 +182,13 @@ defineExpose({
         :class="isRefreshing ? 'animate-spin' : ''"
         @click="handleRefresh"
       >
-        <RefreshCw class="w-3.5 h-3.5" />
+        <RefreshCwIcon class="w-3.5 h-3.5" />
       </button>
     </div>
 
     <!-- Search bar -->
     <div v-if="isSearchOpen" class="flex items-center gap-2 px-3 pb-2">
-      <Search class="w-3.5 h-3.5 text-gray-400 shrink-0" />
+      <SearchIcon class="w-3.5 h-3.5 text-gray-400 shrink-0" />
       <input
         :value="ctx.filterQuery"
         type="text"
@@ -202,7 +202,7 @@ defineExpose({
         class="p-0.5 rounded text-gray-400 hover:text-gray-600 transition-colors"
         @click="ctx.setFilterQuery({ query: '' })"
       >
-        <X class="w-3 h-3" />
+        <XIcon class="w-3 h-3" />
       </button>
     </div>
   </div>

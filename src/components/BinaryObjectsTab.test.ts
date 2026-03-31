@@ -130,10 +130,10 @@ async function* mockAsyncIterable(items: BinaryObject[]) {
 }
 
 const globalStubs = {
-  File: true, Search: true, ArrowUp: true, ArrowDown: true, Download: true,
-  Eye: true, Calendar: true, HardDrive: true, ChevronRight: true,
-  Trash2: true, RefreshCw: true, LayoutGrid: true, List: true, X: true,
-  Info: true,
+  File: true, SearchIcon: true, ArrowUp: true, ArrowDownIcon: true, DownloadIcon: true,
+  EyeIcon: true, Calendar: true, HardDriveIcon: true, ChevronRightIcon: true,
+  Trash2Icon: true, RefreshCwIcon: true, LayoutGridIcon: true, ListIcon: true, XIcon: true,
+  InfoIcon: true,
 };
 
 describe('BinaryObjectsTab.vue', () => {

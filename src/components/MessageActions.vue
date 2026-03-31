@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { GitFork, Pencil, Copy, Check, RefreshCw, Send, MoreVertical, History, MoreHorizontal } from 'lucide-vue-next';
+import { GitForkIcon, PencilIcon, CopyIcon, CheckIcon, RefreshCwIcon, SendIcon, MoreVerticalIcon, HistoryIcon, MoreHorizontalIcon } from 'lucide-vue-next';
 import type { MessageNode, LmParameters } from '@/models/types';
 import { isImageGenerationPending } from '@/utils/image-generation';
 import SpeechControl from './SpeechControl.vue';
@@ -68,7 +68,7 @@ defineExpose({
       :class="showExtensions ? 'text-blue-600 bg-blue-100/50 dark:bg-blue-800/50' : 'text-blue-600/40 dark:text-blue-400/40 hover:text-blue-600'"
       title="More Message Tools"
     >
-      <MoreHorizontal class="w-3.5 h-3.5" />
+      <MoreHorizontalIcon class="w-3.5 h-3.5" />
     </button>
 
     <!-- Footer Extensions Slot (Seamless transition) -->
@@ -87,7 +87,7 @@ defineExpose({
       title="Regenerate response"
       data-testid="regenerate-button"
     >
-      <RefreshCw class="w-3.5 h-3.5" />
+      <RefreshCwIcon class="w-3.5 h-3.5" />
     </button>
     <button
       v-if="isUser"
@@ -96,7 +96,7 @@ defineExpose({
       title="Resend message"
       data-testid="resend-button"
     >
-      <Send class="w-3.5 h-3.5" />
+      <SendIcon class="w-3.5 h-3.5" />
     </button>
     <button
       @click="handleCopy"
@@ -104,8 +104,8 @@ defineExpose({
       :title="copied ? 'Copied!' : 'Copy message'"
       data-testid="copy-message-button"
     >
-      <Check v-if="copied" class="w-3.5 h-3.5" />
-      <Copy v-else class="w-3.5 h-3.5" />
+      <CheckIcon v-if="copied" class="w-3.5 h-3.5" />
+      <CopyIcon v-else class="w-3.5 h-3.5" />
     </button>
     <button
       @click="emit('enter-edit-mode')"
@@ -113,7 +113,7 @@ defineExpose({
       title="Edit message"
       data-testid="edit-message-button"
     >
-      <Pencil class="w-3.5 h-3.5" />
+      <PencilIcon class="w-3.5 h-3.5" />
     </button>
 
     <!-- More Actions Menu -->
@@ -125,7 +125,7 @@ defineExpose({
         title="More actions"
         data-testid="message-more-actions-button"
       >
-        <MoreVertical class="w-3.5 h-3.5" />
+        <MoreVerticalIcon class="w-3.5 h-3.5" />
       </button>
 
       <MessageActionsMenu
@@ -138,7 +138,7 @@ defineExpose({
           class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
           data-testid="fork-message-button"
         >
-          <GitFork class="w-3.5 h-3.5" />
+          <GitForkIcon class="w-3.5 h-3.5" />
           <span>Fork Chat</span>
         </button>
 
@@ -147,7 +147,7 @@ defineExpose({
           class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
           data-testid="copy-raw-button"
         >
-          <Copy class="w-3.5 h-3.5" />
+          <CopyIcon class="w-3.5 h-3.5" />
           <span>Copy Raw</span>
         </button>
 
@@ -156,7 +156,7 @@ defineExpose({
           class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
           data-testid="compare-versions-button"
         >
-          <History class="w-3.5 h-3.5" />
+          <HistoryIcon class="w-3.5 h-3.5" />
           <span>Compare Versions</span>
         </button>
       </MessageActionsMenu>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import {
-  X, Upload, Download, FileArchive,
-  CheckCircle2, AlertTriangle, Loader2,
-  RefreshCw, CopyPlus, ArrowRight,
-  Database, Settings2, FolderInput
+  XIcon, UploadIcon, DownloadIcon, FileArchiveIcon,
+  CheckCircle2Icon, AlertTriangleIcon, Loader2Icon,
+  RefreshCwIcon, CopyPlusIcon, ArrowRightIcon,
+  DatabaseIcon, Settings2Icon, FolderInputIcon
 } from 'lucide-vue-next';
 import { ImportExportService } from '@/services/import-export/service';
 import { storageService } from '@/services/storage';
@@ -31,8 +31,8 @@ const { addToast } = useToast();
  * - Export: Sending data OUT of the app (represented by Upload/Up arrow)
  * - Import: Bringing data IN to the app (represented by Download/Down arrow)
  */
-const ExportIcon = Upload;
-const ImportIcon = Download;
+const ExportIcon = UploadIcon;
+const ImportIcon = DownloadIcon;
 
 // --- State ---
 const mode = ref<'menu' | 'export' | 'import_preview' | 'import_config' | 'processing'>('menu');
@@ -247,14 +247,14 @@ defineExpose({
           @click="emit('close')"
           class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
         >
-          <X class="w-5 h-5" />
+          <XIcon class="w-5 h-5" />
         </button>
 
         <!-- Header -->
         <div class="p-6 border-b border-gray-100 dark:border-gray-800 shrink-0">
           <div class="flex items-center gap-3">
             <div class="p-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-blue-600 dark:text-blue-400">
-              <FolderInput class="w-6 h-6" />
+              <FolderInputIcon class="w-6 h-6" />
             </div>
             <div>
               <h2 class="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -271,7 +271,7 @@ defineExpose({
 
           <!-- Error Message -->
           <div v-if="error" class="mb-6 p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-2xl flex items-start gap-3">
-            <AlertTriangle class="w-5 h-5 text-red-500 shrink-0" />
+            <AlertTriangleIcon class="w-5 h-5 text-red-500 shrink-0" />
             <div class="flex-1">
               <h4 class="text-sm font-bold text-red-800 dark:text-red-400">Error</h4>
               <p class="text-xs text-red-600 dark:text-red-300 mt-1">{{ error }}</p>
@@ -308,7 +308,7 @@ defineExpose({
           <div v-if="mode === 'export'" class="space-y-8">
             <div class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 p-6 rounded-2xl flex flex-col items-center text-center gap-4">
               <div class="p-3 bg-white dark:bg-gray-800 rounded-full shadow-sm text-blue-600 dark:text-blue-400">
-                <FileArchive class="w-8 h-8" />
+                <FileArchiveIcon class="w-8 h-8" />
               </div>
               <div class="space-y-1">
                 <h3 class="text-lg font-bold text-gray-800 dark:text-white">Ready to Export</h3>
@@ -374,7 +374,7 @@ defineExpose({
               <h4 class="text-xs font-bold text-gray-400 uppercase tracking-widest sticky top-0 bg-white dark:bg-gray-900 pb-2">Content Preview</h4>
               <div v-for="(item, idx) in importPreview.items" :key="idx" class="text-sm">
                 <div v-if="item.type === 'chat_group'" class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                  <FolderInput class="w-4 h-4" /> {{ item.data.name }} ({{ item.data.items.length }} chats)
+                  <FolderInputIcon class="w-4 h-4" /> {{ item.data.name }} ({{ item.data.items.length }} chats)
                 </div>
                 <div v-else class="pl-6 text-gray-600 dark:text-gray-300 flex items-center gap-2">
                   <div class="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></div>
@@ -387,7 +387,7 @@ defineExpose({
               <button @click="resetState" class="px-6 py-2.5 rounded-xl font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Cancel</button>
               <button @click="mode = 'import_config'" class="px-8 py-2.5 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all active:scale-95 flex items-center gap-2">
                 Next
-                <ArrowRight class="w-4 h-4" />
+                <ArrowRightIcon class="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -399,7 +399,7 @@ defineExpose({
             <section class="space-y-4">
               <div class="flex items-center justify-between">
                 <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                  <Database class="w-4 h-4 text-blue-500" />
+                  <DatabaseIcon class="w-4 h-4 text-blue-500" />
                   Mode & Data Strategy
                 </h3>
                 <div class="flex gap-2">
@@ -419,7 +419,7 @@ defineExpose({
                        :class="activePreset === 'append' ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300'">
                   <div class="flex items-center justify-between">
                     <div class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                      <CopyPlus class="w-4 h-4" /> Append (Merge)
+                      <CopyPlusIcon class="w-4 h-4" /> Append (Merge)
                     </div>
                     <input type="radio" :checked="activePreset === 'append'" @change="applyPreset('append')" class="w-4 h-4 accent-blue-600" />
                   </div>
@@ -430,7 +430,7 @@ defineExpose({
                        :class="activePreset === 'replace' ? 'border-blue-500 bg-blue-50/20 dark:bg-blue-900/10' : 'border-gray-100 dark:border-gray-800 hover:border-blue-300'">
                   <div class="flex items-center justify-between">
                     <div class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                      <RefreshCw class="w-4 h-4" /> Replace (Restore)
+                      <RefreshCwIcon class="w-4 h-4" /> Replace (Restore)
                     </div>
                     <input type="radio" :checked="activePreset === 'replace'" @change="applyPreset('replace')" class="w-4 h-4 accent-blue-600" />
                   </div>
@@ -457,7 +457,7 @@ defineExpose({
             <section class="space-y-4">
               <div class="flex items-center justify-between">
                 <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                  <Settings2 class="w-4 h-4 text-blue-500" />
+                  <Settings2Icon class="w-4 h-4 text-blue-500" />
                   Settings & Profiles
                 </h3>
               </div>
@@ -529,7 +529,7 @@ defineExpose({
                 @click="handleImportExecute"
                 class="px-8 py-2.5 rounded-xl font-bold text-white shadow-lg transition-all active:scale-95 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 shadow-blue-500/20"
               >
-                <CheckCircle2 class="w-4 h-4" />
+                <CheckCircle2Icon class="w-4 h-4" />
                 Import
               </button>
             </div>
@@ -537,7 +537,7 @@ defineExpose({
 
           <!-- PROCESSING MODE -->
           <div v-if="mode === 'processing'" class="h-full flex flex-col items-center justify-center space-y-6 min-h-[300px]">
-            <Loader2 class="w-12 h-12 text-blue-600 animate-spin" />
+            <Loader2Icon class="w-12 h-12 text-blue-600 animate-spin" />
             <p class="text-sm font-bold text-gray-500 dark:text-gray-400 animate-pulse">{{ processingMessage }}</p>
           </div>
         </div>

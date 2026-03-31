@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Image as ImageIcon, Eye, Globe } from 'lucide-vue-next';
+import { ImageIcon, EyeIcon, GlobeIcon } from 'lucide-vue-next';
 import { useExternalResourceSettings } from '@/composables/useExternalResourceSettings';
 
 const props = defineProps<{
@@ -50,11 +50,11 @@ defineExpose({
     <span class="flex items-center gap-1.5 px-2 py-0.5 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer rounded transition-colors" @click="load" :title="src">
       <ImageIcon class="w-3.5 h-3.5" />
       <span class="max-w-[150px] truncate font-medium">{{ alt || 'External Image' }}</span>
-      <Eye class="w-3.5 h-3.5 opacity-70" />
+      <EyeIcon class="w-3.5 h-3.5 opacity-70" />
     </span>
     <span class="w-[1px] h-3 bg-gray-300 dark:bg-gray-600 mx-0.5"></span>
     <button class="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors" @click="loadAll" title="Allow all external images in this session">
-      <Globe class="w-3.5 h-3.5" />
+      <GlobeIcon class="w-3.5 h-3.5" />
     </button>
   </span>
   <img

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject, ref } from 'vue';
-import { ChevronUp, ChevronDown } from 'lucide-vue-next';
+import { ChevronUpIcon, ChevronDownIcon } from 'lucide-vue-next';
 import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
 import FileExplorerEmptyState from './FileExplorerEmptyState.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
@@ -132,8 +132,8 @@ defineExpose({
           {{ col.label }}
         </span>
         <template v-if="ctx.sortConfig.field === col.field">
-          <ChevronUp v-if="ctx.sortConfig.direction === 'ascending'" class="w-3 h-3 text-blue-500" />
-          <ChevronDown v-else class="w-3 h-3 text-blue-500" />
+          <ChevronUpIcon v-if="ctx.sortConfig.direction === 'ascending'" class="w-3 h-3 text-blue-500" />
+          <ChevronDownIcon v-else class="w-3 h-3 text-blue-500" />
         </template>
       </div>
     </div>

@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { Check } from 'lucide-vue-next';
+import { CheckIcon } from 'lucide-vue-next';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 
@@ -168,7 +168,7 @@ print("hello")
     await nextTick();
 
     // Icon should change to checkmark
-    expect(wrapper.findComponent(Check).exists()).toBe(true);
+    expect(wrapper.findComponent(CheckIcon).exists()).toBe(true);
   });
 
   it('copies raw message content to clipboard via more actions menu', async () => {

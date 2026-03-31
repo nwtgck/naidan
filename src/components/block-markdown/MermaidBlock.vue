@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue';
 import mermaid from 'mermaid';
-import { Check, Copy, Code, Layout, Columns } from 'lucide-vue-next';
+import { CheckIcon, CopyIcon, CodeIcon, LayoutIcon, ColumnsIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
   code: string;
@@ -111,7 +111,7 @@ defineExpose({
           :class="mode === 'preview' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
           title="Preview"
         >
-          <Layout class="w-4 h-4" />
+          <LayoutIcon class="w-4 h-4" />
         </button>
         <button
           @click="mode = 'code'"
@@ -119,7 +119,7 @@ defineExpose({
           :class="mode === 'code' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
           title="Code"
         >
-          <Code class="w-4 h-4" />
+          <CodeIcon class="w-4 h-4" />
         </button>
         <button
           @click="mode = 'both'"
@@ -127,7 +127,7 @@ defineExpose({
           :class="mode === 'both' ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
           title="Split View"
         >
-          <Columns class="w-4 h-4" />
+          <ColumnsIcon class="w-4 h-4" />
         </button>
       </div>
 
@@ -136,8 +136,8 @@ defineExpose({
         class="p-1.5 rounded-md transition-all text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
         :title="copied ? 'Copied' : 'Copy Source'"
       >
-        <Check v-if="copied" class="w-4 h-4 text-green-500" />
-        <Copy v-else class="w-4 h-4" />
+        <CheckIcon v-if="copied" class="w-4 h-4 text-green-500" />
+        <CopyIcon v-else class="w-4 h-4" />
       </button>
     </div>
 

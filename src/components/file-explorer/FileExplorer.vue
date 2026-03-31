@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { provide } from 'vue';
-import { Loader2 } from 'lucide-vue-next';
+import { Loader2Icon } from 'lucide-vue-next';
 import FileExplorerToolbar from './FileExplorerToolbar.vue';
 import FileExplorerListView from './FileExplorerListView.vue';
 import FileExplorerIconView from './FileExplorerIconView.vue';
@@ -59,7 +59,7 @@ defineExpose({
         v-if="context.isLoading"
         class="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-900/50 z-10 pointer-events-none"
       >
-        <Loader2 class="w-5 h-5 text-gray-400 animate-spin" />
+        <Loader2Icon class="w-5 h-5 text-gray-400 animate-spin" />
       </div>
 
       <!-- Error banner -->

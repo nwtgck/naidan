@@ -14,12 +14,12 @@ describe('AboutTab GitHub Link', () => {
           'router-link': true,
           'Logo': true,
           // Icons
-          Github: true,
-          ExternalLink: true,
-          Info: true,
-          ShieldCheck: true,
-          Download: true,
-          Loader2: true,
+          GithubIcon: true,
+          ExternalLinkIcon: true,
+          InfoIcon: true,
+          ShieldCheckIcon: true,
+          DownloadIcon: true,
+          Loader2Icon: true,
         }
       }
     });

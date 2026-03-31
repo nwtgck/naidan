@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch } from 'vue';
-import { ChevronRight, ChevronDown, Copy, Check, Image as ImageIcon, File, Cpu, Eye, EyeOff } from 'lucide-vue-next';
+import { ChevronRightIcon, ChevronDownIcon, CopyIcon, CheckIcon, ImageIcon, CpuIcon, EyeIcon, EyeOffIcon } from 'lucide-vue-next';
 import createDOMPurify from 'dompurify';
 import { storageService } from '@/services/storage';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
@@ -263,7 +263,7 @@ export default {
       >
         <div class="flex items-center gap-3 overflow-hidden">
           <div class="w-3 flex justify-center shrink-0">
-            <component :is="isExpanded ? ChevronDown : ChevronRight" class="w-3 h-3 text-gray-400" />
+            <component :is="isExpanded ? ChevronDownIcon : ChevronRightIcon" class="w-3 h-3 text-gray-400" />
           </div>
 
           <span v-if="isoTimestamp" class="text-[8px] text-gray-400/60 font-mono whitespace-nowrap pr-2 border-r border-gray-200 dark:border-white/10 shrink-0">{{ isoTimestamp }}</span>
@@ -280,7 +280,7 @@ export default {
           </span>
           <div class="flex items-center gap-2 overflow-hidden">
             <span v-if="node.role === 'assistant' && node.modelId" class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/5 text-[8px] text-gray-400 font-bold border border-gray-200 dark:border-white/5 whitespace-nowrap">
-              <Cpu class="w-2.5 h-2.5" />
+              <CpuIcon class="w-2.5 h-2.5" />
               {{ node.modelId }}
             </span>
           </div>
@@ -294,7 +294,7 @@ export default {
             class="p-1 rounded-md text-gray-300 hover:text-indigo-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
             :title="finalIsCollapsed ? 'Show Content' : 'Collapse Content'"
           >
-            <component :is="finalIsCollapsed ? EyeOff : Eye" class="w-3.5 h-3.5" />
+            <component :is="finalIsCollapsed ? EyeOffIcon : EyeIcon" class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -324,8 +324,8 @@ export default {
                 data-testid="copy-content-btn"
                 class="absolute right-0 top-0 p-1.5 text-gray-400 hover:text-indigo-500 opacity-0 group-hover/content:opacity-100 transition-opacity bg-white/80 dark:bg-gray-800/80 rounded-md"
               >
-                <Check v-if="isCopied" class="w-3.5 h-3.5 text-green-500" />
-                <Copy v-else class="w-3.5 h-3.5" />
+                <CheckIcon v-if="isCopied" class="w-3.5 h-3.5 text-green-500" />
+                <CopyIcon v-else class="w-3.5 h-3.5" />
               </button>
               {{ node.content }}
             </div>

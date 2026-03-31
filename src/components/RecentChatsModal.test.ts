@@ -52,12 +52,12 @@ vi.mock('vue-router', () => ({
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
-  Search: { render: () => null },
-  X: { render: () => null },
-  Eye: { render: () => null },
-  History: { render: () => null },
-  MessageSquare: { render: () => null },
-  Folder: { render: () => null },
+  SearchIcon: { render: () => null },
+  XIcon: { render: () => null },
+  EyeIcon: { render: () => null },
+  HistoryIcon: { render: () => null },
+  MessageSquareIcon: { render: () => null },
+  FolderIcon: { render: () => null },
 }));
 
 // Mock components

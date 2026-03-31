@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
-import { Folder, MessageSquare, Loader2, ChevronRight } from 'lucide-vue-next';
+import { FolderIcon, MessageSquareIcon, Loader2Icon, ChevronRightIcon } from 'lucide-vue-next';
 import { storageService, type ChatSummary } from '@/services/storage';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import type { SearchResultItem } from '@/composables/useChatSearch';
@@ -134,7 +134,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
     <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-900/50 shrink-0">
       <div class="flex items-center gap-3">
         <div class="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-xl text-blue-600 dark:text-blue-400">
-          <Folder class="w-5 h-5" />
+          <FolderIcon class="w-5 h-5" />
         </div>
         <div>
           <h3 class="text-sm font-black text-gray-900 dark:text-gray-100 tracking-wider">{{ groupName }}</h3>
@@ -151,10 +151,10 @@ watch(() => props.groupId, loadChats, { immediate: true });
       <!-- Left: Chat List inside Group -->
       <div class="w-64 border-r border-gray-100 dark:border-gray-800 flex flex-col overflow-hidden bg-gray-50/30 dark:bg-gray-950/20 shrink-0">
         <div v-if="isLoading" class="flex-1 flex items-center justify-center">
-          <Loader2 class="w-5 h-5 animate-spin text-gray-300" />
+          <Loader2Icon class="w-5 h-5 animate-spin text-gray-300" />
         </div>
         <div v-else-if="chats.length === 0" class="flex-1 flex flex-col items-center justify-center p-6 text-center">
-          <MessageSquare class="w-8 h-8 text-gray-200 dark:text-gray-800 mb-2" />
+          <MessageSquareIcon class="w-8 h-8 text-gray-200 dark:text-gray-800 mb-2" />
           <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Empty Group</p>
         </div>
         <div v-else ref="chatListContainer" class="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-hide">
@@ -169,7 +169,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
               : 'hover:bg-gray-100 dark:hover:bg-gray-800/50 border border-transparent'"
           >
             <div class="shrink-0 p-1.5 rounded-lg bg-white/50 dark:bg-gray-900/50">
-              <MessageSquare class="w-3.5 h-3.5 text-gray-400" />
+              <MessageSquareIcon class="w-3.5 h-3.5 text-gray-400" />
             </div>
 
             <div class="flex-1 min-w-0 flex flex-col justify-center">
@@ -185,7 +185,7 @@ watch(() => props.groupId, loadChats, { immediate: true });
               class="shrink-0 p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm hover:text-blue-600 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Open Chat"
             >
-              <ChevronRight class="w-3.5 h-3.5" />
+              <ChevronRightIcon class="w-3.5 h-3.5" />
             </button>
 
             <!-- Selection Indicator -->

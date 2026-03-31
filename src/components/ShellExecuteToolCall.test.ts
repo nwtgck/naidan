@@ -8,9 +8,9 @@ vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
     ...actual,
-    ChevronDown: { render: () => h('span') },
-    ChevronRight: { render: () => h('span') },
-    WrapText: { render: () => h('span') },
+    ChevronDownIcon: { render: () => h('span') },
+    ChevronRightIcon: { render: () => h('span') },
+    WrapTextIcon: { render: () => h('span') },
   };
 });
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { z } from 'zod';
-import { ChevronDown, ChevronRight, WrapText } from 'lucide-vue-next';
+import { ChevronDownIcon, ChevronRightIcon, WrapTextIcon } from 'lucide-vue-next';
 import type { ToolExecutionResult } from '@/services/tools/types';
 
 const props = defineProps<{
@@ -109,7 +109,7 @@ defineExpose({
         :title="wrapCommand ? 'Disable wrap' : 'Enable wrap'"
         data-testid="shell-execute-wrap-toggle"
         @click.stop="wrapCommand = !wrapCommand"
-      ><WrapText class="w-3 h-3" /></button>
+      ><WrapTextIcon class="w-3 h-3" /></button>
     </div>
 
     <!-- Result -->
@@ -131,7 +131,7 @@ defineExpose({
         data-testid="shell-execute-raw-toggle"
         @click.stop="showRaw = !showRaw"
       >
-        <component :is="showRaw ? ChevronDown : ChevronRight" class="w-3 h-3" />
+        <component :is="showRaw ? ChevronDownIcon : ChevronRightIcon" class="w-3 h-3" />
         Raw JSON
       </button>
       <pre

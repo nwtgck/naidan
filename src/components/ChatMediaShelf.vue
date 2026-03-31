@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch, nextTick } from 'vue';
 import {
-  X, Info, ExternalLink, Copy, Check,
-  Image as ImageIcon, Hash, Zap, Cpu,
-  SortAsc, SortDesc
+  XIcon, InfoIcon, ExternalLinkIcon, CopyIcon, CheckIcon,
+  ImageIcon, HashIcon, ZapIcon, CpuIcon,
+  SortAscIcon, SortDescIcon
 } from 'lucide-vue-next';
 import type { MessageNode, BinaryObject } from '@/models/types';
 import { storageService } from '@/services/storage';
@@ -225,6 +225,7 @@ const handleDownload = async (item: MediaItem, { withMetadata }: { withMetadata:
       onError: (err) => addErrorEvent({
         source: 'MediaShelf:Download',
         message: 'Failed to embed metadata in image.',
+
         details: err instanceof Error ? err.message : String(err),
       })
     });
@@ -298,8 +299,8 @@ defineExpose({
           "
           :title="mediaOrder === 'forward' ? 'Currently Forward (1/N first)' : 'Currently Reverse (N/N first)'"
         >
-          <SortDesc v-if="mediaOrder === 'forward'" class="w-3 h-3" />
-          <SortAsc v-else class="w-3 h-3" />
+          <SortDescIcon v-if="mediaOrder === 'forward'" class="w-3 h-3" />
+          <SortAscIcon v-else class="w-3 h-3" />
           <span class="uppercase tracking-wider">{{ mediaOrder }}</span>
         </button>
       </div>
@@ -308,7 +309,7 @@ defineExpose({
         class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 transition-colors"
         title="Close Shelf"
       >
-        <X class="w-4 h-4" />
+        <XIcon class="w-4 h-4" />
       </button>
     </div>
 
@@ -337,7 +338,7 @@ defineExpose({
                   class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[9px] font-bold text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all uppercase tracking-widest shrink-0"
                   title="Jump to this message in chat"
                 >
-                  <ExternalLink class="w-2.5 h-2.5" />
+                  <ExternalLinkIcon class="w-2.5 h-2.5" />
                   <span>Jump</span>
                 </button>
 
@@ -352,11 +353,11 @@ defineExpose({
                   </div>
                   <div class="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/prompt:opacity-100 transition-opacity flex items-center gap-1 bg-white/80 dark:bg-gray-900/80 px-1 rounded shadow-sm">
                     <template v-if="copiedPromptId === group.messageId">
-                      <Check class="w-2.5 h-2.5 text-green-500" />
+                      <CheckIcon class="w-2.5 h-2.5 text-green-500" />
                       <span class="text-[8px] font-bold text-green-500 uppercase">Copied!</span>
                     </template>
                     <template v-else>
-                      <Copy class="w-2.5 h-2.5 text-blue-500" />
+                      <CopyIcon class="w-2.5 h-2.5 text-blue-500" />
                     </template>
                   </div>
                 </div>
@@ -406,7 +407,7 @@ defineExpose({
                   title="View details & Copy parameters"
                   @click.stop="showingInfoId = item.id"
                 >
-                  <Info class="w-4 h-4" />
+                  <InfoIcon class="w-4 h-4" />
                 </button>
               </div>
 
@@ -419,7 +420,7 @@ defineExpose({
                 <div class="flex items-center justify-between border-b dark:border-gray-800 pb-1.5 mb-1">
                   <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Parameters</span>
                   <button @click="showingInfoId = null" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-red-500 transition-colors">
-                    <X class="w-3.5 h-3.5" />
+                    <XIcon class="w-3.5 h-3.5" />
                   </button>
                 </div>
 
@@ -427,7 +428,7 @@ defineExpose({
                   <!-- Steps -->
                   <div class="flex items-center justify-between group/field">
                     <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-500">
-                      <Zap class="w-2.5 h-2.5" />
+                      <ZapIcon class="w-2.5 h-2.5" />
                       <span>Steps</span>
                     </div>
                     <button
@@ -436,16 +437,16 @@ defineExpose({
                     >
                       <span>{{ item.steps ?? 'N/A' }}</span>
                       <template v-if="copiedField === `${item.id}-steps`">
-                        <Check class="w-2.5 h-2.5 text-green-500" />
+                        <CheckIcon class="w-2.5 h-2.5 text-green-500" />
                       </template>
-                      <Copy v-else class="w-2.5 h-2.5 opacity-0 group-hover/field:opacity-100 text-blue-500" />
+                      <CopyIcon v-else class="w-2.5 h-2.5 opacity-0 group-hover/field:opacity-100 text-blue-500" />
                     </button>
                   </div>
 
                   <!-- Seed -->
                   <div class="flex items-center justify-between group/field">
                     <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-500">
-                      <Hash class="w-2.5 h-2.5" />
+                      <HashIcon class="w-2.5 h-2.5" />
                       <span>Seed</span>
                     </div>
                     <button
@@ -454,16 +455,16 @@ defineExpose({
                     >
                       <span class="truncate max-w-[60px]">{{ item.seed ?? 'N/A' }}</span>
                       <template v-if="copiedField === `${item.id}-seed`">
-                        <Check class="w-2.5 h-2.5 text-green-500" />
+                        <CheckIcon class="w-2.5 h-2.5 text-green-500" />
                       </template>
-                      <Copy v-else class="w-2.5 h-2.5 opacity-0 group-hover/field:opacity-100 text-blue-500" />
+                      <CopyIcon v-else class="w-2.5 h-2.5 opacity-0 group-hover/field:opacity-100 text-blue-500" />
                     </button>
                   </div>
 
                   <!-- Model -->
                   <div class="flex flex-col gap-1 group/field">
                     <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-500">
-                      <Cpu class="w-2.5 h-2.5" />
+                      <CpuIcon class="w-2.5 h-2.5" />
                       <span>Model</span>
                     </div>
                     <button
@@ -472,9 +473,9 @@ defineExpose({
                     >
                       <span class="truncate">{{ item.model ?? 'N/A' }}</span>
                       <template v-if="copiedField === `${item.id}-model`">
-                        <Check class="w-2.5 h-2.5 text-green-500 shrink-0" />
+                        <CheckIcon class="w-2.5 h-2.5 text-green-500 shrink-0" />
                       </template>
-                      <Copy v-else class="w-2.5 h-2.5 opacity-0 group-hover/field:opacity-100 text-blue-500 shrink-0" />
+                      <CopyIcon v-else class="w-2.5 h-2.5 opacity-0 group-hover/field:opacity-100 text-blue-500 shrink-0" />
                     </button>
                   </div>
                 </div>

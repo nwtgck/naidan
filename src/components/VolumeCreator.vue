@@ -5,12 +5,12 @@ import { storageService } from '@/services/storage';
 import { checkOPFSSupport, checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
 import { useToast } from '@/composables/useToast';
 import {
-  FolderDown,
-  FolderPlus,
-  FileDown,
-  Lock,
-  Pencil,
-  Info,
+  FolderDownIcon,
+  FolderPlusIcon,
+  FileDownIcon,
+  LockIcon,
+  PencilIcon,
+  InfoIcon,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -360,7 +360,7 @@ defineExpose({
         class="pointer-events-none absolute inset-0 z-[200] bg-blue-500/10 dark:bg-blue-400/10 backdrop-blur-[2px] flex items-center justify-center"
       >
         <div class="flex flex-col items-center gap-4 border-2 border-dashed border-blue-400 dark:border-blue-400 rounded-3xl px-16 py-14 bg-white/80 dark:bg-gray-900/80 shadow-2xl text-blue-600 dark:text-blue-300">
-          <FolderDown class="w-14 h-14" />
+          <FolderDownIcon class="w-14 h-14" />
           <div class="text-center">
             <p class="text-xl font-bold">Drop to copy to browser</p>
             <p class="text-sm font-medium text-blue-500/80 dark:text-blue-400/70 mt-1">Folder or file</p>
@@ -377,7 +377,7 @@ defineExpose({
       <div class="px-4 pt-4 pb-3">
         <div class="flex items-center justify-between mb-3">
           <span class="flex items-center gap-2 text-xs font-bold text-blue-700 dark:text-blue-300">
-            <FolderDown class="w-3.5 h-3.5 animate-pulse shrink-0" />
+            <FolderDownIcon class="w-3.5 h-3.5 animate-pulse shrink-0" />
             {{ copyingLabel }}
           </span>
           <div class="flex items-center gap-3">
@@ -416,7 +416,7 @@ defineExpose({
             ? (isAddFolderModeOpen ? 'bg-blue-700 text-white shadow-lg shadow-blue-500/20' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20')
             : 'bg-gray-100 dark:bg-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed border border-gray-200 dark:border-gray-700'"
         >
-          <FolderPlus class="w-4 h-4" />
+          <FolderPlusIcon class="w-4 h-4" />
           Add Folder
         </button>
         <div
@@ -424,7 +424,7 @@ defineExpose({
           class="flex items-stretch rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 overflow-hidden"
         >
           <button disabled class="flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-300 dark:text-gray-600 cursor-not-allowed border-r border-gray-200 dark:border-gray-700">
-            <FolderPlus class="w-4 h-4" />
+            <FolderPlusIcon class="w-4 h-4" />
             Add Folder
           </button>
           <button
@@ -433,7 +433,7 @@ defineExpose({
             :class="isAddFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'"
             title="Why is Add Folder disabled?"
           >
-            <Info class="w-3.5 h-3.5" />
+            <InfoIcon class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Mode selector popover -->
@@ -449,7 +449,7 @@ defineExpose({
             @click="pickHostVolume({ mode: 'read' })"
             class="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left"
           >
-            <Lock class="w-4 h-4 mt-0.5 shrink-0 text-green-500" />
+            <LockIcon class="w-4 h-4 mt-0.5 shrink-0 text-green-500" />
             <div>
               <p class="text-xs font-bold text-gray-800 dark:text-gray-100">Read Only</p>
               <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">AI can read files, not write</p>
@@ -460,7 +460,7 @@ defineExpose({
             @click="pickHostVolume({ mode: 'readwrite' })"
             class="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-left border-t border-gray-100 dark:border-gray-800"
           >
-            <Pencil class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
+            <PencilIcon class="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
             <div>
               <p class="text-xs font-bold text-gray-800 dark:text-gray-100">Read & Write</p>
               <p class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">AI can read and modify files</p>
@@ -493,7 +493,7 @@ defineExpose({
               ? 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
               : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'"
           >
-            <FolderDown class="w-4 h-4" />
+            <FolderDownIcon class="w-4 h-4" />
             Copy Folder
           </button>
           <button
@@ -502,7 +502,7 @@ defineExpose({
             :class="isCopyFolderInfoOpen ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 hover:text-blue-500 dark:hover:text-blue-400'"
             title="What is Copy Folder?"
           >
-            <Info class="w-3.5 h-3.5" />
+            <InfoIcon class="w-3.5 h-3.5" />
           </button>
         </div>
         <div
@@ -521,7 +521,7 @@ defineExpose({
               @click="fileInputSingle?.click(); toggleCopyFolderInfo(false)"
               class="flex items-center gap-1.5 text-[11px] text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
             >
-              <FileDown class="w-3 h-3" />
+              <FileDownIcon class="w-3 h-3" />
               Copy a single file instead
             </button>
           </div>

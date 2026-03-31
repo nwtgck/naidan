@@ -12,12 +12,12 @@ import type { ChatGroupRecipe } from '@/models/recipe';
 import { parseConcatenatedJson } from '@/utils/json-stream-parser';
 import { matchRecipeModels } from '@/utils/recipe-matcher';
 import {
-  X, Globe,
-  Database, Settings2, BookmarkPlus,
-  Cpu, Info,
-  ChefHat,
-  Download, BrainCircuit,
-  File, Folder
+  XIcon, GlobeIcon,
+  DatabaseIcon, Settings2Icon, BookmarkPlusIcon,
+  CpuIcon, InfoIcon,
+  ChefHatIcon,
+  DownloadIcon, BrainCircuitIcon,
+  FolderIcon
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
@@ -261,7 +261,7 @@ defineExpose({
           class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
           data-testid="setting-close-x"
         >
-          <X class="w-5 h-5" />
+          <XIcon class="w-5 h-5" />
         </button>
 
         <!-- Sidebar (Tabs) -->
@@ -269,7 +269,7 @@ defineExpose({
           <!-- Header -->
           <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center gap-3 shrink-0">
             <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-              <Settings2 class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+              <Settings2Icon class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
             </div>
             <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">Settings</h2>
           </div>
@@ -282,7 +282,7 @@ defineExpose({
               :class="activeTab === 'connection' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-connection"
             >
-              <Globe class="w-4 h-4" />
+              <GlobeIcon class="w-4 h-4" />
               Connection
             </button>
             <button
@@ -291,7 +291,7 @@ defineExpose({
               :class="activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-profiles"
             >
-              <BookmarkPlus class="w-4 h-4" />
+              <BookmarkPlusIcon class="w-4 h-4" />
               Provider Profiles
             </button>
             <button
@@ -300,7 +300,7 @@ defineExpose({
               :class="activeTab === 'transformers_js' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-purple-500/5 text-purple-600 dark:text-purple-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-transformers-js"
             >
-              <BrainCircuit class="w-4 h-4" />
+              <BrainCircuitIcon class="w-4 h-4" />
               Transformers.js
             </button>
             <button
@@ -309,7 +309,7 @@ defineExpose({
               :class="activeTab === 'recipes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-recipes"
             >
-              <ChefHat class="w-4 h-4" />
+              <ChefHatIcon class="w-4 h-4" />
               Recipes
             </button>
             <button
@@ -318,7 +318,7 @@ defineExpose({
               :class="activeTab === 'storage' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-storage"
             >
-              <Database class="w-4 h-4" />
+              <DatabaseIcon class="w-4 h-4" />
               Storage
             </button>
             <button
@@ -337,7 +337,7 @@ defineExpose({
               :class="activeTab === 'volumes' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-volumes"
             >
-              <Folder class="w-4 h-4" />
+              <FolderIcon class="w-4 h-4" />
               Folders
             </button>
             <button
@@ -346,7 +346,7 @@ defineExpose({
               :class="activeTab === 'developer' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-developer"
             >
-              <Cpu class="w-4 h-4" />
+              <CpuIcon class="w-4 h-4" />
               Developer
             </button>
             <button
@@ -355,7 +355,7 @@ defineExpose({
               :class="activeTab === 'about' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
               data-testid="tab-about"
             >
-              <Info class="w-4 h-4" />
+              <InfoIcon class="w-4 h-4" />
               About
             </button>
           </nav>
@@ -373,7 +373,7 @@ defineExpose({
               class="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-xl transition-all group no-underline"
               data-testid="sidebar-download-button"
             >
-              <Download class="w-4 h-4 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
+              <DownloadIcon class="w-4 h-4 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform shrink-0" />
               <div class="text-[10px] md:text-xs font-bold text-green-800 dark:text-green-300 truncate">
                 Standalone
               </div>

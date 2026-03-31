@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, provide, nextTick } from 'vue';
-import { Loader2, Eye, EyeOff, Bird } from 'lucide-vue-next';
+import { Loader2Icon, EyeIcon, EyeOffIcon, BirdIcon } from 'lucide-vue-next';
 import type { ChatFlowItem, FlowMetadata, SequenceStats } from '@/composables/useChatDisplayFlow';
 
 const props = withDefaults(defineProps<{
@@ -81,7 +81,7 @@ defineExpose({
     <!-- Turn Header (Icon + Model ID) -->
     <div v-if="isFirstInTurn" class="flex items-center gap-3 mb-1 px-5 pt-3">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <Bird class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        <BirdIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
       <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
         <span>{{ modelId || 'Assistant' }}</span>
@@ -102,8 +102,8 @@ defineExpose({
       >
         <!-- Status/Action Icon -->
         <div class="flex-shrink-0">
-          <Loader2 v-if="isProcessing && (stats.isCurrentlyThinking || stats.isCurrentlyToolRunning || stats.isWaiting)" class="w-3 h-3 animate-spin text-blue-500/70" data-testid="icon-loader" />
-          <component :is="isExpanded ? EyeOff : Eye" v-else class="w-3 h-3 transition-transform duration-300" :class="{ 'opacity-60': !isExpanded }" />
+          <Loader2Icon v-if="isProcessing && (stats.isCurrentlyThinking || stats.isCurrentlyToolRunning || stats.isWaiting)" class="w-3 h-3 animate-spin text-blue-500/70" data-testid="icon-loader" />
+          <component :is="isExpanded ? EyeOffIcon : EyeIcon" v-else class="w-3 h-3 transition-transform duration-300" :class="{ 'opacity-60': !isExpanded }" />
         </div>
 
         <!-- Summary Text -->

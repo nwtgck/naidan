@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { X, Loader2 } from 'lucide-vue-next';
+import { XIcon, Loader2Icon } from 'lucide-vue-next';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import FileExplorer from './file-explorer/FileExplorer.vue';
 import { FsExplorerDirectory } from './file-explorer/explorer-directory';
@@ -111,7 +111,7 @@ defineExpose({
             data-testid="file-explorer-modal-close"
             @click="closeFileExplorer()"
           >
-            <X class="w-4 h-4" />
+            <XIcon class="w-4 h-4" />
           </button>
         </div>
 
@@ -122,7 +122,7 @@ defineExpose({
             v-if="!root && !loadError"
             class="flex items-center justify-center h-full gap-2 text-gray-400"
           >
-            <Loader2 class="w-5 h-5 animate-spin" />
+            <Loader2Icon class="w-5 h-5 animate-spin" />
             <span class="text-sm">Loading…</span>
           </div>
 

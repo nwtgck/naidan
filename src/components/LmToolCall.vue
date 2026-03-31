@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp } from 'lucide-vue-next';
+import { HammerIcon, CheckCircle2Icon, AlertCircleIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
 import { ref } from 'vue';
 import type { ToolCallRecord } from '@/services/tools/types';
 
@@ -50,9 +50,9 @@ defineExpose({
           toolCall.status === 'success' ? 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400' : '',
           toolCall.status === 'error' ? 'bg-red-100/50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : ''
         ]">
-          <Hammer v-if="toolCall.status === 'executing'" class="w-3 h-3 animate-bounce" />
-          <CheckCircle2 v-else-if="toolCall.status === 'success'" class="w-3 h-3" />
-          <AlertCircle v-else class="w-3 h-3" />
+          <HammerIcon v-if="toolCall.status === 'executing'" class="w-3 h-3 animate-bounce" />
+          <CheckCircle2Icon v-else-if="toolCall.status === 'success'" class="w-3 h-3" />
+          <AlertCircleIcon v-else class="w-3 h-3" />
         </div>
 
         <div class="flex flex-col">
@@ -68,8 +68,8 @@ defineExpose({
       </div>
 
       <button class="p-1 text-gray-400 group-hover/tool:text-gray-600 dark:group-hover/tool:text-gray-300 transition-colors">
-        <ChevronUp v-if="isExpanded" class="w-3.5 h-3.5" />
-        <ChevronDown v-else class="w-3.5 h-3.5" />
+        <ChevronUpIcon v-if="isExpanded" class="w-3.5 h-3.5" />
+        <ChevronDownIcon v-else class="w-3.5 h-3.5" />
       </button>
     </div>
 

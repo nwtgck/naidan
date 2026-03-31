@@ -4,8 +4,8 @@ import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import {
-  X, Settings2,
-  MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus
+  XIcon, Settings2Icon,
+  MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
@@ -278,7 +278,7 @@ defineExpose({
         <div class="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800 shrink-0">
           <div class="flex items-center gap-2">
             <div class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
-              <Settings2 class="w-4 h-4 text-blue-600" />
+              <Settings2Icon class="w-4 h-4 text-blue-600" />
             </div>
             <h3 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Chat Specific Overrides</h3>
           </div>
@@ -297,7 +297,7 @@ defineExpose({
               class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
               data-testid="close-button"
             >
-              <X class="w-5 h-5" />
+              <XIcon class="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -384,7 +384,7 @@ defineExpose({
                   type="button"
                   class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
                 >
-                  <Plus class="w-2.5 h-2.5" />
+                  <PlusIcon class="w-2.5 h-2.5" />
                   Add Header
                 </button>
               </div>
@@ -413,7 +413,7 @@ defineExpose({
                     @click="removeHeader(index)"
                     class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                   >
-                    <Trash2 class="w-3.5 h-3.5" />
+                    <Trash2Icon class="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -454,7 +454,7 @@ defineExpose({
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3">
                 <div class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
-                  <Settings2 class="w-4 h-4 text-blue-600" />
+                  <Settings2Icon class="w-4 h-4 text-blue-600" />
                 </div>
                 <div>
                   <h4 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Automatic Title</h4>
@@ -513,7 +513,7 @@ defineExpose({
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="flex items-start gap-4 p-4 bg-white dark:bg-blue-900/10 border border-gray-100 dark:border-blue-900/30 rounded-2xl shadow-sm">
               <div class="p-2 bg-blue-50 dark:bg-gray-800 rounded-xl border border-blue-100 dark:border-blue-900/20">
-                <Globe class="w-4 h-4 text-blue-500" />
+                <GlobeIcon class="w-4 h-4 text-blue-500" />
               </div>
               <div class="space-y-1">
                 <p class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">Auto-Check</p>
@@ -523,7 +523,7 @@ defineExpose({
 
             <div class="flex items-start gap-4 p-4 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
               <div class="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                <AlertCircle class="w-4 h-4 text-gray-400" />
+                <AlertCircleIcon class="w-4 h-4 text-gray-400" />
               </div>
               <div class="space-y-1">
                 <p class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Local Overrides</p>
@@ -547,7 +547,7 @@ defineExpose({
               <div class="md:col-span-2 space-y-4">
                 <div class="flex items-center justify-between">
                   <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                    <MessageSquareQuote class="w-3 h-3" />
+                    <MessageSquareQuoteIcon class="w-3 h-3" />
                     Chat System Prompt
                   </label>
 
@@ -606,7 +606,7 @@ defineExpose({
 
               <div class="space-y-4">
                 <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  <Layers class="w-3 h-3" />
+                  <LayersIcon class="w-3 h-3" />
                   Settings Resolution
                 </label>
                 <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3">

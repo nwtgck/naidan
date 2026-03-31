@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { Plus, X } from 'lucide-vue-next';
+import { PlusIcon, XIcon } from 'lucide-vue-next';
 import type { WeshTerminalSession, WeshTerminalLineKind, WeshTerminalSessionState } from '@/composables/useWeshTerminalSessions';
 
 const props = defineProps<{
@@ -179,7 +179,7 @@ defineExpose({ focusInput,
         aria-label="Close session"
         @click.stop="emit('close-session', { sessionId: session.id })"
       >
-        <X class="w-2.5 h-2.5" />
+        <XIcon class="w-2.5 h-2.5" />
       </button>
     </div>
 
@@ -188,7 +188,7 @@ defineExpose({ focusInput,
       data-testid="new-session-button"
       @click="emit('create-session')"
     >
-      <Plus class="w-3 h-3" />
+      <PlusIcon class="w-3 h-3" />
       New
     </button>
   </div>

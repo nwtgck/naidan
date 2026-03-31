@@ -61,18 +61,18 @@ vi.mock('vue-router', () => ({
 }));
 
 vi.mock('lucide-vue-next', () => ({
-  X: { template: '<span>X</span>' },
-  Globe: { template: '<span>Globe</span>' },
-  Database: { template: '<span>Database</span>' },
-  Settings2: { template: '<span>Settings2</span>' },
-  BookmarkPlus: { template: '<span>BookmarkPlus</span>' },
-  Cpu: { template: '<span>Cpu</span>' },
-  Info: { template: '<span>Info</span>' },
-  ChefHat: { template: '<span>ChefHat</span>' },
-  Download: { template: '<span>Download</span>' },
-  BrainCircuit: { template: '<span>BrainCircuit</span>' },
-  File: { template: '<span>File</span>' },
-  Folder: { template: '<span>Folder</span>' },
+  XIcon: { template: '<span>X</span>' },
+  GlobeIcon: { template: '<span>Globe</span>' },
+  DatabaseIcon: { template: '<span>Database</span>' },
+  Settings2Icon: { template: '<span>Settings2</span>' },
+  BookmarkPlusIcon: { template: '<span>BookmarkPlus</span>' },
+  CpuIcon: { template: '<span>Cpu</span>' },
+  InfoIcon: { template: '<span>Info</span>' },
+  ChefHatIcon: { template: '<span>ChefHat</span>' },
+  DownloadIcon: { template: '<span>Download</span>' },
+  BrainCircuitIcon: { template: '<span>BrainCircuit</span>' },
+  FileIcon: { template: '<span>File</span>' },
+  FolderIcon: { template: '<span>Folder</span>' },
 }));
 
 describe('SettingsModal feature flags', () => {

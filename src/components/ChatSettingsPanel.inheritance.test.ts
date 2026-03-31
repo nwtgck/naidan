@@ -23,12 +23,12 @@ describe('ChatSettingsPanel Inheritance UI', () => {
   });
 
   const globalStubs = {
-    X: true,
-    RefreshCw: true,
-    Globe: true,
-    Loader2: true,
-    Settings2: true,
-    AlertCircle: true,
+    XIcon: true,
+    RefreshCwIcon: true,
+    GlobeIcon: true,
+    Loader2Icon: true,
+    Settings2Icon: true,
+    AlertCircleIcon: true,
     Layers: true,
     MessageSquareQuote: true,
     LmParametersEditor: true,

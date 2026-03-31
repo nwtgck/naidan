@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { inject, computed } from 'vue';
-import { Braces, Download, FileText, Loader2, AlertCircle, X } from 'lucide-vue-next';
+import { BracesIcon, DownloadIcon, FileTextIcon, Loader2Icon, AlertCircleIcon, XIcon } from 'lucide-vue-next';
 import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import { formatSize, formatDate } from './utils';
@@ -39,7 +39,7 @@ defineExpose({
         title="Close preview"
         @click="ctx.togglePreviewVisibility()"
       >
-        <X class="w-3.5 h-3.5 text-gray-400" />
+        <XIcon class="w-3.5 h-3.5 text-gray-400" />
       </button>
     </div>
 
@@ -47,18 +47,18 @@ defineExpose({
     <div class="flex-1 overflow-hidden flex flex-col">
       <!-- Loading -->
       <div v-if="s.loadingState === 'loading'" class="flex items-center justify-center flex-1">
-        <Loader2 class="w-5 h-5 text-gray-400 animate-spin" />
+        <Loader2Icon class="w-5 h-5 text-gray-400 animate-spin" />
       </div>
 
       <!-- Error -->
       <div v-else-if="s.loadingState === 'error'" class="flex flex-col items-center justify-center flex-1 p-4 text-center gap-2">
-        <AlertCircle class="w-6 h-6 text-red-400" />
+        <AlertCircleIcon class="w-6 h-6 text-red-400" />
         <p class="text-xs text-red-500 dark:text-red-400">{{ s.errorMessage }}</p>
       </div>
 
       <!-- No entry selected -->
       <div v-else-if="!entry" class="flex flex-col items-center justify-center flex-1 text-gray-300 dark:text-gray-700">
-        <FileText class="w-10 h-10 mb-3 opacity-20" />
+        <FileTextIcon class="w-10 h-10 mb-3 opacity-20" />
         <p class="text-[10px] uppercase tracking-widest font-bold opacity-50">Select a file</p>
       </div>
 
@@ -73,7 +73,7 @@ defineExpose({
 
       <!-- Oversized warning -->
       <div v-else-if="s.oversized" class="flex flex-col items-center justify-center flex-1 p-4 text-center gap-3">
-        <FileText class="w-8 h-8 text-gray-300 dark:text-gray-600" />
+        <FileTextIcon class="w-8 h-8 text-gray-300 dark:text-gray-600" />
         <p class="text-xs font-bold text-gray-600 dark:text-gray-400">File is too large to preview</p>
         <p class="text-[10px] text-gray-400">{{ formatSize({ bytes: entry.size }) }}</p>
         <button
@@ -97,14 +97,14 @@ defineExpose({
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'"
               @click="ctx.toggleJsonFormat()"
             >
-              <Braces class="w-3 h-3" />
+              <BracesIcon class="w-3 h-3" />
               Format
             </button>
             <button
               class="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
               @click="ctx.downloadEntry({ entry })"
             >
-              <Download class="w-3 h-3" />
+              <DownloadIcon class="w-3 h-3" />
             </button>
           </div>
         </div>
@@ -157,7 +157,7 @@ defineExpose({
           class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-700 dark:text-gray-300"
           @click="ctx.downloadEntry({ entry })"
         >
-          <Download class="w-3.5 h-3.5" />
+          <DownloadIcon class="w-3.5 h-3.5" />
           Download
         </button>
       </div>

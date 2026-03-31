@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue';
-import { Volume2, Pause, Square, RotateCcw } from 'lucide-vue-next';
+import { Volume2Icon, PauseIcon, SquareIcon, RotateCcwIcon } from 'lucide-vue-next';
 import { webSpeechService } from '@/services/web-speech';
 import { isImageGenerationPending, isImageGenerationProcessed } from '@/utils/image-generation';
 
@@ -106,18 +106,18 @@ defineExpose({
         data-testid="speech-toggle-mini"
       >
 
-        <Pause v-if="isPlaying" class="w-3.5 h-3.5" />
-        <Volume2 v-else class="w-3.5 h-3.5" />
+        <PauseIcon v-if="isPlaying" class="w-3.5 h-3.5" />
+        <Volume2Icon v-else class="w-3.5 h-3.5" />
       </button>
     </template>
 
     <!-- Full View (Footer) -->
     <template v-else>
-      <button @click="handleRestartSpeech" class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-md" title="Restart"><RotateCcw class="w-3.5 h-3.5" /></button>
-      <button @click="handleStopSpeech" class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-red-500 dark:hover:text-red-400 rounded-md" title="Stop"><Square class="w-3.5 h-3.5" /></button>
+      <button @click="handleRestartSpeech" class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-md" title="Restart"><RotateCcwIcon class="w-3.5 h-3.5" /></button>
+      <button @click="handleStopSpeech" class="p-1.5 text-blue-600/60 dark:text-blue-400/60 hover:text-red-500 dark:hover:text-red-400 rounded-md" title="Stop"><SquareIcon class="w-3.5 h-3.5" /></button>
       <button @click="handleToggleSpeech" class="p-1.5 rounded-md transition-colors text-blue-600 dark:text-blue-400 hover:bg-blue-100/50 dark:hover:bg-blue-800/50" :title="isPaused ? 'Resume' : 'Pause'">
-        <Pause v-if="isPlaying && webSpeechService.state.status !== 'waiting'" class="w-4 h-4" />
-        <Volume2 v-else class="w-4 h-4" />
+        <PauseIcon v-if="isPlaying && webSpeechService.state.status !== 'waiting'" class="w-4 h-4" />
+        <Volume2Icon v-else class="w-4 h-4" />
       </button>
     </template>
   </div>

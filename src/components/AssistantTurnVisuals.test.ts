@@ -12,10 +12,10 @@ vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as any;
   return {
     ...actual,
-    Bird: { render: () => h('span', { 'data-testid': 'icon-bird' }) },
-    User: { render: () => h('span', { 'data-testid': 'icon-user' }) },
-    Eye: { render: () => h('span', { 'data-testid': 'icon-eye' }) },
-    EyeOff: { render: () => h('span', { 'data-testid': 'icon-eye-off' }) },
+    BirdIcon: { render: () => h('span', { 'data-testid': 'icon-bird' }) },
+    UserIcon: { render: () => h('span', { 'data-testid': 'icon-user' }) },
+    EyeIcon: { render: () => h('span', { 'data-testid': 'icon-eye' }) },
+    EyeOffIcon: { render: () => h('span', { 'data-testid': 'icon-eye-off' }) },
   };
 });
 

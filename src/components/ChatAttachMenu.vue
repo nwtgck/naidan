@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { onClickOutside } from '@vueuse/core';
-import { Plus, Files, FolderSymlink, FolderDown, Info } from 'lucide-vue-next';
+import { PlusIcon, FilesIcon, FolderSymlinkIcon, FolderDownIcon, InfoIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
   hasFileSystemAccess: boolean;
@@ -65,7 +65,7 @@ defineExpose({
       title="Attach files or folder"
       data-testid="attach-button"
     >
-      <Plus class="w-5 h-5" />
+      <PlusIcon class="w-5 h-5" />
     </button>
 
     <div
@@ -78,7 +78,7 @@ defineExpose({
         class="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
         data-testid="attach-files-button"
       >
-        <Files class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
+        <FilesIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
         Files
       </button>
 
@@ -91,7 +91,7 @@ defineExpose({
             class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
             data-testid="attach-folder-link-button"
           >
-            <FolderSymlink class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
+            <FolderSymlinkIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
             Folder (link)
           </button>
           <button
@@ -100,7 +100,7 @@ defineExpose({
             :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
             title="What is Folder (link)?"
           >
-            <Info class="w-3.5 h-3.5" />
+            <InfoIcon class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Unavailable -->
@@ -109,7 +109,7 @@ defineExpose({
             disabled
             class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-300 dark:text-gray-600 cursor-not-allowed text-left"
           >
-            <FolderSymlink class="w-4 h-4 shrink-0" />
+            <FolderSymlinkIcon class="w-4 h-4 shrink-0" />
             Folder (link)
           </button>
           <button
@@ -118,7 +118,7 @@ defineExpose({
             :class="isFolderLinkInfoOpen ? 'text-blue-500' : 'text-gray-300 dark:text-gray-600 hover:text-blue-500'"
             title="Why is Folder (link) unavailable?"
           >
-            <Info class="w-3.5 h-3.5" />
+            <InfoIcon class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Info panel for link -->
@@ -136,7 +136,7 @@ defineExpose({
             class="flex items-center gap-2.5 flex-1 px-3 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors text-left"
             data-testid="attach-folder-copy-button"
           >
-            <FolderDown class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
+            <FolderDownIcon class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" />
             Folder (copy)
           </button>
           <button
@@ -145,7 +145,7 @@ defineExpose({
             :class="isFolderCopyInfoOpen ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500 hover:text-blue-500'"
             title="What is Folder (copy)?"
           >
-            <Info class="w-3.5 h-3.5" />
+            <InfoIcon class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Info panel for copy -->

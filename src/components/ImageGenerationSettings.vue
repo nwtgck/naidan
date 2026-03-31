@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue';
-import { Image, Loader2, Check, ArrowLeftRight, Dice5 } from 'lucide-vue-next';
+import { ImageIcon, Loader2Icon, CheckIcon, ArrowLeftRightIcon, Dice5Icon } from 'lucide-vue-next';
 import ModelSelector from './ModelSelector.vue';
 
 defineOptions({
@@ -126,10 +126,10 @@ defineExpose({
     :class="isImageMode ? 'text-blue-600 font-bold bg-blue-50/50 dark:bg-blue-900/10' : 'text-gray-600 dark:text-gray-300'"
     data-testid="toggle-image-mode-button"
   >
-    <Image class="w-4 h-4" :class="isImageMode ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'" />
+    <ImageIcon class="w-4 h-4" :class="isImageMode ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'" />
     <span class="flex-1">Create image (Experimental)</span>
-    <Check v-if="isImageMode" class="w-4 h-4 text-blue-500" />
-    <Loader2 v-if="isProcessing && isImageMode" class="w-3 h-3 animate-spin text-blue-500" />
+    <CheckIcon v-if="isImageMode" class="w-4 h-4 text-blue-500" />
+    <Loader2Icon v-if="isProcessing && isImageMode" class="w-3 h-3 animate-spin text-blue-500" />
   </button>
 
   <div v-if="isImageMode" class="border-t dark:border-gray-700 mt-1">
@@ -177,7 +177,7 @@ defineExpose({
             class="p-1 text-gray-400 hover:text-blue-500 transition-colors"
             title="Swap Width and Height"
           >
-            <ArrowLeftRight class="w-3 h-3" />
+            <ArrowLeftRightIcon class="w-3 h-3" />
           </button>
           <input
             type="number"
@@ -243,7 +243,7 @@ defineExpose({
               : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-blue-500/50'"
             title="Explicitly generate random seed in browser for each image"
           >
-            <Dice5 class="w-3 h-3" />
+            <Dice5Icon class="w-3 h-3" />
           </button>
           <div class="flex-1 relative">
             <input

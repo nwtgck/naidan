@@ -5,7 +5,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useOPFSExplorer } from '@/composables/useOPFSExplorer';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { Terminal, HardDrive, MoreVertical, History, Box, FolderSearch } from 'lucide-vue-next';
+import { TerminalIcon, HardDriveIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon } from 'lucide-vue-next';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 
 defineProps<{
@@ -48,7 +48,7 @@ defineExpose({
       title="Debug Events"
       data-testid="sidebar-debug-button"
     >
-      <Terminal class="w-4 h-4" />
+      <TerminalIcon class="w-4 h-4" />
       <div
         v-if="errorCount > 0"
         class="absolute -top-1 -right-1 flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold shadow-sm animate-pulse"
@@ -67,7 +67,7 @@ defineExpose({
         title="More Actions"
         data-testid="sidebar-opfs-menu-button"
       >
-        <MoreVertical class="w-4 h-4" />
+        <MoreVerticalIcon class="w-4 h-4" />
       </button>
 
       <MessageActionsMenu
@@ -87,7 +87,7 @@ defineExpose({
             data-testid="sidebar-recent-button"
           >
             <div class="flex items-center gap-3">
-              <History class="w-4 h-4" />
+              <HistoryIcon class="w-4 h-4" />
               <span>Recent Chats</span>
             </div>
             <kbd class="hidden group-hover:inline-block px-1 py-0.5 text-[9px] font-sans font-medium text-gray-400 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Ctrl+P</kbd>
@@ -97,7 +97,7 @@ defineExpose({
             class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
             data-testid="sidebar-opfs-button"
           >
-            <HardDrive class="w-4 h-4" />
+            <HardDriveIcon class="w-4 h-4" />
             <span>OPFS Explorer</span>
           </button>
           <button
@@ -105,14 +105,14 @@ defineExpose({
             class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
             data-testid="sidebar-file-explorer-button"
           >
-            <FolderSearch class="w-4 h-4" />
+            <FolderSearchIcon class="w-4 h-4" />
             <span>File Explorer</span>
           </button>
           <button
             @click="toggleWeshTerminal(); showOpfsMenu = false"
             class="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors font-medium"
           >
-            <Box class="w-4 h-4" />
+            <BoxIcon class="w-4 h-4" />
             <span>Wesh Terminal</span>
           </button>
         </div>
@@ -126,7 +126,7 @@ defineExpose({
     :class="{ 'text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800': isDebugOpen }"
     title="Debug Events"
   >
-    <Terminal class="w-4 h-4" />
+    <TerminalIcon class="w-4 h-4" />
     <div
       v-if="errorCount > 0"
       class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm animate-pulse border-2 border-white dark:border-gray-900"

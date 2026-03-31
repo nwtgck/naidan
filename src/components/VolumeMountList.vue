@@ -3,18 +3,18 @@ import { ref, computed } from 'vue';
 import type { Volume, Mount } from '@/models/types';
 import { useToast } from '@/composables/useToast';
 import {
-  FolderSymlink,
-  FolderDown,
-  Eye,
-  EyeOff,
-  Settings2,
-  Lock,
-  Unlock,
-  Pencil,
-  Check,
-  X,
-  Trash2,
-  MoreHorizontal,
+  FolderSymlinkIcon,
+  FolderDownIcon,
+  EyeIcon,
+  EyeOffIcon,
+  Settings2Icon,
+  LockIcon,
+  UnlockIcon,
+  PencilIcon,
+  CheckIcon,
+  XIcon,
+  Trash2Icon,
+  MoreHorizontalIcon,
 } from 'lucide-vue-next';
 
 const { addToast } = useToast();
@@ -137,7 +137,7 @@ defineExpose({
     <section v-if="mountedVolumes.length > 0" class="space-y-4">
       <div class="flex items-center justify-between px-1">
         <h3 class="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest flex items-center gap-2">
-          <Eye class="w-3 h-3" />
+          <EyeIcon class="w-3 h-3" />
           {{ inUseSectionLabel ?? 'In Use' }}
         </h3>
         <span class="text-[10px] font-bold text-gray-400">{{ mountedVolumes.length }} active</span>
@@ -152,8 +152,8 @@ defineExpose({
           <div class="p-4 flex items-center justify-between gap-4">
             <div class="flex items-center gap-4 flex-1 min-w-0">
               <div class="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 shrink-0">
-                <FolderSymlink v-if="volume.type === 'host'" class="w-5 h-5" />
-                <FolderDown v-else class="w-5 h-5" />
+                <FolderSymlinkIcon v-if="volume.type === 'host'" class="w-5 h-5" />
+                <FolderDownIcon v-else class="w-5 h-5" />
               </div>
 
               <div class="min-w-0 flex-1">
@@ -168,8 +168,8 @@ defineExpose({
                       @keydown.escape="cancelEditingName()"
                       v-focus
                     />
-                    <button data-testid="volume-name-save" @click="saveVolumeName({ volId: volume.id })" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><Check class="w-3.5 h-3.5" /></button>
-                    <button data-testid="volume-name-cancel" @click="cancelEditingName()" class="p-1 text-gray-400 hover:text-gray-600 shrink-0" title="Cancel"><X class="w-3.5 h-3.5" /></button>
+                    <button data-testid="volume-name-save" @click="saveVolumeName({ volId: volume.id })" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><CheckIcon class="w-3.5 h-3.5" /></button>
+                    <button data-testid="volume-name-cancel" @click="cancelEditingName()" class="p-1 text-gray-400 hover:text-gray-600 shrink-0" title="Cancel"><XIcon class="w-3.5 h-3.5" /></button>
                   </template>
                   <template v-else>
                     <h3 class="font-bold text-gray-800 dark:text-white text-sm truncate">{{ volume.name }}</h3>
@@ -179,7 +179,7 @@ defineExpose({
                       @click="startEditingName({ volume })"
                       class="p-1 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                       title="Rename"
-                    ><Pencil class="w-3 h-3" /></button>
+                    ><PencilIcon class="w-3 h-3" /></button>
                   </template>
                 </div>
                 <div class="flex flex-wrap items-center gap-y-1 gap-x-2 mt-0.5">
@@ -187,7 +187,7 @@ defineExpose({
                     {{ getMount({ volId: volume.id })?.mountPath }}
                   </code>
                   <div v-if="getMount({ volId: volume.id })?.readOnly" class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-100 dark:border-green-900/30" title="Read Only">
-                    <Lock class="w-2.5 h-2.5" />
+                    <LockIcon class="w-2.5 h-2.5" />
                     <span class="text-[9px] font-bold uppercase tracking-tight">Read Only</span>
                   </div>
                   <span class="text-[10px] text-gray-400 font-medium hidden sm:inline">·</span>
@@ -203,14 +203,14 @@ defineExpose({
                 class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
                 title="Configure"
               >
-                <Settings2 class="w-4 h-4" />
+                <Settings2Icon class="w-4 h-4" />
               </button>
               <button
                 @click="emit('remove', { volumeId: volume.id })"
                 class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
                 title="Stop using"
               >
-                <EyeOff class="w-4 h-4" />
+                <EyeOffIcon class="w-4 h-4" />
               </button>
               <div v-if="showVolumeManagement" class="relative">
                 <button
@@ -218,7 +218,7 @@ defineExpose({
                   class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors"
                   title="More actions"
                 >
-                  <MoreHorizontal class="w-4 h-4" />
+                  <MoreHorizontalIcon class="w-4 h-4" />
                 </button>
                 <div
                   v-if="menuOpenVolumeId === volume.id"
@@ -228,7 +228,7 @@ defineExpose({
                     @click="emit('delete-volume', { volumeId: volume.id }); menuOpenVolumeId = null"
                     class="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
-                    <Trash2 class="w-3.5 h-3.5" />
+                    <Trash2Icon class="w-3.5 h-3.5" />
                     Delete
                   </button>
                 </div>
@@ -256,7 +256,7 @@ defineExpose({
                     class="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border"
                     :class="editForm.readOnly ? 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-800 dark:text-white' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-800 text-gray-400'"
                   >
-                    <Lock class="w-3 h-3" />
+                    <LockIcon class="w-3 h-3" />
                     Read Only
                   </button>
                   <button
@@ -264,7 +264,7 @@ defineExpose({
                     class="flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border"
                     :class="!editForm.readOnly ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-800 text-gray-400'"
                   >
-                    <Unlock class="w-3 h-3" />
+                    <UnlockIcon class="w-3 h-3" />
                     Read/Write
                   </button>
                 </div>
@@ -277,7 +277,7 @@ defineExpose({
                 @click="saveMountSettings({ volId: volume.id })"
                 class="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-bold hover:bg-blue-700 shadow-sm"
               >
-                <Check class="w-3 h-3" />
+                <CheckIcon class="w-3 h-3" />
                 Save Changes
               </button>
             </div>
@@ -299,8 +299,8 @@ defineExpose({
         >
           <div class="flex items-center gap-4">
             <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500">
-              <FolderSymlink v-if="volume.type === 'host'" class="w-5 h-5" />
-              <FolderDown v-else class="w-5 h-5" />
+              <FolderSymlinkIcon v-if="volume.type === 'host'" class="w-5 h-5" />
+              <FolderDownIcon v-else class="w-5 h-5" />
             </div>
             <div class="min-w-0">
               <div class="flex items-center gap-2">
@@ -314,8 +314,8 @@ defineExpose({
                     @keydown.escape="cancelEditingName()"
                     v-focus
                   />
-                  <button data-testid="volume-name-save" @click="saveVolumeName({ volId: volume.id })" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><Check class="w-3.5 h-3.5" /></button>
-                  <button data-testid="volume-name-cancel" @click="cancelEditingName()" class="p-1 text-gray-400 hover:text-gray-600 shrink-0" title="Cancel"><X class="w-3.5 h-3.5" /></button>
+                  <button data-testid="volume-name-save" @click="saveVolumeName({ volId: volume.id })" class="p-1 text-blue-500 hover:text-blue-700 shrink-0" title="Save"><CheckIcon class="w-3.5 h-3.5" /></button>
+                  <button data-testid="volume-name-cancel" @click="cancelEditingName()" class="p-1 text-gray-400 hover:text-gray-600 shrink-0" title="Cancel"><XIcon class="w-3.5 h-3.5" /></button>
                 </template>
                 <template v-else>
                   <h3 class="font-bold text-gray-600 dark:text-gray-400 text-sm truncate">{{ volume.name }}</h3>
@@ -325,7 +325,7 @@ defineExpose({
                     @click="startEditingName({ volume })"
                     class="p-1 text-gray-300 hover:text-gray-500 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                     title="Rename"
-                  ><Pencil class="w-3 h-3" /></button>
+                  ><PencilIcon class="w-3 h-3" /></button>
                 </template>
               </div>
               <div class="flex items-center gap-2 mt-0.5">
@@ -342,7 +342,7 @@ defineExpose({
               @click="emit('add', { volumeId: volume.id, mountPath: generateDefaultPath({ baseName: volume.name }), readOnly: true })"
               class="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all font-bold text-[10px]"
             >
-              <Eye class="w-3 h-3" />
+              <EyeIcon class="w-3 h-3" />
               {{ addButtonLabel ?? 'Use' }}
             </button>
             <div v-if="showVolumeManagement" class="relative">
@@ -351,7 +351,7 @@ defineExpose({
                 class="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-colors"
                 title="More actions"
               >
-                <MoreHorizontal class="w-4 h-4" />
+                <MoreHorizontalIcon class="w-4 h-4" />
               </button>
               <div
                 v-if="menuOpenVolumeId === volume.id"
@@ -361,7 +361,7 @@ defineExpose({
                   @click="emit('delete-volume', { volumeId: volume.id }); menuOpenVolumeId = null"
                   class="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                 >
-                  <Trash2 class="w-3.5 h-3.5" />
+                  <Trash2Icon class="w-3.5 h-3.5" />
                   Delete
                 </button>
               </div>

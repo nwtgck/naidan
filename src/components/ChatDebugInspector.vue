@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Bug, X, MessageSquare, Network, FileCode, Highlighter, ZapOff, ChevronLeft, ChevronRight, Eye, EyeOff, CornerUpRight } from 'lucide-vue-next';
+import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon } from 'lucide-vue-next';
 import createDOMPurify from 'dompurify';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
@@ -244,7 +244,7 @@ defineExpose({
         <div class="px-6 py-4 flex justify-between items-center bg-gray-50/50 dark:bg-white/5 border-b border-gray-100 dark:border-white/5 shrink-0">
           <div class="flex items-center gap-3">
             <div class="p-2 bg-indigo-500/10 rounded-xl">
-              <Bug class="w-5 h-5 text-indigo-500" />
+              <BugIcon class="w-5 h-5 text-indigo-500" />
             </div>
             <div>
               <h3 class="text-base font-black text-gray-800 dark:text-white tracking-tight">Chat Inspector</h3>
@@ -256,7 +256,7 @@ defineExpose({
             <!-- Mode Switcher -->
             <div class="flex bg-gray-100 dark:bg-gray-800 rounded-xl p-1 shadow-inner">
               <button
-                v-for="m in ([{id: 'active', icon: MessageSquare, label: 'Active'}, {id: 'tree', icon: Network, label: 'Tree'}, {id: 'raw', icon: FileCode, label: 'Full JSON'}] as const)"
+                v-for="m in ([{id: 'active', icon: MessageSquareIcon, label: 'Active'}, {id: 'tree', icon: NetworkIcon, label: 'Tree'}, {id: 'raw', icon: FileCodeIcon, label: 'Full JSON'}] as const)"
                 :key="m.id"
                 @click="mode = m.id"
                 class="px-4 py-1.5 rounded-lg transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider"
@@ -274,7 +274,7 @@ defineExpose({
               :class="isHighlightEnabled ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
               title="Toggle Highlighting"
             >
-              <component :is="isHighlightEnabled ? Highlighter : ZapOff" class="w-4 h-4" />
+              <component :is="isHighlightEnabled ? HighlighterIcon : ZapOffIcon" class="w-4 h-4" />
             </button>
 
             <!-- Content Collapse Toggle -->
@@ -284,13 +284,13 @@ defineExpose({
               :class="isContentCollapsed ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-400'"
               title="Toggle Content Collapse"
             >
-              <component :is="isContentCollapsed ? EyeOff : Eye" class="w-4 h-4" />
+              <component :is="isContentCollapsed ? EyeOffIcon : EyeIcon" class="w-4 h-4" />
             </button>
 
             <div class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
 
             <button @click="handleClose" class="p-2 rounded-xl text-gray-400 hover:text-red-500 hover:bg-red-500/10 transition-all active:scale-90">
-              <X class="w-6 h-6" />
+              <XIcon class="w-6 h-6" />
             </button>
           </div>
         </div>
@@ -326,7 +326,7 @@ defineExpose({
                 class="absolute right-2 top-2 p-1.5 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-white dark:hover:bg-gray-800 transition-all z-20"
                 :title="isTreeMapCollapsed ? 'Expand Tree' : 'Collapse Tree'"
               >
-                <component :is="isTreeMapCollapsed ? ChevronRight : ChevronLeft" class="w-4 h-4" />
+                <component :is="isTreeMapCollapsed ? ChevronRightIcon : ChevronLeftIcon" class="w-4 h-4" />
               </button>
 
               <div v-if="!isTreeMapCollapsed && chat?.root?.items" class="relative" :class="chat.root.items.length > 1 ? 'ml-6' : ''">
@@ -345,7 +345,7 @@ defineExpose({
                 />
               </div>
               <div v-else class="h-full flex flex-col items-center pt-12 text-gray-300">
-                <Network class="w-4 h-4 opacity-30" />
+                <NetworkIcon class="w-4 h-4 opacity-30" />
               </div>
             </div>
 
@@ -358,7 +358,7 @@ defineExpose({
                     @click="handleOpenLeaf(selectedNode!.id)"
                     class="flex items-center gap-2 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
                   >
-                    <CornerUpRight class="w-3 h-3" />
+                    <CornerUpRightIcon class="w-3 h-3" />
                     <span>Open at this leaf</span>
                   </button>
                 </div>
@@ -375,7 +375,7 @@ defineExpose({
                 />
               </div>
               <div v-else class="h-full flex flex-col items-center justify-center text-gray-400 opacity-30">
-                <Network class="w-16 h-16 mb-4 stroke-[0.5px]" />
+                <NetworkIcon class="w-16 h-16 mb-4 stroke-[0.5px]" />
                 <p class="text-[10px] font-black uppercase tracking-[0.2em]">Select a node to inspect</p>
               </div>
             </div>

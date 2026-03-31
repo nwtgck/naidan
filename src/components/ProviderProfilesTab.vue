@@ -4,7 +4,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import type { ProviderProfile } from '@/models/types';
 import {
-  BookmarkPlus, Pencil, Trash, Check
+  BookmarkPlusIcon, PencilIcon, TrashIcon, CheckIcon
 } from 'lucide-vue-next';
 import { capitalize } from '@/utils/string';
 
@@ -81,7 +81,7 @@ defineExpose({
   <div data-testid="profiles-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <BookmarkPlus class="w-5 h-5 text-blue-500" />
+        <BookmarkPlusIcon class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Provider Profiles</h2>
       </div>
 
@@ -89,7 +89,7 @@ defineExpose({
 
       <div v-if="!profiles || profiles.length === 0" class="flex flex-col items-center justify-center p-16 bg-gray-50 dark:bg-gray-800/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-800">
         <div class="p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
-          <BookmarkPlus class="w-12 h-12 text-gray-300" />
+          <BookmarkPlusIcon class="w-12 h-12 text-gray-300" />
         </div>
         <p class="text-sm text-gray-400 font-bold mb-6">No profiles saved yet.</p>
         <button
@@ -117,7 +117,7 @@ defineExpose({
                 autofocus
                 data-testid="provider-profile-rename-input"
               />
-              <button @click="saveRename" class="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-xl transition-colors"><Check class="w-5 h-5" /></button>
+              <button @click="saveRename" class="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-xl transition-colors"><CheckIcon class="w-5 h-5" /></button>
             </div>
             <div v-else class="flex items-center gap-4">
               <h3 class="text-base font-bold text-gray-800 dark:text-white truncate">{{ providerProfile.name }}</h3>
@@ -137,7 +137,7 @@ defineExpose({
               title="Rename Profile"
               data-testid="provider-profile-rename-button"
             >
-              <Pencil class="w-4 h-4" />
+              <PencilIcon class="w-4 h-4" />
             </button>
             <button
               @click="handleDeleteProviderProfile(providerProfile.id)"
@@ -145,7 +145,7 @@ defineExpose({
               title="Delete Profile"
               data-testid="provider-profile-delete-button"
             >
-              <Trash class="w-4 h-4" />
+              <TrashIcon class="w-4 h-4" />
             </button>
           </div>
         </div>

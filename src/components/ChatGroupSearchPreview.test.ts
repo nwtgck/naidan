@@ -36,10 +36,10 @@ vi.mock('../composables/useChat', () => ({
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
-  Folder: { render: () => null },
-  MessageSquare: { render: () => null },
-  Loader2: { render: () => null },
-  ChevronRight: { render: () => null },
+  FolderIcon: { render: () => null },
+  MessageSquareIcon: { render: () => null },
+  Loader2Icon: { render: () => null },
+  ChevronRightIcon: { render: () => null },
 }));
 
 // Mock SearchPreview stub (since it's async and complex)

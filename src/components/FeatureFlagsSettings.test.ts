@@ -12,10 +12,10 @@ vi.mock('@/composables/useConfirm', () => ({
 }));
 
 vi.mock('lucide-vue-next', () => ({
-  AlertTriangle: { template: '<span>AlertTriangle</span>' },
-  FlaskConical: { template: '<span>FlaskConical</span>' },
-  Folder: { template: '<span>Folder</span>' },
-  Terminal: { template: '<span>Terminal</span>' },
+  AlertTriangleIcon: { template: '<span>AlertTriangle</span>' },
+  FlaskConicalIcon: { template: '<span>FlaskConical</span>' },
+  FolderIcon: { template: '<span>Folder</span>' },
+  TerminalIcon: { template: '<span>Terminal</span>' },
 }));
 
 describe('FeatureFlagsSettings.vue', () => {

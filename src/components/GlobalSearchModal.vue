@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { Search, X, Loader2, MessageSquare, CornerDownRight, Clock, GitBranch, Folder, Filter, Check, Eye } from 'lucide-vue-next';
+import { SearchIcon, XIcon, Loader2Icon, MessageSquareIcon, CornerDownRightIcon, ClockIcon, GitBranchIcon, FolderIcon, FilterIcon, CheckIcon, EyeIcon } from 'lucide-vue-next';
 import he from 'he';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useChatSearch, type SearchResultItem, type SearchRoleFilter, type SearchScope, type ContentMatch } from '@/composables/useChatSearch';
@@ -473,7 +473,7 @@ defineExpose({
 
         <!-- Search Header -->
         <div class="flex items-center gap-3 p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
-          <Search class="w-5 h-5 text-gray-400" />
+          <SearchIcon class="w-5 h-5 text-gray-400" />
           <input
             ref="searchInput"
             :value="query"
@@ -487,7 +487,7 @@ defineExpose({
           />
           <button @click="closeSearch" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-xs font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 mr-2">ESC</kbd>
-            <X class="w-5 h-5 inline-block" />
+            <XIcon class="w-5 h-5 inline-block" />
           </button>
         </div>
 
@@ -538,7 +538,7 @@ defineExpose({
                   :class="chatGroupIds.length > 0 ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                   data-testid="group-filter-button"
                 >
-                  <Filter class="w-3 h-3" />
+                  <FilterIcon class="w-3 h-3" />
                   <span>Groups</span>
                   <span v-if="chatGroupIds.length > 0" class="ml-1 px-1.5 py-0.5 bg-indigo-600 text-white rounded-full text-[8px]">{{ chatGroupIds.length }}</span>
                 </button>
@@ -561,10 +561,10 @@ defineExpose({
                         :data-testid="'group-filter-item-' + group.id"
                       >
                         <div class="flex items-center gap-2 overflow-hidden">
-                          <Folder class="w-3.5 h-3.5 shrink-0 opacity-60" />
+                          <FolderIcon class="w-3.5 h-3.5 shrink-0 opacity-60" />
                           <span class="truncate">{{ group.name }}</span>
                         </div>
-                        <Check v-if="chatGroupIds.includes(group.id)" class="w-3.5 h-3.5 shrink-0" />
+                        <CheckIcon v-if="chatGroupIds.includes(group.id)" class="w-3.5 h-3.5 shrink-0" />
                       </button>
                       <div v-if="chatGroups.length === 0" class="p-4 text-center text-[10px] text-gray-400 italic">No groups available</div>
                     </div>
@@ -582,10 +582,10 @@ defineExpose({
                   v-if="chatId"
                   class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
                 >
-                  <MessageSquare class="w-2.5 h-2.5" />
+                  <MessageSquareIcon class="w-2.5 h-2.5" />
                   <span>{{ targetChatTitle }}</span>
                   <button @click="chatId = undefined" class="hover:text-indigo-800 dark:hover:text-indigo-300">
-                    <X class="w-2.5 h-2.5" />
+                    <XIcon class="w-2.5 h-2.5" />
                   </button>
                 </div>
 
@@ -596,7 +596,7 @@ defineExpose({
                 >
                   <span>{{ group.name }}</span>
                   <button @click="toggleGroupFilter({ groupId: group.id })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
-                    <X class="w-2.5 h-2.5" />
+                    <XIcon class="w-2.5 h-2.5" />
                   </button>
                 </div>
               </div>
@@ -678,7 +678,7 @@ defineExpose({
                 <!-- Chat Group Item -->
                 <div v-if="entry.type === 'chat_group'" class="flex items-center justify-between gap-3">
                   <div class="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
-                    <Folder class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <FolderIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
@@ -694,7 +694,7 @@ defineExpose({
                 <!-- Chat Header Item -->
                 <div v-else-if="entry.type === 'chat'" class="flex items-center justify-between gap-3">
                   <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
-                    <MessageSquare class="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <MessageSquareIcon class="w-4 h-4 text-gray-500 dark:text-gray-400" />
                   </div>
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
@@ -702,7 +702,7 @@ defineExpose({
                         <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"></span>
                         <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || UNTITLED_CHAT_TITLE }}</span>
                         <span v-if="entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
-                          <Folder class="w-2.5 h-2.5 opacity-50 text-blue-500" />
+                          <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
                           <span v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.groupName, query, color: 'blue' })"></span>
                           <span v-else>{{ entry.item.groupName }}</span>
                         </span>
@@ -710,7 +710,7 @@ defineExpose({
                       <span class="text-[10px] text-gray-400 shrink-0">{{ formatTime({ timestamp: entry.item.updatedAt }) }}</span>
                     </div>
                     <div class="flex items-center gap-1.5 mt-0.5">
-                      <Clock class="w-3 h-3 text-gray-300" />
+                      <ClockIcon class="w-3 h-3 text-gray-300" />
                       <span class="text-[10px] text-gray-400">Chat</span>
                     </div>
                   </div>
@@ -719,7 +719,7 @@ defineExpose({
                 <!-- Message Match Item -->
                 <div v-else-if="entry.type === 'message'" class="flex items-start gap-3 pl-10 opacity-90 relative">
                   <div class="absolute left-4 top-1 h-full w-0.5 bg-gray-100 dark:bg-gray-800"></div>
-                  <CornerDownRight class="w-3 h-3 text-gray-300 mt-1 shrink-0" />
+                  <CornerDownRightIcon class="w-3 h-3 text-gray-300 mt-1 shrink-0" />
                   <div class="flex flex-col overflow-hidden text-sm flex-1">
                     <div class="flex items-center justify-between gap-2 mb-1">
                       <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ entry.item.role }}</span>
@@ -729,7 +729,7 @@ defineExpose({
                     <span v-else class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed">{{ entry.item.excerpt }}</span>
 
                     <div v-if="!entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">
-                      <GitBranch class="w-2.5 h-2.5" />
+                      <GitBranchIcon class="w-2.5 h-2.5" />
                       <span>ALT BRANCH</span>
                     </div>
                   </div>
@@ -737,7 +737,7 @@ defineExpose({
               </div>
 
               <div v-if="isScanningContent" class="p-4 flex items-center justify-center text-gray-400 gap-2 border-t border-gray-50 dark:border-gray-800/50 mt-2">
-                <Loader2 class="w-4 h-4 animate-spin" />
+                <Loader2Icon class="w-4 h-4 animate-spin" />
                 <span class="text-[11px] font-bold">SCANNING CONTENT...</span>
               </div>
             </template>
@@ -771,7 +771,7 @@ defineExpose({
             </template>
             <div v-else class="h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/20">
               <div class="flex flex-col items-center gap-2 opacity-20">
-                <Eye class="w-8 h-8 text-gray-400" />
+                <EyeIcon class="w-8 h-8 text-gray-400" />
                 <span class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Peek</span>
               </div>
             </div>

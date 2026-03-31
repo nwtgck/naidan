@@ -8,6 +8,7 @@ import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js'
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
 import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
 import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
+import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -166,6 +167,7 @@ export default tseslint.config(
   preferMultilineTemplateLiterals,
   requireTestOnlyExport,
   requireDefineExposeTestOnly,
+  requireIconSuffix,
   {
     files: ['**/*.test.ts'],
     languageOptions: {

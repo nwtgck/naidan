@@ -19,7 +19,7 @@ import ModelSelector from './ModelSelector.vue';
 const ServerSetupGuide = defineAsyncComponentAndLoadOnMounted(() => import('./ServerSetupGuide.vue'));
 const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsManager.vue'));
 import { transformersJsService } from '@/services/transformers-js';
-import { Play, ArrowLeft, CheckCircle2, Activity, Settings, X, Plus, Trash2, FlaskConical } from 'lucide-vue-next';
+import { PlayIcon, ArrowLeftIcon, CheckCircle2Icon, ActivityIcon, SettingsIcon, XIcon, PlusIcon, Trash2Icon, FlaskConicalIcon } from 'lucide-vue-next';
 import { naturalSort } from '@/utils/string';
 import { detectOllama } from '@/utils/ollama-detection';
 
@@ -387,7 +387,7 @@ defineExpose({
         class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
         data-testid="onboarding-close-x"
       >
-        <X class="w-5 h-5" />
+        <XIcon class="w-5 h-5" />
       </button>
 
       <div class="px-6 md:px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
@@ -418,7 +418,7 @@ defineExpose({
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
                   <div>
                     <h3 class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                      <FlaskConical class="w-4 h-4 text-purple-500" />
+                      <FlaskConicalIcon class="w-4 h-4 text-purple-500" />
                       In-Browser AI
                       <span class="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-600 dark:text-purple-400 text-[10px] rounded-md font-bold uppercase tracking-wider">Experimental</span>
                     </h3>
@@ -453,11 +453,11 @@ defineExpose({
                     :disabled="!selectedModel"
                     class="w-full sm:w-auto px-8 py-3.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-purple-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                   >
-                    <Play class="w-5 h-5 fill-current" />
+                    <PlayIcon class="w-5 h-5 fill-current" />
                     <span>Get Started</span>
                   </button>
                   <p class="flex items-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400">
-                    <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
+                    <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-purple-500/60" />
                     Settings will be saved for local inference.
                   </p>
                 </div>
@@ -504,7 +504,7 @@ defineExpose({
                       class="px-2 md:px-2.5 py-1 text-[9px] md:text-[10px] font-bold rounded-md transition-all whitespace-nowrap flex items-center gap-1"
                       :class="effectiveType === 'transformers_js' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600'"
                     >
-                      <FlaskConical class="w-2.5 h-2.5" />
+                      <FlaskConicalIcon class="w-2.5 h-2.5" />
                       Transformers.js
                     </button>
                   </div>
@@ -528,7 +528,7 @@ defineExpose({
                       type="button"
                       class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
                     >
-                      <Plus class="w-2.5 h-2.5" />
+                      <PlusIcon class="w-2.5 h-2.5" />
                       Add Header
                     </button>
                   </div>
@@ -555,7 +555,7 @@ defineExpose({
                         @click="removeHeader(index)"
                         class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                       >
-                        <Trash2 class="w-3.5 h-3.5" />
+                        <Trash2Icon class="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -579,7 +579,7 @@ defineExpose({
                       <span>Connecting...</span>
                     </template>
                     <template v-else>
-                      <Activity class="w-5 h-5" />
+                      <ActivityIcon class="w-5 h-5" />
                       <span>Check Connection</span>
                     </template>
                   </button>
@@ -593,7 +593,7 @@ defineExpose({
                 </div>
 
                 <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
-                  <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
+                  <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                   You can change these settings later in the settings menu.
                 </p>
               </div>
@@ -604,7 +604,7 @@ defineExpose({
               <div class="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div class="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 p-4 rounded-xl flex items-center gap-3">
                   <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white shadow-lg shadow-green-500/20">
-                    <CheckCircle2 class="w-6 h-6" />
+                    <CheckCircle2Icon class="w-6 h-6" />
                   </div>
                   <div class="overflow-hidden">
                     <p class="text-sm font-bold text-green-800 dark:text-green-300">Successfully Connected!</p>
@@ -634,7 +634,7 @@ defineExpose({
                     @click="availableModels = []"
                     class="px-4 py-3.5 md:px-5 md:py-4 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-bold rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all flex items-center gap-2 text-sm"
                   >
-                    <ArrowLeft class="w-5 h-5" />
+                    <ArrowLeftIcon class="w-5 h-5" />
                     <span>Back</span>
                   </button>
                   <button
@@ -642,13 +642,13 @@ defineExpose({
                     class="flex-1 py-3.5 md:py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 text-sm md:text-base"
                     data-testid="onboarding-finish-button"
                   >
-                    <Play class="w-5 h-5 fill-current" />
+                    <PlayIcon class="w-5 h-5 fill-current" />
                     <span>Get Started</span>
                   </button>
                 </div>
 
                 <p class="flex items-center justify-center gap-2 text-[10px] md:text-xs font-medium text-gray-500 dark:text-gray-400 pt-2">
-                  <Settings class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
+                  <SettingsIcon class="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-500/60" />
                   You can change these settings later in the settings menu.
                 </p>
               </div>

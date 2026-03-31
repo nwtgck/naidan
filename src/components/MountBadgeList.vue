@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Mount } from '@/models/types';
-import { Folder, Lock, Unlock, X } from 'lucide-vue-next';
+import { FolderIcon, LockIcon, UnlockIcon, XIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
   mounts: readonly Mount[];
@@ -40,7 +40,7 @@ defineExpose({
       class="flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-medium"
       data-testid="mount-badge"
     >
-      <Folder class="w-3.5 h-3.5 shrink-0" />
+      <FolderIcon class="w-3.5 h-3.5 shrink-0" />
       <button
         v-if="showExplorer"
         class="max-w-[120px] truncate mx-1 hover:underline focus:outline-none"
@@ -59,8 +59,8 @@ defineExpose({
         class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors"
         data-testid="mount-toggle-readonly"
       >
-        <Lock v-if="mount.readOnly" class="w-3 h-3 text-green-500 dark:text-green-400" />
-        <Unlock v-else class="w-3 h-3 text-amber-500 dark:text-amber-400" />
+        <LockIcon v-if="mount.readOnly" class="w-3 h-3 text-green-500 dark:text-green-400" />
+        <UnlockIcon v-else class="w-3 h-3 text-amber-500 dark:text-amber-400" />
       </button>
       <button
         @click="emit('remove', { volumeId: mount.volumeId })"
@@ -68,7 +68,7 @@ defineExpose({
         class="p-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors text-blue-400 hover:text-red-500 dark:hover:text-red-400"
         data-testid="mount-remove-btn"
       >
-        <X class="w-3 h-3" />
+        <XIcon class="w-3 h-3" />
       </button>
     </div>
   </div>

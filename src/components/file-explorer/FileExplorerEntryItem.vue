@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight, Lock } from 'lucide-vue-next';
+import { ChevronRightIcon, LockIcon } from 'lucide-vue-next';
 import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
 import FileExplorerRenameInput from './FileExplorerRenameInput.vue';
 import type { FileExplorerEntry } from './types';
@@ -173,13 +173,13 @@ defineExpose({
     <span v-else class="text-xs flex-1 truncate" :class="isSelected ? 'text-white' : 'text-gray-700 dark:text-gray-300'">
       {{ entry.name }}
     </span>
-    <Lock
+    <LockIcon
       v-if="entry.readOnly"
       class="w-2.5 h-2.5 shrink-0 opacity-50"
       :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
       data-testid="entry-lock-icon"
     />
-    <ChevronRight
+    <ChevronRightIcon
       v-if="entry.kind === 'directory'"
       class="w-3 h-3 shrink-0"
       :class="isSelected ? 'text-blue-100' : 'text-gray-400'"

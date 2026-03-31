@@ -37,8 +37,8 @@ vi.mock('@/services/storage/opfs-detection', () => ({
 }));
 
 vi.mock('lucide-vue-next', () => ({
-  Calculator: { template: '<span>Calculator</span>' },
-  Terminal: { template: '<span>Terminal</span>' },
+  CalculatorIcon: { template: '<span>Calculator</span>' },
+  TerminalIcon: { template: '<span>Terminal</span>' },
 }));
 
 describe('LmToolsSettings.vue', () => {

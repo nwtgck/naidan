@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Folder, MessageSquare } from 'lucide-vue-next';
+import { FolderIcon, MessageSquareIcon } from 'lucide-vue-next';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import RelativeTime from './RelativeTime.vue';
 import type { ChatSummary } from '@/models/types';
@@ -50,14 +50,14 @@ defineExpose({
   <div :class="containerClasses">
     <div class="flex items-center justify-between gap-3">
       <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0">
-        <MessageSquare class="w-4 h-4" :class="isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'" />
+        <MessageSquareIcon class="w-4 h-4" :class="isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'" />
       </div>
       <div class="flex flex-col flex-1 overflow-hidden">
         <div class="flex items-center justify-between gap-2">
           <div class="flex flex-col overflow-hidden">
             <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100">{{ chat.title || UNTITLED_CHAT_TITLE }}</span>
             <span v-if="groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
-              <Folder class="w-2.5 h-2.5 opacity-50 text-blue-500" />
+              <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
               <span>{{ groupName }}</span>
             </span>
             <span class="text-[10px] text-gray-400 truncate opacity-60">

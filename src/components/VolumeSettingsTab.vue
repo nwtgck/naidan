@@ -4,7 +4,7 @@ import { storageService } from '@/services/storage';
 import type { Volume, Mount } from '@/models/types';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
-import { Folder, FolderInput, Loader2 } from 'lucide-vue-next';
+import { FolderIcon, FolderInputIcon, Loader2Icon } from 'lucide-vue-next';
 import VolumeCreator from './VolumeCreator.vue';
 import VolumeMountList from './VolumeMountList.vue';
 
@@ -192,7 +192,7 @@ defineExpose({
     <!-- Header -->
     <div class="pb-3 border-b border-gray-100 dark:border-gray-800 space-y-3">
       <div class="flex items-center gap-2">
-        <Folder class="w-5 h-5 text-blue-500" />
+        <FolderIcon class="w-5 h-5 text-blue-500" />
         <div>
           <h2 class="text-lg font-bold tracking-tight text-gray-800 dark:text-white">Folders</h2>
           <p class="text-[10px] text-gray-400 dark:text-gray-500 font-medium leading-tight">Give the AI access to files in your folders</p>
@@ -208,11 +208,11 @@ defineExpose({
     </div>
 
     <div v-if="isLoading && volumes.length === 0" class="flex justify-center p-12">
-      <Loader2 class="w-6 h-6 animate-spin text-gray-400" />
+      <Loader2Icon class="w-6 h-6 animate-spin text-gray-400" />
     </div>
 
     <div v-else-if="volumes.length === 0" class="text-center p-16 bg-gray-50/50 dark:bg-gray-800/30 rounded-3xl border border-dashed border-gray-200 dark:border-gray-700">
-      <FolderInput class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+      <FolderInputIcon class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
       <p class="text-sm font-bold text-gray-500 dark:text-gray-400">No folders configured</p>
       <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 max-w-[240px] mx-auto">
         Add a folder or copy one into browser storage.

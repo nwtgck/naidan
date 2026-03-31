@@ -7,9 +7,9 @@ import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 import {
-  ShieldCheck, CheckCircle2, FileArchive,
-  Database, HardDrive, Info, Trash2, Ghost,
-  Link, Loader2
+  ShieldCheckIcon, CheckCircle2Icon, FileArchiveIcon,
+  DatabaseIcon, HardDriveIcon, InfoIcon, Trash2Icon, GhostIcon,
+  LinkIcon, Loader2Icon
 } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 import { useToast } from '@/composables/useToast';
@@ -194,7 +194,7 @@ defineExpose({
   <div data-testid="storage-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <ShieldCheck class="w-5 h-5 text-blue-500" />
+        <ShieldCheckIcon class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Durability</h2>
       </div>
 
@@ -216,11 +216,11 @@ defineExpose({
           class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95"
           data-testid="setting-enable-persistence-button"
         >
-          <ShieldCheck class="w-4 h-4" />
+          <ShieldCheckIcon class="w-4 h-4" />
           Enable
         </button>
         <div v-else class="flex items-center gap-2 px-4 py-2 text-green-600 dark:text-green-400 text-xs font-bold">
-          <CheckCircle2 class="w-4 h-4" />
+          <CheckCircle2Icon class="w-4 h-4" />
           Protected
         </div>
       </div>
@@ -228,7 +228,7 @@ defineExpose({
 
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <FileArchive class="w-5 h-5 text-blue-500" />
+        <FileArchiveIcon class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Backup & Restore</h2>
       </div>
 
@@ -247,7 +247,7 @@ defineExpose({
           class="shrink-0 flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
           data-testid="setting-import-export-button"
         >
-          <FileArchive class="w-4 h-4" />
+          <FileArchiveIcon class="w-4 h-4" />
           Manage Data
         </button>
       </div>
@@ -287,8 +287,8 @@ defineExpose({
           class="shrink-0 flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid="setting-copy-export-url-button"
         >
-          <Loader2 v-if="isExportingURL" class="w-4 h-4 animate-spin" />
-          <Link v-else class="w-4 h-4" />
+          <Loader2Icon v-if="isExportingURL" class="w-4 h-4 animate-spin" />
+          <LinkIcon v-else class="w-4 h-4" />
           <span v-if="isExportingURL">Generating...</span>
           <span v-else>Copy Link</span>
         </button>
@@ -297,7 +297,7 @@ defineExpose({
 
     <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <Database class="w-5 h-5 text-blue-500" />
+        <DatabaseIcon class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Storage Management</h2>
       </div>
 
@@ -317,7 +317,7 @@ defineExpose({
           >
             <div class="flex items-center justify-between">
               <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                <HardDrive class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                <HardDriveIcon class="w-4 h-4 text-gray-600 dark:text-gray-300" />
               </div>
               <span v-if="isOPFSSupported" class="text-[10px] bg-green-50 dark:bg-green-900/20 text-green-600/80 dark:text-green-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Recommended</span>
               <span v-else class="text-[10px] bg-red-50 dark:bg-red-900/20 text-red-600/80 dark:text-red-500/80 px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">Unsupported</span>
@@ -336,7 +336,7 @@ defineExpose({
           >
             <div class="flex items-center justify-between">
               <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                <HardDrive class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                <HardDriveIcon class="w-4 h-4 text-gray-600 dark:text-gray-300" />
               </div>
             </div>
             <div>
@@ -353,7 +353,7 @@ defineExpose({
           >
             <div class="flex items-center justify-between">
               <div class="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                <Ghost class="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                <GhostIcon class="w-4 h-4 text-gray-600 dark:text-gray-300" />
               </div>
             </div>
             <div>
@@ -364,7 +364,7 @@ defineExpose({
         </div>
 
         <div class="flex items-start gap-4 p-5 bg-blue-50/50 dark:bg-blue-900/10 text-blue-700 dark:text-blue-300 rounded-2xl text-[11px] font-medium border border-blue-100 dark:border-blue-900/30">
-          <Info class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
+          <InfoIcon class="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />
           <p class="leading-relaxed">Switching storage will <strong>migrate</strong> all your chats, chat groups, and settings to the new location. This process will start automatically after you confirm the switch.</p>
         </div>
       </div>
@@ -372,7 +372,7 @@ defineExpose({
 
     <section class="space-y-6 pt-8 border-t border-gray-100 dark:border-gray-800">
       <div class="flex items-center gap-2 pb-3">
-        <Trash2 class="w-5 h-5 text-red-500" />
+        <Trash2Icon class="w-5 h-5 text-red-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Data Cleanup</h2>
       </div>
 
@@ -388,7 +388,7 @@ defineExpose({
           class="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
           data-testid="setting-clear-history-button"
         >
-          <Trash2 class="w-4 h-4" />
+          <Trash2Icon class="w-4 h-4" />
           Clear All Conversation History
         </button>
       </div>

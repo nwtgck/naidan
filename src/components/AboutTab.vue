@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { Info, ShieldCheck, Loader2, Github, Download, ExternalLink } from 'lucide-vue-next';
+import { InfoIcon, ShieldCheckIcon, Loader2Icon, GithubIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
 import Logo from './Logo.vue';
 
 interface OssLicense {
@@ -46,7 +46,7 @@ defineExpose({
   <div data-testid="about-section" class="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <Info class="w-5 h-5 text-blue-500" />
+        <InfoIcon class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">About Naidan</h2>
       </div>
 
@@ -71,12 +71,12 @@ defineExpose({
           class="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-3xl hover:bg-gray-50 dark:hover:bg-gray-750 transition-all group no-underline shadow-sm"
         >
           <div class="p-3 bg-gray-50 dark:bg-gray-900 rounded-2xl text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
-            <Github class="w-6 h-6" />
+            <GithubIcon class="w-6 h-6" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-bold text-gray-800 dark:text-white flex items-center gap-2">
               GitHub Repository
-              <ExternalLink class="w-3 h-3 opacity-50" />
+              <ExternalLinkIcon class="w-3 h-3 opacity-50" />
             </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 font-medium">View source code & contribute</div>
           </div>
@@ -89,7 +89,7 @@ defineExpose({
           class="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/10 hover:bg-green-100 dark:hover:bg-green-900/20 border border-green-200 dark:border-green-900/30 rounded-3xl transition-all group no-underline"
         >
           <div class="p-3 bg-green-100 dark:bg-green-800/50 rounded-2xl text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
-            <Download class="w-6 h-6" />
+            <DownloadIcon class="w-6 h-6" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="text-sm font-bold text-green-800 dark:text-green-300">Standalone App</div>
@@ -101,7 +101,7 @@ defineExpose({
 
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <ShieldCheck class="w-5 h-5 text-blue-500" />
+        <ShieldCheckIcon class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Open Source Licenses</h2>
       </div>
 
@@ -112,7 +112,7 @@ defineExpose({
       <!-- Standalone Mode Info -->
       <div v-if="isStandalone" class="p-6 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 rounded-3xl space-y-3">
         <div class="flex items-center gap-2 text-blue-800 dark:text-blue-300 font-bold text-sm">
-          <Info class="w-4 h-4" />
+          <InfoIcon class="w-4 h-4" />
           Offline License Information
         </div>
         <p class="text-xs text-blue-600 dark:text-blue-400 leading-relaxed">
@@ -123,7 +123,7 @@ defineExpose({
       <!-- Hosted Mode License List -->
       <div v-else class="border border-gray-100 dark:border-gray-800 rounded-3xl overflow-hidden bg-white dark:bg-gray-900 min-h-[100px] flex flex-col items-center justify-center">
         <div v-if="isLoadingLicenses" class="p-12 flex flex-col items-center gap-3">
-          <Loader2 class="w-6 h-6 text-blue-500 animate-spin" />
+          <Loader2Icon class="w-6 h-6 text-blue-500 animate-spin" />
           <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Loading licenses...</p>
         </div>
         <div v-else class="w-full max-h-[400px] overflow-y-auto p-2 space-y-1 overscroll-contain">

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import {
-  Folder, FileText, Trash2, ChevronLeft, X,
-  ChevronRight, HardDrive, AlertCircle, Braces,
-  AlertTriangle, RefreshCw, Eye, EyeOff
+  FolderIcon, FileTextIcon, Trash2Icon, ChevronLeftIcon, XIcon,
+  ChevronRightIcon, HardDriveIcon, AlertCircleIcon, BracesIcon,
+  AlertTriangleIcon, RefreshCwIcon, EyeIcon, EyeOffIcon
 } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 
@@ -221,7 +221,7 @@ async function deleteEntry(entry: OPFSEntry) {
     message: `Are you sure you want to delete "${entry.name}"? Deleting data from OPFS might cause corruption or data loss if not handled carefully.`,
     confirmButtonText: 'Delete Anyway',
     confirmButtonVariant: 'danger',
-    icon: AlertTriangle,
+    icon: AlertTriangleIcon,
   });
 
   if (!confirmed) return;
@@ -265,7 +265,7 @@ defineExpose({
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex-shrink-0">
         <div class="flex items-center gap-3">
           <div class="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-            <HardDrive class="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <HardDriveIcon class="w-5 h-5 text-blue-600 dark:text-blue-400" />
           </div>
           <div>
             <h3 class="text-sm font-bold text-gray-900 dark:text-white leading-none">OPFS Explorer</h3>
@@ -273,7 +273,7 @@ defineExpose({
           </div>
         </div>
         <button @click="close" class="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">
-          <X class="w-5 h-5 text-gray-500" />
+          <XIcon class="w-5 h-5 text-gray-500" />
         </button>
       </div>
 
@@ -287,7 +287,7 @@ defineExpose({
             data-testid="opfs-back-button"
             title="Go Up"
           >
-            <ChevronLeft class="w-4 h-4" />
+            <ChevronLeftIcon class="w-4 h-4" />
           </button>
           <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 truncate" data-testid="opfs-breadcrumbs">
             <template v-for="(h, i) in pathStack" :key="i">
@@ -298,7 +298,7 @@ defineExpose({
               >
                 {{ h.name || 'root' }}
               </button>
-              <ChevronRight class="w-3 h-3 mx-1 opacity-50" />
+              <ChevronRightIcon class="w-3 h-3 mx-1 opacity-50" />
             </template>
             <template v-if="currentHandle">
               <span class="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded font-bold shrink-0" data-testid="breadcrumb-current">{{ currentHandle.name || 'root' }}</span>
@@ -313,7 +313,7 @@ defineExpose({
             title="Refresh"
             data-testid="opfs-refresh-button"
           >
-            <RefreshCw class="w-4 h-4" />
+            <RefreshCwIcon class="w-4 h-4" />
           </button>
           <button
             @click="isPreviewDisabled = !isPreviewDisabled"
@@ -322,7 +322,7 @@ defineExpose({
             :title="isPreviewDisabled ? 'Enable Preview' : 'Disable Preview'"
             data-testid="opfs-preview-toggle"
           >
-            <component :is="isPreviewDisabled ? EyeOff : Eye" class="w-4 h-4" />
+            <component :is="isPreviewDisabled ? EyeOffIcon : EyeIcon" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -335,7 +335,7 @@ defineExpose({
           :class="isPreviewDisabled ? 'flex-1' : 'w-72 md:w-80'"
         >
           <div v-if="error" class="p-4 m-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 rounded-xl flex gap-3 text-red-600 dark:text-red-400">
-            <AlertCircle class="w-4 h-4 shrink-0" />
+            <AlertCircleIcon class="w-4 h-4 shrink-0" />
             <p class="text-xs font-bold">{{ error }}</p>
           </div>
 
@@ -348,7 +348,7 @@ defineExpose({
               data-testid="opfs-entry"
             >
               <div class="flex items-center gap-3 min-w-0 flex-1">
-                <component :is="entry.kind === 'directory' ? Folder : FileText"
+                <component :is="entry.kind === 'directory' ? FolderIcon : FileTextIcon"
                            class="w-4 h-4 shrink-0"
                            :class="entry.kind === 'directory' ? 'text-amber-500' : 'text-blue-500'"
                 />
@@ -367,7 +367,7 @@ defineExpose({
                 @click.stop="deleteEntry(entry)"
                 class="p-1.5 opacity-0 group-hover:opacity-100 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-all"
               >
-                <Trash2 class="w-3.5 h-3.5" />
+                <Trash2Icon class="w-3.5 h-3.5" />
               </button>
             </div>
 
@@ -382,7 +382,7 @@ defineExpose({
           <div v-if="selectedFile" class="flex-1 flex flex-col overflow-hidden">
             <div class="px-4 py-2 bg-gray-50 dark:bg-gray-800/30 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between flex-shrink-0">
               <div class="flex items-center gap-3">
-                <FileText class="w-3.5 h-3.5 text-blue-500" />
+                <FileTextIcon class="w-3.5 h-3.5 text-blue-500" />
                 <div class="flex flex-col">
                   <span class="text-xs font-bold text-gray-600 dark:text-gray-400 leading-none">{{ selectedFile.name }}</span>
                   <div class="flex items-center gap-2 mt-1">
@@ -401,7 +401,7 @@ defineExpose({
                   : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'"
                 :title="isFormatted ? 'Show Raw JSON' : 'Format JSON'"
               >
-                <Braces class="w-3.5 h-3.5" />
+                <BracesIcon class="w-3.5 h-3.5" />
                 {{ isFormatted ? 'Formatted' : 'Format JSON' }}
               </button>
             </div>
@@ -410,7 +410,7 @@ defineExpose({
             </div>
             <div v-else class="flex-1 flex flex-col items-center justify-center text-gray-400 p-8 text-center">
               <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-3xl mb-4 border border-gray-100 dark:border-gray-700">
-                <FileText class="w-12 h-12 opacity-20" />
+                <FileTextIcon class="w-12 h-12 opacity-20" />
               </div>
               <p class="text-sm font-bold text-gray-600 dark:text-gray-400 mb-1">Binary File</p>
               <p class="text-[10px] uppercase tracking-widest opacity-50 font-bold">Preview not available for this file type</p>
@@ -420,7 +420,7 @@ defineExpose({
             </div>
           </div>
           <div v-else class="flex-1 flex flex-col items-center justify-center text-gray-300 dark:text-gray-700">
-            <FileText class="w-12 h-12 mb-4 opacity-20" />
+            <FileTextIcon class="w-12 h-12 mb-4 opacity-20" />
             <p class="text-xs font-bold uppercase tracking-widest opacity-50">Select a file to view</p>
           </div>
         </div>

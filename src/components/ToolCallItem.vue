@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Hammer, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Loader2 } from 'lucide-vue-next';
+import { HammerIcon, CheckCircle2Icon, AlertCircleIcon, ChevronDownIcon, ChevronUpIcon, Loader2Icon } from 'lucide-vue-next';
 import { ref, watch, onMounted, nextTick, inject, computed, markRaw } from 'vue';
 import type { CombinedToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
@@ -170,9 +170,9 @@ defineExpose({
           toolCall.result.status === 'success' ? 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400' : '',
           toolCall.result.status === 'error' ? 'bg-red-100/50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : ''
         ]">
-          <Hammer v-if="toolCall.result.status === 'executing'" class="w-3 h-3 animate-bounce" />
-          <CheckCircle2 v-else-if="toolCall.result.status === 'success'" class="w-3 h-3" />
-          <AlertCircle v-else class="w-3 h-3" />
+          <HammerIcon v-if="toolCall.result.status === 'executing'" class="w-3 h-3 animate-bounce" />
+          <CheckCircle2Icon v-else-if="toolCall.result.status === 'success'" class="w-3 h-3" />
+          <AlertCircleIcon v-else class="w-3 h-3" />
         </div>
 
         <div class="flex flex-col">
@@ -188,8 +188,8 @@ defineExpose({
       </div>
 
       <button class="p-1 text-gray-400 group-hover/tool:text-gray-600 dark:group-hover/tool:text-gray-300 transition-colors">
-        <ChevronUp v-if="isDetailVisible" class="w-3.5 h-3.5" />
-        <ChevronDown v-else class="w-3.5 h-3.5" />
+        <ChevronUpIcon v-if="isDetailVisible" class="w-3.5 h-3.5" />
+        <ChevronDownIcon v-else class="w-3.5 h-3.5" />
       </button>
     </div>
 
@@ -287,7 +287,7 @@ defineExpose({
               </div>
 
               <div v-if="isLoadingBinary" class="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg text-gray-400">
-                <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                <Loader2Icon class="w-3.5 h-3.5 animate-spin" />
                 <span class="text-[10px] font-medium">Loading large result...</span>
               </div>
 

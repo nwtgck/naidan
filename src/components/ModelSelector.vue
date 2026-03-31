@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, useAttrs, nextTick, getCurrentInstance, watch, type CSSProperties } from 'vue';
-import { Search, RefreshCw, Check, ChevronDown, Loader2, X } from 'lucide-vue-next';
+import { SearchIcon, RefreshCwIcon, CheckIcon, ChevronDownIcon, Loader2Icon, XIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
 
@@ -285,8 +285,8 @@ defineExpose({
         </span>
       </div>
       <div class="flex items-center gap-1.5 shrink-0 ml-1">
-        <Loader2 v-if="isFetchingModels" class="w-3 h-3 animate-spin text-gray-400" />
-        <ChevronDown
+        <Loader2Icon v-if="isFetchingModels" class="w-3 h-3 animate-spin text-gray-400" />
+        <ChevronDownIcon
           class="w-3.5 h-3.5 text-gray-400 transition-transform duration-200"
           :class="{ 'rotate-180': isOpen }"
         />
@@ -306,7 +306,7 @@ defineExpose({
         <!-- Search and Actions -->
         <div class="p-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/50">
           <div class="relative flex-1">
-            <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <SearchIcon class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               ref="searchInputRef"
               v-model="searchQuery"
@@ -320,7 +320,7 @@ defineExpose({
               @click="searchQuery = ''"
               class="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"
             >
-              <X class="w-3 h-3" />
+              <XIcon class="w-3 h-3" />
             </button>
           </div>
           <button
@@ -329,7 +329,7 @@ defineExpose({
             :disabled="isFetchingModels"
             title="Refresh model list"
           >
-            <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': isFetchingModels }" />
+            <RefreshCwIcon class="w-3.5 h-3.5" :class="{ 'animate-spin': isFetchingModels }" />
           </button>
         </div>
 
@@ -353,10 +353,10 @@ defineExpose({
             @mouseenter="highlightedIndex = 0"
           >
             <div class="flex items-center gap-2">
-              <X v-if="modelValue" class="w-3.5 h-3.5" />
+              <XIcon v-if="modelValue" class="w-3.5 h-3.5" />
               <span class="truncate">{{ clearLabel || placeholder || 'Inherit' }}</span>
             </div>
-            <Check v-if="!modelValue" class="w-3.5 h-3.5 shrink-0" />
+            <CheckIcon v-if="!modelValue" class="w-3.5 h-3.5 shrink-0" />
           </button>
 
           <div v-if="filteredModels.length === 0" class="px-4 py-8 text-center">
@@ -379,7 +379,7 @@ defineExpose({
             @mouseenter="highlightedIndex = allowClear ? index + 1 : index"
           >
             <span class="break-all whitespace-normal pr-2">{{ model }}</span>
-            <Check v-if="model === modelValue" class="w-3.5 h-3.5 shrink-0" />
+            <CheckIcon v-if="model === modelValue" class="w-3.5 h-3.5 shrink-0" />
           </button>
         </div>
       </div>

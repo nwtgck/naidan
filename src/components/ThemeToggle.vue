@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useTheme } from '@/composables/useTheme';
-import { Sun, Moon, Monitor } from 'lucide-vue-next';
+import { SunIcon, MoonIcon, MonitorIcon } from 'lucide-vue-next';
 
 const { themeMode, setTheme } = useTheme();
 
@@ -32,7 +32,7 @@ defineExpose({
       :class="themeMode === 'light' ? 'text-blue-600 dark:text-yellow-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
       title="Light Mode"
     >
-      <Sun class="w-3.5 h-3.5" />
+      <SunIcon class="w-3.5 h-3.5" />
     </button>
     <button
       @click="setTheme('dark')"
@@ -40,7 +40,7 @@ defineExpose({
       :class="themeMode === 'dark' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
       title="Dark Mode"
     >
-      <Moon class="w-3.5 h-3.5" />
+      <MoonIcon class="w-3.5 h-3.5" />
     </button>
     <button
       @click="setTheme('system')"
@@ -48,7 +48,7 @@ defineExpose({
       :class="themeMode === 'system' ? 'text-blue-600 dark:text-green-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
       title="System Mode"
     >
-      <Monitor class="w-3.5 h-3.5" />
+      <MonitorIcon class="w-3.5 h-3.5" />
     </button>
   </div>
 </template>

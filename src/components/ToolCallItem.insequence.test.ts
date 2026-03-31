@@ -8,12 +8,12 @@ vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {
     ...actual,
-    Hammer: { render: () => h('span') },
-    CheckCircle2: { render: () => h('span') },
-    AlertCircle: { render: () => h('span') },
-    ChevronDown: { render: () => h('span') },
-    ChevronUp: { render: () => h('span') },
-    Loader2: { render: () => h('span') },
+    HammerIcon: { render: () => h('span') },
+    CheckCircle2Icon: { render: () => h('span') },
+    AlertCircleIcon: { render: () => h('span') },
+    ChevronDownIcon: { render: () => h('span') },
+    ChevronUpIcon: { render: () => h('span') },
+    Loader2Icon: { render: () => h('span') },
   };
 });
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, type CSSProperties } from 'vue';
-import { Settings2 } from 'lucide-vue-next';
+import { Settings2Icon } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
 import { useChatTools } from '@/composables/useChatTools';
@@ -165,7 +165,7 @@ defineExpose({
       title="Tools"
       data-testid="chat-tools-button"
     >
-      <Settings2 class="w-5 h-5" />
+      <Settings2Icon class="w-5 h-5" />
     </button>
 
     <Teleport to="body">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { watch, nextTick, ref } from 'vue';
-import { Terminal, X } from 'lucide-vue-next';
+import { TerminalIcon, XIcon } from 'lucide-vue-next';
 import WeshTerminalPane from './WeshTerminalPane.vue';
 import { useDebugWeshTerminalSessions } from '@/composables/useDebugWeshTerminalSessions';
 import { useConfirm } from '@/composables/useConfirm';
@@ -60,7 +60,7 @@ defineExpose({
         <!-- Header -->
         <div class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-700/60 shrink-0">
           <div class="flex items-center gap-2">
-            <Terminal class="w-4 h-4 text-blue-500 shrink-0" />
+            <TerminalIcon class="w-4 h-4 text-blue-500 shrink-0" />
             <span class="font-mono text-sm font-bold text-gray-200">Debug Terminal</span>
           </div>
           <button
@@ -68,7 +68,7 @@ defineExpose({
             aria-label="Close terminal"
             @click="emit('close')"
           >
-            <X class="w-4 h-4" />
+            <XIcon class="w-4 h-4" />
           </button>
         </div>
 

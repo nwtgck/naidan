@@ -2,7 +2,7 @@
 import { generateId } from '@/utils/id';
 import { ref, computed, watch } from 'vue';
 import {
-  X, ChefHat, Copy, Check, Plus, Trash2, Info, Globe, AlertCircle, MessageSquareQuote
+  XIcon, ChefHatIcon, CopyIcon, CheckIcon, PlusIcon, Trash2Icon, InfoIcon, GlobeIcon, AlertCircleIcon, MessageSquareQuoteIcon
 } from 'lucide-vue-next';
 import type { ChatGroupRecipe, RecipeSystemPrompt } from '@/models/recipe';
 import type { LmParameters, SystemPrompt } from '@/models/types';
@@ -119,14 +119,14 @@ defineExpose({
           @click="emit('close')"
           class="absolute top-4 right-4 z-[70] p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors"
         >
-          <X class="w-5 h-5" />
+          <XIcon class="w-5 h-5" />
         </button>
 
         <!-- Editor Section -->
         <div class="flex-1 flex flex-col min-h-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800">
           <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50">
             <div class="flex items-center gap-2">
-              <ChefHat class="w-5 h-5 text-blue-500" />
+              <ChefHatIcon class="w-5 h-5 text-blue-500" />
               <h3 class="text-base font-bold text-gray-800 dark:text-white">Recipe Editor</h3>
             </div>
           </div>
@@ -158,7 +158,7 @@ defineExpose({
             <div class="space-y-4 pt-4 border-t border-gray-100 dark:border-gray-800">
               <div class="flex items-center justify-between ml-1">
                 <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                  <MessageSquareQuote class="w-3 h-3" />
+                  <MessageSquareQuoteIcon class="w-3 h-3" />
                   Recipe System Prompt
                 </label>
 
@@ -210,7 +210,7 @@ defineExpose({
                   @click="addModelPattern"
                   class="text-[10px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
                 >
-                  <Plus class="w-3 h-3" />
+                  <PlusIcon class="w-3 h-3" />
                   Add Rule
                 </button>
               </div>
@@ -243,11 +243,11 @@ defineExpose({
                       </button>
                     </div>
                     <button @click="removeModelPattern(m.id)" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
-                      <Trash2 class="w-4 h-4" />
+                      <Trash2Icon class="w-4 h-4" />
                     </button>
                   </div>
                   <div v-if="!isRegexValid(m.pattern)" class="flex items-center gap-1.5 ml-1 text-red-500">
-                    <AlertCircle class="w-3 h-3" />
+                    <AlertCircleIcon class="w-3 h-3" />
                     <span class="text-[9px] font-bold uppercase tracking-wide">Invalid Regular Expression</span>
                   </div>
                 </div>
@@ -257,7 +257,7 @@ defineExpose({
             <!-- Footer Info -->
             <div class="p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-2xl border border-blue-100/50 dark:border-blue-900/20">
               <div class="flex items-start gap-3">
-                <Info class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                <InfoIcon class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
                 <p class="text-[10px] text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
                   Temperature, Top-P, and other LM parameters are automatically included from your current group overrides.
                 </p>
@@ -270,7 +270,7 @@ defineExpose({
         <div class="w-full md:w-[400px] bg-gray-50/50 dark:bg-black/20 flex flex-col min-h-0">
           <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 space-y-4">
             <div class="flex items-center gap-2">
-              <Globe class="w-4 h-4 text-gray-400" />
+              <GlobeIcon class="w-4 h-4 text-gray-400" />
               <h3 class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Live Recipe Preview</h3>
             </div>
 
@@ -282,8 +282,8 @@ defineExpose({
                 : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500 shadow-blue-500/20'"
               data-testid="recipe-export-copy-button"
             >
-              <Check v-if="copySuccess" class="w-4 h-4 animate-in zoom-in duration-300" />
-              <Copy v-else class="w-4 h-4" />
+              <CheckIcon v-if="copySuccess" class="w-4 h-4 animate-in zoom-in duration-300" />
+              <CopyIcon v-else class="w-4 h-4" />
               <span>{{ copySuccess ? 'Copied to Clipboard!' : 'Copy Recipe JSON' }}</span>
             </button>
           </div>

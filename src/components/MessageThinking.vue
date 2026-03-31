@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, inject } from 'vue';
 import type { Component } from 'vue';
-import { Brain } from 'lucide-vue-next';
+import { BrainIcon } from 'lucide-vue-next';
 import type { MessageNode } from '@/models/types';
 
 const props = defineProps<{
@@ -141,7 +141,7 @@ defineExpose({
           isThinkingNow ? 'animate-pulse text-blue-700 dark:text-blue-400' : ''
         ]"
       >
-        <Brain class="w-3.5 h-3.5" />
+        <BrainIcon class="w-3.5 h-3.5" />
         <span v-if="isThinkingNow">Thinking...</span>
         <span v-else-if="mode === 'expanded'">Hide Thought Process</span>
         <span v-else-if="inSequence">Thought Process</span>
@@ -176,7 +176,7 @@ defineExpose({
       >
         <!-- Brain watermark -->
         <div class="absolute top-0 right-0 opacity-[0.03] dark:opacity-[0.07] pointer-events-none -mt-4">
-          <Brain class="w-16 h-16" />
+          <BrainIcon class="w-16 h-16" />
         </div>
 
         <div class="flex flex-col min-h-full">

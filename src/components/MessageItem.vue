@@ -7,7 +7,7 @@ import 'katex/dist/katex.min.css';
 import type { MessageNode, BinaryObject, EndpointType, LmParameters, Reasoning } from '@/models/types';
 import type { FlowMetadata, MessageMode } from '@/composables/useChatDisplayFlow';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { User, Bird, ChevronLeft, ChevronRight, AlertTriangle, Download, RefreshCw, Settings2, XCircle, Square, FileEdit, MoreHorizontal, Brain } from 'lucide-vue-next';
+import { UserIcon, BirdIcon, ChevronLeftIcon, ChevronRightIcon, AlertTriangleIcon, DownloadIcon, RefreshCwIcon, Settings2Icon, XCircleIcon, SquareIcon, FileEditIcon, MoreHorizontalIcon, BrainIcon } from 'lucide-vue-next';
 import { storageService } from '@/services/storage';
 // IMPORTANT: SpeechControl is used in every message and should be immediately available.
 import SpeechControl from './SpeechControl.vue';
@@ -484,8 +484,8 @@ defineExpose({
   >
     <div v-if="showHeader && isFirstInTurn && !isNested" class="flex items-center gap-3 mb-1">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <User v-if="isUser" class="w-4 h-4 text-gray-500" />
-        <Bird v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        <UserIcon v-if="isUser" class="w-4 h-4 text-gray-500" />
+        <BirdIcon v-else class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
       <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
         <span v-if="isUser" class="text-gray-800 dark:text-gray-200 uppercase tracking-widest">You</span>
@@ -497,7 +497,7 @@ defineExpose({
             :title="reasoningEffortTooltip"
             data-testid="reasoning-effort-badge"
           >
-            <Brain class="w-2.5 h-2.5" />
+            <BrainIcon class="w-2.5 h-2.5" />
             <span>{{ reasoningEffortLabel }}</span>
           </div>
           <div class="flex items-center gap-1 group/msg-header-tools">
@@ -516,7 +516,7 @@ defineExpose({
               title="Stop generation"
               data-testid="message-abort-button"
             >
-              <Square class="w-3 h-3" />
+              <SquareIcon class="w-3 h-3" />
             </button>
 
             <!-- Generic More Button (Absolute Right Anchor for Header) -->
@@ -527,7 +527,7 @@ defineExpose({
               :class="showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
               title="More Message Tools"
             >
-              <MoreHorizontal class="w-3.5 h-3.5" />
+              <MoreHorizontalIcon class="w-3.5 h-3.5" />
             </button>
           </div>
         </template>
@@ -554,12 +554,12 @@ defineExpose({
               title="Download image"
               data-testid="download-attachment"
             >
-              <Download class="w-4 h-4" />
+              <DownloadIcon class="w-4 h-4" />
             </a>
           </template>
           <template v-else>
             <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500">
-              <AlertTriangle class="w-3.5 h-3.5 text-amber-500" />
+              <AlertTriangleIcon class="w-3.5 h-3.5 text-amber-500" />
               <span>Image missing ({{ att.originalName }}) - {{ formatSize(att.size) }}</span>
             </div>
           </template>
@@ -598,7 +598,7 @@ defineExpose({
                 title="Tools"
                 data-testid="toggle-edit-image-mode"
               >
-                <Settings2 class="w-5 h-5" />
+                <Settings2Icon class="w-5 h-5" />
               </button>
               <button
                 @click="openAdvancedEditor"
@@ -606,7 +606,7 @@ defineExpose({
                 title="Open Advanced Editor"
                 data-testid="open-advanced-editor-button"
               >
-                <FileEdit class="w-5 h-5" />
+                <FileEditIcon class="w-5 h-5" />
               </button>
             </div>
             <div class="flex items-center gap-2">
@@ -617,7 +617,7 @@ defineExpose({
                 title="Clear all text"
                 data-testid="clear-edit-content"
               >
-                <XCircle class="w-3.5 h-3.5" />
+                <XCircleIcon class="w-3.5 h-3.5" />
                 <span>Clear</span>
               </button>
               <button @click="handleCancelEdit" class="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">Cancel</button>
@@ -688,7 +688,7 @@ defineExpose({
         <!-- Error State (Appended below content) -->
         <div v-if="isLastInNode && message.error" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm flex flex-col gap-2 items-start" data-testid="error-message">
           <div class="flex items-center gap-2 font-bold">
-            <AlertTriangle class="w-4 h-4" />
+            <AlertTriangleIcon class="w-4 h-4" />
             <span>Generation Failed</span>
           </div>
           <div class="opacity-90">{{ message.error }}</div>
@@ -697,7 +697,7 @@ defineExpose({
             class="mt-1 px-3 py-1.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg text-xs font-bold transition-colors flex items-center gap-2"
             data-testid="retry-button"
           >
-            <RefreshCw class="w-3.5 h-3.5" />
+            <RefreshCwIcon class="w-3.5 h-3.5" />
             <span>Retry</span>
           </button>
         </div>
@@ -711,7 +711,7 @@ defineExpose({
               :disabled="!versionInfo.hasPrev"
               class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
             >
-              <ChevronLeft class="w-3 h-3" />
+              <ChevronLeftIcon class="w-3 h-3" />
             </button>
             <span class="min-w-[2.5rem] text-center">{{ versionInfo.current }} / {{ versionInfo.total }}</span>
             <button
@@ -719,7 +719,7 @@ defineExpose({
               :disabled="!versionInfo.hasNext"
               class="p-1 hover:text-blue-600 disabled:opacity-20 transition-colors"
             >
-              <ChevronRight class="w-3 h-3" />
+              <ChevronRightIcon class="w-3 h-3" />
             </button>
           </div>
           <div v-else></div>

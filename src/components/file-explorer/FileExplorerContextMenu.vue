@@ -2,8 +2,8 @@
 import { inject, computed, ref } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 import {
-  FolderOpen, Pencil, Trash2, Copy, Scissors, ClipboardPaste,
-  Download, Info, FilePlus, FolderPlus, CheckSquare,
+  FolderOpenIcon, PencilIcon, Trash2Icon, CopyIcon, ScissorsIcon, ClipboardPasteIcon,
+  DownloadIcon, InfoIcon, FilePlusIcon, FolderPlusIcon, CheckSquareIcon,
 } from 'lucide-vue-next';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import type { ContextMenuAction } from './types';
@@ -39,43 +39,43 @@ const menuItems = computed<MenuItem[]>(() => {
       firstEntry?.kind === 'file';
 
     const items: MenuItem[] = [
-      { type: 'action', action: 'open', label: 'Open', icon: FolderOpen },
-      { type: 'action', action: 'rename', label: 'Rename', icon: Pencil, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'open', label: 'Open', icon: FolderOpenIcon },
+      { type: 'action', action: 'rename', label: 'Rename', icon: PencilIcon, disabled: readOnly, disabledReason: lockedReason },
     ];
 
     items.push({ type: 'divider' });
-    items.push({ type: 'action', action: 'copy', label: 'Copy', icon: Copy });
-    items.push({ type: 'action', action: 'cut', label: 'Cut', icon: Scissors, disabled: readOnly, disabledReason: lockedReason });
+    items.push({ type: 'action', action: 'copy', label: 'Copy', icon: CopyIcon });
+    items.push({ type: 'action', action: 'cut', label: 'Cut', icon: ScissorsIcon, disabled: readOnly, disabledReason: lockedReason });
 
     if (hasClipboard.value) {
-      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste, disabled: readOnly, disabledReason: lockedReason });
+      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPasteIcon, disabled: readOnly, disabledReason: lockedReason });
     }
 
     items.push({ type: 'divider' });
 
     if (isSingleFile) {
-      items.push({ type: 'action', action: 'download', label: 'Download', icon: Download });
+      items.push({ type: 'action', action: 'download', label: 'Download', icon: DownloadIcon });
     }
 
-    items.push({ type: 'action', action: 'getInfo', label: 'Get Info', icon: Info });
+    items.push({ type: 'action', action: 'getInfo', label: 'Get Info', icon: InfoIcon });
     items.push({ type: 'divider' });
-    items.push({ type: 'action', action: 'delete', label: 'Delete', icon: Trash2, danger: true, disabled: readOnly, disabledReason: lockedReason });
+    items.push({ type: 'action', action: 'delete', label: 'Delete', icon: Trash2Icon, danger: true, disabled: readOnly, disabledReason: lockedReason });
 
     return items;
   }
   case 'background': {
     const items: MenuItem[] = [
-      { type: 'action', action: 'newFile', label: 'New File', icon: FilePlus, disabled: readOnly, disabledReason: lockedReason },
-      { type: 'action', action: 'newFolder', label: 'New Folder', icon: FolderPlus, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'newFile', label: 'New File', icon: FilePlusIcon, disabled: readOnly, disabledReason: lockedReason },
+      { type: 'action', action: 'newFolder', label: 'New Folder', icon: FolderPlusIcon, disabled: readOnly, disabledReason: lockedReason },
     ];
 
     if (hasClipboard.value) {
       items.push({ type: 'divider' });
-      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPaste, disabled: readOnly, disabledReason: lockedReason });
+      items.push({ type: 'action', action: 'paste', label: 'Paste', icon: ClipboardPasteIcon, disabled: readOnly, disabledReason: lockedReason });
     }
 
     items.push({ type: 'divider' });
-    items.push({ type: 'action', action: 'selectAll', label: 'Select All', icon: CheckSquare });
+    items.push({ type: 'action', action: 'selectAll', label: 'Select All', icon: CheckSquareIcon });
 
     return items;
   }

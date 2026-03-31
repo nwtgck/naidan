@@ -6,7 +6,7 @@ import ThemeToggle from './ThemeToggle.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useTheme } from '@/composables/useTheme';
 import { useToast } from '@/composables/useToast';
-import { Settings } from 'lucide-vue-next';
+import { SettingsIcon } from 'lucide-vue-next';
 import * as llm from '@/services/llm';
 import { TransformersJsProvider } from '@/services/transformers-js-provider';
 import { type EndpointType } from '@/models/types';
@@ -213,7 +213,7 @@ describe('OnboardingModal.vue', () => {
     expect(modalContainer.exists()).toBe(true);
     expect(modalContainer.classes()).toContain('md:h-[640px]');
 
-    expect(wrapper.findComponent(Settings).exists()).toBe(true);
+    expect(wrapper.findComponent(SettingsIcon).exists()).toBe(true);
   });
 
   it('renders ThemeToggle in the header', () => {

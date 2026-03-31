@@ -37,10 +37,10 @@ const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./Chat
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted(() => import('./ChatWeshTerminalModal.vue'));
 import {
-  X, GitFork, RefreshCw,
-  ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon,
-  Printer, Link, Terminal
+  XIcon, GitForkIcon, RefreshCwIcon,
+  ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon,
+  FolderIcon, FolderInputIcon, ChevronRightIcon, HammerIcon, SearchIcon, ImageIcon,
+  PrinterIcon, LinkIcon, TerminalIcon
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
@@ -593,7 +593,7 @@ watch(
       data-testid="drag-overlay"
     >
       <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in zoom-in duration-200">
-        <FolderInput class="w-6 h-6 text-blue-500" />
+        <FolderInputIcon class="w-6 h-6 text-blue-500" />
         <span class="text-lg font-bold text-gray-800 dark:text-gray-100">Drop files or folders to attach</span>
       </div>
     </div>
@@ -611,7 +611,7 @@ watch(
                 title="Jump to original chat"
                 data-testid="jump-to-origin-button"
               >
-                <ArrowUp class="w-4 h-4" />
+                <ArrowUpIcon class="w-4 h-4" />
               </button>
               <h2 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
@@ -624,14 +624,14 @@ watch(
                 data-testid="regenerate-title-button"
               >
                 <div class="relative w-3.5 h-3.5 flex items-center justify-center">
-                  <RefreshCw
+                  <RefreshCwIcon
                     class="w-full h-full transition-all"
                     :class="{
                       'animate-spin': generatingTitle,
                       'group-hover/title:opacity-0 group-hover/title:scale-75': generatingTitle && !ignoreTitleHover
                     }"
                   />
-                  <X
+                  <XIcon
                     v-if="generatingTitle"
                     class="w-3.5 h-3.5 absolute opacity-0 transition-all text-red-500 scale-75"
                     :class="{ 'group-hover/title:opacity-100 group-hover/title:scale-100': !ignoreTitleHover }"
@@ -656,7 +656,7 @@ watch(
                 <span class="truncate max-w-[120px] sm:max-w-[200px]">
                   {{ chatInputRef?.formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId) }}
                 </span>
-                <Settings2 class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
+                <Settings2Icon class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
               </div>
               <div
                 v-if="currentChat && hasChatOverrides({ chat: currentChat })"
@@ -683,7 +683,7 @@ watch(
               title="Move to Group"
               data-testid="move-to-group-button"
             >
-              <FolderInput class="w-4.5 h-4.5" />
+              <FolderInputIcon class="w-4.5 h-4.5" />
             </button>
 
             <Transition name="dropdown">
@@ -702,10 +702,10 @@ watch(
                     :class="!currentChat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                   >
                     <div class="flex items-center gap-2">
-                      <X class="w-4 h-4 opacity-50" />
+                      <XIcon class="w-4 h-4 opacity-50" />
                       <span>Top Level</span>
                     </div>
-                    <ChevronRight v-if="!currentChat.groupId" class="w-4 h-4" />
+                    <ChevronRightIcon v-if="!currentChat.groupId" class="w-4 h-4" />
                   </button>
 
                   <button
@@ -716,10 +716,10 @@ watch(
                     :class="currentChat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                   >
                     <div class="flex items-center gap-2 overflow-hidden">
-                      <Folder class="w-4 h-4 opacity-50 shrink-0" />
+                      <FolderIcon class="w-4 h-4 opacity-50 shrink-0" />
                       <span class="truncate">{{ group.name }}</span>
                     </div>
-                    <ChevronRight v-if="currentChat.groupId === group.id" class="w-4 h-4" />
+                    <ChevronRightIcon v-if="currentChat.groupId === group.id" class="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -733,7 +733,7 @@ watch(
             title="Fork Chat from last message"
             data-testid="fork-chat-button"
           >
-            <GitFork class="w-4.5 h-4.5" />
+            <GitForkIcon class="w-4.5 h-4.5" />
           </button>
 
           <button
@@ -742,7 +742,7 @@ watch(
             title="Super Edit (Full History Manipulation)"
             data-testid="super-edit-button"
           >
-            <Hammer class="w-4.5 h-4.5 group-hover/hammer:-rotate-12 transition-all" />
+            <HammerIcon class="w-4.5 h-4.5 group-hover/hammer:-rotate-12 transition-all" />
           </button>
 
           <button
@@ -751,7 +751,7 @@ watch(
             title="Export as Markdown"
             data-testid="export-markdown-button"
           >
-            <Download class="w-4.5 h-4.5" />
+            <DownloadIcon class="w-4.5 h-4.5" />
           </button>
 
           <button
@@ -760,7 +760,7 @@ watch(
             title="More Actions"
             data-testid="more-actions-button"
           >
-            <MoreVertical class="w-4.5 h-4.5" />
+            <MoreVerticalIcon class="w-4.5 h-4.5" />
           </button>
         </div>
 
@@ -777,7 +777,7 @@ watch(
               title="Open print dialog (can be used to Save as PDF)"
               data-testid="print-chat-button"
             >
-              <Printer class="w-4 h-4" />
+              <PrinterIcon class="w-4 h-4" />
               <span>Print</span>
             </button>
             <button
@@ -785,7 +785,7 @@ watch(
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
               data-testid="search-in-chat-button"
             >
-              <Search class="w-4 h-4" />
+              <SearchIcon class="w-4 h-4" />
               <span>Search in Chat</span>
             </button>
             <button
@@ -806,7 +806,7 @@ watch(
               title="Copy a shareable URL containing this chat"
               data-testid="export-url-button"
             >
-              <Link class="w-4 h-4" />
+              <LinkIcon class="w-4 h-4" />
               <span>Export as URL</span>
             </button>
             <button
@@ -818,7 +818,7 @@ watch(
               "
               data-testid="open-chat-wesh-terminal-button"
             >
-              <Terminal class="w-4 h-4" />
+              <TerminalIcon class="w-4 h-4" />
               <span>Wesh Terminal</span>
             </button>
             <button
@@ -830,7 +830,7 @@ watch(
               "
               data-testid="toggle-debug-button"
             >
-              <Bug class="w-4 h-4" />
+              <BugIcon class="w-4 h-4" />
               <span>Debug Mode</span>
             </button>
           </div>

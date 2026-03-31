@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ShieldCheck, Download, Ghost } from 'lucide-vue-next';
+import { ShieldCheckIcon, DownloadIcon, GhostIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 
 defineProps<{
@@ -66,8 +66,8 @@ defineExpose({
             class="relative p-4 sm:p-5 rounded-[2rem] border shadow-sm"
             :class="settings.storageType === 'memory' ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-100 dark:border-indigo-900/20' : 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/20'"
           >
-            <Ghost v-if="settings.storageType === 'memory'" class="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 dark:text-indigo-400" />
-            <ShieldCheck v-else class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
+            <GhostIcon v-if="settings.storageType === 'memory'" class="w-8 h-8 sm:w-10 sm:h-10 text-indigo-600 dark:text-indigo-400" />
+            <ShieldCheckIcon v-else class="w-8 h-8 sm:w-10 sm:h-10 text-emerald-600 dark:text-emerald-400" />
           </div>
         </div>
 
@@ -101,7 +101,7 @@ defineExpose({
             >
               <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
               <span class="text-[9px] sm:text-[10px] font-bold text-gray-400 dark:text-gray-500 group-hover/btn:text-emerald-600 dark:group-hover/btn:text-emerald-400 transition-colors">Download portable app</span>
-              <Download class="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-300 dark:text-gray-600 group-hover/btn:text-emerald-500 dark:group-hover/btn:text-emerald-400 group-hover/btn:translate-y-0.5 transition-all" />
+              <DownloadIcon class="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-300 dark:text-gray-600 group-hover/btn:text-emerald-500 dark:group-hover/btn:text-emerald-400 group-hover/btn:translate-y-0.5 transition-all" />
             </a>
           </div>
         </div>
