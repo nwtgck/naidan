@@ -632,6 +632,34 @@ describe('transformers-js.worker', () => {
       });
     });
 
+    it('parses Qwen3.5 relaxed JSON-like tool calls', async () => {
+      tokensToEmit = [
+        '<tool_call>\n',
+        '{"name": shell_execute, "arguments": {"shell_script": "ls -la /tmp/sample-dir | head -5", "stdout_limit": 1024, "stderr_limit": 1024, "timeout_ms": 5000}}\n',
+        '</tool_call>',
+      ];
+
+      const onChunk = vi.fn();
+      const onToolCalls = vi.fn();
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
+      ];
+
+      await workerObj.generateText([], onChunk, onToolCalls, undefined, tools);
+
+      expect(onToolCalls).toHaveBeenCalledOnce();
+      const [calls] = onToolCalls.mock.calls[0]!;
+      expect(calls).toHaveLength(1);
+      expect(calls[0].function.name).toBe('shell_execute');
+      expect(JSON.parse(calls[0].function.arguments)).toEqual({
+        shell_script: 'ls -la /tmp/sample-dir | head -5',
+        stdout_limit: 1024,
+        stderr_limit: 1024,
+        timeout_ms: 5000,
+      });
+      expect(onChunk).not.toHaveBeenCalledWith(expect.stringContaining('<tool_call>'));
+    });
+
     it('injects Qwen3.5 tool instructions via system prompt instead of template tools', async () => {
       const tools: WorkerToolDefinition[] = [
         { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },

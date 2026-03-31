@@ -59,6 +59,25 @@ pwd
     expect(JSON.parse(calls[0]!.function.arguments)).toEqual({ shell_script: 'pwd' });
   });
 
+  it('parses relaxed JSON-like tool calls with bare identifiers', () => {
+    parser.feed({
+      output: `\
+<tool_call>
+{"name": shell_execute, "arguments": {"shell_script": "ls -la /tmp/sample-dir | head -5", "stdout_limit": 1024, "stderr_limit": 1024, "timeout_ms": 5000}}
+</tool_call>`,
+    });
+
+    const calls = parser.drainToolCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.function.name).toBe('shell_execute');
+    expect(JSON.parse(calls[0]!.function.arguments)).toEqual({
+      shell_script: 'ls -la /tmp/sample-dir | head -5',
+      stdout_limit: 1024,
+      stderr_limit: 1024,
+      timeout_ms: 5000,
+    });
+  });
+
   it('streams plain text outside tool calls', () => {
     parser.feed({ output: 'before ' });
     parser.feed({
