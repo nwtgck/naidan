@@ -11,17 +11,18 @@ const mockOllamaGenerateImage = vi.fn().mockResolvedValue({
   totalSteps: 10
 });
 
-vi.mock('../services/llm', () => {
-  return {
-    OllamaProvider: class {
-      chat = mockOllamaChat;
-      generateImage = mockOllamaGenerateImage;
-    },
-    OpenAIProvider: class {
-      chat = vi.fn();
-    },
-  };
-});
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: class {
+    chat = mockOllamaChat;
+    generateImage = mockOllamaGenerateImage;
+  },
+}));
+
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: class {
+    chat = vi.fn();
+  },
+}));
 
 // Mock storage
 vi.mock('../services/storage', () => ({

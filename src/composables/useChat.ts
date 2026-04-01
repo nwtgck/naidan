@@ -3,7 +3,10 @@ import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy, t
 import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { OpenAIProvider, OllamaProvider, UNKNOWN_STEPS, type LLMProvider } from '@/services/llm';
+import type { LLMProvider } from '@/services/lm/types';
+import { UNKNOWN_STEPS } from '@/services/lm/types';
+import { OpenAIProvider } from '@/services/lm/openai';
+import { OllamaProvider } from '@/services/lm/ollama';
 import { TransformersJsProvider } from '@/services/transformers-js-provider';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from './useSettings';

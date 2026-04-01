@@ -44,22 +44,23 @@ vi.mock('./useSettings', () => ({
 }));
 
 const mockLlmChat = vi.fn();
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: function() {
-      return {
-        chat: mockLlmChat,
-        listModels: vi.fn().mockResolvedValue(['gpt-4']),
-      };
-    },
-    OllamaProvider: function() {
-      return {
-        chat: mockLlmChat,
-        listModels: vi.fn().mockResolvedValue(['gpt-4']),
-      };
-    },
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: function() {
+    return {
+      chat: mockLlmChat,
+      listModels: vi.fn().mockResolvedValue(['gpt-4']),
+    };
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: function() {
+    return {
+      chat: mockLlmChat,
+      listModels: vi.fn().mockResolvedValue(['gpt-4']),
+    };
+  },
+}));
 
 describe('useChat Streaming State Logic', () => {
   const chatStore = useChat();

@@ -18,16 +18,17 @@ import type { ProviderProfile } from '@/models/types';
 // --- Mocks ---
 
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: class {
-      listModels = mockListModels;
-    },
-    OllamaProvider: class {
-      listModels = mockListModels;
-    },
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: class {
+    listModels = mockListModels;
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: class {
+    listModels = mockListModels;
+  },
+}));
 
 
 vi.mock('../composables/useSettings', () => ({

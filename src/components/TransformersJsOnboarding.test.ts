@@ -11,8 +11,11 @@ import TransformersJsManager from './TransformersJsManager.vue';
 const mockAddToast = vi.fn();
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
 
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: vi.fn(),
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: vi.fn(),
 }));
 

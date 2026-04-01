@@ -114,22 +114,23 @@ vi.mock('./useToast', () => ({
 const mockLlmChat = vi.fn();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: function() {
-      return {
-        chat: (...args: any[]) => mockLlmChat(...args),
-        listModels: (...args: any[]) => mockListModels(...args),
-      };
-    },
-    OllamaProvider: function() {
-      return {
-        chat: (...args: any[]) => mockLlmChat(...args),
-        listModels: (...args: any[]) => mockListModels(...args),
-      };
-    },
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: function() {
+    return {
+      chat: (...args: any[]) => mockLlmChat(...args),
+      listModels: (...args: any[]) => mockListModels(...args),
+    };
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: function() {
+    return {
+      chat: (...args: any[]) => mockLlmChat(...args),
+      listModels: (...args: any[]) => mockListModels(...args),
+    };
+  },
+}));
 
 describe('useChat Concurrency & Stale State Protection', () => {
   const chatStore = useChat();

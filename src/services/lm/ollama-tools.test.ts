@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { OllamaProvider } from '@/services/llm';
+import { OllamaProvider } from '@/services/lm/ollama';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { z } from 'zod';
 import type { Tool } from '@/services/tools/types';

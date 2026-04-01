@@ -31,22 +31,23 @@ const mockOllamaChat = vi.fn();
 const mockOpenAIModels = vi.fn();
 const mockOllamaModels = vi.fn();
 
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: vi.fn().mockImplementation(function() {
-      return {
-        chat: mockOpenAIChat,
-        listModels: mockOpenAIModels,
-      };
-    }),
-    OllamaProvider: vi.fn().mockImplementation(function() {
-      return {
-        chat: mockOllamaChat,
-        listModels: mockOllamaModels,
-      };
-    }),
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: vi.fn().mockImplementation(function() {
+    return {
+      chat: mockOpenAIChat,
+      listModels: mockOpenAIModels,
+    };
+  }),
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: vi.fn().mockImplementation(function() {
+    return {
+      chat: mockOllamaChat,
+      listModels: mockOllamaModels,
+    };
+  }),
+}));
 
 describe('Provider and Model Compatibility (Comprehensive Test)', () => {
   const { settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();

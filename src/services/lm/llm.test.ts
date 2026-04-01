@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { OpenAIProvider, OllamaProvider } from '@/services/llm';
+import { OpenAIProvider } from '@/services/lm/openai';
+import { OllamaProvider } from '@/services/lm/ollama';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 
 describe('OpenAIProvider', () => {

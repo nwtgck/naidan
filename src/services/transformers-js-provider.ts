@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { LLMProvider } from './llm';
+import type { LLMProvider } from './lm/types';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { transformersJsService } from './transformers-js';
 import type { Tool } from './tools/types';

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '@/services/storage';
-import { OpenAIProvider } from '@/services/llm';
+import { OpenAIProvider } from '@/services/lm/openai';
 import { reactive, triggerRef, toRaw } from 'vue';
 import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
@@ -59,7 +59,7 @@ const mockLlmChat = vi.fn().mockImplementation(async (params: { onChunk: (chunk:
   params.onChunk(' World');
 });
 
-vi.mock('../services/llm', () => {
+vi.mock('../services/lm/openai', () => {
   return {
     OpenAIProvider: function() {
       return {
@@ -67,6 +67,11 @@ vi.mock('../services/llm', () => {
         listModels: vi.fn().mockResolvedValue(['gpt-4']),
       };
     },
+  };
+});
+
+vi.mock('../services/lm/ollama', () => {
+  return {
     OllamaProvider: function() {
       return {
         chat: mockLlmChat,

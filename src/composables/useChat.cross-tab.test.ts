@@ -80,9 +80,12 @@ vi.mock('./useSettings', () => ({
 
 vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn(), }), }));
 
-vi.mock('../services/llm', () => ({
-  OpenAIProvider: vi.fn().mockImplementation(() => ({ chat: vi.fn(), listModels: vi.fn().mockResolvedValue(['gpt-4']), })),
-  OllamaProvider: vi.fn().mockImplementation(() => ({ chat: vi.fn(), listModels: vi.fn().mockResolvedValue(['gpt-4']), })),
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: vi.fn().mockImplementation(() => ({ chat: vi.fn(), listModels: vi.fn().mockResolvedValue(['gpt-4']) })),
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: vi.fn().mockImplementation(() => ({ chat: vi.fn(), listModels: vi.fn().mockResolvedValue(['gpt-4']) })),
 }));
 
 describe('useChat Cross-Tab Synchronization', () => {

@@ -7,15 +7,21 @@ import { useSettings } from '@/composables/useSettings';
 import { useTheme } from '@/composables/useTheme';
 import { useToast } from '@/composables/useToast';
 import { SettingsIcon } from 'lucide-vue-next';
-import * as llm from '@/services/llm';
+import * as openaiModule from '@/services/lm/openai';
+import * as ollamaModule from '@/services/lm/ollama';
 import { TransformersJsProvider } from '@/services/transformers-js-provider';
 import { type EndpointType } from '@/models/types';
 import { detectOllama } from '@/utils/ollama-detection';
 
 // Mock the services.
-vi.mock('../services/llm', () => {
+vi.mock('../services/lm/openai', () => {
   return {
     OpenAIProvider: vi.fn(),
+  };
+});
+
+vi.mock('../services/lm/ollama', () => {
+  return {
     OllamaProvider: vi.fn(),
   };
 });
@@ -82,10 +88,10 @@ describe('OnboardingModal.vue', () => {
 
     listModelsMock.mockResolvedValue(['model-1']);
 
-    (llm.OpenAIProvider as unknown as Mock).mockImplementation(function() {
+    (openaiModule.OpenAIProvider as unknown as Mock).mockImplementation(function() {
       return { listModels: listModelsMock };
     });
-    (llm.OllamaProvider as unknown as Mock).mockImplementation(function() {
+    (ollamaModule.OllamaProvider as unknown as Mock).mockImplementation(function() {
       return { listModels: listModelsMock };
     });
     (TransformersJsProvider as unknown as Mock).mockImplementation(function() {

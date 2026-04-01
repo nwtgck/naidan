@@ -52,11 +52,14 @@ vi.mock('../services/storage/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
     listModels = mockListModels;
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
     listModels = mockListModels;

@@ -25,7 +25,7 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 let triggerChunk: (chunk: string) => void;
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
     async chat(params: { onChunk: (c: string) => void }) {
@@ -36,6 +36,9 @@ vi.mock('../services/llm', () => ({
       return ['gpt-4'];
     }
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
     async listModels() {

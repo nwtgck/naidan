@@ -52,16 +52,19 @@ vi.mock('./useSettings', () => ({
 
 // Mock LLM Provider
 const mockListModels = vi.fn();
-vi.mock('../services/llm', () => {
+vi.mock('../services/lm/openai', () => {
   class MockOpenAI {
     chat = vi.fn();
     listModels = mockListModels;
   }
   return {
     OpenAIProvider: MockOpenAI,
-    OllamaProvider: vi.fn(),
   };
 });
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: vi.fn(),
+}));
 
 describe('useChat Onboarding Trigger', () => {
   const chatStore = useChat();

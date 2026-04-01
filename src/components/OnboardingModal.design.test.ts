@@ -5,7 +5,8 @@ import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
 import { useTheme } from '@/composables/useTheme';
 
-vi.mock('../services/llm');
+vi.mock('../services/lm/openai');
+vi.mock('../services/lm/ollama');
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OllamaProvider, OpenAIProvider } from '@/services/llm';
+import { OpenAIProvider } from '@/services/lm/openai';
+import { OllamaProvider } from '@/services/lm/ollama';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 
 // Mock useGlobalEvents

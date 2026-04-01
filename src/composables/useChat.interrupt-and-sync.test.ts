@@ -16,17 +16,21 @@ const mockLlm = {
   listModels: vi.fn().mockResolvedValue(['gpt-4', 'x/z-image-turbo:v1']),
 };
 
-vi.mock('../services/llm', () => {
-  return {
-    UNKNOWN_STEPS: Symbol('unknown'),
-    OpenAIProvider: vi.fn().mockImplementation(function() {
-      return mockLlm;
-    }),
-    OllamaProvider: vi.fn().mockImplementation(function() {
-      return mockLlm;
-    }),
-  };
-});
+vi.mock('../services/lm/types', () => ({
+  UNKNOWN_STEPS: Symbol('unknown'),
+}));
+
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: vi.fn().mockImplementation(function() {
+    return mockLlm;
+  }),
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: vi.fn().mockImplementation(function() {
+    return mockLlm;
+  }),
+}));
 
 vi.mock('../services/storage', () => ({
   storageService: {

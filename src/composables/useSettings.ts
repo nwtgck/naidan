@@ -3,7 +3,9 @@ import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, t
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
-import { OpenAIProvider, OllamaProvider, type LLMProvider } from '@/services/llm';
+import type { LLMProvider } from '@/services/lm/types';
+import { OpenAIProvider } from '@/services/lm/openai';
+import { OllamaProvider } from '@/services/lm/ollama';
 import { TransformersJsProvider } from '@/services/transformers-js-provider';
 import { transformersJsService } from '@/services/transformers-js';
 import { StorageTypeSchemaDto } from '@/models/dto';

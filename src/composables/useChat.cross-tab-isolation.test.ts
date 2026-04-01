@@ -169,32 +169,33 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
     vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
 
-    vi.mock('../services/llm', () => {
-      return {
-        OpenAIProvider: function() {
-          return {
-            chat: vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void, signal?: AbortSignal }) => {
-              const { onChunk, signal } = params;
-              await Promise.resolve();
-              // Generate enough chunks for state verification but not so many that it times out
-              for (let i = 0; i < 10; i++) {
-                if (signal?.aborted) {
-                  const err = new Error('Aborted');
-                  err.name = 'AbortError';
-                  throw err;
-                }
-                onChunk(`chunk ${i}`);
-                await new Promise(r => setTimeout(r, 100));
+    vi.mock('../services/lm/openai', () => ({
+      OpenAIProvider: function() {
+        return {
+          chat: vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void, signal?: AbortSignal }) => {
+            const { onChunk, signal } = params;
+            await Promise.resolve();
+            // Generate enough chunks for state verification but not so many that it times out
+            for (let i = 0; i < 10; i++) {
+              if (signal?.aborted) {
+                const err = new Error('Aborted');
+                err.name = 'AbortError';
+                throw err;
               }
-            }),
-            listModels: vi.fn().mockResolvedValue(['gpt-4'])
-          };
-        },
-        OllamaProvider: function() {
-          return { chat: vi.fn(), listModels: vi.fn() };
-        },
-      };
-    });
+              onChunk(`chunk ${i}`);
+              await new Promise(r => setTimeout(r, 100));
+            }
+          }),
+          listModels: vi.fn().mockResolvedValue(['gpt-4'])
+        };
+      },
+    }));
+
+    vi.mock('../services/lm/ollama', () => ({
+      OllamaProvider: function() {
+        return { chat: vi.fn(), listModels: vi.fn() };
+      },
+    }));
 
     const { useChat } = await import('./useChat');
     const store = useChat();

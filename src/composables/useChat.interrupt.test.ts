@@ -19,11 +19,14 @@ vi.mock('./useSettings', () => ({
 
 // Mock LLM providers
 const mockLlmChat = vi.fn();
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
     chat = mockLlmChat;
     listModels = vi.fn().mockResolvedValue(['gpt-4']);
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: class {
     chat = vi.fn();
     listModels = vi.fn().mockResolvedValue([]);

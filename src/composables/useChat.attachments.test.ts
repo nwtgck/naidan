@@ -76,24 +76,25 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: class {
-      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-        params.onChunk('Response');
-        return Promise.resolve();
-      });
-      listModels = vi.fn().mockResolvedValue(['test-model']);
-    },
-    OllamaProvider: class {
-      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-        params.onChunk('Response');
-        return Promise.resolve();
-      });
-      listModels = vi.fn().mockResolvedValue(['test-model']);
-    }
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: class {
+    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Response');
+      return Promise.resolve();
+    });
+    listModels = vi.fn().mockResolvedValue(['test-model']);
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: class {
+    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Response');
+      return Promise.resolve();
+    });
+    listModels = vi.fn().mockResolvedValue(['test-model']);
+  }
+}));
 
 vi.mock('./useConfirm', () => ({
   useConfirm: () => ({

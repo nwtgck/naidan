@@ -28,16 +28,14 @@ vi.mock('../services/storage', () => ({
 
 const mockOpenAIChat = vi.fn();
 
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: vi.fn().mockImplementation(function() {
-      return {
-        chat: mockOpenAIChat,
-        listModels: vi.fn().mockResolvedValue(['gpt']),
-      };
-    }),
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: vi.fn().mockImplementation(function() {
+    return {
+      chat: mockOpenAIChat,
+      listModels: vi.fn().mockResolvedValue(['gpt']),
+    };
+  }),
+}));
 
 describe('useChat System Prompt Clear Policy', () => {
   const { TEST_ONLY: { __testOnlySetSettings } } = useSettings();

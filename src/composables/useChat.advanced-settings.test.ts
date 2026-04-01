@@ -33,13 +33,16 @@ const mockOllamaChat = vi.fn();
 const mockOpenAIModels = vi.fn();
 const mockOllamaModels = vi.fn();
 
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOpenAIChat,
       listModels: mockOpenAIModels,
     };
   }),
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOllamaChat,

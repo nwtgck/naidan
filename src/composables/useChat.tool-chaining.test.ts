@@ -55,23 +55,23 @@ vi.mock('./useConfirm', () => ({
 // Mock LLM Provider
 const mockLlmChat = vi.fn();
 
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: function() {
-      return {
-        chat: mockLlmChat,
-        listModels: vi.fn().mockResolvedValue(['gpt-4']),
-      };
-    },
-    OllamaProvider: function() {
-      return {
-        chat: vi.fn(),
-        listModels: vi.fn().mockResolvedValue(['gpt-4']),
-      };
-    },
-    TransformersJsProvider: vi.fn(),
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: function() {
+    return {
+      chat: mockLlmChat,
+      listModels: vi.fn().mockResolvedValue(['gpt-4']),
+    };
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: function() {
+    return {
+      chat: vi.fn(),
+      listModels: vi.fn().mockResolvedValue(['gpt-4']),
+    };
+  },
+}));
 
 // Mock Tools Registry
 vi.mock('../services/tools/registry', () => ({
@@ -233,4 +233,3 @@ describe('useChat Tool Chaining', () => {
     expect(messages[0]!.content).toBe('Message 2');
   });
 });
-

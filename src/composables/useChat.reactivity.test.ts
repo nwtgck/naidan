@@ -34,7 +34,7 @@ vi.mock('./useSettings', () => ({
 
 // Mock LLM
 let onChunkCallback: (chunk: string) => void;
-vi.mock('../services/llm', () => {
+vi.mock('../services/lm/openai', () => {
   class MockOpenAI {
     chat = vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void }) => {
       onChunkCallback = params.onChunk;
@@ -44,9 +44,12 @@ vi.mock('../services/llm', () => {
   }
   return {
     OpenAIProvider: MockOpenAI,
-    OllamaProvider: vi.fn(),
   };
 });
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: vi.fn(),
+}));
 
 describe('useChat Reactivity', () => {
   const chatStore = useChat();

@@ -1,21 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock LLM provider
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: class {
-      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-        params.onChunk('Done');
-        return Promise.resolve();
-      });
-      listModels = vi.fn().mockResolvedValue(['gpt-4']);
-    },
-    OllamaProvider: class {
-      chat = vi.fn();
-      listModels = vi.fn().mockResolvedValue(['gpt-4']);
-    },
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: class {
+    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Done');
+      return Promise.resolve();
+    });
+    listModels = vi.fn().mockResolvedValue(['gpt-4']);
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: class {
+    chat = vi.fn();
+    listModels = vi.fn().mockResolvedValue(['gpt-4']);
+  },
+}));
 
 // Mock storage service
 vi.mock('../services/storage', () => ({

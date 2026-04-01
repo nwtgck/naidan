@@ -45,13 +45,16 @@ vi.mock('./useSettings', () => ({
 }));
 
 const mockLlmChat = vi.fn();
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
       chat: mockLlmChat,
       listModels: vi.fn().mockResolvedValue(['model-1', 'chat-model', 'group-model', 'group-special-model', 'global-model']),
     };
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
       chat: mockLlmChat,

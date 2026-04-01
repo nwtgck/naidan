@@ -54,11 +54,14 @@ vi.mock('./useSettings', () => ({
 const mockLlmChat = vi.fn();
 const mockListModels = vi.fn();
 
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
     chat = mockLlmChat;
     listModels = mockListModels;
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: class {
     async listModels() {
       return [];
