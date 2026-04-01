@@ -510,7 +510,7 @@ defineExpose({
                     />
                     <div v-else class="flex items-center justify-center w-full h-full">
                       <EyeIcon v-if="obj.mimeType.startsWith('image/')" class="w-4 h-4 text-blue-500 opacity-50" />
-                      <File v-else class="w-4 h-4 text-gray-400" />
+                      <FileIcon v-else class="w-4 h-4 text-gray-400" />
                     </div>
                   </div>
                   <div class="flex flex-col min-w-0">
@@ -573,7 +573,7 @@ defineExpose({
             />
             <div v-else class="flex flex-col items-center gap-2 opacity-40">
               <EyeIcon v-if="obj.mimeType.startsWith('image/')" class="w-8 h-8 text-blue-500" />
-              <File v-else class="w-8 h-8 text-gray-400" />
+              <FileIcon v-else class="w-8 h-8 text-gray-400" />
               <span class="text-[10px] font-bold truncate max-w-[80px] lowercase">{{ obj.mimeType.split('/')[1] }}</span>
             </div>
           </div>

@@ -373,7 +373,7 @@ export default {
                 <img v-if="thumbnailUrls[att.binaryObjectId]" :src="thumbnailUrls[att.binaryObjectId]" class="w-full h-full object-cover" />
                 <div v-else class="flex flex-col items-center justify-center gap-1">
                   <ImageIcon v-if="att.mimeType.startsWith('image/')" class="w-4 h-4 text-gray-400" />
-                  <File v-else class="w-4 h-4 text-gray-400" />
+                  <FileIcon v-else class="w-4 h-4 text-gray-400" />
                 </div>
                 <div class="absolute bottom-0 inset-x-0 bg-black/40 text-[7px] text-white px-1 py-0.5 truncate text-center font-bold backdrop-blur-sm">
                   {{ att.mimeType.split('/')[1] }}

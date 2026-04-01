@@ -261,7 +261,7 @@ defineExpose({
               </div>
               <div v-else class="text-center space-y-6">
                 <div class="p-12 bg-white/10 backdrop-blur-xl rounded-[40px] shadow-2xl inline-block border border-white/10">
-                  <File class="w-24 h-24 text-white/20" />
+                  <FileIcon class="w-24 h-24 text-white/20" />
                 </div>
                 <div class="space-y-2">
                   <p class="text-sm font-bold text-white/40 tracking-widest uppercase">Preview Unavailable</p>
@@ -306,7 +306,7 @@ defineExpose({
           <div class="flex items-center gap-4 min-w-0 flex-1 mr-8">
             <div class="p-2.5 bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 shrink-0">
               <EyeIcon v-if="isImage" class="w-5 h-5 text-blue-400" />
-              <File v-else class="w-5 h-5 text-white/40" />
+              <FileIcon v-else class="w-5 h-5 text-white/40" />
             </div>
             <div class="min-w-0 flex flex-col">
               <div class="flex items-center gap-2">
