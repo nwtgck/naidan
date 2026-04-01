@@ -156,6 +156,31 @@ describe('VfsExplorerDirectory.children()', () => {
     expect(c0.readOnly).toBe(true);
     expect(c0.directory.readOnly).toBe(true);
   });
+
+  it('uses entry.fullPath for mount-backed children under synthetic parents', async () => {
+    const handle = makeFakeDirHandle('opaque-volume-id');
+    const vfs = makeMockVfs({
+      readDirEntries: [{ name: 'v1', type: 'directory', fullPath: '/home/user/v1' }],
+      nativeHandles: {
+        '/home/user/v1': handle,
+        '/virtual/user/v1': null,
+      },
+      readOnlyPaths: {
+        '/home/user/v1': false,
+        '/virtual/user/v1': true,
+      },
+    });
+    const dir = new VfsExplorerDirectory({ name: 'user', path: '/virtual/user', vfs });
+
+    const children: ExplorerChild[] = [];
+    for await (const child of dir.children()) {
+      children.push(child);
+    }
+
+    const child = asDir(children[0]!);
+    expect(child.readOnly).toBe(false);
+    expect(child.directory).toBeInstanceOf(FsExplorerDirectory);
+  });
 });
 
 // ---- VfsExplorerDirectory.subdir() ----

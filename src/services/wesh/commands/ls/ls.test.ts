@@ -161,6 +161,31 @@ describe('wesh ls', () => {
     expect(commandLine.result.exitCode).toBe(0);
   });
 
+  it('keeps -P and -L distinct during recursive long listings', async () => {
+    await writeFile({ path: 'target/nested/file.txt', data: 'payload' });
+    await wesh.vfs.symlink({
+      path: '/target.link',
+      targetPath: '/target',
+    });
+
+    const physical = await execute({
+      script: 'ls -lRP target.link',
+    });
+    const logical = await execute({
+      script: 'ls -lRL target.link',
+    });
+
+    expect(physical.stdout.text).toContain('target.link -> /target');
+    expect(physical.stdout.text).not.toContain('file.txt');
+    expect(logical.stdout.text).toContain('nested');
+    expect(logical.stdout.text).toContain('target.link/nested:');
+    expect(logical.stdout.text).toContain('file.txt');
+    expect(physical.stderr.text).toBe('');
+    expect(logical.stderr.text).toBe('');
+    expect(physical.result.exitCode).toBe(0);
+    expect(logical.result.exitCode).toBe(0);
+  });
+
   it('supports -a to include dotfiles', async () => {
     await writeFile({ path: '.hidden.txt', data: 'hidden' });
     await writeFile({ path: 'visible.txt', data: 'visible' });
