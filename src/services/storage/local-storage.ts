@@ -293,8 +293,9 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async createVolumeFromFiles(_params: {
     name: string;
-    files: FileList;
+    entries: Array<{ file: File; relativePath: string }>;
     onProgress?: (progress: { processed: number; total: number }) => void;
+    signal?: AbortSignal;
   }): Promise<import('@/models/types').Volume> {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }
@@ -307,6 +308,13 @@ export class LocalStorageProvider extends IStorageProvider {
 
   async deleteVolume(_params: {
     volumeId: string;
+  }): Promise<void> {
+    throw new Error('Volume management is not supported in LocalStorage provider.');
+  }
+
+  async renameVolume(_params: {
+    volumeId: string;
+    name: string;
   }): Promise<void> {
     throw new Error('Volume management is not supported in LocalStorage provider.');
   }

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 describe('wesh gzip family', () => {
@@ -47,12 +47,12 @@ describe('wesh gzip family', () => {
     script: string;
     stdinText: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: stdinText }),
+      stdin: createTestReadHandleFromText({ text: stdinText }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -70,7 +70,10 @@ cat plain.txt`,
       stdinText: '',
     });
 
-    expect(stdout.text).toBe('hello gzip\nhello gzip\n');
+    expect(stdout.text).toBe(`\
+hello gzip
+hello gzip
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -87,7 +90,10 @@ echo $?`,
       stdinText: '',
     });
 
-    expect(stdout.text).toBe('keep me\n0\n');
+    expect(stdout.text).toBe(`\
+keep me
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

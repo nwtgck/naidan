@@ -1,10 +1,10 @@
-import { createWeshReadFileHandle, createWeshWriteFileHandle } from './stream';
+import { createReadHandleFromStream, createWriteHandleFromStream } from './stream';
 import type { WeshFileHandle } from '@/services/wesh/types';
 
 /**
  * Creates a Wesh file handle that provides the given text as input.
  */
-export function createWeshReadFileHandleFromText({
+export function createTestReadHandleFromText({
   text,
 }: {
   text: string;
@@ -17,16 +17,35 @@ export function createWeshReadFileHandleFromText({
       controller.close();
     },
   });
-  return createWeshReadFileHandle({ source });
+  return createReadHandleFromStream({ source });
+}
+
+/**
+ * Creates a Wesh file handle that provides the given binary data as input.
+ */
+export function createTestReadHandleFromBytes({
+  bytes,
+}: {
+  bytes: Uint8Array;
+}): WeshFileHandle {
+  const source = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (bytes.length > 0) {
+        controller.enqueue(new Uint8Array(bytes));
+      }
+      controller.close();
+    },
+  });
+  return createReadHandleFromStream({ source });
 }
 
 /**
  * Creates a capture object that stores all data written to its handle.
  */
-export function createWeshWriteCaptureHandle() {
+export function createTestWriteCaptureHandle() {
   const chunks: Uint8Array[] = [];
 
-  const handle = createWeshWriteFileHandle({
+  const handle = createWriteHandleFromStream({
     target: new WritableStream({
       write(chunk) {
         // Store a copy to avoid issues with buffer reuse in Wesh
@@ -37,6 +56,9 @@ export function createWeshWriteCaptureHandle() {
 
   return {
     handle,
+    get chunkCount() {
+      return chunks.length;
+    },
     get text() {
       const decoder = new TextDecoder();
       return chunks.map(c => decoder.decode(c, { stream: true })).join('') + decoder.decode();

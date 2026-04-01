@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { LmParameters } from '@/models/types';
-import { RotateCcw, X } from 'lucide-vue-next';
+import { RotateCcwIcon, XIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
   modelValue?: LmParameters;
@@ -155,7 +155,7 @@ defineExpose({
         @click="reset"
         class="text-[10px] font-bold text-gray-400 hover:text-blue-500 flex items-center gap-1 transition-colors"
       >
-        <RotateCcw class="w-3 h-3" />
+        <RotateCcwIcon class="w-3 h-3" />
         Reset All
       </button>
     </div>
@@ -176,7 +176,7 @@ defineExpose({
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('temperature')" @click="updateParam('temperature', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><X class="w-3 h-3"/></button>
+            <button v-if="isOverridden('temperature')" @click="updateParam('temperature', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
@@ -202,7 +202,7 @@ defineExpose({
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('topP')" @click="updateParam('topP', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><X class="w-3 h-3"/></button>
+            <button v-if="isOverridden('topP')" @click="updateParam('topP', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
@@ -228,7 +228,7 @@ defineExpose({
               placeholder="Default"
               class="w-24 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('maxCompletionTokens')" @click="updateParam('maxCompletionTokens', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><X class="w-3 h-3"/></button>
+            <button v-if="isOverridden('maxCompletionTokens')" @click="updateParam('maxCompletionTokens', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
       </div>
@@ -248,7 +248,7 @@ defineExpose({
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('presencePenalty')" @click="updateParam('presencePenalty', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><X class="w-3 h-3"/></button>
+            <button v-if="isOverridden('presencePenalty')" @click="updateParam('presencePenalty', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
@@ -267,7 +267,7 @@ defineExpose({
             <span v-if="isOverridden('stop')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <button v-if="isOverridden('stop')" @click="updateParam('stop', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 flex items-center gap-1 text-[10px] font-bold">
-            <X class="w-3 h-3"/> Reset to Default
+            <XIcon class="w-3 h-3"/> Reset to Default
           </button>
         </div>
         <textarea

@@ -50,18 +50,18 @@ describe('ChatSettingsPanel.vue', () => {
   });
 
   const globalStubs = {
-    X: true,
-    RefreshCw: true,
-    Globe: true,
-    Loader2: true,
-    Settings2: true,
-    AlertCircle: true,
+    XIcon: true,
+    RefreshCwIcon: true,
+    GlobeIcon: true,
+    Loader2Icon: true,
+    Settings2Icon: true,
+    AlertCircleIcon: true,
     TransformersJsUpsell: {
       name: 'TransformersJsUpsell',
       template: '<div data-testid="upsell-stub"></div>',
       props: ['show']
     },
-    Check: { name: 'Check', template: '<span class="check-stub" />' },
+    CheckIcon: { name: 'Check', template: '<span class="check-stub" />' },
     ModelSelector: {
       name: 'ModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue">{{ modelValue }}<button v-if="!loading" data-testid="refresh-mock" @click="$emit(\'refresh\')">Refresh</button><span v-if="loading" class="loading-mock">Loading</span></div>',

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 describe('head command', () => {
@@ -36,12 +36,12 @@ describe('head command', () => {
     script: string;
     stdinText: string | undefined;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: stdinText ?? '' }),
+      stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -50,8 +50,16 @@ describe('head command', () => {
   }
 
   it('prints headers for multiple files by default', async () => {
-    await writeFile({ name: 'a.txt', data: 'a1\na2\na3\n' });
-    await writeFile({ name: 'b.txt', data: 'b1\nb2\nb3\n' });
+    await writeFile({ name: 'a.txt', data: `\
+a1
+a2
+a3
+` });
+    await writeFile({ name: 'b.txt', data: `\
+b1
+b2
+b3
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'head -n 1 a.txt b.txt',
@@ -70,8 +78,14 @@ b1
   });
 
   it('suppresses headers with -q', async () => {
-    await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
-    await writeFile({ name: 'b.txt', data: 'b1\nb2\n' });
+    await writeFile({ name: 'a.txt', data: `\
+a1
+a2
+` });
+    await writeFile({ name: 'b.txt', data: `\
+b1
+b2
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'head -q -n 1 a.txt b.txt',
@@ -87,8 +101,14 @@ b1
   });
 
   it('supports long option aliases for header and line selection', async () => {
-    await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
-    await writeFile({ name: 'b.txt', data: 'b1\nb2\n' });
+    await writeFile({ name: 'a.txt', data: `\
+a1
+a2
+` });
+    await writeFile({ name: 'b.txt', data: `\
+b1
+b2
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'head --silent --lines=1 a.txt b.txt',
@@ -104,7 +124,10 @@ b1
   });
 
   it('forces headers with -v for a single file', async () => {
-    await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
+    await writeFile({ name: 'a.txt', data: `\
+a1
+a2
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'head -v -n 1 a.txt',
@@ -120,11 +143,17 @@ a1
   });
 
   it('treats - as stdin among files', async () => {
-    await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
+    await writeFile({ name: 'a.txt', data: `\
+a1
+a2
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'head -n 1 - a.txt',
-      stdinText: 'stdin1\nstdin2\n',
+      stdinText: `\
+stdin1
+stdin2
+`,
     });
 
     expect(stdout.text).toBe(`\
@@ -139,7 +168,10 @@ a1
   });
 
   it('returns non-zero when any file is missing', async () => {
-    await writeFile({ name: 'a.txt', data: 'a1\na2\n' });
+    await writeFile({ name: 'a.txt', data: `\
+a1
+a2
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'head -n 1 a.txt missing.txt',

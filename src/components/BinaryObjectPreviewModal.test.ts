@@ -29,9 +29,9 @@ const mockObjects: BinaryObject[] = [
 
 const globalStubs = {
   Teleport: true,
-  X: true, Download: true, Trash2: true, ChevronLeft: true, ChevronRight: true,
-  ZoomIn: true, ZoomOut: true, Copy: true, Check: true, File: true, Eye: true,
-  RefreshCw: true, Calendar: true, Info: true
+  XIcon: true, DownloadIcon: true, Trash2Icon: true, ChevronLeftIcon: true, ChevronRightIcon: true,
+  ZoomInIcon: true, ZoomOutIcon: true, CopyIcon: true, CheckIcon: true, File: true, EyeIcon: true,
+  RefreshCwIcon: true, Calendar: true, InfoIcon: true
 };
 
 describe('BinaryObjectPreviewModal.vue', () => {

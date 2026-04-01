@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
-import { Download, ChevronDown } from 'lucide-vue-next';
+import { DownloadIcon, ChevronDownIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
   /** Download action handler */
@@ -59,7 +59,7 @@ defineExpose({
       title="Download image"
       data-testid="download-gen-image-button"
     >
-      <Download class="w-4 h-4" />
+      <DownloadIcon class="w-4 h-4" />
     </button>
 
     <!-- Split Divider & Dropdown Toggle -->
@@ -69,7 +69,7 @@ defineExpose({
       title="More options"
       data-testid="download-gen-image-dropdown-toggle"
     >
-      <ChevronDown class="w-3.5 h-3.5 transition-transform duration-200" :class="{ 'rotate-180': isOpen }" />
+      <ChevronDownIcon class="w-3.5 h-3.5 transition-transform duration-200" :class="{ 'rotate-180': isOpen }" />
     </button>
 
     <!-- Dropdown Menu -->
@@ -86,7 +86,7 @@ defineExpose({
         data-testid="download-with-metadata-option"
       >
         <div class="flex items-center gap-2 mb-0.5">
-          <Download class="w-3.5 h-3.5" :class="isSupported !== false ? 'text-blue-500' : 'text-gray-400'" />
+          <DownloadIcon class="w-3.5 h-3.5" :class="isSupported !== false ? 'text-blue-500' : 'text-gray-400'" />
           <span class="font-bold text-xs">With Metadata</span>
         </div>
         <span class="text-[10px] ml-5" :class="isSupported !== false ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400'">

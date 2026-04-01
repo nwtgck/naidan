@@ -68,7 +68,7 @@ describe('MessageItem Image Generation', () => {
     vi.clearAllMocks();
 
     (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
+      settings: ref({}),
     });
 
     // Reset storage service mocks for each test
@@ -219,8 +219,8 @@ describe('MessageItem Image Generation', () => {
     await flushPromises();
     await nextTick();
 
+    // GeneratedImageBlock renders nothing when JSON is invalid (v-if="parsed" is false)
     expect(wrapper.find('.naidan-generated-image').exists()).toBe(false);
-    expect(wrapper.find('pre code').exists()).toBe(true);
   });
 
   it('handles Zod validation failure in image block gracefully', async () => {
@@ -247,13 +247,11 @@ describe('MessageItem Image Generation', () => {
     });
 
     await flushPromises();
-    for (let i = 0; i < 40; i++) {
-      await nextTick();
-      if (wrapper.find('.naidan-generated-image').text().includes('Failed to load')) break;
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
+    await nextTick();
 
-    expect(wrapper.find('.naidan-generated-image').text()).toContain('Failed to load generated image');
+    // GeneratedImageBlock shows error state when storage returns null
+    expect(wrapper.find('.naidan-generated-image').exists()).toBe(true);
+    expect(wrapper.find('.naidan-generated-image').text()).toContain('Image not found in storage');
   });
 
   it('revokes generated image URLs on unmount', async () => {

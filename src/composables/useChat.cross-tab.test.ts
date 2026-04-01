@@ -58,6 +58,7 @@ vi.mock('../services/storage', () => ({
       return Promise.resolve();
     }),
     listChatGroups: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockGroupStorage.values()))),
+    loadChatGroup: vi.fn().mockResolvedValue(null),
     deleteChatGroup: vi.fn().mockImplementation((id) => {
       mocks.mockGroupStorage.delete(id);
       return Promise.resolve();

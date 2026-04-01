@@ -1,7 +1,15 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
+import type { WeshFileHandle } from '@/services/wesh/types';
+
+function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
 
 function parseCount({
   value,
@@ -15,6 +23,27 @@ function parseCount({
   }
   const parsed = parseInt(value, 10);
   return { ok: true, value: parsed };
+}
+
+async function writeAll({
+  handle,
+  buffer,
+}: {
+  handle: WeshFileHandle;
+  buffer: Uint8Array;
+}): Promise<void> {
+  let written = 0;
+  while (written < buffer.length) {
+    const { bytesWritten } = await handle.write({
+      buffer,
+      offset: written,
+      length: buffer.length - written,
+    });
+    if (bytesWritten === 0) {
+      return;
+    }
+    written += bytesWritten;
+  }
 }
 
 const headArgvSpec: StandardArgvParserSpec = {
@@ -144,7 +173,10 @@ export const headCommandDefinition: WeshCommandDefinition = {
             if (done) break;
 
             const toRead = Math.min(value.length, bytes - bytesReadCount);
-            await textOutput.print({ text: new TextDecoder().decode(value.subarray(0, toRead)) });
+            await writeAll({
+              handle: context.stdout,
+              buffer: value.subarray(0, toRead),
+            });
             bytesReadCount += toRead;
             if (bytesReadCount >= bytes) {
               shouldCancel = true;
@@ -190,7 +222,7 @@ export const headCommandDefinition: WeshCommandDefinition = {
 
     if (positional.length === 0) {
       await processStream({
-        stream: handleToStream({ handle: context.stdin }),
+        stream: openHandleReadStream({ handle: context.stdin }),
       });
     } else {
       for (const [index, f] of positional.entries()) {
@@ -204,12 +236,10 @@ export const headCommandDefinition: WeshCommandDefinition = {
           }
 
           const stream = f === '-'
-            ? handleToStream({ handle: context.stdin })
-            : handleToStream({
-              handle: await context.files.open({
-                path: f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`),
-                flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-              })
+            ? openHandleReadStream({ handle: context.stdin })
+            : await openFileReadStream({
+              files: context.files,
+              path: resolvePath({ cwd: context.cwd, path: f }),
             });
           await processStream({
             stream,

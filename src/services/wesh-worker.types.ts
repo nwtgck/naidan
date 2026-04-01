@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { EmptyArgs } from '@/models/types'
 import type { WeshMount } from '@/services/wesh/types'
 
 export const weshWorkerMountSchema = z.object({
@@ -8,7 +9,7 @@ export const weshWorkerMountSchema = z.object({
 })
 
 export const weshWorkerInitRequestSchema = z.object({
-  rootHandle: z.custom<FileSystemDirectoryHandle>(),
+  rootHandle: z.custom<FileSystemDirectoryHandle | 'readonly'>(),
   mounts: z.array(weshWorkerMountSchema),
   user: z.string().min(1),
   initialEnv: z.record(z.string(), z.string()),
@@ -17,32 +18,77 @@ export const weshWorkerInitRequestSchema = z.object({
 
 export const weshWorkerExecuteRequestSchema = z.object({
   script: z.string(),
-  stdoutLimit: z.number().int().min(0),
-  stderrLimit: z.number().int().min(0),
 })
 
-export const weshWorkerExecuteResponseSchema = z.object({
+export const weshWorkerStartExecutionResponseSchema = z.object({
+  executionId: z.string().min(1),
+})
+
+export const weshWorkerAwaitExecutionRequestSchema = z.object({
+  executionId: z.string().min(1),
+})
+
+export const weshWorkerInterruptExecutionRequestSchema = z.object({
+  executionId: z.string().min(1),
+})
+
+export const weshWorkerDisposeExecutionRequestSchema = z.object({
+  executionId: z.string().min(1),
+})
+
+export const weshWorkerExecutionSummarySchema = z.object({
   exitCode: z.number().int(),
-  stdout: z.string(),
-  stderr: z.string(),
 })
 
 export type WeshWorkerInitRequest = z.infer<typeof weshWorkerInitRequestSchema>
 export type WeshWorkerExecuteRequest = z.infer<typeof weshWorkerExecuteRequestSchema>
-export type WeshWorkerExecuteResponse = z.infer<typeof weshWorkerExecuteResponseSchema>
+export type WeshWorkerStartExecutionResponse = z.infer<typeof weshWorkerStartExecutionResponseSchema>
+export type WeshWorkerAwaitExecutionRequest = z.infer<typeof weshWorkerAwaitExecutionRequestSchema>
+export type WeshWorkerInterruptExecutionRequest = z.infer<typeof weshWorkerInterruptExecutionRequestSchema>
+export type WeshWorkerDisposeExecutionRequest = z.infer<typeof weshWorkerDisposeExecutionRequestSchema>
+export type WeshWorkerExecutionSummary = z.infer<typeof weshWorkerExecutionSummarySchema>
 export type WeshWorkerMount = z.infer<typeof weshWorkerMountSchema>
+
+export type WeshWorkerRemoteExecutionEvent =
+  | { type: 'started' }
+  | { type: 'stdout'; buffer: ArrayBuffer }
+  | { type: 'stderr'; buffer: ArrayBuffer }
+  | { type: 'exit'; exitCode: number }
+  | { type: 'error'; message: string }
+
+export type WeshWorkerExecutionEvent =
+  | { type: 'started' }
+  | { type: 'stdout'; chunk: Uint8Array }
+  | { type: 'stderr'; chunk: Uint8Array }
+  | { type: 'exit'; exitCode: number }
+  | { type: 'error'; message: string }
 
 export interface IWeshWorker {
   init({ request }: { request: WeshWorkerInitRequest }): Promise<void>
-  execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecuteResponse>
-  interrupt(): Promise<boolean>
-  dispose(): Promise<void>
+  startExecution(
+    request: WeshWorkerExecuteRequest,
+    onEvent?: (event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>
+  ): Promise<WeshWorkerStartExecutionResponse>
+  awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>
+  interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
+  disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
+  execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
+  interrupt(_args: EmptyArgs): Promise<boolean>
+  dispose(_args: EmptyArgs): Promise<void>
 }
 
 export interface WeshWorkerClient {
-  execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecuteResponse>
-  interrupt(): Promise<boolean>
-  dispose(): Promise<void>
+  startExecution({ request, onEvent }: {
+    request: WeshWorkerExecuteRequest
+    onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
+  }): Promise<WeshWorkerStartExecutionResponse>
+  awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>
+  interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
+  cancelExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
+  disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
+  execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
+  interrupt(_args: EmptyArgs): Promise<boolean>
+  dispose(_args: EmptyArgs): Promise<void>
 }
 
 export function mapWeshMountsToWorkerMounts({ mounts }: {
@@ -53,4 +99,31 @@ export function mapWeshMountsToWorkerMounts({ mounts }: {
     handle: mount.handle,
     readOnly: mount.readOnly,
   }))
+}
+
+export function mapRemoteWeshWorkerExecutionEventToClientEvent({ event }: {
+  event: WeshWorkerRemoteExecutionEvent
+}): WeshWorkerExecutionEvent {
+  switch (event.type) {
+  case 'started':
+    return event
+  case 'stdout':
+    return {
+      type: 'stdout',
+      chunk: new Uint8Array(event.buffer),
+    }
+  case 'stderr':
+    return {
+      type: 'stderr',
+      chunk: new Uint8Array(event.buffer),
+    }
+  case 'exit':
+    return event
+  case 'error':
+    return event
+  default: {
+    const _ex: never = event
+    throw new Error(`Unhandled remote wesh execution event: ${String(_ex)}`)
+  }
+  }
 }

@@ -12,10 +12,10 @@ vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as any;
   return {
     ...actual,
-    Bird: { render: () => h('span', { 'data-testid': 'icon-bird' }) },
-    User: { render: () => h('span', { 'data-testid': 'icon-user' }) },
-    Eye: { render: () => h('span', { 'data-testid': 'icon-eye' }) },
-    EyeOff: { render: () => h('span', { 'data-testid': 'icon-eye-off' }) },
+    BirdIcon: { render: () => h('span', { 'data-testid': 'icon-bird' }) },
+    UserIcon: { render: () => h('span', { 'data-testid': 'icon-user' }) },
+    EyeIcon: { render: () => h('span', { 'data-testid': 'icon-eye' }) },
+    EyeOffIcon: { render: () => h('span', { 'data-testid': 'icon-eye-off' }) },
   };
 });
 
@@ -153,6 +153,22 @@ describe('Assistant Turn Visual Logic', () => {
 
       expect(wrapper.find('[data-testid="icon-loader"]').exists()).toBe(true);
       expect(wrapper.find('[data-testid="icon-eye"]').exists()).toBe(false);
+    });
+
+    it('toggle wrapper is sticky with backdrop when expanded', async () => {
+      const wrapper = mount(AssistantProcessSequence, {
+        props: { items: [], isProcessing: false }
+      });
+
+      const toggleWrapper = wrapper.find('[data-testid="assistant-process-toggle"]').element.parentElement!;
+
+      // Collapsed: no sticky
+      expect(toggleWrapper.classList.contains('sticky')).toBe(false);
+
+      // Expanded: sticky
+      await wrapper.find('[data-testid="assistant-process-toggle"]').trigger('click');
+      expect(toggleWrapper.classList.contains('sticky')).toBe(true);
+      expect(toggleWrapper.classList.contains('backdrop-blur-sm')).toBe(true);
     });
 
     it('renders the Peek slot when collapsed and processing', () => {

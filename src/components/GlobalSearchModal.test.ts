@@ -76,19 +76,27 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
+vi.mock('../services/storage', () => ({
+  storageService: {
+    loadChat: vi.fn().mockResolvedValue(null),
+    listChats: vi.fn().mockResolvedValue([]),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  },
+}));
+
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
-  Search: { render: () => null },
-  X: { render: () => null },
-  Loader2: { render: () => null },
-  MessageSquare: { render: () => null },
-  CornerDownRight: { render: () => null },
-  Clock: { render: () => null },
-  GitBranch: { render: () => null },
-  Folder: { render: () => null },
-  Filter: { render: () => null },
-  Check: { render: () => null },
-  Eye: { render: () => null },
+  SearchIcon: { render: () => null },
+  XIcon: { render: () => null },
+  Loader2Icon: { render: () => null },
+  MessageSquareIcon: { render: () => null },
+  CornerDownRightIcon: { render: () => null },
+  ClockIcon: { render: () => null },
+  GitBranchIcon: { render: () => null },
+  FolderIcon: { render: () => null },
+  FilterIcon: { render: () => null },
+  CheckIcon: { render: () => null },
+  EyeIcon: { render: () => null },
 }));
 
 // Mock scrollIntoView
@@ -193,6 +201,24 @@ describe('GlobalSearchModal Component', () => {
 
     expect(mockOpenChat).toHaveBeenCalledWith('chat2');
     expect(mockCloseSearch).toHaveBeenCalled();
+  });
+
+  it('should ignore Enter during IME composition', async () => {
+    mockQuery.value = 'test';
+    mockResults.value = [
+      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    await wrapper.get('[data-testid="search-input"]').trigger('keydown', {
+      key: 'Enter',
+      isComposing: true,
+    });
+
+    expect(mockOpenChat).not.toHaveBeenCalled();
+    expect(mockCloseSearch).not.toHaveBeenCalled();
   });
 
   it('should select a result when clicked', async () => {
@@ -472,6 +498,37 @@ describe('GlobalSearchModal Component', () => {
     }));
 
     vi.useRealTimers();
+  });
+
+  it('should show role filters only for content search scopes', async () => {
+    const wrapper = mount(GlobalSearchModal);
+    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(false);
+
+    await wrapper.get('[data-testid="scope-button-all"]').trigger('click');
+    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="scope-button-title_only"]').trigger('click');
+    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(false);
+  });
+
+  it('should include role filter in search options', async () => {
+    mockQuery.value = 'content';
+    const wrapper = mount(GlobalSearchModal);
+
+    await wrapper.get('[data-testid="scope-button-current_thread"]').trigger('click');
+
+    await nextTick();
+    expect(wrapper.find('[data-testid="role-filter-select"]').exists()).toBe(true);
+
+    mockSearch.mockClear();
+    await wrapper.get('[data-testid="role-filter-select"]').setValue('user');
+
+    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        scope: 'current_thread',
+        roleFilter: 'user',
+      })
+    }));
   });
 
   it('should persist query and select it on reopen', async () => {

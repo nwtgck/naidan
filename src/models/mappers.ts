@@ -15,6 +15,7 @@ import type {
   ChatContentDto,
   BinaryObjectDto,
   LmParametersDto,
+  MountDto,
 } from './dto';
 import type {
   Role,
@@ -41,7 +42,32 @@ import type {
   HierarchyChatGroupNode,
   BinaryObject,
   LmParameters,
+  Mount,
 } from './types';
+
+const mountToDomain = (dto: MountDto): Mount => {
+  const type = dto.type;
+  switch (type) {
+  case 'volume':
+    return { type: 'volume', volumeId: dto.volumeId, mountPath: dto.mountPath, readOnly: dto.readOnly };
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled mount type: ${_ex}`);
+  }
+  }
+};
+
+const mountToDto = (domain: Mount): MountDto => {
+  const type = domain.type;
+  switch (type) {
+  case 'volume':
+    return { type: 'volume', volumeId: domain.volumeId, mountPath: domain.mountPath, readOnly: domain.readOnly };
+  default: {
+    const _ex: never = type;
+    throw new Error(`Unhandled mount type: ${_ex}`);
+  }
+  }
+};
 
 export const roleToDomain = (dto: RoleDto): Role => {
   switch (dto) {
@@ -122,6 +148,7 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
   currentLeafId: dto.currentLeafId,
   originChatId: dto.originChatId,
   originMessageId: dto.originMessageId,
+  mounts: dto.mounts?.map(mountToDomain),
 });
 
 /**
@@ -186,6 +213,7 @@ export const chatGroupToDomain = (
     titleModelId: dto.titleModelId,
     systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain(dto.lmParameters),
+    mounts: dto.mounts?.map(mountToDomain),
   };
 };
 
@@ -200,6 +228,7 @@ export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
   titleModelId: domain.titleModelId,
   systemPrompt: domain.systemPrompt,
   lmParameters: lmParametersToDto(domain.lmParameters),
+  mounts: domain.mounts?.map(mountToDto),
 });
 
 export const lmParametersToDomain = (
@@ -611,6 +640,7 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     originMessageId,
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain(lmParameters),
+    mounts: dto.mounts?.map(mountToDomain),
   };
 };
 
@@ -635,6 +665,7 @@ export const chatMetaToDto = (domain: ChatMeta): ChatMetaDto => ({
   systemPrompt: domain.systemPrompt,
   lmParameters: lmParametersToDto(domain.lmParameters),
   currentLeafId: domain.currentLeafId,
+  mounts: domain.mounts?.map(mountToDto),
 });
 
 export const chatContentToDto = (domain: ChatContent): ChatContentDto => ({
@@ -674,6 +705,7 @@ export const chatToDto = (domain: Chat): ChatDto => {
     originMessageId,
     systemPrompt,
     lmParameters: lmParametersToDto(lmParameters),
+    mounts: domain.mounts?.map(mountToDto),
     messages: undefined,
   };
 };
@@ -736,7 +768,7 @@ export const buildSidebarItemsFromHierarchy = (
 };
 
 export const settingsToDomain = (dto: SettingsDto): Settings => {
-  const { endpoint, providerProfiles, storageType, experimental, ...rest } = dto;
+  const { endpoint, providerProfiles, storageType, experimental: _experimental, ...rest } = dto;
 
   const endpointInfo = (() => {
     switch (endpoint.type) {
@@ -794,16 +826,13 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
       };
     }) ?? [],
     lmParameters: lmParametersToDomain(rest.lmParameters),
-    experimental: experimental ? {
-      markdownRendering: experimental.markdownRendering ?? 'block_markdown'
-    } : undefined,
   };
 };
 
 export const settingsToDto = (domain: Settings): SettingsDto => {
   const {
     endpointType, endpointUrl, endpointHttpHeaders,
-    storageType, providerProfiles, experimental, ...rest
+    storageType, providerProfiles, ...rest
   } = domain;
 
   return {
@@ -839,9 +868,7 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     heavyContentAlertDismissed: rest.heavyContentAlertDismissed,
     systemPrompt: rest.systemPrompt,
     lmParameters: lmParametersToDto(rest.lmParameters),
-    experimental: experimental ? {
-      markdownRendering: experimental.markdownRendering
-    } : undefined,
+    experimental: undefined,
     mounts: (domain.mounts || []).map(m => {
       const type = m.type;
       switch (type) {

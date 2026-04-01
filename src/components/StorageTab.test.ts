@@ -99,14 +99,14 @@ const mockSettings = {
 };
 
 const globalStubs = {
-  Activity: true, RefreshCw: true, Loader2: true, Globe: true,
-  BookmarkPlus: true, Database: true, Cpu: true, Bot: true,
-  Check: true, Pencil: true, Target: true, Trash: true,
-  Trash2: true, X: true, CheckCircle2: true, Save: true,
-  Type: true, FlaskConical: true, AlertTriangle: true, ShieldCheck: true,
-  Logo: true, ImportExportModal: true, ChefHat: true, Download: true,
-  Github: true, ExternalLink: true, Plus: true, Info: true,
-  FileArchive: true, HardDrive: true, Ghost: true, MessageSquareQuote: true,
+  ActivityIcon: true, RefreshCwIcon: true, Loader2Icon: true, GlobeIcon: true,
+  BookmarkPlusIcon: true, DatabaseIcon: true, CpuIcon: true, BotIcon: true,
+  CheckIcon: true, PencilIcon: true, TargetIcon: true, TrashIcon: true,
+  Trash2Icon: true, XIcon: true, CheckCircle2Icon: true, SaveIcon: true,
+  TypeIcon: true, FlaskConicalIcon: true, AlertTriangleIcon: true, ShieldCheckIcon: true,
+  Logo: true, ImportExportModal: true, ChefHatIcon: true, DownloadIcon: true,
+  GithubIcon: true, ExternalLinkIcon: true, PlusIcon: true, InfoIcon: true,
+  FileArchiveIcon: true, HardDriveIcon: true, GhostIcon: true, MessageSquareQuoteIcon: true,
   'router-link': true,
 };
 
@@ -492,7 +492,7 @@ describe('StorageTab.vue Tests', () => {
         isOnboardingDismissed: { value: true } as any,
         onboardingDraft: { value: null } as any,
         availableModels: { value: [] } as any,
-        isFetchingModels: { value: false } as any,
+        isFetchingModels: ref(false),
         searchPreviewMode: { value: 'always' } as any,
         searchContextSize: { value: 2 } as any,
         init: vi.fn(),
@@ -506,7 +506,6 @@ describe('StorageTab.vue Tests', () => {
         setHeavyContentAlertDismissed: vi.fn(),
         setSearchPreviewMode: vi.fn(),
         setSearchContextSize: vi.fn(),
-        toggleMarkdownRendering: vi.fn(),
         __testOnly: {
           __testOnlyReset: vi.fn(),
           __testOnlySetSettings: vi.fn(),

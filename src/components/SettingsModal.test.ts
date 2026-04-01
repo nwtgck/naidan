@@ -8,7 +8,7 @@ import { useRouter, useRoute } from 'vue-router';
 import SettingsModal from './SettingsModal.vue';
 import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
-import { Loader2 } from 'lucide-vue-next';
+import { Loader2Icon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 import { useChat } from '@/composables/useChat';
 import { useSampleChat } from '@/composables/useSampleChat';
@@ -138,26 +138,26 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   };
 
   const globalStubs = {
-    Activity: true,
-    RefreshCw: true,
-    Loader2: true,
-    Globe: true,
+    ActivityIcon: true,
+    RefreshCwIcon: true,
+    Loader2Icon: true,
+    GlobeIcon: true,
     BookmarkPlus: true,
     Database: true,
-    Cpu: true,
-    Bot: true,
-    Check: true,
-    Pencil: true,
+    CpuIcon: true,
+    BotIcon: true,
+    CheckIcon: true,
+    PencilIcon: true,
     Target: true,
     Trash: true,
-    Trash2: true,
-    X: true,
-    CheckCircle2: true,
+    Trash2Icon: true,
+    XIcon: true,
+    CheckCircle2Icon: true,
     Save: true,
     Type: true,
-    FlaskConical: true,
-    AlertTriangle: true,
-    ShieldCheck: true,
+    FlaskConicalIcon: true,
+    AlertTriangleIcon: true,
+    ShieldCheckIcon: true,
     Logo: true,
     'router-link': true,
   };
@@ -272,7 +272,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(checkBtn.text()).toContain('Check Connection');
 
       // Spinner should be present alongside the text container
-      expect(checkBtn.findComponent(Loader2).exists()).toBe(true);
+      expect(checkBtn.findComponent(Loader2Icon).exists()).toBe(true);
 
       // Button should be disabled to prevent double-clicks
       expect(checkBtn.attributes('disabled')).toBeDefined();
@@ -333,6 +333,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('uses distinct labels for model fallbacks to clarify different behaviors', async () => {
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
+        global: { stubs: globalStubs },
       });
 
       // Clear values first to see placeholders/None

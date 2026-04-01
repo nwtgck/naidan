@@ -4,6 +4,14 @@ import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { ref, nextTick, reactive, toRef } from 'vue';
 import type { ChatGroup } from '@/models/types';
 
+const mocks = vi.hoisted(() => ({
+  addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
+  removeMountFromChatGroup: vi.fn().mockResolvedValue(undefined),
+  updateChatGroupMount: vi.fn().mockResolvedValue(undefined),
+  getVolumeDirectoryHandle: vi.fn(),
+  openFileExplorer: vi.fn(),
+}));
+
 const mockGroup = reactive<ChatGroup>({
   id: 'g1',
   name: 'Test Group',
@@ -36,6 +44,21 @@ vi.mock('../composables/useChat', () => ({
     fetchingModels: ref(false),
     updateChatGroupMetadata: mockUpdateChatGroupMetadata,
     fetchAvailableModels: mockFetchAvailableModels,
+    addMountToChatGroup: mocks.addMountToChatGroup,
+    removeMountFromChatGroup: mocks.removeMountFromChatGroup,
+    updateChatGroupMount: mocks.updateChatGroupMount,
+  }),
+}));
+
+vi.mock('../services/storage', () => ({
+  storageService: {
+    getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+  },
+}));
+
+vi.mock('../composables/useFileExplorerModal', () => ({
+  useFileExplorerModal: () => ({
+    openFileExplorer: mocks.openFileExplorer,
   }),
 }));
 
@@ -87,6 +110,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       titleModelId: undefined,
       systemPrompt: undefined,
       lmParameters: { reasoning: { effort: undefined } },
+      mounts: undefined,
     });
     // Default global settings
     mockSettings.endpointType = 'openai';
@@ -361,5 +385,123 @@ describe('ChatGroupSettingsPanel.vue', () => {
     expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
       name: 'my-model:latest'
     }));
+  });
+
+  describe('Folders (chat group mounts)', () => {
+    it('shows no mount badges when group has no mounts', () => {
+      mockGroup.mounts = [];
+      const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+      expect(wrapper.find('[data-testid="chat-group-mounts"]').exists()).toBe(false);
+    });
+
+    it('renders mount badges for each active mount', async () => {
+      mockGroup.mounts = [
+        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: false },
+        { type: 'volume', volumeId: 'vol-2', mountPath: '/home/user/docs', readOnly: true },
+      ];
+      const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+      await nextTick();
+
+      const badgeContainer = wrapper.find('[data-testid="chat-group-mounts"]');
+      expect(badgeContainer.exists()).toBe(true);
+      expect(badgeContainer.findAll('[data-testid="mount-badge"]')).toHaveLength(2);
+    });
+
+    it('trims /home/user/ prefix from displayed mount path', async () => {
+      mockGroup.mounts = [
+        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/my-project', readOnly: false },
+      ];
+      const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="chat-group-mounts"]').text()).toContain('my-project');
+      expect(wrapper.find('[data-testid="chat-group-mounts"]').text()).not.toContain('/home/user/');
+    });
+
+    it('calls removeMountFromChatGroup when remove button is clicked', async () => {
+      mockGroup.mounts = [
+        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: false },
+      ];
+      const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+      await nextTick();
+
+      await wrapper.find('[data-testid="mount-remove-btn"]').trigger('click');
+      await flushPromises();
+
+      expect(mocks.removeMountFromChatGroup).toHaveBeenCalledWith({ groupId: 'g1', volumeId: 'vol-1' });
+    });
+
+    it('calls updateChatGroupMount toggling readOnly when lock button is clicked', async () => {
+      mockGroup.mounts = [
+        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: false },
+      ];
+      const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+      await nextTick();
+
+      await wrapper.find('[data-testid="mount-toggle-readonly"]').trigger('click');
+      await flushPromises();
+
+      expect(mocks.updateChatGroupMount).toHaveBeenCalledWith({
+        groupId: 'g1',
+        volumeId: 'vol-1',
+        mountPath: '/home/user/work',
+        readOnly: true,
+      });
+    });
+
+    it('calls addMountToChatGroup when VolumeCreator emits created', async () => {
+      mockGroup.mounts = [];
+      const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+      await nextTick();
+
+      const volumeCreator = wrapper.findComponent({ name: 'VolumeCreator' });
+      await volumeCreator.vm.$emit('created', { volumeId: 'new-vol', mountPath: '/home/user/new', readOnly: false });
+      await flushPromises();
+
+      expect(mocks.addMountToChatGroup).toHaveBeenCalledWith({
+        groupId: 'g1',
+        mount: { type: 'volume', volumeId: 'new-vol', mountPath: '/home/user/new', readOnly: false },
+      });
+    });
+
+    it('opens file explorer with group mounts when mount path is clicked', async () => {
+      const handle = { kind: 'directory', name: 'work' } as unknown as FileSystemDirectoryHandle;
+      mocks.getVolumeDirectoryHandle.mockResolvedValue(handle);
+      mockGroup.mounts = [
+        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: false },
+      ];
+      const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+      await nextTick();
+
+      await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
+      await flushPromises();
+
+      expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
+      expect(mocks.openFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+        kind: 'explorer',
+        title: 'Folders',
+        initialPath: ['home', 'user', 'work'],
+      }));
+    });
+
+    it('opens explorer with correct initialPath derived from clicked mount', async () => {
+      const handle = { kind: 'directory', name: 'docs' } as unknown as FileSystemDirectoryHandle;
+      mocks.getVolumeDirectoryHandle.mockResolvedValue(handle);
+      mockGroup.mounts = [
+        { type: 'volume', volumeId: 'vol-A', mountPath: '/home/user/alpha', readOnly: true },
+        { type: 'volume', volumeId: 'vol-B', mountPath: '/home/user/beta', readOnly: false },
+      ];
+      const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+      await nextTick();
+
+      // Click the second badge's explorer button
+      const explorerBtns = wrapper.findAll('[data-testid="mount-open-explorer"]');
+      await explorerBtns[1]!.trigger('click');
+      await flushPromises();
+
+      expect(mocks.openFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+        initialPath: ['home', 'user', 'beta'],
+      }));
+    });
   });
 });

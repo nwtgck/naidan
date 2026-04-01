@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 describe('wesh sed', () => {
@@ -64,12 +64,12 @@ describe('wesh sed', () => {
     script: string;
     stdinText?: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: stdinText ?? '' }),
+      stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -78,32 +78,50 @@ describe('wesh sed', () => {
   }
 
   it('applies substitution scripts from the command line', async () => {
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: "sed 's/a/A/g' input.txt",
     });
 
-    expect(stdout.text).toBe('AlphA\nbetA\n');
+    expect(stdout.text).toBe(`\
+AlphA
+betA
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports multiple -e scripts with -n and p', async () => {
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: "sed -n -e 's/a/A/gp' -e '/beta/p' input.txt",
     });
 
-    expect(stdout.text).toBe('AlphA\nbetA\n');
+    expect(stdout.text).toBe(`\
+AlphA
+betA
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports script files with -f', async () => {
-    await writeFile({ path: 'script.sed', data: '1d\ns/e/E/g\n' });
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ path: 'script.sed', data: `\
+1d
+s/e/E/g
+` });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'sed -f script.sed input.txt',
@@ -115,7 +133,12 @@ describe('wesh sed', () => {
   });
 
   it('supports regex and range addresses', async () => {
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\ngamma\nomega\n' });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+gamma
+omega
+` });
 
     const { result, stdout, stderr } = await execute({
       script: "sed '/beta/,/omega/d' input.txt",
@@ -127,7 +150,10 @@ describe('wesh sed', () => {
   });
 
   it('supports in-place editing with backup suffixes', async () => {
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: "sed -i.bak 's/a/A/g' input.txt",
@@ -136,59 +162,113 @@ describe('wesh sed', () => {
     expect(stdout.text).toBe('');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(await readFile({ path: 'input.txt' })).toBe('AlphA\nbetA\n');
-    expect(await readFile({ path: 'input.txt.bak' })).toBe('alpha\nbeta\n');
+    expect(await readFile({ path: 'input.txt' })).toBe(`\
+AlphA
+betA
+`);
+    expect(await readFile({ path: 'input.txt.bak' })).toBe(`\
+alpha
+beta
+`);
   });
 
   it('reads from stdin when no file is given', async () => {
     const { result, stdout, stderr } = await execute({
       script: "sed 's/a/A/g'",
-      stdinText: 'alpha\nbeta\n',
+      stdinText: `\
+alpha
+beta
+`,
     });
 
-    expect(stdout.text).toBe('AlphA\nbetA\n');
+    expect(stdout.text).toBe(`\
+AlphA
+betA
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('coalesces stdout writes when many stdin lines are transformed', async () => {
+    const stdinText = Array.from({ length: 200 }, () => 'w:t> alpha xml:space').join('\n') + '\n';
+
+    const { result, stdout, stderr } = await execute({
+      script: "sed -e 's/w:t[^>]*>//g' -e 's/xml:.*//g' -e 's/ //g'",
+      stdinText,
+    });
+
+    expect(stdout.text).toBe(Array.from({ length: 200 }, () => 'alpha\n').join(''));
+    expect(stdout.chunkCount).toBeLessThan(20);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports q to quit after the addressed line', async () => {
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\ngamma\n' });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+gamma
+` });
 
     const { result, stdout, stderr } = await execute({
       script: "sed '2q' input.txt",
     });
 
-    expect(stdout.text).toBe('alpha\nbeta\n');
+    expect(stdout.text).toBe(`\
+alpha
+beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports y for character translation', async () => {
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: "sed 'y/ab/AB/' input.txt",
     });
 
-    expect(stdout.text).toBe('AlphA\nBetA\n');
+    expect(stdout.text).toBe(`\
+AlphA
+BetA
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports i and a text commands', async () => {
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\ngamma\n' });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+gamma
+` });
 
     const { result, stdout, stderr } = await execute({
       script: "sed -e '2i\\BEFORE' -e '2a\\AFTER' input.txt",
     });
 
-    expect(stdout.text).toBe('alpha\nBEFORE\nbeta\nAFTER\ngamma\n');
+    expect(stdout.text).toBe(`\
+alpha
+BEFORE
+beta
+AFTER
+gamma
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports c for line and range replacement', async () => {
-    await writeFile({ path: 'input.txt', data: 'alpha\nbeta\ngamma\ndelta\n' });
+    await writeFile({ path: 'input.txt', data: `\
+alpha
+beta
+gamma
+delta
+` });
 
     const single = await execute({
       script: "sed '2c\\MIDDLE' input.txt",
@@ -197,11 +277,20 @@ describe('wesh sed', () => {
       script: "sed '2,3c\\BLOCK' input.txt",
     });
 
-    expect(single.stdout.text).toBe('alpha\nMIDDLE\ngamma\ndelta\n');
+    expect(single.stdout.text).toBe(`\
+alpha
+MIDDLE
+gamma
+delta
+`);
     expect(single.stderr.text).toBe('');
     expect(single.result.exitCode).toBe(0);
 
-    expect(ranged.stdout.text).toBe('alpha\nBLOCK\ndelta\n');
+    expect(ranged.stdout.text).toBe(`\
+alpha
+BLOCK
+delta
+`);
     expect(ranged.stderr.text).toBe('');
     expect(ranged.result.exitCode).toBe(0);
   });

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('comlink', () => ({
   expose: vi.fn(),
+  transfer: <T>(value: T) => value,
 }))
 
 describe('wesh.worker', () => {
@@ -30,15 +31,11 @@ describe('wesh.worker', () => {
     const response = await workerApi.execute({
       request: {
         script: 'echo hello',
-        stdoutLimit: 4096,
-        stderrLimit: 4096,
       },
     })
 
     expect(response).toEqual({
       exitCode: 0,
-      stdout: 'hello\n',
-      stderr: '',
     })
   })
 
@@ -71,13 +68,10 @@ describe('wesh.worker', () => {
     const response = await workerApi.execute({
       request: {
         script: 'cat /mnt/hello.txt',
-        stdoutLimit: 4096,
-        stderrLimit: 4096,
       },
     })
 
     expect(response.exitCode).toBe(0)
-    expect(response.stdout).toBe('from mount')
   })
 
   it('interrupts a foreground process group', async () => {
@@ -98,16 +92,61 @@ describe('wesh.worker', () => {
     const execution = workerApi.execute({
       request: {
         script: 'sleep 5',
-        stdoutLimit: 4096,
-        stderrLimit: 4096,
       },
     })
 
     await new Promise(resolve => setTimeout(resolve, 20))
-    const interrupted = await workerApi.interrupt()
+    const interrupted = await workerApi.interrupt({})
     const response = await execution
 
     expect(interrupted).toBe(true)
     expect(response.exitCode).toBe(130)
+  })
+
+  it('streams stdout and stderr events before awaitExecution resolves', async () => {
+    const comlink = await import('comlink')
+    const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
+    await import('./wesh.worker')
+
+    const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
+    await workerApi.init({
+      request: {
+        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        mounts: [],
+        user: 'user',
+        initialEnv: {},
+      },
+    })
+
+    const events: Array<import('./wesh-worker.types').WeshWorkerRemoteExecutionEvent> = []
+    const { executionId } = await workerApi.startExecution(
+      {
+        script: 'echo before-stream; echo partial-error >&2',
+      },
+      async (event: import('./wesh-worker.types').WeshWorkerRemoteExecutionEvent) => {
+        events.push(event)
+      },
+    )
+    const response = await workerApi.awaitExecution({
+      request: {
+        executionId,
+      },
+    })
+
+    const decoder = new TextDecoder()
+    const stdoutOutput = events
+      .filter((event): event is Extract<typeof event, { type: 'stdout' }> => event.type === 'stdout')
+      .map(event => decoder.decode(event.buffer))
+      .join('')
+    const stderrOutput = events
+      .filter((event): event is Extract<typeof event, { type: 'stderr' }> => event.type === 'stderr')
+      .map(event => decoder.decode(event.buffer))
+      .join('')
+
+    expect(events.some(event => event.type === 'started')).toBe(true)
+    expect(stdoutOutput).toContain('before-stream')
+    expect(stderrOutput).toContain('partial-error')
+    expect(events.some(event => event.type === 'exit' && event.exitCode === 0)).toBe(true)
+    expect(response.exitCode).toBe(0)
   })
 })

@@ -68,8 +68,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
         if (!recursive) {
           throw new Error('is a directory');
         }
-        const entries = await context.files.readDir({ path });
-        for (const entry of entries) {
+        for await (const entry of context.files.readDir({ path })) {
           await removeRecursive(`${path}/${entry.name}`);
         }
         await context.files.rmdir({ path });

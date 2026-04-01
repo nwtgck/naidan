@@ -67,8 +67,7 @@ export const rmdirCommandDefinition: WeshCommandDefinition = {
     for (const p of parsed.positionals) {
       try {
         const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
-        const entries = await context.files.readDir({ path: fullPath });
-        if (entries.length > 0) {
+        for await (const _ of context.files.readDir({ path: fullPath })) {
           throw new Error('Directory not empty');
         }
         await context.files.rmdir({ path: fullPath });

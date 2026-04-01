@@ -1,3 +1,4 @@
+import { ReadonlyDirectoryHandle } from './readonly-directory-handle';
 import type {
   WeshIVirtualFileSystem,
   WeshFileHandle,
@@ -231,27 +232,42 @@ class StandardFileHandle implements WeshFileHandle {
 
 class FifoHandle implements WeshFileHandle {
   private buffer: Uint8Array[] = [];
+  private bufferHeadIndex = 0;
+  private bufferSize = 0;
+  private headOffset = 0;
   private waiters: Array<(val: void) => void> = [];
   private closed = false;
 
   async read(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
-    if (this.buffer.length === 0 && this.closed) return { bytesRead: 0 };
+    if (this.bufferHeadIndex >= this.buffer.length && this.closed) return { bytesRead: 0 };
 
-    while (this.buffer.length === 0) {
+    while (this.bufferHeadIndex >= this.buffer.length) {
       if (this.closed) return { bytesRead: 0 };
       await new Promise<void>(resolve => this.waiters.push(resolve));
     }
 
-    const chunk = this.buffer.shift()!;
+    const chunk = this.buffer[this.bufferHeadIndex]!;
     const bufferOffset = options.offset ?? 0;
     const maxLen = options.length ?? (options.buffer.length - bufferOffset);
-    const copyLen = Math.min(chunk.length, maxLen);
+    const available = chunk.length - this.headOffset;
+    const copyLen = Math.min(available, maxLen);
 
-    options.buffer.set(chunk.subarray(0, copyLen), bufferOffset);
+    options.buffer.set(chunk.subarray(this.headOffset, this.headOffset + copyLen), bufferOffset);
 
-    if (chunk.length > copyLen) {
-      this.buffer.unshift(chunk.subarray(copyLen));
+    if (copyLen === available) {
+      this.bufferHeadIndex += 1;
+      this.headOffset = 0;
+      if (this.bufferHeadIndex >= this.buffer.length) {
+        this.buffer = [];
+        this.bufferHeadIndex = 0;
+      } else if (this.bufferHeadIndex >= 32 && this.bufferHeadIndex * 2 >= this.buffer.length) {
+        this.buffer = this.buffer.slice(this.bufferHeadIndex);
+        this.bufferHeadIndex = 0;
+      }
+    } else {
+      this.headOffset += copyLen;
     }
+    this.bufferSize -= copyLen;
 
     return { bytesRead: copyLen };
   }
@@ -264,10 +280,11 @@ class FifoHandle implements WeshFileHandle {
     const data = new Uint8Array(options.buffer.subarray(bufferOffset, bufferOffset + length));
 
     this.buffer.push(data);
+    this.bufferSize += length;
 
     const waiters = this.waiters;
     this.waiters = [];
-    waiters.forEach(w => w());
+    for (const w of waiters) w();
 
     return { bytesWritten: length };
   }
@@ -276,12 +293,12 @@ class FifoHandle implements WeshFileHandle {
     this.closed = true;
     const waiters = this.waiters;
     this.waiters = [];
-    waiters.forEach(w => w());
+    for (const w of waiters) w();
   }
 
   async stat(): Promise<WeshStat> {
     return {
-      size: this.buffer.reduce((acc, b) => acc + b.length, 0),
+      size: this.bufferSize,
       mode: 0o600,
       type: 'fifo',
       mtime: Date.now(),
@@ -381,11 +398,15 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private specialFiles: Map<string, () => WeshFileHandle> = new Map();
   private openFifos: Map<string, FifoHandle> = new Map();
 
-  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle }) {
-    this.mount({ path: '/', handle: rootHandle, readOnly: false });
-
-    this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
-    this.registerSpecialFile({ path: '/dev/zero', handler: () => new DevZeroHandle() });
+  constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle | undefined }) {
+    if (rootHandle !== undefined) {
+      const rootReadOnly = rootHandle instanceof ReadonlyDirectoryHandle;
+      this.mount({ path: '/', handle: rootHandle as FileSystemDirectoryHandle, readOnly: rootReadOnly });
+      // Register standard device files only when a real root is present.
+      // Standalone VFS instances (rootHandle: undefined) are mount-only and do not need /dev.
+      this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
+      this.registerSpecialFile({ path: '/dev/zero', handler: () => new DevZeroHandle() });
+    }
   }
 
   async mount({ path, handle, readOnly }: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void> {
@@ -759,13 +780,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
-  async readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>> {
+  async *readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }> {
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'follow',
       depth: 0,
     });
-    const entries = new Map<string, WeshFileType>();
+    const seen = new Set<string>();
 
     switch (resolved.kind) {
     case 'synthetic-directory':
@@ -813,7 +834,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
             type = regEntry.type;
           }
         }
-        entries.set(name, type);
+        seen.add(name);
+        yield { name, type };
       }
       break;
     }
@@ -824,17 +846,17 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
 
     for (const name of this.getDirectMountChildren({ path: resolved.fullPath })) {
-      if (!entries.has(name)) {
-        entries.set(name, 'directory');
+      if (!seen.has(name)) {
+        seen.add(name);
+        yield { name, type: 'directory' };
       }
     }
     for (const name of this.getDirectSpecialChildren({ path: resolved.fullPath })) {
-      if (!entries.has(name)) {
-        entries.set(name, 'directory');
+      if (!seen.has(name)) {
+        seen.add(name);
+        yield { name, type: 'directory' };
       }
     }
-
-    return Array.from(entries.entries()).map(([name, type]) => ({ name, type }));
   }
 
   async mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
@@ -1010,8 +1032,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       throw new Error(`Read-only filesystem: ${normalized}`);
     }
 
-    const entries = await this.readDir({ path: normalized });
-    if (entries.length > 0) {
+    for await (const _ of this.readDir({ path: normalized })) {
       throw new Error(`Directory not empty: ${normalized}`);
     }
 
@@ -1228,6 +1249,46 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   // --- Path Helpers ---
 
+  /**
+   * Returns the underlying native FileSystemHandle if the path resolves to a
+   * real filesystem entry (i.e. a handle-kind resolved node). Returns null for
+   * synthetic directories, special files, and registry entries.
+   */
+  async getNativeHandle({ path }: { path: string }): Promise<FileSystemHandle | null> {
+    try {
+      const resolved = await this.resolveNode({
+        path,
+        finalSymlinkTreatment: 'follow',
+        depth: 0,
+      });
+      switch (resolved.kind) {
+      case 'handle':
+        return resolved.handle;
+      case 'synthetic-directory':
+      case 'special':
+      case 'registry':
+        return null;
+      default: {
+        const _ex: never = resolved;
+        throw new Error(`Unhandled resolved node: ${JSON.stringify(_ex)}`);
+      }
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Returns whether the given path is read-only based on the owning mount.
+   * Paths that fall outside every mount (synthetic intermediate directories)
+   * are always read-only.
+   */
+  getReadOnlyForPath({ path }: { path: string }): boolean {
+    const normalized = this.normalizePath({ path });
+    const mount = this.findMount({ path: normalized });
+    return mount?.readOnly ?? true;
+  }
+
   private normalizePath({ path }: { path: string }): string {
     if (!path.startsWith('/')) path = '/' + path;
     const parts = path.split('/').filter((p) => p !== '' && p !== '.');
@@ -1253,64 +1314,53 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     return path.substring(prefix.length);
   }
 
-  private getDirectMountChildren({ path }: { path: string }): string[] {
-    const normalized = this.normalizePath({ path });
+  private getDirectMountChildren({ path }: { path: string }): Iterable<string> {
+    const prefix = path === '/' ? '/' : `${path}/`;
     const childNames = new Set<string>();
 
     for (const mount of this.mounts) {
-      if (mount.path === normalized) {
-        continue;
-      }
-
-      const prefix = normalized === '/' ? '/' : `${normalized}/`;
-      if (!mount.path.startsWith(prefix)) {
-        continue;
-      }
-
+      if (!mount.path.startsWith(prefix)) continue;
       const remainder = mount.path.slice(prefix.length);
-      if (remainder.length === 0) {
-        continue;
-      }
-
-      const childName = remainder.split('/')[0];
-      if (childName !== undefined && childName.length > 0) {
-        childNames.add(childName);
-      }
+      if (remainder.length === 0) continue;
+      const sep = remainder.indexOf('/');
+      childNames.add(sep === -1 ? remainder : remainder.slice(0, sep));
     }
 
-    return Array.from(childNames).sort();
+    return childNames;
   }
 
-  private getDirectSpecialChildren({ path }: { path: string }): string[] {
-    const normalized = this.normalizePath({ path });
+  private getDirectSpecialChildren({ path }: { path: string }): Iterable<string> {
+    const prefix = path === '/' ? '/' : `${path}/`;
     const childNames = new Set<string>();
 
     for (const specialPath of this.specialFiles.keys()) {
-      if (specialPath === normalized) {
-        continue;
-      }
-
-      const prefix = normalized === '/' ? '/' : `${normalized}/`;
-      if (!specialPath.startsWith(prefix)) {
-        continue;
-      }
-
+      if (!specialPath.startsWith(prefix)) continue;
       const remainder = specialPath.slice(prefix.length);
-      if (remainder.length === 0) {
-        continue;
-      }
-
-      const childName = remainder.split('/')[0];
-      if (childName !== undefined && childName.length > 0) {
-        childNames.add(childName);
-      }
+      if (remainder.length === 0) continue;
+      const sep = remainder.indexOf('/');
+      childNames.add(sep === -1 ? remainder : remainder.slice(0, sep));
     }
 
-    return Array.from(childNames).sort();
+    return childNames;
   }
 
   private hasSyntheticDirectory({ path }: { path: string }): boolean {
-    return this.getDirectMountChildren({ path }).length > 0 || this.getDirectSpecialChildren({ path }).length > 0;
+    const normalized = this.normalizePath({ path });
+    const prefix = normalized === '/' ? '/' : `${normalized}/`;
+
+    for (const mount of this.mounts) {
+      if (mount.path !== normalized && mount.path.startsWith(prefix) && mount.path.length > prefix.length) {
+        return true;
+      }
+    }
+
+    for (const specialPath of this.specialFiles.keys()) {
+      if (specialPath !== normalized && specialPath.startsWith(prefix) && specialPath.length > prefix.length) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private isMountPoint({ path }: { path: string }): boolean {
@@ -1335,6 +1385,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }): never {
     if (this.isInvalidHandleNameError({ error })) {
       throw new Error(`Path not found: ${path}`);
+    }
+
+    if (error instanceof DOMException && error.name === 'NotAllowedError') {
+      throw new Error(`Permission denied: ${path}: ${error.message}`);
     }
 
     throw error;

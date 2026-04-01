@@ -1,43 +1,41 @@
 import * as Comlink from 'comlink';
 import {
+  AutoProcessor,
   AutoTokenizer,
   AutoModelForCausalLM,
-  TextStreamer,
   InterruptableStoppingCriteria,
-  StoppingCriteriaList,
   env,
   type PreTrainedModel,
   type PreTrainedTokenizer,
-  type Tensor
 } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters } from '@/models/types';
-import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker } from './transformers-js.types';
-import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/utils/gpt-oss-harmony';
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
+import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker, WorkerToolDefinition } from './transformers-js.types';
+import {
+  isQwen3_5Model,
+} from './transformers-js-qwen3_5';
+import {
+  selectGenerationStrategy,
+  type WorkerGenerationRuntimeState,
+} from './transformers-js-generation-strategies';
 import { urlToPath, writeToOpfs } from './transformers-js.utils';
-
-type ModelOutput = Record<string, unknown>;
 
 /**
  * Internal interface for properties found on Transformers.js model instances
  */
 interface ModelInternals {
   device?: string;
+  config?: {
+    model_type?: string;
+  };
 }
 
-/**
- * Interface for the result of a generation call
- */
-interface GenerationResult {
-  past_key_values: unknown;
-  sequences?: unknown;
+interface Qwen3_5ProcessorLike {
+  (text: string): Promise<Record<string, unknown>>;
+  tokenizer: PreTrainedTokenizer;
+  batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[];
 }
 
-/**
- * Interface for models that support text generation
- */
-interface TextGenerationModel extends PreTrainedModel {
-  generate(inputs: Record<string, unknown>): Promise<GenerationResult & (ModelOutput | Tensor)>;
-}
+const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
 // Intercept fetch to handle SPA 404 fallback and enforce local-only constraints
 const originalFetch = self.fetch;
@@ -219,9 +217,45 @@ if (env.backends.onnx.wasm) {
 // Singleton state
 let model: PreTrainedModel | null = null;
 let tokenizer: PreTrainedTokenizer | null = null;
-let pastKeyValues: unknown = null;
+let qwen3_5Processor: Qwen3_5ProcessorLike | null = null;
 let activeModelId: string | null = null;
+const generationRuntimeState: WorkerGenerationRuntimeState = {
+  activeModelId: null,
+  qwen3_5Processor: null,
+  gptOssPastKeyValues: null,
+  qwen3_5PastKeyValues: null,
+  qwen3_5ConversationState: undefined,
+};
 const stoppingCriteria = new InterruptableStoppingCriteria();
+
+async function withModelAccessMode<T>({
+  isLocal,
+  run,
+}: {
+  isLocal: boolean;
+  run: () => Promise<T>;
+}): Promise<T> {
+  const previousAllowLocalModels = env.allowLocalModels;
+  env.allowLocalModels = isLocal;
+  try {
+    return await run();
+  } finally {
+    env.allowLocalModels = previousAllowLocalModels;
+  }
+}
+
+function debugLog({ event, details }: { event: string; details: Record<string, unknown> }): void {
+  console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
+    at: new Date().toISOString(),
+    ...details,
+  });
+}
+
+function clearQwen3_5ContinuationState(): void {
+  generationRuntimeState.qwen3_5ConversationState = undefined;
+}
+
+// ---------------------------------------------------------------------------
 
 const transformersJsWorker: ITransformersJsWorker = {
   async downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void) {
@@ -232,22 +266,18 @@ const transformersJsWorker: ITransformersJsWorker = {
 
     const isLocal = cleanModelId.startsWith('user/');
 
-    // 1. Download Tokenizer
-    await AutoTokenizer.from_pretrained(cleanModelId, {
-      progress_callback: progressCallback,
-      local_files_only: isLocal
+    await withModelAccessMode({
+      isLocal,
+      run: async () => {
+        // Downloading should only warm the cache. Session creation during download
+        // can poison the active runtime if ORT rejects a model/operator combination.
+        await AutoTokenizer.from_pretrained(cleanModelId, {
+          progress_callback: progressCallback,
+          local_files_only: isLocal
+        });
+      }
     });
-
-    // 2. Download Model weights (using same dtype to ensure correct files are cached)
-    // We use device: 'wasm' here to purely fetch files without triggering WebGPU issues.
-    const tempModel = await AutoModelForCausalLM.from_pretrained(cleanModelId, {
-      dtype: 'q4f16' as const,
-      device: 'wasm' as const,
-      progress_callback: progressCallback,
-      local_files_only: isLocal,
-    });
-    await tempModel.dispose();
-    console.log('[transformersJsWorker] Download complete and model disposed.');
+    console.log('[transformersJsWorker] Download complete.');
   },
 
   /**
@@ -326,64 +356,114 @@ const transformersJsWorker: ITransformersJsWorker = {
 
     await this.unloadModel();
     activeModelId = modelId;
+    generationRuntimeState.activeModelId = modelId;
 
     let cleanModelId = modelId;
     if (cleanModelId.startsWith('hf.co/')) cleanModelId = cleanModelId.substring(6);
     else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
 
     const isLocal = cleanModelId.startsWith('user/');
+    let loadedDevice: 'webgpu' | 'wasm' = 'wasm';
 
     try {
-      // 1. Load Model
-      // We try several combinations of device and dtype to find what works on this hardware/model
-      const tryLoad = async (device: 'webgpu' | 'wasm', dtype: 'q4f16' | 'q4' | undefined) => {
-        console.log(`[transformersJsWorker] Attempting load: device=${device}, dtype=${dtype || 'default'}`);
-        try {
-          return await AutoModelForCausalLM.from_pretrained(cleanModelId, {
-            dtype,
-            device,
-            progress_callback: progressCallback,
-            local_files_only: isLocal,
-          });
-        } catch (err) {
-          // Wrap numeric errors so they can be handled by the retry logic
-          if (typeof err === 'number') {
-            throw new Error(`Numeric error ${err}`);
-          }
-          throw err;
-        }
-      };
+      await withModelAccessMode({
+        isLocal,
+        run: async () => {
+          // 1. Load Model
+          // We try several combinations of device and dtype to find what works on this hardware/model
+          const tryLoad = async (device: 'webgpu' | 'wasm', dtype: 'q4f16' | 'q4' | undefined) => {
+            const startedAt = performance.now();
+            debugLog({
+              event: 'worker tryLoad start',
+              details: {
+                activeModelId: cleanModelId,
+                device,
+                dtype: dtype || 'default',
+              },
+            });
+            try {
+              const loadedModel = await AutoModelForCausalLM.from_pretrained(cleanModelId, {
+                dtype,
+                device,
+                progress_callback: progressCallback,
+                local_files_only: isLocal,
+              });
+              loadedDevice = device;
+              debugLog({
+                event: 'worker tryLoad success',
+                details: {
+                  activeModelId: cleanModelId,
+                  device,
+                  dtype: dtype || 'default',
+                  elapsedMs: Math.round(performance.now() - startedAt),
+                },
+              });
+              return loadedModel;
+            } catch (err) {
+              debugLog({
+                event: 'worker tryLoad failure',
+                details: {
+                  activeModelId: cleanModelId,
+                  device,
+                  dtype: dtype || 'default',
+                  elapsedMs: Math.round(performance.now() - startedAt),
+                  error: err instanceof Error ? err.message : String(err),
+                },
+              });
+              // Wrap numeric errors so they can be handled by the retry logic
+              if (typeof err === 'number') {
+                throw new Error(`Numeric error ${err}`);
+              }
+              throw err;
+            }
+          };
 
-      try {
-        model = await tryLoad('webgpu', 'q4f16');
-      } catch (err) {
-        console.warn('[transformersJsWorker] webgpu/q4f16 failed:', err);
-        try {
-          model = await tryLoad('webgpu', 'q4');
-        } catch (err2) {
-          console.warn('[transformersJsWorker] webgpu/q4 failed:', err2);
           try {
-            // Try without forced dtype (let library decide, e.g. use original fp32/fp16)
-            model = await tryLoad('webgpu', undefined);
-          } catch (err3) {
-            console.warn('[transformersJsWorker] webgpu/default failed, falling back to wasm:', err3);
-            // Last resort: standard CPU execution
-            model = await tryLoad('wasm', undefined);
+            model = await tryLoad('webgpu', 'q4f16');
+          } catch (err) {
+            console.warn('[transformersJsWorker] webgpu/q4f16 failed:', err);
+            try {
+              model = await tryLoad('webgpu', 'q4');
+            } catch (err2) {
+              console.warn('[transformersJsWorker] webgpu/q4 failed:', err2);
+              try {
+                // Try without forced dtype (let library decide, e.g. use original fp32/fp16)
+                model = await tryLoad('webgpu', undefined);
+              } catch (err3) {
+                console.warn('[transformersJsWorker] webgpu/default failed, falling back to wasm:', err3);
+                // Last resort: standard CPU execution
+                model = await tryLoad('wasm', undefined);
+              }
+            }
+          }
+          console.log('[transformersJsWorker] Model loaded successfully.');
+
+          // 2. Load Tokenizer
+          if (isQwen3_5Model({
+            modelType: (model as ModelInternals | null)?.config?.model_type,
+            activeModelId: cleanModelId,
+          })) {
+            console.log('[transformersJsWorker] Loading Qwen3.5 processor...');
+            qwen3_5Processor = await AutoProcessor.from_pretrained(cleanModelId, {
+              progress_callback: progressCallback,
+              local_files_only: isLocal,
+            }) as unknown as Qwen3_5ProcessorLike;
+            generationRuntimeState.qwen3_5Processor = qwen3_5Processor;
+            tokenizer = qwen3_5Processor.tokenizer;
+            console.log('[transformersJsWorker] Qwen3.5 processor loaded.');
+          } else {
+            console.log('[transformersJsWorker] Loading tokenizer...');
+            tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, {
+              progress_callback: progressCallback,
+              local_files_only: isLocal
+            });
+            console.log('[transformersJsWorker] Tokenizer loaded.');
           }
         }
-      }
-      console.log('[transformersJsWorker] Model loaded successfully.');
-
-      // 2. Load Tokenizer
-      console.log('[transformersJsWorker] Loading tokenizer...');
-      tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, {
-        progress_callback: progressCallback,
-        local_files_only: isLocal
       });
-      console.log('[transformersJsWorker] Tokenizer loaded.');
 
       return {
-        device: (model as unknown as ModelInternals)?.device || 'wasm'
+        device: loadedDevice,
       };
     } catch (err) {
       const errorMsg = typeof err === 'number'
@@ -400,9 +480,14 @@ const transformersJsWorker: ITransformersJsWorker = {
       await model.dispose();
       model = null;
     }
+    qwen3_5Processor = null;
+    generationRuntimeState.qwen3_5Processor = null;
     tokenizer = null;
-    pastKeyValues = null;
+    generationRuntimeState.gptOssPastKeyValues = null;
+    generationRuntimeState.qwen3_5PastKeyValues = null;
+    clearQwen3_5ContinuationState();
     activeModelId = null;
+    generationRuntimeState.activeModelId = null;
     stoppingCriteria.reset();
   },
 
@@ -411,115 +496,78 @@ const transformersJsWorker: ITransformersJsWorker = {
   },
 
   async resetCache() {
-    pastKeyValues = null;
+    generationRuntimeState.gptOssPastKeyValues = null;
+    generationRuntimeState.qwen3_5PastKeyValues = null;
+    clearQwen3_5ContinuationState();
     stoppingCriteria.reset();
   },
 
   async generateText(
     messages: ChatMessage[],
     onChunk: (chunk: string) => void,
-    params?: LmParameters
+    onToolCalls: (toolCalls: ToolCall[]) => void,
+    params?: LmParameters,
+    tools?: WorkerToolDefinition[]
   ): Promise<void> {
     if (!model || !tokenizer) throw new Error('Model not loaded');
 
     stoppingCriteria.reset();
-
-    const formattedMessages = messages.map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : ''
-    }));
-
-    const inputs = tokenizer.apply_chat_template(formattedMessages, {
-      add_generation_prompt: true,
-      return_dict: true,
-    }) as Record<string, unknown>;
-
-    const isGptOss = activeModelId?.toLowerCase().includes('gpt-oss') ?? false;
-    console.log(`[transformersJsWorker] generateText: activeModelId='${activeModelId}', isGptOss=${isGptOss}`);
-
-    let parser: GptOssHarmonyStreamParser | null = null;
-    let currentChannel = '';
-
-    if (isGptOss) {
-      parser = new GptOssHarmonyStreamParser();
-    }
-
-    const streamer = new TextStreamer(tokenizer, {
-      skip_prompt: true,
-      skip_special_tokens: !isGptOss, // Only skip if NOT using parser, so we catch <|channel|> etc.
-      callback_function: (output: string) => {
-        if (isGptOss && parser) {
-          // Simple heuristic: if we see raw tokens that look like Harmony protocol, try parsing
-          // Otherwise pass through. But since we need stateful parsing, we always push to parser.
-          const delta = parser.push(output);
-
-          if (!delta) return;
-
-          switch (delta.type) {
-          case 'content': {
-            const msg = parser.messages[delta.messageIndex];
-            const channel = msg?.channel || '';
-            // Handle channel switching
-            if (channel !== currentChannel) {
-              if (currentChannel === 'analysis') {
-                onChunk('</think>');
-              }
-              if (channel === 'analysis') {
-                onChunk('<think>');
-              }
-              currentChannel = channel;
-            }
-            onChunk(delta.textDelta);
-            break;
-          }
-          case 'done':
-            if (currentChannel === 'analysis') {
-              onChunk('</think>');
-              currentChannel = '';
-            }
-            break;
-
-          case 'new_message':
-            break;
-          default: {
-            const _ex: never = delta;
-            throw new Error(`Unhandled path part: ${_ex}`);
-          }
-          }
-        } else {
-          // Standard passthrough
-          onChunk(output);
-        }
+    const generationStart = performance.now();
+    const strategy = selectGenerationStrategy({
+      modelType: (model as ModelInternals | null)?.config?.model_type,
+      activeModelId,
+      hasTools: !!tools?.length,
+    });
+    debugLog({
+      event: 'tool routing',
+      details: {
+        activeModelId,
+        strategy: strategy.kind,
+        hasTools: !!tools?.length,
+        messageRoles: messages.map(message => ({
+          role: message.role,
+          hasToolCalls: !!message.tool_calls?.length,
+          hasToolCallId: !!message.tool_call_id,
+        })),
       },
     });
 
-    const maxNewTokens = params?.maxCompletionTokens || 1024;
-    const temperature = params?.temperature ?? 0.6;
-    const topP = params?.topP ?? 0.9;
-
-    const stopping_criteria = new StoppingCriteriaList();
-    stopping_criteria.push(stoppingCriteria);
-
     try {
-      const result = await (model as unknown as TextGenerationModel).generate({
-        ...inputs,
-        past_key_values: pastKeyValues,
-        max_new_tokens: maxNewTokens,
-        temperature: temperature,
-        top_p: topP,
-        do_sample: temperature > 0,
-        streamer,
-        stopping_criteria,
-        return_dict_in_generate: true,
+      debugLog({
+        event: 'calling model.generate',
+        details: {
+          activeModelId,
+          strategy: strategy.kind,
+          elapsedMs: Math.round(performance.now() - generationStart),
+        },
       });
-
-      // Ensure we close any open tags at the end
-      if (currentChannel === 'analysis') {
-        onChunk('</think>');
-      }
-
-      pastKeyValues = (result as GenerationResult).past_key_values;
+      await strategy.generate({
+        model,
+        tokenizer,
+        messages,
+        onChunk: (chunk) => {
+          console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
+          onChunk(chunk);
+        },
+        onToolCalls,
+        params,
+        tools,
+        runtimeState: generationRuntimeState,
+        stoppingCriteria,
+        debugLog,
+      });
+      debugLog({
+        event: 'generation complete',
+        details: {
+          activeModelId,
+          strategy: strategy.kind,
+          elapsedMs: Math.round(performance.now() - generationStart),
+        },
+      });
     } catch (err) {
+      clearQwen3_5ContinuationState();
+      generationRuntimeState.gptOssPastKeyValues = null;
+      generationRuntimeState.qwen3_5PastKeyValues = null;
       console.error('[transformersJsWorker] Generation error:', err);
       throw err;
     }

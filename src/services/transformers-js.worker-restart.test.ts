@@ -111,7 +111,7 @@ describe('transformersJsService worker restart', () => {
 
     // 4. Act
     try {
-      await transformersJsService.generateText([], () => {});
+      await transformersJsService.generateText([], () => {}, () => {});
     } catch (e) {
       // Expected
     }
@@ -135,7 +135,7 @@ describe('transformersJsService worker restart', () => {
     const countAfterLoad = MockWorker.constructorCount;
 
     try {
-      await transformersJsService.generateText([], () => {});
+      await transformersJsService.generateText([], () => {}, () => {});
     } catch (e) { /* Expected */ }
 
     expect(MockWorker.constructorCount).toBeGreaterThan(countAfterLoad);

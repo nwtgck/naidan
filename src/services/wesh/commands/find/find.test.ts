@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 describe('wesh find', () => {
@@ -55,12 +55,12 @@ describe('wesh find', () => {
   }: {
     script: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -112,7 +112,11 @@ describe('wesh find', () => {
 
     const { result, stdout, stderr } = await execute({ script: 'find src' });
 
-    expect(stdout.text).toBe('src\nsrc/app.ts\nsrc/readme.md\n');
+    expect(stdout.text).toBe(`\
+src
+src/app.ts
+src/readme.md
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -126,7 +130,10 @@ describe('wesh find', () => {
       script: 'find src \\( -name "*.ts" -o -name "*.md" \\) -type f',
     });
 
-    expect(stdout.text).toBe('src/app.ts\nsrc/readme.md\n');
+    expect(stdout.text).toBe(`\
+src/app.ts
+src/readme.md
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -250,7 +257,10 @@ describe('wesh find', () => {
       script: 'find src -empty',
     });
 
-    expect(stdout.text).toBe('src/empty.txt\nsrc/empty-dir\n');
+    expect(stdout.text).toBe(`\
+src/empty.txt
+src/empty-dir
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -287,12 +297,20 @@ describe('wesh find', () => {
     const allBits = await execute({
       script: 'find src -perm -111',
     });
-    expect(allBits.stdout.text).toBe('src\nsrc/dir\nsrc/link\n');
+    expect(allBits.stdout.text).toBe(`\
+src
+src/dir
+src/link
+`);
 
     const anyBits = await execute({
       script: 'find src -perm /001',
     });
-    expect(anyBits.stdout.text).toBe('src\nsrc/dir\nsrc/link\n');
+    expect(anyBits.stdout.text).toBe(`\
+src
+src/dir
+src/link
+`);
   });
 
   it('supports -regex against the displayed path', async () => {
@@ -334,6 +352,83 @@ describe('wesh find', () => {
     });
 
     expect(Array.from(stdout.buffer)).toEqual(Array.from(new TextEncoder().encode('src/app.ts\0src/main.ts\0')));
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -name with * wildcard', async () => {
+    await writeFile({ path: 'src/app.ts', data: '' });
+    await writeFile({ path: 'src/main.ts', data: '' });
+    await writeFile({ path: 'src/readme.md', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -name "*.ts"',
+    });
+
+    expect(stdout.text).toBe(`\
+src/app.ts
+src/main.ts
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -name with ? wildcard matching exactly one character', async () => {
+    await writeFile({ path: 'src/a.ts', data: '' });
+    await writeFile({ path: 'src/ab.ts', data: '' });
+    await writeFile({ path: 'src/abc.ts', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -name "?.ts"',
+    });
+
+    expect(stdout.text).toBe('src/a.ts\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -name with [...] character class', async () => {
+    await writeFile({ path: 'src/file1.txt', data: '' });
+    await writeFile({ path: 'src/file2.txt', data: '' });
+    await writeFile({ path: 'src/file3.txt', data: '' });
+    await writeFile({ path: 'src/file9.txt', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -name "file[123].txt"',
+    });
+
+    expect(stdout.text).toBe(`\
+src/file1.txt
+src/file2.txt
+src/file3.txt
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -iname for case-insensitive name matching', async () => {
+    await writeFile({ path: 'src/README.md', data: '' });
+    await writeFile({ path: 'src/app.ts', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -iname "readme.md"',
+    });
+
+    expect(stdout.text).toBe('src/README.md\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports -path matching against the full displayed path', async () => {
+    await writeFile({ path: 'src/components/Button.ts', data: '' });
+    await writeFile({ path: 'src/utils/helpers.ts', data: '' });
+    await writeFile({ path: 'src/index.ts', data: '' });
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find src -path "*/components/*"',
+    });
+
+    expect(stdout.text).toBe('src/components/Button.ts\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

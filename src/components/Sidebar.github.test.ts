@@ -62,11 +62,11 @@ describe('Sidebar GitHub and Version', () => {
         stubs: {
           Logo: true,
           ThemeToggle: true,
-          Plus: true,
-          FolderPlus: true,
+          PlusIcon: true,
+          FolderPlusIcon: true,
           SettingsIcon: true,
-          ChevronDown: true,
-          Bot: true,
+          ChevronDownIcon: true,
+          BotIcon: true,
           draggable: true,
         }
       }
@@ -81,11 +81,11 @@ describe('Sidebar GitHub and Version', () => {
         stubs: {
           Logo: true,
           ThemeToggle: true,
-          Plus: true,
-          FolderPlus: true,
+          PlusIcon: true,
+          FolderPlusIcon: true,
           SettingsIcon: true,
-          ChevronDown: true,
-          Bot: true,
+          ChevronDownIcon: true,
+          BotIcon: true,
           draggable: true,
         }
       }

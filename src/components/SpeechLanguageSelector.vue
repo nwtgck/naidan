@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Languages, ChevronDown, Check, RefreshCw } from 'lucide-vue-next';
+import { LanguagesIcon, ChevronDownIcon, CheckIcon, RefreshCwIcon } from 'lucide-vue-next';
 import { webSpeechService, type SpeechLanguage } from '@/services/web-speech';
 
 const props = defineProps<{
@@ -109,9 +109,9 @@ defineExpose({
           : 'bg-white/50 dark:bg-gray-800/50 text-blue-600/70 hover:text-blue-600'
       ]"
     >
-      <Languages class="w-3 h-3" />
+      <LanguagesIcon class="w-3 h-3" />
       <span>{{ getDisplayLabel() }}</span>
-      <ChevronDown class="w-2.5 h-2.5 opacity-50" />
+      <ChevronDownIcon class="w-2.5 h-2.5 opacity-50" />
     </button>
 
     <div v-if="showMenu" class="fixed inset-0 z-40" @click.stop="showMenu = false"></div>
@@ -144,9 +144,9 @@ defineExpose({
                 :class="{ 'animate-spin text-blue-600': isRedetecting }"
                 title="Redetect language"
               >
-                <RefreshCw class="w-2.5 h-2.5" />
+                <RefreshCwIcon class="w-2.5 h-2.5" />
               </button>
-              <Check v-if="selectedLang === l.value" class="w-3 h-3" />
+              <CheckIcon v-if="selectedLang === l.value" class="w-3 h-3" />
             </div>
           </div>
         </div>

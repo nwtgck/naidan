@@ -70,11 +70,19 @@ describe('computeWordDiff', () => {
   });
 
   it('handles multiple changes across multiple lines', () => {
-    const oldText = 'Line 1\nLine 2\nLine 3';
-    const newText = 'Line 1\nLine 2 modified\nLine 3';
+    const oldText = `\
+Line 1
+Line 2
+Line 3`;
+    const newText = `\
+Line 1
+Line 2 modified
+Line 3`;
     const result = computeWordDiff({ oldText, newText });
     expect(result).toEqual([
-      { type: 'unchanged', value: 'Line 1\nLine 2' },
+      { type: 'unchanged', value: `\
+Line 1
+Line 2` },
       { type: 'added', value: ' modified' },
       { type: 'unchanged', value: '\nLine 3' },
     ]);

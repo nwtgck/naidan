@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted, watch } from 'vue';
-import { X, History, Clock, Cpu, ArrowDown, Copy, Check, ArrowRight, RotateCcw, Eye, EyeOff } from 'lucide-vue-next';
+import { XIcon, HistoryIcon, ClockIcon, CpuIcon, ArrowDownIcon, CopyIcon, CheckIcon, ArrowRightIcon, RotateCcwIcon, EyeIcon, EyeOffIcon } from 'lucide-vue-next';
 import type { MessageNode } from '@/models/types';
 import { computeWordDiff, type DiffPart } from '@/utils/diff';
 
@@ -198,7 +198,7 @@ defineExpose({
         <div class="px-6 py-5 border-b border-gray-100 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-900 z-10 flex items-center justify-between">
           <div class="flex items-center gap-4">
             <div class="p-2.5 bg-blue-500/10 rounded-xl border border-blue-200 dark:border-blue-500/20">
-              <History class="w-5 h-5 text-blue-500" />
+              <HistoryIcon class="w-5 h-5 text-blue-500" />
             </div>
             <div>
               <h2 class="text-base font-bold text-gray-800 dark:text-white tracking-tight">Message History & Compare</h2>
@@ -225,7 +225,7 @@ defineExpose({
             </div>
 
             <button @click="handleClose" class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors">
-              <X class="w-5 h-5" />
+              <XIcon class="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -242,7 +242,7 @@ defineExpose({
               <div class="px-5 py-2.5 border-b border-gray-50 dark:border-gray-800 bg-blue-50/30 dark:bg-blue-900/20 flex items-center justify-between">
                 <div class="flex items-center gap-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                   <span class="text-blue-600 dark:text-blue-400">Comparing Base v{{ customDiff.base.versionNumber }}</span>
-                  <ArrowRight class="w-3 h-3" />
+                  <ArrowRightIcon class="w-3 h-3" />
                   <span class="text-green-600 dark:text-green-400">Target v{{ customDiff.target.versionNumber }}</span>
                 </div>
 
@@ -254,7 +254,7 @@ defineExpose({
                     title="Reset selection"
                     data-testid="reset-selection-button"
                   >
-                    <RotateCcw class="w-3.5 h-3.5" />
+                    <RotateCcwIcon class="w-3.5 h-3.5" />
                     <span>Reset Selection</span>
                   </button>
 
@@ -262,8 +262,8 @@ defineExpose({
                     @click="handleCopy({ id: customDiff.target.id, content: customDiff.target.content })"
                     class="flex items-center gap-2 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors"
                   >
-                    <Check v-if="copiedId === customDiff.target.id" class="w-3.5 h-3.5 text-green-500" />
-                    <Copy v-else class="w-3.5 h-3.5" />
+                    <CheckIcon v-if="copiedId === customDiff.target.id" class="w-3.5 h-3.5 text-green-500" />
+                    <CopyIcon v-else class="w-3.5 h-3.5" />
                     <span>Copy Result</span>
                   </button>
                 </div>
@@ -313,14 +313,14 @@ defineExpose({
                       v{{ diff.versionNumber }}
                     </span>
                     <div class="flex items-center gap-1.5 text-[10px] font-medium text-gray-400">
-                      <Clock class="w-3 h-3" />
+                      <ClockIcon class="w-3 h-3" />
                       {{ formatDate({ timestamp: diff.timestamp }) }}
                     </div>
                   </div>
 
                   <div class="flex items-center gap-2">
                     <div v-if="diff.modelId" class="hidden sm:flex items-center gap-1.5 text-[10px] font-bold text-gray-400 tracking-widest mr-2" :class="diff.isSkipped ? 'opacity-40 grayscale' : ''">
-                      <Cpu class="w-3 h-3" />
+                      <CpuIcon class="w-3 h-3" />
                       {{ diff.modelId }}
                     </div>
 
@@ -351,8 +351,8 @@ defineExpose({
                         'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-gray-800 border border-transparent'"
                       :title="diff.isSkipped ? 'Include in diff' : 'Exclude from diff'"
                     >
-                      <EyeOff v-if="!diff.isSkipped" class="w-3.5 h-3.5" />
-                      <Eye v-else class="w-3.5 h-3.5" />
+                      <EyeOffIcon v-if="!diff.isSkipped" class="w-3.5 h-3.5" />
+                      <EyeIcon v-else class="w-3.5 h-3.5" />
                       <span class="text-[9px] font-black uppercase tracking-widest">{{ diff.isSkipped ? 'Include' : 'Skip' }}</span>
                     </button>
 
@@ -362,8 +362,8 @@ defineExpose({
                       class="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-white dark:hover:bg-gray-800 transition-colors"
                       :title="copiedId === diff.id ? 'Copied!' : 'Copy this version'"
                     >
-                      <Check v-if="copiedId === diff.id" class="w-3.5 h-3.5 text-green-500" />
-                      <Copy v-else class="w-3.5 h-3.5" />
+                      <CheckIcon v-if="copiedId === diff.id" class="w-3.5 h-3.5 text-green-500" />
+                      <CopyIcon v-else class="w-3.5 h-3.5" />
                     </button>
                   </div>                </div>
 
@@ -391,7 +391,7 @@ defineExpose({
               <!-- Connector Arrow -->
               <div v-if="index < visibleCount - 1 && index < sequentialDiffs.length - 1" class="flex justify-center -my-3 relative z-10">
                 <div class="bg-gray-100 dark:bg-gray-800 p-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-400 shadow-sm">
-                  <ArrowDown class="w-4 h-4" />
+                  <ArrowDownIcon class="w-4 h-4" />
                 </div>
               </div>
             </div>

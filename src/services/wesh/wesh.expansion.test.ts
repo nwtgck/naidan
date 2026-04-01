@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from './index';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from './utils/test-stream';
 
 describe('wesh shell expansion', () => {
@@ -54,12 +54,12 @@ describe('wesh shell expansion', () => {
   }: {
     script: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -82,7 +82,10 @@ describe('wesh shell expansion', () => {
       script: 'for item in $GREETING; do echo "<$item>"; done',
     });
 
-    expect(stdout.text).toBe('<hello>\n<world>\n');
+    expect(stdout.text).toBe(`\
+<hello>
+<world>
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -397,7 +400,13 @@ echo "\${FOO:+present}"
 echo "\${#FOO}"`,
     });
 
-    expect(stdout.text).toBe('fallback\nfallback\n\npresent\n9\n');
+    expect(stdout.text).toBe(`\
+fallback
+fallback
+
+present
+9
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -410,7 +419,10 @@ echo "\${CREATED:=made}"
 echo "$CREATED"`,
     });
 
-    expect(stdout.text).toBe('made\nmade\n');
+    expect(stdout.text).toBe(`\
+made
+made
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });

@@ -5,7 +5,15 @@ import { useImagePreview } from './useImagePreview';
 
 describe('useImagePreview', () => {
   it('manages preview state locally when not provided', () => {
-    const { state, openPreview, closePreview } = useImagePreview();
+    let state: any, openPreview: any, closePreview: any;
+
+    const TestComp = defineComponent({
+      setup() {
+        ({ state, openPreview, closePreview } = useImagePreview());
+        return () => null;
+      }
+    });
+    mount(TestComp);
 
     expect(state.value).toBeNull();
 

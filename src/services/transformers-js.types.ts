@@ -1,5 +1,5 @@
 import { AutoTokenizer, AutoModelForCausalLM } from '@huggingface/transformers';
-import type { ChatMessage, LmParameters } from '@/models/types';
+import type { ChatMessage, EmptyArgs, LmParameters, ToolCall } from '@/models/types';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -34,6 +34,20 @@ export interface ITransformersJsScannerWorker {
   scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }>;
 }
 
+export interface TransformersJsScannerWorkerClient {
+  scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }>;
+  dispose(_args: EmptyArgs): Promise<void>;
+}
+
+export interface WorkerToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
 // We define the interface here so that the service can use it
 // without importing the entire worker file.
 export interface ITransformersJsWorker {
@@ -46,6 +60,34 @@ export interface ITransformersJsWorker {
   generateText(
     messages: ChatMessage[],
     onChunk: (chunk: string) => void,
-    params?: LmParameters
+    onToolCalls: (toolCalls: ToolCall[]) => void,
+    params?: LmParameters,
+    tools?: WorkerToolDefinition[]
   ): Promise<void>;
+}
+
+export interface TransformersJsWorkerClient {
+  downloadModel({ modelId, progressCallback }: {
+    modelId: string
+    progressCallback: (x: ProgressInfo) => void
+  }): Promise<void>;
+  prefetchUrls({ urls, progressCallback }: {
+    urls: string[]
+    progressCallback: (x: ProgressInfo) => void
+  }): Promise<void>;
+  loadModel({ modelId, progressCallback }: {
+    modelId: string
+    progressCallback: (x: ProgressInfo) => void
+  }): Promise<ModelLoadResult>;
+  unloadModel(_args: EmptyArgs): Promise<void>;
+  interrupt(_args: EmptyArgs): Promise<void>;
+  resetCache(_args: EmptyArgs): Promise<void>;
+  generateText({ messages, onChunk, onToolCalls, params, tools }: {
+    messages: ChatMessage[]
+    onChunk: (chunk: string) => void
+    onToolCalls: (toolCalls: ToolCall[]) => void
+    params?: LmParameters
+    tools?: WorkerToolDefinition[]
+  }): Promise<void>;
+  dispose(_args: EmptyArgs): Promise<void>;
 }

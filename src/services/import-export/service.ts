@@ -495,10 +495,7 @@ export class ImportExportService {
       applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
       applyField(strategies.lmParameters, newSettingsDomain.lmParameters, 'lmParameters');
 
-      // Always merge UI and experimental flags if present in the import
-      if (newSettingsDomain.experimental !== undefined) {
-        finalSettings.experimental = newSettingsDomain.experimental;
-      }
+      // Always merge UI flags if present in the import
       if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
         finalSettings.heavyContentAlertDismissed = newSettingsDomain.heavyContentAlertDismissed;
       }

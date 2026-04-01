@@ -2,8 +2,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '@/services/transformers-js';
 import {
-  Loader2, CheckCircle2, AlertCircle, Download, FolderOpen, RefreshCcw, Trash2,
-  ChevronDown, Plus, HardDriveDownload, X, BrainCircuit, PowerOff, ExternalLink, Search, FileCode, RotateCcw
+  Loader2Icon, CheckCircle2Icon, AlertCircleIcon, DownloadIcon, FolderOpenIcon, RefreshCcwIcon, Trash2Icon,
+  ChevronDownIcon, PlusIcon, HardDriveDownloadIcon, XIcon, BrainCircuitIcon, PowerOffIcon, ExternalLinkIcon, SearchIcon, FileCodeIcon, RotateCcwIcon
 } from 'lucide-vue-next';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
@@ -292,7 +292,7 @@ defineExpose({
     <!-- Standalone Mode Header Warning -->
     <div v-if="isStandalone" class="p-6 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-3xl space-y-4 animate-in fade-in slide-in-from-top-2 duration-400">
       <div class="flex items-start gap-3 text-amber-700 dark:text-amber-400 leading-relaxed italic text-sm">
-        <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
+        <AlertCircleIcon class="w-5 h-5 shrink-0 mt-0.5" />
         <p>
           In-browser AI (Transformers.js) is not available in the Standalone build due to browser restrictions on Web Workers and WebAssembly when running from a local file.
         </p>
@@ -304,7 +304,7 @@ defineExpose({
           rel="noopener noreferrer"
           class="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-95"
         >
-          <ExternalLink class="w-3.5 h-3.5" />
+          <ExternalLinkIcon class="w-3.5 h-3.5" />
           Get Hosted Version (GitHub)
         </a>
       </div>
@@ -313,7 +313,7 @@ defineExpose({
     <!-- OPFS Support Warning -->
     <div v-else-if="!isOpfsSupported" class="p-6 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-3xl space-y-4 animate-in fade-in slide-in-from-top-2 duration-400">
       <div class="flex items-start gap-3 text-red-700 dark:text-red-400 leading-relaxed italic text-sm">
-        <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
+        <AlertCircleIcon class="w-5 h-5 shrink-0 mt-0.5" />
         <p>
           In-browser AI (Transformers.js) is not available because the browser does not support or allow access to <strong>Origin Private File System (OPFS)</strong>, which is required for storing model files.
           This often happens in private browsing modes or insecure contexts.
@@ -329,7 +329,7 @@ defineExpose({
       <section class="space-y-6">
         <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
           <div class="flex items-center gap-2">
-            <HardDriveDownload class="w-5 h-5 text-purple-500" />
+            <HardDriveDownloadIcon class="w-5 h-5 text-purple-500" />
             <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Add New Models</h2>
           </div>
           <a
@@ -339,14 +339,14 @@ defineExpose({
             class="flex items-center gap-1 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
           >
             Find more models
-            <ExternalLink class="w-3 h-3" />
+            <ExternalLinkIcon class="w-3 h-3" />
           </a>
         </div>
 
         <template v-if="!isStandalone">
           <!-- file:// Warning -->
           <div v-if="isFileUrl" class="flex items-start gap-3 p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200/50 dark:border-amber-800/50 rounded-3xl text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-            <AlertCircle class="w-5 h-5 shrink-0 mt-0.5" />
+            <AlertCircleIcon class="w-5 h-5 shrink-0 mt-0.5" />
             <p>
               <strong>Note:</strong> Browsers often disable the <strong>Cache API</strong> for local file URLs. To avoid downloading models on every reload, use a local web server or the hosted version.
             </p>
@@ -372,7 +372,7 @@ defineExpose({
                     class="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
                     type="button"
                   >
-                    <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isDropdownOpen }" />
+                    <ChevronDownIcon class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isDropdownOpen }" />
                   </button>
 
                   <!-- Dropdown Menu -->
@@ -384,7 +384,7 @@ defineExpose({
                           @click="selectModelId(searchQuery)"
                           class="w-full text-left px-4 py-3 rounded-2xl text-xs font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 flex items-center gap-2 border border-dashed border-purple-200 dark:border-purple-800/50 mb-2"
                         >
-                          <Plus class="w-4 h-4" />
+                          <PlusIcon class="w-4 h-4" />
                           Use Custom ID: "{{ searchQuery }}"
                         </button>
                       </div>
@@ -411,8 +411,8 @@ defineExpose({
                 :disabled="status === 'loading' || !searchQuery.trim()"
                 class="flex items-center justify-center gap-2 px-8 py-3.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm active:scale-95 shrink-0"
               >
-                <Download v-if="status !== 'loading'" class="w-4 h-4" />
-                <Loader2 v-else class="w-4 h-4 animate-spin" />
+                <DownloadIcon v-if="status !== 'loading'" class="w-4 h-4" />
+                <Loader2Icon v-else class="w-4 h-4 animate-spin" />
                 Download Model
               </button>
             </div>
@@ -422,13 +422,13 @@ defineExpose({
               <template v-if="lastDownloadError">
                 <div class="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-2xl">
                   <div class="flex items-start gap-3">
-                    <AlertCircle class="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                    <AlertCircleIcon class="w-4 h-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
                     <div class="flex-1 min-w-0">
                       <p class="text-xs font-bold text-red-800 dark:text-red-300 mb-1">Download Failed</p>
                       <p class="text-[11px] text-red-600/80 dark:text-red-400/80 leading-relaxed">{{ lastDownloadError }}</p>
                     </div>
                     <button @click="lastDownloadError = null" class="text-red-400 hover:text-red-600 transition-colors">
-                      <X class="w-4 h-4" />
+                      <XIcon class="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -436,7 +436,7 @@ defineExpose({
               <template v-else>
                 <div class="flex items-center justify-between mb-2 px-1">
                   <span class="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-2">
-                    <Loader2 class="w-3 h-3 animate-spin" />
+                    <Loader2Icon class="w-3 h-3 animate-spin" />
                     Overall Progress
                   </span>
                   <div class="flex flex-col items-end">
@@ -456,7 +456,7 @@ defineExpose({
                     @click="isDetailsExpanded = !isDetailsExpanded"
                     class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors uppercase tracking-widest mb-3"
                   >
-                    <ChevronDown class="w-2.5 h-2.5 transition-transform" :class="{ '-rotate-90': !isDetailsExpanded }" />
+                    <ChevronDownIcon class="w-2.5 h-2.5 transition-transform" :class="{ '-rotate-90': !isDetailsExpanded }" />
                     Asset Details
                   </button>
 
@@ -498,7 +498,7 @@ defineExpose({
 
           <div class="flex justify-center">
             <label class="flex items-center gap-2 px-6 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-purple-600 dark:text-purple-400 font-bold text-sm rounded-xl cursor-pointer transition-all border border-gray-200 dark:border-gray-700 shadow-sm active:scale-95">
-              <FolderOpen class="w-5 h-5" />
+              <FolderOpenIcon class="w-5 h-5" />
               <span>Select Model Folder</span>
               <input
                 type="file"
@@ -516,14 +516,14 @@ defineExpose({
       <section class="space-y-6">
         <div class="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
           <div class="flex items-center gap-2">
-            <BrainCircuit class="w-5 h-5 text-purple-500" />
+            <BrainCircuitIcon class="w-5 h-5 text-purple-500" />
             <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Engine Control</h2>
           </div>
           <button
             @click="refreshLocalModels"
             class="flex items-center gap-1.5 text-[10px] font-bold text-purple-600 hover:text-purple-700 transition-colors uppercase tracking-wider"
           >
-            <RefreshCcw class="w-3 h-3" :class="{ 'animate-spin': isImporting }" />
+            <RefreshCcwIcon class="w-3 h-3" :class="{ 'animate-spin': isImporting }" />
             Refresh
           </button>
         </div>
@@ -538,9 +538,9 @@ defineExpose({
              }">
           <div class="flex items-start gap-4">
             <div class="mt-1">
-              <Loader2 v-if="status === 'loading' || isImporting" class="w-6 h-6 animate-spin text-blue-600 dark:text-blue-400" />
-              <CheckCircle2 v-else-if="status === 'ready'" class="w-6 h-6 text-green-600 dark:text-green-400" />
-              <AlertCircle v-else-if="status === 'error'" class="w-6 h-6 text-red-600 dark:text-red-400" />
+              <Loader2Icon v-if="status === 'loading' || isImporting" class="w-6 h-6 animate-spin text-blue-600 dark:text-blue-400" />
+              <CheckCircle2Icon v-else-if="status === 'ready'" class="w-6 h-6 text-green-600 dark:text-green-400" />
+              <AlertCircleIcon v-else-if="status === 'error'" class="w-6 h-6 text-red-600 dark:text-red-400" />
               <div v-else class="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600"></div>
             </div>
             <div class="flex-1 min-w-0">
@@ -566,14 +566,14 @@ defineExpose({
                     class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
                     title="Unload model and release resources"
                   >
-                    <PowerOff class="w-4 h-4" />
+                    <PowerOffIcon class="w-4 h-4" />
                   </button>
                   <button
                     @click="handleRestart"
                     class="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-all"
                     title="Hard restart AI worker engine"
                   >
-                    <RotateCcw class="w-4 h-4" />
+                    <RotateCcwIcon class="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -600,7 +600,7 @@ defineExpose({
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 ml-1">
             <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest shrink-0">Downloaded Models</h3>
             <div class="relative flex-1 max-w-sm">
-              <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
               <input
                 v-model="listSearchQuery"
                 type="text"
@@ -623,11 +623,11 @@ defineExpose({
                   </div>
                   <div class="flex items-center gap-3 text-[9px] text-gray-400 font-bold uppercase tracking-tight">
                     <span class="flex items-center gap-1">
-                      <HardDriveDownload class="w-2.5 h-2.5" />
+                      <HardDriveDownloadIcon class="w-2.5 h-2.5" />
                       {{ formatSize(model.size) }}
                     </span>
                     <span class="flex items-center gap-1">
-                      <FileCode class="w-2.5 h-2.5" />
+                      <FileCodeIcon class="w-2.5 h-2.5" />
                       {{ model.fileCount }}
                     </span>
                     <span v-if="model.lastModified">
@@ -651,7 +651,7 @@ defineExpose({
                     class="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                     title="Delete model"
                   >
-                    <Trash2 class="w-3.5 h-3.5" />
+                    <Trash2Icon class="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>

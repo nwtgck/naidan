@@ -3,7 +3,8 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { ArgvOptionOccurrence } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, readFile } from '@/services/wesh/utils/fs';
+import { openFileReadStream, readAllFileBytes } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 interface GrepFileReport {
   matched: boolean;
@@ -12,6 +13,7 @@ interface GrepFileReport {
 }
 
 type GrepOutputMode = 'lines' | 'count' | 'files-with-matches' | 'files-without-match' | 'only-matching';
+type GrepPatternSyntax = 'basic' | 'extended' | 'perl' | 'fixed';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   if (path.startsWith('/')) {
@@ -72,23 +74,122 @@ function globToRegExp({ pattern }: { pattern: string }): RegExp {
   return new RegExp(source);
 }
 
+function convertBREPattern({ pattern }: { pattern: string }): string {
+  let result = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const char = pattern[i]!;
+    if (char === '[') {
+      // Pass through character classes unchanged
+      result += char;
+      i++;
+      // Handle negation and leading ] inside class
+      if (i < pattern.length && pattern[i] === '^') {
+        result += pattern[i++]!;
+      }
+      if (i < pattern.length && pattern[i] === ']') {
+        result += pattern[i++]!;
+      }
+      while (i < pattern.length && pattern[i] !== ']') {
+        result += pattern[i++]!;
+      }
+      if (i < pattern.length) {
+        result += pattern[i++]!;
+      } // closing ]
+    } else if (char === '\\' && i + 1 < pattern.length) {
+      const next = pattern[i + 1]!;
+      switch (next) {
+      case '|': result += '|'; i += 2; break;
+      case '(': result += '('; i += 2; break;
+      case ')': result += ')'; i += 2; break;
+      case '{': result += '{'; i += 2; break;
+      case '}': result += '}'; i += 2; break;
+      case '+': result += '+'; i += 2; break;
+      case '?': result += '?'; i += 2; break;
+      default:  result += char + next; i += 2; break;
+      }
+    } else {
+      result += char;
+      i++;
+    }
+  }
+  return result;
+}
+
+function resolveGrepPatternSyntax({
+  occurrences,
+}: {
+  occurrences: ArgvOptionOccurrence[];
+}): GrepPatternSyntax {
+  let syntax: GrepPatternSyntax = 'basic';
+
+  for (const occurrence of occurrences) {
+    switch (occurrence.kind) {
+    case 'flag':
+      break;
+    case 'value':
+    case 'special':
+      continue;
+    default: {
+      const _ex: never = occurrence;
+      throw new Error(`Unhandled occurrence kind: ${_ex}`);
+    }
+    }
+
+    for (const effect of occurrence.effects) {
+      switch (effect.key) {
+      case 'extendedRegexp':
+        syntax = 'extended';
+        break;
+      case 'basicRegexp':
+        syntax = 'basic';
+        break;
+      case 'perlRegexp':
+        syntax = 'perl';
+        break;
+      case 'fixedStrings':
+        syntax = 'fixed';
+        break;
+      default:
+        break;
+      }
+    }
+  }
+
+  return syntax;
+}
+
 function buildGrepRegex({
   patterns,
-  fixedStrings,
+  syntax,
   wordRegexp,
   ignoreCase,
   exactLine,
   global,
 }: {
   patterns: string[];
-  fixedStrings: boolean;
+  syntax: GrepPatternSyntax;
   wordRegexp: boolean;
   ignoreCase: boolean;
   exactLine: boolean;
   global: boolean;
 }): RegExp {
   const source = patterns
-    .map((pattern) => (fixedStrings ? escapeRegExp({ value: pattern }) : pattern))
+    .map((pattern) => {
+      switch (syntax) {
+      case 'fixed':
+        return escapeRegExp({ value: pattern });
+      case 'basic':
+        return convertBREPattern({ pattern });
+      case 'extended':
+      case 'perl':
+        return pattern;
+      default: {
+        const _ex: never = syntax;
+        throw new Error(`Unhandled grep pattern syntax: ${_ex}`);
+      }
+      }
+    })
     .map((pattern) => (wordRegexp ? `\\b(?:${pattern})\\b` : `(?:${pattern})`))
     .map((pattern) => (exactLine ? `^(?:${pattern})$` : pattern))
     .join('|');
@@ -105,9 +206,36 @@ async function readPatternFile({
   path: string;
 }): Promise<string[]> {
   const fullPath = resolvePath({ cwd: context.cwd, path });
-  const bytes = await readFile({ files: context.files, path: fullPath });
+  const bytes = await readAllFileBytes({ files: context.files, path: fullPath });
   const content = new TextDecoder().decode(bytes);
   return content.split(/\r?\n/).filter((line, index, lines) => line.length > 0 || index < lines.length - 1);
+}
+
+async function openGrepInputStream({
+  context,
+  file,
+}: {
+  context: WeshCommandContext;
+  file: string;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (file === '-') {
+    return new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const buf = new Uint8Array(4096);
+        const { bytesRead } = await context.stdin.read({ buffer: buf });
+        if (bytesRead === 0) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(buf.subarray(0, bytesRead));
+      }
+    });
+  }
+
+  return await openFileReadStream({
+    files: context.files,
+    path: resolvePath({ cwd: context.cwd, path: file }),
+  });
 }
 
 export const grepCommandDefinition: WeshCommandDefinition = {
@@ -121,6 +249,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       options: [
         { kind: 'flag', short: 'E', long: 'extended-regexp', effects: [{ key: 'extendedRegexp', value: true }], help: { summary: 'use extended regular expressions', category: 'common' } },
         { kind: 'flag', short: 'G', long: 'basic-regexp', effects: [{ key: 'basicRegexp', value: true }], help: { summary: 'use basic regular expressions', category: 'advanced' } },
+        { kind: 'flag', short: 'P', long: 'perl-regexp', effects: [{ key: 'perlRegexp', value: true }], help: { summary: 'use Perl-compatible regular expressions', category: 'advanced' } },
         { kind: 'flag', short: undefined, long: 'help', effects: [{ key: 'help', value: true }], help: { summary: 'display this help and exit', category: 'common' } },
         { kind: 'flag', short: 'i', long: 'ignore-case', effects: [{ key: 'ignoreCase', value: true }], help: { summary: 'ignore case distinctions', category: 'common' } },
         { kind: 'flag', short: 'v', long: 'invert-match', effects: [{ key: 'invertMatch', value: true }], help: { summary: 'select non-matching lines', category: 'common' } },
@@ -180,6 +309,10 @@ export const grepCommandDefinition: WeshCommandDefinition = {
     }
 
     const text = context.text();
+    const bufferedStdout = createBufferedTextWriter({
+      handle: context.stdout,
+      maxBufferLength: 16384,
+    });
     const inlinePatterns = parsed.occurrences
       .filter((occurrence): occurrence is Extract<ArgvOptionOccurrence, { kind: 'value' }> => isValueOccurrenceForKey(occurrence, 'regexp'))
       .map((occurrence) => occurrence.value)
@@ -226,15 +359,17 @@ export const grepCommandDefinition: WeshCommandDefinition = {
 
     const exactLine = parsed.optionValues.exactLine === true;
     const ignoreCase = parsed.optionValues.ignoreCase === true;
-    const fixedStrings = parsed.optionValues.fixedStrings === true;
     const wordRegexp = parsed.optionValues.wordRegexp === true;
+    const syntax = resolveGrepPatternSyntax({
+      occurrences: parsed.occurrences,
+    });
 
     let regex: RegExp;
     let globalRegex: RegExp;
     try {
       regex = buildGrepRegex({
         patterns,
-        fixedStrings,
+        syntax,
         wordRegexp,
         ignoreCase,
         exactLine,
@@ -242,7 +377,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       });
       globalRegex = buildGrepRegex({
         patterns,
-        fixedStrings,
+        syntax,
         wordRegexp,
         ignoreCase,
         exactLine,
@@ -313,40 +448,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       return true;
     };
 
-    const processStream = async ({
-      stream,
-      name,
-    }: {
-      stream: ReadableStream<Uint8Array>;
-      name?: string;
-    }): Promise<GrepFileReport> => {
-      const decoder = new TextDecoder();
-      let buffer = '';
-      const reader = stream.getReader();
-      const allLines: string[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        if (parsed.optionValues.binaryWithoutMatch === true) {
-          const isBinary = value.some(byte => byte === 0);
-          if (isBinary) {
-            return {
-              matched: false,
-              selectedLineCount: 0,
-              outputLines: [],
-            };
-          }
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-        allLines.push(...lines);
-      }
-      if (buffer) allLines.push(buffer);
-
+    const processAllLines = ({ allLines, name }: { allLines: string[]; name?: string }): GrepFileReport => {
       const matches = new Array(allLines.length).fill(false);
       for (let i = 0; i < allLines.length; i++) {
         regex.lastIndex = 0;
@@ -459,11 +561,205 @@ export const grepCommandDefinition: WeshCommandDefinition = {
       }
       }
 
-      return {
-        matched,
-        selectedLineCount,
-        outputLines,
+      return { matched, selectedLineCount, outputLines };
+    };
+
+    const streamingEnabled = before === 0 && after === 0;
+
+    const processStreamingLine = async ({
+      line,
+      lineNumber,
+      name,
+      state,
+    }: {
+      line: string;
+      lineNumber: number;
+      name?: string;
+      state: {
+        matched: boolean;
+        selectedLineCount: number;
       };
+    }): Promise<boolean> => {
+      regex.lastIndex = 0;
+      const isRegexMatch = regex.test(line);
+      const isSelected = parsed.optionValues.invertMatch === true ? !isRegexMatch : isRegexMatch;
+      if (!isSelected) {
+        return false;
+      }
+
+      state.matched = true;
+      if (state.selectedLineCount >= maxCount) {
+        return true;
+      }
+      state.selectedLineCount += 1;
+
+      if (quiet) {
+        return true;
+      }
+
+      switch (outputMode) {
+      case 'count':
+      case 'files-without-match':
+        return state.selectedLineCount >= maxCount;
+      case 'files-with-matches':
+        if (name !== undefined) {
+          await bufferedStdout.write({ text: `${name}\n` });
+        }
+        return true;
+      case 'only-matching': {
+        globalRegex.lastIndex = 0;
+        for (const match of line.matchAll(globalRegex)) {
+          const matchedText = match[0];
+          if (matchedText === undefined || matchedText.length === 0) continue;
+          let output = '';
+          if (name !== undefined && showFilename) output += `${name}:`;
+          if (parsed.optionValues.lineNumber === true) output += `${lineNumber}:`;
+          output += `${matchedText}\n`;
+          await bufferedStdout.write({ text: output });
+        }
+        return state.selectedLineCount >= maxCount;
+      }
+      case 'lines': {
+        let output = '';
+        if (name !== undefined && showFilename) output += `${name}:`;
+        if (parsed.optionValues.lineNumber === true) output += `${lineNumber}:`;
+        output += `${line}\n`;
+        await bufferedStdout.write({ text: output });
+        return state.selectedLineCount >= maxCount;
+      }
+      default: {
+        const _ex: never = outputMode;
+        throw new Error(`Unhandled output mode: ${_ex}`);
+      }
+      }
+    };
+
+    const processStream = async ({
+      stream,
+      name,
+    }: {
+      stream: ReadableStream<Uint8Array>;
+      name?: string;
+    }): Promise<GrepFileReport> => {
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const reader = stream.getReader();
+      const state = {
+        matched: false,
+        selectedLineCount: 0,
+      };
+      const allLines: string[] = [];
+      let lineNumber = 0;
+      let shouldCancel = false;
+      let skippedBinary = false;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          if (parsed.optionValues.binaryWithoutMatch === true && value.some(byte => byte === 0)) {
+            skippedBinary = true;
+            shouldCancel = true;
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          if (!streamingEnabled) {
+            allLines.push(...lines);
+            continue;
+          }
+
+          for (const line of lines) {
+            lineNumber += 1;
+            const stop = await processStreamingLine({
+              line,
+              lineNumber,
+              name,
+              state,
+            });
+            if (stop) {
+              shouldCancel = true;
+              break;
+            }
+          }
+
+          if (shouldCancel) {
+            break;
+          }
+        }
+
+        if (!shouldCancel) {
+          buffer += decoder.decode();
+        }
+
+        if (!streamingEnabled) {
+          if (buffer) allLines.push(buffer);
+          if (skippedBinary) {
+            return { matched: false, selectedLineCount: 0, outputLines: [] };
+          }
+          return processAllLines({ allLines, name });
+        }
+
+        if (skippedBinary) {
+          return {
+            matched: false,
+            selectedLineCount: 0,
+            outputLines: [],
+          };
+        }
+
+        if (!shouldCancel && buffer.length > 0) {
+          lineNumber += 1;
+          await processStreamingLine({
+            line: buffer,
+            lineNumber,
+            name,
+            state,
+          });
+        }
+
+        if (!quiet) {
+          switch (outputMode) {
+          case 'count': {
+            let output = '';
+            if (name !== undefined && showFilename) output += `${name}:`;
+            output += `${Math.min(state.selectedLineCount, maxCount)}\n`;
+            await bufferedStdout.write({ text: output });
+            break;
+          }
+          case 'files-without-match':
+            if (!state.matched && name !== undefined) {
+              await bufferedStdout.write({ text: `${name}\n` });
+            }
+            break;
+          case 'lines':
+          case 'files-with-matches':
+          case 'only-matching':
+            break;
+          default: {
+            const _ex: never = outputMode;
+            throw new Error(`Unhandled output mode: ${_ex}`);
+          }
+          }
+        }
+
+        return {
+          matched: state.matched,
+          selectedLineCount: state.selectedLineCount,
+          outputLines: [],
+        };
+      } finally {
+        if (shouldCancel) {
+          await reader.cancel();
+        }
+        reader.releaseLock();
+      }
     };
 
     const inputFiles = files.length === 0 ? ['-'] : files;
@@ -496,8 +792,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
           fullPath: string;
           displayPath: string;
         }) => {
-          const entries = await context.files.readDir({ path: currentFullPath });
-          for (const entry of entries) {
+          for await (const entry of context.files.readDir({ path: currentFullPath })) {
             const childFullPath = currentFullPath === '/' ? `/${entry.name}` : `${currentFullPath}/${entry.name}`;
             const childDisplayPath = displayPath === '/' ? `/${entry.name}` : `${displayPath}/${entry.name}`;
 
@@ -560,31 +855,11 @@ export const grepCommandDefinition: WeshCommandDefinition = {
 
     for (const { file, displayName } of expandedInputs) {
       try {
-        const stream = file === '-'
-          ? new ReadableStream<Uint8Array>({
-            async pull(controller) {
-              const buf = new Uint8Array(4096);
-              const { bytesRead } = await context.stdin.read({ buffer: buf });
-              if (bytesRead === 0) {
-                controller.close();
-                return;
-              }
-              controller.enqueue(buf.subarray(0, bytesRead));
-            }
-          })
-          : await (async () => {
-            const fullPath = resolvePath({ cwd: context.cwd, path: file });
-            const handle = await context.files.open({
-              path: fullPath,
-              flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-            });
-            return handleToStream({ handle });
-          })();
-
-        const report = await processStream({
-          stream,
-          name: displayName,
+        const stream = await openGrepInputStream({
+          context,
+          file,
         });
+        const report = await processStream({ stream, name: displayName });
 
         if (report.matched) {
           sawMatch = true;
@@ -592,7 +867,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
 
         if (!quiet) {
           for (const outputLine of report.outputLines) {
-            await text.print({ text: outputLine });
+            await bufferedStdout.write({ text: outputLine });
           }
         }
 
@@ -608,6 +883,8 @@ export const grepCommandDefinition: WeshCommandDefinition = {
         }
       }
     }
+
+    await bufferedStdout.flush();
 
     if (sawError) {
       return { exitCode: 2 };

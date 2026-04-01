@@ -6,7 +6,9 @@ export type MediaShelfVisibility = 'visible' | 'hidden';
 const isSidebarOpen = ref(true);
 const isDebugOpen = ref(false);
 const isWeshTerminalOpen = ref(false);
+const isChatWeshTerminalOpen = ref(false);
 const activeFocusArea = ref<FocusArea>('chat');
+const activeFocusAreaVersion = ref(0);
 const mediaShelfVisibility = ref<MediaShelfVisibility>('hidden');
 const preferredEditorMode = ref<'advanced' | 'textarea'>('advanced');
 
@@ -35,8 +37,17 @@ export function useLayout() {
     isWeshTerminalOpen.value = open;
   };
 
+  const toggleChatWeshTerminal = () => {
+    isChatWeshTerminalOpen.value = !isChatWeshTerminalOpen.value;
+  };
+
+  const setChatWeshTerminalOpen = (open: boolean) => {
+    isChatWeshTerminalOpen.value = open;
+  };
+
   const setActiveFocusArea = (area: FocusArea) => {
     activeFocusArea.value = area;
+    activeFocusAreaVersion.value += 1;
   };
 
   const setMediaShelfVisibility = ({ visibility }: { visibility: MediaShelfVisibility }) => {
@@ -65,6 +76,7 @@ export function useLayout() {
     isDebugOpen,
     isWeshTerminalOpen,
     activeFocusArea,
+    activeFocusAreaVersion,
     mediaShelfVisibility,
     toggleSidebar,
     setSidebarOpen,
@@ -72,6 +84,9 @@ export function useLayout() {
     setDebugOpen,
     toggleWeshTerminal,
     setWeshTerminalOpen,
+    isChatWeshTerminalOpen,
+    toggleChatWeshTerminal,
+    setChatWeshTerminalOpen,
     setActiveFocusArea,
     setMediaShelfVisibility,
     setPreferredEditorMode,

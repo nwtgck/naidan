@@ -27,6 +27,7 @@ import {
 import { useChatTools } from './useChatTools';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
+import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
@@ -37,6 +38,12 @@ const activeGenerations = reactive(new Map<string, { controller: AbortController
 const activeTitleGenerations = reactive(new Map<string, AbortController>());
 const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
+const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
+const volatileToolOutputs = reactive(new Map<string, string>());
+const chatTmpDirectories = reactive(new Map<string, {
+  handle: FileSystemDirectoryHandle;
+  mountPath: '/tmp';
+}>());
 
 const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
 const isGeneratingTitle = ({ chatId }: { chatId: string }) => (activeTaskCounts.get('title:' + chatId) || 0) > 0;
@@ -122,11 +129,81 @@ function registerLiveInstance(chat: Chat) {
   }
 }
 
+function setVolatileAssistantError({ chatId, messageId, error }: {
+  chatId: string;
+  messageId: string;
+  error: string;
+}) {
+  const existing = volatileAssistantErrors.get(chatId);
+  if (existing) {
+    existing.set(messageId, error);
+    return;
+  }
+
+  volatileAssistantErrors.set(chatId, new Map([[messageId, error]]));
+}
+
+function clearVolatileAssistantError({ chatId, messageId }: {
+  chatId: string;
+  messageId: string;
+}) {
+  const existing = volatileAssistantErrors.get(chatId);
+  if (!existing) return;
+
+  existing.delete(messageId);
+  if (existing.size === 0) {
+    volatileAssistantErrors.delete(chatId);
+  }
+}
+
+function applyVolatileAssistantErrorsToChat({ chat }: { chat: Chat }) {
+  const errors = volatileAssistantErrors.get(chat.id);
+  if (!errors || errors.size === 0) return;
+
+  for (const [messageId, error] of errors.entries()) {
+    const node = findNodeInBranch(chat.root.items, messageId);
+    if (!node || node.role !== 'assistant') continue;
+    node.error = error;
+  }
+}
+
 function unregisterLiveInstance(chatId: string) {
   if (_currentChat.value && toRaw(_currentChat.value).id === chatId) return;
   if (!isTaskRunning(chatId)) {
     liveChatRegistry.delete(chatId);
   }
+}
+
+async function ensureChatTmpDirectory({
+  chatId,
+}: {
+  chatId: string;
+}): Promise<{
+  handle: FileSystemDirectoryHandle;
+  mountPath: '/tmp';
+}> {
+  const existing = chatTmpDirectories.get(chatId);
+  if (existing) {
+    return existing;
+  }
+
+  const created = {
+    handle: await getOPFSTmpManager().createTmpDirectory({ prefix: chatId }),
+    mountPath: '/tmp' as const,
+  };
+  chatTmpDirectories.set(chatId, created);
+  return created;
+}
+
+function getChatTmpDirectory({
+  chatId,
+}: {
+  chatId: string;
+}): {
+  handle: FileSystemDirectoryHandle;
+  mountPath: '/tmp';
+} | undefined {
+  return chatTmpDirectories.get(chatId);
 }
 
 watch(_currentChat, (newChat, oldChat) => {
@@ -212,6 +289,7 @@ storageService.subscribeToChanges(async (event) => {
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
       const fresh = await storageService.loadChat(event.id);
       if (fresh && _currentChat.value) {
+        applyVolatileAssistantErrorsToChat({ chat: fresh });
         Object.assign(_currentChat.value, fresh);
         triggerRef(_currentChat);
       } else if (!activeGenerations.has(event.id)) {
@@ -254,6 +332,7 @@ storageService.subscribeToChanges(async (event) => {
       if (!activeGenerations.has(event.id)) {
         const fresh = await storageService.loadChat(event.id);
         if (fresh && _currentChat.value) {
+          applyVolatileAssistantErrorsToChat({ chat: fresh });
           _currentChat.value.root = fresh.root;
           _currentChat.value.currentLeafId = fresh.currentLeafId;
           triggerRef(_currentChat);
@@ -267,10 +346,12 @@ storageService.subscribeToChanges(async (event) => {
     activeGenerations.clear();
     activeTaskCounts.clear();
     liveChatRegistry.clear();
+    chatTmpDirectories.clear();
 
     rootItems.value = await storageService.getSidebarStructure();
     if (_currentChat.value) {
       const fresh = await storageService.loadChat(toRaw(_currentChat.value).id);
+      if (fresh) applyVolatileAssistantErrorsToChat({ chat: fresh });
       _currentChat.value = fresh ? reactive(fresh) : null;
     }
     if (_currentChatGroup.value) {
@@ -489,9 +570,73 @@ export function useChat() {
       const fullChat = curr ? await storageService.loadChat(id) : null;
       const updatedFull = await updater(fullChat);
       if (!updatedFull) return curr!;
-      const { root: _r, ...meta } = updatedFull;
-      return meta as ChatMeta;
+      const { root: _r, endpointType, endpointUrl, endpointHttpHeaders, ...meta } = updatedFull;
+      return {
+        ...meta,
+        ...(endpointType !== undefined && {
+          endpoint: {
+            type: endpointType,
+            url: endpointUrl,
+            httpHeaders: endpointHttpHeaders,
+          },
+        }),
+      } as ChatMeta;
     });
+  };
+
+  const addMountToChat = async ({ chatId, mount }: { chatId: string; mount: import('@/models/types').Mount }) => {
+    await storageService.addMountToChat({ chatId, mount });
+    await ensureChatTmpDirectory({ chatId });
+    const existing = liveChatRegistry.get(chatId);
+    if (existing) {
+      existing.mounts = [...(existing.mounts ?? []), mount];
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
+    }
+  };
+
+  const removeMountFromChat = async ({ chatId, volumeId }: { chatId: string; volumeId: string }) => {
+    await storageService.removeMountFromChat({ chatId, volumeId });
+    const existing = liveChatRegistry.get(chatId);
+    if (existing) {
+      existing.mounts = (existing.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId));
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
+    }
+  };
+
+  const updateChatMount = async ({ chatId, volumeId, readOnly }: { chatId: string; volumeId: string; readOnly: boolean }) => {
+    await storageService.updateChatMount({ chatId, volumeId, readOnly });
+    const existing = liveChatRegistry.get(chatId);
+    if (existing) {
+      existing.mounts = (existing.mounts ?? []).map(m =>
+        m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m
+      );
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
+    }
+  };
+
+  const addMountToChatGroup = async ({ groupId, mount }: { groupId: string; mount: import('@/models/types').Mount }) => {
+    await storageService.addMountToChatGroup({ groupId, mount });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = [...(_currentChatGroup.value.mounts ?? []), mount];
+    }
+  };
+
+  const removeMountFromChatGroup = async ({ groupId, volumeId }: { groupId: string; volumeId: string }) => {
+    await storageService.removeMountFromChatGroup({ groupId, volumeId });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = (_currentChatGroup.value.mounts ?? []).filter(
+        m => !(m.type === 'volume' && m.volumeId === volumeId)
+      );
+    }
+  };
+
+  const updateChatGroupMount = async ({ groupId, volumeId, mountPath, readOnly }: { groupId: string; volumeId: string; mountPath: string; readOnly: boolean }) => {
+    await storageService.updateChatGroupMount({ groupId, volumeId, mountPath, readOnly });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = (_currentChatGroup.value.mounts ?? []).map(m =>
+        m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m
+      );
+    }
   };
 
   const createNewChat = async (options: {
@@ -529,6 +674,8 @@ export function useChat() {
         return curr;
       });
 
+      const { setCurrentChatId } = useChatTools();
+      setCurrentChatId({ chatId: chatId });
       _currentChat.value = chatObj;
       await loadData();
       return chatObj;
@@ -537,7 +684,19 @@ export function useChat() {
     }
   };
 
+  function hasMountsForChat({ chat }: { chat: Pick<Chat, 'mounts' | 'groupId'> }): boolean {
+    if (settings.value.mounts && settings.value.mounts.length > 0) return true;
+    if (chat.mounts && chat.mounts.length > 0) return true;
+    if (chat.groupId) {
+      const group = chatGroups.value.find(g => g.id === chat.groupId);
+      if (group?.mounts && group.mounts.length > 0) return true;
+    }
+    return false;
+  }
+
   const openChat = async (id: string, leafId?: string): Promise<Chat | null> => {
+    const { setToolEnabled, setCurrentChatId } = useChatTools();
+    setCurrentChatId({ chatId: id });
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
       if (leafId && leafId !== chat.currentLeafId) {
@@ -549,6 +708,9 @@ export function useChat() {
       }
       _currentChatGroup.value = null;
       _currentChat.value = chat;
+      if (hasMountsForChat({ chat })) {
+        setToolEnabled({ name: 'shell_execute', enabled: true });
+      }
       return chat;
     }
     const loaded = await storageService.loadChat(id);
@@ -560,12 +722,17 @@ export function useChat() {
           storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
         }
       }
+      applyVolatileAssistantErrorsToChat({ chat: loaded });
       const reactiveChat = reactive(loaded);
       registerLiveInstance(reactiveChat);
       _currentChatGroup.value = null;
       _currentChat.value = reactiveChat;
+      if (hasMountsForChat({ chat: loaded })) {
+        setToolEnabled({ name: 'shell_execute', enabled: true });
+      }
       return reactiveChat;
     } else {
+      setCurrentChatId({ chatId: null });
       _currentChatGroup.value = null;
       _currentChat.value = null;
       return null;
@@ -620,6 +787,7 @@ export function useChat() {
       activeTaskCounts.delete('fetch:' + id);
       activeTaskCounts.delete('process:' + id);
       liveChatRegistry.delete(id);
+      chatTmpDirectories.delete(id);
       await storageService.deleteChat(id);
     };
 
@@ -675,6 +843,7 @@ export function useChat() {
     activeGenerations.clear();
     activeTaskCounts.clear();
     liveChatRegistry.clear();
+    chatTmpDirectories.clear();
 
     const all = await storageService.listChats();
     for (const c of all) await storageService.deleteChat(c.id);
@@ -739,7 +908,39 @@ export function useChat() {
     }
     await updateChatMeta(id, (curr) => {
       if (!curr) throw new Error('Chat not found');
-      return { ...curr, ...updates, updatedAt: Date.now() };
+      // WORKAROUND: Chat stores endpoint as flat fields (endpointType / endpointUrl /
+      // endpointHttpHeaders) but the storage layer reads the nested `endpoint` object from
+      // ChatMeta. Spreading either `updates` or `curr` flat fields directly would silently
+      // drop the endpoint on save, causing settings to revert on the next page reload.
+      // Convert all flat fields to a nested `endpoint` object here.
+      // Remove this block once the TODO in types.ts:169 is resolved (unify Chat to use
+      // the nested endpoint object like ChatMeta does).
+
+      // Type guard: prevent flat endpoint fields from leaking into the saved ChatMeta.
+      // This is a temporary measure until Chat and ChatMeta share the same endpoint shape.
+      type _NoFlatEndpoint = Omit<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders'> & {
+        endpointType?: never;
+        endpointUrl?: never;
+        endpointHttpHeaders?: never;
+      };
+
+      // Strip flat endpoint fields from both curr and updates, then merge them with
+      // updates taking priority, and re-express the result as a nested endpoint object.
+      const { endpointType: currEndpointType, endpointUrl: currEndpointUrl, endpointHttpHeaders: currEndpointHttpHeaders, ...currRest } = curr;
+      const { endpointType, endpointUrl, endpointHttpHeaders, ...rest } = updates;
+      const resolvedEndpointType = endpointType !== undefined ? endpointType : currEndpointType;
+
+      const metaUpdates: Partial<_NoFlatEndpoint> = {
+        ...rest,
+        ...(resolvedEndpointType !== undefined && {
+          endpoint: {
+            type: resolvedEndpointType,
+            url: endpointUrl !== undefined ? endpointUrl : currEndpointUrl,
+            httpHeaders: endpointHttpHeaders !== undefined ? endpointHttpHeaders : currEndpointHttpHeaders,
+          },
+        }),
+      };
+      return { ...currRest, ...metaUpdates, updatedAt: Date.now() };
     });
   };
 
@@ -835,6 +1036,7 @@ export function useChat() {
     }
     }
     assistantNode.error = undefined;
+    clearVolatileAssistantError({ chatId: mutableChat.id, messageId: assistantNode.id });
     if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
 
     const controller = new AbortController();
@@ -1032,9 +1234,21 @@ export function useChat() {
       let lastSave = 0;
       let isSaving = false;
       const { enabledToolNames } = useChatTools();
+      const shellExecuteEnabled = enabledToolNames.value.includes('shell_execute');
+      const chatTmpDirectory = shellExecuteEnabled
+        ? await ensureChatTmpDirectory({ chatId: mutableChat.id })
+        : undefined;
+      const chatGroupMounts = mutableChat.groupId
+        ? (_currentChatGroup.value?.id === mutableChat.groupId
+          ? _currentChatGroup.value.mounts
+          : (await storageService.loadChatGroup(mutableChat.groupId))?.mounts)
+        : undefined;
       const enabledTools = await getEnabledTools({
         enabledNames: enabledToolNames.value,
         settings: settings.value as unknown as Settings,
+        chatGroupMounts,
+        chatMounts: mutableChat.mounts,
+        tmpHandle: chatTmpDirectory?.handle,
       });
 
       const generationState = {
@@ -1109,6 +1323,9 @@ export function useChat() {
                 status: 'executing'
               });
             }
+            if (!volatileToolOutputs.has(params.id)) {
+              volatileToolOutputs.set(params.id, '');
+            }
 
             // 3. Update Assistant node's toolCalls metadata
             const assistant = generationState.currentAssistantNode;
@@ -1124,6 +1341,28 @@ export function useChat() {
               }];
             }
 
+            triggerRef(_currentChat);
+          },
+          onToolEvent: (params: { id: string; event: import('../services/tools/types').ToolExecutionEvent }) => {
+            const eventType = params.event.type;
+            switch (eventType) {
+            case 'started':
+              if (!volatileToolOutputs.has(params.id)) {
+                volatileToolOutputs.set(params.id, '');
+              }
+              break;
+            case 'output': {
+              const previous = volatileToolOutputs.get(params.id) || '';
+              volatileToolOutputs.set(params.id, previous + params.event.text);
+              break;
+            }
+            case 'exit':
+              break;
+            default: {
+              const _ex: never = eventType;
+              console.error(`Unhandled tool event: ${_ex}`);
+            }
+            }
             triggerRef(_currentChat);
           },
           onToolResult: async (params: {
@@ -1177,6 +1416,7 @@ export function useChat() {
               }
               triggerRef(_currentChat);
             }
+            volatileToolOutputs.delete(params.id);
           },
 
           onChunk: async (chunk: string) => {
@@ -1224,11 +1464,23 @@ export function useChat() {
       }
       processThinking(assistantNode);
 
-      if ((e as Error).name === 'AbortError') {
+      if ((e as Error).name === 'AbortError' || (e as Error).message === 'Generation aborted') {
         assistantNode.content += '\n\n[Generation Aborted]';
+        if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
       } else {
         assistantNode.error = (e as Error).message;
+        setVolatileAssistantError({
+          chatId: mutableChat.id,
+          messageId: assistantNode.id,
+          error: assistantNode.error,
+        });
+        console.error('[useChat] Generation failed:', {
+          chatId: mutableChat.id,
+          assistantId: assistantNode.id,
+          error: assistantNode.error,
+        });
+        if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
         if (_currentChat.value && toRaw(_currentChat.value).id !== mutableChat.id) {
           try {
@@ -2101,6 +2353,10 @@ export function useChat() {
     activeTaskCounts.clear();
   };
 
+  const getVolatileToolOutput = ({ toolCallId }: { toolCallId: string }) => {
+    return volatileToolOutputs.get(toolCallId);
+  };
+
   const {
     chatFlow,
     isThinkingActive,
@@ -2114,15 +2370,18 @@ export function useChat() {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup,
-    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount, addMountToChatGroup, removeMountFromChatGroup, updateChatGroupMount,
+    registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle, ensureChatTmpDirectory, getChatTmpDirectory,
+    getVolatileToolOutput,
     chatFlow, isThinkingActive, isWaitingResponse,
     __testOnly: {
       liveChatRegistry,
       activeGenerations,
       activeTaskCounts,
+      chatTmpDirectories,
       clearLiveChatRegistry,
       clearActiveTaskCounts,
+      volatileToolOutputs,
       __testOnlySetCurrentChat,
       __testOnlySetCurrentChatGroup,
     }

@@ -3,6 +3,8 @@ import { mount } from '@vue/test-utils';
 import MessageThinking from './MessageThinking.vue';
 import type { MessageNode } from '@/models/types';
 
+const withInSequence = { global: { provide: { inSequence: true } } };
+
 describe('MessageThinking Stability and Layout', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({
     id: 'test-id',
@@ -65,5 +67,54 @@ describe('MessageThinking Stability and Layout', () => {
     expect(outerContainer.classes()).toContain('px-3');
     expect(outerContainer.classes()).toContain('py-1.5');
     expect(outerContainer.classes()).not.toContain('h-32');
+  });
+});
+
+describe('MessageThinking in-sequence preview', () => {
+  const createMessage = (content: string, thinking?: string): MessageNode => ({
+    id: 'test-id',
+    role: 'assistant',
+    content,
+    thinking,
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  it('shows height-limited preview in collapsed-finished when inSequence is provided', () => {
+    const message = createMessage('Final answer', 'Completed thought');
+    const wrapper = mount(MessageThinking, { props: { message }, ...withInSequence });
+
+    expect(wrapper.find('[data-testid="thinking-preview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(false);
+
+    const preview = wrapper.find('[data-testid="thinking-preview"]');
+    expect(preview.classes()).toContain('max-h-32');
+    expect(preview.classes()).toContain('overflow-hidden');
+  });
+
+  it('does not show preview when inSequence is not provided', () => {
+    const message = createMessage('Final answer', 'Completed thought');
+    const wrapper = mount(MessageThinking, { props: { message } });
+
+    expect(wrapper.find('[data-testid="thinking-preview"]').exists()).toBe(false);
+  });
+
+  it('shows header as "Thought Process" in collapsed-finished when inSequence', () => {
+    const message = createMessage('Final answer', 'Completed thought');
+    const wrapper = mount(MessageThinking, { props: { message }, ...withInSequence });
+
+    expect(wrapper.find('[data-testid="thinking-header"]').text()).toContain('Thought Process');
+    expect(wrapper.find('[data-testid="thinking-header"]').text()).not.toContain('Show');
+  });
+
+  it('clicking the block expands to full content when inSequence', async () => {
+    const message = createMessage('Final answer', 'Completed thought');
+    const wrapper = mount(MessageThinking, { props: { message }, ...withInSequence });
+
+    await wrapper.find('[data-testid="toggle-thinking"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="thinking-content"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="thinking-preview"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="thinking-header"]').text()).toContain('Hide Thought Process');
   });
 });

@@ -2,11 +2,13 @@ import type {
   WeshOpenFlags,
   WeshFileHandle,
   WeshEfficientFileWriteResult,
+  WeshEfficientBlobReadResult,
 } from '@/services/wesh/types';
 
 interface WeshFileCapabilities {
   open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
   stat(options: { path: string }): Promise<unknown>;
+  tryReadBlobEfficiently?(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
   tryCreateFileWriterEfficiently?(options: {
     path: string;
     mode: 'truncate' | 'append';
@@ -16,7 +18,21 @@ interface WeshFileCapabilities {
 /**
  * Read the entire content of a file as a Uint8Array.
  */
-export async function readFile({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<Uint8Array> {
+export async function readAllFileBytes({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<Uint8Array> {
+  if (files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return new Uint8Array(await blobResult.blob.arrayBuffer());
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
   const flags: WeshOpenFlags = {
     access: 'read',
     creation: 'never',
@@ -44,9 +60,63 @@ export async function readFile({ files, path }: { files: WeshFileCapabilities; p
 }
 
 /**
+ * Read the entire content of a file as a UTF-8 string.
+ */
+export async function readAllFileText({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<string> {
+  if (files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.text();
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+  return new TextDecoder().decode(await readAllFileBytes({ files, path }));
+}
+
+/**
+ * Open a file as a ReadableStream<Uint8Array>, using blob-backed streaming when available.
+ */
+export async function openFileReadStream({
+  files,
+  path,
+}: {
+  files: WeshFileCapabilities;
+  path: string;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
+    case 'fallback-required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  const flags: WeshOpenFlags = {
+    access: 'read',
+    creation: 'never',
+    truncate: 'preserve',
+    append: 'preserve',
+  };
+  const handle = await files.open({ path, flags });
+  return openHandleReadStream({ handle });
+}
+
+/**
  * Write the entire content of a Uint8Array to a file.
  */
-export async function writeFile({
+export async function writeAllFileBytes({
   files,
   path,
   data,
@@ -83,7 +153,7 @@ export async function writeFile({
 /**
  * Check if a file or directory exists.
  */
-export async function exists({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<boolean> {
+export async function checkFileExists({ files, path }: { files: WeshFileCapabilities; path: string }): Promise<boolean> {
   try {
     await files.stat({ path });
     return true;
@@ -95,7 +165,7 @@ export async function exists({ files, path }: { files: WeshFileCapabilities; pat
 /**
  * Convert a WeshFileHandle to a ReadableStream<Uint8Array>.
  */
-export function handleToStream({
+export function openHandleReadStream({
   handle,
   chunkSize = 64 * 1024,
 }: {
@@ -112,7 +182,7 @@ export function handleToStream({
           controller.close();
           return;
         }
-        controller.enqueue(new Uint8Array(buffer.subarray(0, bytesRead)));
+        controller.enqueue(bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead));
       } catch (e) {
         await handle.close();
         controller.error(e);
@@ -127,7 +197,7 @@ export function handleToStream({
 /**
  * Write a ReadableStream<Uint8Array> to a WeshFileHandle.
  */
-export async function streamToHandle({
+export async function writeAllStreamToHandle({
   stream,
   handle,
 }: {
@@ -159,7 +229,7 @@ export async function streamToHandle({
   }
 }
 
-export async function streamToFilePath({
+export async function writeAllStreamToFile({
   files,
   path,
   stream,
@@ -238,7 +308,7 @@ export async function streamToFilePath({
     path,
     flags: fallbackFlags,
   });
-  await streamToHandle({
+  await writeAllStreamToHandle({
     stream,
     handle,
   });

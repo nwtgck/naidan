@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onBeforeUpdate, onUpdated } from 'vue';
 import { highlightCode } from './useMarkdown';
-import { Check, Copy, Terminal, WrapText } from 'lucide-vue-next';
+import { CheckIcon, CopyIcon, TerminalIcon, WrapTextIcon } from 'lucide-vue-next';
 import { useCodeBlockSettings } from '@/composables/useCodeBlockSettings';
 
 const props = defineProps<{
@@ -61,7 +61,7 @@ defineExpose({
   <div class="code-block-wrapper my-4 rounded-lg overflow-hidden border border-gray-700/50 bg-[#0d1117] group/code shadow-sm">
     <div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700/50 text-xs text-gray-400">
       <div class="flex items-center gap-2">
-        <Terminal class="w-3 h-3 opacity-50" />
+        <TerminalIcon class="w-3 h-3 opacity-50" />
         <span class="font-mono font-medium">{{ lang || 'text' }}</span>
       </div>
       <div class="flex items-center gap-2.5">
@@ -71,7 +71,7 @@ defineExpose({
           :class="isLineWrapEnabled ? 'text-indigo-400' : 'text-gray-400'"
           title="Toggle line wrap"
         >
-          <WrapText class="w-3.5 h-3.5" />
+          <WrapTextIcon class="w-3.5 h-3.5" />
         </button>
         <button
           @click="copyCode"
@@ -79,8 +79,8 @@ defineExpose({
           :class="copied ? 'text-green-400' : 'text-gray-400'"
           :title="copied ? 'Copied' : 'Copy code'"
         >
-          <Check v-if="copied" class="w-3.5 h-3.5" />
-          <Copy v-else class="w-3.5 h-3.5" />
+          <CheckIcon v-if="copied" class="w-3.5 h-3.5" />
+          <CopyIcon v-else class="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

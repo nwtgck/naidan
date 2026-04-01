@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 describe('wesh mv', () => {
@@ -55,12 +55,12 @@ describe('wesh mv', () => {
   }: {
     script: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -103,7 +103,10 @@ cat dest/second.txt`,
 
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(stdout.text).toBe('first\nsecond\n');
+    expect(stdout.text).toBe(`\
+first
+second
+`);
   });
 
   it('supports --target-directory as a long option alias', async () => {
@@ -120,7 +123,10 @@ cat dest/second.txt`,
 
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
-    expect(stdout.text).toBe('first\nsecond\n');
+    expect(stdout.text).toBe(`\
+first
+second
+`);
   });
 
   it('supports -T to forbid treating the destination as a directory', async () => {
@@ -161,7 +167,10 @@ test -e source.txt
 echo $?`,
     });
 
-    expect(stdout.text).toBe('dest\n0\n');
+    expect(stdout.text).toBe(`\
+dest
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -178,7 +187,10 @@ test -e source.txt
 echo $?`,
     });
 
-    expect(stdout.text).toBe('dest\n0\n');
+    expect(stdout.text).toBe(`\
+dest
+0
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -221,7 +233,10 @@ echo $?
 cat dest/present.txt`,
     });
 
-    expect(stdout.text).toBe('1\npresent\n');
+    expect(stdout.text).toBe(`\
+1
+present
+`);
     expect(stderr.text).toContain('mv: missing.txt:');
     expect(result.exitCode).toBe(0);
   });

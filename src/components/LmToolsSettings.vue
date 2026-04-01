@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { computedAsync } from '@vueuse/core';
-import { Calculator, Terminal } from 'lucide-vue-next';
+import { CalculatorIcon, TerminalIcon } from 'lucide-vue-next';
 import { useChatTools } from '@/composables/useChatTools';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
@@ -42,7 +42,7 @@ defineExpose({
       data-testid="tool-calculator-toggle"
     >
       <div class="flex items-center gap-2">
-        <Calculator class="w-4 h-4" :class="isToolEnabled({ name: 'calculator' }) ? 'text-blue-500' : 'text-gray-400'" />
+        <CalculatorIcon class="w-4 h-4" :class="isToolEnabled({ name: 'calculator' }) ? 'text-blue-500' : 'text-gray-400'" />
         <span class="text-xs font-medium">Calculator</span>
       </div>
       <div
@@ -67,7 +67,7 @@ defineExpose({
       data-testid="tool-shell-toggle"
     >
       <div class="flex items-center gap-2">
-        <Terminal class="w-4 h-4" :class="isToolEnabled({ name: 'shell_execute' }) ? 'text-blue-500' : 'text-gray-400'" />
+        <TerminalIcon class="w-4 h-4" :class="isToolEnabled({ name: 'shell_execute' }) ? 'text-blue-500' : 'text-gray-400'" />
         <span class="text-xs font-medium">
           Shell in browser{{ isShellToolSupported ? '' : ' (OPFS required)' }}
         </span>

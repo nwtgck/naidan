@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RotateCw } from 'lucide-vue-next';
+import { RotateCwIcon } from 'lucide-vue-next';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { useLayout } from '@/composables/useLayout';
 
@@ -33,7 +33,7 @@ defineExpose({
         <div class="absolute inset-0 bg-emerald-400/5 dark:bg-emerald-400/5 animate-pulse-subtle pointer-events-none"></div>
 
         <div class="relative w-3.5 h-3.5 flex items-center justify-center shrink-0">
-          <RotateCw class="w-3.5 h-3.5 transition-all duration-500 group-hover:rotate-180" />
+          <RotateCwIcon class="w-3.5 h-3.5 transition-all duration-500 group-hover:rotate-180" />
         </div>
 
         <span class="tracking-widest uppercase opacity-90 group-hover:opacity-100 transition-opacity">Reload to Update</span>

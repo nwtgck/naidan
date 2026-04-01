@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, streamToHandle } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, writeAllStreamToFile } from '@/services/wesh/utils/fs';
 
 type CpSymlinkMode = 'physical' | 'logical' | 'command-line';
 
@@ -167,19 +167,27 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       srcPath: string;
       destPath: string;
     }) => {
-      const srcH = await context.files.open({
-        path: srcPath,
-        flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-      });
-      const destH = await context.files.open({
-        path: destPath,
-        flags: { access: 'write', creation: 'if-needed', truncate: 'truncate', append: 'preserve' }
-      });
+      const blobResult = await context.files.tryReadBlobEfficiently({ path: srcPath });
+      let stream: ReadableStream<Uint8Array>;
+      switch (blobResult.kind) {
+      case 'blob':
+        stream = blobResult.blob.stream();
+        break;
+      case 'fallback-required': {
+        const handle = await context.files.open({
+          path: srcPath,
+          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
+        });
+        stream = openHandleReadStream({ handle });
+        break;
+      }
+      default: {
+        const _ex: never = blobResult;
+        throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+      }
+      }
 
-      await streamToHandle({
-        stream: handleToStream({ handle: srcH }),
-        handle: destH
-      });
+      await writeAllStreamToFile({ files: context.files, path: destPath, stream, mode: 'truncate' });
     };
 
     const removeExistingTargetIfNeeded = async ({
@@ -259,8 +267,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
         }
         await context.files.mkdir({ path: destPath, recursive: true });
         const readPath = (await context.files.resolve({ path: srcPath })).fullPath;
-        const entries = await context.files.readDir({ path: readPath });
-        for (const entry of entries) {
+        for await (const entry of context.files.readDir({ path: readPath })) {
           await copyOne({
             srcPath: `${readPath}/${entry.name}`,
             destPath: `${destPath}/${entry.name}`,

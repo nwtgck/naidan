@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { Shapes, Bird } from 'lucide-vue-next';
+import { ref, computed, inject } from 'vue';
+import { ShapesIcon, BirdIcon } from 'lucide-vue-next';
 import type { CombinedToolCall } from '@/models/types';
 import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
 import ToolCallItem from './ToolCallItem.vue';
@@ -14,7 +14,10 @@ const props = withDefaults(defineProps<{
   isFirstInTurn: false
 });
 
-const isExpanded = ref(false); // Default collapsed for tool execution blocks
+const inSequence = inject<boolean>('inSequence', false);
+
+// Auto-expand inside a sequence so tool details are visible (height-limited by ToolCallItem)
+const isExpanded = ref(inSequence);
 
 const toggleExpand = () => {
   isExpanded.value = !isExpanded.value;
@@ -58,7 +61,7 @@ defineExpose({
     <!-- Turn Header (Icon + Model ID) -->
     <div v-if="isFirstInTurn && !isNested" class="flex items-center gap-3 mb-1 px-5 pt-1 pb-2">
       <div class="w-8 h-8 rounded-xl flex items-center justify-center shadow-sm border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <Bird class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        <BirdIcon class="w-4 h-4 text-blue-600 dark:text-blue-400" />
       </div>
       <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 flex items-center gap-2">
         <span>Assistant</span>
@@ -85,7 +88,7 @@ defineExpose({
             : 'text-gray-500 dark:text-gray-400 group-hover/tool-group:text-blue-600'
         ]"
       >
-        <Shapes class="w-3.5 h-3.5" />
+        <ShapesIcon class="w-3.5 h-3.5" />
         <span>{{ isExpanded ? 'Hide Tool Executions' : toolNamesDisplay }}</span>
       </div>
 
@@ -98,7 +101,7 @@ defineExpose({
         leave-from-class="opacity-100 translate-y-0"
         leave-to-class="opacity-0 translate-y-[-10px]"
       >
-        <div v-if="isExpanded" class="mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+        <div v-if="isExpanded" class="mt-1 animate-in fade-in slide-in-from-top-1 duration-200" @click.stop>
           <div class="flex flex-col gap-3">
             <ToolCallItem
               v-for="tc in toolCalls"

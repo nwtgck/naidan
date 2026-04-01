@@ -3,9 +3,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { BinaryObject } from '@/models/types';
 import { storageService } from '@/services/storage';
 import {
-  X, Download, Trash2, ChevronLeft, ChevronRight,
-  ZoomIn, ZoomOut,
-  Copy, Check, File, Eye, RefreshCw, Calendar, Info
+  XIcon, DownloadIcon, Trash2Icon, ChevronLeftIcon, ChevronRightIcon,
+  ZoomInIcon, ZoomOutIcon,
+  CopyIcon, CheckIcon, EyeIcon, RefreshCwIcon, CalendarIcon, InfoIcon
 } from 'lucide-vue-next';
 
 interface Props {
@@ -238,7 +238,7 @@ defineExpose({
           <!-- Loading Overlay -->
           <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center z-30 pointer-events-none bg-black/20 backdrop-blur-sm transition-opacity">
             <div class="flex flex-col items-center gap-4 text-white">
-              <RefreshCw class="w-10 h-10 animate-spin text-blue-500" />
+              <RefreshCwIcon class="w-10 h-10 animate-spin text-blue-500" />
               <p class="text-xs font-bold tracking-widest opacity-50">LOADING...</p>
             </div>
           </div>
@@ -261,7 +261,7 @@ defineExpose({
               </div>
               <div v-else class="text-center space-y-6">
                 <div class="p-12 bg-white/10 backdrop-blur-xl rounded-[40px] shadow-2xl inline-block border border-white/10">
-                  <File class="w-24 h-24 text-white/20" />
+                  <FileIcon class="w-24 h-24 text-white/20" />
                 </div>
                 <div class="space-y-2">
                   <p class="text-sm font-bold text-white/40 tracking-widest uppercase">Preview Unavailable</p>
@@ -282,7 +282,7 @@ defineExpose({
             data-testid="preview-prev-btn"
             class="p-6 text-white/20 hover:text-white hover:bg-white/10 rounded-full transition-all group-hover/nav:scale-110 active:scale-95"
           >
-            <ChevronLeft class="w-12 h-12" />
+            <ChevronLeftIcon class="w-12 h-12" />
           </button>
         </div>
         <div
@@ -294,7 +294,7 @@ defineExpose({
             data-testid="preview-next-btn"
             class="p-6 text-white/20 hover:text-white hover:bg-white/10 rounded-full transition-all group-hover/nav:scale-110 active:scale-95"
           >
-            <ChevronRight class="w-12 h-12" />
+            <ChevronRightIcon class="w-12 h-12" />
           </button>
         </div>
 
@@ -305,8 +305,8 @@ defineExpose({
         >
           <div class="flex items-center gap-4 min-w-0 flex-1 mr-8">
             <div class="p-2.5 bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 shrink-0">
-              <Eye v-if="isImage" class="w-5 h-5 text-blue-400" />
-              <File v-else class="w-5 h-5 text-white/40" />
+              <EyeIcon v-if="isImage" class="w-5 h-5 text-blue-400" />
+              <FileIcon v-else class="w-5 h-5 text-white/40" />
             </div>
             <div class="min-w-0 flex flex-col">
               <div class="flex items-center gap-2">
@@ -323,8 +323,8 @@ defineExpose({
                   title="Copy Name"
                   data-testid="preview-copy-name-btn"
                 >
-                  <Copy v-if="!isCopied" class="w-3.5 h-3.5" data-testid="icon-copy" />
-                  <Check v-else class="w-3.5 h-3.5 text-green-400" data-testid="icon-check" />
+                  <CopyIcon v-if="!isCopied" class="w-3.5 h-3.5" data-testid="icon-copy" />
+                  <CheckIcon v-else class="w-3.5 h-3.5 text-green-400" data-testid="icon-check" />
                 </button>
               </div>
               <div class="flex items-center gap-3 text-[10px] text-white/40 font-bold tracking-widest uppercase">
@@ -339,25 +339,25 @@ defineExpose({
             <!-- Zoom Controls -->
             <div v-if="isImage" class="flex items-center bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 p-1 mr-2">
               <button @click="zoom = Math.max(0.1, zoom / 1.2)" class="p-2 text-white/60 hover:text-white transition-colors" title="Zoom Out" data-testid="preview-zoom-out-btn">
-                <ZoomOut class="w-4 h-4" />
+                <ZoomOutIcon class="w-4 h-4" />
               </button>
               <button @click="resetZoom" class="px-2 text-[10px] font-bold text-white/60 hover:text-white transition-colors min-w-[56px]" title="Reset Zoom" data-testid="preview-zoom-reset-btn">
                 {{ Math.round(zoom * 100) }}%
               </button>
               <button @click="zoom = Math.min(20, zoom * 1.2)" class="p-2 text-white/60 hover:text-white transition-colors" title="Zoom In" data-testid="preview-zoom-in-btn">
-                <ZoomIn class="w-4 h-4" />
+                <ZoomInIcon class="w-4 h-4" />
               </button>
             </div>
 
             <button @click="emit('download', currentObject)" class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition-all active:scale-95" title="Download" data-testid="preview-download-btn">
-              <Download class="w-5 h-5" />
+              <DownloadIcon class="w-5 h-5" />
             </button>
             <button @click="emit('delete', currentObject)" class="p-3 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-2xl border border-red-500/20 transition-all active:scale-95" title="Delete" data-testid="preview-delete-btn">
-              <Trash2 class="w-5 h-5" />
+              <Trash2Icon class="w-5 h-5" />
             </button>
             <div class="w-px h-8 bg-white/10 mx-1"></div>
             <button @click="emit('close')" class="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/10 transition-all active:scale-95" title="Close (Esc)" data-testid="preview-close-btn">
-              <X class="w-5 h-5" />
+              <XIcon class="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -369,12 +369,12 @@ defineExpose({
         >
           <div class="px-6 py-2.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 flex items-center gap-6">
             <div class="flex items-center gap-2 text-[10px] text-white/40 font-bold uppercase tracking-widest" data-testid="preview-date">
-              <Calendar class="w-3.5 h-3.5" />
+              <CalendarIcon class="w-3.5 h-3.5" />
               {{ formatDate(currentObject.createdAt) }}
             </div>
             <div class="w-px h-4 bg-white/10"></div>
             <div class="flex items-center gap-2 text-[10px] text-white/40 font-mono" data-testid="preview-id">
-              <Info class="w-3.5 h-3.5" />
+              <InfoIcon class="w-3.5 h-3.5" />
               {{ currentObject.id }}
             </div>
             <div class="w-px h-4 bg-white/10"></div>

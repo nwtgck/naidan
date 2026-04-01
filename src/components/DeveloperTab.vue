@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { useSampleChat } from '@/composables/useSampleChat';
 import { useConfirm } from '@/composables/useConfirm';
-import { useSettings } from '@/composables/useSettings';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { storageService } from '@/services/storage';
-import { Cpu, FlaskConical, AlertTriangle, Trash2, Zap, RefreshCw } from 'lucide-vue-next';
+import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 
 defineProps<{
   storageType: string;
 }>();
 
-const { settings, toggleMarkdownRendering } = useSettings();
 const { createSampleChat } = useSampleChat();
 const { showConfirm } = useConfirm();
 const { needRefresh, setNeedRefresh } = usePWAUpdate();
@@ -70,7 +68,7 @@ defineExpose({
   <div data-testid="developer-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <section class="space-y-8">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <Cpu class="w-5 h-5 text-blue-500" />
+        <CpuIcon class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Developer Tools</h2>
       </div>
 
@@ -78,23 +76,6 @@ defineExpose({
         <div class="space-y-4">
           <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Experimental Features</h3>
           <FeatureFlagsSettings />
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <button
-              @click="toggleMarkdownRendering"
-              class="flex items-center gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
-              :class="{ 'ring-2 ring-blue-500/20 border-blue-500/50 bg-blue-50/30 dark:bg-blue-900/10': !settings.experimental || settings.experimental.markdownRendering === 'block_markdown' }"
-              data-testid="toggle-block-renderer-button"
-            >
-              <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-                <Zap class="w-4 h-4" :class="(!settings.experimental || settings.experimental.markdownRendering === 'block_markdown') ? 'text-blue-500 animate-pulse' : 'text-gray-400'" />
-              </div>
-              <div class="flex flex-col">
-                <span class="text-sm font-bold">Block Markdown Renderer</span>
-                <span class="text-[10px] font-medium text-gray-500">{{ (!settings.experimental || settings.experimental.markdownRendering === 'block_markdown') ? 'Currently Active' : 'Switch to Block Renderer' }}</span>
-              </div>
-            </button>
-          </div>
-          <p class="text-[11px] font-medium text-gray-400 ml-1">Enables the new incremental block renderer. Faster updates and preserves text selection during streaming. Use Monolithic HTML as a fallback for legacy support.</p>
         </div>
 
         <div class="space-y-4">
@@ -105,7 +86,7 @@ defineExpose({
               class="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95"
               data-testid="setting-create-sample-button"
             >
-              <FlaskConical class="w-5 h-5" />
+              <FlaskConicalIcon class="w-5 h-5" />
               Create Sample Chat
             </button>
           </div>
@@ -121,7 +102,7 @@ defineExpose({
           >
             <div class="flex items-center gap-3">
               <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-                <RefreshCw class="w-4 h-4" :class="needRefresh ? 'text-emerald-500 animate-spin-slow' : 'text-gray-400'" />
+                <RefreshCwIcon class="w-4 h-4" :class="needRefresh ? 'text-emerald-500 animate-spin-slow' : 'text-gray-400'" />
               </div>
               <div class="flex flex-col">
                 <span class="text-sm font-bold">Simulate PWA Update</span>
@@ -143,7 +124,7 @@ defineExpose({
           >
             <div class="flex items-center gap-3">
               <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-                <Trash2 class="w-4 h-4 text-gray-400" />
+                <Trash2Icon class="w-4 h-4 text-gray-400" />
               </div>
               <div class="flex flex-col">
                 <span class="text-sm font-bold">Clear All Cache Storage</span>
@@ -161,7 +142,7 @@ defineExpose({
           >
             <div class="flex items-center gap-3">
               <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-                <RefreshCw class="w-4 h-4 text-gray-400" />
+                <RefreshCwIcon class="w-4 h-4 text-gray-400" />
               </div>
               <div class="flex flex-col">
                 <span class="text-sm font-bold">Reload Application</span>
@@ -176,7 +157,7 @@ defineExpose({
           <div class="p-6 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-6">
             <div class="flex items-start gap-4">
               <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/20">
-                <AlertTriangle class="w-6 h-6 text-red-500 shrink-0" />
+                <AlertTriangleIcon class="w-6 h-6 text-red-500 shrink-0" />
               </div>
               <div>
                 <h4 class="font-bold text-red-800 dark:text-red-400 text-sm">Reset All Application Data</h4>
@@ -190,7 +171,7 @@ defineExpose({
               class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
               data-testid="setting-reset-data-button"
             >
-              <Trash2 class="w-4 h-4" />
+              <Trash2Icon class="w-4 h-4" />
               Execute Reset
             </button>
           </div>

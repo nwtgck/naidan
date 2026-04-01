@@ -1,4 +1,4 @@
-import { FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME } from './wesh-worker.constants'
+import { FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME } from '@/models/constants'
 
 export function createFileProtocolCompatibleWeshWorker(): Worker {
   return new Worker(

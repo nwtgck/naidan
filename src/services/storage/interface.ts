@@ -28,8 +28,9 @@ export abstract class IStorageProvider {
 
   abstract createVolumeFromFiles(params: {
     name: string;
-    files: FileList;
+    entries: Array<{ file: File; relativePath: string }>;
     onProgress?: (progress: { processed: number; total: number }) => void;
+    signal?: AbortSignal;
   }): Promise<Volume>;
 
   abstract getVolumeDirectoryHandle(params: {
@@ -38,6 +39,11 @@ export abstract class IStorageProvider {
 
   abstract deleteVolume(params: {
     volumeId: string;
+  }): Promise<void>;
+
+  abstract renameVolume(params: {
+    volumeId: string;
+    name: string;
   }): Promise<void>;
 
   // --- Data Access Methods ---

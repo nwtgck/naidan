@@ -3,9 +3,9 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { storageService } from '@/services/storage';
 import type { BinaryObject } from '@/models/types';
 import {
-  File, Search, ArrowUp, ArrowDown, Download,
-  Eye, HardDrive,
-  Trash2, RefreshCw, LayoutGrid, List
+  SearchIcon, ArrowUpIcon, ArrowDownIcon, DownloadIcon,
+  EyeIcon, HardDriveIcon,
+  Trash2Icon, RefreshCwIcon, LayoutGridIcon, ListIcon
 } from 'lucide-vue-next';
 import { Semaphore } from '@/utils/concurrency';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -386,7 +386,7 @@ defineExpose({
       <div class="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
         <div class="flex items-center gap-3">
           <div class="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-            <HardDrive class="w-5 h-5 text-blue-500" />
+            <HardDriveIcon class="w-5 h-5 text-blue-500" />
           </div>
           <div>
             <div class="flex items-center gap-2">
@@ -410,7 +410,7 @@ defineExpose({
               :class="viewMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
               data-testid="view-mode-grid"
             >
-              <LayoutGrid class="w-4 h-4" />
+              <LayoutGridIcon class="w-4 h-4" />
             </button>
             <button
               @click="viewMode = 'table'"
@@ -418,7 +418,7 @@ defineExpose({
               :class="viewMode === 'table' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400 hover:text-gray-600'"
               data-testid="view-mode-table"
             >
-              <List class="w-4 h-4" />
+              <ListIcon class="w-4 h-4" />
             </button>
           </div>
           <button
@@ -427,7 +427,7 @@ defineExpose({
             :class="{ 'animate-spin': isLoading }"
             data-testid="refresh-objects"
           >
-            <RefreshCw class="w-4 h-4" />
+            <RefreshCwIcon class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -435,7 +435,7 @@ defineExpose({
       <!-- Controls -->
       <div class="flex gap-4">
         <div class="relative flex-1 group">
-          <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+          <SearchIcon class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
           <input
             v-model="searchQuery"
             type="text"
@@ -458,8 +458,8 @@ defineExpose({
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   Name
                   <span class="transition-opacity" :class="sortBy === 'name' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
-                    <ArrowUp v-if="sortBy === 'name' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
-                    <ArrowDown v-else class="w-3 h-3 text-blue-500" />
+                    <ArrowUpIcon v-if="sortBy === 'name' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
+                    <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
                   </span>
                 </div>
               </th>
@@ -467,8 +467,8 @@ defineExpose({
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   Size
                   <span class="transition-opacity" :class="sortBy === 'size' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
-                    <ArrowUp v-if="sortBy === 'size' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
-                    <ArrowDown v-else class="w-3 h-3 text-blue-500" />
+                    <ArrowUpIcon v-if="sortBy === 'size' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
+                    <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
                   </span>
                 </div>
               </th>
@@ -476,8 +476,8 @@ defineExpose({
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   Date
                   <span class="transition-opacity" :class="sortBy === 'createdAt' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
-                    <ArrowUp v-if="sortBy === 'createdAt' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
-                    <ArrowDown v-else class="w-3 h-3 text-blue-500" />
+                    <ArrowUpIcon v-if="sortBy === 'createdAt' && sortOrder === 'asc'" class="w-3 h-3 text-blue-500" />
+                    <ArrowDownIcon v-else class="w-3 h-3 text-blue-500" />
                   </span>
                 </div>
               </th>
@@ -509,8 +509,8 @@ defineExpose({
                       :data-testid="`binary-thumbnail-${obj.id}`"
                     />
                     <div v-else class="flex items-center justify-center w-full h-full">
-                      <Eye v-if="obj.mimeType.startsWith('image/')" class="w-4 h-4 text-blue-500 opacity-50" />
-                      <File v-else class="w-4 h-4 text-gray-400" />
+                      <EyeIcon v-if="obj.mimeType.startsWith('image/')" class="w-4 h-4 text-blue-500 opacity-50" />
+                      <FileIcon v-else class="w-4 h-4 text-gray-400" />
                     </div>
                   </div>
                   <div class="flex flex-col min-w-0">
@@ -533,7 +533,7 @@ defineExpose({
                     title="Download"
                     :data-testid="`download-button-${obj.id}`"
                   >
-                    <Download class="w-4 h-4" />
+                    <DownloadIcon class="w-4 h-4" />
                   </button>
                   <button
                     @click.stop="handleDelete(obj)"
@@ -541,7 +541,7 @@ defineExpose({
                     title="Delete"
                     :data-testid="`delete-button-${obj.id}`"
                   >
-                    <Trash2 class="w-4 h-4" />
+                    <Trash2Icon class="w-4 h-4" />
                   </button>
                 </div>
               </td>
@@ -572,8 +572,8 @@ defineExpose({
               :data-testid="`binary-thumbnail-${obj.id}`"
             />
             <div v-else class="flex flex-col items-center gap-2 opacity-40">
-              <Eye v-if="obj.mimeType.startsWith('image/')" class="w-8 h-8 text-blue-500" />
-              <File v-else class="w-8 h-8 text-gray-400" />
+              <EyeIcon v-if="obj.mimeType.startsWith('image/')" class="w-8 h-8 text-blue-500" />
+              <FileIcon v-else class="w-8 h-8 text-gray-400" />
               <span class="text-[10px] font-bold truncate max-w-[80px] lowercase">{{ obj.mimeType.split('/')[1] }}</span>
             </div>
           </div>

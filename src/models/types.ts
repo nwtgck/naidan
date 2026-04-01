@@ -13,6 +13,7 @@ import type { ToolExecutionResult } from '@/services/tools/types';
 export type Role = 'user' | 'assistant' | 'system' | 'tool';
 export type StorageType = 'local' | 'opfs' | 'memory';
 export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
+export type EmptyArgs = Record<never, never>;
 
 export type Reasoning = {
   effort: 'none' | 'low' | 'medium' | 'high' | undefined;
@@ -179,6 +180,7 @@ export interface Chat {
 
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
+  mounts?: Mount[];
 }
 
 /**
@@ -202,6 +204,7 @@ export interface ChatMeta {
   originMessageId?: string;
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
+  mounts?: Mount[];
 }
 
 /**
@@ -231,6 +234,7 @@ export interface ChatGroup {
   titleModelId?: string;
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
+  mounts?: Mount[];
 }
 
 // Sidebar hierarchy - order is implicit by position in array
@@ -267,6 +271,12 @@ export interface BinaryObject {
   name?: string;
 }
 
+/**
+ * Volume — a storage container that can be made available to the AI as a folder.
+ *
+ * User-facing label: "Folder" (shown in the UI to avoid technical jargon).
+ * All internal identifiers, function names, and field names use "volume".
+ */
 export type VolumeType = 'opfs' | 'host';
 
 export interface Volume {
@@ -341,9 +351,6 @@ export interface Settings {
   heavyContentAlertDismissed?: boolean;
   systemPrompt?: string;
   lmParameters?: LmParameters;
-  experimental?: {
-    markdownRendering: 'block_markdown' | 'monolithic_html';
-  };
 }
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'storageType' | 'endpointType'> = {

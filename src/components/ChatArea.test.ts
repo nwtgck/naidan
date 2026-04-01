@@ -231,6 +231,7 @@ describe('ChatArea UI States', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
   });
 
   afterEach(() => {
@@ -269,6 +270,7 @@ describe('ChatArea UI States', () => {
   it('should display the shortcut text with correct casing (not all uppercase)', () => {
     wrapper = mount(ChatArea, {
       global: {
+        plugins: [router],
         stubs: {
           'router-link': true,
           'Logo': true,
@@ -613,7 +615,7 @@ describe('ChatArea Scrolling Logic', () => {
     });
   }
 
-  it('should scroll to bottom when a new USER message is added', async () => {
+  it('should NOT scroll when a new USER message is added (scroll happens on first assistant message instead)', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -639,8 +641,8 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
 
-    // Should scroll to bottom (1000) via scrollToBottom()
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
+    // Should NOT scroll on user message — scrolling is deferred until the first assistant message appears
+    expect(scrollTopSetterSpy).not.toHaveBeenCalled();
   });
 
   it('should scroll to last USER message on initial load', async () => {
@@ -913,6 +915,7 @@ describe('ChatArea Focus', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
   });
 
   afterEach(() => {
@@ -990,6 +993,7 @@ describe('ChatArea Export Functionality', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
 
     // Setup browser API spies/mocks
     vi.spyOn(URL, 'createObjectURL').mockImplementation(mockCreateObjectURL as any);
@@ -1062,8 +1066,12 @@ describe('ChatArea Export Functionality', () => {
 
     const text = await blob.text();
     expect(text).toContain('# Predefined Chat Title');
-    expect(text).toContain('## User:\nHello AI');
-    expect(text).toContain('## AI:\nHello User');
+    expect(text).toContain(`\
+## User:
+Hello AI`);
+    expect(text).toContain(`\
+## AI:
+Hello User`);
 
     // Verify filename
     const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
@@ -1120,7 +1128,9 @@ describe('ChatArea Export Functionality', () => {
     const blob = (mockCreateObjectURL as Mock).mock.calls[0]?.[0];
     const text = await blob.text();
     expect(text).toContain('# New Chat');
-    expect(text).toContain('## User:\nAnother message');
+    expect(text).toContain(`\
+## User:
+Another message`);
 
     const link = (mockAppendChild as Mock).mock.calls[0]?.[0];
     expect(link.download).toBe('new_chat.txt');
@@ -1207,6 +1217,7 @@ describe('ChatArea Textarea Sizing', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
 
     // Mock window.innerHeight for 80vh calculation
     Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: mockWindowInnerHeight });
@@ -1279,14 +1290,24 @@ describe('ChatArea Textarea Sizing', () => {
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
 
     // Typing 3 lines: still no button
-    (wrapper.findComponent(ChatInput).vm as any).input = 'Line 1\nLine 2\nLine 3';
+    (wrapper.findComponent(ChatInput).vm as any).input = `\
+Line 1
+Line 2
+Line 3`;
     mockTextareaDimensions(textarea, 24 * 3);
     await nextTick();
     await nextTick();
     expect(wrapper.find('[data-testid="maximize-button"]').exists()).toBe(false);
 
     // Typing 7 lines: button appears
-    (wrapper.findComponent(ChatInput).vm as any).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7';
+    (wrapper.findComponent(ChatInput).vm as any).input = `\
+Line 1
+Line 2
+Line 3
+Line 4
+Line 5
+Line 6
+Line 7`;
     mockTextareaDimensions(textarea, 24 * 7 + 26); // scrollHeight > maxSixLinesHeight (170)
     await nextTick();
     await nextTick();
@@ -1393,7 +1414,13 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
 
     // Fill content to 6 lines (not maximized)
-    (wrapper.findComponent(ChatInput).vm as any).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
+    (wrapper.findComponent(ChatInput).vm as any).input = `\
+Line 1
+Line 2
+Line 3
+Line 4
+Line 5
+Line 6`;
     mockTextareaDimensions(textarea, 24 * 6 + 26);
     await nextTick();
     await nextTick();
@@ -1467,7 +1494,14 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
 
     // Fill content to show button
-    (wrapper.findComponent(ChatInput).vm as any).input = 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7';
+    (wrapper.findComponent(ChatInput).vm as any).input = `\
+Line 1
+Line 2
+Line 3
+Line 4
+Line 5
+Line 6
+Line 7`;
     mockTextareaDimensions(textarea, 24 * 7 + 26);
     await nextTick();
     await nextTick();
@@ -1506,7 +1540,10 @@ describe('ChatArea Textarea Sizing', () => {
     scrollTopSpy.mockClear();
 
     // Simulate textarea expansion (1 line -> 3 lines)
-    (wrapper.findComponent(ChatInput).vm as any).input = 'Line 1\nLine 2\nLine 3';
+    (wrapper.findComponent(ChatInput).vm as any).input = `\
+Line 1
+Line 2
+Line 3`;
     mockTextareaDimensions(textarea, 24 * 3);
     await nextTick();
     await nextTick();
@@ -1524,7 +1561,13 @@ describe('ChatArea Textarea Sizing', () => {
     const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]').element;
 
     // Type some content to make it expand
-    (wrapper.findComponent(ChatInput).vm as any).input = 'Some content to expand textarea\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6';
+    (wrapper.findComponent(ChatInput).vm as any).input = `\
+Some content to expand textarea
+Line 2
+Line 3
+Line 4
+Line 5
+Line 6`;
     mockTextareaDimensions(textarea, 24 * 6 + 26); // Mock full 6 lines
     const chatInput = wrapper.findComponent(ChatInput);
     (chatInput.vm as any).adjustTextareaHeight();
@@ -1712,6 +1755,7 @@ describe('ChatArea Welcome Screen & Suggestions', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
   });
 
   afterEach(() => {
@@ -1774,6 +1818,7 @@ describe('ChatArea Model Selection', () => {
     mockAvailableModels.value = ['model-1', 'model-2'];
     mockFetchingModels.value = false;
     document.body.innerHTML = '<div id="app"></div>';
+    setupScrollToMock();
   });
 
   afterEach(() => {

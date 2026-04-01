@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream, readFile, writeFile } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, readAllFileBytes, writeAllFileBytes } from '@/services/wesh/utils/fs';
 
 const gzipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -100,8 +100,8 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
       if (f === undefined) continue;
       try {
         const input = f === '-'
-          ? await readStreamBytes({ stream: handleToStream({ handle: context.stdin }) })
-          : await readFile({
+          ? await readStreamBytes({ stream: openHandleReadStream({ handle: context.stdin }) })
+          : await readAllFileBytes({
             files: context.files,
             path: f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`),
           });
@@ -125,7 +125,7 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
 
         const fullPath = f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`);
         const gzPath = `${fullPath}.gz`;
-        await writeFile({ files: context.files, path: gzPath, data: result });
+        await writeAllFileBytes({ files: context.files, path: gzPath, data: result });
         if (!keepInput) {
           await context.files.unlink({ path: fullPath });
         }

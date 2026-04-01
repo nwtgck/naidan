@@ -27,11 +27,11 @@ describe('OnboardingModal GitHub Link', () => {
           Logo: true,
           ThemeToggle: true,
           ServerSetupGuide: true,
-          X: true,
-          Play: true,
-          ArrowLeft: true,
-          Activity: true,
-          Settings: true,
+          XIcon: true,
+          PlayIcon: true,
+          ArrowLeftIcon: true,
+          ActivityIcon: true,
+          SettingsIcon: true,
         }
       }
     });

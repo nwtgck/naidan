@@ -231,6 +231,7 @@ describe('ChatArea Design Specifications', () => {
           MessageItem: true,
           WelcomeScreen: true,
           ChatSettingsPanel: ChatSettingsPanel,
+          'router-link': true,
         },
       },
     });

@@ -4,10 +4,17 @@ import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import {
-  Settings2,
-  MessageSquareQuote, Layers, Globe, AlertCircle, Trash2, Plus,
-  ChefHat, Search
+  Settings2Icon,
+  MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon,
+  ChefHatIcon, SearchIcon, FolderIcon,
 } from 'lucide-vue-next';
+import type { Mount } from '@/models/types';
+import VolumeCreator from './VolumeCreator.vue';
+import MountBadgeList from './MountBadgeList.vue';
+import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { VfsExplorerDirectory } from './file-explorer/explorer-directory';
+import { WeshVFS } from '@/services/wesh/vfs';
+import { storageService } from '@/services/storage';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 
@@ -32,9 +39,13 @@ const chatStore = useChat();
 const {
   currentChatGroup,
   fetchingModels,
+  addMountToChatGroup,
+  removeMountFromChatGroup,
+  updateChatGroupMount,
 } = chatStore;
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
+const { openFileExplorer } = useFileExplorerModal();
 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
@@ -50,6 +61,45 @@ const localSettings = ref<Partial<Pick<ChatGroup, 'endpoint' | 'modelId' | 'auto
 
 // Recipe Export State
 const showExportModal = ref(false);
+
+// Folder (volume) management for chat group
+const chatGroupMounts = computed<readonly Mount[]>(() => currentChatGroup.value?.mounts ?? []);
+const existingChatGroupMountPaths = computed(() => chatGroupMounts.value.map(m => m.mountPath));
+
+async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
+  if (!currentChatGroup.value) return;
+  await addMountToChatGroup({
+    groupId: currentChatGroup.value.id,
+    mount: { type: 'volume', volumeId, mountPath, readOnly },
+  });
+}
+
+async function handleChatGroupMountRemove({ volumeId }: { volumeId: string }) {
+  if (!currentChatGroup.value) return;
+  await removeMountFromChatGroup({ groupId: currentChatGroup.value.id, volumeId });
+}
+
+async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
+  if (!currentChatGroup.value) return;
+  const mount = chatGroupMounts.value.find(m => m.volumeId === volumeId);
+  if (!mount) return;
+  await updateChatGroupMount({ groupId: currentChatGroup.value.id, volumeId, mountPath: mount.mountPath, readOnly });
+}
+
+async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {
+  const mounts = chatGroupMounts.value;
+  if (mounts.length === 0) return;
+  const vfs = new WeshVFS({ rootHandle: undefined });
+  for (const m of mounts) {
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
+    if (!handle) continue;
+    await vfs.mount({ path: m.mountPath, handle, readOnly: m.readOnly });
+  }
+  const rootDir = new VfsExplorerDirectory({ name: 'Files', path: '/', vfs });
+  const clickedMount = mounts.find(m => m.volumeId === volumeId);
+  const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
+  openFileExplorer({ kind: 'explorer', root: rootDir, initialPath, title: 'Folders' });
+}
 
 function handleCreateRecipe() {
   showExportModal.value = true;
@@ -260,7 +310,7 @@ defineExpose({
     <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
       <div class="flex items-center gap-3 overflow-hidden min-h-[44px]">
         <div class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
-          <Settings2 class="w-5 h-5 text-blue-600" />
+          <Settings2Icon class="w-5 h-5 text-blue-600" />
         </div>
         <div class="flex flex-col overflow-hidden">
           <h2 class="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">
@@ -301,7 +351,7 @@ defineExpose({
             class="flex items-center gap-4 w-full bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 rounded-2xl px-5 py-3 text-left hover:border-blue-300 dark:hover:border-blue-700 transition-all shadow-sm group"
           >
             <div class="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-colors">
-              <Search class="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
+              <SearchIcon class="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors" />
             </div>
             <div class="flex flex-col min-w-0">
               <span class="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest leading-none mb-1">Search Group</span>
@@ -314,7 +364,7 @@ defineExpose({
             class="flex items-center gap-4 w-full bg-blue-50/30 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl px-5 py-3 text-left hover:border-blue-400 dark:hover:border-blue-700 transition-all shadow-sm group"
           >
             <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm group-hover:shadow-md transition-all">
-              <ChefHat class="w-5 h-5 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
+              <ChefHatIcon class="w-5 h-5 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform" />
             </div>
             <div class="flex flex-col">
               <span class="text-[9px] font-bold text-blue-900/50 dark:text-blue-400/50 uppercase tracking-widest leading-none mb-1">Share settings</span>
@@ -411,7 +461,7 @@ defineExpose({
                 type="button"
                 class="text-[9px] font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 uppercase tracking-wider"
               >
-                <Plus class="w-2.5 h-2.5" />
+                <PlusIcon class="w-2.5 h-2.5" />
                 Add Header
               </button>
             </div>
@@ -440,7 +490,7 @@ defineExpose({
                   @click="removeHeader(index)"
                   class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                 >
-                  <Trash2 class="w-3.5 h-3.5" />
+                  <Trash2Icon class="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -492,7 +542,7 @@ defineExpose({
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <div class="p-2 bg-blue-600/10 rounded-xl border border-blue-100 dark:border-blue-900/20">
-                <Settings2 class="w-4 h-4 text-blue-600" />
+                <Settings2Icon class="w-4 h-4 text-blue-600" />
               </div>
               <div>
                 <h4 class="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-widest">Automatic Title</h4>
@@ -551,7 +601,7 @@ defineExpose({
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="flex items-start gap-4 p-4 bg-white dark:bg-blue-900/10 border border-gray-100 dark:border-blue-900/30 rounded-2xl shadow-sm">
             <div class="p-2 bg-blue-50 dark:bg-gray-800 rounded-xl border border-blue-100 dark:border-blue-900/20">
-              <Globe class="w-4 h-4 text-blue-500" />
+              <GlobeIcon class="w-4 h-4 text-blue-500" />
             </div>
             <div class="space-y-1">
               <p class="text-[10px] font-bold text-blue-900/70 dark:text-blue-300 uppercase tracking-widest">Group Level</p>
@@ -561,7 +611,7 @@ defineExpose({
 
           <div class="flex items-start gap-4 p-4 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm">
             <div class="p-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-              <AlertCircle class="w-4 h-4 text-gray-400" />
+              <AlertCircleIcon class="w-4 h-4 text-gray-400" />
             </div>
             <div class="space-y-1">
               <p class="text-[10px] font-bold text-gray-400 dark:text-gray-400 uppercase tracking-widest">Local Overrides</p>
@@ -585,7 +635,7 @@ defineExpose({
             <div class="md:col-span-2 space-y-4">
               <div class="flex items-center justify-between">
                 <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  <MessageSquareQuote class="w-3 h-3" />
+                  <MessageSquareQuoteIcon class="w-3 h-3" />
                   Group System Prompt
                 </label>
 
@@ -651,7 +701,7 @@ defineExpose({
 
             <div class="space-y-4">
               <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                <Layers class="w-3 h-3" />
+                <LayersIcon class="w-3 h-3" />
                 Settings Resolution
               </label>
               <div class="p-4 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl space-y-3 shadow-sm">
@@ -678,6 +728,33 @@ defineExpose({
             <LmParametersEditor
               :model-value="localSettings.lmParameters"
               @update:model-value="val => { localSettings.lmParameters = val; saveChanges(); }"
+            />
+          </div>
+
+          <!-- Folders -->
+          <div class="space-y-3">
+            <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <FolderIcon class="w-3 h-3" />
+              Folders
+            </label>
+
+            <!-- Active chat group mounts (badge style) -->
+            <div v-if="chatGroupMounts.length > 0" data-testid="chat-group-mounts">
+              <MountBadgeList
+                :mounts="chatGroupMounts"
+                path-trim-prefix="/home/user/"
+                :show-explorer="true"
+                @toggle-read-only="handleChatGroupMountToggleReadOnly"
+                @remove="handleChatGroupMountRemove"
+                @open-explorer="handleOpenChatGroupMountExplorer"
+              />
+            </div>
+
+            <!-- Add Folder / Copy Folder buttons -->
+            <VolumeCreator
+              :existing-mount-paths="existingChatGroupMountPaths"
+              mount-path-prefix="/home/user/"
+              @created="handleVolumeCreated"
             />
           </div>
         </div>

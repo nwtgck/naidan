@@ -1,7 +1,12 @@
-import * as Comlink from 'comlink';
-import type { ChatMessage, LmParameters } from '@/models/types';
-import { createTransformersWorker, createTransformersScannerWorker } from './transformers-js-loader';
-import type { ITransformersJsWorker, ITransformersJsScannerWorker, ProgressInfo, ScanTask } from './transformers-js.types';
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
+import { createTransformersJsWorkerClient } from '@/services/transformers-js-worker-client';
+import { createTransformersJsScannerWorkerClient } from '@/services/transformers-js-scanner-worker-client';
+import type {
+  ProgressInfo,
+  ScanTask,
+  WorkerToolDefinition,
+  TransformersJsWorkerClient,
+} from './transformers-js.types';
 
 /**
  * Interface for FileSystemFileHandle with createWritable() method.
@@ -23,6 +28,86 @@ let loadingError: string | undefined = undefined;
 let isCached: boolean = false;
 let isLoadingFromCache: boolean = false;
 let currentDevice: string = 'wasm';
+
+const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
+
+function debugLog({ event, details }: { event: string; details: Record<string, unknown> }): void {
+  const timestamp = (() => {
+    const dateCtor = globalThis.Date;
+    if (typeof dateCtor === 'function') {
+      return new dateCtor().toISOString();
+    }
+    return '0';
+  })();
+  console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
+    at: timestamp,
+    ...details,
+  });
+}
+
+function cloneLmParameters({ params }: { params: LmParameters | undefined }): LmParameters | undefined {
+  if (!params) return undefined;
+
+  return {
+    temperature: params.temperature,
+    topP: params.topP,
+    maxCompletionTokens: params.maxCompletionTokens,
+    presencePenalty: params.presencePenalty,
+    frequencyPenalty: params.frequencyPenalty,
+    stop: params.stop ? [...params.stop] : undefined,
+    reasoning: {
+      effort: params.reasoning?.effort
+    }
+  };
+}
+
+function cloneToolCalls({ toolCalls }: { toolCalls: ToolCall[] | undefined }): ToolCall[] | undefined {
+  if (!toolCalls) return undefined;
+
+  return toolCalls.map(toolCall => ({
+    id: toolCall.id,
+    type: 'function',
+    function: {
+      name: toolCall.function.name,
+      arguments: toolCall.function.arguments,
+    }
+  }));
+}
+
+function cloneChatMessages({ messages }: { messages: ChatMessage[] }): ChatMessage[] {
+  return messages.map(message => ({
+    role: message.role,
+    content: Array.isArray(message.content)
+      ? message.content.map(part => {
+        switch (part.type) {
+        case 'text':
+          return { type: 'text', text: part.text };
+        case 'image_url':
+          return { type: 'image_url', image_url: { url: part.image_url.url } };
+        default: {
+          const _ex: never = part;
+          return _ex;
+        }
+        }
+      })
+      : message.content,
+    tool_calls: cloneToolCalls({ toolCalls: message.tool_calls }),
+    tool_call_id: message.tool_call_id,
+  }));
+}
+
+function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined }): WorkerToolDefinition[] | undefined {
+  if (!tools) return undefined;
+
+  return tools.map(tool => ({
+    type: 'function',
+    function: {
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: JSON.parse(JSON.stringify(tool.function.parameters)) as Record<string, unknown>,
+    }
+  }));
+}
 
 type ProgressListener = (
   status: typeof loadingStatus,
@@ -138,8 +223,7 @@ function notifyModelListChange() {
 }
 
 // Worker management
-let worker: Worker | null = null;
-let remote: Comlink.Remote<ITransformersJsWorker> | null = null;
+let client: TransformersJsWorkerClient;
 
 /**
  * Initializes or re-initializes the Web Worker.
@@ -153,16 +237,11 @@ let remote: Comlink.Remote<ITransformersJsWorker> | null = null;
  * fresh Wasm instance without requiring the user to reload the entire page.
  */
 function initWorker() {
-  if (typeof Worker === 'undefined') return;
-
-  if (worker) {
-    worker.terminate();
+  if (client) {
+    void client.dispose({});
   }
 
-  worker = createTransformersWorker();
-  if (worker) {
-    remote = Comlink.wrap<ITransformersJsWorker>(worker);
-  }
+  client = createTransformersJsWorkerClient({});
 }
 
 // Initial setup
@@ -185,13 +264,11 @@ function isFatalError(msg: string): boolean {
  */
 async function preDownloadModel({ modelId, remote, progress_callback }: {
   modelId: string,
-  remote: Comlink.Remote<ITransformersJsWorker>,
+  remote: TransformersJsWorkerClient,
   progress_callback: (info: ProgressInfo) => void
 }) {
-  const sw = createTransformersScannerWorker();
-  if (!sw) return;
-
-  const scannerRemote = Comlink.wrap<ITransformersJsScannerWorker>(sw);
+  const startedAt = performance.now();
+  const scannerClient = createTransformersJsScannerWorkerClient({});
 
   try {
     let cleanModelId = modelId;
@@ -206,23 +283,47 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
       { type: 'tokenizer', modelId: cleanModelId, options: {} },
       { type: 'causal-lm', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } }
     ];
-    console.log(`[transformersJsService] Scanning model for URLs: ${modelId}`);
-    const { files } = await scannerRemote.scanModel({ tasks });
+    debugLog({
+      event: 'preDownload scan start',
+      details: { modelId, elapsedMs: Math.round(performance.now() - startedAt) },
+    });
+    const { files } = await scannerClient.scanModel({ tasks });
+    debugLog({
+      event: 'preDownload scan complete',
+      details: {
+        modelId,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        fileCount: files.length,
+      },
+    });
 
     // 2. Prefetch URLs via main worker (which has OPFS access and streaming)
     if (files.length > 0) {
       const urls = files.map(f => f.url);
-      console.log(`[transformersJsService] Scanned URLs:`, urls);
-      await remote.prefetchUrls(urls, progress_callback);
+      debugLog({
+        event: 'preDownload prefetch start',
+        details: {
+          modelId,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          fileCount: urls.length,
+        },
+      });
+      await remote.prefetchUrls({ urls, progressCallback: progress_callback });
+      debugLog({
+        event: 'preDownload prefetch complete',
+        details: {
+          modelId,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          fileCount: urls.length,
+        },
+      });
     }
   } catch (err) {
     console.warn(`[transformersJsService] Pre-download scan/prefetch failed:`, err);
     // We don't throw here to avoid a complete failure if just the scanner/prefetcher has an issue,
     // as the original loadModel/downloadModel will still attempt to run normally.
   } finally {
-    // Release and terminate scanner worker to reclaim memory
-    scannerRemote[Comlink.releaseProxy]();
-    sw.terminate();
+    await scannerClient.dispose({});
   }
 }
 
@@ -533,7 +634,8 @@ export const transformersJsService = {
     }
 
     try {
-      if (!remote) throw new Error('Worker not initialized');
+      const loadStartedAt = performance.now();
+      if (!client) throw new Error('Worker not initialized');
       // 1. Check cache FIRST before changing status to avoid UI flicker
       const cached = await this.listCachedModels();
       const hfId = modelId.startsWith('hf.co/') ? modelId : `hf.co/${modelId}`;
@@ -551,10 +653,21 @@ export const transformersJsService = {
       notify();
 
       let lastProgressNotify = 0;
-      const progress_callback = Comlink.proxy((info: ProgressInfo) => {
+      const progress_callback = (info: ProgressInfo) => {
         updateProgress({ info });
         if (info.status === 'cached') {
           isCached = true;
+        }
+
+        if (info.status !== 'progress') {
+          debugLog({
+            event: 'load progress event',
+            details: {
+              modelId,
+              elapsedMs: Math.round(performance.now() - loadStartedAt),
+              info,
+            },
+          });
         }
 
         const now = Date.now();
@@ -563,12 +676,43 @@ export const transformersJsService = {
           notify();
           lastProgressNotify = now;
         }
-      });
+      };
 
       // 3. Pre-download using scanner/prefetcher to avoid OOM in transformers.js
-      await preDownloadModel({ modelId, remote, progress_callback });
+      // Only do this when the model is not already fully cached. For complete cached
+      // models, scanning/prefetching provides no benefit and only delays loadModel().
+      debugLog({
+        event: 'load start',
+        details: { modelId, isLoadingFromCache },
+      });
+      if (!isLoadingFromCache) {
+        await preDownloadModel({ modelId, remote: client, progress_callback });
+      } else {
+        debugLog({
+          event: 'preDownload skipped',
+          details: {
+            modelId,
+            reason: 'model already fully cached',
+          },
+        });
+      }
+      debugLog({
+        event: 'worker loadModel start',
+        details: {
+          modelId,
+          elapsedMs: Math.round(performance.now() - loadStartedAt),
+        },
+      });
 
-      const result = await remote.loadModel(modelId, progress_callback);
+      const result = await client.loadModel({ modelId, progressCallback: progress_callback });
+      debugLog({
+        event: 'worker loadModel complete',
+        details: {
+          modelId,
+          elapsedMs: Math.round(performance.now() - loadStartedAt),
+          device: result.device,
+        },
+      });
       currentDevice = result.device;
 
       activeModelId = modelId;
@@ -610,7 +754,7 @@ export const transformersJsService = {
     }
 
     try {
-      if (!remote) throw new Error('Worker not initialized');
+      if (!client) throw new Error('Worker not initialized');
       // No longer deleting partial models to allow resume support.
       // Transformers.js handles missing files gracefully.
 
@@ -625,7 +769,7 @@ export const transformersJsService = {
       notify();
 
       let lastProgressNotify = 0;
-      const progress_callback = Comlink.proxy((info: ProgressInfo) => {
+      const progress_callback = (info: ProgressInfo) => {
         updateProgress({ info });
 
         const now = Date.now();
@@ -633,13 +777,13 @@ export const transformersJsService = {
           notify();
           lastProgressNotify = now;
         }
-      });
+      };
 
       // 1. Pre-download using scanner/prefetcher
-      await preDownloadModel({ modelId, remote, progress_callback });
+      await preDownloadModel({ modelId, remote: client, progress_callback });
 
       // 2. Finalize with standard downloadModel (to ensure tokenizer and any missed files are handled)
-      await remote.downloadModel(modelId, progress_callback);
+      await client.downloadModel({ modelId, progressCallback: progress_callback });
 
       loadingStatus = 'idle';
       loadingProgress = 0;
@@ -665,8 +809,8 @@ export const transformersJsService = {
 
   async unloadModel() {
     try {
-      if (remote) {
-        await remote.unloadModel();
+      if (client) {
+        await client.unloadModel({});
       }
       activeModelId = undefined;
       loadingStatus = 'idle';
@@ -690,14 +834,14 @@ export const transformersJsService = {
   },
 
   async interrupt() {
-    if (remote) {
-      await remote.interrupt();
+    if (client) {
+      await client.interrupt({});
     }
   },
 
   async resetCache() {
-    if (remote) {
-      await remote.resetCache();
+    if (client) {
+      await client.resetCache({});
     }
   },
 
@@ -707,7 +851,9 @@ export const transformersJsService = {
   async generateText(
     messages: ChatMessage[],
     onChunk: (chunk: string) => void,
+    onToolCalls: (toolCalls: ToolCall[]) => void,
     params?: LmParameters,
+    tools?: WorkerToolDefinition[],
     signal?: AbortSignal
   ) {
     switch (loadingStatus) {
@@ -723,7 +869,7 @@ export const transformersJsService = {
     }
     }
 
-    if (!remote) throw new Error('Worker not initialized');
+    if (!client) throw new Error('Worker not initialized');
 
     if (signal) {
       signal.addEventListener('abort', () => {
@@ -732,11 +878,13 @@ export const transformersJsService = {
     }
 
     try {
-      await remote.generateText(
-        messages,
-        Comlink.proxy(onChunk),
-        params
-      );
+      await client.generateText({
+        messages: cloneChatMessages({ messages }),
+        onChunk,
+        onToolCalls,
+        params: cloneLmParameters({ params }),
+        tools: cloneWorkerTools({ tools }),
+      });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       if (isFatalError(errorMsg)) {

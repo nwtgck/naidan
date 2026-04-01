@@ -12,6 +12,11 @@ export type TextOrBinaryObject =
   | { type: 'text'; text: string }
   | { type: 'binary_object'; id: string };
 
+export type ToolExecutionEvent =
+  | { type: 'started' }
+  | { type: 'output'; stream: 'stdout' | 'stderr'; text: string }
+  | { type: 'exit'; exitCode: number };
+
 /**
  * Result of a tool execution.
  *
@@ -55,7 +60,7 @@ export interface Tool {
    * Execute the tool with the given arguments.
    * The arguments are guaranteed to be validated against the parametersSchema before execution.
    */
-  execute(params: { args: unknown; signal?: AbortSignal }): Promise<
+  execute(params: { args: unknown; signal?: AbortSignal; onEvent?: (event: ToolExecutionEvent) => void | Promise<void> }): Promise<
     | { status: 'success'; content: string }
     | { status: 'error'; code: ToolExecutionErrorCode; message: string }
   >;

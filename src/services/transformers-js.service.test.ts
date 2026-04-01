@@ -1,6 +1,9 @@
+/* eslint-disable no-restricted-imports -- Service test verifies transformers.js model registry support directly. */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import * as Comlink from 'comlink';
+import { isProxy, reactive } from 'vue';
+import { AutoModelForCausalLM } from '@huggingface/transformers';
 
 // Mock Worker class
 class MockWorker {
@@ -75,6 +78,10 @@ function createMockFile(size: number, lastModified: number) {
 }
 
 describe('transformersJsService', () => {
+  it('should support qwen3_5 causal LM models', () => {
+    expect((AutoModelForCausalLM as any).supports('qwen3_5')).toBe(true);
+  });
+
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
@@ -202,6 +209,49 @@ describe('transformersJsService', () => {
     expect(statuses).toContain('ready');
   });
 
+  it('should skip scanner/prefetch when loading a fully cached model', async () => {
+    const mockHuggingFaceDir = createMockDir({
+      'some-org': createMockDir({
+        'some-model': createMockDir({
+          'model.onnx': createMockFile(1000, 123456789),
+          '.model.onnx.complete': createMockFile(0, 123456789),
+        }),
+      }),
+    });
+
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(createMockDir({
+          'models': createMockDir({
+            'huggingface.co': mockHuggingFaceDir,
+          }),
+        })),
+      },
+    });
+
+    const mockRemote = {
+      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
+      prefetchUrls: vi.fn().mockResolvedValue(undefined),
+    };
+    const scanModel = vi.fn().mockResolvedValue({
+      files: [{ url: 'https://hf.co/m/model.onnx' }],
+    });
+
+    (Comlink.wrap as any).mockImplementation((_worker: any) => {
+      return Object.assign(mockRemote, {
+        [Comlink.releaseProxy]: vi.fn(),
+        scanModel,
+      });
+    });
+
+    const { transformersJsService } = await import('./transformers-js');
+    await transformersJsService.loadModel('hf.co/some-org/some-model');
+
+    expect(mockRemote.loadModel).toHaveBeenCalledWith('hf.co/some-org/some-model', expect.any(Function));
+    expect(scanModel).not.toHaveBeenCalled();
+    expect(mockRemote.prefetchUrls).not.toHaveBeenCalled();
+  });
+
   it('should prevent concurrent loading', async () => {
     const mockRemote = {
       loadModel: vi.fn().mockImplementation(() => new Promise(resolve => {
@@ -242,12 +292,130 @@ describe('transformersJsService', () => {
     await transformersJsService.loadModel('some-model');
 
     const controller = new AbortController();
-    const genPromise = transformersJsService.generateText([], () => {}, EMPTY_LM_PARAMETERS, controller.signal);
+    const genPromise = transformersJsService.generateText([], () => {}, () => {}, EMPTY_LM_PARAMETERS, undefined, controller.signal);
 
     controller.abort();
     await genPromise;
 
     expect(mockRemote.interrupt).toHaveBeenCalled();
+  });
+
+  it('should clone lmParameters before sending them to the worker', async () => {
+    const mockRemote = {
+      loadModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
+      generateText: vi.fn().mockResolvedValue(undefined),
+    };
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
+
+    const { transformersJsService } = await import('./transformers-js');
+    await transformersJsService.loadModel('some-model');
+
+    const reactiveParams = reactive({
+      ...EMPTY_LM_PARAMETERS,
+      stop: ['END'],
+      reasoning: { effort: 'high' as const }
+    });
+
+    await transformersJsService.generateText([], () => {}, () => {}, reactiveParams, undefined, undefined);
+
+    const workerParams = mockRemote.generateText.mock.calls[0]?.[3];
+    expect(workerParams).toEqual({
+      ...EMPTY_LM_PARAMETERS,
+      stop: ['END'],
+      reasoning: { effort: 'high' }
+    });
+    expect(workerParams).not.toBe(reactiveParams);
+    expect(isProxy(workerParams)).toBe(false);
+    expect(isProxy(workerParams.reasoning)).toBe(false);
+    expect(workerParams.stop).not.toBe(reactiveParams.stop);
+  });
+
+  it('should clone messages and tools before sending them to the worker', async () => {
+    const mockRemote = {
+      loadModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
+      generateText: vi.fn().mockResolvedValue(undefined),
+    };
+    (Comlink.wrap as any).mockImplementation(() => {
+      return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
+    });
+
+    const { transformersJsService } = await import('./transformers-js');
+    await transformersJsService.loadModel('some-model');
+
+    const reactiveMessages = reactive([{
+      role: 'assistant',
+      content: 'tool call',
+      tool_calls: reactive([{
+        id: 'call_1',
+        type: 'function' as const,
+        function: {
+          name: 'my_tool',
+          arguments: '{"input":"hello"}'
+        }
+      }])
+    }]);
+    const reactiveTools = reactive([{
+      type: 'function' as const,
+      function: {
+        name: 'my_tool',
+        description: 'test tool',
+        parameters: reactive({
+          type: 'object',
+          properties: {
+            input: { type: 'string' }
+          }
+        })
+      }
+    }]);
+
+    await transformersJsService.generateText(
+      reactiveMessages as any,
+      () => {},
+      () => {},
+      undefined,
+      reactiveTools as any,
+      undefined
+    );
+
+    const workerMessages = mockRemote.generateText.mock.calls[0]?.[0];
+    const workerTools = mockRemote.generateText.mock.calls[0]?.[4];
+
+    expect(workerMessages).toEqual([{
+      role: 'assistant',
+      content: 'tool call',
+      tool_calls: [{
+        id: 'call_1',
+        type: 'function',
+        function: {
+          name: 'my_tool',
+          arguments: '{"input":"hello"}'
+        }
+      }],
+      tool_call_id: undefined,
+    }]);
+    expect(isProxy(workerMessages)).toBe(false);
+    expect(isProxy(workerMessages[0])).toBe(false);
+    expect(isProxy(workerMessages[0].tool_calls)).toBe(false);
+    expect(isProxy(workerMessages[0].tool_calls?.[0])).toBe(false);
+
+    expect(workerTools).toEqual([{
+      type: 'function',
+      function: {
+        name: 'my_tool',
+        description: 'test tool',
+        parameters: {
+          type: 'object',
+          properties: {
+            input: { type: 'string' }
+          }
+        }
+      }
+    }]);
+    expect(isProxy(workerTools)).toBe(false);
+    expect(isProxy(workerTools[0])).toBe(false);
+    expect(isProxy(workerTools[0].function.parameters)).toBe(false);
   });
 
   it('should create correct directory structure during importFile', async () => {

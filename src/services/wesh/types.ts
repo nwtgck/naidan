@@ -20,6 +20,8 @@ export interface WeshWriteResult {
   bytesWritten: number;
 }
 
+export type WeshFileHandleCloseSemantics = 'hard' | 'soft';
+
 export class WeshBrokenPipeError extends Error {
   constructor() {
     super('Broken pipe');
@@ -61,6 +63,10 @@ export interface WeshFileHandle {
    * Control device/handle specific operations (e.g. terminal size, blocking mode)
    */
   ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }>;
+
+  cloneReference?(): WeshFileHandle;
+
+  getCloseSemantics?(): WeshFileHandleCloseSemantics;
 }
 
 export type WeshWaitStatus =
@@ -106,6 +112,17 @@ export interface WeshProcess {
   /** File Descriptor Table: fd -> handle */
   fds: Map<number, WeshFileHandle>;
   ownedHandles?: Set<WeshFileHandle>;
+}
+
+export interface WeshProcessSnapshot {
+  pid: number;
+  ppid: number;
+  pgid: number;
+  state: WeshProcess['state'];
+  user: string;
+  argv0: string;
+  args: string[];
+  cwd: string;
 }
 
 // --- Virtual File System ---
@@ -168,7 +185,7 @@ export interface WeshIVirtualFileSystem {
     mode: 'truncate' | 'append';
   }): Promise<WeshEfficientFileWriteResult>;
 
-  readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
+  readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }>;
 
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
 
@@ -181,6 +198,18 @@ export interface WeshIVirtualFileSystem {
 
   registerSpecialFile(options: { path: string; handler: () => WeshFileHandle }): void;
   unregisterSpecialFile(options: { path: string }): void;
+
+  /**
+   * Returns the underlying native FileSystemHandle for the given path, or null
+   * if the path resolves to a synthetic directory, special file, or registry entry.
+   */
+  getNativeHandle(options: { path: string }): Promise<FileSystemHandle | null>;
+
+  /**
+   * Returns whether the given path is read-only based on the owning mount.
+   * Paths outside every real mount (synthetic intermediate directories) return true.
+   */
+  getReadOnlyForPath(options: { path: string }): boolean;
 }
 
 export interface WeshMount {
@@ -205,6 +234,10 @@ export type WeshEfficientFileWriteResult =
 export interface WeshCommandResult {
   exitCode: number;
   waitStatus?: WeshWaitStatus;
+  controlFlow?:
+    | { kind: 'break'; levels: number }
+    | { kind: 'continue'; levels: number }
+    | { kind: 'return'; exitCode: number };
 }
 
 export type WeshTrapDisposition =
@@ -256,6 +289,7 @@ export interface WeshCommandContext {
   getCommandNames(): string[];
   resolveCommand(options: { name: string }): WeshResolvedCommand;
   getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
+  getProcesses(): WeshProcessSnapshot[];
   getShellOption(options: { name: WeshShellOption }): boolean;
   setShellOption(options: { name: WeshShellOption; enabled: boolean }): void;
   getShellOptions(): Array<[WeshShellOption, boolean]>;
@@ -281,7 +315,7 @@ export interface WeshCommandContext {
     }): Promise<WeshFileHandle>;
     stat(options: { path: string }): Promise<WeshStat>;
     lstat(options: { path: string }): Promise<WeshStat>;
-    readDir(options: { path: string }): Promise<Array<{ name: string; type: WeshFileType }>>;
+    readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }>;
     readlink(options: { path: string }): Promise<string>;
     resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
     tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
@@ -334,7 +368,7 @@ export interface WeshCommandDefinition {
 export interface WeshRedirection {
   fd: number;
   type: 'write' | 'append' | 'read' | 'read-write' | 'dup-output' | 'dup-input' | 'heredoc' | 'herestring';
-  target: string | undefined;
+  target: string | WeshProcessSubstitutionNode | undefined;
   targetFd?: number;
   closeTarget?: boolean;
   content?: string; // For here-docs
@@ -347,6 +381,12 @@ export type WeshASTNode =
   | WeshListNode
   | WeshIfNode
   | WeshForNode
+  | WeshWhileNode
+  | WeshUntilNode
+  | WeshCaseNode
+  | WeshFunctionDefinitionNode
+  | WeshArithmeticCommandNode
+  | WeshRedirectedNode
   | WeshAssignmentNode
   | WeshSubshellNode;
 
@@ -389,6 +429,46 @@ export interface WeshForNode {
   variable: string;
   items: string[];
   body: WeshASTNode;
+}
+
+export interface WeshWhileNode {
+  kind: 'while';
+  condition: WeshASTNode;
+  body: WeshASTNode;
+}
+
+export interface WeshUntilNode {
+  kind: 'until';
+  condition: WeshASTNode;
+  body: WeshASTNode;
+}
+
+export interface WeshCaseClause {
+  patterns: string[];
+  body: WeshASTNode;
+}
+
+export interface WeshCaseNode {
+  kind: 'case';
+  word: string;
+  clauses: WeshCaseClause[];
+}
+
+export interface WeshFunctionDefinitionNode {
+  kind: 'functionDefinition';
+  name: string;
+  body: WeshASTNode;
+}
+
+export interface WeshArithmeticCommandNode {
+  kind: 'arithmeticCommand';
+  expression: string;
+}
+
+export interface WeshRedirectedNode {
+  kind: 'redirected';
+  node: WeshASTNode;
+  redirections: WeshRedirection[];
 }
 
 export interface WeshAssignmentNode {

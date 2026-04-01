@@ -962,10 +962,11 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async createVolumeFromFiles(params: {
     name: string;
-    files: FileList;
+    entries: Array<{ file: File; relativePath: string }>;
     onProgress?: (progress: { processed: number; total: number }) => void;
+    signal?: AbortSignal;
   }): Promise<Volume> {
-    const { name, files, onProgress } = params;
+    const { name, entries, onProgress, signal } = params;
     const id = generateId();
     const createdAt = Date.now();
     const shard = this.getVolumeShardPath({ id });
@@ -973,16 +974,21 @@ export class OPFSStorageProvider extends IStorageProvider {
     const shardDir = await this.getVolumeShardDir({ shard });
     const volumeDir = await shardDir.getDirectoryHandle(id, { create: true });
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (!file) continue;
-      const pathParts = file.webkitRelativePath.split('/');
-      const relativePathParts = pathParts.length > 1 ? pathParts.slice(1) : [file.name];
+    for (let i = 0; i < entries.length; i++) {
+      if (signal?.aborted) {
+        await shardDir.removeEntry(id, { recursive: true }).catch(() => {});
+        throw new DOMException('Cancelled by user', 'AbortError');
+      }
 
-      const fileName = relativePathParts.pop()!;
+      const entry = entries[i];
+      if (!entry) continue;
+      const { file, relativePath } = entry;
+      const pathParts = relativePath.split('/').filter(Boolean);
+
+      const fileName = pathParts.pop()!;
       let currentDir = volumeDir;
 
-      for (const part of relativePathParts) {
+      for (const part of pathParts) {
         currentDir = await currentDir.getDirectoryHandle(part, { create: true });
       }
 
@@ -992,7 +998,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       await writable.close();
 
       if (onProgress) {
-        onProgress({ processed: i + 1, total: files.length });
+        onProgress({ processed: i + 1, total: entries.length });
       }
     }
 
@@ -1035,6 +1041,16 @@ export class OPFSStorageProvider extends IStorageProvider {
       console.error('Failed to get volume directory handle:', e);
       return null;
     }
+  }
+
+  async renameVolume(params: { volumeId: string; name: string }): Promise<void> {
+    const { volumeId, name } = params;
+    const shard = this.getVolumeShardPath({ id: volumeId });
+    const index = await this.loadVolumeShardIndex({ shard });
+    const volume = index.volumes[volumeId];
+    if (!volume) throw new Error(`Volume not found: ${volumeId}`);
+    index.volumes[volumeId] = { ...volume, name };
+    await this.saveVolumeShardIndex({ shard, index });
   }
 
   async deleteVolume(params: { volumeId: string }): Promise<void> {

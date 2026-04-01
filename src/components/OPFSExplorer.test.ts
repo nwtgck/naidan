@@ -48,15 +48,15 @@ vi.mock('../composables/useConfirm', () => ({
 
 describe('OPFSExplorer.vue', () => {
   const globalStubs = {
-    Folder: true,
-    FileText: true,
-    Trash2: true,
-    ChevronLeft: true,
-    X: true,
-    ChevronRight: true,
-    HardDrive: true,
-    AlertCircle: true,
-    Braces: true,
+    FolderIcon: true,
+    FileTextIcon: true,
+    Trash2Icon: true,
+    ChevronLeftIcon: true,
+    XIcon: true,
+    ChevronRightIcon: true,
+    HardDriveIcon: true,
+    AlertCircleIcon: true,
+    BracesIcon: true,
   };
 
   beforeEach(() => {

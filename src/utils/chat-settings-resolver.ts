@@ -153,6 +153,7 @@ export function hasGroupOverrides({ group }: {
     titleModelId?: string;
     systemPrompt?: SystemPrompt;
     lmParameters?: ResolvableLmParameters;
+    mounts?: readonly { type: string }[];
   }
 }): boolean {
   return !!(
@@ -161,6 +162,7 @@ export function hasGroupOverrides({ group }: {
     group.autoTitleEnabled !== undefined ||
     group.titleModelId ||
     group.systemPrompt ||
+    (group.mounts && group.mounts.length > 0) ||
     (group.lmParameters && (Object.keys(group.lmParameters) as (keyof ResolvableLmParameters)[]).some(key => {
       switch (key) {
       case 'reasoning':

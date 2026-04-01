@@ -73,6 +73,49 @@ export const SystemPromptSchemaDto = z.discriminatedUnion('behavior', [
 ]);
 export type SystemPromptDto = z.infer<typeof SystemPromptSchemaDto>;
 
+// --- Volume Management & Mounts ---
+// User-facing label: "Folder". All internal identifiers use "volume".
+
+export const VolumeTypeSchemaDto = z.enum(['opfs', 'host']);
+export type VolumeTypeDto = z.infer<typeof VolumeTypeSchemaDto>;
+
+const VolumeBaseSchemaDto = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.number(),
+});
+
+export const VolumeOpfsSchemaDto = VolumeBaseSchemaDto.extend({
+  type: z.literal('opfs'),
+});
+
+export const VolumeHostSchemaDto = VolumeBaseSchemaDto.extend({
+  type: z.literal('host'),
+});
+
+export const VolumeSchemaDto = z.discriminatedUnion('type', [
+  VolumeOpfsSchemaDto,
+  VolumeHostSchemaDto,
+]);
+export type VolumeDto = z.infer<typeof VolumeSchemaDto>;
+
+export const VolumeIndexSchemaDto = z.object({
+  volumes: z.record(z.string(), VolumeSchemaDto),
+});
+export type VolumeIndexDto = z.infer<typeof VolumeIndexSchemaDto>;
+
+export const MountVolumeSchemaDto = z.object({
+  type: z.literal('volume'),
+  volumeId: z.string(),
+  mountPath: z.string(),
+  readOnly: z.boolean(),
+});
+
+export const MountSchemaDto = z.discriminatedUnion('type', [
+  MountVolumeSchemaDto,
+]);
+export type MountDto = z.infer<typeof MountSchemaDto>;
+
 // --- Grouping ---
 
 export const ChatGroupSchemaDto = z.object({
@@ -87,6 +130,7 @@ export const ChatGroupSchemaDto = z.object({
   titleModelId: orUndefined(z.string()),
   systemPrompt: orUndefined(SystemPromptSchemaDto),
   lmParameters: orUndefined(LmParametersSchemaDto),
+  mounts: orUndefined(z.array(MountSchemaDto)),
 });
 export type ChatGroupDto = z.infer<typeof ChatGroupSchemaDto>;
 
@@ -320,6 +364,7 @@ export const ChatMetaSchemaDto = z.object({
 
   systemPrompt: orUndefined(SystemPromptSchemaDto),
   lmParameters: orUndefined(LmParametersSchemaDto),
+  mounts: orUndefined(z.array(MountSchemaDto)),
 });
 
 export type ChatMetaDto = z.infer<typeof ChatMetaSchemaDto>;
@@ -358,48 +403,6 @@ export const ChatSchemaDto = ChatMetaSchemaDto.extend({
 });
 
 export type ChatDto = z.infer<typeof ChatSchemaDto>;
-
-// --- Volume Management & Mounts ---
-
-export const VolumeTypeSchemaDto = z.enum(['opfs', 'host']);
-export type VolumeTypeDto = z.infer<typeof VolumeTypeSchemaDto>;
-
-const VolumeBaseSchemaDto = z.object({
-  id: z.string(),
-  name: z.string(),
-  createdAt: z.number(),
-});
-
-export const VolumeOpfsSchemaDto = VolumeBaseSchemaDto.extend({
-  type: z.literal('opfs'),
-});
-
-export const VolumeHostSchemaDto = VolumeBaseSchemaDto.extend({
-  type: z.literal('host'),
-});
-
-export const VolumeSchemaDto = z.discriminatedUnion('type', [
-  VolumeOpfsSchemaDto,
-  VolumeHostSchemaDto,
-]);
-export type VolumeDto = z.infer<typeof VolumeSchemaDto>;
-
-export const VolumeIndexSchemaDto = z.object({
-  volumes: z.record(z.string(), VolumeSchemaDto),
-});
-export type VolumeIndexDto = z.infer<typeof VolumeIndexSchemaDto>;
-
-export const MountVolumeSchemaDto = z.object({
-  type: z.literal('volume'),
-  volumeId: z.string(),
-  mountPath: z.string(),
-  readOnly: z.boolean(),
-});
-
-export const MountSchemaDto = z.discriminatedUnion('type', [
-  MountVolumeSchemaDto,
-]);
-export type MountDto = z.infer<typeof MountSchemaDto>;
 
 // --- Provider Profiles ---
 

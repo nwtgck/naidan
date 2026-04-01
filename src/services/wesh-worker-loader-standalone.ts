@@ -1,14 +1,12 @@
 import {
   FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_ID,
   FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME,
-  FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_SCRIPT_TYPE,
-} from './wesh-worker.constants'
+} from '@/models/constants'
 
 function getEmbeddedWorkerSource({ workerId }: {
   workerId: string
 }): string {
-  const selector = `script[type="${FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_SCRIPT_TYPE}"][data-worker-id="${workerId}"]`
-  const scriptElement = document.querySelector(selector)
+  const scriptElement = document.getElementById(workerId)
 
   if (!(scriptElement instanceof HTMLScriptElement)) {
     throw new Error(`Embedded worker source not found: ${workerId}`)

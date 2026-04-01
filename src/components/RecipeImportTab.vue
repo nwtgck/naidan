@@ -2,7 +2,7 @@
 import { generateId } from '@/utils/id';
 import { ref, watch } from 'vue';
 import {
-  ChefHat, Save, AlertTriangle
+  ChefHatIcon, SaveIcon, AlertTriangleIcon
 } from 'lucide-vue-next';
 import { parseConcatenatedJson } from '@/utils/json-stream-parser';
 import { matchRecipeModels } from '@/utils/recipe-matcher';
@@ -120,7 +120,7 @@ defineExpose({
   <div data-testid="recipes-section" class="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-400">
     <section class="space-y-6">
       <div class="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-gray-800">
-        <ChefHat class="w-5 h-5 text-blue-500" />
+        <ChefHatIcon class="w-5 h-5 text-blue-500" />
         <h2 class="text-lg font-bold text-gray-800 dark:text-white tracking-tight">Recipes</h2>
       </div>
 
@@ -149,7 +149,7 @@ defineExpose({
 
         <div v-if="recipeAnalysisError" class="p-4 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/20 rounded-xl animate-in fade-in slide-in-from-top-1 duration-200">
           <p class="text-xs text-red-600 dark:text-red-400 font-bold flex items-center gap-2">
-            <AlertTriangle class="w-4 h-4" />
+            <AlertTriangleIcon class="w-4 h-4" />
             {{ recipeAnalysisError }}
           </p>
         </div>
@@ -164,7 +164,7 @@ defineExpose({
             class="px-8 py-3 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-2xl shadow-lg shadow-green-500/30 transition-all active:scale-95 flex items-center gap-2"
             data-testid="recipe-import-button"
           >
-            <Save class="w-4 h-4" />
+            <SaveIcon class="w-4 h-4" />
             Import Selected
           </button>
         </div>
@@ -202,7 +202,7 @@ defineExpose({
                     clear-label="Use Default Model"
                   />
                   <div v-if="item.matchError" class="text-[10px] px-2 py-1 bg-red-50 dark:bg-red-900/10 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-800 rounded-lg font-bold flex items-center gap-1.5 w-fit">
-                    <AlertTriangle class="w-3 h-3" />
+                    <AlertTriangleIcon class="w-3 h-3" />
                     {{ item.matchError }}
                   </div>
                 </div>

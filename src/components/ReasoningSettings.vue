@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue';
-import { Brain } from 'lucide-vue-next';
+import { BrainIcon } from 'lucide-vue-next';
 import type { Reasoning } from '@/models/types';
 
 defineOptions({
@@ -75,7 +75,7 @@ defineExpose({
 <template>
   <div class="px-3 py-2 border-b dark:border-gray-700">
     <div class="flex items-center gap-2 mb-2">
-      <Brain class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
+      <BrainIcon class="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
       <span class="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Think</span>
     </div>
 

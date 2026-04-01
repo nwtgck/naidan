@@ -1,7 +1,7 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { readFile, writeFile } from '@/services/wesh/utils/fs';
+import { readAllFileBytes, writeAllStreamToFile } from '@/services/wesh/utils/fs';
 
 type SortMode = 'lexical' | 'numeric' | 'general-numeric' | 'human-numeric' | 'month' | 'version';
 type SortOrder = 'forward' | 'reverse';
@@ -981,7 +981,7 @@ async function readInputItems({
 
   try {
     const fullPath = resolveInputPath({ cwd: context.cwd, path: file });
-    const bytes = await readFile({ files: context.files, path: fullPath });
+    const bytes = await readAllFileBytes({ files: context.files, path: fullPath });
     const text = new TextDecoder().decode(bytes);
     return {
       ok: true,
@@ -1187,10 +1187,16 @@ export const sortCommandDefinition: WeshCommandDefinition = {
       break;
     default: {
       const fullPath = resolveInputPath({ cwd: context.cwd, path: options.outputPath });
-      await writeFile({
+      await writeAllStreamToFile({
         files: context.files,
         path: fullPath,
-        data: new TextEncoder().encode(outputText),
+        mode: 'truncate',
+        stream: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(outputText));
+            controller.close();
+          },
+        }),
       });
       break;
     }

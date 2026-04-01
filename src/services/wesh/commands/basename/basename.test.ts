@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
-import { createWeshReadFileHandleFromText, createWeshWriteCaptureHandle } from '@/services/wesh/utils/test-stream';
+import { createTestReadHandleFromText, createTestWriteCaptureHandle } from '@/services/wesh/utils/test-stream';
 
 describe('basename command', () => {
   let wesh: Wesh;
@@ -18,12 +18,12 @@ describe('basename command', () => {
   }: {
     script: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -49,7 +49,10 @@ describe('basename command', () => {
     expect(single.stderr.text).toBe('');
     expect(single.result.exitCode).toBe(0);
 
-    expect(multiple.stdout.text).toBe('stdio\nstr2\n');
+    expect(multiple.stdout.text).toBe(`\
+stdio
+str2
+`);
     expect(multiple.stderr.text).toBe('');
     expect(multiple.result.exitCode).toBe(0);
   });

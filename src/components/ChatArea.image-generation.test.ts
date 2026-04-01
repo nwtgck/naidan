@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, nextTick, computed } from 'vue';
-import { Image, Send } from 'lucide-vue-next';
+import { ImageIcon, SendIcon } from 'lucide-vue-next';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
@@ -96,7 +96,7 @@ describe('ChatArea Image Generation Integration', () => {
     await nextTick();
 
     // Check if Image icon exists instead of Send icon
-    expect(wrapper.findComponent(Image).exists()).toBe(true);
+    expect(wrapper.findComponent(ImageIcon).exists()).toBe(true);
   });
 
   it('calls sendImageRequest when sending a message in image mode', async () => {
@@ -186,14 +186,14 @@ describe('ChatArea Image Generation Integration', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
     await nextTick();
-    expect(wrapper.findComponent(Image).exists()).toBe(true);
+    expect(wrapper.findComponent(ImageIcon).exists()).toBe(true);
 
     // Toggle off
     mockIsImageMode.value = false;
     await nextTick();
 
-    expect(wrapper.findComponent(Image).exists()).toBe(false);
-    expect(wrapper.findComponent(Send).exists()).toBe(true);
+    expect(wrapper.findComponent(ImageIcon).exists()).toBe(false);
+    expect(wrapper.findComponent(SendIcon).exists()).toBe(true);
   });
 
   it('passes the requested image count to sendImageRequest', async () => {

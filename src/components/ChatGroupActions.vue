@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { MoreHorizontal, Copy, Trash2, Search } from 'lucide-vue-next';
+import { MoreHorizontalIcon, CopyIcon, Trash2Icon, SearchIcon } from 'lucide-vue-next';
 import type { ChatGroup } from '@/models/types';
 
 defineProps<{
@@ -31,7 +31,7 @@ defineExpose({
       title="More Actions"
       data-testid="group-more-actions"
     >
-      <MoreHorizontal class="w-3.5 h-3.5" />
+      <MoreHorizontalIcon class="w-3.5 h-3.5" />
     </button>
 
     <Transition name="dropdown">
@@ -45,7 +45,7 @@ defineExpose({
           title="Search in Group"
           data-testid="search-in-group-button"
         >
-          <Search class="w-3.5 h-3.5" />
+          <SearchIcon class="w-3.5 h-3.5" />
           <span>Search in Group</span>
         </button>
         <button
@@ -54,7 +54,7 @@ defineExpose({
           title="Duplicate Group"
           data-testid="duplicate-group-button"
         >
-          <Copy class="w-3.5 h-3.5" />
+          <CopyIcon class="w-3.5 h-3.5" />
           <span>Duplicate Group</span>
         </button>
         <button
@@ -63,7 +63,7 @@ defineExpose({
           title="Delete Group"
           data-testid="delete-group-button"
         >
-          <Trash2 class="w-3.5 h-3.5" />
+          <Trash2Icon class="w-3.5 h-3.5" />
           <span>Delete Group</span>
         </button>
       </div>

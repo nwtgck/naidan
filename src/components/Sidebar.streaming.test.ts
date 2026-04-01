@@ -62,7 +62,7 @@ vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal<any>();
   return {
     ...actual,
-    Loader2: { template: '<div class="loader-mock animate-spin"></div>' },
+    Loader2Icon: { template: '<div class="loader-mock animate-spin"></div>' },
   };
 });
 

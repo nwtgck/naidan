@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 describe('wesh comm', () => {
@@ -47,12 +47,12 @@ describe('wesh comm', () => {
     script: string;
     stdinText?: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: stdinText }),
+      stdin: createTestReadHandleFromText({ text: stdinText }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -78,11 +78,19 @@ describe('wesh comm', () => {
   it('compares sorted files and supports column suppression', async () => {
     await writeFile({
       path: 'left.txt',
-      data: 'alpha\nbeta\ndelta\n',
+      data: `\
+alpha
+beta
+delta
+`,
     });
     await writeFile({
       path: 'right.txt',
-      data: 'beta\ngamma\ndelta\n',
+      data: `\
+beta
+gamma
+delta
+`,
     });
 
     const plain = await execute({ script: 'comm left.txt right.txt' });
@@ -104,7 +112,10 @@ describe('wesh comm', () => {
 
     const { result, stdout, stderr } = await execute({
       script: 'comm - right.txt',
-      stdinText: 'alpha\nbeta\n',
+      stdinText: `\
+alpha
+beta
+`,
     });
 
     expect(stderr.text).toBe('');
@@ -115,7 +126,10 @@ describe('wesh comm', () => {
   it('rejects repeated stdin operands', async () => {
     const { result, stdout, stderr } = await execute({
       script: 'comm - -',
-      stdinText: 'alpha\nbeta\n',
+      stdinText: `\
+alpha
+beta
+`,
     });
 
     expect(stdout.text).toBe('');

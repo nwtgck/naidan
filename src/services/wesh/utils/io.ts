@@ -1,13 +1,14 @@
 import type { WeshFileHandle } from '@/services/wesh/types';
 
-async function writeTextToHandle({
+async function writeAllTextToHandle({
   handle,
   text,
+  encoder,
 }: {
   handle: WeshFileHandle;
   text: string;
+  encoder: TextEncoder;
 }): Promise<void> {
-  const encoder = new TextEncoder();
   const data = encoder.encode(text);
   let totalWritten = 0;
 
@@ -24,7 +25,50 @@ async function writeTextToHandle({
   }
 }
 
-export function createTextHelpers({
+export function createBufferedTextWriter({
+  handle,
+  maxBufferLength,
+}: {
+  handle: WeshFileHandle;
+  maxBufferLength: number;
+}) {
+  const encoder = new TextEncoder();
+  let buffer = '';
+
+  return {
+    async write({
+      text,
+    }: {
+      text: string;
+    }): Promise<void> {
+      buffer += text;
+      if (buffer.length < maxBufferLength) {
+        return;
+      }
+
+      await writeAllTextToHandle({
+        handle,
+        text: buffer,
+        encoder,
+      });
+      buffer = '';
+    },
+    async flush(): Promise<void> {
+      if (buffer.length === 0) {
+        return;
+      }
+
+      await writeAllTextToHandle({
+        handle,
+        text: buffer,
+        encoder,
+      });
+      buffer = '';
+    },
+  };
+}
+
+export function createTextIoHelpers({
   stdin,
   stdout,
   stderr,
@@ -33,6 +77,8 @@ export function createTextHelpers({
   stdout: WeshFileHandle;
   stderr: WeshFileHandle;
 }) {
+  const encoder = new TextEncoder();
+
   // Async Iterable for reading lines from stdin
   const inputIterable: AsyncIterable<string> = {
     async *[Symbol.asyncIterator]() {
@@ -67,16 +113,18 @@ export function createTextHelpers({
   return {
     input: inputIterable,
     async print({ text }: { text: string }): Promise<void> {
-      await writeTextToHandle({
+      await writeAllTextToHandle({
         handle: stdout,
         text,
+        encoder,
       });
     },
 
     async error({ text }: { text: string }): Promise<void> {
-      await writeTextToHandle({
+      await writeAllTextToHandle({
         handle: stderr,
         text,
+        encoder,
       });
     },
   };

@@ -20,10 +20,10 @@ vi.mock('../composables/useSettings', () => ({
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
-  Clock: { render: () => null },
-  GitBranch: { render: () => null },
-  Loader2: { render: () => null },
-  MessageSquare: { render: () => null },
+  ClockIcon: { render: () => null },
+  GitBranchIcon: { render: () => null },
+  Loader2Icon: { render: () => null },
+  MessageSquareIcon: { render: () => null },
 }));
 
 // Mock MessageItem

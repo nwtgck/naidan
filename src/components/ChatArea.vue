@@ -13,6 +13,7 @@ import ToolCallGroupItem from './ToolCallGroupItem.vue';
 import MessageThinking from './MessageThinking.vue';
 import AssistantWaitingIndicator from './AssistantWaitingIndicator.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
+import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
@@ -33,11 +34,13 @@ const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => impo
 const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./ChatDebugInspector.vue'));
 // Lazily load the media shelf, prefetch on mounted.
 const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./ChatMediaShelf.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted(() => import('./ChatWeshTerminalModal.vue'));
 import {
-  Paperclip, X, GitFork, RefreshCw,
-  ArrowUp, Settings2, Download, MoreVertical, Bug,
-  Folder, FolderInput, ChevronRight, Hammer, Search, Image as ImageIcon, Zap,
-  Printer, Link
+  XIcon, GitForkIcon, RefreshCwIcon,
+  ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon,
+  FolderIcon, FolderInputIcon, ChevronRightIcon, HammerIcon, SearchIcon, ImageIcon,
+  PrinterIcon, LinkIcon, TerminalIcon
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
@@ -49,17 +52,19 @@ import { storageService } from '@/services/storage';
 
 
 const chatStore = useChat();
-const { settings, toggleMarkdownRendering } = useSettings();
 const { addToast } = useToast();
 const { state: previewState, closePreview } = useImagePreview(true);
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
   mediaShelfVisibility,
   setMediaShelfVisibility,
-  toggleMediaShelf
+  toggleMediaShelf,
+  isChatWeshTerminalOpen,
+  toggleChatWeshTerminal,
 } = useLayout();
 const {
   currentChat,
+  currentChatGroup,
   generatingTitle,
   activeMessages,
   allMessages,
@@ -79,6 +84,7 @@ const availableImageModels = computed(() => {
 
 const { setActiveFocusArea } = useLayout();
 type ChatInputVisibility = 'submerged' | 'peeking' | 'active';
+type ScrollForce = 'force' | 'if-near-bottom';
 const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
@@ -116,8 +122,11 @@ async function handleDrop(event: DragEvent) {
   event.preventDefault();
   isDragging.value = false;
 
-  if (event.dataTransfer?.files) {
-    await chatInputRef.value?.processFiles(Array.from(event.dataTransfer.files));
+  if (event.dataTransfer?.items) {
+    // Pass DataTransferItem[] to processDropItems which handles files AND directories.
+    // Items must be collected here (synchronously) before any await, as the DataTransfer
+    // object is cleared when control returns to the browser event loop.
+    await chatInputRef.value?.processDropItems(Array.from(event.dataTransfer.items));
   }
 }
 
@@ -136,6 +145,13 @@ const emit = defineEmits<{
 
 const isCurrentChatStreaming = computed(() => {
   return currentChat.value ? isProcessing(currentChat.value.id) : false;
+});
+
+// The index of the single flow item that should display the GeneratingIndicator.
+// Only the very last item during streaming gets the indicator — never more than one.
+const generatingIndicatorIndex = computed(() => {
+  if (!isCurrentChatStreaming.value) return -1;
+  return chatFlow.value.length - 1;
 });
 
 const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
@@ -300,14 +316,12 @@ function handlePrint() {
   }
 }
 
-function scrollToBottom(force = true) {
-  if (currentChat.value && isProcessing(currentChat.value.id)) return;
-
+function scrollToBottom({ scrollForce, behavior }: { scrollForce: ScrollForce, behavior: ScrollBehavior }) {
   if (container.value) {
     const { scrollTop, scrollHeight, clientHeight } = container.value;
     // Only auto-scroll if forced (new message) or already near the bottom
-    if (force || scrollHeight - scrollTop - clientHeight < 150) {
-      container.value.scrollTop = scrollHeight;
+    if (scrollForce === 'force' || scrollHeight - scrollTop - clientHeight < 150) {
+      container.value.scrollTo({ top: scrollHeight, behavior });
     }
   }
 }
@@ -484,10 +498,10 @@ async function scrollToLatestUserMessage() {
       behavior: 'instant'
     });
     if (!didScroll) {
-      scrollToBottom();
+      scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
     }
   } else {
-    scrollToBottom();
+    scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
   }
 }
 
@@ -527,7 +541,6 @@ watch(
       switch (role) {
       case 'user':
         hasScrolledToAssistant.value = false;
-        scrollToBottom();
         break;
       case 'assistant': {
         if (!hasScrolledToAssistant.value) {
@@ -580,8 +593,8 @@ watch(
       data-testid="drag-overlay"
     >
       <div class="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-xl flex items-center gap-3 animate-in zoom-in duration-200">
-        <Paperclip class="w-6 h-6 text-blue-500" />
-        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">Drop images to attach</span>
+        <FolderInputIcon class="w-6 h-6 text-blue-500" />
+        <span class="text-lg font-bold text-gray-800 dark:text-gray-100">Drop files or folders to attach</span>
       </div>
     </div>
 
@@ -598,7 +611,7 @@ watch(
                 title="Jump to original chat"
                 data-testid="jump-to-origin-button"
               >
-                <ArrowUp class="w-4 h-4" />
+                <ArrowUpIcon class="w-4 h-4" />
               </button>
               <h2 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
               <button
@@ -611,14 +624,14 @@ watch(
                 data-testid="regenerate-title-button"
               >
                 <div class="relative w-3.5 h-3.5 flex items-center justify-center">
-                  <RefreshCw
+                  <RefreshCwIcon
                     class="w-full h-full transition-all"
                     :class="{
                       'animate-spin': generatingTitle,
                       'group-hover/title:opacity-0 group-hover/title:scale-75': generatingTitle && !ignoreTitleHover
                     }"
                   />
-                  <X
+                  <XIcon
                     v-if="generatingTitle"
                     class="w-3.5 h-3.5 absolute opacity-0 transition-all text-red-500 scale-75"
                     :class="{ 'group-hover/title:opacity-100 group-hover/title:scale-100': !ignoreTitleHover }"
@@ -643,7 +656,7 @@ watch(
                 <span class="truncate max-w-[120px] sm:max-w-[200px]">
                   {{ chatInputRef?.formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId) }}
                 </span>
-                <Settings2 class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
+                <Settings2Icon class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
               </div>
               <div
                 v-if="currentChat && hasChatOverrides({ chat: currentChat })"
@@ -670,7 +683,7 @@ watch(
               title="Move to Group"
               data-testid="move-to-group-button"
             >
-              <FolderInput class="w-4.5 h-4.5" />
+              <FolderInputIcon class="w-4.5 h-4.5" />
             </button>
 
             <Transition name="dropdown">
@@ -689,10 +702,10 @@ watch(
                     :class="!currentChat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                   >
                     <div class="flex items-center gap-2">
-                      <X class="w-4 h-4 opacity-50" />
+                      <XIcon class="w-4 h-4 opacity-50" />
                       <span>Top Level</span>
                     </div>
-                    <ChevronRight v-if="!currentChat.groupId" class="w-4 h-4" />
+                    <ChevronRightIcon v-if="!currentChat.groupId" class="w-4 h-4" />
                   </button>
 
                   <button
@@ -703,10 +716,10 @@ watch(
                     :class="currentChat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                   >
                     <div class="flex items-center gap-2 overflow-hidden">
-                      <Folder class="w-4 h-4 opacity-50 shrink-0" />
+                      <FolderIcon class="w-4 h-4 opacity-50 shrink-0" />
                       <span class="truncate">{{ group.name }}</span>
                     </div>
-                    <ChevronRight v-if="currentChat.groupId === group.id" class="w-4 h-4" />
+                    <ChevronRightIcon v-if="currentChat.groupId === group.id" class="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -720,7 +733,7 @@ watch(
             title="Fork Chat from last message"
             data-testid="fork-chat-button"
           >
-            <GitFork class="w-4.5 h-4.5" />
+            <GitForkIcon class="w-4.5 h-4.5" />
           </button>
 
           <button
@@ -729,7 +742,7 @@ watch(
             title="Super Edit (Full History Manipulation)"
             data-testid="super-edit-button"
           >
-            <Hammer class="w-4.5 h-4.5 group-hover/hammer:-rotate-12 transition-all" />
+            <HammerIcon class="w-4.5 h-4.5 group-hover/hammer:-rotate-12 transition-all" />
           </button>
 
           <button
@@ -738,7 +751,7 @@ watch(
             title="Export as Markdown"
             data-testid="export-markdown-button"
           >
-            <Download class="w-4.5 h-4.5" />
+            <DownloadIcon class="w-4.5 h-4.5" />
           </button>
 
           <button
@@ -747,7 +760,7 @@ watch(
             title="More Actions"
             data-testid="more-actions-button"
           >
-            <MoreVertical class="w-4.5 h-4.5" />
+            <MoreVerticalIcon class="w-4.5 h-4.5" />
           </button>
         </div>
 
@@ -764,7 +777,7 @@ watch(
               title="Open print dialog (can be used to Save as PDF)"
               data-testid="print-chat-button"
             >
-              <Printer class="w-4 h-4" />
+              <PrinterIcon class="w-4 h-4" />
               <span>Print</span>
             </button>
             <button
@@ -772,7 +785,7 @@ watch(
               class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
               data-testid="search-in-chat-button"
             >
-              <Search class="w-4 h-4" />
+              <SearchIcon class="w-4 h-4" />
               <span>Search in Chat</span>
             </button>
             <button
@@ -793,8 +806,20 @@ watch(
               title="Copy a shareable URL containing this chat"
               data-testid="export-url-button"
             >
-              <Link class="w-4 h-4" />
+              <LinkIcon class="w-4 h-4" />
               <span>Export as URL</span>
+            </button>
+            <button
+              @click="toggleChatWeshTerminal(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
+              :class="isChatWeshTerminalOpen
+                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
+              "
+              data-testid="open-chat-wesh-terminal-button"
+            >
+              <TerminalIcon class="w-4 h-4" />
+              <span>Wesh Terminal</span>
             </button>
             <button
               @click="chatStore.toggleDebug(); showMoreMenu = false"
@@ -805,21 +830,8 @@ watch(
               "
               data-testid="toggle-debug-button"
             >
-              <Bug class="w-4 h-4" />
+              <BugIcon class="w-4 h-4" />
               <span>Debug Mode</span>
-            </button>
-            <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
-            <button
-              @click="toggleMarkdownRendering(); showMoreMenu = false"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-              :class="!settings.experimental || settings.experimental.markdownRendering === 'block_markdown'
-                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
-              "
-              data-testid="toggle-experimental-renderer-menu"
-            >
-              <Zap class="w-4 h-4" :class="{ 'animate-pulse': !settings.experimental || settings.experimental.markdownRendering === 'block_markdown' }" />
-              <span>Block Renderer</span>
             </button>
           </div>
         </Transition>
@@ -838,6 +850,15 @@ watch(
       @close="showHistoryModal = false"
     />
 
+    <!-- Chat Wesh Terminal Modal -->
+    <ChatWeshTerminalModal
+      :is-open="isChatWeshTerminalOpen"
+      :chat-mounts="currentChat?.mounts"
+      :chat-group-mounts="currentChatGroup?.mounts"
+      :chat-id="currentChat?.id"
+      @close="toggleChatWeshTerminal()"
+    />
+
     <!-- Messages Layer -->
     <div class="flex-1 relative overflow-hidden">
       <div
@@ -852,7 +873,7 @@ watch(
         </div>
         <template v-else>
           <div v-if="activeMessages.length > 0" class="relative p-2">
-            <template v-for="flowItem in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
+            <template v-for="(flowItem, flowIdx) in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
               <!-- AI Process Sequence (Collapsible Group) -->
               <AssistantProcessSequence
                 v-if="flowItem.type === 'process_sequence'"
@@ -863,6 +884,9 @@ watch(
                 :stats="flowItem.stats"
                 :is-first-in-turn="flowItem.isFirstInTurn"
               >
+                <template #cursor>
+                  <GeneratingIndicator v-if="flowIdx === generatingIndicatorIndex" class="ml-1" />
+                </template>
                 <template #peek>
                   <template v-if="flowItem.type === 'process_sequence' && flowItem.items.length > 0">
                     <template v-for="lastItem in ([flowItem.items[flowItem.items.length - 1]] as ChatFlowItem[])" :key="lastItem.type === 'message' ? lastItem.node.id : lastItem.id">
@@ -934,6 +958,7 @@ watch(
                 :is-first-in-node="flowItem.isFirstInNode"
                 :is-last-in-node="flowItem.isLastInNode"
                 :is-first-in-turn="flowItem.isFirstInTurn"
+                :show-generating-indicator="flowIdx === generatingIndicatorIndex"
                 @fork="handleFork"
                 @edit="(id, content, params) => handleEdit(id, content, params)"
                 @switch-version="handleSwitchVersion"
@@ -1001,7 +1026,7 @@ watch(
       :available-image-models="availableImageModels"
       :auto-send-prompt="autoSendPrompt"
       @auto-sent="emit('auto-sent')"
-      @scroll-to-bottom="scrollToBottom"
+      @scroll-to-bottom="(force) => scrollToBottom({ scrollForce: force ? 'force' : 'if-near-bottom', behavior: 'smooth' })"
     />
 
     <!-- Preview Modal -->

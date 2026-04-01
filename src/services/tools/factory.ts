@@ -1,21 +1,30 @@
 import type { Tool } from './types';
-import type { Settings } from '@/models/types';
+import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
 import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh-worker-client';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import type { WeshMount } from '@/services/wesh/types';
+import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
+import { buildShellDescription } from './shell-description';
 
 /**
  * Dynamically creates and returns a list of enabled tools based on settings.
+ * Mount resolution order: global (settings.mounts) → group → chat (per-chat overrides).
  */
 export async function getEnabledTools({
   enabledNames,
   settings,
+  chatGroupMounts,
+  chatMounts,
+  tmpHandle,
 }: {
   enabledNames: string[];
   settings: Settings;
+  chatGroupMounts?: Mount[];
+  chatMounts?: Mount[];
+  tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
 
@@ -31,37 +40,62 @@ export async function getEnabledTools({
         break;
       }
 
-      const root = await navigator.storage.getDirectory();
-      const rootHandle = await root.getDirectoryHandle('naidan-wesh-runtime', { create: true });
+      if (!tmpHandle) {
+        break;
+      }
 
-      // Resolve mounts from settings
-      const resolvedMounts: WeshMount[] = [];
-      for (const m of settings.mounts) {
+      // Resolve mounts: global → chat group → chat (later entries win on path conflict)
+      const allMounts = [...settings.mounts, ...(chatGroupMounts ?? []), ...(chatMounts ?? [])];
+      const resolvedMounts: WeshMount[] = [
+        { path: '/tmp', handle: tmpHandle, readOnly: false },
+      ];
+      const volumeHandles = new Map<string, FileSystemDirectoryHandle>();
+      for (const m of allMounts) {
         const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
         if (handle) {
           resolvedMounts.push({
             path: m.mountPath,
             handle,
-            readOnly: false, // Default to read-write for now as per MountVolume structure
+            readOnly: m.readOnly,
           });
+          volumeHandles.set(m.volumeId, handle);
         }
       }
 
+      // Start in /home/user only when at least one mount lives there.
+      const hasHomeUserMount = resolvedMounts.some(m => m.path.startsWith('/home/user/'));
       const client = await createFileProtocolCompatibleWeshWorkerClient({
-        rootHandle,
+        rootHandle: 'readonly',
         mounts: resolvedMounts,
         user: 'user',
         initialEnv: {},
-        initialCwd: undefined,
+        initialCwd: hasHomeUserMount ? '/home/user' : undefined,
       });
+
+      // Abort in-progress scans and read whatever has been collected so far.
+      abortOngoingScans();
+      const detectedExtensions = new Set<string>();
+      for (const m of allMounts) {
+        for (const ext of getVolumeExtensions({ volumeId: m.volumeId })) {
+          detectedExtensions.add(ext);
+        }
+      }
+
+      // Start background scans for volumes not yet scanned (e.g. after browser reload).
+      // Results will be available on the next send.
+      for (const [volumeId, handle] of volumeHandles) {
+        if (!isVolumeScanned({ volumeId })) {
+          startVolumeExtensionScan({ volumeId, handle });
+        }
+      }
 
       tools.push(createWeshTool({
         client,
         mounts: resolvedMounts,
         name: 'shell_execute',
-        description: undefined,
-        defaultStdoutLimit: 4096,
-        defaultStderrLimit: 4096,
+        description: buildShellDescription({ mounts: resolvedMounts, detectedExtensions }),
+        defaultStdoutLimit: 32768,
+        defaultStderrLimit: 16384,
       }));
       break;
     }

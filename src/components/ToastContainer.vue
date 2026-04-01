@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '@/composables/useToast';
-import { X } from 'lucide-vue-next';
+import { XIcon } from 'lucide-vue-next';
 
 const { toasts, removeToast } = useToast();
 
@@ -41,7 +41,7 @@ defineExpose({
           @click="removeToast(toast.id, 'dismiss')"
           class="text-gray-500 hover:text-gray-300 transition-colors"
         >
-          <X class="w-4 h-4" />
+          <XIcon class="w-4 h-4" />
         </button>
       </div>
     </TransitionGroup>

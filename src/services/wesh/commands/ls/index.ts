@@ -128,9 +128,11 @@ export const lsCommandDefinition: WeshCommandDefinition = {
           symlinkMode,
           isCommandLineArgument,
         });
-        const entries = await context.files.readDir({ path: directoryPath });
-        const filtered = (a ? entries : entries.filter((entry) => !entry.name.startsWith('.')))
-          .slice()
+        const allEntries: Array<{ name: string; type: WeshFileType }> = [];
+        for await (const entry of context.files.readDir({ path: directoryPath })) {
+          allEntries.push(entry);
+        }
+        const filtered = (a ? allEntries : allEntries.filter((entry) => !entry.name.startsWith('.')))
           .sort((left, right) => left.name.localeCompare(right.name));
 
         if (printHeader) {

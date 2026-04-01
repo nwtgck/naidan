@@ -4,12 +4,20 @@ import { mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { Check } from 'lucide-vue-next';
+import { CheckIcon } from 'lucide-vue-next';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
+}));
+
+vi.mock('../services/storage', () => ({
+  storageService: {
+    getFile: vi.fn().mockResolvedValue(null),
+    getBinaryObject: vi.fn().mockResolvedValue(null),
+    subscribeToChanges: vi.fn().mockReturnValue(() => {}),
+  },
 }));
 
 describe('MessageItem Rendering', () => {
@@ -24,7 +32,7 @@ describe('MessageItem Rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
+      settings: ref({}),
     });
   });
 
@@ -38,13 +46,16 @@ describe('MessageItem Rendering', () => {
   });
 
   it('applies syntax highlighting to code blocks', () => {
-    const message = createMessage('```python\nprint("hello")\n```');
+    const message = createMessage(`\
+\`\`\`python
+print("hello")
+\`\`\``);
     const wrapper = mount(MessageItem, { props: { message } });
 
     const html = wrapper.html();
-    // highlight.js should wrap the code in spans with hljs classes
-    expect(html).toContain('language-python');
+    // BlockMarkdownRenderer uses hljs for highlighting and shows the language label
     expect(html).toContain('hljs');
+    expect(html).toContain('python');
   });
 
   it('sanitizes dangerous HTML', () => {
@@ -157,7 +168,7 @@ describe('MessageItem Rendering', () => {
     await nextTick();
 
     // Icon should change to checkmark
-    expect(wrapper.findComponent(Check).exists()).toBe(true);
+    expect(wrapper.findComponent(CheckIcon).exists()).toBe(true);
   });
 
   it('copies raw message content to clipboard via more actions menu', async () => {
@@ -188,62 +199,63 @@ describe('MessageItem Rendering', () => {
   });
 
   it('toggles mermaid display modes', async () => {
-    const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+    const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
     const wrapper = mount(MessageItem, { props: { message } });
-
-    // Mode should be preview by default
-    expect(wrapper.find('.mermaid-raw').attributes('style')).toContain('display: none');
-    expect(wrapper.find('.mermaid').attributes('style')).not.toContain('display: none');
-
-    // Manually set mode to 'code' via VM
-    (wrapper.vm as unknown as { mermaidMode: string }).mermaidMode = 'code';
-    await nextTick();
     await nextTick();
 
-    expect(wrapper.find('.mermaid-raw').attributes('style')).not.toContain('display: none');
-    expect(wrapper.find('.mermaid').attributes('style')).toContain('display: none');
+    // Default mode: preview area exists
+    expect(wrapper.find('.mermaid').exists()).toBe(true);
+    expect(wrapper.find('button[title="Code"]').exists()).toBe(true);
 
-    // Manually set mode to 'both'
-    (wrapper.vm as unknown as { mermaidMode: string }).mermaidMode = 'both';
+    // Switch to Code mode — code text should be visible
+    await wrapper.find('button[title="Code"]').trigger('click');
     await nextTick();
+    expect(wrapper.text()).toContain('graph TD; A-->B;');
+
+    // Switch to Split View — still shows code text
+    await wrapper.find('button[title="Split View"]').trigger('click');
     await nextTick();
-
-    const finalRaw = wrapper.find('.mermaid-raw').attributes('style') || '';
-    const finalDiagram = wrapper.find('.mermaid').attributes('style') || '';
-
-    expect(finalRaw).not.toContain('display: none');
-    expect(finalDiagram).not.toContain('display: none');
+    expect(wrapper.text()).toContain('graph TD; A-->B;');
   });
 
   describe('Mermaid UI Design Consistency', () => {
     it('has the correct layout structure and classes for positioning', async () => {
-      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
 
       const html = wrapper.html();
-      expect(html).toContain('mermaid-block relative group/mermaid');
-      expect(html).toContain('mermaid-ui-overlay');
-      expect(html).toContain('mermaid-tabs');
+      expect(html).toContain('mermaid-block');
+      expect(html).toContain('group/mermaid');
     });
 
-    it('contains Mermaid tabs with correct labels', async () => {
-      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+    it('contains Mermaid mode buttons', async () => {
+      const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
 
-      const tabs = wrapper.findAll('.mermaid-tab');
-      expect(tabs.length).toBe(3);
-      expect(tabs[0]!.text()).toContain('Preview');
-      expect(tabs[1]!.text()).toContain('Code');
-      expect(tabs[2]!.text()).toContain('Both');
+      expect(wrapper.find('button[title="Preview"]').exists()).toBe(true);
+      expect(wrapper.find('button[title="Code"]').exists()).toBe(true);
+      expect(wrapper.find('button[title="Split View"]').exists()).toBe(true);
     });
 
     it('handles Mermaid copy button click', async () => {
       vi.useFakeTimers();
-      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
       const wrapper = mount(MessageItem, {
         props: { message },
         attachTo: document.body,
@@ -257,47 +269,44 @@ describe('MessageItem Rendering', () => {
         configurable: true,
       });
 
-      const copyBtn = wrapper.find('.mermaid-copy-btn');
+      const copyBtn = wrapper.find('.mermaid-block button[title="Copy Source"]');
       expect(copyBtn.exists()).toBe(true);
 
       await copyBtn.trigger('click');
       await nextTick();
 
       expect(writeText).toHaveBeenCalledWith('graph TD; A-->B;');
-      expect(copyBtn.text()).toContain('Copied');
+      expect(wrapper.find('.mermaid-block button[title="Copied"]').exists()).toBe(true);
 
       // Check revert
       vi.advanceTimersByTime(2100);
       await nextTick();
-      expect(copyBtn.text()).toContain('Copy');
+      expect(wrapper.find('.mermaid-block button[title="Copy Source"]').exists()).toBe(true);
 
       vi.useRealTimers();
       wrapper.unmount();
     });
 
     it('has the correct design classes for Mermaid copy button', async () => {
-      const message = createMessage('```mermaid\ngraph TD; A-->B;\n```');
+      const message = createMessage(`\
+\`\`\`mermaid
+graph TD; A-->B;
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       await nextTick();
       await nextTick();
 
-      const copyBtn = wrapper.find('.mermaid-copy-btn');
+      const copyBtn = wrapper.find('.mermaid-block button[title="Copy Source"]');
       expect(copyBtn.exists()).toBe(true);
-
-      const cls = copyBtn.classes();
-      expect(cls).toContain('bg-white/90');
-      expect(cls).toContain('dark:bg-gray-800/90');
-      expect(cls).toContain('backdrop-blur-sm');
-      expect(cls).toContain('rounded-md');
-      expect(cls).toContain('shadow-sm');
-      expect(cls).toContain('opacity-0'); // Hidden by default
-      expect(cls).toContain('group-hover/mermaid:opacity-100'); // Show on hover
-      expect(copyBtn.attributes('title')).toBe('Copy Mermaid code');
+      expect(copyBtn.classes()).toContain('rounded-md');
     });
   });
   describe('Code Block Toolbar', () => {
     it('renders the code block toolbar with language label and copy button', () => {
-      const message = createMessage('```javascript\nconst a = 1;\n```');
+      const message = createMessage(`\
+\`\`\`javascript
+const a = 1;
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       const html = wrapper.html();
 
@@ -306,13 +315,15 @@ describe('MessageItem Rendering', () => {
       expect(html).toContain('group/code');
 
       // Check for header toolbar
-      expect(html).toContain('code-copy-btn');
       expect(html).toContain('javascript'); // Language label
-      expect(html).toContain('Copy'); // Button text
+      expect(wrapper.find('button[title="Copy code"]').exists()).toBe(true);
     });
 
     it('ensures correct styling classes are applied to avoid white frame', () => {
-      const message = createMessage('```python\nprint("test")\n```');
+      const message = createMessage(`\
+\`\`\`python
+print("test")
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
       const html = wrapper.html();
 
@@ -326,10 +337,12 @@ describe('MessageItem Rendering', () => {
     });
 
     it('handles copy button click and visual feedback', async () => {
-      // Use fake timers BEFORE the action
       vi.useFakeTimers();
 
-      const message = createMessage('```typescript\nconst x: number = 42;\n```');
+      const message = createMessage(`\
+\`\`\`typescript
+const x: number = 42;
+\`\`\``);
       const wrapper = mount(MessageItem, {
         props: { message },
         attachTo: document.body,
@@ -342,41 +355,39 @@ describe('MessageItem Rendering', () => {
         configurable: true,
       });
 
-      const copyBtn = wrapper.find('.code-copy-btn');
-      const btnEl = copyBtn.element;
+      const copyBtn = wrapper.find('button[title="Copy code"]');
+      expect(copyBtn.exists()).toBe(true);
 
-      // Trigger click
       await copyBtn.trigger('click');
-
-      // The click handler is async, so we need to wait for the promise to resolve
-      // but since it's an event listener, we just need a tick.
       await nextTick();
 
-      // Verify clipboard call
+      // After click, button title changes to 'Copied'
       expect(writeText).toHaveBeenCalledWith('const x: number = 42;');
-      expect(btnEl.innerHTML).toContain('Copied');
+      expect(wrapper.find('button[title="Copied"]').exists()).toBe(true);
 
       // Advance timers and wait for Vue to update the DOM
       vi.advanceTimersByTime(2100);
       await nextTick();
 
-      expect(btnEl.innerHTML).toContain('Copy');
+      expect(wrapper.find('button[title="Copy code"]').exists()).toBe(true);
 
       vi.useRealTimers();
       wrapper.unmount();
     });
 
     it('has the correct design classes for standard code block copy button', () => {
-      const message = createMessage('```js\nconsole.log(1);\n```');
+      const message = createMessage(`\
+\`\`\`js
+console.log(1);
+\`\`\``);
       const wrapper = mount(MessageItem, { props: { message } });
-      const copyBtn = wrapper.find('.code-copy-btn');
+      const copyBtn = wrapper.find('button[title="Copy code"]');
 
+      expect(copyBtn.exists()).toBe(true);
       expect(copyBtn.classes()).toContain('flex');
       expect(copyBtn.classes()).toContain('items-center');
-      expect(copyBtn.classes()).toContain('gap-1.5');
       expect(copyBtn.classes()).toContain('hover:text-white');
       expect(copyBtn.classes()).toContain('transition-colors');
-      expect(copyBtn.attributes('title')).toBe('Copy code');
     });
   });
 });
@@ -1052,5 +1063,104 @@ describe('MessageItem Actions Menu', () => {
     expect(wrapper.emitted('fork')?.[0]).toEqual([message.id]);
 
     wrapper.unmount();
+  });
+});
+
+describe('MessageItem showGeneratingIndicator', () => {
+  const createAssistantMessage = (content: string, thinking?: string): MessageNode => ({
+    id: generateId(),
+    role: 'assistant',
+    content,
+    thinking,
+    timestamp: Date.now(),
+    replies: { items: [] },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (useSettings as any).mockReturnValue({
+      settings: ref({}),
+    });
+  });
+
+  describe('content mode', () => {
+    it('shows generating indicator when showGeneratingIndicator=true and content is present', () => {
+      const message = createAssistantMessage('Hello world');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'content', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
+    });
+
+    it('does not show generating indicator when showGeneratingIndicator=false', () => {
+      const message = createAssistantMessage('Hello world');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'content', showGeneratingIndicator: false },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+
+    it('does not show generating indicator when content is empty even if showGeneratingIndicator=true', () => {
+      // Empty content → BlockMarkdownRenderer not rendered, so no indicator
+      const message = createAssistantMessage('');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'content', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+  });
+
+  describe('thinking mode', () => {
+    it('shows generating indicator in thinking mode (active thinking) when showGeneratingIndicator=true', () => {
+      // Unclosed think tag → collapsed-active → indicator renders inline
+      const message = createAssistantMessage('<think>Streaming...');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'thinking', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
+    });
+
+    it('shows generating indicator after thinking pill (collapsed-finished) when showGeneratingIndicator=true', () => {
+      const message = createAssistantMessage('Response', 'Completed thought');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'thinking', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(true);
+    });
+
+    it('does not show generating indicator in thinking mode when showGeneratingIndicator=false', () => {
+      const message = createAssistantMessage('<think>Streaming...');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'thinking', showGeneratingIndicator: false },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+  });
+
+  describe('waiting mode', () => {
+    it('does NOT show generating indicator in waiting mode even when showGeneratingIndicator=true', () => {
+      // waiting mode intentionally never shows the indicator
+      const message = createAssistantMessage('');
+      const wrapper = mount(MessageItem, {
+        props: { message, mode: 'waiting', showGeneratingIndicator: true },
+      });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
+  });
+
+  describe('default prop value', () => {
+    it('defaults showGeneratingIndicator to false', () => {
+      const message = createAssistantMessage('Hello');
+      const wrapper = mount(MessageItem, { props: { message } });
+
+      expect(wrapper.find('[data-testid="generating-indicator"]').exists()).toBe(false);
+    });
   });
 });

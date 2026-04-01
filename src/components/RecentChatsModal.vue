@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { X, Eye, Search } from 'lucide-vue-next';
+import { XIcon, EyeIcon, SearchIcon } from 'lucide-vue-next';
 import { useRecentChats } from '@/composables/useRecentChats';
 import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
@@ -227,7 +227,7 @@ defineExpose({
       <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[70vh] overflow-hidden transform transition-all scale-100 outline-none" @click.stop @keydown="handleKeydown" tabindex="-1">
 
         <div class="flex items-center gap-3 p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
-          <Search class="w-5 h-5 text-gray-400" />
+          <SearchIcon class="w-5 h-5 text-gray-400" />
           <input
             ref="searchInput"
             v-model="filterQuery"
@@ -240,7 +240,7 @@ defineExpose({
           />
           <button @click="closeRecent" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             <kbd class="hidden sm:inline-block px-1.5 py-0.5 text-xs font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 mr-2">ESC</kbd>
-            <X class="w-5 h-5 inline-block" />
+            <XIcon class="w-5 h-5 inline-block" />
           </button>
         </div>
 
@@ -294,7 +294,7 @@ defineExpose({
             </template>
             <div v-else class="h-full flex items-center justify-center bg-gray-50/50 dark:bg-gray-950/20">
               <div class="flex flex-col items-center gap-2 opacity-20">
-                <Eye class="w-8 h-8 text-gray-400" />
+                <EyeIcon class="w-8 h-8 text-gray-400" />
                 <span class="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Peek</span>
               </div>
             </div>

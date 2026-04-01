@@ -1,6 +1,6 @@
 import { fileTypeFromBuffer } from 'file-type';
 import type { WeshCommandContext } from '@/services/wesh/types';
-import { readFile } from '@/services/wesh/utils/fs';
+import { readAllFileBytes } from '@/services/wesh/utils/fs';
 import type { FileCommandClassification, FileCommandTargetInfo } from './types';
 
 function resolvePath({
@@ -197,7 +197,7 @@ export async function detectFileClassification({
     return { kind: 'empty' };
   }
 
-  const bytes = await readFile({
+  const bytes = await readAllFileBytes({
     files: context.files,
     path: target.resolvedPath,
   });

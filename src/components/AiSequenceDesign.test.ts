@@ -42,7 +42,7 @@ describe('AI Sequence Design', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (useSettings as any).mockReturnValue({
-      settings: ref({ experimental: { markdownRendering: 'monolithic_html' } }),
+      settings: ref({}),
     });
   });
 

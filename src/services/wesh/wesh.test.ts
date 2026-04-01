@@ -2,9 +2,60 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { Wesh } from './index';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from './utils/test-stream';
+import {
+  createReadHandleFromStream,
+  createWriteHandleFromStream,
+} from './utils/stream';
+import type { WeshFileHandle, WeshStat } from './types';
+
+function createBlockingWriteHandle() {
+  let closed = false;
+  let resolveWrite: ((value: { bytesWritten: number }) => void) | undefined;
+
+  const handle: WeshFileHandle = {
+    async read() {
+      throw new Error('File not open for reading');
+    },
+    async write({ length, buffer, offset }) {
+      if (closed) {
+        return { bytesWritten: 0 };
+      }
+      const actualOffset = offset ?? 0;
+      const actualLength = length ?? (buffer.length - actualOffset);
+      return new Promise<{ bytesWritten: number }>(resolve => {
+        resolveWrite = resolve;
+        void actualLength;
+      });
+    },
+    async close() {
+      closed = true;
+      resolveWrite?.({ bytesWritten: 0 });
+      resolveWrite = undefined;
+    },
+    async stat(): Promise<WeshStat> {
+      return {
+        size: 0,
+        mode: 0o600,
+        type: 'fifo',
+        mtime: Date.now(),
+        ino: 0,
+        uid: 0,
+        gid: 0,
+      };
+    },
+    async truncate() {},
+    async ioctl() {
+      return { ret: 0 };
+    },
+  };
+
+  return {
+    handle,
+  };
+}
 
 describe('Wesh Shell', () => {
   let wesh: Wesh;
@@ -30,9 +81,9 @@ describe('Wesh Shell', () => {
   });
 
   it('executes simple commands', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({ script: 'echo hello', stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('hello');
@@ -40,22 +91,22 @@ describe('Wesh Shell', () => {
   });
 
   it('handles variable assignment', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     await wesh.execute({ script: 'MYVAR=test', stdin, stdout: stdout.handle, stderr: stderr.handle });
 
-    const stdout2 = createWeshWriteCaptureHandle();
+    const stdout2 = createTestWriteCaptureHandle();
     const result = await wesh.execute({ script: 'echo $MYVAR', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('test');
     expect(result.exitCode).toBe(0);
   });
 
   it('handles sequential commands with ;', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({ script: 'echo A; echo B', stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('A');
@@ -64,48 +115,945 @@ describe('Wesh Shell', () => {
   });
 
   it('handles logical AND (&&)', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({ script: 'echo A && echo B', stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('A');
     expect(stdout.text).toContain('B');
     expect(result.exitCode).toBe(0);
 
-    const stdout2 = createWeshWriteCaptureHandle();
+    const stdout2 = createTestWriteCaptureHandle();
     const resultFail = await wesh.execute({ script: 'false && echo B', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(resultFail.exitCode).not.toBe(0);
     expect(stdout2.text).not.toContain('B');
   });
 
   it('handles if statements', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     await wesh.execute({ script: 'if true; then echo yes; else echo no; fi', stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('yes');
 
-    const stdout2 = createWeshWriteCaptureHandle();
+    const stdout2 = createTestWriteCaptureHandle();
     await wesh.execute({ script: 'if false; then echo yes; else echo no; fi', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('no');
   });
 
   it('handles for loops', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     await wesh.execute({ script: 'for i in A B; do echo $i; done', stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('A');
     expect(stdout.text).toContain('B');
   });
 
+  it('handles while loops and break', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+i=0
+while true; do
+  echo $i
+  i=$((i + 1))
+  if [[ $i == 3 ]]; then
+    break
+  fi
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+0
+1
+2
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('handles until loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+i=0
+until [[ $i == 3 ]]; do
+  echo $i
+  i=$((i + 1))
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+0
+1
+2
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('handles continue inside loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+for item in a skip b; do
+  if [[ $item == skip ]]; then
+    continue
+  fi
+  echo $item
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+a
+b
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports nested break and continue levels', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+for outer in 1 2; do
+  for inner in a skip stop z; do
+    if [[ $inner == skip ]]; then
+      continue
+    fi
+    if [[ $inner == stop ]]; then
+      break 2
+    fi
+    echo "$outer:$inner"
+  done
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('1:a\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports continue levels across nested loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+for outer in 1 2; do
+  for inner in keep skip done; do
+    if [[ $inner == skip ]]; then
+      continue 2
+    fi
+    echo "$outer:$inner"
+  done
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+1:keep
+2:keep
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports break outside loops as an error', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: 'break 2',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('break');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('keeps loop state changes isolated inside pipeline stages', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+printf 'a\nb\n' | while read line; do
+  seen=$line
+done
+echo "$seen"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('updates parent shell state for redirected while loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+while read line; do
+  seen=$line
+done <<EOF
+alpha
+EOF
+echo "$seen"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('alpha\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('streams while loop output before stdin closes', async () => {
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined = undefined;
+    let resolveFirstWrite: (() => void) | undefined = undefined;
+    const firstWrite = new Promise<void>((resolve) => {
+      resolveFirstWrite = resolve;
+    });
+    const outputChunks: string[] = [];
+
+    const stdin = createReadHandleFromStream({
+      source: new ReadableStream<Uint8Array>({
+        start(nextController) {
+          controller = nextController;
+          nextController.enqueue(encoder.encode('alpha\n'));
+        },
+      }),
+    });
+    const stdout = createWriteHandleFromStream({
+      target: new WritableStream<Uint8Array>({
+        write(chunk) {
+          outputChunks.push(decoder.decode(chunk, { stream: true }));
+          resolveFirstWrite?.();
+          resolveFirstWrite = undefined;
+        },
+        close() {
+          outputChunks.push(decoder.decode());
+        },
+      }),
+    });
+    const stderr = createTestWriteCaptureHandle();
+
+    const resultPromise = wesh.execute({
+      script: `\
+while read line; do
+  echo "<$line>"
+done`,
+      stdin,
+      stdout,
+      stderr: stderr.handle,
+    });
+
+    await firstWrite;
+    expect(outputChunks.join('')).toContain('<alpha>');
+
+    expect(controller).toBeDefined();
+    controller!.enqueue(encoder.encode('beta\n'));
+    controller!.close();
+
+    const result = await resultPromise;
+    expect(outputChunks.join('')).toBe(`\
+<alpha>
+<beta>
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps cloned stream output handles writable after closing the original reference', async () => {
+    const chunks: Uint8Array[] = [];
+    const handle = createWriteHandleFromStream({
+      target: new WritableStream<Uint8Array>({
+        write: async (chunk) => {
+          chunks.push(new Uint8Array(chunk));
+        },
+      }),
+    });
+    const clone = handle.cloneReference?.();
+    if (clone === undefined) {
+      throw new Error('Expected stream write handle to support cloneReference');
+    }
+
+    await handle.close();
+    const bytes = new TextEncoder().encode('alpha');
+    const result = await clone.write({ buffer: bytes });
+    await clone.close();
+
+    expect(result.bytesWritten).toBe(bytes.length);
+    expect(new TextDecoder().decode(chunks[0])).toBe('alpha');
+  });
+
+  it('unblocks pending reads when a stream input handle reference is closed', async () => {
+    let resumePull: (() => void) | undefined;
+    const handle = createReadHandleFromStream({
+      source: new ReadableStream<Uint8Array>({
+        async pull() {
+          await new Promise<void>(resolve => {
+            resumePull = resolve;
+          });
+        },
+      }),
+    });
+
+    const readPromise = handle.read({
+      buffer: new Uint8Array(16),
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await handle.close();
+    resumePull?.();
+
+    await expect(readPromise).resolves.toEqual({ bytesRead: 0 });
+  });
+
+  it('keeps cloned pipe output handles writable after closing the original reference', async () => {
+    const { read, write } = await wesh.kernel.pipe();
+    const clone = write.cloneReference?.();
+    if (clone === undefined) {
+      throw new Error('Expected pipe write handle to support cloneReference');
+    }
+
+    await write.close();
+    const bytes = new TextEncoder().encode('alpha');
+    const writeResult = await clone.write({ buffer: bytes });
+    await clone.close();
+
+    const readBuffer = new Uint8Array(16);
+    const readResult = await read.read({ buffer: readBuffer });
+    const eofResult = await read.read({ buffer: readBuffer });
+    await read.close();
+
+    expect(writeResult.bytesWritten).toBe(bytes.length);
+    expect(new TextDecoder().decode(readBuffer.subarray(0, readResult.bytesRead))).toBe('alpha');
+    expect(eofResult).toEqual({ bytesRead: 0 });
+  });
+
+  it('unblocks pending reads when a cloned pipe input handle reference is closed', async () => {
+    const { read, write } = await wesh.kernel.pipe();
+    const clone = read.cloneReference?.();
+    if (clone === undefined) {
+      throw new Error('Expected pipe read handle to support cloneReference');
+    }
+
+    const readPromise = clone.read({
+      buffer: new Uint8Array(16),
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await clone.close();
+    await write.close();
+    await read.close();
+
+    await expect(readPromise).resolves.toEqual({ bytesRead: 0 });
+  });
+
+  it('supports shell functions and return', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+greet() {
+  echo "hello $1"
+  return 7
+}
+greet world
+echo $?`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+hello world
+7
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports function keyword syntax and current-shell mutation', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+function set_value {
+  VALUE=inside
+}
+set_value
+echo "$VALUE"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('inside\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports function keyword with parentheses syntax', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+function greet() {
+  echo "hello $1"
+}
+greet world`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('hello world\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps function state changes isolated inside pipeline stages', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+set_value() {
+  VALUE=inside
+}
+set_value | cat
+echo "$VALUE"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('reports return outside a shell function as an error', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: 'return 4',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('return');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('uses the last command status for return without an explicit code', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+propagate() {
+  false
+  return
+}
+propagate
+echo $?`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('1\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('stops executing the rest of a function body after return', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+early() {
+  echo before
+  return 4
+  echo after
+}
+early
+echo $?`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+before
+4
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('propagates break from shell functions to surrounding loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+stop_loop() {
+  break
+}
+for item in one two; do
+  echo "start:$item"
+  stop_loop
+  echo "after:$item"
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('start:one\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('propagates continue from shell functions to surrounding loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+skip_rest() {
+  continue
+}
+for item in one two; do
+  echo "start:$item"
+  skip_rest
+  echo "after:$item"
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+start:one
+start:two
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('handles case statements', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=beta
+case "$value" in
+  alpha)
+    echo first
+    ;;
+  beta|gamma)
+    echo second
+    ;;
+  *)
+    echo fallback
+    ;;
+esac`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('second\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('handles case wildcard fallbacks', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=delta
+case "$value" in
+  alpha)
+    echo first
+    ;;
+  beta|gamma)
+    echo second
+    ;;
+  *)
+    echo fallback
+    ;;
+esac`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('fallback\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('handles command substitution and trims trailing newlines', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=$(printf 'one\ntwo\n\n')
+echo "<$value>"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+<one
+two>
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('distinguishes quoted and unquoted command substitution field splitting', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+show_args() {
+  echo "$#:$1:$2"
+}
+show_args $(printf 'one two')
+show_args "$(printf 'one two')"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+2:one:two
+1:one two:
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports nested command substitution', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+echo "$(printf '%s' "$(printf inner)")"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('inner\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps command substitution shell state isolated from the parent shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+VAR=parent
+value=$(VAR=child; helper() { echo nested; }; echo "$VAR")
+echo "$value"
+echo "$VAR"
+helper`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+child
+parent
+`);
+    expect(stderr.text).toContain('Command not found');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('keeps trap changes in command substitution isolated from the parent shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=$(trap -- 'echo child-exit' EXIT; echo body)
+echo "$value"
+trap -p`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+body
+child-exit
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports [[ ]] conditionals', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=alphabet
+if [[ -n $value && $value == alpha* ]]; then
+  echo match
+fi`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('match\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports [[ ]] negation and grouped boolean logic', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=alphabet
+if [[ ! -z $value && ($value == alpha* || $value == beta*) ]]; then
+  echo grouped
+fi`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('grouped\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports arithmetic commands with side effects', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+i=1
+((i++))
+echo "$i"
+((i == 2))
+echo $?`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+2
+0
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports arithmetic conditions in while loops', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+i=0
+while ((i < 3)); do
+  echo "$i"
+  ((i += 1))
+done`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+0
+1
+2
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports parameter default, assignment, alternate, and pattern removal expansions', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+unset MISSING
+value=alphabet-suffix
+echo "\${MISSING:-fallback}"
+echo "\${MISSING:=assigned}"
+echo "$MISSING"
+echo "\${value:+alt}"
+echo "\${value#alpha}"
+echo "\${value%suffix}"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+fallback
+assigned
+assigned
+alt
+bet-suffix
+alphabet-
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports brace expansion while leaving quoted braces literal', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+echo pre{a,b}post
+echo "{a,b}"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+preapost prebpost
+{a,b}
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('treats quoted here-doc delimiters as literal content', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+value=expanded
+cat <<EOF
+$value
+EOF
+cat <<'EOF'
+$value
+EOF`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+expanded
+$value
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports file redirection and reading (Mock OPFS)', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     await wesh.execute({ script: 'echo "file content" > test.txt', stdin, stdout: stdout.handle, stderr: stderr.handle });
 
@@ -114,66 +1062,328 @@ describe('Wesh Shell', () => {
     const text = await file.text();
     expect(text).toContain('file content');
 
-    const stdout2 = createWeshWriteCaptureHandle();
+    const stdout2 = createTestWriteCaptureHandle();
     const catResult = await wesh.execute({ script: 'cat test.txt', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('file content');
     expect(catResult.exitCode).toBe(0);
   });
 
+  it('supports process substitution as redirected while-loop input in the parent shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+while read line; do
+  seen=$line
+done < <(printf 'alpha\nbeta\n')
+echo "$seen"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('beta\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports output process substitution in redirections', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+cat > >(cat > captured.txt) <<EOF
+alpha
+beta
+EOF`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    const handle = await rootHandle.getFileHandle('captured.txt');
+    const file = await handle.getFile();
+
+    expect(await file.text()).toBe(`\
+alpha
+beta
+`);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports case inside shell functions', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+describe_value() {
+  case "$1" in
+    alpha) echo first ;;
+    beta) echo second ;;
+    *) echo other ;;
+  esac
+}
+describe_value beta`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('second\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('keeps trap changes made in shell functions in the current shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+install_trap() {
+  trap -- 'echo from-function' EXIT
+}
+install_trap
+trap -p`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toContain(`trap -- 'echo from-function' EXIT`);
+    expect(stdout.text).toContain('from-function');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('runs signal traps installed from shell functions', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    wesh.registerCommand({
+      definition: {
+        meta: {
+          name: 'signal-int',
+          description: 'Send SIGINT to the current process group',
+          usage: 'signal-int',
+        },
+        fn: async ({ context }) => {
+          await context.process.signalGroup({
+            signal: 2,
+          });
+          throw new Error('foreground process group interrupted');
+        },
+      },
+    });
+
+    const result = await wesh.execute({
+      script: `\
+install_int_trap() {
+  trap -- 'echo function-int >&2' INT
+}
+install_int_trap
+signal-int`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toBe('function-int\n');
+  });
+
+  it('supports combined stdin and stdout redirection on compound while commands', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+while read line; do
+  echo "item:$line"
+done > loop.txt <<EOF
+alpha
+beta
+EOF
+cat loop.txt`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+item:alpha
+item:beta
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('combines redirected while loops with case, arithmetic, and command substitution', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+total=0
+while read line; do
+  case "$line" in
+    add:*)
+      value=\${line#add:}
+      ((total += value))
+      ;;
+    emit)
+      echo "$(printf 'sum=%s' "$total")"
+      ;;
+  esac
+done <<EOF
+add:2
+add:3
+emit
+EOF
+echo "$total"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+sum=5
+5
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('combines shell functions with while, case, and pipeline isolation', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+summarize() {
+  total=0
+  while read line; do
+    case "$line" in
+      add:*)
+        value=\${line#add:}
+        ((total += value))
+        ;;
+      emit)
+        echo "$(printf 'sum=%s' "$total")"
+        ;;
+    esac
+  done
+}
+printf 'add:2\nadd:3\nemit\n' | summarize
+echo "$total"`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe(`\
+sum=5
+
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('handles subshells ( isolation )', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     await wesh.execute({ script: 'VAR=parent', stdin, stdout: stdout.handle, stderr: stderr.handle });
 
-    const stdout2 = createWeshWriteCaptureHandle();
+    const stdout2 = createTestWriteCaptureHandle();
     await wesh.execute({ script: '(VAR=child; echo $VAR); echo $VAR', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('child');
     expect(stdout2.text).toContain('parent');
 
     // Check that child assignment didn't leak
-    const stdout3 = createWeshWriteCaptureHandle();
+    const stdout3 = createTestWriteCaptureHandle();
     await wesh.execute({ script: 'echo $VAR', stdin, stdout: stdout3.handle, stderr: stderr.handle });
     expect(stdout3.text).toBe('parent\n');
   });
 
-  it('handles here-documents (<<EOF)', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+  it('keeps function definitions created in subshells isolated from the parent shell', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
-    await wesh.execute({ script: 'cat <<EOF\nhello\nworld\nEOF', stdin, stdout: stdout.handle, stderr: stderr.handle });
+    const result = await wesh.execute({
+      script: `\
+(tempfn() { echo child; })
+tempfn`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stdout.text).toBe('');
+    expect(stderr.text).toContain('Command not found');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('handles here-documents (<<EOF)', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    await wesh.execute({ script: `\
+cat <<EOF
+hello
+world
+EOF`, stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('hello');
     expect(stdout.text).toContain('world');
   });
 
   it('handles here-strings (<<<)', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     await wesh.execute({ script: 'cat <<< "hello world"', stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('hello world');
   });
 
   it('handles process substitution <(cmd)', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     await wesh.execute({ script: 'cat <(echo "subst")', stdin, stdout: stdout.handle, stderr: stderr.handle });
     expect(stdout.text).toContain('subst');
   });
 
   it('handles environment variable maps ( Map compliance )', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     await wesh.execute({ script: 'export TEST_MAP=1', stdin, stdout: stdout.handle, stderr: stderr.handle });
 
-    const stdout2 = createWeshWriteCaptureHandle();
+    const stdout2 = createTestWriteCaptureHandle();
     await wesh.execute({ script: 'env', stdin, stdout: stdout2.handle, stderr: stderr.handle });
     expect(stdout2.text).toContain('TEST_MAP=1');
   });
@@ -184,9 +1394,9 @@ describe('Wesh Shell', () => {
     await writable.write(`first\n${'x'.repeat(131072)}`);
     await writable.close();
 
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script: 'cat large.txt | head -n 1',
@@ -201,9 +1411,9 @@ describe('Wesh Shell', () => {
   });
 
   it('does not leak pipeline builtin state changes back to the parent shell', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script: `\
@@ -220,9 +1430,9 @@ echo "$PIPE_VALUE"`,
   });
 
   it('runs pipeline commands in distinct processes that share a process group', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
     const seenProcesses: Array<{ pid: number; pgid: number }> = [];
 
     wesh.registerCommand({
@@ -260,9 +1470,9 @@ echo "$PIPE_VALUE"`,
   });
 
   it('stores traps in the current shell and lists them', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script: `\
@@ -279,9 +1489,9 @@ trap -p`,
   });
 
   it('keeps trap changes in subshells isolated from the parent shell', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script: `\
@@ -300,9 +1510,9 @@ trap -p`,
   });
 
   it('runs EXIT traps when the shell finishes', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script: `\
@@ -322,9 +1532,9 @@ exit-trap
   });
 
   it('preserves $? while EXIT traps run', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script: `\
@@ -343,9 +1553,9 @@ false`,
   });
 
   it('runs subshell EXIT traps without overwriting the parent trap', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script: `\
@@ -372,9 +1582,9 @@ parent-exit
     await writable.write(`first\n${'x'.repeat(131072)}`);
     await writable.close();
 
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script: `\
@@ -395,9 +1605,9 @@ pipe-trap
   });
 
   it('preserves $? while signal traps run', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     wesh.registerCommand({
       definition: {
@@ -436,9 +1646,9 @@ signal-pipe`,
   });
 
   it('runs INT traps when a command signals its foreground process group', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     wesh.registerCommand({
       definition: {
@@ -477,9 +1687,9 @@ int-trap
   });
 
   it('signals the foreground process group through the shell API', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
       script: `\
@@ -507,9 +1717,9 @@ shell-int
   });
 
   it('ignores foreground SIGINT when trap disposition is ignore', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
       script: `\
@@ -535,9 +1745,9 @@ sleep 0.05`,
   });
 
   it('does not mark the top-level shell process as signaled when interrupting the foreground group', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
       script: `\
@@ -556,9 +1766,9 @@ sleep 1`,
   });
 
   it('signals the foreground pipeline process group through the shell API', async () => {
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
       script: `\
@@ -585,8 +1795,8 @@ sleep 1 | cat`,
 
   it('interrupts commands blocked on input reads', async () => {
     const { read, write } = await wesh.kernel.pipe();
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
       script: 'cat',
@@ -615,9 +1825,9 @@ sleep 1 | cat`,
       handler: () => read,
     });
 
-    const stdin = createWeshReadFileHandleFromText({ text: '' });
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const execution = wesh.execute({
       script: 'cat /dev/hold',
@@ -639,6 +1849,96 @@ sleep 1 | cat`,
       signal: 2,
     });
     expect(result.exitCode).toBe(130);
+  });
+
+  it('interrupts commands blocked on stdout writes', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createBlockingWriteHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: 'echo blocked-stdout',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await Promise.race([
+      execution,
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('interrupting blocked stdout write timed out')), 250);
+      }),
+    ]);
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+  });
+
+  it('interrupts commands blocked on stderr writes', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createBlockingWriteHandle();
+
+    const execution = wesh.execute({
+      script: 'echo blocked-stderr >&2',
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await Promise.race([
+      execution,
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('interrupting blocked stderr write timed out')), 250);
+      }),
+    ]);
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+  });
+
+  it('interrupts foreground pipelines blocked on stdout writes', async () => {
+    const stdin = createTestReadHandleFromText({ text: '' });
+    const stdout = createBlockingWriteHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const execution = wesh.execute({
+      script: `\
+trap -- 'echo pipeline-blocked >&2' INT
+printf 'alpha\n' | cat`,
+      stdin,
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const signaled = await wesh.signalForegroundProcessGroup({ signal: 2 });
+    const result = await Promise.race([
+      execution,
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('interrupting blocked pipeline stdout write timed out')), 250);
+      }),
+    ]);
+
+    expect(signaled).toBe(true);
+    expect(result.waitStatus).toEqual({
+      kind: 'signaled',
+      signal: 2,
+    });
+    expect(result.exitCode).toBe(130);
+    expect(stderr.text).toContain('pipeline-blocked\n');
   });
 
   it('does not rewrite wait status when signaling an already terminated process', async () => {

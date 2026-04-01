@@ -1,7 +1,14 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { handleToStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
+
+function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+  if (path.startsWith('/')) {
+    return path;
+  }
+  return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
+}
 
 const zcatArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -52,14 +59,15 @@ export const zcatCommandDefinition: WeshCommandDefinition = {
     for (const f of inputs) {
       if (f === undefined) continue;
       try {
-        const stream = f === '-'
-          ? handleToStream({ handle: context.stdin })
-          : handleToStream({
-            handle: await context.files.open({
-              path: f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`),
-              flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-            }),
+        let stream: ReadableStream<Uint8Array>;
+        if (f === '-') {
+          stream = openHandleReadStream({ handle: context.stdin });
+        } else {
+          stream = await openFileReadStream({
+            files: context.files,
+            path: resolvePath({ cwd: context.cwd, path: f }),
           });
+        }
         const decompressor = new DecompressionStream('gzip');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const decompressedStream = stream.pipeThrough(decompressor as any) as ReadableStream<Uint8Array>;

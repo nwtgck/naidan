@@ -108,6 +108,7 @@ export class OllamaProvider implements LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
+    onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
     onToolResult?: (params: {
       id: string;
       result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
@@ -115,7 +116,7 @@ export class OllamaProvider implements LLMProvider {
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, onToolCall, onToolResult, onAssistantMessageStart, signal } = params;
+    const { messages, model, onChunk, parameters, tools, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
 
@@ -428,7 +429,13 @@ export class OllamaProvider implements LLMProvider {
               const validatedArgs = tool.parametersSchema.strict().parse(args);
 
               onToolCall?.({ id: tc.id, toolName: tool.name, args: validatedArgs });
-              const executionResult = await tool.execute({ args: validatedArgs, signal });
+              const executionResult = await tool.execute({
+                args: validatedArgs,
+                signal,
+                onEvent: async (event) => {
+                  onToolEvent?.({ id: tc.id, event });
+                },
+              });
 
               if (signal?.aborted) throw new Error('Generation aborted');
 
@@ -446,6 +453,8 @@ export class OllamaProvider implements LLMProvider {
               }
               }
             } catch (e) {
+              if (e instanceof Error && e.message === 'Generation aborted') throw e;
+
               const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };

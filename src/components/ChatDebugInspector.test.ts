@@ -3,37 +3,37 @@ import { mount } from '@vue/test-utils';
 import ChatDebugInspector from './ChatDebugInspector.vue';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
-import { Network } from 'lucide-vue-next';
+import { NetworkIcon } from 'lucide-vue-next';
 import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/models/types';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
-  Bug: { template: '<span>Bug</span>' },
-  X: { template: '<span>X</span>' },
-  MessageSquare: { template: '<span>MessageSquare</span>' },
-  Network: { template: '<span>Network</span>' },
-  FileCode: { template: '<span>FileCode</span>' },
-  Highlighter: { template: '<span>Highlighter</span>' },
-  ZapOff: { template: '<span>ZapOff</span>' },
-  ChevronLeft: { template: '<span>ChevronLeft</span>' },
-  ChevronRight: { template: '<span>ChevronRight</span>' },
-  ChevronDown: { template: '<span>ChevronDown</span>' },
-  Copy: { template: '<span>Copy</span>' },
-  Check: { template: '<span>Check</span>' },
-  Image: { template: '<span>Image</span>' },
-  File: { template: '<span>File</span>' },
-  Cpu: { template: '<span>Cpu</span>' },
-  Fingerprint: { template: '<span>Fingerprint</span>' },
-  Eye: { template: '<span>Eye</span>' },
-  EyeOff: { template: '<span>EyeOff</span>' },
-  CornerUpRight: { template: '<span>CornerUpRight</span>' },
-  ZoomIn: { template: '<span>ZoomIn</span>' },
-  ZoomOut: { template: '<span>ZoomOut</span>' },
-  RefreshCw: { template: '<span>RefreshCw</span>' },
-  Calendar: { template: '<span>Calendar</span>' },
-  Info: { template: '<span>Info</span>' },
-  Download: { template: '<span>Download</span>' },
-  Trash2: { template: '<span>Trash2</span>' }
+  BugIcon: { template: '<span>Bug</span>' },
+  XIcon: { template: '<span>X</span>' },
+  MessageSquareIcon: { template: '<span>MessageSquare</span>' },
+  NetworkIcon: { template: '<span>Network</span>' },
+  FileCodeIcon: { template: '<span>FileCode</span>' },
+  HighlighterIcon: { template: '<span>Highlighter</span>' },
+  ZapOffIcon: { template: '<span>ZapOff</span>' },
+  ChevronLeftIcon: { template: '<span>ChevronLeft</span>' },
+  ChevronRightIcon: { template: '<span>ChevronRight</span>' },
+  ChevronDownIcon: { template: '<span>ChevronDown</span>' },
+  CopyIcon: { template: '<span>Copy</span>' },
+  CheckIcon: { template: '<span>Check</span>' },
+  ImageIcon: { template: '<span>Image</span>' },
+  FileIcon: { template: '<span>File</span>' },
+  CpuIcon: { template: '<span>Cpu</span>' },
+  FingerprintIcon: { template: '<span>Fingerprint</span>' },
+  EyeIcon: { template: '<span>Eye</span>' },
+  EyeOffIcon: { template: '<span>EyeOff</span>' },
+  CornerUpRightIcon: { template: '<span>CornerUpRight</span>' },
+  ZoomInIcon: { template: '<span>ZoomIn</span>' },
+  ZoomOutIcon: { template: '<span>ZoomOut</span>' },
+  RefreshCwIcon: { template: '<span>RefreshCw</span>' },
+  CalendarIcon: { template: '<span>Calendar</span>' },
+  InfoIcon: { template: '<span>Info</span>' },
+  DownloadIcon: { template: '<span>Download</span>' },
+  Trash2Icon: { template: '<span>Trash2</span>' }
 }));
 
 const mockPush = vi.fn();
@@ -275,7 +275,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
     await nextTick();
-    expect(wrapper.findComponent(Network).exists()).toBe(true);
+    expect(wrapper.findComponent(NetworkIcon).exists()).toBe(true);
   });
 
   it('Scenario 8: ModelID Display', async () => {
@@ -350,7 +350,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
     await nextTick();
 
-    expect(wrapper.findComponent(Network).exists()).toBe(true);
+    expect(wrapper.findComponent(NetworkIcon).exists()).toBe(true);
     expect(wrapper.findAllComponents(ChatDebugTreeNode).length).toBe(0);
   });
 

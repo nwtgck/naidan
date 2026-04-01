@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Copy, Check, Download, ExternalLink } from 'lucide-vue-next';
+import { CopyIcon, CheckIcon, DownloadIcon, ExternalLinkIcon } from 'lucide-vue-next';
 
 const detectOS = () => {
   if (typeof window === 'undefined' || !window.navigator) return 'windows';
@@ -25,7 +25,9 @@ const ollamaServeCommand = computed(() => {
     case 'windows':
       return '$env:OLLAMA_ORIGINS="*"; ollama serve';
     case 'mac':
-      return 'brew services stop ollama\nOLLAMA_ORIGINS="*" ollama serve';
+      return `\
+brew services stop ollama
+OLLAMA_ORIGINS="*" ollama serve`;
     case 'linux':
       return 'OLLAMA_ORIGINS="*" ollama serve';
     default: {
@@ -144,9 +146,9 @@ defineExpose({
                   rel="noopener noreferrer"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors max-w-full overflow-hidden"
                 >
-                  <Download class="w-3.5 h-3.5 shrink-0" />
+                  <DownloadIcon class="w-3.5 h-3.5 shrink-0" />
                   <span class="truncate">Ollama <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">External</span></span>
-                  <ExternalLink class="w-3 h-3 opacity-50 shrink-0" />
+                  <ExternalLinkIcon class="w-3 h-3 opacity-50 shrink-0" />
                 </a>
                 <div v-else-if="guides.ollama[activeOs].installCommand" class="relative group">
                   <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].installCommand }}</code></pre>
@@ -154,8 +156,8 @@ defineExpose({
                     @click="copyToClipboard(guides.ollama[activeOs].installCommand!, 'ollama-install')"
                     class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                   >
-                    <Check v-if="copiedCommand === 'ollama-install'" class="w-3 h-3 text-white" />
-                    <Copy v-else class="w-3 h-3" />
+                    <CheckIcon v-if="copiedCommand === 'ollama-install'" class="w-3 h-3 text-white" />
+                    <CopyIcon v-else class="w-3 h-3" />
                   </button>
                 </div>
               </div>
@@ -176,8 +178,8 @@ defineExpose({
                       @click="copyToClipboard(ollamaServeCommand, 'ollama-serve')"
                       class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                     >
-                      <Check v-if="copiedCommand === 'ollama-serve'" class="w-3 h-3 text-white" />
-                      <Copy v-else class="w-3 h-3" />
+                      <CheckIcon v-if="copiedCommand === 'ollama-serve'" class="w-3 h-3 text-white" />
+                      <CopyIcon v-else class="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -191,8 +193,8 @@ defineExpose({
                       @click="copyToClipboard(guides.ollama[activeOs].runCommand, 'ollama-run')"
                       class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                     >
-                      <Check v-if="copiedCommand === 'ollama-run'" class="w-3 h-3 text-white" />
-                      <Copy v-else class="w-3 h-3" />
+                      <CheckIcon v-if="copiedCommand === 'ollama-run'" class="w-3 h-3 text-white" />
+                      <CopyIcon v-else class="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -216,9 +218,9 @@ defineExpose({
                 rel="noopener noreferrer"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-[11px] font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors max-w-full overflow-hidden"
               >
-                <Download class="w-3.5 h-3.5 shrink-0" />
+                <DownloadIcon class="w-3.5 h-3.5 shrink-0" />
                 <span class="truncate">Releases <span class="text-[9px] opacity-80 font-bold uppercase tracking-tighter bg-amber-50 dark:bg-amber-900/20 px-1 rounded text-amber-600 dark:text-amber-400 ml-1">External</span></span>
-                <ExternalLink class="w-3 h-3 opacity-50 shrink-0" />
+                <ExternalLinkIcon class="w-3 h-3 opacity-50 shrink-0" />
               </a>
             </div>
           </div>
@@ -237,8 +239,8 @@ defineExpose({
                   @click="copyToClipboard(guides['llama-server'].all.runCommand, 'llama-run')"
                   class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                 >
-                  <Check v-if="copiedCommand === 'llama-run'" class="w-3 h-3 text-white" />
-                  <Copy v-else class="w-3 h-3" />
+                  <CheckIcon v-if="copiedCommand === 'llama-run'" class="w-3 h-3 text-white" />
+                  <CopyIcon v-else class="w-3 h-3" />
                 </button>
               </div>
             </div>

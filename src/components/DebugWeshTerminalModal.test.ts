@@ -4,7 +4,10 @@ import { ref } from 'vue';
 import DebugWeshTerminalModal from './DebugWeshTerminalModal.vue';
 
 const mocks = vi.hoisted(() => ({
-  execute: vi.fn().mockResolvedValue({ exitCode: 0, stdout: '', stderr: '' }),
+  startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
+  awaitExecution: vi.fn().mockResolvedValue({ exitCode: 0 }),
+  cancelExecution: vi.fn().mockResolvedValue(true),
+  disposeExecution: vi.fn().mockResolvedValue(undefined),
   dispose: vi.fn().mockResolvedValue(undefined),
   createClient: vi.fn(),
   getVolumeDirectoryHandle: vi.fn().mockResolvedValue({} as FileSystemDirectoryHandle),
@@ -39,10 +42,9 @@ vi.mock('@/composables/useConfirm', () => ({
 }));
 
 vi.mock('lucide-vue-next', () => ({
-  X: { template: '<span>X</span>' },
-  Terminal: { template: '<span>Terminal</span>' },
-  Play: { template: '<span>Play</span>' },
-  Plus: { template: '<span>Plus</span>' },
+  XIcon: { template: '<span>X</span>' },
+  TerminalIcon: { template: '<span>Terminal</span>' },
+  PlusIcon: { template: '<span>Plus</span>' },
 }));
 
 describe('DebugWeshTerminalModal', () => {
@@ -50,8 +52,10 @@ describe('DebugWeshTerminalModal', () => {
     vi.clearAllMocks();
     mocks.showConfirm.mockResolvedValue(true);
     mocks.createClient.mockResolvedValue({
-      execute: mocks.execute,
-      interrupt: vi.fn(),
+      startExecution: mocks.startExecution,
+      awaitExecution: mocks.awaitExecution,
+      cancelExecution: mocks.cancelExecution,
+      disposeExecution: mocks.disposeExecution,
       dispose: mocks.dispose,
     });
     const globalRoot = {
@@ -92,8 +96,7 @@ describe('DebugWeshTerminalModal', () => {
       initialCwd: undefined,
     }));
     expect(wrapper.text()).toContain('Session 1');
-    expect(wrapper.text()).toContain('New Session');
-    expect(wrapper.text()).not.toContain('/naidan-debug-wesh/global');
+    expect(wrapper.find('[data-testid="new-session-button"]').exists()).toBe(true);
   });
 
   it('asks for confirmation before closing a session', async () => {
@@ -109,28 +112,36 @@ describe('DebugWeshTerminalModal', () => {
     expect(mocks.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it('hides the next prompt while a command is running', async () => {
-    let resolveExecute: ((value: { exitCode: number; stdout: string; stderr: string }) => void) | undefined;
-    mocks.execute.mockImplementation(() => new Promise((resolve) => {
-      resolveExecute = resolve;
-    }));
+  it('shows input as readonly while a command is running, then writable again', async () => {
+    let resolveAwaitExecution: ((value: { exitCode: number }) => void) | undefined;
+    mocks.startExecution.mockResolvedValue({ executionId: 'exec-1' });
+    mocks.awaitExecution.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveAwaitExecution = resolve;
+      })
+    );
 
     const wrapper = mount(DebugWeshTerminalModal, {
       props: { isOpen: true },
     });
     await flushPromises();
 
-    const textarea = wrapper.get('textarea');
+    const textarea = wrapper.get('[data-testid="terminal-input"]');
     await textarea.setValue('pwd');
-    const runButton = wrapper.findAll('button').find(button => button.text() === 'Run');
-    expect(runButton).toBeTruthy();
-    await runButton!.trigger('click');
 
-    expect(wrapper.text()).toContain('Running...');
-    expect(wrapper.find('textarea').exists()).toBe(false);
-
-    resolveExecute?.({ exitCode: 0, stdout: '', stderr: '' });
+    // Trigger Enter keydown to submit
+    await textarea.trigger('keydown', { key: 'Enter', shiftKey: false });
     await flushPromises();
-    expect(wrapper.find('textarea').exists()).toBe(true);
+
+    // Textarea still exists but is readonly while running
+    expect(wrapper.find('[data-testid="terminal-input"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="terminal-input"]').attributes('readonly')).toBeDefined();
+
+    // Resolve the command
+    resolveAwaitExecution?.({ exitCode: 0 });
+    await flushPromises();
+
+    // Textarea is no longer readonly
+    expect(wrapper.get('[data-testid="terminal-input"]').attributes('readonly')).toBeUndefined();
   });
 });

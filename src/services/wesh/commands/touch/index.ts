@@ -1,7 +1,7 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { exists, writeFile } from '@/services/wesh/utils/fs';
+import { checkFileExists, writeAllFileBytes } from '@/services/wesh/utils/fs';
 
 const touchArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -87,14 +87,14 @@ export const touchCommandDefinition: WeshCommandDefinition = {
       if (p === undefined) continue;
       try {
         const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
-        const isExists = await exists({ files: context.files, path: fullPath });
+        const isExists = await checkFileExists({ files: context.files, path: fullPath });
 
         if (!isExists) {
           if (noCreate) {
             continue;
           }
           // Create empty file
-          await writeFile({ files: context.files, path: fullPath, data: new Uint8Array(0) });
+          await writeAllFileBytes({ files: context.files, path: fullPath, data: new Uint8Array(0) });
         } else {
           const handle = await context.files.open({
             path: fullPath,

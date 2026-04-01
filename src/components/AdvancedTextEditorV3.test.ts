@@ -218,7 +218,10 @@ Line 3`;
       });
 
       const wrapper = mount(AdvancedTextEditorV3, {
-        props: { ...defaultProps, initialValue: 'Line 1\nLine 2\nLine 3' },
+        props: { ...defaultProps, initialValue: `\
+Line 1
+Line 2
+Line 3` },
         attachTo: document.body
       });
       const vm = wrapper.vm as any;
@@ -265,7 +268,10 @@ Line 3`;
 
     it('syncs line numbers on scroll', async () => {
       const wrapper = mount(AdvancedTextEditorV3, {
-        props: { ...defaultProps, initialValue: 'Line 1\nLine 2\nLine 3' },
+        props: { ...defaultProps, initialValue: `\
+Line 1
+Line 2
+Line 3` },
       });
 
       const textarea = wrapper.find('textarea');
@@ -361,7 +367,10 @@ Line 3`;
   describe('Line-based model', () => {
     it('stores content as lines internally', () => {
       const wrapper = mount(AdvancedTextEditorV3, {
-        props: { ...defaultProps, initialValue: 'line1\nline2\nline3' },
+        props: { ...defaultProps, initialValue: `\
+line1
+line2
+line3` },
       });
       const vm = wrapper.vm as any;
 
@@ -375,7 +384,9 @@ Line 3`;
       const vm = wrapper.vm as any;
 
       const textarea = wrapper.find('textarea');
-      await textarea.setValue('foo\nbar');
+      await textarea.setValue(`\
+foo
+bar`);
 
       expect(vm.__testOnly.lines.value).toEqual(['foo', 'bar']);
     });
@@ -401,7 +412,9 @@ Line 3`;
 
     it('Ctrl+E moves cursor to end of line', async () => {
       const wrapper = mount(AdvancedTextEditorV3, {
-        props: { ...defaultProps, initialValue: 'hello world\nsecond line' },
+        props: { ...defaultProps, initialValue: `\
+hello world
+second line` },
         attachTo: document.body,
       });
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import type { ContentMatch, SearchResultItem } from '@/composables/useChatSearch';
-import { GitBranch, Loader2, MessageSquare } from 'lucide-vue-next';
+import { GitBranchIcon, Loader2Icon, MessageSquareIcon } from 'lucide-vue-next';
 import { storageService } from '@/services/storage';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 import type { MessageNode, Chat } from '@/models/types';
@@ -85,7 +85,7 @@ defineExpose({
     <div v-if="!match && !chat" class="flex-1 flex items-center justify-center text-gray-400 p-8 text-center">
       <div class="flex flex-col items-center gap-4">
         <div class="p-4 bg-gray-100 dark:bg-gray-800 rounded-2xl">
-          <MessageSquare class="w-8 h-8 opacity-20" />
+          <MessageSquareIcon class="w-8 h-8 opacity-20" />
         </div>
         <span class="text-sm font-bold uppercase tracking-widest opacity-50">Select an item to preview</span>
       </div>
@@ -93,7 +93,7 @@ defineExpose({
 
     <!-- Loading State -->
     <div v-else-if="isLoading" class="flex-1 flex items-center justify-center text-gray-400">
-      <Loader2 class="w-6 h-6 animate-spin" />
+      <Loader2Icon class="w-6 h-6 animate-spin" />
     </div>
 
     <!-- Message Preview (Both for Match and Chat) -->
@@ -109,7 +109,7 @@ defineExpose({
         </div>
 
         <div v-if="match && !match.isCurrentThread" class="flex items-center gap-1.5 text-[9px] font-bold bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-2 py-1 rounded-full border border-amber-100 dark:border-amber-800/50">
-          <GitBranch class="w-3 h-3" />
+          <GitBranchIcon class="w-3 h-3" />
           <span>ALT BRANCH</span>
         </div>
       </div>

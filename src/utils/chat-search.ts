@@ -1,4 +1,4 @@
-import type { MessageBranch, MessageNode } from '@/models/types';
+import type { MessageBranch, MessageNode, Role } from '@/models/types';
 import { findDeepestLeaf } from './chat-tree';
 
 export interface ContentMatch {
@@ -12,6 +12,25 @@ export interface ContentMatch {
   isCurrentThread: boolean;
 }
 
+export type SearchRoleFilter = 'all' | 'user' | 'assistant';
+
+function matchesRoleFilter({ role, roleFilter }: {
+  role: Role,
+  roleFilter: SearchRoleFilter,
+}) {
+  switch (roleFilter) {
+  case 'all':
+    return true;
+  case 'user':
+  case 'assistant':
+    return role === roleFilter;
+  default: {
+    const _exhaustiveCheck: never = roleFilter;
+    throw new Error(`Unhandled role filter: ${_exhaustiveCheck}`);
+  }
+  }
+}
+
 /**
  * Recursively searches for text within a message tree, including all branches.
  * Returns all matches found.
@@ -21,21 +40,23 @@ export interface ContentMatch {
  * @param params.chatId The ID of the chat being searched
  * @param params.activeBranchIds Set of message IDs that are in the active thread (optional)
  */
-export function searchChatTree({ root, query, chatId, activeBranchIds }: {
+export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilter }: {
   root: MessageBranch;
   query: string;
   chatId: string;
   activeBranchIds?: Set<string>;
+  roleFilter?: SearchRoleFilter;
 }): ContentMatch[] {
   const matches: ContentMatch[] = [];
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
+  const effectiveRoleFilter = roleFilter ?? 'all';
 
   if (keywords.length === 0) return [];
 
   function traverse(items: MessageNode[]) {
     for (const node of items) {
       // Check current node
-      if (node.content) {
+      if (node.content && matchesRoleFilter({ role: node.role, roleFilter: effectiveRoleFilter })) {
         const lowerContent = node.content.toLowerCase();
         const allMatch = keywords.every(k => lowerContent.includes(k));
 
@@ -93,19 +114,21 @@ function getExcerpt({ content, keywords }: { content: string; keywords: string[]
  * Searches within a specific linear sequence of messages (e.g. the active conversation path).
  * Does not recurse into side branches.
  */
-export function searchLinearBranch({ branch, query, chatId, targetLeafId }: {
+export function searchLinearBranch({ branch, query, chatId, targetLeafId, roleFilter }: {
   branch: MessageNode[];
   query: string;
   chatId: string;
   targetLeafId?: string;
+  roleFilter?: SearchRoleFilter;
 }): ContentMatch[] {
   const matches: ContentMatch[] = [];
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
+  const effectiveRoleFilter = roleFilter ?? 'all';
 
   if (keywords.length === 0) return [];
 
   for (const node of branch) {
-    if (node.content) {
+    if (node.content && matchesRoleFilter({ role: node.role, roleFilter: effectiveRoleFilter })) {
       const lowerContent = node.content.toLowerCase();
       const allMatch = keywords.every(k => lowerContent.includes(k));
 

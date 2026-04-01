@@ -15,6 +15,7 @@ import { tailCommandDefinition } from './tail/index.ts';
 import { printfCommandDefinition } from './printf/index.ts';
 import { dirnameCommandDefinition } from './dirname/index.ts';
 import { basenameCommandDefinition } from './basename/index.ts';
+import { aliasCommandDefinition } from './alias/index.ts';
 import { seqCommandDefinition } from './seq/index.ts';
 import { teeCommandDefinition } from './tee/index.ts';
 import { touchCommandDefinition } from './touch/index.ts';
@@ -35,6 +36,7 @@ import { colonCommandDefinition } from './colon/index.ts';
 import { envCommandDefinition } from './env/index.ts';
 import { exportCmdCommandDefinition } from './export/index.ts';
 import { unsetCommandDefinition } from './unset/index.ts';
+import { unaliasCommandDefinition } from './unalias/index.ts';
 import { whichCommandDefinition } from './which/index.ts';
 import { commandCommandDefinition } from './command/index.ts';
 import { dateCommandDefinition } from './date/index.ts';
@@ -62,6 +64,12 @@ import { xmlCommandDefinition } from './xml/index.ts';
 import { zipCommandDefinition } from './zip/index.ts';
 import { unzipCommandDefinition } from './unzip/index.ts';
 import { timeCommandDefinition } from './time/index.ts';
+import { xxdCommandDefinition } from './xxd/index.ts';
+import { stringsCommandDefinition } from './strings/index.ts';
+import { mktempCommandDefinition } from './mktemp/index.ts';
+import { psCommandDefinition } from './ps/index.ts';
+import { foldCommandDefinition } from './fold/index.ts';
+import { base64CommandDefinition } from './base64/index.ts';
 
 export const builtinCommands: WeshCommandDefinition[] = [
   lsCommandDefinition,
@@ -80,6 +88,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   printfCommandDefinition,
   dirnameCommandDefinition,
   basenameCommandDefinition,
+  aliasCommandDefinition,
   seqCommandDefinition,
   teeCommandDefinition,
   touchCommandDefinition,
@@ -100,6 +109,7 @@ export const builtinCommands: WeshCommandDefinition[] = [
   envCommandDefinition,
   exportCmdCommandDefinition,
   unsetCommandDefinition,
+  unaliasCommandDefinition,
   whichCommandDefinition,
   commandCommandDefinition,
   dateCommandDefinition,
@@ -126,6 +136,12 @@ export const builtinCommands: WeshCommandDefinition[] = [
   jqCommandDefinition,
   fileCommandDefinition,
   trapCommandDefinition,
+  xxdCommandDefinition,
+  stringsCommandDefinition,
+  mktempCommandDefinition,
+  psCommandDefinition,
+  foldCommandDefinition,
+  base64CommandDefinition,
   testCommandDefinition,
   leftBracketCommandDefinition,
 ];

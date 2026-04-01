@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { transformersJsService } from '@/services/transformers-js';
-import { BrainCircuit, AlertTriangle, ShieldCheck } from 'lucide-vue-next';
+import { BrainCircuitIcon, AlertTriangleIcon, ShieldCheckIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
   mode?: 'full' | 'compact';
@@ -91,7 +91,7 @@ defineExpose({
     <div v-if="mode === 'full'" class="flex flex-col gap-4 p-5">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-xl flex items-center justify-center border border-blue-100 dark:border-blue-900/30 bg-blue-50/50 dark:bg-blue-900/20 shadow-sm">
-          <BrainCircuit class="w-4 h-4 text-blue-500" />
+          <BrainCircuitIcon class="w-4 h-4 text-blue-500" />
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between mb-2">
@@ -118,20 +118,20 @@ defineExpose({
       <!-- Feature Badges (Why we wait) -->
       <div v-if="status !== 'error'" class="ml-11 flex flex-wrap gap-3">
         <div class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 tracking-tight">
-          <ShieldCheck class="w-3 h-3 text-green-500/70" />
+          <ShieldCheckIcon class="w-3 h-3 text-green-500/70" />
           On-device Execution
         </div>
       </div>
 
       <div v-if="status === 'error' && error" class="ml-11 p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-[10px] text-red-600 dark:text-red-400 font-medium leading-relaxed flex items-start gap-2">
-        <AlertTriangle class="w-3.5 h-3.5 shrink-0" />
+        <AlertTriangleIcon class="w-3.5 h-3.5 shrink-0" />
         {{ error }}
       </div>
     </div>
 
     <!-- Compact Mode (Fallback) -->
     <div v-else class="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-      <BrainCircuit class="w-3 h-3 animate-pulse" />
+      <BrainCircuitIcon class="w-3 h-3 animate-pulse" />
       <span class="text-[10px] font-bold">{{ progress }}%</span>
     </div>
   </div>

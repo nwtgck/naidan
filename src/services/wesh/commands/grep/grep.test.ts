@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
 describe('wesh grep', () => {
@@ -45,12 +45,12 @@ describe('wesh grep', () => {
     script: string;
     stdinText?: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: stdinText ?? '' }),
+      stdin: createTestReadHandleFromText({ text: stdinText ?? '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -59,17 +59,27 @@ describe('wesh grep', () => {
   }
 
   it('prints matching lines and returns 0 when a match is found', async () => {
-    await writeFile({ path: 'notes.txt', data: 'alpha\nbeta\nalpha beta\n' });
+    await writeFile({ path: 'notes.txt', data: `\
+alpha
+beta
+alpha beta
+` });
 
     const { result, stdout, stderr } = await execute({ script: 'grep alpha notes.txt' });
 
-    expect(stdout.text).toBe('alpha\nalpha beta\n');
+    expect(stdout.text).toBe(`\
+alpha
+alpha beta
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('returns 1 without stderr when no lines match', async () => {
-    await writeFile({ path: 'notes.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ path: 'notes.txt', data: `\
+alpha
+beta
+` });
 
     const { result, stdout, stderr } = await execute({ script: 'grep gamma notes.txt' });
 
@@ -79,13 +89,20 @@ describe('wesh grep', () => {
   });
 
   it('supports repeated -e patterns', async () => {
-    await writeFile({ path: 'notes.txt', data: 'alpha\nbeta\ngamma\n' });
+    await writeFile({ path: 'notes.txt', data: `\
+alpha
+beta
+gamma
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'grep -e alpha -e gamma notes.txt',
     });
 
-    expect(stdout.text).toBe('alpha\ngamma\n');
+    expect(stdout.text).toBe(`\
+alpha
+gamma
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -106,34 +123,77 @@ describe('wesh grep', () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it('accepts -P for Perl-compatible regular expressions', async () => {
+    await writeFile({ path: 'notes.txt', data: `\
+alpha1
+beta
+gamma2
+` });
+
+    const { result, stdout, stderr } = await execute({
+      script: String.raw`grep -P '\w+\d' notes.txt`,
+    });
+
+    expect(stdout.text).toBe(`\
+alpha1
+gamma2
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
   it('supports -f pattern files', async () => {
-    await writeFile({ path: 'patterns.txt', data: 'alpha\ngamma\n' });
-    await writeFile({ path: 'notes.txt', data: 'alpha\nbeta\ngamma\n' });
+    await writeFile({ path: 'patterns.txt', data: `\
+alpha
+gamma
+` });
+    await writeFile({ path: 'notes.txt', data: `\
+alpha
+beta
+gamma
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'grep -f patterns.txt notes.txt',
     });
 
-    expect(stdout.text).toBe('alpha\ngamma\n');
+    expect(stdout.text).toBe(`\
+alpha
+gamma
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports -c to print per-file match counts', async () => {
-    await writeFile({ path: 'left.txt', data: 'alpha\nbeta\nalpha\n' });
-    await writeFile({ path: 'right.txt', data: 'gamma\nalpha\n' });
+    await writeFile({ path: 'left.txt', data: `\
+alpha
+beta
+alpha
+` });
+    await writeFile({ path: 'right.txt', data: `\
+gamma
+alpha
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'grep -c alpha left.txt right.txt',
     });
 
-    expect(stdout.text).toBe('left.txt:2\nright.txt:1\n');
+    expect(stdout.text).toBe(`\
+left.txt:2
+right.txt:1
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports --count and --max-count together', async () => {
-    await writeFile({ path: 'notes.txt', data: 'alpha\nalpha\nalpha\n' });
+    await writeFile({ path: 'notes.txt', data: `\
+alpha
+alpha
+alpha
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'grep --count --max-count=2 alpha notes.txt',
@@ -145,7 +205,11 @@ describe('wesh grep', () => {
   });
 
   it('supports -l to print only matching file names once', async () => {
-    await writeFile({ path: 'left.txt', data: 'alpha\nbeta\nalpha\n' });
+    await writeFile({ path: 'left.txt', data: `\
+alpha
+beta
+alpha
+` });
     await writeFile({ path: 'right.txt', data: 'gamma\n' });
 
     const { result, stdout, stderr } = await execute({
@@ -181,7 +245,10 @@ describe('wesh grep', () => {
       script: 'grep -H alpha left.txt',
     });
 
-    expect(withoutNames.stdout.text).toBe('alpha\nalpha\n');
+    expect(withoutNames.stdout.text).toBe(`\
+alpha
+alpha
+`);
     expect(withNames.stdout.text).toBe('left.txt:alpha\n');
     expect(withoutNames.stderr.text).toBe('');
     expect(withNames.stderr.text).toBe('');
@@ -190,7 +257,10 @@ describe('wesh grep', () => {
   });
 
   it('supports -q to suppress output while preserving the exit status', async () => {
-    await writeFile({ path: 'notes.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ path: 'notes.txt', data: `\
+alpha
+beta
+` });
 
     const matched = await execute({ script: 'grep -q alpha notes.txt' });
     const missed = await execute({ script: 'grep -q gamma notes.txt' });
@@ -204,13 +274,37 @@ describe('wesh grep', () => {
   });
 
   it('supports -o and -m together', async () => {
-    await writeFile({ path: 'notes.txt', data: 'alpha beta alpha\nalpha\n' });
+    await writeFile({ path: 'notes.txt', data: `\
+alpha beta alpha
+alpha
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'grep -o -m 2 alpha notes.txt',
     });
 
-    expect(stdout.text).toBe('alpha\nalpha\nalpha\n');
+    expect(stdout.text).toBe(`\
+alpha
+alpha
+alpha
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('coalesces stdout writes for many -o matches from a single long stdin line', async () => {
+    const stdinText = Array.from({ length: 200 }, () => '<w:t>alpha</w:t>').join('');
+
+    const { result, stdout, stderr } = await execute({
+      script: "grep -o 'w:t[^>]*>[^<]*'",
+      stdinText,
+    });
+
+    const outputLines = stdout.text.trimEnd().split('\n');
+    expect(outputLines).toHaveLength(400);
+    expect(outputLines.filter(line => line === 'w:t>alpha')).toHaveLength(200);
+    expect(outputLines.filter(line => line === 'w:t>')).toHaveLength(200);
+    expect(stdout.chunkCount).toBeLessThan(20);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -230,14 +324,23 @@ describe('wesh grep', () => {
   });
 
   it('treats - as stdin when it appears in the file list', async () => {
-    await writeFile({ path: 'notes.txt', data: 'alpha file\nbeta file\n' });
+    await writeFile({ path: 'notes.txt', data: `\
+alpha file
+beta file
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'grep alpha - notes.txt',
-      stdinText: 'alpha stdin\nbeta stdin\n',
+      stdinText: `\
+alpha stdin
+beta stdin
+`,
     });
 
-    expect(stdout.text).toBe('(standard input):alpha stdin\nnotes.txt:alpha file\n');
+    expect(stdout.text).toBe(`\
+(standard input):alpha stdin
+notes.txt:alpha file
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -274,7 +377,10 @@ describe('wesh grep', () => {
     expect(recursive.stderr.text).toBe('');
     expect(recursive.result.exitCode).toBe(0);
 
-    expect(noFilename.stdout.text).toBe('alpha\nalpha nested\n');
+    expect(noFilename.stdout.text).toBe(`\
+alpha
+alpha nested
+`);
     expect(noFilename.stderr.text).toBe('');
     expect(noFilename.result.exitCode).toBe(0);
   });
@@ -381,6 +487,7 @@ notes.txt-3-two
     expect(stdout.text).toContain('options:');
     expect(stdout.text).toContain('--help');
     expect(stdout.text).toContain('--extended-regexp');
+    expect(stdout.text).toContain('--perl-regexp');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -421,7 +528,10 @@ notes.txt-3-two
   });
 
   it('supports root-relative files from /', async () => {
-    await writeFile({ path: 'root.txt', data: 'alpha\nbeta\n' });
+    await writeFile({ path: 'root.txt', data: `\
+alpha
+beta
+` });
 
     const { result, stdout, stderr } = await execute({
       script: 'cd /; grep alpha root.txt',
@@ -430,5 +540,122 @@ notes.txt-3-two
     expect(stdout.text).toBe('alpha\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('supports BRE \\| alternation in default mode', async () => {
+    await writeFile({ path: 'notes.txt', data: `\
+alpha
+beta
+gamma
+` });
+
+    const { result, stdout, stderr } = await execute({ script: String.raw`grep 'alpha\|gamma' notes.txt` });
+
+    expect(stdout.text).toBe(`\
+alpha
+gamma
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports BRE \\( \\) grouping with \\| alternation', async () => {
+    await writeFile({ path: 'notes.txt', data: `\
+foobar
+foobaz
+foo
+` });
+
+    const { result, stdout, stderr } = await execute({ script: String.raw`grep 'foo\(bar\|baz\)' notes.txt` });
+
+    expect(stdout.text).toBe(`\
+foobar
+foobaz
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('supports BRE \\+ and \\? GNU extensions', async () => {
+    await writeFile({ path: 'notes.txt', data: `\
+color
+colour
+colouur
+` });
+
+    const { result, stdout, stderr } = await execute({ script: String.raw`grep 'colou\?r' notes.txt` });
+
+    expect(stdout.text).toBe(`\
+color
+colour
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('does not convert \\| inside character classes', async () => {
+    await writeFile({ path: 'notes.txt', data: `\
+a|b
+ab
+a
+` });
+
+    const { result, stdout, stderr } = await execute({ script: String.raw`grep '[a\|b]' notes.txt` });
+
+    expect(stdout.text).toBe(`\
+a|b
+ab
+a
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('does not apply BRE conversion in -E (ERE) mode', async () => {
+    await writeFile({ path: 'notes.txt', data: `\
+alpha
+beta
+` });
+
+    // In ERE mode, \| is an escaped | (literal pipe), not alternation
+    const { result, stdout } = await execute({ script: String.raw`grep -E 'alpha\|beta' notes.txt` });
+
+    // Should match neither since \| in ERE means literal |
+    expect(stdout.text).toBe('');
+    expect(result.exitCode).toBe(1);
+  });
+
+  it('reports "Permission denied" when getDirectoryHandle throws NotAllowedError', async () => {
+    class RestrictedDirectoryHandle extends MockFileSystemDirectoryHandle {
+      override async getDirectoryHandle(
+        name: string,
+        options?: FileSystemGetDirectoryOptions,
+      ): Promise<MockFileSystemDirectoryHandle> {
+        if (name === 'restricted') {
+          throw new DOMException(
+            "Failed to execute 'getDirectoryHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.",
+            'NotAllowedError',
+          );
+        }
+        return super.getDirectoryHandle(name, options);
+      }
+    }
+
+    const restrictedRoot = new RestrictedDirectoryHandle('root');
+    const restrictedWesh = new Wesh({ rootHandle: restrictedRoot as unknown as FileSystemDirectoryHandle });
+    await restrictedWesh.init();
+
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await restrictedWesh.execute({
+      script: 'grep alpha restricted/notes.txt',
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stderr.text).toContain('Permission denied');
+    expect(result.exitCode).toBe(2);
   });
 });

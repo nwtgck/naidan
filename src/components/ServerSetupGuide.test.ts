@@ -40,7 +40,9 @@ describe('ServerSetupGuide.vue', () => {
     // Mac file://
     const macBtn = wrapper.findAll('button').find(b => b.text().toLowerCase() === 'mac');
     await macBtn?.trigger('click');
-    expect(wrapper.text()).toContain('brew services stop ollama\nOLLAMA_ORIGINS="*" ollama serve');
+    expect(wrapper.text()).toContain(`\
+brew services stop ollama
+OLLAMA_ORIGINS="*" ollama serve`);
   });
 
   it('switches to macOS and shows Homebrew command', async () => {

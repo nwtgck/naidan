@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from './index';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
 import {
-  createWeshReadFileHandleFromText,
-  createWeshWriteCaptureHandle,
+  createTestReadHandleFromText,
+  createTestWriteCaptureHandle,
 } from './utils/test-stream';
 
 describe('wesh core command parsing', () => {
@@ -34,12 +34,12 @@ describe('wesh core command parsing', () => {
   }: {
     script: string;
   }) {
-    const stdout = createWeshWriteCaptureHandle();
-    const stderr = createWeshWriteCaptureHandle();
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
 
     const result = await wesh.execute({
       script,
-      stdin: createWeshReadFileHandleFromText({ text: '' }),
+      stdin: createTestReadHandleFromText({ text: '' }),
       stdout: stdout.handle,
       stderr: stderr.handle,
     });
@@ -48,11 +48,18 @@ describe('wesh core command parsing', () => {
   }
 
   it('supports legacy head -N syntax', async () => {
-    await writeFile({ name: 'head.txt', data: 'a\nb\nc\n' });
+    await writeFile({ name: 'head.txt', data: `\
+a
+b
+c
+` });
 
     const { result, stdout, stderr } = await execute({ script: 'head -2 head.txt' });
 
-    expect(stdout.text).toBe('a\nb\n');
+    expect(stdout.text).toBe(`\
+a
+b
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -68,21 +75,35 @@ describe('wesh core command parsing', () => {
   });
 
   it('supports legacy tail -N syntax', async () => {
-    await writeFile({ name: 'tail.txt', data: 'a\nb\nc\n' });
+    await writeFile({ name: 'tail.txt', data: `\
+a
+b
+c
+` });
 
     const { result, stdout, stderr } = await execute({ script: 'tail -2 tail.txt' });
 
-    expect(stdout.text).toBe('b\nc\n');
+    expect(stdout.text).toBe(`\
+b
+c
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
 
   it('supports tail +N syntax to start from a specific line', async () => {
-    await writeFile({ name: 'tail-plus.txt', data: 'a\nb\nc\n' });
+    await writeFile({ name: 'tail-plus.txt', data: `\
+a
+b
+c
+` });
 
     const { result, stdout, stderr } = await execute({ script: 'tail +2 tail-plus.txt' });
 
-    expect(stdout.text).toBe('b\nc\n');
+    expect(stdout.text).toBe(`\
+b
+c
+`);
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
   });
@@ -139,7 +160,10 @@ describe('wesh core command parsing', () => {
   it('executes shebang scripts through the resolved interpreter', async () => {
     await writeFile({
       name: 'hello.sh',
-      data: '#!/bin/sh\necho shebang\n',
+      data: `\
+#!/bin/sh
+echo shebang
+`,
     });
 
     const { result, stdout, stderr } = await execute({ script: './hello.sh' });
@@ -152,6 +176,7 @@ describe('wesh core command parsing', () => {
   it('defines and expands shell aliases across commands', async () => {
     const aliasResult = await execute({ script: "alias hi='echo hello'; hi world" });
     const showResult = await execute({ script: 'alias hi' });
+    const selfAliasedResult = await execute({ script: "alias echo='echo hello'; echo world" });
 
     expect(aliasResult.stdout.text).toBe('hello world\n');
     expect(aliasResult.stderr.text).toBe('');
@@ -160,13 +185,53 @@ describe('wesh core command parsing', () => {
     expect(showResult.stdout.text).toBe("alias hi='echo hello'\n");
     expect(showResult.stderr.text).toBe('');
     expect(showResult.result.exitCode).toBe(0);
+
+    expect(selfAliasedResult.stdout.text).toBe('hello world\n');
+    expect(selfAliasedResult.stderr.text).toBe('');
+    expect(selfAliasedResult.result.exitCode).toBe(0);
   });
 
-  it('guards against recursive alias expansion loops', async () => {
+  it('removes aliases with unalias and supports unalias -a', async () => {
+    const removed = await execute({ script: "alias hi='echo hello'; unalias hi; hi" });
+    const cleared = await execute({ script: "alias a='echo a'; alias b='echo b'; unalias -a; alias" });
+
+    expect(removed.stdout.text).toBe('');
+    expect(removed.stderr.text).toContain('wesh: Command not found: hi');
+    expect(removed.result.exitCode).toBe(1);
+
+    expect(cleared.stdout.text).toBe('');
+    expect(cleared.stderr.text).toBe('');
+    expect(cleared.result.exitCode).toBe(0);
+  });
+
+  it('rejects invalid alias names and missing unalias targets', async () => {
+    const invalidSlash = await execute({ script: "alias foo/bar='echo bad'" });
+    const invalidSpace = await execute({ script: "alias 'foo bar=echo bad'" });
+    const missingUnalias = await execute({ script: 'unalias missing' });
+
+    expect(invalidSlash.stdout.text).toBe('');
+    expect(invalidSlash.stderr.text).toContain('alias: foo/bar: invalid alias name');
+    expect(invalidSlash.result.exitCode).toBe(1);
+
+    expect(invalidSpace.stdout.text).toBe('');
+    expect(invalidSpace.stderr.text).toContain('alias: foo bar: invalid alias name');
+    expect(invalidSpace.result.exitCode).toBe(1);
+
+    expect(missingUnalias.stdout.text).toBe('');
+    expect(missingUnalias.stderr.text).toContain('unalias: missing: not found');
+    expect(missingUnalias.result.exitCode).toBe(1);
+  });
+
+  it('stops re-expanding aliases that already appeared in the same expansion chain', async () => {
     const { result, stdout, stderr } = await execute({ script: "alias loop='loop'; loop" });
+    const mutual = await execute({ script: "alias a='b'; alias b='a'; a" });
 
     expect(stdout.text).toBe('');
-    expect(stderr.text).toContain('alias: expansion loop for loop');
+    expect(stderr.text).toContain('wesh: Command not found: loop');
     expect(result.exitCode).toBe(1);
+
+    expect(mutual.stdout.text).toBe('');
+    expect(mutual.stderr.text).toContain('wesh: Command not found: a');
+    expect(mutual.result.exitCode).toBe(1);
   });
 });

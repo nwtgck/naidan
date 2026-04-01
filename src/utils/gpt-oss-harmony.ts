@@ -38,7 +38,7 @@ export interface HarmonyMessage {
     content: string;
     /** e.g. "functions.get_current_weather" */
     recipient?: string;
-    /** e.g. "json" (from <|constrain|>) */
+    /** e.g. "<|constrain|>json" */
     contentType?: string;
     /** how the message ended */
     endReason: "end" | "return" | "call" | "pending";
@@ -171,7 +171,7 @@ export class HarmonyStreamParser {
 
     case State.HEADER_CONSTRAIN: {
       this._buf += token;
-      if (this._current) this._current.contentType = this._buf.trim();
+      if (this._current) this._current.contentType = `${SPECIAL_TOKENS.CONSTRAIN}${this._buf.trim()}`;
       return null;
     }
 

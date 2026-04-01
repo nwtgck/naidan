@@ -26,17 +26,19 @@ export const FEATURE_FLAGS_STORAGE_KEY = `${STORAGE_KEY_PREFIX}feature_flags`;
 export function createDefaultFeatureFlag<TFeature extends FeatureFlagName>({ feature }: {
   feature: TFeature;
 }): FeatureFlags[TFeature] {
+  // Keep each feature explicit so this file remains the template for future flags,
+  // even when current experimental features ship enabled by default.
   switch (feature) {
   case 'volume':
     return {
-      status: 'disabled',
-      compatibilityRiskAcknowledgedAt: undefined,
+      status: 'enabled',
+      compatibilityRiskAcknowledgedAt: 0,
       params: {},
     } as FeatureFlags[TFeature];
   case 'wesh_tool':
     return {
-      status: 'disabled',
-      compatibilityRiskAcknowledgedAt: undefined,
+      status: 'enabled',
+      compatibilityRiskAcknowledgedAt: 0,
       params: {},
     } as FeatureFlags[TFeature];
   default: {

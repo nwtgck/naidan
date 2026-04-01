@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import {
-  Search,
-  Replace,
-  Undo2,
-  Redo2,
-  Trash2,
-  Copy,
-  ArrowDown,
-  ArrowUp,
-  Type,
-  Hash,
-  PencilLine,
-  MousePointer2,
-  X,
-  Layers,
-  Check,
-  WrapText,
-  BarChart2,
-  AlignLeft,
+  SearchIcon,
+  ReplaceIcon,
+  Undo2Icon,
+  Redo2Icon,
+  Trash2Icon,
+  CopyIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
+  TypeIcon,
+  HashIcon,
+  PencilLineIcon,
+  MousePointer2Icon,
+  XIcon,
+  LayersIcon,
+  CheckIcon,
+  WrapTextIcon,
+  BarChart2Icon,
+  AlignLeftIcon,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -907,13 +907,13 @@ defineExpose({
                   class="w-full pl-10 pr-32 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
                   data-testid="find-input"
                 />
-                <Search class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                <SearchIcon class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                 <div v-if="findText" class="absolute right-2 top-1.5 flex items-center gap-2 bg-gray-50 dark:bg-white/10 px-2 py-1 rounded-lg border border-gray-200 dark:border-white/10">
                   <span class="text-[10px] text-gray-400 font-mono font-bold">{{ searchMatches.length > 0 ? searchIndex + 1 : 0 }}/{{ searchMatches.length }}</span>
                   <div class="h-3 w-px bg-gray-300 dark:bg-white/20"></div>
                   <div class="flex items-center">
-                    <button @click="prevMatch" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowUp class="w-3.5 h-3.5 text-gray-400" /></button>
-                    <button @click="nextMatch" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowDown class="w-3.5 h-3.5 text-gray-400" /></button>
+                    <button @click="prevMatch" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowUpIcon class="w-3.5 h-3.5 text-gray-400" /></button>
+                    <button @click="nextMatch" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowDownIcon class="w-3.5 h-3.5 text-gray-400" /></button>
                   </div>
                 </div>
               </div>
@@ -945,7 +945,7 @@ defineExpose({
                   class="w-full pl-10 pr-4 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
                   data-testid="replace-input"
                 />
-                <Replace class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                <ReplaceIcon class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
               </div>
               <div class="flex items-center gap-2">
                 <button
@@ -962,14 +962,14 @@ defineExpose({
                 </button>
                 <div class="w-px h-6 bg-gray-200 dark:bg-white/10 mx-1"></div>
                 <button @click="searchMode = 'hidden'" class="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-xl text-gray-400 transition-colors">
-                  <X class="w-4 h-4" />
+                  <XIcon class="w-4 h-4" />
                 </button>
               </div>
             </div>
             <div class="flex items-center justify-between mt-1 px-1">
               <div class="text-[9px] text-gray-400 font-medium flex items-center gap-3">
-                <span class="flex items-center gap-1"><Layers class="w-3 h-3" /> {{ modKeyName }}+D for Multi-Edit</span>
-                <span class="flex items-center gap-1"><Check class="w-3 h-3" /> Enter to find next</span>
+                <span class="flex items-center gap-1"><LayersIcon class="w-3 h-3" /> {{ modKeyName }}+D for Multi-Edit</span>
+                <span class="flex items-center gap-1"><CheckIcon class="w-3 h-3" /> Enter to find next</span>
               </div>
             </div>
           </div>
@@ -1030,7 +1030,7 @@ defineExpose({
 
           <!-- Empty State Watermark -->
           <div v-if="lines.length <= 1 && !lines[0]" class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.02] dark:opacity-[0.03]">
-            <PencilLine class="w-64 h-64" />
+            <PencilLineIcon class="w-64 h-64" />
           </div>
         </div>
 
@@ -1047,7 +1047,7 @@ defineExpose({
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-2">
                 <div class="p-1.5 bg-amber-500/10 rounded-lg text-amber-500">
-                  <Layers class="w-3.5 h-3.5" />
+                  <LayersIcon class="w-3.5 h-3.5" />
                 </div>
                 <div class="flex flex-col">
                   <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Multi-Edit Mode</span>
@@ -1072,10 +1072,10 @@ defineExpose({
               />
               <div class="absolute right-3 top-2.5 flex items-center gap-1">
                 <button @click="applyMultiEdit" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-green-500 transition-colors" title="Confirm (Enter)">
-                  <Check class="w-4 h-4" />
+                  <CheckIcon class="w-4 h-4" />
                 </button>
                 <button @click="exitMultiEdit" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-red-500 transition-colors" title="Cancel (Esc)">
-                  <X class="w-4 h-4" />
+                  <XIcon class="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1088,14 +1088,14 @@ defineExpose({
         <!-- Footer Info Bar -->
         <div v-if="showStats" class="h-9 border-t border-gray-100 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#0f172a] text-[10px] font-bold uppercase tracking-widest text-gray-400 z-30 relative shrink-0">
           <div class="flex items-center gap-6">
-            <span class="flex items-center gap-1.5"><Type class="w-3 h-3 text-blue-500/50" /> {{ stats.chars }} <span class="opacity-40 font-medium">Chars</span></span>
-            <span class="flex items-center gap-1.5"><PencilLine class="w-3 h-3 text-amber-500/50" /> {{ stats.words }} <span class="opacity-40 font-medium">Words</span></span>
-            <span class="flex items-center gap-1.5"><Hash class="w-3 h-3 text-emerald-500/50" /> {{ stats.lines }} <span class="opacity-40 font-medium">Lines</span></span>
+            <span class="flex items-center gap-1.5"><TypeIcon class="w-3 h-3 text-blue-500/50" /> {{ stats.chars }} <span class="opacity-40 font-medium">Chars</span></span>
+            <span class="flex items-center gap-1.5"><PencilLineIcon class="w-3 h-3 text-amber-500/50" /> {{ stats.words }} <span class="opacity-40 font-medium">Words</span></span>
+            <span class="flex items-center gap-1.5"><HashIcon class="w-3 h-3 text-emerald-500/50" /> {{ stats.lines }} <span class="opacity-40 font-medium">Lines</span></span>
           </div>
 
           <div class="flex items-center gap-4">
             <div class="flex items-center gap-1.5">
-              <MousePointer2 class="w-3 h-3 text-purple-500/50" />
+              <MousePointer2Icon class="w-3 h-3 text-purple-500/50" />
               <span class="opacity-40 font-medium">Selection:</span>
               <span>{{ textareaRef?.selectionEnd ? textareaRef.selectionEnd - textareaRef.selectionStart : 0 }}</span>
             </div>
@@ -1113,7 +1113,7 @@ defineExpose({
           title="Close Editor (Esc)"
           data-testid="close-button"
         >
-          <X class="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
+          <XIcon class="w-4.5 h-4.5 group-hover:scale-110 transition-transform" />
         </button>
 
         <div class="h-px w-6 bg-gray-200 dark:bg-white/10"></div>
@@ -1125,7 +1125,7 @@ defineExpose({
             class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl disabled:opacity-30 transition-all hover:shadow-sm group"
             :title="`Undo (${modKeyName}+Z)`"
           >
-            <Undo2 class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
+            <Undo2Icon class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
           </button>
           <button
             @click="handleRedo"
@@ -1133,7 +1133,7 @@ defineExpose({
             class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl disabled:opacity-30 transition-all hover:shadow-sm group"
             :title="`Redo (${modKeyName}+Shift+Z)`"
           >
-            <Redo2 class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
+            <Redo2Icon class="w-4.5 h-4.5 text-gray-500 group-hover:text-blue-500" />
           </button>
         </div>
 
@@ -1147,7 +1147,7 @@ defineExpose({
             :title="localMode === 'textarea' ? 'Switch to Advanced Editor' : 'Switch to Normal Textarea'"
             data-testid="toggle-mode-button"
           >
-            <AlignLeft class="w-4.5 h-4.5" />
+            <AlignLeftIcon class="w-4.5 h-4.5" />
           </button>
           <button
             @click="searchMode = searchMode === 'visible' ? 'hidden' : 'visible'"
@@ -1155,7 +1155,7 @@ defineExpose({
             :class="searchMode === 'visible' ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
             :title="`Find & Replace (${modKeyName}+F)`"
           >
-            <Search class="w-4.5 h-4.5" />
+            <SearchIcon class="w-4.5 h-4.5" />
           </button>
           <button
             @click="showStats = !showStats"
@@ -1163,14 +1163,14 @@ defineExpose({
             :class="showStats ? 'bg-purple-500/20 text-purple-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
             title="Toggle Stats"
           >
-            <BarChart2 class="w-4.5 h-4.5" />
+            <BarChart2Icon class="w-4.5 h-4.5" />
           </button>
           <button
             @click="handleCmdD"
             class="p-2.5 rounded-xl hover:bg-white dark:hover:bg-white/5 transition-all hover:shadow-sm group text-gray-500"
             :title="`Multi-Edit Occurrence (${modKeyName}+D)`"
           >
-            <Layers class="w-4.5 h-4.5 group-hover:text-amber-500" />
+            <LayersIcon class="w-4.5 h-4.5 group-hover:text-amber-500" />
           </button>
           <button
             @click="toggleWrap"
@@ -1178,7 +1178,7 @@ defineExpose({
             :class="wrapMode === 'wrap-on' ? 'bg-indigo-500/20 text-indigo-400' : 'hover:bg-white dark:hover:bg-white/5 text-gray-500'"
             title="Toggle Word Wrap"
           >
-            <WrapText class="w-4.5 h-4.5" />
+            <WrapTextIcon class="w-4.5 h-4.5" />
           </button>
         </div>
 
@@ -1188,14 +1188,14 @@ defineExpose({
             class="p-2.5 hover:bg-white dark:hover:bg-white/5 rounded-xl transition-all hover:shadow-sm text-gray-500 hover:text-blue-500"
             title="Copy All"
           >
-            <Copy class="w-4.5 h-4.5" />
+            <CopyIcon class="w-4.5 h-4.5" />
           </button>
           <button
             @click="setFullText({ text: '' })"
             class="p-2.5 hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-400 hover:text-red-500 rounded-xl transition-all"
             title="Clear All"
           >
-            <Trash2 class="w-4.5 h-4.5" />
+            <Trash2Icon class="w-4.5 h-4.5" />
           </button>
         </div>
       </div>

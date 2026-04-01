@@ -9,9 +9,14 @@ import path from 'node:path'
 import { createGzip } from 'node:zlib'
 import { pipeline } from 'node:stream'
 import { promisify } from 'node:util'
+import { createHash } from 'node:crypto'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
+import {
+  FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
+  STANDALONE_WORKER_MANIFEST_SCRIPT_ID,
+} from './src/models/constants'
 import license from 'rollup-plugin-license'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -45,6 +50,11 @@ interface EmbeddedWorkerSpec {
   globalName: string
   scriptType: string
   workerId: string
+}
+
+interface EmbeddedWorkerManifestEntry {
+  hash: string
+  size: number
 }
 
 /**
@@ -100,10 +110,10 @@ export default defineConfig(({ mode }) => {
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted'
   const embeddedWorkers: EmbeddedWorkerSpec[] = [
     {
-      entry: 'src/services/wesh.worker.ts',
-      globalName: 'NaidanFileProtocolCompatibleWeshWorker',
+      entry: 'src/services/worker-hub-standalone.worker.ts',
+      globalName: 'NaidanFileProtocolCompatibleStandaloneWorkerHub',
       scriptType: 'text/x-naidan-worker',
-      workerId: 'file-protocol-compatible-wesh-worker',
+      workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
     }
   ]
 
@@ -132,12 +142,12 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         ...(isStandalone ? {
-          '@/services/wesh-worker-loader': path.resolve(__dirname, 'src/services/wesh-worker-loader-standalone.ts'),
+          '@/services/wesh-worker-client': path.resolve(__dirname, 'src/services/wesh-worker-client-standalone.ts'),
+          '@/services/global-search-worker-client': path.resolve(__dirname, 'src/services/global-search-worker-client-standalone.ts'),
+          '@/services/transformers-js-worker-client': path.resolve(__dirname, 'src/services/transformers-js-worker-client-standalone.ts'),
+          '@/services/transformers-js-scanner-worker-client': path.resolve(__dirname, 'src/services/transformers-js-scanner-worker-client-standalone.ts'),
         } : {}),
         '@': path.resolve(__dirname, 'src'),
-        ...(isStandalone ? {
-          './transformers-js-loader': path.resolve(__dirname, 'src/services/transformers-js-loader-noop.ts'),
-        } : {}),
       },
     },
     plugins: [
@@ -311,11 +321,13 @@ const copyZipPlugin = () => ({
 })
 
 /**
- * Custom Vite plugin to inline the IIFE bundle into index.html.
- * This is crucial for supporting the 'file:///' protocol (e.g., in Firefox)
- * because:
- * 1. ES modules (type="module") are restricted by CORS/Module security on local files.
- * 2. IIFE format combined with inlining allows the app to run as a truly standalone file.
+ * Custom Vite plugin to finalize the standalone index.html.
+ * For standalone builds, preserve file:/// compatibility by replacing the
+ * generated module entry with a classic external script entry.
+ * This keeps the main bundle out of index.html while avoiding module loading
+ * restrictions on local files.
+ * Worker sources remain embedded because their blob/object-url flow depends
+ * on in-document access to the source text.
  */
 const standalonePostBuildPlugin = ({ outDir, workers, zipFileName, folderName }: {
   outDir: string
@@ -325,7 +337,7 @@ const standalonePostBuildPlugin = ({ outDir, workers, zipFileName, folderName }:
 }) => ({
   name: 'standalone-post-build-plugin',
   async closeBundle() {
-    await inlineStandaloneIndexHtml({ outDir })
+    await finalizeStandaloneIndexHtml({ outDir })
     await embedStandaloneWorkers({ outDir, workers })
     await createZipPackage({ outDir, zipFileName, folderName })
   },
@@ -362,7 +374,7 @@ async function createZipPackage({ outDir, zipFileName, folderName }: {
   console.log(`  \u2713 Created package: ${zipPath}`)
 }
 
-async function inlineStandaloneIndexHtml({ outDir }: { outDir: string }) {
+async function finalizeStandaloneIndexHtml({ outDir }: { outDir: string }) {
   const distDir = path.resolve(__dirname, outDir)
   const htmlPath = path.join(distDir, 'index.html')
 
@@ -376,22 +388,13 @@ async function inlineStandaloneIndexHtml({ outDir }: { outDir: string }) {
   for (const script of scripts) {
     const src = script.getAttribute('src')
     if (src && src.includes('assets/index-')) {
-      const relativePath = src.startsWith('./') ? src.slice(2) : src
-      const scriptPath = path.join(distDir, relativePath)
-
-      if (fs.existsSync(scriptPath)) {
-        const scriptContent = fs.readFileSync(scriptPath, 'utf8')
-        const newScript = document.createElement('script')
-        // Escape </script> to prevent early script termination
-        newScript.textContent = scriptContent.replace(/<\/script>/g, '<\\/script>')
-        script.parentNode?.replaceChild(newScript, script)
-        fs.unlinkSync(scriptPath)
-      }
+      script.removeAttribute('type')
+      script.removeAttribute('crossorigin')
     }
   }
 
   fs.writeFileSync(htmlPath, dom.serialize())
-  console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility.`)
+  console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility with an external classic main script.`)
 }
 
 async function embedStandaloneWorkers({ outDir, workers }: {
@@ -410,6 +413,7 @@ async function embedStandaloneWorkers({ outDir, workers }: {
   const html = fs.readFileSync(htmlPath, 'utf8')
   const dom = new JSDOM(html)
   const document = dom.window.document
+  const manifest: Record<string, EmbeddedWorkerManifestEntry> = {}
 
   try {
     for (const worker of workers) {
@@ -417,6 +421,12 @@ async function embedStandaloneWorkers({ outDir, workers }: {
 
       await viteBuild({
         configFile: false,
+        define: {
+          __BUILD_MODE_IS_STANDALONE__: JSON.stringify(true),
+          __BUILD_MODE_IS_HOSTED__: JSON.stringify(false),
+          __APP_VERSION__: JSON.stringify(pkg.version),
+          'process.env.NODE_ENV': JSON.stringify('production'),
+        },
         logLevel: 'error',
         publicDir: false,
         resolve: {
@@ -450,11 +460,32 @@ async function embedStandaloneWorkers({ outDir, workers }: {
       }
 
       const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
+      manifest[worker.workerId] = {
+        hash: createHash('sha256').update(workerContent).digest('hex'),
+        size: Buffer.byteLength(workerContent, 'utf8'),
+      }
       const script = document.createElement('script')
-      script.setAttribute('data-worker-id', worker.workerId)
+      script.setAttribute('id', worker.workerId)
       script.setAttribute('type', worker.scriptType)
       script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
       document.body.appendChild(script)
+    }
+
+    const manifestScript = document.createElement('script')
+    manifestScript.setAttribute('id', STANDALONE_WORKER_MANIFEST_SCRIPT_ID)
+    manifestScript.setAttribute('type', 'application/json')
+    manifestScript.textContent = JSON.stringify(manifest)
+
+    const lastStructuredDataScript = Array.from(
+      document.querySelectorAll('head script[type="application/ld+json"]'),
+    ).at(-1)
+
+    if (lastStructuredDataScript?.parentNode) {
+      lastStructuredDataScript.parentNode.insertBefore(manifestScript, lastStructuredDataScript.nextSibling)
+    } else if (document.head) {
+      document.head.appendChild(manifestScript)
+    } else {
+      document.body.appendChild(manifestScript)
     }
 
     fs.writeFileSync(htmlPath, dom.serialize())

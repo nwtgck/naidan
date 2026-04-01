@@ -1,30 +1,43 @@
 import { ref, computed } from 'vue';
 import type { ToolCallRecord } from '@/services/tools/types';
 
-const _enabledToolNames = ref<Set<string>>(new Set());
+const _toolEnabledByChat = ref<Map<string, Set<string>>>(new Map());
 const _messageToolCalls = ref<Map<string, ToolCallRecord[]>>(new Map());
+const _currentChatId = ref<string | null>(null);
 
 export function useChatTools() {
   const isToolEnabled = ({ name }: { name: string }) => {
-    return _enabledToolNames.value.has(name);
+    if (_currentChatId.value === null) return false;
+    return _toolEnabledByChat.value.get(_currentChatId.value)?.has(name) ?? false;
   };
 
   const setToolEnabled = ({ name, enabled }: { name: string; enabled: boolean }) => {
+    if (_currentChatId.value === null) return;
+    const chatId = _currentChatId.value;
+    const current = _toolEnabledByChat.value.get(chatId) ?? new Set<string>();
+    const next = new Set(current);
     if (enabled) {
-      _enabledToolNames.value.add(name);
+      next.add(name);
     } else {
-      _enabledToolNames.value.delete(name);
+      next.delete(name);
     }
+    const nextMap = new Map(_toolEnabledByChat.value);
+    nextMap.set(chatId, next);
+    _toolEnabledByChat.value = nextMap;
   };
 
   const toggleTool = ({ name }: { name: string }) => {
-    setToolEnabled({
-      name,
-      enabled: !_enabledToolNames.value.has(name),
-    });
+    setToolEnabled({ name, enabled: !isToolEnabled({ name }) });
   };
 
-  const enabledToolNames = computed(() => Array.from(_enabledToolNames.value));
+  const setCurrentChatId = ({ chatId }: { chatId: string | null }) => {
+    _currentChatId.value = chatId;
+  };
+
+  const enabledToolNames = computed(() => {
+    if (_currentChatId.value === null) return [];
+    return Array.from(_toolEnabledByChat.value.get(_currentChatId.value) ?? []);
+  });
 
   const getToolCallsForMessage = ({ messageId }: { messageId: string }) => {
     return _messageToolCalls.value.get(messageId) || [];
@@ -68,6 +81,7 @@ export function useChatTools() {
     isToolEnabled,
     setToolEnabled,
     toggleTool,
+    setCurrentChatId,
     enabledToolNames,
     getToolCallsForMessage,
     addToolCall,
@@ -75,6 +89,8 @@ export function useChatTools() {
     clearToolCallsForMessage,
     __testOnly: {
       _messageToolCalls,
+      _toolEnabledByChat,
+      _currentChatId,
     },
   };
 }

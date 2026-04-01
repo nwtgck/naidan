@@ -165,6 +165,7 @@ describe('App Global Settings Sync', () => {
         stubs: {
           'transition': true,
           'OnboardingModal': false,
+          'DebugWeshTerminalModal': true,
         }
       }
     });
@@ -198,6 +199,7 @@ describe('App Global Settings Sync', () => {
         stubs: {
           'transition': true,
           'OnboardingModal': false,
+          'DebugWeshTerminalModal': true,
         }
       }
     });
@@ -223,7 +225,7 @@ describe('App Global Settings Sync', () => {
     mount(App, {
       global: {
         plugins: [router],
-        stubs: { 'transition': true }
+        stubs: { 'transition': true, 'DebugWeshTerminalModal': true }
       }
     });
 
@@ -245,7 +247,7 @@ describe('App Global Settings Sync', () => {
     mount(App, {
       global: {
         plugins: [router],
-        stubs: { 'transition': true }
+        stubs: { 'transition': true, 'DebugWeshTerminalModal': true }
       }
     });
 
@@ -265,7 +267,7 @@ describe('App Global Settings Sync', () => {
     mount(App, {
       global: {
         plugins: [router],
-        stubs: { 'transition': true }
+        stubs: { 'transition': true, 'DebugWeshTerminalModal': true }
       }
     });
 

@@ -1,18 +1,24 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue';
-import { Brain } from 'lucide-vue-next';
+import { computed, ref, watch, nextTick, inject } from 'vue';
+import type { Component } from 'vue';
+import { BrainIcon } from 'lucide-vue-next';
 import type { MessageNode } from '@/models/types';
 
 const props = defineProps<{
   message: MessageNode;
   noMargin?: boolean;
   partContent?: string;
+  trailingInline?: Component;
 }>();
 
 type ThinkingMode = 'expanded' | 'collapsed-active' | 'collapsed-finished';
 
+const inSequence = inject<boolean>('inSequence', false);
+
 const isUserExpanded = ref(false);
 const thinkingContentRef = ref<HTMLElement | null>(null);
+const previewRef = ref<HTMLElement | null>(null);
+const isPreviewOverflowing = ref(false);
 
 const displayThinking = computed(() => {
   if (props.partContent !== undefined) return props.partContent;
@@ -74,6 +80,17 @@ watch(displayThinking, async () => {
   }
 });
 
+watch([displayThinking, mode], async ([, newMode]) => {
+  if (inSequence && newMode === 'collapsed-finished') {
+    await nextTick();
+    if (previewRef.value) {
+      isPreviewOverflowing.value = previewRef.value.scrollHeight > previewRef.value.clientHeight;
+    }
+  } else {
+    isPreviewOverflowing.value = false;
+  }
+}, { immediate: true });
+
 defineExpose({
   __testOnly: {
     isUserExpanded,
@@ -124,9 +141,27 @@ defineExpose({
           isThinkingNow ? 'animate-pulse text-blue-700 dark:text-blue-400' : ''
         ]"
       >
-        <Brain class="w-3.5 h-3.5" />
+        <BrainIcon class="w-3.5 h-3.5" />
         <span v-if="isThinkingNow">Thinking...</span>
-        <span v-else>{{ mode === 'expanded' ? 'Hide Thought Process' : 'Show Thought Process' }}</span>
+        <span v-else-if="mode === 'expanded'">Hide Thought Process</span>
+        <span v-else-if="inSequence">Thought Process</span>
+        <span v-else>Show Thought Process</span>
+      </div>
+
+      <!-- In-sequence preview: height-limited content for collapsed-finished -->
+      <div
+        v-if="inSequence && mode === 'collapsed-finished' && displayThinking"
+        ref="previewRef"
+        class="relative max-h-32 overflow-hidden mt-1 text-gray-600 dark:text-gray-400 text-[11px] font-mono whitespace-pre-wrap leading-relaxed"
+        data-testid="thinking-preview"
+      >
+        {{ displayThinking }}
+        <div
+          v-if="isPreviewOverflowing"
+          class="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-white dark:from-gray-800 to-transparent cursor-pointer"
+          data-testid="thinking-preview-expand"
+          @click.stop="handleToggleThinking"
+        />
       </div>
 
       <!-- Content Container -->
@@ -141,14 +176,16 @@ defineExpose({
       >
         <!-- Brain watermark -->
         <div class="absolute top-0 right-0 opacity-[0.03] dark:opacity-[0.07] pointer-events-none -mt-4">
-          <Brain class="w-16 h-16" />
+          <BrainIcon class="w-16 h-16" />
         </div>
 
         <div class="flex flex-col min-h-full">
-          {{ displayThinking }}
+          <span>{{ displayThinking.trimEnd() }}<component :is="trailingInline" v-if="trailingInline" /></span>
         </div>
       </div>
     </div>
+    <!-- Indicator shown after collapsed-finished pill while still generating -->
+    <component :is="trailingInline" v-if="trailingInline && mode === 'collapsed-finished'" class="ml-1" />
   </div>
 </template>
 
