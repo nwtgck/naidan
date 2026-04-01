@@ -33,7 +33,7 @@ async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool
 }
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     handleFeatureToggle,
   }
 });

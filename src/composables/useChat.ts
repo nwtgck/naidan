@@ -2374,7 +2374,7 @@ export function useChat() {
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle, ensureChatTmpDirectory, getChatTmpDirectory,
     getVolatileToolOutput,
     chatFlow, isThinkingActive, isWaitingResponse,
-    __testOnly: {
+    TEST_ONLY: {
       liveChatRegistry,
       activeGenerations,
       activeTaskCounts,

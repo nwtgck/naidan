@@ -93,7 +93,7 @@ export function useFeatureFlags() {
     isFeatureEnabled,
     setFeatureEnabled,
     setFeatureParams,
-    __testOnly: {
+    TEST_ONLY: {
       reset: () => {
         featureFlags.value = createDefaultFeatureFlags();
       },

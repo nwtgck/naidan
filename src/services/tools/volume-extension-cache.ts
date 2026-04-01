@@ -89,7 +89,7 @@ export function isVolumeScanned({ volumeId }: { volumeId: string }): boolean {
   return _extensionsByVolume.has(volumeId);
 }
 
-export const __testOnly = {
+export const TEST_ONLY = {
   reset() {
     abortOngoingScans();
     _extensionsByVolume.clear();

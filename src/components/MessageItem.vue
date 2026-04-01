@@ -459,7 +459,7 @@ const showHeader = computed(() => props.flow.position === 'standalone' || props.
 const isNested = computed(() => props.flow.nesting === 'inside-group');
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     openAdvancedEditor,
     handleAdvancedEditorModeUpdate,
   }

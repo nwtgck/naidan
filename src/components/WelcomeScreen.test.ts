@@ -5,10 +5,10 @@ import { useSettings } from '@/composables/useSettings';
 import type { Settings } from '@/models/types';
 
 describe('WelcomeScreen.vue', () => {
-  const { __testOnly } = useSettings();
+  const { TEST_ONLY } = useSettings();
 
   beforeEach(() => {
-    __testOnly.__testOnlyReset();
+    TEST_ONLY.__testOnlyReset();
   });
 
   it('renders the main security message', () => {
@@ -18,7 +18,7 @@ describe('WelcomeScreen.vue', () => {
   });
 
   it('renders ephemeral storage message when memory storage is active', async () => {
-    __testOnly.__testOnlySetSettings({
+    TEST_ONLY.__testOnlySetSettings({
       storageType: 'memory',
       endpointType: 'openai',
       autoTitleEnabled: true,

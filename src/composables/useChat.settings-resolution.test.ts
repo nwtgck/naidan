@@ -50,7 +50,7 @@ vi.mock('../services/llm', () => {
 });
 
 describe('useChat Settings Resolution Policy', () => {
-  const { settings, __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
   const chatStore = useChat();
   const { sendMessage, currentChat, createNewChat, openChat, updateChatModel, updateChatSettings } = chatStore;
 
@@ -75,7 +75,7 @@ describe('useChat Settings Resolution Policy', () => {
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
 
-    chatStore.__testOnly.__testOnlySetCurrentChat(null);
+    chatStore.TEST_ONLY.__testOnlySetCurrentChat(null);
   });
 
   it('Scenario: Global setting change should be reflected in existing chat for subsequent messages', async () => {

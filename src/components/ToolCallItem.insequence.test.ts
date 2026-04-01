@@ -39,34 +39,34 @@ const inSeq = { global: { provide: { inSequence: true } } };
 describe('ToolCallItem detail state machine', () => {
   it('starts in expanded state outside a sequence', () => {
     const wrapper = mount(ToolCallItem, { props: { toolCall: makeToolCall() } });
-    expect(wrapper.vm.__testOnly.detailState.value).toBe('expanded');
+    expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('expanded');
     expect(wrapper.find('[data-testid="tool-detail-preview"]').exists()).toBe(false);
   });
 
   it('starts in preview state inside a sequence', () => {
     const wrapper = mount(ToolCallItem, { props: { toolCall: makeToolCall() }, ...inSeq });
-    expect(wrapper.vm.__testOnly.detailState.value).toBe('preview');
+    expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('preview');
     expect(wrapper.find('[data-testid="tool-detail-preview"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="tool-detail-preview"]').classes()).toContain('max-h-40');
   });
 
   it('preview → expanded when content area is clicked', async () => {
     const wrapper = mount(ToolCallItem, { props: { toolCall: makeToolCall() }, ...inSeq });
-    expect(wrapper.vm.__testOnly.detailState.value).toBe('preview');
+    expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('preview');
 
     await wrapper.find('[data-testid="tool-detail-preview"]').trigger('click');
 
-    expect(wrapper.vm.__testOnly.detailState.value).toBe('expanded');
+    expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('expanded');
     expect(wrapper.find('[data-testid="tool-detail-preview"]').exists()).toBe(false);
   });
 
   it('preview → collapsed when header is clicked', async () => {
     const wrapper = mount(ToolCallItem, { props: { toolCall: makeToolCall() }, ...inSeq });
-    expect(wrapper.vm.__testOnly.detailState.value).toBe('preview');
+    expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('preview');
 
     await wrapper.find('[data-testid="lm-tool-call"] > div').trigger('click');
 
-    expect(wrapper.vm.__testOnly.detailState.value).toBe('collapsed');
+    expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('collapsed');
   });
 
   it('collapsed → expanded (not preview) when header is clicked again', async () => {
@@ -74,11 +74,11 @@ describe('ToolCallItem detail state machine', () => {
 
     // collapse first
     await wrapper.find('[data-testid="lm-tool-call"] > div').trigger('click');
-    expect(wrapper.vm.__testOnly.detailState.value).toBe('collapsed');
+    expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('collapsed');
 
     // reopen → should be expanded, not preview
     await wrapper.find('[data-testid="lm-tool-call"] > div').trigger('click');
-    expect(wrapper.vm.__testOnly.detailState.value).toBe('expanded');
+    expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('expanded');
     expect(wrapper.find('[data-testid="tool-detail-preview"]').exists()).toBe(false);
   });
 

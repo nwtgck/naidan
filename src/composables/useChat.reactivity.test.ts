@@ -53,7 +53,7 @@ describe('useChat Reactivity', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.__testOnly.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('should reflect streamed chunks in activeMessages immediately', async () => {
@@ -64,7 +64,7 @@ describe('useChat Reactivity', () => {
     void chatStore.sendMessage({ content: 'Hello' });
 
     // Wait for activeGenerations to have the chat (signals generation started)
-    await vi.waitUntil(() => chatStore.__testOnly.activeGenerations.has(chat.id), { timeout: 2000 });
+    await vi.waitUntil(() => chatStore.TEST_ONLY.activeGenerations.has(chat.id), { timeout: 2000 });
 
     expect(chatStore.activeMessages.value).toHaveLength(2);
     expect(chatStore.activeMessages.value[1]?.content).toBe('');

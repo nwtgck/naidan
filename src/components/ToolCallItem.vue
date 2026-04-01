@@ -138,7 +138,7 @@ const formatArgs = ({ args }: { args: string | Record<string, unknown> }): strin
 };
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     detailState,
     handleHeaderClick,
     handlePreviewClick,

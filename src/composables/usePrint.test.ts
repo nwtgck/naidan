@@ -17,21 +17,21 @@ describe('usePrint composable', () => {
     expect(activePrintMode.value).toBeUndefined();
   });
 
-  it('should handle internal state via __testOnly', () => {
-    const { activePrintMode, __testOnly } = usePrint();
+  it('should handle internal state via TEST_ONLY', () => {
+    const { activePrintMode, TEST_ONLY } = usePrint();
 
-    __testOnly.setActivePrintMode({ mode: 'chat' });
+    TEST_ONLY.setActivePrintMode({ mode: 'chat' });
     expect(activePrintMode.value).toBe('chat');
 
-    __testOnly.setActivePrintMode({ mode: undefined });
+    TEST_ONLY.setActivePrintMode({ mode: undefined });
     expect(activePrintMode.value).toBeUndefined();
   });
 
   it('should coordinate readiness through waitForPrintReady and markPrintReady', async () => {
-    const { markPrintReady, __testOnly } = usePrint();
+    const { markPrintReady, TEST_ONLY } = usePrint();
 
     let resolved = false;
-    const promise = __testOnly.waitForPrintReady().then(() => {
+    const promise = TEST_ONLY.waitForPrintReady().then(() => {
       resolved = true;
     });
 

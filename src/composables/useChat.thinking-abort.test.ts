@@ -49,11 +49,11 @@ vi.mock('../services/storage', () => ({
 
 describe('useChat Thinking Abort', () => {
   const chatStore = useChat();
-  const { __testOnly: { __testOnlySetCurrentChat } } = chatStore;
+  const { TEST_ONLY: { __testOnlySetCurrentChat } } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.__testOnly.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('should close thinking tag and process thinking when aborted during thinking', async () => {

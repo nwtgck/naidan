@@ -185,7 +185,7 @@ function clearSelection() {
 }
 
 defineExpose({
-  __testOnly: {}
+  TEST_ONLY: {}
 });
 </script>
 

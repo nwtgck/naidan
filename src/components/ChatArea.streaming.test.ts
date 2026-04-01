@@ -81,7 +81,7 @@ describe('ChatArea Streaming DOM Test', () => {
     setupScrollToMock();
     vi.clearAllMocks();
     chats.clear();
-    chatStore.__testOnly.__testOnlySetCurrentChat(null);
+    chatStore.TEST_ONLY.__testOnlySetCurrentChat(null);
   });
 
   it('should render assistant chunks in the DOM in real-time', async () => {

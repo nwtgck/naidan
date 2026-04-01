@@ -63,8 +63,8 @@ describe('ExternalImage.vue', () => {
     // Using a URL that is definitely invalid for 'new URL()'
     const wrapper = mountComponent({ src: 'http://[' });
 
-    // Check internal state exposed via __testOnly
-    const internal = (wrapper.vm as any).__testOnly;
+    // Check internal state exposed via TEST_ONLY
+    const internal = (wrapper.vm as any).TEST_ONLY;
     expect(internal.isExternal.value).toBe(true);
     expect(internal.shouldShow.value).toBe(false);
 

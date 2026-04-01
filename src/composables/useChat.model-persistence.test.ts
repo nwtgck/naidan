@@ -63,8 +63,8 @@ vi.mock('../services/llm', () => {
 
 describe('useChat Model ID Persistence & Resolution', () => {
   const chatStore = useChat();
-  const { sendMessage, currentChat, activeMessages, __testOnly, updateChatModel } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { sendMessage, currentChat, activeMessages, TEST_ONLY, updateChatModel } = chatStore;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   beforeEach(() => {
     vi.clearAllMocks();

@@ -62,8 +62,8 @@ vi.mock('./useSettings', () => ({
 
 describe('useChat moveChatToGroup', () => {
   const chatStore = useChat();
-  const { __testOnly } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { TEST_ONLY } = chatStore;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   beforeEach(() => {
     vi.clearAllMocks();

@@ -218,7 +218,7 @@ export function useFileExplorerNavigation({
     selectColumnEntry,
     loadDirectory,
     loadColumnPane,
-    __testOnly: {
+    TEST_ONLY: {
       normalizeExplorerPath,
       getParentPath,
       formatDirectoryLoadError,

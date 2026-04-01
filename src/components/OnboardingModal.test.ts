@@ -417,7 +417,7 @@ describe('OnboardingModal.vue', () => {
       const wrapper = mount(OnboardingModal);
       await flushPromises();
 
-      const { effectiveType } = (wrapper.vm as any).__testOnly;
+      const { effectiveType } = (wrapper.vm as any).TEST_ONLY;
       expect(effectiveType.value).toBe('ollama');
       expect(vi.mocked(detectOllama)).toHaveBeenCalled();
 
@@ -428,7 +428,7 @@ describe('OnboardingModal.vue', () => {
     it('switches to Ollama type on manual localhost input but does NOT auto-connect', async () => {
       vi.mocked(detectOllama).mockResolvedValue(true);
       const wrapper = mount(OnboardingModal);
-      const { effectiveType, availableModels } = (wrapper.vm as any).__testOnly;
+      const { effectiveType, availableModels } = (wrapper.vm as any).TEST_ONLY;
 
       // Simulate user typing localhost URL
       await wrapper.find('input').setValue('http://localhost:11434');
@@ -444,7 +444,7 @@ describe('OnboardingModal.vue', () => {
 
     it('triggers auto-fetch automatically for Transformers.js', async () => {
       const wrapper = mount(OnboardingModal);
-      const { selectedType, effectiveType } = (wrapper.vm as any).__testOnly;
+      const { selectedType, effectiveType } = (wrapper.vm as any).TEST_ONLY;
 
       // Manually set selectedType to simulate clicking the button
       selectedType.value = 'transformers_js';
@@ -458,7 +458,7 @@ describe('OnboardingModal.vue', () => {
     it('remains on OpenAI type if detection fails on localhost', async () => {
       vi.mocked(detectOllama).mockResolvedValue(false);
       const wrapper = mount(OnboardingModal);
-      const { effectiveType } = (wrapper.vm as any).__testOnly;
+      const { effectiveType } = (wrapper.vm as any).TEST_ONLY;
 
       await wrapper.find('input').setValue('http://localhost:11434');
       await flushPromises();
@@ -470,7 +470,7 @@ describe('OnboardingModal.vue', () => {
     it('saves titleModelId as undefined when finishing onboarding with transformers_js', async () => {
       listModelsMock.mockResolvedValue(['Xenova/gpt2']);
       const wrapper = mount(OnboardingModal);
-      const { selectedType } = (wrapper.vm as any).__testOnly;
+      const { selectedType } = (wrapper.vm as any).TEST_ONLY;
 
       // 1. Select Transformers.js
       selectedType.value = 'transformers_js';

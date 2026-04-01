@@ -89,7 +89,7 @@ const parts = computed<Part[]>(() => {
 });
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     parts,
   }
 });

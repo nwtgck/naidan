@@ -81,7 +81,7 @@ export function useChatWeshTerminalSessions() {
       store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId }) }),
     reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId }: SessionArgs) =>
       store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId }) }),
-    __testOnly: {
+    TEST_ONLY: {
       buildWorkerMountsForChat,
     },
   };

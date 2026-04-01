@@ -63,8 +63,8 @@ vi.mock('../services/llm', () => {
 
 describe('useChat Streaming State Logic', () => {
   const chatStore = useChat();
-  const { currentChat, __testOnly, streaming, sendMessage, createNewChat, abortChat } = chatStore;
-  const { activeGenerations, __testOnlySetCurrentChat } = __testOnly;
+  const { currentChat, TEST_ONLY, streaming, sendMessage, createNewChat, abortChat } = chatStore;
+  const { activeGenerations, __testOnlySetCurrentChat } = TEST_ONLY;
 
   const waitForRegistry = async (id: string) => {
     await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000 });

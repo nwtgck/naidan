@@ -40,14 +40,14 @@ vi.mock('../services/llm', () => {
 });
 
 describe('useChat System Prompt Clear Policy', () => {
-  const { __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { TEST_ONLY: { __testOnlySetSettings } } = useSettings();
   const chatStore = useChat();
   const { sendMessage, createNewChat, openChat, updateChatSettings, updateChatGroupOverride } = chatStore;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
-    chatStore.__testOnly.__testOnlySetCurrentChat(null);
+    chatStore.TEST_ONLY.__testOnlySetCurrentChat(null);
     __testOnlySetSettings({
       endpointType: 'openai',
       endpointUrl: 'http://global',

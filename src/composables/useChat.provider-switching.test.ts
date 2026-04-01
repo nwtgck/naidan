@@ -49,10 +49,10 @@ vi.mock('../services/llm', () => {
 });
 
 describe('Provider and Model Compatibility (Comprehensive Test)', () => {
-  const { settings, __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
   const chatStore = useChat();
-  const { sendMessage, __testOnly, updateChatSettings, updateChatModel } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { sendMessage, TEST_ONLY, updateChatSettings, updateChatModel } = chatStore;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   beforeEach(() => {
     vi.clearAllMocks();

@@ -271,7 +271,7 @@ describe('ChatInput Integration', () => {
   it('should open ImageEditor when edit button is clicked', async () => {
     const wrapper = getWrapper();
 
-    wrapper.vm.__testOnly.attachments.value = [{
+    wrapper.vm.TEST_ONLY.attachments.value = [{
       id: 'att-1',
       binaryObjectId: 'bin-1',
       originalName: 'test.png',
@@ -289,7 +289,7 @@ describe('ChatInput Integration', () => {
     await flushPromises();
     await nextTick();
 
-    expect(wrapper.vm.__testOnly.editingAttachmentId.value).toBe('att-1');
+    expect(wrapper.vm.TEST_ONLY.editingAttachmentId.value).toBe('att-1');
     expect(wrapper.find('[data-testid="image-editor"]').exists()).toBe(true);
   });
 
@@ -369,7 +369,7 @@ describe('ChatInput Integration', () => {
     const originalBlob = new Blob(['original']);
     const originalBinId = 'bin-1';
 
-    wrapper.vm.__testOnly.attachments.value = [{
+    wrapper.vm.TEST_ONLY.attachments.value = [{
       id: 'att-1',
       binaryObjectId: originalBinId,
       originalName: 'test.png',
@@ -382,7 +382,7 @@ describe('ChatInput Integration', () => {
     await nextTick();
 
     // Trigger open
-    wrapper.vm.__testOnly.editingAttachmentId.value = 'att-1';
+    wrapper.vm.TEST_ONLY.editingAttachmentId.value = 'att-1';
     await nextTick();
     await flushPromises();
     await nextTick();
@@ -394,35 +394,35 @@ describe('ChatInput Integration', () => {
     await editor.find('.apply-btn').trigger('click');
     await nextTick();
 
-    const updatedAtt = wrapper.vm.__testOnly.attachments.value[0];
+    const updatedAtt = wrapper.vm.TEST_ONLY.attachments.value[0];
     expect(updatedAtt).toBeDefined();
     if (updatedAtt) {
       expect(updatedAtt.binaryObjectId).not.toBe(originalBinId);
     }
     expect(global.URL.revokeObjectURL).toHaveBeenCalled();
-    expect(wrapper.vm.__testOnly.editingAttachmentId.value).toBeUndefined();
+    expect(wrapper.vm.TEST_ONLY.editingAttachmentId.value).toBeUndefined();
   });
 
   it('should handle attachment removal correctly', async () => {
     const wrapper = getWrapper();
-    wrapper.vm.__testOnly.attachments.value = [
+    wrapper.vm.TEST_ONLY.attachments.value = [
       { id: 'att-1', status: 'memory', blob: new Blob() } as any
     ];
     await nextTick();
 
-    expect(wrapper.vm.__testOnly.attachments.value.length).toBe(1);
+    expect(wrapper.vm.TEST_ONLY.attachments.value.length).toBe(1);
 
     const removeBtn = wrapper.find('button[title="Remove"]');
     await removeBtn.trigger('click');
 
-    expect(wrapper.vm.__testOnly.attachments.value.length).toBe(0);
+    expect(wrapper.vm.TEST_ONLY.attachments.value.length).toBe(0);
   });
 
   it('should clear attachments after successful message send', async () => {
     mockSendMessage.mockResolvedValue(true);
     const wrapper = getWrapper();
     wrapper.vm.input = 'test message';
-    wrapper.vm.__testOnly.attachments.value = [
+    wrapper.vm.TEST_ONLY.attachments.value = [
       { id: 'att-1', status: 'memory', blob: new Blob() } as any
     ];
     await nextTick();
@@ -433,12 +433,12 @@ describe('ChatInput Integration', () => {
 
     expect(mockSendMessage).toHaveBeenCalled();
     expect(wrapper.vm.input).toBe('');
-    expect(wrapper.vm.__testOnly.attachments.value.length).toBe(0);
+    expect(wrapper.vm.TEST_ONLY.attachments.value.length).toBe(0);
   });
 
   it('should call setPreferredEditorMode when AdvancedTextEditor emits update:mode', async () => {
     const wrapper = getWrapper();
-    wrapper.vm.__testOnly.openAdvancedEditor();
+    wrapper.vm.TEST_ONLY.openAdvancedEditor();
     await nextTick();
 
     // Since AdvancedTextEditor is an async component, it might be a stub in tests
@@ -450,7 +450,7 @@ describe('ChatInput Integration', () => {
       advancedEditor.vm.$emit('update:mode', { mode: 'textarea' });
     } else {
       // Fallback: call the handler directly to test the integration logic
-      (wrapper.vm.__testOnly as any).handleAdvancedEditorModeUpdate({ mode: 'textarea' });
+      (wrapper.vm.TEST_ONLY as any).handleAdvancedEditorModeUpdate({ mode: 'textarea' });
     }
 
     expect(mockSetPreferredEditorMode).toHaveBeenCalledWith({ mode: 'textarea' });
@@ -489,7 +489,7 @@ describe('ChatInput Integration', () => {
     };
     const wrapper = getWrapper();
     await nextTick();
-    expect(wrapper.vm.__testOnly.selectedReasoningEffort.value).toBe('low');
+    expect(wrapper.vm.TEST_ONLY.selectedReasoningEffort.value).toBe('low');
 
     // 2. Switch to Chat 2 which has 'high'
     mockCurrentChat.value = {
@@ -499,6 +499,6 @@ describe('ChatInput Integration', () => {
     await nextTick();
 
     // Verify it reflects the NEW chat's state
-    expect(wrapper.vm.__testOnly.selectedReasoningEffort.value).toBe('high');
+    expect(wrapper.vm.TEST_ONLY.selectedReasoningEffort.value).toBe('high');
   });
 });

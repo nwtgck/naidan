@@ -360,7 +360,7 @@ export function useSettings() {
     setHeavyContentAlertDismissed,
     setSearchPreviewMode,
     setSearchContextSize,
-    __testOnly: {
+    TEST_ONLY: {
       __testOnlyReset,
       __testOnlySetSettings,
     },

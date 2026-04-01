@@ -44,7 +44,7 @@ vi.mock('../services/llm', () => {
 });
 
 describe('useChat Error Handling', () => {
-  const { __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { TEST_ONLY: { __testOnlySetSettings } } = useSettings();
 
   beforeEach(() => {
     vi.clearAllMocks();

@@ -65,8 +65,8 @@ vi.mock('../services/llm', () => {
 
 describe('useChat Onboarding Trigger', () => {
   const chatStore = useChat();
-  const { __testOnly, sendMessage, currentChat } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { TEST_ONLY, sendMessage, currentChat } = chatStore;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   beforeEach(() => {
     vi.clearAllMocks();

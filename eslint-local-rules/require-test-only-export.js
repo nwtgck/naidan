@@ -3,11 +3,11 @@ export const rule = {
   meta: {
     type: 'suggestion',
     docs: {
-      description: "Ensure useXxx composables return a __testOnly object for testing internals.",
+      description: "Ensure useXxx composables return a TEST_ONLY object for testing internals.",
     },
     fixable: 'code',
     messages: {
-      missingTestOnly: "Composable '{{ name }}' must return a '__testOnly' object for testing purposes.",
+      missingTestOnly: "Composable '{{ name }}' must return a 'TEST_ONLY' object for testing purposes.",
     },
   },
   create(context) {
@@ -51,8 +51,8 @@ export const rule = {
         if (node.argument && node.argument.type === 'ObjectExpression') {
           const hasTestOnly = node.argument.properties.some(prop => 
             (prop.type === 'Property' || prop.type === 'MethodDefinition') &&
-            ((prop.key.type === 'Identifier' && prop.key.name === '__testOnly') ||
-             (prop.key.type === 'Literal' && prop.key.value === '__testOnly'))
+            ((prop.key.type === 'Identifier' && prop.key.name === 'TEST_ONLY') ||
+             (prop.key.type === 'Literal' && prop.key.value === 'TEST_ONLY'))
           );
 
           if (!hasTestOnly) {
@@ -76,7 +76,7 @@ export const rule = {
                   const indent = indentationMatch ? indentationMatch[0] : '    ';
                   
                   const target = hasTrailingComma ? tokenAfterLastProperty : lastProperty;
-                  const textToInsert = (hasTrailingComma ? '' : ',') + `\n${indent}__testOnly: {\n${indent}  ${comment}\n${indent}},`;
+                  const textToInsert = (hasTrailingComma ? '' : ',') + `\n${indent}TEST_ONLY: {\n${indent}  ${comment}\n${indent}},`;
                   
                   return fixer.insertTextAfter(target, textToInsert);
                 } else {
@@ -86,7 +86,7 @@ export const rule = {
                   const indent = indentationMatch ? indentationMatch[0] : '  ';
                   const innerIndent = indent + '  ';
                   
-                  return fixer.replaceText(obj, `{\n${innerIndent}__testOnly: {\n${innerIndent}  ${comment}\n${innerIndent}},\n${indent}}`);
+                  return fixer.replaceText(obj, `{\n${innerIndent}TEST_ONLY: {\n${innerIndent}  ${comment}\n${innerIndent}},\n${indent}}`);
                 }
               }
             });

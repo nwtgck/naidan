@@ -189,8 +189,8 @@ describe('useChat - Attachment & Migration Logic', () => {
   });
 
   it('should rescue memory blobs during migration from LocalStorage to OPFS', async () => {
-    const { sendMessage, __testOnly, registerLiveInstance } = chatStore;
-    const { __testOnlySetCurrentChat } = __testOnly;
+    const { sendMessage, TEST_ONLY, registerLiveInstance } = chatStore;
+    const { __testOnlySetCurrentChat } = TEST_ONLY;
     const chatObj = reactive({
       id: 'rescue-chat',
       title: 'Rescue',

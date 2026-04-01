@@ -33,8 +33,8 @@ vi.mock('./useSettings', () => ({
 
 describe('useChat Group Collapse', () => {
   const chatStore = useChat();
-  const { setChatGroupCollapsed, rootItems, currentChatGroup, __testOnly } = chatStore;
-  const { __testOnlySetCurrentChatGroup } = __testOnly;
+  const { setChatGroupCollapsed, rootItems, currentChatGroup, TEST_ONLY } = chatStore;
+  const { __testOnlySetCurrentChatGroup } = TEST_ONLY;
 
   beforeEach(() => {
     vi.clearAllMocks();

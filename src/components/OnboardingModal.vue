@@ -368,7 +368,7 @@ async function handleFinish() {
 
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     selectedType,
     effectiveType,
     availableModels,

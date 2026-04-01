@@ -2,12 +2,12 @@ export const rule = {
   meta: {
     type: 'suggestion',
     docs: {
-      description: "Ensure defineExpose is called with a __testOnly object in .vue files.",
+      description: "Ensure defineExpose is called with a TEST_ONLY object in .vue files.",
     },
     fixable: 'code',
     messages: {
-      missingDefineExpose: "All .vue files must include: defineExpose({ __testOnly: { /* internal state for testing */ } });",
-      missingTestOnly: "defineExpose must include: __testOnly: { /* internal state for testing */ }",
+      missingDefineExpose: "All .vue files must include: defineExpose({ TEST_ONLY: { /* internal state for testing */ } });",
+      missingTestOnly: "defineExpose must include: TEST_ONLY: { /* internal state for testing */ }",
     },
   },
   create(context) {
@@ -36,7 +36,7 @@ export const rule = {
               
               // Check for <script setup>
               const scriptSetupMatch = text.match(/<script\s+setup[^>]*>/);
-              const defineExposeText = `\n\ndefineExpose({\n  __testOnly: {\n    ${comment}\n  }\n});\n`;
+              const defineExposeText = `\n\ndefineExpose({\n  TEST_ONLY: {\n    ${comment}\n  }\n});\n`;
 
               if (scriptSetupMatch) {
                 // <script setup> exists but no defineExpose
@@ -47,7 +47,7 @@ export const rule = {
               }
 
               // No <script setup> at all
-              const newScriptSetup = `<script setup lang="ts">\ndefineExpose({\n  __testOnly: {\n    ${comment}\n  }\n});\n</script>\n\n`;
+              const newScriptSetup = `<script setup lang="ts">\ndefineExpose({\n  TEST_ONLY: {\n    ${comment}\n  }\n});\n</script>\n\n`;
               
               // Try to insert before <template> or at the beginning of the file
               const templateMatch = text.match(/<template>/);
@@ -65,7 +65,7 @@ export const rule = {
               node: defineExposeNode,
               messageId: 'missingTestOnly',
               fix(fixer) {
-                const text = `{\n  __testOnly: {\n    ${comment}\n  }\n}`;
+                const text = `{\n  TEST_ONLY: {\n    ${comment}\n  }\n}`;
                 if (!arg) {
                   const openingParen = context.sourceCode.getTokenAfter(context.sourceCode.getFirstToken(defineExposeNode));
                   return fixer.insertTextAfter(openingParen, text);
@@ -78,8 +78,8 @@ export const rule = {
 
           const hasTestOnly = arg.properties.some(prop => 
             (prop.type === 'Property' || prop.type === 'MethodDefinition') &&
-            ((prop.key.type === 'Identifier' && prop.key.name === '__testOnly') ||
-             (prop.key.type === 'Literal' && prop.key.value === '__testOnly'))
+            ((prop.key.type === 'Identifier' && prop.key.name === 'TEST_ONLY') ||
+             (prop.key.type === 'Literal' && prop.key.value === 'TEST_ONLY'))
           );
 
           if (!hasTestOnly) {
@@ -99,7 +99,7 @@ export const rule = {
                   const indent = indentationMatch ? indentationMatch[0] : '  ';
                   
                   const target = hasTrailingComma ? tokenAfterLastProperty : lastProperty;
-                  const textToInsert = (hasTrailingComma ? '' : ',') + `\n${indent}__testOnly: {\n${indent}  ${comment}\n${indent}},`;
+                  const textToInsert = (hasTrailingComma ? '' : ',') + `\n${indent}TEST_ONLY: {\n${indent}  ${comment}\n${indent}},`;
                   
                   return fixer.insertTextAfter(target, textToInsert);
                 } else {
@@ -108,7 +108,7 @@ export const rule = {
                   const indent = indentationMatch ? indentationMatch[0] : '';
                   const innerIndent = indent + '  ';
                   
-                  return fixer.replaceText(arg, `{\n${innerIndent}__testOnly: {\n${innerIndent}  ${comment}\n${innerIndent}},\n${indent}}`);
+                  return fixer.replaceText(arg, `{\n${innerIndent}TEST_ONLY: {\n${innerIndent}  ${comment}\n${innerIndent}},\n${indent}}`);
                 }
               }
             });

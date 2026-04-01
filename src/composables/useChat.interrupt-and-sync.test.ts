@@ -69,18 +69,18 @@ vi.mock('./useSettings', () => ({
 describe('useChat Interrupt and Sync Tests', () => {
   const chatStore = useChat();
   const {
-    sendMessage, editMessage, __testOnly
+    sendMessage, editMessage, TEST_ONLY
   } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   const { clearEvents } = useGlobalEvents();
 
   beforeEach(() => {
     vi.clearAllMocks();
     __testOnlySetCurrentChat(null);
-    __testOnly.activeGenerations.clear();
-    __testOnly.clearActiveTaskCounts();
-    __testOnly.clearLiveChatRegistry();
+    TEST_ONLY.activeGenerations.clear();
+    TEST_ONLY.clearActiveTaskCounts();
+    TEST_ONLY.clearLiveChatRegistry();
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
     clearEvents();

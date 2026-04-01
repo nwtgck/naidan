@@ -506,7 +506,7 @@ describe('StorageTab.vue Tests', () => {
         setHeavyContentAlertDismissed: vi.fn(),
         setSearchPreviewMode: vi.fn(),
         setSearchContextSize: vi.fn(),
-        __testOnly: {
+        TEST_ONLY: {
           __testOnlyReset: vi.fn(),
           __testOnlySetSettings: vi.fn(),
         }

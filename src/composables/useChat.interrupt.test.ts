@@ -49,11 +49,11 @@ vi.mock('../services/storage', () => ({
 
 describe('useChat Interruption', () => {
   const chatStore = useChat();
-  const { __testOnly: { __testOnlySetCurrentChat } } = chatStore;
+  const { TEST_ONLY: { __testOnlySetCurrentChat } } = chatStore;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.__testOnly.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('should interrupt current generation and start new one when regenerateMessage is called', async () => {

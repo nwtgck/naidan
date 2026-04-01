@@ -140,7 +140,7 @@ export function useVirtualizedFileExplorerList({
     bottomSpacerHeight,
     virtualizationEnabled,
     scrollEntryIntoView,
-    __testOnly: {
+    TEST_ONLY: {
       updateViewportMetrics,
     },
   };

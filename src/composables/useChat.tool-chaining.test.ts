@@ -95,9 +95,9 @@ vi.mock('./useChatTools', () => ({
 describe('useChat Tool Chaining', () => {
   const chatStore = useChat();
   const {
-    activeMessages, sendMessage, __testOnly
+    activeMessages, sendMessage, TEST_ONLY
   } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   const { clearEvents } = useGlobalEvents();
 

@@ -25,13 +25,13 @@ describe('useRecentChats Composable', () => {
     closeRecent,
     toggleRecent,
     addRecentChat,
-    __testOnly
+    TEST_ONLY
   } = useRecentChats();
   const { closeOverlay } = useOverlay();
 
   beforeEach(() => {
     closeOverlay();
-    __testOnly.recentChatEntries.value = [];
+    TEST_ONLY.recentChatEntries.value = [];
   });
 
   it('should track recent chats and exclude the latest one from switcher list', () => {
@@ -39,7 +39,7 @@ describe('useRecentChats Composable', () => {
     addRecentChat({ id: 'chat2' });
 
     // allRecentChats should have both in reverse order
-    expect(__testOnly.allRecentChats.value.map(c => c.id)).toEqual(['chat2', 'chat1']);
+    expect(TEST_ONLY.allRecentChats.value.map(c => c.id)).toEqual(['chat2', 'chat1']);
 
     // switcherRecentChats (recentChats) should exclude the first one
     expect(recentChats.value.map(c => c.id)).toEqual(['chat1']);
@@ -59,17 +59,17 @@ describe('useRecentChats Composable', () => {
     addRecentChat({ id: 'chat2' });
     addRecentChat({ id: 'chat3' });
 
-    expect(__testOnly.allRecentChats.value.map(c => c.id)).toEqual(['chat3', 'chat2', 'chat1']);
+    expect(TEST_ONLY.allRecentChats.value.map(c => c.id)).toEqual(['chat3', 'chat2', 'chat1']);
 
     addRecentChat({ id: 'chat1' }); // Re-visit chat1
-    expect(__testOnly.allRecentChats.value.map(c => c.id)).toEqual(['chat1', 'chat3', 'chat2']);
+    expect(TEST_ONLY.allRecentChats.value.map(c => c.id)).toEqual(['chat1', 'chat3', 'chat2']);
   });
 
   it('should limit the number of recent chats', () => {
     for (let i = 0; i < 40; i++) {
       addRecentChat({ id: `chat-${i}` });
     }
-    expect(__testOnly.recentChatEntries.value.length).toBe(32);
+    expect(TEST_ONLY.recentChatEntries.value.length).toBe(32);
   });
 
   it('should manage overlay state correctly', () => {

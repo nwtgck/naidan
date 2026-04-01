@@ -1088,7 +1088,7 @@ function focusInput() {
 }
 
 defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, processDropItems, formatLabel,
-  __testOnly: {
+  TEST_ONLY: {
     attachments,
     editingAttachmentId,
     editingAttachment,

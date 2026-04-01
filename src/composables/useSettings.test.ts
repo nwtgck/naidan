@@ -64,7 +64,7 @@ vi.mock('../services/llm', () => ({
 }));
 
 describe('useSettings Initialization and Bootstrap', () => {
-  const { __testOnly: { __testOnlyReset } } = useSettings();
+  const { TEST_ONLY: { __testOnlyReset } } = useSettings();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -348,7 +348,7 @@ describe('useSettings Initialization and Bootstrap', () => {
   });
 
   describe('Explicit Actions and Onboarding Dismissal', () => {
-    const { __testOnly: { __testOnlyReset } } = useSettings();
+    const { TEST_ONLY: { __testOnlyReset } } = useSettings();
 
     beforeEach(() => {
       vi.clearAllMocks();

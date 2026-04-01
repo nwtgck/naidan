@@ -85,7 +85,7 @@ describe('ImageEditor', () => {
 
     const applyButton = wrapper.find('[data-testid="image-editor-finish-button"]');
     expect(applyButton.attributes('disabled')).toBeDefined();
-    expect(wrapper.vm.__testOnly.hasChanges.value).toBe(false);
+    expect(wrapper.vm.TEST_ONLY.hasChanges.value).toBe(false);
   });
 
   it('should enable Finish & Apply button when format is changed', async () => {
@@ -103,7 +103,7 @@ describe('ImageEditor', () => {
 
     const applyButton = wrapper.find('[data-testid="image-editor-finish-button"]');
     expect(applyButton.attributes('disabled')).toBeUndefined();
-    expect(wrapper.vm.__testOnly.hasChanges.value).toBe(true);
+    expect(wrapper.vm.TEST_ONLY.hasChanges.value).toBe(true);
   });
 
   it('should maintain aspect ratio by default during resize', async () => {
@@ -111,12 +111,12 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(wrapper.vm.__testOnly.resizeW.value).toBe(100);
-    expect(wrapper.vm.__testOnly.resizeH.value).toBe(100);
+    expect(wrapper.vm.TEST_ONLY.resizeW.value).toBe(100);
+    expect(wrapper.vm.TEST_ONLY.resizeH.value).toBe(100);
 
-    wrapper.vm.__testOnly.resizeW.value = 200;
+    wrapper.vm.TEST_ONLY.resizeW.value = 200;
     await nextTick();
-    expect(wrapper.vm.__testOnly.resizeH.value).toBe(200);
+    expect(wrapper.vm.TEST_ONLY.resizeH.value).toBe(200);
   });
 
   it('should allow free resizing when lock is toggled', async () => {
@@ -124,12 +124,12 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    wrapper.vm.__testOnly.resizeLock.value = 'free';
+    wrapper.vm.TEST_ONLY.resizeLock.value = 'free';
     await nextTick();
 
-    wrapper.vm.__testOnly.resizeW.value = 200;
+    wrapper.vm.TEST_ONLY.resizeW.value = 200;
     await nextTick();
-    expect(wrapper.vm.__testOnly.resizeH.value).toBe(100);
+    expect(wrapper.vm.TEST_ONLY.resizeH.value).toBe(100);
   });
 
   it('should enable undo/redo when actions are performed', async () => {
@@ -137,12 +137,12 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(0);
-    await wrapper.vm.__testOnly.applyTransform({ type: 'rotate-r' });
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(0);
+    await wrapper.vm.TEST_ONLY.applyTransform({ type: 'rotate-r' });
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(1);
 
-    wrapper.vm.__testOnly.undo();
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(0);
+    wrapper.vm.TEST_ONLY.undo();
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(0);
   });
 
   it('should execute transform actions (rotate/flip) correctly', async () => {
@@ -150,13 +150,13 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    await wrapper.vm.__testOnly.applyTransform({ type: 'rotate-l' });
+    await wrapper.vm.TEST_ONLY.applyTransform({ type: 'rotate-l' });
     expect(mockContext.rotate).toHaveBeenCalled();
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(1);
 
-    await wrapper.vm.__testOnly.applyTransform({ type: 'flip-h' });
+    await wrapper.vm.TEST_ONLY.applyTransform({ type: 'flip-h' });
     expect(mockContext.scale).toHaveBeenCalled();
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(2);
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(2);
   });
 
   it('should execute crop action correctly', async () => {
@@ -164,9 +164,9 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    await wrapper.vm.__testOnly.executeAction({ action: 'crop' });
+    await wrapper.vm.TEST_ONLY.executeAction({ action: 'crop' });
     expect(mockContext.getImageData).toHaveBeenCalled();
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(1);
   });
 
   it('should execute mask actions with correct composite operation', async () => {
@@ -174,13 +174,13 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    wrapper.vm.__testOnly.selectedFill.value = wrapper.vm.__testOnly.TRANSPARENT;
-    await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
+    wrapper.vm.TEST_ONLY.selectedFill.value = wrapper.vm.TEST_ONLY.TRANSPARENT;
+    await wrapper.vm.TEST_ONLY.executeAction({ action: 'mask-inside' });
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(1);
 
-    await wrapper.vm.__testOnly.executeAction({ action: 'mask-outside' });
+    await wrapper.vm.TEST_ONLY.executeAction({ action: 'mask-outside' });
     expect(mockContext.fillRect).toHaveBeenCalled();
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(2);
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(2);
   });
 
   it('should use opaque fill and reset composite operation when masking with transparent color', async () => {
@@ -188,8 +188,8 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    wrapper.vm.__testOnly.selectedFill.value = wrapper.vm.__testOnly.TRANSPARENT;
-    await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
+    wrapper.vm.TEST_ONLY.selectedFill.value = wrapper.vm.TEST_ONLY.TRANSPARENT;
+    await wrapper.vm.TEST_ONLY.executeAction({ action: 'mask-inside' });
 
     // Important: fillStyle must be opaque (e.g., 'black') during execution to actually erase pixels in destination-out mode
     // The test confirms that we are not setting it to 'rgba(0,0,0,0)' which was the bug.
@@ -213,7 +213,7 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
+    expect(wrapper.vm.TEST_ONLY.selection.value.status).toBe('none');
   });
 
   it('should restore selection state when undoing an action', async () => {
@@ -222,20 +222,20 @@ describe('ImageEditor', () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     // 1. Create a selection manually for testing
-    wrapper.vm.__testOnly.selection.value.status = 'active';
-    wrapper.vm.__testOnly.selection.value.rect = { x: 0.2, y: 0.2, w: 0.5, h: 0.5 };
+    wrapper.vm.TEST_ONLY.selection.value.status = 'active';
+    wrapper.vm.TEST_ONLY.selection.value.rect = { x: 0.2, y: 0.2, w: 0.5, h: 0.5 };
     await nextTick();
 
     // 2. Perform action (Crop) - it should clear the active selection in current view
-    await wrapper.vm.__testOnly.executeAction({ action: 'crop' });
-    expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
+    await wrapper.vm.TEST_ONLY.executeAction({ action: 'crop' });
+    expect(wrapper.vm.TEST_ONLY.selection.value.status).toBe('none');
 
     // 3. Undo - it should restore the selection that was used for the crop
-    wrapper.vm.__testOnly.undo();
+    wrapper.vm.TEST_ONLY.undo();
     await nextTick();
 
-    expect(wrapper.vm.__testOnly.selection.value.status).toBe('active');
-    expect(wrapper.vm.__testOnly.selection.value.rect.x).toBe(0.2);
+    expect(wrapper.vm.TEST_ONLY.selection.value.status).toBe('active');
+    expect(wrapper.vm.TEST_ONLY.selection.value.rect.x).toBe(0.2);
   });
 
   it('should reset editor state correctly', async () => {
@@ -243,14 +243,14 @@ describe('ImageEditor', () => {
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    await wrapper.vm.__testOnly.applyTransform({ type: 'rotate-r' });
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(1);
+    await wrapper.vm.TEST_ONLY.applyTransform({ type: 'rotate-r' });
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(1);
 
     const resetBtn = wrapper.find('button[title="Reset Image"]');
     await resetBtn.trigger('click');
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    expect(wrapper.vm.__testOnly.historyIndex.value).toBe(0);
+    expect(wrapper.vm.TEST_ONLY.historyIndex.value).toBe(0);
   });
 
   it('should support elliptical selection and use ellipse path', async () => {
@@ -259,10 +259,10 @@ describe('ImageEditor', () => {
     await new Promise(resolve => setTimeout(resolve, 50));
 
     // Switch to ellipse mode
-    wrapper.vm.__testOnly.selection.value.shape = 'ellipse';
+    wrapper.vm.TEST_ONLY.selection.value.shape = 'ellipse';
     await nextTick();
 
-    await wrapper.vm.__testOnly.executeAction({ action: 'mask-inside' });
+    await wrapper.vm.TEST_ONLY.executeAction({ action: 'mask-inside' });
 
     expect(mockContext.ellipse).toHaveBeenCalled();
   });
@@ -284,13 +284,13 @@ describe('ImageEditor', () => {
       });
 
       await container.trigger('mousedown', { clientX: 10, clientY: 10 });
-      expect(wrapper.vm.__testOnly.selection.value.status).toBe('active');
+      expect(wrapper.vm.TEST_ONLY.selection.value.status).toBe('active');
 
       // Simulate mousemove to (50, 50)
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: 50, clientY: 50 }));
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.selection.value.status).toBe('active');
+      expect(wrapper.vm.TEST_ONLY.selection.value.status).toBe('active');
       // Selection should be visible in DOM
       expect(wrapper.find('[data-testid="image-editor-selection"]').exists()).toBe(true);
     });
@@ -300,13 +300,13 @@ describe('ImageEditor', () => {
       await nextTick();
 
       // Manually set a selection
-      wrapper.vm.__testOnly.selection.value.status = 'active';
+      wrapper.vm.TEST_ONLY.selection.value.status = 'active';
       await nextTick();
 
       const cropBtn = wrapper.find('[data-testid="image-editor-action-crop"]');
       await cropBtn.trigger('click');
 
-      expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
+      expect(wrapper.vm.TEST_ONLY.selection.value.status).toBe('none');
       expect(wrapper.find('[data-testid="image-editor-selection"]').exists()).toBe(false);
     });
 
@@ -330,7 +330,7 @@ describe('ImageEditor', () => {
       window.dispatchEvent(new MouseEvent('mouseup'));
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.selection.value.status).toBe('none');
+      expect(wrapper.vm.TEST_ONLY.selection.value.status).toBe('none');
     });
   });
 
@@ -339,14 +339,14 @@ describe('ImageEditor', () => {
       const wrapper = mount(ImageEditor, { props });
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(true);
+      expect(wrapper.vm.TEST_ONLY.isSidebarOpen.value).toBe(true);
 
       const toggleBtn = wrapper.find('button[title="Toggle Tools Sidebar"]');
       await toggleBtn.trigger('click');
-      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(false);
+      expect(wrapper.vm.TEST_ONLY.isSidebarOpen.value).toBe(false);
 
       await toggleBtn.trigger('click');
-      expect(wrapper.vm.__testOnly.isSidebarOpen.value).toBe(true);
+      expect(wrapper.vm.TEST_ONLY.isSidebarOpen.value).toBe(true);
     });
 
     it('should update zoom on wheel event', async () => {
@@ -358,12 +358,12 @@ describe('ImageEditor', () => {
 
       // Zoom In
       await container.trigger('wheel', { deltaY: -100 });
-      expect(wrapper.vm.__testOnly.zoom.value).toBeGreaterThan(1);
+      expect(wrapper.vm.TEST_ONLY.zoom.value).toBeGreaterThan(1);
 
       // Zoom Out
-      const zoomedIn = wrapper.vm.__testOnly.zoom.value;
+      const zoomedIn = wrapper.vm.TEST_ONLY.zoom.value;
       await container.trigger('wheel', { deltaY: 100 });
-      expect(wrapper.vm.__testOnly.zoom.value).toBeLessThan(zoomedIn);
+      expect(wrapper.vm.TEST_ONLY.zoom.value).toBeLessThan(zoomedIn);
     });
 
     it('should pan image when dragging with Alt key', async () => {
@@ -380,8 +380,8 @@ describe('ImageEditor', () => {
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 150 }));
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.panOffset.value.x).toBe(50);
-      expect(wrapper.vm.__testOnly.panOffset.value.y).toBe(50);
+      expect(wrapper.vm.TEST_ONLY.panOffset.value.x).toBe(50);
+      expect(wrapper.vm.TEST_ONLY.panOffset.value.y).toBe(50);
 
       window.dispatchEvent(new MouseEvent('mouseup'));
     });
@@ -394,15 +394,15 @@ describe('ImageEditor', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
 
       // 1. Make a change (Rotate)
-      await wrapper.vm.__testOnly.applyTransform({ type: 'rotate-r' });
-      expect(wrapper.vm.__testOnly.hasChanges.value).toBe(true);
+      await wrapper.vm.TEST_ONLY.applyTransform({ type: 'rotate-r' });
+      expect(wrapper.vm.TEST_ONLY.hasChanges.value).toBe(true);
 
       // 2. Click Close
       const closeBtn = wrapper.findAll('button').find(b => b.text().includes('Close'));
       await closeBtn?.trigger('click');
 
       // 3. Dialog should be visible
-      expect(wrapper.vm.__testOnly.showCloseConfirm.value).toBe(true);
+      expect(wrapper.vm.TEST_ONLY.showCloseConfirm.value).toBe(true);
 
       // 4. Confirm discard
       await wrapper.findComponent({ name: 'CustomDialog' }).vm.$emit('confirm');
@@ -416,12 +416,12 @@ describe('ImageEditor', () => {
       await nextTick();
       await new Promise(resolve => setTimeout(resolve, 50));
 
-      expect(wrapper.vm.__testOnly.hasChanges.value).toBe(false);
+      expect(wrapper.vm.TEST_ONLY.hasChanges.value).toBe(false);
 
       const closeBtn = wrapper.findAll('button').find(b => b.text().includes('Close'));
       await closeBtn?.trigger('click');
 
-      expect(wrapper.vm.__testOnly.showCloseConfirm.value).toBe(false);
+      expect(wrapper.vm.TEST_ONLY.showCloseConfirm.value).toBe(false);
       expect(wrapper.emitted('cancel')).toBeDefined();
     });
   });
@@ -433,10 +433,10 @@ describe('ImageEditor', () => {
 
       const pipetteBtn = wrapper.find('button[title="Pick color from canvas"]');
       await pipetteBtn.trigger('click');
-      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(true);
+      expect(wrapper.vm.TEST_ONLY.isPickingColor.value).toBe(true);
 
       await pipetteBtn.trigger('click');
-      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(false);
+      expect(wrapper.vm.TEST_ONLY.isPickingColor.value).toBe(false);
     });
 
     it('should pick color from canvas and add to history', async () => {
@@ -459,16 +459,16 @@ describe('ImageEditor', () => {
       });
 
       // Enable picking mode
-      wrapper.vm.__testOnly.isPickingColor.value = true;
+      wrapper.vm.TEST_ONLY.isPickingColor.value = true;
       await nextTick();
 
       // Click on canvas
       await container.trigger('mousedown', { clientX: 50, clientY: 50 });
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.selectedFill.value).toBe('#ff0000');
-      expect(wrapper.vm.__testOnly.isPickingColor.value).toBe(false);
-      expect(wrapper.vm.__testOnly.colorHistory.value).toContain('#ff0000');
+      expect(wrapper.vm.TEST_ONLY.selectedFill.value).toBe('#ff0000');
+      expect(wrapper.vm.TEST_ONLY.isPickingColor.value).toBe(false);
+      expect(wrapper.vm.TEST_ONLY.colorHistory.value).toContain('#ff0000');
     });
 
     it('should pick transparent if alpha is 0', async () => {
@@ -489,27 +489,27 @@ describe('ImageEditor', () => {
         toJSON: () => {}
       });
 
-      wrapper.vm.__testOnly.isPickingColor.value = true;
+      wrapper.vm.TEST_ONLY.isPickingColor.value = true;
       await container.trigger('mousedown', { clientX: 50, clientY: 50 });
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.selectedFill.value).toBe(wrapper.vm.__testOnly.TRANSPARENT);
+      expect(wrapper.vm.TEST_ONLY.selectedFill.value).toBe(wrapper.vm.TEST_ONLY.TRANSPARENT);
     });
 
     it('should update history when selectedFill changes', async () => {
       const wrapper = mount(ImageEditor, { props });
       await nextTick();
 
-      wrapper.vm.__testOnly.selectedFill.value = '#00ff00';
+      wrapper.vm.TEST_ONLY.selectedFill.value = '#00ff00';
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.colorHistory.value[0]).toBe('#00ff00');
+      expect(wrapper.vm.TEST_ONLY.colorHistory.value[0]).toBe('#00ff00');
 
-      wrapper.vm.__testOnly.selectedFill.value = '#0000ff';
+      wrapper.vm.TEST_ONLY.selectedFill.value = '#0000ff';
       await nextTick();
 
-      expect(wrapper.vm.__testOnly.colorHistory.value[0]).toBe('#0000ff');
-      expect(wrapper.vm.__testOnly.colorHistory.value[1]).toBe('#00ff00');
+      expect(wrapper.vm.TEST_ONLY.colorHistory.value[0]).toBe('#0000ff');
+      expect(wrapper.vm.TEST_ONLY.colorHistory.value[1]).toBe('#00ff00');
     });
 
     it('should change cursor based on isPickingColor state', async () => {
@@ -520,7 +520,7 @@ describe('ImageEditor', () => {
 
       expect(container.classes()).toContain('cursor-crosshair');
 
-      wrapper.vm.__testOnly.isPickingColor.value = true;
+      wrapper.vm.TEST_ONLY.isPickingColor.value = true;
       await nextTick();
       expect(container.classes()).toContain('cursor-pointer');
     });
