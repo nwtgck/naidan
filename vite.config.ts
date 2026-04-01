@@ -142,6 +142,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         ...(isStandalone ? {
+          '@/services/advanced-text-editor-v3-worker-client': path.resolve(__dirname, 'src/services/advanced-text-editor-v3-worker-client-standalone.ts'),
           '@/services/wesh-worker-client': path.resolve(__dirname, 'src/services/wesh-worker-client-standalone.ts'),
           '@/services/global-search-worker-client': path.resolve(__dirname, 'src/services/global-search-worker-client-standalone.ts'),
           '@/services/file-explorer-worker-client': path.resolve(__dirname, 'src/services/file-explorer-worker-client-standalone.ts'),

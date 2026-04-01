@@ -7,6 +7,11 @@ import { setupScrollToMock } from '@/utils/test-utils';
 // Mock scrollTo
 setupScrollToMock();
 
+async function flushEditorTasks() {
+  await Promise.resolve();
+  await nextTick();
+}
+
 describe('AdvancedTextEditorV3.vue', () => {
   const initialValue = `Line 1
 Line 2
@@ -94,6 +99,7 @@ Line 3`;
       // Find input should be visible now
       const findInput = wrapper.find('[data-testid="find-input"]');
       await findInput.setValue('apple');
+      await flushEditorTasks();
 
       // Verify matches
       expect(vm.TEST_ONLY.searchMatches.value).toHaveLength(2);
@@ -121,12 +127,40 @@ Line 3`;
       textarea.element.setSelectionRange(0, 5); // "apple"
 
       // Click Replace button
-      const buttons = wrapper.findAll('button');
-      const replaceBtn = buttons.find(b => b.text() === 'Replace');
-
-      await replaceBtn?.trigger('click');
+      await wrapper.find('[data-testid="replace-button"]').trigger('click');
+      await flushEditorTasks();
 
       expect(textarea.element.value).toBe('orange banana apple');
+      wrapper.unmount();
+    });
+
+    it('allows undo after single replace', async () => {
+      const wrapper = mount(AdvancedTextEditorV3, {
+        props: { ...defaultProps, initialValue: 'apple banana apple' },
+        attachTo: document.body
+      });
+
+      await wrapper.find('button[title^="Find & Replace"]').trigger('click');
+
+      const findInput = wrapper.find('[data-testid="find-input"]');
+      await findInput.setValue('apple');
+      await flushEditorTasks();
+
+      const replaceInput = wrapper.find('[data-testid="replace-input"]');
+      await replaceInput.setValue('orange');
+
+      const textarea = wrapper.find('textarea');
+      textarea.element.setSelectionRange(0, 5);
+
+      await wrapper.find('[data-testid="replace-button"]').trigger('click');
+      await flushEditorTasks();
+
+      expect(textarea.element.value).toBe('orange banana apple');
+
+      await wrapper.find('button[title^="Undo"]').trigger('click');
+      await flushEditorTasks();
+
+      expect(textarea.element.value).toBe('apple banana apple');
       wrapper.unmount();
     });
 
@@ -145,12 +179,37 @@ Line 3`;
       await replaceInput.setValue('orange');
 
       // Click Replace All button
-      const buttons = wrapper.findAll('button');
-      const replaceAllBtn = buttons.find(b => b.text() === 'Replace All');
-      await replaceAllBtn?.trigger('click');
+      await wrapper.find('[data-testid="replace-all-button"]').trigger('click');
+      await flushEditorTasks();
 
       const textarea = wrapper.find('textarea');
       expect(textarea.element.value).toBe('orange banana orange');
+    });
+
+    it('allows undo after replace all', async () => {
+      const wrapper = mount(AdvancedTextEditorV3, {
+        props: { ...defaultProps, initialValue: 'apple banana apple' },
+      });
+
+      await wrapper.find('button[title^="Find & Replace"]').trigger('click');
+
+      const findInput = wrapper.find('[data-testid="find-input"]');
+      await findInput.setValue('apple');
+      await flushEditorTasks();
+
+      const replaceInput = wrapper.find('[data-testid="replace-input"]');
+      await replaceInput.setValue('orange');
+
+      await wrapper.find('[data-testid="replace-all-button"]').trigger('click');
+      await flushEditorTasks();
+
+      const textarea = wrapper.find('textarea');
+      expect(textarea.element.value).toBe('orange banana orange');
+
+      await wrapper.find('button[title^="Undo"]').trigger('click');
+      await flushEditorTasks();
+
+      expect(textarea.element.value).toBe('apple banana apple');
     });
   });
 
@@ -169,6 +228,7 @@ Line 3`;
 
     // Trigger Cmd+D (or Ctrl+D)
     await textarea.trigger('keydown', { key: 'd', metaKey: true });
+    await flushEditorTasks();
 
     expect(vm.TEST_ONLY.isMultiEditMode.value).toBe(true);
 
@@ -176,8 +236,10 @@ Line 3`;
     expect(wrapper.find('.absolute.bottom-12').exists()).toBe(true);
 
     // Simulate typing in multi-edit input
-    const multiInput = wrapper.findAll('input').filter(i => i.element.placeholder === 'Type to replace all...')[0];
+    const multiInput = wrapper.find('[data-testid="multi-edit-input"]');
     await multiInput?.setValue('qux');
+    await flushEditorTasks();
+    await flushEditorTasks();
 
     expect(textarea.element.value).toBe('qux bar qux baz');
 
@@ -389,6 +451,22 @@ foo
 bar`);
 
       expect(vm.TEST_ONLY.lines.value).toEqual(['foo', 'bar']);
+    });
+
+    it('shows and clears busy indicator during async search updates', async () => {
+      const wrapper = mount(AdvancedTextEditorV3, {
+        props: { ...defaultProps, initialValue: 'alpha beta alpha' },
+      });
+
+      await wrapper.find('button[title^="Find & Replace"]').trigger('click');
+      const findInput = wrapper.find('[data-testid="find-input"]');
+      await findInput.setValue('alpha');
+
+      expect(wrapper.find('[data-testid="search-busy-indicator"]').exists()).toBe(true);
+      await flushEditorTasks();
+
+      expect(wrapper.find('[data-testid="search-busy-indicator"]').exists()).toBe(false);
+      expect((wrapper.vm as any).TEST_ONLY.searchMatches.value).toHaveLength(2);
     });
   });
 
