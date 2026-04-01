@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch } from 'vue';
-import { ChevronRightIcon, ChevronDownIcon, CopyIcon, CheckIcon, ImageIcon, CpuIcon, EyeIcon, EyeOffIcon } from 'lucide-vue-next';
+import { ChevronRightIcon, ChevronDownIcon, CopyIcon, CheckIcon, ImageIcon, CpuIcon, EyeIcon, EyeOffIcon, FileIcon } from 'lucide-vue-next';
 import createDOMPurify from 'dompurify';
 import { storageService } from '@/services/storage';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
