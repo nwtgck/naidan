@@ -5,7 +5,7 @@ import type { BinaryObject } from '@/models/types';
 import {
   SearchIcon, ArrowUpIcon, ArrowDownIcon, DownloadIcon,
   EyeIcon, HardDriveIcon,
-  Trash2Icon, RefreshCwIcon, LayoutGridIcon, ListIcon
+  Trash2Icon, RefreshCwIcon, LayoutGridIcon, ListIcon, FileIcon
 } from 'lucide-vue-next';
 import { Semaphore } from '@/utils/concurrency';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';

@@ -5,7 +5,7 @@ import { storageService } from '@/services/storage';
 import {
   XIcon, DownloadIcon, Trash2Icon, ChevronLeftIcon, ChevronRightIcon,
   ZoomInIcon, ZoomOutIcon,
-  CopyIcon, CheckIcon, EyeIcon, RefreshCwIcon, CalendarIcon, InfoIcon
+  CopyIcon, CheckIcon, EyeIcon, RefreshCwIcon, CalendarIcon, InfoIcon, FileIcon
 } from 'lucide-vue-next';
 
 interface Props {
