@@ -159,7 +159,7 @@ export class VfsExplorerDirectory implements ExplorerDirectory {
         throw new Error(`Unhandled entry type: ${_ex}`);
       }
       }
-      const childPath = joinVfsPath({ base: this._path, name: entry.name });
+      const childPath = entry.fullPath;
       const native = await this._vfs.getNativeHandle({ path: childPath });
       if (native !== null && native.kind === 'directory') {
         const ro = this._vfs.getReadOnlyForPath({ path: childPath });

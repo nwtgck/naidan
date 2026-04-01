@@ -289,7 +289,7 @@ second
 
     const entries = [];
     for await (const entry of wesh.vfs.readDir({ path: '/real.link' })) entries.push(entry);
-    expect(entries).toEqual([{ name: 'child.txt', type: 'file' }]);
+    expect(entries).toEqual([{ name: 'child.txt', type: 'file', fullPath: '/real/child.txt' }]);
 
     const changed = await execute({ script: 'cd /real.link; pwd' });
     expect(changed.stdout.text).toBe('/real\n');
@@ -316,7 +316,7 @@ second
     await expect(wesh.vfs.lstat({ path: '/dir.link' })).rejects.toThrow();
     const entries = [];
     for await (const entry of wesh.vfs.readDir({ path: '/dir' })) entries.push(entry);
-    expect(entries).toEqual([{ name: 'keep.txt', type: 'file' }]);
+    expect(entries).toEqual([{ name: 'keep.txt', type: 'file', fullPath: '/dir/keep.txt' }]);
   });
 
   it('renames symlinks without renaming their targets', async () => {

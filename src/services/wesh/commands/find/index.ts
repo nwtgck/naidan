@@ -10,6 +10,7 @@ import type {
   WeshCommandDefinition,
   WeshCommandResult,
   WeshFileType,
+  WeshStat,
 } from '@/services/wesh/types';
 
 type FindExpression =
@@ -66,6 +67,42 @@ interface FindTraversalOptions {
   minDepth: number;
   depthFirst: boolean;
   symlinkMode: 'physical' | 'command-line' | 'logical';
+}
+
+function canEvaluateWithoutFullStat({
+  expr,
+}: {
+  expr: FindExpression;
+}): boolean {
+  switch (expr.kind) {
+  case 'and':
+  case 'or':
+    return canEvaluateWithoutFullStat({ expr: expr.left }) && canEvaluateWithoutFullStat({ expr: expr.right });
+  case 'not':
+    return canEvaluateWithoutFullStat({ expr: expr.expr });
+  case 'name':
+  case 'path':
+  case 'regex':
+  case 'type':
+  case 'print':
+  case 'print0':
+  case 'prune':
+  case 'delete':
+  case 'quit':
+  case 'true':
+  case 'false':
+  case 'exec':
+    return true;
+  case 'empty':
+  case 'size':
+  case 'perm':
+  case 'newer':
+    return false;
+  default: {
+    const _ex: never = expr;
+    throw new Error(`Unhandled find expression: ${_ex}`);
+  }
+  }
 }
 
 const findHelpArgvSpec: StandardArgvParserSpec = {
@@ -960,6 +997,8 @@ export const findCommandDefinition: WeshCommandDefinition = {
     let exitCode = 0;
     const pendingExecBatches = new Map<number, PendingExecBatch>();
     let shouldQuit = false;
+    const pathStatCache = new Map<string, Promise<WeshStat>>();
+    const resolvedPathCache = new Map<string, Promise<string>>();
     const traversal: FindTraversalOptions = {
       ...expression.traversal,
       depthFirst: expression.traversal.depthFirst || hasDeleteAction({ expr: expression.expr }),
@@ -973,18 +1012,42 @@ export const findCommandDefinition: WeshCommandDefinition = {
       path: string;
       isCommandLineArgument: boolean;
     }) => {
-      switch (traversal.symlinkMode) {
-      case 'logical':
-        return context.files.stat({ path });
-      case 'command-line':
-        return isCommandLineArgument ? context.files.stat({ path }) : context.files.lstat({ path });
-      case 'physical':
-        return context.files.lstat({ path });
-      default: {
-        const _ex: never = traversal.symlinkMode;
-        throw new Error(`Unhandled symlink mode: ${_ex}`);
+      const key = (() => {
+        switch (traversal.symlinkMode) {
+        case 'logical':
+          return `stat:${path}`;
+        case 'command-line':
+          return `${isCommandLineArgument ? 'stat' : 'lstat'}:${path}`;
+        case 'physical':
+          return `lstat:${path}`;
+        default: {
+          const _ex: never = traversal.symlinkMode;
+          throw new Error(`Unhandled symlink mode: ${_ex}`);
+        }
+        }
+      })();
+
+      const cached = pathStatCache.get(key);
+      if (cached !== undefined) {
+        return cached;
       }
-      }
+
+      const pending = (() => {
+        switch (traversal.symlinkMode) {
+        case 'logical':
+          return context.files.stat({ path });
+        case 'command-line':
+          return isCommandLineArgument ? context.files.stat({ path }) : context.files.lstat({ path });
+        case 'physical':
+          return context.files.lstat({ path });
+        default: {
+          const _ex: never = traversal.symlinkMode;
+          throw new Error(`Unhandled symlink mode: ${_ex}`);
+        }
+        }
+      })();
+      pathStatCache.set(key, pending);
+      return pending;
     };
 
     try {
@@ -1011,7 +1074,15 @@ export const findCommandDefinition: WeshCommandDefinition = {
     }) => {
       switch (type) {
       case 'directory':
-        return (await context.files.resolve({ path })).fullPath;
+      {
+        const cached = resolvedPathCache.get(path);
+        if (cached !== undefined) {
+          return cached;
+        }
+        const pending = context.files.resolve({ path }).then(({ fullPath }) => fullPath);
+        resolvedPathCache.set(path, pending);
+        return pending;
+      }
       case 'file':
       case 'fifo':
       case 'chardev':
@@ -1030,26 +1101,45 @@ export const findCommandDefinition: WeshCommandDefinition = {
       name,
       depth,
       isCommandLineArgument,
+      knownType,
     }: {
       fullPath: string;
       displayPath: string;
       name: string;
       depth: number;
       isCommandLineArgument: boolean;
+      knownType: WeshFileType | undefined;
     }) => {
       if (shouldQuit) return;
 
       try {
-        const stat = await getPathStat({ path: fullPath, isCommandLineArgument });
-        const entry: FindEntry = {
-          fullPath,
-          displayPath,
-          type: stat.type,
-          name,
-          size: stat.size,
-          mtime: stat.mtime,
-          readPath: await getReadPath({ path: fullPath, type: stat.type }),
-        };
+        const cheapType = knownType;
+        const canSkipFullStat = cheapType !== undefined
+          && !isCommandLineArgument
+          && traversal.symlinkMode === 'physical'
+          && canEvaluateWithoutFullStat({ expr: resolvedExpression });
+        const finalizedEntry = canSkipFullStat
+          ? {
+            fullPath,
+            displayPath,
+            type: cheapType,
+            name,
+            size: 0,
+            mtime: 0,
+            readPath: fullPath,
+          }
+          : await (async (): Promise<FindEntry> => {
+            const stat = await getPathStat({ path: fullPath, isCommandLineArgument });
+            return {
+              fullPath,
+              displayPath,
+              type: stat.type,
+              name,
+              size: stat.size,
+              mtime: stat.mtime,
+              readPath: await getReadPath({ path: fullPath, type: stat.type }),
+            };
+          })();
 
         let shouldPruneChildren = false;
         let evaluation: FindEvaluationResult | undefined;
@@ -1058,7 +1148,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
         if (!traversal.depthFirst && shouldEvaluate) {
           evaluation = await evaluateExpression({
             expr: resolvedExpression,
-            entry,
+            entry: finalizedEntry,
             context,
             pendingExecBatches,
           });
@@ -1075,23 +1165,22 @@ export const findCommandDefinition: WeshCommandDefinition = {
           shouldPruneChildren = evaluation.shouldPrune;
         }
 
-        const canDescend = entry.type === 'directory'
+        const canDescend = finalizedEntry.type === 'directory'
           && !shouldPruneChildren
           && !shouldQuit
           && (traversal.maxDepth === undefined || depth < traversal.maxDepth);
 
         if (canDescend) {
-          const readPathPrefix = entry.readPath === '/' ? '' : entry.readPath;
           const displayPathPrefix = displayPath === '/' ? '' : displayPath;
-          for await (const child of context.files.readDir({ path: entry.readPath })) {
-            const childFullPath = `${readPathPrefix}/${child.name}`;
+          for await (const child of context.files.readDir({ path: finalizedEntry.readPath })) {
             const childDisplayPath = `${displayPathPrefix}/${child.name}`;
             await walk({
-              fullPath: childFullPath,
+              fullPath: child.fullPath,
               displayPath: childDisplayPath,
               name: child.name,
               depth: depth + 1,
               isCommandLineArgument: false,
+              knownType: child.type,
             });
             if (shouldQuit) break;
           }
@@ -1100,7 +1189,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
         if (traversal.depthFirst && !shouldQuit && shouldEvaluate) {
           evaluation = await evaluateExpression({
             expr: resolvedExpression,
-            entry,
+            entry: finalizedEntry,
             context,
             pendingExecBatches,
           });
@@ -1130,6 +1219,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
         name: basename({ path }),
         depth: 0,
         isCommandLineArgument: true,
+        knownType: undefined,
       });
       if (shouldQuit) break;
     }

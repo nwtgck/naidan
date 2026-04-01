@@ -793,12 +793,11 @@ export const grepCommandDefinition: WeshCommandDefinition = {
           displayPath: string;
         }) => {
           for await (const entry of context.files.readDir({ path: currentFullPath })) {
-            const childFullPath = currentFullPath === '/' ? `/${entry.name}` : `${currentFullPath}/${entry.name}`;
             const childDisplayPath = displayPath === '/' ? `/${entry.name}` : `${displayPath}/${entry.name}`;
 
             switch (entry.type) {
             case 'directory':
-              await walk({ fullPath: childFullPath, displayPath: childDisplayPath });
+              await walk({ fullPath: entry.fullPath, displayPath: childDisplayPath });
               continue;
             case 'file':
             case 'symlink':
@@ -815,7 +814,7 @@ export const grepCommandDefinition: WeshCommandDefinition = {
               continue;
             }
 
-            expandedInputs.push({ file: childFullPath, displayName: childDisplayPath });
+            expandedInputs.push({ file: entry.fullPath, displayName: childDisplayPath });
           }
         };
 

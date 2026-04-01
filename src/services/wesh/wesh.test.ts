@@ -1822,6 +1822,7 @@ sleep 1 | cat`,
     const { read, write } = await wesh.kernel.pipe();
     wesh.vfs.registerSpecialFile({
       path: '/dev/hold',
+      type: 'fifo',
       handler: () => read,
     });
 

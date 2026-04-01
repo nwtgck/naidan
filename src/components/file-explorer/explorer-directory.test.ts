@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { VfsExplorerDirectory, FsExplorerDirectory } from './explorer-directory';
 import type { ExplorerChild } from './explorer-directory';
 import type { WeshVFS } from '@/services/wesh/vfs';
-import type { WeshFileType } from '@/services/wesh/types';
+import type { WeshDirEntry, WeshFileType } from '@/services/wesh/types';
 
 // ---- Helpers ----
 
@@ -13,7 +13,7 @@ function asDir(child: ExplorerChild): Extract<ExplorerChild, { kind: 'directory'
 
 // ---- Mock WeshVFS ----
 
-type ReadDirEntry = { name: string; type: WeshFileType };
+type ReadDirEntry = Pick<WeshDirEntry, 'name' | 'type'> & { fullPath?: string };
 
 function makeMockVfs({
   readDirEntries = [] as ReadDirEntry[],
@@ -22,9 +22,13 @@ function makeMockVfs({
   statResults = {} as Record<string, { type: WeshFileType } | null>,
 } = {}): WeshVFS {
   return {
-    async *readDir({ path: _path }: { path: string }) {
+    async *readDir({ path }: { path: string }) {
       for (const e of readDirEntries) {
-        yield e;
+        yield {
+          name: e.name,
+          type: e.type,
+          fullPath: e.fullPath ?? (path === '/' ? `/${e.name}` : `${path}/${e.name}`),
+        };
       }
     },
     async getNativeHandle({ path }: { path: string }) {

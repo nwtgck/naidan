@@ -1,8 +1,10 @@
 import { ReadonlyDirectoryHandle } from './readonly-directory-handle';
 import type {
+  WeshDirEntry,
   WeshIVirtualFileSystem,
   WeshFileHandle,
   WeshFileType,
+  WeshSpecialFileType,
   WeshStat,
   WeshIOResult,
   WeshWriteResult,
@@ -395,7 +397,7 @@ type ResolvedNode =
 
 export class WeshVFS implements WeshIVirtualFileSystem {
   private mounts: MountEntry[] = [];
-  private specialFiles: Map<string, () => WeshFileHandle> = new Map();
+  private specialFiles: Map<string, { type: WeshSpecialFileType; handler: () => WeshFileHandle }> = new Map();
   private openFifos: Map<string, FifoHandle> = new Map();
 
   constructor({ rootHandle }: { rootHandle: FileSystemDirectoryHandle | ReadonlyDirectoryHandle | undefined }) {
@@ -404,8 +406,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       this.mount({ path: '/', handle: rootHandle as FileSystemDirectoryHandle, readOnly: rootReadOnly });
       // Register standard device files only when a real root is present.
       // Standalone VFS instances (rootHandle: undefined) are mount-only and do not need /dev.
-      this.registerSpecialFile({ path: '/dev/null', handler: () => new DevNullHandle() });
-      this.registerSpecialFile({ path: '/dev/zero', handler: () => new DevZeroHandle() });
+      this.registerSpecialFile({ path: '/dev/null', type: 'chardev', handler: () => new DevNullHandle() });
+      this.registerSpecialFile({ path: '/dev/zero', type: 'chardev', handler: () => new DevZeroHandle() });
     }
   }
 
@@ -463,8 +465,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     this.mounts = this.mounts.filter((m) => m.path !== normalizedPath);
   }
 
-  registerSpecialFile({ path, handler }: { path: string; handler: () => WeshFileHandle }): void {
-    this.specialFiles.set(this.normalizePath({ path }), handler);
+  registerSpecialFile({ path, type, handler }: { path: string; type: WeshSpecialFileType; handler: () => WeshFileHandle }): void {
+    this.specialFiles.set(this.normalizePath({ path }), { type, handler });
   }
 
   unregisterSpecialFile({ path }: { path: string }): void {
@@ -780,7 +782,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
-  async *readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }> {
+  async *readDir(options: { path: string }): AsyncIterable<WeshDirEntry> {
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'follow',
@@ -835,7 +837,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
           }
         }
         seen.add(name);
-        yield { name, type };
+        const fullPath = resolved.fullPath === '/' ? `/${name}` : `${resolved.fullPath}/${name}`;
+        yield { name, type, fullPath };
       }
       break;
     }
@@ -848,13 +851,16 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     for (const name of this.getDirectMountChildren({ path: resolved.fullPath })) {
       if (!seen.has(name)) {
         seen.add(name);
-        yield { name, type: 'directory' };
+        const fullPath = resolved.fullPath === '/' ? `/${name}` : `${resolved.fullPath}/${name}`;
+        yield { name, type: 'directory', fullPath };
       }
     }
     for (const name of this.getDirectSpecialChildren({ path: resolved.fullPath })) {
       if (!seen.has(name)) {
         seen.add(name);
-        yield { name, type: 'directory' };
+        const childPath = resolved.fullPath === '/' ? `/${name}` : `${resolved.fullPath}/${name}`;
+        const type = this.specialFiles.get(childPath)?.type ?? 'directory';
+        yield { name, type, fullPath: childPath };
       }
     }
   }
@@ -1507,7 +1513,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         kind: 'special',
         fullPath: normalized,
         readOnly: true,
-        handler: directSpecial,
+        handler: directSpecial.handler,
       };
     }
 
@@ -1522,7 +1528,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
           kind: 'special',
           fullPath: candidate,
           readOnly: true,
-          handler: this.specialFiles.get(candidate)!,
+          handler: this.specialFiles.get(candidate)!.handler,
         };
       }
 

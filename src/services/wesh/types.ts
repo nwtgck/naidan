@@ -1,6 +1,7 @@
 // --- Kernel & Process Types ---
 
 export type WeshFileType = 'file' | 'directory' | 'fifo' | 'chardev' | 'symlink';
+export type WeshSpecialFileType = Extract<WeshFileType, 'file' | 'fifo' | 'chardev'>;
 
 export interface WeshStat {
   size: number;
@@ -163,6 +164,12 @@ export interface WeshEfficientFileWriter {
   abort(options: { reason: unknown }): Promise<void>;
 }
 
+export interface WeshDirEntry {
+  name: string;
+  type: WeshFileType;
+  fullPath: string;
+}
+
 export interface WeshIVirtualFileSystem {
   mount(options: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
   unmount(options: { path: string }): Promise<void>;
@@ -185,7 +192,7 @@ export interface WeshIVirtualFileSystem {
     mode: 'truncate' | 'append';
   }): Promise<WeshEfficientFileWriteResult>;
 
-  readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }>;
+  readDir(options: { path: string }): AsyncIterable<WeshDirEntry>;
 
   mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
 
@@ -196,7 +203,7 @@ export interface WeshIVirtualFileSystem {
   mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
   rename(options: { oldPath: string; newPath: string }): Promise<void>;
 
-  registerSpecialFile(options: { path: string; handler: () => WeshFileHandle }): void;
+  registerSpecialFile(options: { path: string; type: WeshSpecialFileType; handler: () => WeshFileHandle }): void;
   unregisterSpecialFile(options: { path: string }): void;
 
   /**
@@ -315,7 +322,7 @@ export interface WeshCommandContext {
     }): Promise<WeshFileHandle>;
     stat(options: { path: string }): Promise<WeshStat>;
     lstat(options: { path: string }): Promise<WeshStat>;
-    readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }>;
+    readDir(options: { path: string }): AsyncIterable<WeshDirEntry>;
     readlink(options: { path: string }): Promise<string>;
     resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
     tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
