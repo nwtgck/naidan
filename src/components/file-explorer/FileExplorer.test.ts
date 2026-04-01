@@ -5,6 +5,7 @@ import FileExplorer from './FileExplorer.vue';
 import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
 import type { FileExplorerEntry } from './types';
 import type { ExplorerDirectory, ExplorerChild } from './explorer-directory';
+import { LIST_ROW_HEIGHT } from './constants';
 
 // ---- Mock ExplorerDirectory ----
 
@@ -338,6 +339,22 @@ function mountExplorer(root: MockExplorerDirectory, overrides: Record<string, un
   });
 }
 
+function setListViewportHeight({
+  wrapper,
+  rows,
+}: {
+  wrapper: ReturnType<typeof mount>;
+  rows: number;
+}): HTMLElement {
+  const container = wrapper.get('[data-testid="list-scroll-container"]').element as HTMLElement;
+  Object.defineProperty(container, 'clientHeight', {
+    configurable: true,
+    value: LIST_ROW_HEIGHT * rows,
+  });
+  container.dispatchEvent(new Event('scroll'));
+  return container;
+}
+
 describe('FileExplorer.vue', () => {
   let root: MockExplorerDirectory;
   let wrappers: ReturnType<typeof mount>[] = [];
@@ -521,6 +538,50 @@ describe('FileExplorer.vue', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="list-view"]').exists()).toBe(true);
+  });
+
+  it('virtualizes list rendering when viewport height is known', async () => {
+    for (let index = 0; index < 200; index += 1) {
+      root.addFile(`file-${String(index).padStart(4, '0')}.txt`);
+    }
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    const container = setListViewportHeight({ wrapper, rows: 6 });
+    await flushPromises();
+
+    const renderedBeforeScroll = wrapper.findAll('[data-testid^="entry-item-"]');
+    expect(renderedBeforeScroll.length).toBeLessThan(200);
+    expect(wrapper.find('[data-testid="entry-item-file-0000.txt"]').exists()).toBe(true);
+
+    container.scrollTop = LIST_ROW_HEIGHT * 120;
+    container.dispatchEvent(new Event('scroll'));
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="entry-item-file-0000.txt"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="entry-item-file-0120.txt"]').exists()).toBe(true);
+  });
+
+  it('scrolls focused entries into view during keyboard navigation in list view', async () => {
+    for (let index = 0; index < 60; index += 1) {
+      root.addFile(`file-${String(index).padStart(4, '0')}.txt`);
+    }
+    const wrapper = tracked(mountExplorer(root));
+    await flushPromises();
+
+    const container = setListViewportHeight({ wrapper, rows: 4 });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="entry-item-file-0000.txt"]').trigger('click');
+    await flushPromises();
+
+    for (let index = 0; index < 12; index += 1) {
+      await wrapper.find('[data-testid="file-explorer"]').trigger('keydown', { key: 'ArrowDown' });
+      await flushPromises();
+    }
+
+    expect(container.scrollTop).toBeGreaterThan(0);
+    expect(wrapper.find('[data-testid="entry-item-file-0012.txt"]').exists()).toBe(true);
   });
 
   // ---- Filter ----
