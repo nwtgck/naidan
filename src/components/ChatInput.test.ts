@@ -311,7 +311,8 @@ describe('ChatInput Integration', () => {
 
     expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
     expect(mockOpenFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
-      kind: 'explorer',
+      kind: 'wesh-mounts',
+      rootName: 'Files',
       initialPath: ['home', 'user', 'work'],
       title: 'Files',
     }));
@@ -340,7 +341,8 @@ describe('ChatInput Integration', () => {
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-chat' });
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
     expect(mockOpenFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
-      kind: 'explorer',
+      kind: 'wesh-mounts',
+      rootName: 'Files',
       title: 'Files',
     }));
   });

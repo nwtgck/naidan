@@ -45,7 +45,7 @@ function onEntryClick({ entry, event }: { entry: FileExplorerEntry; event: Mouse
 async function onEntryDblClick({ entry }: { entry: FileExplorerEntry }): Promise<void> {
   switch (entry.kind) {
   case 'directory':
-    await ctx.navigateToDirectory({ directory: entry.directory! });
+    await ctx.navigateToDirectory({ path: entry.path });
     ctx.applySelection({ action: { type: 'clear' } });
     break;
   case 'file':
@@ -115,7 +115,7 @@ defineExpose({
     <div class="flex flex-wrap gap-2 content-start">
       <FileExplorerEntryItem
         v-for="entry in ctx.sortedFilteredEntries"
-        :key="entry.name"
+        :key="entry.path"
         :entry="entry"
         :is-selected="isEntrySelected({ entry })"
         :is-focused="isEntryFocused({ entry })"

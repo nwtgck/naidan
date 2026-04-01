@@ -1,6 +1,9 @@
+import { defineComponent, h, Suspense } from 'vue';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
+import type { FileExplorerEntry } from './types';
 import type { ExplorerDirectory, ExplorerChild } from './explorer-directory';
 
 // ---- Mock ExplorerDirectory ----
@@ -100,9 +103,202 @@ class MockExplorerDirectory implements ExplorerDirectory {
 
 // ---- Mocks ----
 
+let activeRoot: MockExplorerDirectory | undefined;
+
+function normalizePath(path: string): string {
+  return path === '/' ? '/' : `/${path.split('/').filter(Boolean).join('/')}`;
+}
+
+function splitPath(path: string): string[] {
+  const normalized = normalizePath(path);
+  return normalized === '/' ? [] : normalized.slice(1).split('/');
+}
+
+async function resolveDirectory(path: string): Promise<MockExplorerDirectory> {
+  const root = activeRoot;
+  if (!root) {
+    throw new Error('No active root');
+  }
+  let current = root;
+  for (const segment of splitPath(path)) {
+    const next = await current.subdir({ name: segment });
+    if (!(next instanceof MockExplorerDirectory)) {
+      throw new Error(`Directory not found: ${path}`);
+    }
+    current = next;
+  }
+  return current;
+}
+
+async function listDirectory(path: string): Promise<{
+  directoryName: string;
+  directoryPath: string;
+  readOnly: boolean;
+  pathSegments: Array<{ name: string; path: string }>;
+  entries: FileExplorerEntry[];
+}> {
+  const directory = await resolveDirectory(path);
+  const entries: FileExplorerEntry[] = [];
+  for await (const child of directory.children()) {
+    switch (child.kind) {
+    case 'file': {
+      const file = await child.fileHandle.getFile();
+      const extension = child.name.includes('.') ? `.${child.name.split('.').pop()}` : '';
+      entries.push({
+        path: path === '/' ? `/${child.name}` : `${path}/${child.name}`,
+        name: child.name,
+        kind: 'file',
+        size: file.size,
+        lastModified: file.lastModified,
+        extension,
+        mimeCategory: extension === '.txt' || extension === '.md' || extension === '.json' ? 'text' : 'binary',
+        readOnly: child.readOnly,
+        canNavigate: false,
+        canMutate: !child.readOnly,
+      });
+      break;
+    }
+    case 'directory':
+      entries.push({
+        path: path === '/' ? `/${child.name}` : `${path}/${child.name}`,
+        name: child.name,
+        kind: 'directory',
+        size: undefined,
+        lastModified: undefined,
+        extension: '',
+        mimeCategory: 'binary',
+        readOnly: child.readOnly,
+        canNavigate: true,
+        canMutate: !child.readOnly,
+      });
+      break;
+    default: {
+      const _exhaustiveCheck: never = child;
+      throw new Error(`Unhandled child kind: ${JSON.stringify(_exhaustiveCheck)}`);
+    }
+    }
+  }
+  const names = splitPath(path);
+  return {
+    directoryName: names.at(-1) ?? directory.name,
+    directoryPath: normalizePath(path),
+    readOnly: directory.readOnly,
+    pathSegments: [{ name: activeRoot?.name ?? 'root', path: '/' }, ...names.map((name, index) => ({
+      name,
+      path: `/${names.slice(0, index + 1).join('/')}`,
+    }))],
+    entries,
+  };
+}
+
+async function createMockWorkerClient(): Promise<FileExplorerWorkerClient> {
+  const client: FileExplorerWorkerClient = {
+    async readDirectory({ path }) {
+      return listDirectory(path);
+    },
+    async readPreview({ path, mode }) {
+      try {
+        await resolveDirectory(path);
+        return { kind: 'directory' } as const;
+      } catch {
+        const parentPath = splitPath(path).length <= 1 ? '/' : `/${splitPath(path).slice(0, -1).join('/')}`;
+        const parent = await resolveDirectory(parentPath);
+        const name = splitPath(path).at(-1)!;
+        const fileHandle = await parent.file({ name });
+        if (!fileHandle) {
+          throw new Error(`File not found: ${path}`);
+        }
+        const file = await fileHandle.getFile();
+        if (mode === 'bounded' && file.size > 5 * 1024 * 1024) {
+          return { kind: 'text', rawText: '', displayText: '', languageHint: 'text', oversized: true } as const;
+        }
+        return {
+          kind: 'text',
+          rawText: await file.text(),
+          displayText: await file.text(),
+          languageHint: 'text',
+          oversized: false,
+        } as const;
+      }
+    },
+    async readFile({ path }) {
+      const parentPath = splitPath(path).length <= 1 ? '/' : `/${splitPath(path).slice(0, -1).join('/')}`;
+      const parent = await resolveDirectory(parentPath);
+      const fileHandle = await parent.file({ name: splitPath(path).at(-1)! });
+      if (!fileHandle) {
+        throw new Error(`File not found: ${path}`);
+      }
+      return { blob: new Blob([new Uint8Array(await (await fileHandle.getFile()).arrayBuffer())]) };
+    },
+    async createFile({ parentPath, name }) {
+      const directory = await resolveDirectory(parentPath);
+      await directory.fileCreate({ name });
+    },
+    async createFolder({ parentPath, name }) {
+      const directory = await resolveDirectory(parentPath);
+      await directory.subdirCreate({ name });
+    },
+    async deleteEntries({ paths }) {
+      for (const path of paths) {
+        const parentPath = splitPath(path).length <= 1 ? '/' : `/${splitPath(path).slice(0, -1).join('/')}`;
+        const parent = await resolveDirectory(parentPath);
+        await parent.remove({ name: splitPath(path).at(-1)!, recursive: true });
+      }
+    },
+    async renameEntry({ path, newName }) {
+      const parentPath = splitPath(path).length <= 1 ? '/' : `/${splitPath(path).slice(0, -1).join('/')}`;
+      const parent = await resolveDirectory(parentPath);
+      const fileHandle = await parent.file({ name: splitPath(path).at(-1)! });
+      if (fileHandle) {
+        const file = await fileHandle.getFile();
+        const nextFileHandle = await parent.fileCreate({ name: newName });
+        const writable = await (nextFileHandle as unknown as { createWritable(): Promise<{ write(data: ArrayBuffer): Promise<void>, close(): Promise<void> }> }).createWritable();
+        await writable.write(await file.arrayBuffer());
+        await writable.close();
+      }
+      await parent.remove({ name: splitPath(path).at(-1)!, recursive: true });
+    },
+    async copyEntries({ sourcePaths, targetDirectoryPath }) {
+      const targetDirectory = await resolveDirectory(targetDirectoryPath);
+      for (const sourcePath of sourcePaths) {
+        const sourceParentPath = splitPath(sourcePath).length <= 1 ? '/' : `/${splitPath(sourcePath).slice(0, -1).join('/')}`;
+        const sourceParent = await resolveDirectory(sourceParentPath);
+        const sourceName = splitPath(sourcePath).at(-1)!;
+        const sourceFile = await sourceParent.file({ name: sourceName });
+        if (sourceFile) {
+          const file = await sourceFile.getFile();
+          const targetFile = await targetDirectory.fileCreate({ name: sourceName });
+          const writable = await (targetFile as unknown as { createWritable(): Promise<{ write(data: ArrayBuffer): Promise<void>, close(): Promise<void> }> }).createWritable();
+          await writable.write(await file.arrayBuffer());
+          await writable.close();
+          continue;
+        }
+        await targetDirectory.subdirCreate({ name: sourceName });
+      }
+    },
+    async moveEntries({ sourcePaths, targetDirectoryPath }) {
+      await client.copyEntries({ sourcePaths, targetDirectoryPath });
+      await client.deleteEntries({ paths: sourcePaths });
+    },
+    async uploadFiles({ targetDirectoryPath, files }) {
+      const targetDirectory = await resolveDirectory(targetDirectoryPath);
+      for (const file of files) {
+        await targetDirectory.fileCreate({ name: file.name });
+      }
+    },
+    async dispose() {
+    },
+  };
+  return client;
+}
+
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
 const mockShowPrompt = vi.fn().mockResolvedValue(undefined);
 const mockAddToast = vi.fn();
+
+vi.mock('@/services/file-explorer-worker-client', () => ({
+  createFileExplorerWorkerClient: vi.fn(async () => createMockWorkerClient()),
+}));
 
 vi.mock('@/composables/useConfirm', () => ({
   useConfirm: () => ({ showConfirm: mockShowConfirm }),
@@ -123,15 +319,21 @@ function makeRoot() {
 }
 
 function mountExplorer(root: MockExplorerDirectory, overrides: Record<string, unknown> = {}) {
-  return mount(FileExplorer, {
-    props: {
-      root,
-      initialViewMode: 'list',
-      initialPreviewVisibility: 'visible',
-      initialStack: undefined,
-      initialLocked: false,
-      ...overrides,
+  activeRoot = root;
+  return mount(defineComponent({
+    render() {
+      return h(Suspense, null, {
+        default: h(FileExplorer, {
+          root: { kind: 'native-directory', rootName: root.name, handle: {} as FileSystemDirectoryHandle, readOnly: root.readOnly },
+          initialViewMode: 'list',
+          initialPreviewVisibility: 'visible',
+          initialPath: undefined,
+          initialLocked: false,
+          ...overrides,
+        }),
+      });
     },
+  }), {
     attachTo: document.body,
   });
 }

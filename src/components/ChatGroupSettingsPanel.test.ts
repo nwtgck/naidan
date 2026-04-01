@@ -478,7 +478,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
       expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
       expect(mocks.openFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
-        kind: 'explorer',
+        kind: 'wesh-mounts',
+        rootName: 'Files',
         title: 'Folders',
         initialPath: ['home', 'user', 'work'],
       }));

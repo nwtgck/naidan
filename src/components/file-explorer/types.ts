@@ -1,4 +1,4 @@
-import type { ExplorerDirectory } from './explorer-directory';
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer.worker.types';
 
 export type EntryKind = 'file' | 'directory';
 export type MimeCategory = 'text' | 'image' | 'video' | 'audio' | 'binary';
@@ -11,15 +11,18 @@ export type PathBarMode = 'breadcrumb' | 'editable';
 export type RenameState = 'idle' | 'renaming';
 
 export interface FileExplorerEntry {
+  path: string;
   name: string;
   kind: EntryKind;
-  handle: FileSystemHandle;
-  directory: ExplorerDirectory | undefined;  // set for directory entries
+  handle?: FileSystemHandle | undefined;
+  directory?: string | undefined;
   size: number | undefined;
   lastModified: number | undefined;
   extension: string;
   mimeCategory: MimeCategory;
-  readOnly: boolean;  // true for read-only directories; always false for files
+  readOnly: boolean;
+  canNavigate: boolean;
+  canMutate: boolean;
 }
 
 export interface SortConfig {
@@ -41,7 +44,9 @@ export type SelectionAction =
   | { type: 'clear' };
 
 export interface ColumnPaneState {
-  directory: ExplorerDirectory;
+  path: string;
+  name: string;
+  readOnly: boolean;
   entries: FileExplorerEntry[];
   selectedEntryName: string | undefined;
   isLoading: boolean;
@@ -60,13 +65,15 @@ export interface ContextMenuState {
 
 export interface ClipboardState {
   operation: ClipboardOperation | undefined;
-  sourceDirectory: ExplorerDirectory | undefined;
+  sourceDirectoryPath: string | undefined;
+  sourceDirectory?: string | undefined;
   entries: FileExplorerEntry[];
 }
 
 export interface PreviewState {
   visibility: PreviewVisibility;
   entry: FileExplorerEntry | undefined;
+  rawTextContent?: string | undefined;
   textContent: string | undefined;
   highlightedHtml: string | undefined;
   objectUrl: string | undefined;
@@ -78,7 +85,7 @@ export interface PreviewState {
 
 export type DragState =
   | { status: 'idle' }
-  | { status: 'dragging'; entries: FileExplorerEntry[]; sourceDirectory: ExplorerDirectory }
+  | { status: 'dragging'; entries: FileExplorerEntry[]; sourceDirectoryPath: string }
   | { status: 'over-target'; targetEntryName: string };
 
 export type ContextMenuAction =
@@ -101,56 +108,52 @@ export interface StatusBarInfo {
   selectedSize: number;
 }
 
+export interface FileExplorerPathSegment {
+  name: string;
+  path: string;
+}
+
 export interface FileExplorerContext {
-  // Navigation
-  root: ExplorerDirectory;
-  currentDirectory: ExplorerDirectory;
-  pathSegments: Array<{ name: string; directory: ExplorerDirectory }>;
-  navigateToDirectory: ({ directory }: { directory: ExplorerDirectory }) => Promise<void>;
+  root: FileExplorerRootDescriptor;
+  currentDirectoryPath: string;
+  pathSegments: FileExplorerPathSegment[];
+  navigateToDirectory: ({ path }: { path: string }) => Promise<void>;
   navigateUp: () => Promise<void>;
   jumpToBreadcrumb: ({ index }: { index: number }) => Promise<void>;
   refresh: () => Promise<void>;
 
-  // Entries
   entries: FileExplorerEntry[];
   sortedFilteredEntries: FileExplorerEntry[];
   isLoading: boolean;
   loadError: string | undefined;
 
-  // View mode
   viewMode: ViewMode;
   setViewMode: ({ mode }: { mode: ViewMode }) => void;
 
-  // Sort
   sortConfig: SortConfig;
   toggleSortField: ({ field }: { field: SortField }) => void;
 
-  // Filter
   filterQuery: string;
   setFilterQuery: ({ query }: { query: string }) => void;
 
-  // Selection
   selectionState: SelectionState;
   selectedEntries: FileExplorerEntry[];
   applySelection: ({ action }: { action: SelectionAction }) => void;
   moveFocus: ({ direction, extend }: { direction: 'prev' | 'next'; extend: boolean }) => void;
 
-  // Operations
   createFile: ({ name }: { name: string }) => Promise<void>;
   createFolder: ({ name }: { name: string }) => Promise<void>;
   deleteEntries: ({ entries }: { entries: FileExplorerEntry[] }) => Promise<void>;
   renameEntry: ({ entry, newName }: { entry: FileExplorerEntry; newName: string }) => Promise<void>;
-  moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: ExplorerDirectory }) => Promise<void>;
-  copyEntriesToDir: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: ExplorerDirectory }) => Promise<void>;
+  moveEntries: ({ entries, targetPath }: { entries: FileExplorerEntry[]; targetPath: string }) => Promise<void>;
+  copyEntriesToDir: ({ entries, targetPath }: { entries: FileExplorerEntry[]; targetPath: string }) => Promise<void>;
   downloadEntry: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>;
   uploadFiles: ({ files }: { files: FileList | File[] }) => Promise<void>;
 
-  // Rename UI state
   renamingEntryName: string | undefined;
   startRename: ({ entry }: { entry: FileExplorerEntry }) => void;
   cancelRename: () => void;
 
-  // Preview
   previewState: PreviewState;
   loadPreview: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>;
   loadPreviewForced: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>;
@@ -158,19 +161,16 @@ export interface FileExplorerContext {
   togglePreviewVisibility: () => void;
   toggleJsonFormat: () => void;
 
-  // Context menu
   contextMenuState: ContextMenuState;
   showContextMenu: ({ event, target }: { event: MouseEvent; target: ContextMenuTarget }) => void;
   hideContextMenu: () => void;
   executeContextAction: ({ action }: { action: ContextMenuAction }) => Promise<void>;
 
-  // Clipboard
   clipboardState: ClipboardState;
   clipboardCut: ({ entries }: { entries: FileExplorerEntry[] }) => void;
   clipboardCopy: ({ entries }: { entries: FileExplorerEntry[] }) => void;
   clipboardPaste: () => Promise<void>;
 
-  // Drag and drop
   dragState: DragState;
   onDragStart: ({ event, entries }: { event: DragEvent; entries: FileExplorerEntry[] }) => void;
   onDragOverEntry: ({ event, entry }: { event: DragEvent; entry: FileExplorerEntry }) => void;
@@ -178,17 +178,13 @@ export interface FileExplorerContext {
   onDropEntry: ({ entry }: { entry: FileExplorerEntry }) => Promise<void>;
   onDragEnd: () => void;
 
-  // Read-only state of the current directory
   readOnly: boolean;
 
-  // Lock state (user-togglable; overrides readOnly to true when active)
   isLocked: boolean;
   toggleLock: () => void;
 
-  // Column view
   columnPanes: ColumnPaneState[];
   selectColumnEntry: ({ paneIndex, entryName }: { paneIndex: number; entryName: string }) => Promise<void>;
 
-  // Status bar
   statusBarInfo: StatusBarInfo;
 }

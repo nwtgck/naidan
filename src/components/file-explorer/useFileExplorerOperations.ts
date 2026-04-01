@@ -1,15 +1,16 @@
 import { ref } from 'vue';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
 import type { FileExplorerEntry } from './types';
-import type { ExplorerDirectory } from './explorer-directory';
-import { copyDirectoryHandle, copyFileHandle } from './utils';
 import { useConfirm } from '@/composables/useConfirm';
 import { useToast } from '@/composables/useToast';
 
 export function useFileExplorerOperations({
-  currentDirectory,
+  client,
+  currentDirectoryPath,
   refresh,
 }: {
-  currentDirectory: { readonly value: ExplorerDirectory };
+  client: FileExplorerWorkerClient;
+  currentDirectoryPath: { readonly value: string };
   refresh: () => Promise<void>;
 }) {
   const { showConfirm } = useConfirm();
@@ -18,21 +19,19 @@ export function useFileExplorerOperations({
 
   async function createFile({ name }: { name: string }): Promise<void> {
     try {
-      const fh = await currentDirectory.value.fileCreate({ name });
-      const writable = await (fh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
-      await writable.close();
+      await client.createFile({ parentPath: currentDirectoryPath.value, name });
       await refresh();
-    } catch (e) {
-      addToast({ message: `Failed to create file: ${e instanceof Error ? e.message : String(e)}` });
+    } catch (error) {
+      addToast({ message: `Failed to create file: ${error instanceof Error ? error.message : String(error)}` });
     }
   }
 
   async function createFolder({ name }: { name: string }): Promise<void> {
     try {
-      await currentDirectory.value.subdirCreate({ name });
+      await client.createFolder({ parentPath: currentDirectoryPath.value, name });
       await refresh();
-    } catch (e) {
-      addToast({ message: `Failed to create folder: ${e instanceof Error ? e.message : String(e)}` });
+    } catch (error) {
+      addToast({ message: `Failed to create folder: ${error instanceof Error ? error.message : String(error)}` });
     }
   }
 
@@ -44,14 +43,19 @@ export function useFileExplorerOperations({
     let singleKindLabel = 'Items';
     if (isSingle) {
       switch (entries[0]!.kind) {
-      case 'directory': singleKindLabel = 'Folder'; break;
-      case 'file': singleKindLabel = 'File'; break;
+      case 'directory':
+        singleKindLabel = 'Folder';
+        break;
+      case 'file':
+        singleKindLabel = 'File';
+        break;
       default: {
-        const _ex: never = entries[0]!.kind;
-        throw new Error(`Unhandled kind: ${_ex}`);
+        const _exhaustiveCheck: never = entries[0]!.kind;
+        throw new Error(`Unhandled kind: ${_exhaustiveCheck}`);
       }
       }
     }
+
     const confirmed = await showConfirm({
       title: `Delete ${isSingle ? singleKindLabel : 'Items'}`,
       message: `Are you sure you want to permanently delete ${label}? This cannot be undone.`,
@@ -60,19 +64,12 @@ export function useFileExplorerOperations({
     });
     if (!confirmed) return;
 
-    let failed = 0;
-    for (const entry of entries) {
-      try {
-        await currentDirectory.value.remove({ name: entry.name, recursive: true });
-      } catch {
-        failed++;
-      }
+    try {
+      await client.deleteEntries({ paths: entries.map(entry => entry.path) });
+      await refresh();
+    } catch (error) {
+      addToast({ message: `Failed to delete: ${error instanceof Error ? error.message : String(error)}` });
     }
-
-    if (failed > 0) {
-      addToast({ message: `Failed to delete ${failed} item${failed > 1 ? 's' : ''}.` });
-    }
-    await refresh();
   }
 
   async function renameEntry({
@@ -87,119 +84,51 @@ export function useFileExplorerOperations({
       renamingEntryName.value = undefined;
       return;
     }
+
     try {
-      switch (entry.kind) {
-      case 'file': {
-        const fh = entry.handle as FileSystemFileHandle;
-        const file = await fh.getFile();
-        const destFh = await currentDirectory.value.fileCreate({ name: trimmed });
-        const writable = await (destFh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
-        await writable.write(await file.arrayBuffer());
-        await writable.close();
-        await currentDirectory.value.remove({ name: entry.name, recursive: false });
-        break;
-      }
-      case 'directory': {
-        const destDir = await currentDirectory.value.subdirCreate({ name: trimmed });
-        const srcDir = entry.handle as FileSystemDirectoryHandle;
-        for await (const child of srcDir.values()) {
-          switch (child.kind) {
-          case 'file':
-            await copyFileHandle({ source: child as FileSystemFileHandle, targetDir: destDir });
-            break;
-          case 'directory':
-            await copyDirectoryHandle({
-              source: child as FileSystemDirectoryHandle,
-              targetDir: destDir,
-              signal: undefined,
-            });
-            break;
-          default: {
-            const _ex: never = child.kind;
-            throw new Error(`Unhandled kind: ${_ex}`);
-          }
-          }
-        }
-        await currentDirectory.value.remove({ name: entry.name, recursive: true });
-        break;
-      }
-      default: {
-        const _ex: never = entry.kind;
-        throw new Error(`Unhandled kind: ${_ex}`);
-      }
-      }
+      await client.renameEntry({ path: entry.path, newName: trimmed });
       renamingEntryName.value = undefined;
       await refresh();
-    } catch (e) {
-      addToast({ message: `Failed to rename: ${e instanceof Error ? e.message : String(e)}` });
+    } catch (error) {
+      addToast({ message: `Failed to rename: ${error instanceof Error ? error.message : String(error)}` });
       renamingEntryName.value = undefined;
     }
   }
 
   async function moveEntries({
     entries,
-    targetDir,
+    targetPath,
   }: {
     entries: FileExplorerEntry[];
-    targetDir: ExplorerDirectory;
+    targetPath: string;
   }): Promise<void> {
-    let failed = 0;
-    for (const entry of entries) {
-      try {
-        switch (entry.kind) {
-        case 'file':
-          await copyFileHandle({ source: entry.handle as FileSystemFileHandle, targetDir });
-          await currentDirectory.value.remove({ name: entry.name, recursive: false });
-          break;
-        case 'directory':
-          await copyDirectoryHandle({ source: entry.handle as FileSystemDirectoryHandle, targetDir, signal: undefined });
-          await currentDirectory.value.remove({ name: entry.name, recursive: true });
-          break;
-        default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled kind: ${_ex}`);
-        }
-        }
-      } catch {
-        failed++;
-      }
+    try {
+      await client.moveEntries({
+        sourcePaths: entries.map(entry => entry.path),
+        targetDirectoryPath: targetPath,
+      });
+      await refresh();
+    } catch (error) {
+      addToast({ message: `Failed to move items: ${error instanceof Error ? error.message : String(error)}` });
     }
-    if (failed > 0) {
-      addToast({ message: `Failed to move ${failed} item${failed > 1 ? 's' : ''}.` });
-    }
-    await refresh();
   }
 
   async function copyEntriesToDir({
     entries,
-    targetDir,
+    targetPath,
   }: {
     entries: FileExplorerEntry[];
-    targetDir: ExplorerDirectory;
+    targetPath: string;
   }): Promise<void> {
-    let failed = 0;
-    for (const entry of entries) {
-      try {
-        switch (entry.kind) {
-        case 'file':
-          await copyFileHandle({ source: entry.handle as FileSystemFileHandle, targetDir });
-          break;
-        case 'directory':
-          await copyDirectoryHandle({ source: entry.handle as FileSystemDirectoryHandle, targetDir, signal: undefined });
-          break;
-        default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled kind: ${_ex}`);
-        }
-        }
-      } catch {
-        failed++;
-      }
+    try {
+      await client.copyEntries({
+        sourcePaths: entries.map(entry => entry.path),
+        targetDirectoryPath: targetPath,
+      });
+      await refresh();
+    } catch (error) {
+      addToast({ message: `Failed to copy items: ${error instanceof Error ? error.message : String(error)}` });
     }
-    if (failed > 0) {
-      addToast({ message: `Failed to copy ${failed} item${failed > 1 ? 's' : ''}.` });
-    }
-    await refresh();
   }
 
   async function downloadEntry({ entry }: { entry: FileExplorerEntry }): Promise<void> {
@@ -209,20 +138,21 @@ export function useFileExplorerOperations({
     case 'file':
       break;
     default: {
-      const _ex: never = entry.kind;
-      throw new Error(`Unhandled kind: ${_ex}`);
+      const _exhaustiveCheck: never = entry.kind;
+      throw new Error(`Unhandled kind: ${_exhaustiveCheck}`);
     }
     }
+
     try {
-      const file = await (entry.handle as FileSystemFileHandle).getFile();
-      const url = URL.createObjectURL(file);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = entry.name;
-      a.click();
+      const response = await client.readFile({ path: entry.path });
+      const url = URL.createObjectURL(response.blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = entry.name;
+      anchor.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      addToast({ message: `Failed to download: ${e instanceof Error ? e.message : String(e)}` });
+    } catch (error) {
+      addToast({ message: `Failed to download: ${error instanceof Error ? error.message : String(error)}` });
     }
   }
 
@@ -237,21 +167,16 @@ export function useFileExplorerOperations({
   async function uploadFiles({ files }: { files: FileList | File[] }): Promise<void> {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
-    let failed = 0;
-    for (const file of fileArray) {
-      try {
-        const fh = await currentDirectory.value.fileCreate({ name: file.name });
-        const writable = await (fh as unknown as { createWritable(): Promise<FileSystemWritableFileStream> }).createWritable();
-        await writable.write(await file.arrayBuffer());
-        await writable.close();
-      } catch {
-        failed++;
-      }
+
+    try {
+      await client.uploadFiles({
+        targetDirectoryPath: currentDirectoryPath.value,
+        files: fileArray.map(file => ({ name: file.name, blob: file })),
+      });
+      await refresh();
+    } catch (error) {
+      addToast({ message: `Failed to upload files: ${error instanceof Error ? error.message : String(error)}` });
     }
-    if (failed > 0) {
-      addToast({ message: `Failed to upload ${failed} file${failed > 1 ? 's' : ''}.` });
-    }
-    await refresh();
   }
 
   return {

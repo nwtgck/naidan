@@ -144,6 +144,7 @@ export default defineConfig(({ mode }) => {
         ...(isStandalone ? {
           '@/services/wesh-worker-client': path.resolve(__dirname, 'src/services/wesh-worker-client-standalone.ts'),
           '@/services/global-search-worker-client': path.resolve(__dirname, 'src/services/global-search-worker-client-standalone.ts'),
+          '@/services/file-explorer-worker-client': path.resolve(__dirname, 'src/services/file-explorer-worker-client-standalone.ts'),
           '@/services/transformers-js-worker-client': path.resolve(__dirname, 'src/services/transformers-js-worker-client-standalone.ts'),
           '@/services/transformers-js-scanner-worker-client': path.resolve(__dirname, 'src/services/transformers-js-scanner-worker-client-standalone.ts'),
         } : {}),

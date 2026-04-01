@@ -6,14 +6,15 @@ import type { FileExplorerEntry, SortConfig } from './types';
 
 function makeEntry(overrides: Partial<FileExplorerEntry> & { name: string }): FileExplorerEntry {
   return {
+    path: `/${overrides.name}`,
     kind: 'file',
-    handle: {} as FileSystemHandle,
-    directory: undefined,
     size: undefined,
     lastModified: undefined,
     extension: '',
     mimeCategory: 'binary',
     readOnly: false,
+    canNavigate: false,
+    canMutate: true,
     ...overrides,
   };
 }

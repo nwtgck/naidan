@@ -14,15 +14,16 @@ function makeMouseEvent(x: number, y: number): MouseEvent {
 const entryTarget: ContextMenuTarget = {
   kind: 'entry',
   entry: {
+    path: '/file.txt',
     name: 'file.txt',
     kind: 'file',
-    handle: {} as FileSystemHandle,
-    directory: undefined,
     size: 100,
     lastModified: Date.now(),
     extension: '.txt',
     mimeCategory: 'text',
     readOnly: false,
+    canNavigate: false,
+    canMutate: true,
   },
   selectedEntries: [],
 };

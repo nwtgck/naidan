@@ -1,11 +1,10 @@
 import { ref, computed } from 'vue';
 import type { FileExplorerEntry, ClipboardState } from './types';
-import type { ExplorerDirectory } from './explorer-directory';
 
 export function useFileExplorerClipboard() {
   const clipboardState = ref<ClipboardState>({
     operation: undefined,
-    sourceDirectory: undefined,
+    sourceDirectoryPath: undefined,
     entries: [],
   });
 
@@ -15,26 +14,26 @@ export function useFileExplorerClipboard() {
 
   function clipboardCut({
     entries,
-    sourceDirectory,
+    sourceDirectoryPath,
   }: {
     entries: FileExplorerEntry[];
-    sourceDirectory: ExplorerDirectory;
+    sourceDirectoryPath: string;
   }): void {
-    clipboardState.value = { operation: 'cut', sourceDirectory, entries: [...entries] };
+    clipboardState.value = { operation: 'cut', sourceDirectoryPath, sourceDirectory: sourceDirectoryPath, entries: [...entries] };
   }
 
   function clipboardCopy({
     entries,
-    sourceDirectory,
+    sourceDirectoryPath,
   }: {
     entries: FileExplorerEntry[];
-    sourceDirectory: ExplorerDirectory;
+    sourceDirectoryPath: string;
   }): void {
-    clipboardState.value = { operation: 'copy', sourceDirectory, entries: [...entries] };
+    clipboardState.value = { operation: 'copy', sourceDirectoryPath, sourceDirectory: sourceDirectoryPath, entries: [...entries] };
   }
 
   function clearClipboard(): void {
-    clipboardState.value = { operation: undefined, sourceDirectory: undefined, entries: [] };
+    clipboardState.value = { operation: undefined, sourceDirectoryPath: undefined, sourceDirectory: undefined, entries: [] };
   }
 
   function isCut({ entry }: { entry: FileExplorerEntry }): boolean {

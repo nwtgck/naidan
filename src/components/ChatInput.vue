@@ -17,8 +17,6 @@ import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection'
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
-import { VfsExplorerDirectory } from './file-explorer/explorer-directory';
-import { WeshVFS } from '@/services/wesh/vfs';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -547,15 +545,21 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
   const mounts = currentChat.value.mounts ?? [];
   if (mounts.length === 0) return;
 
-  // Build a standalone VFS with only the chat mounts (no /dev since rootHandle is undefined).
-  // VFS synthesises intermediate directories like /home and /home/user automatically.
-  const vfs = new WeshVFS({ rootHandle: undefined });
+  const workerMounts = [];
   const tmpDirectory = await ensureChatTmpDirectory({ chatId: currentChat.value.id });
-  await vfs.mount({ path: tmpDirectory.mountPath, handle: tmpDirectory.handle, readOnly: false });
+  workerMounts.push({
+    path: tmpDirectory.mountPath,
+    handle: tmpDirectory.handle,
+    readOnly: false,
+  });
   for (const m of mounts) {
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
-    await vfs.mount({ path: m.mountPath, handle, readOnly: m.readOnly });
+    workerMounts.push({
+      path: m.mountPath,
+      handle,
+      readOnly: m.readOnly,
+    });
   }
 
   // Also mount global settings mounts that are not already covered by a chat mount at the same path.
@@ -565,14 +569,23 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
     if (mounts.some(cm => cm.mountPath === m.mountPath)) continue;
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
-    await vfs.mount({ path: m.mountPath, handle, readOnly: m.readOnly });
+    workerMounts.push({
+      path: m.mountPath,
+      handle,
+      readOnly: m.readOnly,
+    });
   }
 
-  const rootDir = new VfsExplorerDirectory({ name: 'Files', path: '/', vfs });
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
 
-  openFileExplorer({ kind: 'explorer', root: rootDir, initialPath, title: 'Files' });
+  openFileExplorer({
+    kind: 'wesh-mounts',
+    title: 'Files',
+    rootName: 'Files',
+    mounts: workerMounts,
+    initialPath,
+  });
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: string }) {

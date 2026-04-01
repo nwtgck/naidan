@@ -22,17 +22,10 @@ async function confirmPathEdit(): Promise<void> {
   const parts = editPathValue.value.split('/').map(p => p.trim()).filter(Boolean);
   if (parts.length === 0) return;
 
-  // Navigate from root using path parts
-  let current = ctx.root;
   try {
-    // Skip root name if it matches the first part
-    const startIdx = parts[0] === (ctx.root.name || 'root') ? 1 : 0;
-    for (let i = startIdx; i < parts.length; i++) {
-      const child = await current.subdir({ name: parts[i]! });
-      if (!child) return;
-      current = child;
-    }
-    await ctx.navigateToDirectory({ directory: current });
+    const startIdx = parts[0] === ctx.pathSegments[0]?.name ? 1 : 0;
+    const targetPath = startIdx >= parts.length ? '/' : `/${parts.slice(startIdx).join('/')}`;
+    await ctx.navigateToDirectory({ path: targetPath });
     ctx.applySelection({ action: { type: 'clear' } });
   } catch {
     // Invalid path — silently ignore
