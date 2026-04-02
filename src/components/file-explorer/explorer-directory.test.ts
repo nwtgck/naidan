@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { VfsExplorerDirectory, FsExplorerDirectory } from './explorer-directory';
 import type { ExplorerChild } from './explorer-directory';
 import type { WeshVFS } from '@/services/wesh/vfs';
-import type { WeshFileType } from '@/services/wesh/types';
+import type { WeshDirEntry, WeshFileType } from '@/services/wesh/types';
 
 // ---- Helpers ----
 
@@ -13,7 +13,7 @@ function asDir(child: ExplorerChild): Extract<ExplorerChild, { kind: 'directory'
 
 // ---- Mock WeshVFS ----
 
-type ReadDirEntry = { name: string; type: WeshFileType };
+type ReadDirEntry = Pick<WeshDirEntry, 'name' | 'type'> & { fullPath?: string };
 
 function makeMockVfs({
   readDirEntries = [] as ReadDirEntry[],
@@ -22,9 +22,13 @@ function makeMockVfs({
   statResults = {} as Record<string, { type: WeshFileType } | null>,
 } = {}): WeshVFS {
   return {
-    async *readDir({ path: _path }: { path: string }) {
+    async *readDir({ path }: { path: string }) {
       for (const e of readDirEntries) {
-        yield e;
+        yield {
+          name: e.name,
+          type: e.type,
+          fullPath: e.fullPath ?? (path === '/' ? `/${e.name}` : `${path}/${e.name}`),
+        };
       }
     },
     async getNativeHandle({ path }: { path: string }) {
@@ -151,6 +155,31 @@ describe('VfsExplorerDirectory.children()', () => {
     const c0 = asDir(children[0]!);
     expect(c0.readOnly).toBe(true);
     expect(c0.directory.readOnly).toBe(true);
+  });
+
+  it('uses entry.fullPath for mount-backed children under synthetic parents', async () => {
+    const handle = makeFakeDirHandle('opaque-volume-id');
+    const vfs = makeMockVfs({
+      readDirEntries: [{ name: 'v1', type: 'directory', fullPath: '/home/user/v1' }],
+      nativeHandles: {
+        '/home/user/v1': handle,
+        '/virtual/user/v1': null,
+      },
+      readOnlyPaths: {
+        '/home/user/v1': false,
+        '/virtual/user/v1': true,
+      },
+    });
+    const dir = new VfsExplorerDirectory({ name: 'user', path: '/virtual/user', vfs });
+
+    const children: ExplorerChild[] = [];
+    for await (const child of dir.children()) {
+      children.push(child);
+    }
+
+    const child = asDir(children[0]!);
+    expect(child.readOnly).toBe(false);
+    expect(child.directory).toBeInstanceOf(FsExplorerDirectory);
   });
 });
 

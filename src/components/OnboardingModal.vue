@@ -2,8 +2,10 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import { OpenAIProvider, OllamaProvider, type LLMProvider } from '@/services/llm';
-import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import type { LLMProvider } from '@/services/lm/types';
+import { OpenAIProvider } from '@/services/lm/openai';
+import { OllamaProvider } from '@/services/lm/ollama';
+import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import { type EndpointType, type Settings as SettingsType } from '@/models/types';
 import { ENDPOINT_PRESETS } from '@/models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -368,7 +370,7 @@ async function handleFinish() {
 
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     selectedType,
     effectiveType,
     availableModels,

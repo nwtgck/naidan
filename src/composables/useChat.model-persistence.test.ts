@@ -49,7 +49,7 @@ const mockChat = vi.fn().mockImplementation(async (params: { model: string, onCh
   params.onChunk('Response from ' + params.model);
 });
 
-vi.mock('../services/llm', () => {
+vi.mock('../services/lm/openai', () => {
   class MockOpenAI {
     constructor() {}
     chat = mockChat;
@@ -57,14 +57,17 @@ vi.mock('../services/llm', () => {
   }
   return {
     OpenAIProvider: MockOpenAI,
-    OllamaProvider: vi.fn(),
   };
 });
 
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: vi.fn(),
+}));
+
 describe('useChat Model ID Persistence & Resolution', () => {
   const chatStore = useChat();
-  const { sendMessage, currentChat, activeMessages, __testOnly, updateChatModel } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { sendMessage, currentChat, activeMessages, TEST_ONLY, updateChatModel } = chatStore;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   beforeEach(() => {
     vi.clearAllMocks();

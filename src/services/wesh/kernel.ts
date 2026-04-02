@@ -666,7 +666,7 @@ export class WeshKernel {
     });
   }
 
-  readDir(options: { path: string }): AsyncIterable<{ name: string; type: WeshFileType }> {
+  readDir(options: { path: string }) {
     return this.vfs.readDir({ path: options.path });
   }
 

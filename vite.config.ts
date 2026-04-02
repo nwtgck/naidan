@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
+import { createStandaloneWorkerClientAliases } from './build/standalone-worker-facades.js'
 import {
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
   STANDALONE_WORKER_MANIFEST_SCRIPT_ID,
@@ -55,6 +56,14 @@ interface EmbeddedWorkerSpec {
 interface EmbeddedWorkerManifestEntry {
   hash: string
   size: number
+}
+
+function ensureExistingPath(relativePath: string): string {
+  const absolutePath = path.resolve(__dirname, relativePath)
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`Alias target does not exist: ${relativePath}`)
+  }
+  return absolutePath
 }
 
 /**
@@ -141,12 +150,11 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
-        ...(isStandalone ? {
-          '@/services/wesh-worker-client': path.resolve(__dirname, 'src/services/wesh-worker-client-standalone.ts'),
-          '@/services/global-search-worker-client': path.resolve(__dirname, 'src/services/global-search-worker-client-standalone.ts'),
-          '@/services/transformers-js-worker-client': path.resolve(__dirname, 'src/services/transformers-js-worker-client-standalone.ts'),
-          '@/services/transformers-js-scanner-worker-client': path.resolve(__dirname, 'src/services/transformers-js-scanner-worker-client-standalone.ts'),
-        } : {}),
+        ...(isStandalone
+          ? createStandaloneWorkerClientAliases({
+            resolvePath: ensureExistingPath,
+          })
+          : {}),
         '@': path.resolve(__dirname, 'src'),
       },
     },

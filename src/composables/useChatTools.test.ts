@@ -3,9 +3,9 @@ import { useChatTools } from './useChatTools';
 
 describe('useChatTools', () => {
   beforeEach(() => {
-    const { setCurrentChatId, __testOnly } = useChatTools();
+    const { setCurrentChatId, TEST_ONLY } = useChatTools();
     setCurrentChatId({ chatId: null });
-    __testOnly._toolEnabledByChat.value = new Map();
+    TEST_ONLY._toolEnabledByChat.value = new Map();
   });
 
   describe('isToolEnabled', () => {

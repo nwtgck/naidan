@@ -2,7 +2,7 @@ import { ref, shallowRef } from 'vue';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import type { EmptyArgs, SidebarItem } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { createGlobalSearchWorkerClient } from '@/services/global-search-worker-client';
+import { createGlobalSearchWorkerClient } from '@/services/global-search/worker/client';
 import type {
   ContentMatch,
   FlatSearchResultItem,
@@ -13,7 +13,7 @@ import type {
   SearchResultItem,
   SearchScope,
   SearchSource,
-} from '@/services/global-search.types';
+} from '@/services/global-search/types';
 
 export type { ContentMatch, FlatSearchResultItem, SearchResultItem, SearchRoleFilter, SearchScope };
 
@@ -355,7 +355,7 @@ export function useChatSearch() {
     search,
     clearSearch,
     stopSearch,
-    __testOnly: {
+    TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },
   };

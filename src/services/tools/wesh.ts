@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Tool, ToolExecutionEvent } from './types';
 import type { WeshMount } from '@/services/wesh/types';
-import type { WeshWorkerClient } from '@/services/wesh-worker.types';
+import type { WeshWorkerClient } from '@/services/wesh/worker/types';
 
 export interface WeshToolOptions {
   client: WeshWorkerClient;

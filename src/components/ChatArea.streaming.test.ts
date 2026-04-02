@@ -25,7 +25,7 @@ vi.mock('../composables/useSettings', () => ({
 }));
 
 let triggerChunk: (chunk: string) => void;
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
     async chat(params: { onChunk: (c: string) => void }) {
@@ -36,6 +36,9 @@ vi.mock('../services/llm', () => ({
       return ['gpt-4'];
     }
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
     async listModels() {
@@ -81,7 +84,7 @@ describe('ChatArea Streaming DOM Test', () => {
     setupScrollToMock();
     vi.clearAllMocks();
     chats.clear();
-    chatStore.__testOnly.__testOnlySetCurrentChat(null);
+    chatStore.TEST_ONLY.__testOnlySetCurrentChat(null);
   });
 
   it('should render assistant chunks in the DOM in real-time', async () => {

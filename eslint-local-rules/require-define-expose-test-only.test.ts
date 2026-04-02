@@ -74,10 +74,10 @@ describe('require-define-expose-test-only rule', () => {
     
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('defineExpose({');
-    expect(fixedResult.output).toContain('__testOnly: {');
+    expect(fixedResult.output).toContain('TEST_ONLY: {');
   });
 
-  it('should report error for defineExpose missing __testOnly and fix it correctly', async () => {
+  it('should report error for defineExpose missing TEST_ONLY and fix it correctly', async () => {
     const code = `<script setup lang="ts">
       defineExpose({
         a: 1
@@ -87,7 +87,7 @@ describe('require-define-expose-test-only rule', () => {
     expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only' && m.messageId === 'missingTestOnly')).toBe(true);
     
     const fixedResult = await fix(code);
-    expect(fixedResult.output).toMatch(/a: 1,\s+__testOnly: {/);
+    expect(fixedResult.output).toMatch(/a: 1,\s+TEST_ONLY: {/);
     expect(fixedResult.output).toContain('// Export internal state and logic used only for testing here.');
   });
 
@@ -98,15 +98,15 @@ describe('require-define-expose-test-only rule', () => {
       });
 </script>`;
     const fixedResult = await fix(code);
-    // Should NOT result in a: 1,, __testOnly
-    expect(fixedResult.output).toMatch(/a: 1,\s+__testOnly: {/);
-    expect(fixedResult.output).not.toMatch(/a: 1,,\s+__testOnly: {/);
+    // Should NOT result in a: 1,, TEST_ONLY
+    expect(fixedResult.output).toMatch(/a: 1,\s+TEST_ONLY: {/);
+    expect(fixedResult.output).not.toMatch(/a: 1,,\s+TEST_ONLY: {/);
   });
 
-  it('should NOT report error if defineExpose with __testOnly already exists', async () => {
+  it('should NOT report error if defineExpose with TEST_ONLY already exists', async () => {
     const code = `<script setup lang="ts">
       defineExpose({
-        __testOnly: {
+        TEST_ONLY: {
           internal: true
         }
       });
@@ -123,7 +123,7 @@ describe('require-define-expose-test-only rule', () => {
     expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only')).toBe(true);
     
     const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('__testOnly: {');
+    expect(fixedResult.output).toContain('TEST_ONLY: {');
   });
 
   it('should handle defineExpose({})', async () => {
@@ -134,7 +134,7 @@ describe('require-define-expose-test-only rule', () => {
     expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only')).toBe(true);
     
     const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('__testOnly: {');
+    expect(fixedResult.output).toContain('TEST_ONLY: {');
   });
 
   it('should handle .vue file with only <template> and no <script>', async () => {

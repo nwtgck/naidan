@@ -5,11 +5,14 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 // 1. Mock LLM providers to prevent real network calls
 const mockListModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
-vi.mock('./services/llm', () => ({
+vi.mock('./services/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
     listModels = mockListModels;
   },
+}));
+
+vi.mock('./services/lm/ollama', () => ({
   OllamaProvider: class {
     constructor() {}
     listModels = mockListModels;

@@ -1,6 +1,7 @@
 import { generateId } from '@/utils/id';
 import { ref } from 'vue';
-import { OllamaProvider, UNKNOWN_STEPS } from '@/services/llm';
+import { UNKNOWN_STEPS } from '@/services/lm/types';
+import { OllamaProvider } from '@/services/lm/ollama';
 import { storageService } from '@/services/storage';
 import {
   getImageGenerationModels,
@@ -454,7 +455,7 @@ export function useImageGeneration() {
     performBase64Generation,
     handleImageGeneration,
     sendImageRequest,
-    __testOnly: {
+    TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },
   };

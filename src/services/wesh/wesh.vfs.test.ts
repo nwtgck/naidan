@@ -105,6 +105,58 @@ describe('wesh vfs mounts', () => {
     expect(changed.result.exitCode).toBe(0);
   });
 
+  it('readDir reports fullPath for synthetic mount parents and mounted directories', async () => {
+    const mountedRoot = new MockFileSystemDirectoryHandle('work');
+    const fileHandle = await mountedRoot.getFileHandle('note.txt', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write('hello');
+    await writable.close();
+
+    await wesh.vfs.mount({
+      path: '/volumes/work',
+      handle: mountedRoot as unknown as FileSystemDirectoryHandle,
+      readOnly: false,
+    });
+
+    const syntheticEntries = [];
+    for await (const entry of wesh.vfs.readDir({ path: '/volumes' })) {
+      syntheticEntries.push(entry);
+    }
+    expect(syntheticEntries).toEqual([
+      { name: 'work', type: 'directory', fullPath: '/volumes/work' },
+    ]);
+
+    const mountedEntries = [];
+    for await (const entry of wesh.vfs.readDir({ path: '/volumes/work' })) {
+      mountedEntries.push(entry);
+    }
+    expect(mountedEntries).toEqual([
+      { name: 'note.txt', type: 'file', fullPath: '/volumes/work/note.txt' },
+    ]);
+  });
+
+  it('readDir reports special-file types without stat fallback', async () => {
+    const devEntries = [];
+    for await (const entry of wesh.vfs.readDir({ path: '/dev' })) {
+      devEntries.push(entry);
+    }
+
+    expect(devEntries).toEqual(expect.arrayContaining([
+      { name: 'null', type: 'chardev', fullPath: '/dev/null' },
+      { name: 'zero', type: 'chardev', fullPath: '/dev/zero' },
+    ]));
+
+    const binEntries = [];
+    for await (const entry of wesh.vfs.readDir({ path: '/bin' })) {
+      binEntries.push(entry);
+    }
+
+    expect(binEntries).toEqual(expect.arrayContaining([
+      { name: 'sh', type: 'file', fullPath: '/bin/sh' },
+      { name: 'bash', type: 'file', fullPath: '/bin/bash' },
+    ]));
+  });
+
   it('appends with >> without racing back to offset zero', async () => {
     const first = await wesh.vfs.open({
       path: '/append.txt',
@@ -289,7 +341,7 @@ second
 
     const entries = [];
     for await (const entry of wesh.vfs.readDir({ path: '/real.link' })) entries.push(entry);
-    expect(entries).toEqual([{ name: 'child.txt', type: 'file' }]);
+    expect(entries).toEqual([{ name: 'child.txt', type: 'file', fullPath: '/real/child.txt' }]);
 
     const changed = await execute({ script: 'cd /real.link; pwd' });
     expect(changed.stdout.text).toBe('/real\n');
@@ -316,7 +368,7 @@ second
     await expect(wesh.vfs.lstat({ path: '/dir.link' })).rejects.toThrow();
     const entries = [];
     for await (const entry of wesh.vfs.readDir({ path: '/dir' })) entries.push(entry);
-    expect(entries).toEqual([{ name: 'keep.txt', type: 'file' }]);
+    expect(entries).toEqual([{ name: 'keep.txt', type: 'file', fullPath: '/dir/keep.txt' }]);
   });
 
   it('renames symlinks without renaming their targets', async () => {

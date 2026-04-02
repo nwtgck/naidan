@@ -558,14 +558,20 @@ describe('ChatArea UI States', () => {
 describe('ChatArea Scrolling Logic', () => {
   let scrollTopSetterSpy: Mock;
   let scrollIntoViewSpy: Mock;
+  let requestAnimationFrameSpy: Mock;
 
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
     scrollTopSetterSpy = vi.fn();
     scrollIntoViewSpy = vi.fn();
+    requestAnimationFrameSpy = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
     setupScrollToMock();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewSpy;
+    vi.stubGlobal('requestAnimationFrame', requestAnimationFrameSpy);
   });
 
   afterEach(() => {
@@ -576,6 +582,7 @@ describe('ChatArea Scrolling Logic', () => {
     document.body.innerHTML = '';
     delete (HTMLElement.prototype as any).scrollIntoView;
     delete (HTMLElement.prototype as any).scrollTo;
+    vi.unstubAllGlobals();
   });
 
   function setupScrollMock(element: HTMLElement) {
@@ -596,16 +603,18 @@ describe('ChatArea Scrolling Logic', () => {
     // Mock querySelector to find our mocked messages
     const originalQuerySelector = element.querySelector.bind(element);
     element.querySelector = vi.fn().mockImplementation((selector: string) => {
-      if (selector.startsWith('#message-')) {
-        const id = selector.replace('#message-', '');
+      if (selector.startsWith('#message-') || selector.startsWith('#process-sequence-') || selector.startsWith('#tool-group-')) {
+        const id = selector.replace(/^#(?:message|process-sequence|tool-group)-/, '');
         const mockEl = document.createElement('div');
-        mockEl.id = `message-${id}`;
-        // Map specific IDs to specific positions for testing
+        mockEl.id = selector.slice(1);
         const positions: Record<string, number> = {
           'u2': 250,
           'a1': 450,
+          'a2': 550,
           'msg-asst': 450,
           'user-1': 100,
+          'seq-1': 350,
+          'group-1': 300,
         };
         const top = positions[id] ?? 0;
         mockEl.getBoundingClientRect = vi.fn().mockReturnValue({ top, bottom: top + 100, height: 100 });
@@ -615,7 +624,7 @@ describe('ChatArea Scrolling Logic', () => {
     });
   }
 
-  it('should NOT scroll when a new USER message is added (scroll happens on first assistant message instead)', async () => {
+  it('does not scroll when a new user turn starts without an assistant-visible target yet', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -627,8 +636,6 @@ describe('ChatArea Scrolling Logic', () => {
     mockActiveMessages.value = [{ id: 'init', role: 'assistant', content: 'hello', timestamp: Date.now(), replies: { items: [] } }];
     await flushPromises();
     await nextTick();
-    // Manually clear initial load flag to focus on the USER message logic
-    (wrapper.vm as any).isInitialLoad = false;
     scrollTopSetterSpy.mockClear();
 
     // 2. User sends message
@@ -645,8 +652,25 @@ describe('ChatArea Scrolling Logic', () => {
     expect(scrollTopSetterSpy).not.toHaveBeenCalled();
   });
 
-  it('should scroll to last USER message on initial load', async () => {
-    // Setup initial state with messages
+  it('scrolls to the latest user message on initial open', async () => {
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      currentLeafId: 'leaf-open-user'
+    };
     mockActiveMessages.value = [
       { id: 'u1', role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] } },
       { id: 'a1', role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
@@ -654,36 +678,13 @@ describe('ChatArea Scrolling Logic', () => {
       { id: 'a2', role: 'assistant', content: 'Final assistant message', timestamp: Date.now(), replies: { items: [] } },
     ];
 
-    wrapper = mount(ChatArea, {
-      attachTo: document.body,
-      global: { plugins: [router] },
-    });
-    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
-    setupScrollMock(container);
-
-    // Reset initial mount scrolls
     await flushPromises();
     await nextTick();
     await nextTick();
-    container.scrollTop = 0; // Reset to 0 explicitly
-    scrollTopSetterSpy.mockClear();
-
-    // Force re-initialization logic
-    (wrapper.vm as any).isInitialLoad = true;
-    mockActiveMessages.value = [
-      ...mockActiveMessages.value,
-      { id: 'extra', role: 'assistant', content: 'extra', timestamp: Date.now(), replies: { items: [] } }
-    ];
-
-    await flushPromises();
-    await nextTick();
-    await nextTick();
-
-    // scrollIntoViewSafe(block: 'start', offset: 50) should set scrollTop to current(0) + (250 - 0) - 50 = 200
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(200);
   });
 
-  it('should scroll new ASSISTANT message into start view', async () => {
+  it('scrolls when a new user turn and assistant placeholder appear in the same update', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -691,30 +692,143 @@ describe('ChatArea Scrolling Logic', () => {
     const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
     setupScrollMock(container);
 
-    // 1. Initial load settles
-    mockActiveMessages.value = [{ id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } }];
     await flushPromises();
     await nextTick();
     await nextTick();
-    container.scrollTop = 0; // Reset to 0 explicitly
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
 
-    // 2. Assistant reply added (length changes from 1 to 2)
     const assistantId = 'a1';
     mockActiveMessages.value = [
       { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
-      { id: assistantId, role: 'assistant', content: 'replying...', timestamp: Date.now(), replies: { items: [] } }
+      { id: assistantId, role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }
+    ];
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: mockActiveMessages.value[0]!,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: mockActiveMessages.value[1]!,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
     ];
 
     await flushPromises();
     await nextTick();
     await nextTick();
 
-    // scrollIntoViewSafe(block: 'start', offset: 50) should set scrollTop to 0 + (450 - 0) - 50 = 400
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(400);
   });
 
-  it('should only scroll for the first assistant in an AI block', async () => {
+  it('scrolls again after abort when a new user turn starts', async () => {
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+
+    const firstUser = { id: 'u1', role: 'user', content: 'first', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const abortedAssistant = { id: 'a1', role: 'assistant', content: '[Generation Aborted]', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const retryUser = { id: 'u2', role: 'user', content: 'retry', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const retryAssistant = { id: 'a2', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+
+    mockActiveMessages.value = [firstUser, abortedAssistant];
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: firstUser,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: abortedAssistant,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(400);
+
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+    mockActiveMessages.value = [firstUser, abortedAssistant, retryUser, retryAssistant];
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: firstUser,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: abortedAssistant,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: retryUser,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: retryAssistant,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(500);
+  });
+
+  it('only scrolls once for the same user turn', async () => {
     const userMessage = { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
     const firstAssistant = { id: 'a1', role: 'assistant', content: 'first reply', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
     const toolMessage = {
@@ -733,8 +847,6 @@ describe('ChatArea Scrolling Logic', () => {
     } as MessageNode;
     const secondAssistant = { id: 'a2', role: 'assistant', content: 'follow-up', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
 
-    mockActiveMessages.value = [userMessage];
-
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -745,10 +857,11 @@ describe('ChatArea Scrolling Logic', () => {
     await flushPromises();
     await nextTick();
     await nextTick();
-    (wrapper.vm as any).isInitialLoad = false;
+    scrollTopSetterSpy.mockClear();
     container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
 
+    mockActiveMessages.value = [userMessage, firstAssistant];
     mockChatFlowOverride.value = [
       {
         type: 'message',
@@ -776,6 +889,8 @@ describe('ChatArea Scrolling Logic', () => {
 
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(400);
 
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
     mockChatFlowOverride.value = [
       {
@@ -859,9 +974,96 @@ describe('ChatArea Scrolling Logic', () => {
     expect(scrollTopSetterSpy).not.toHaveBeenCalled();
   });
 
-  it('should scroll to bottom on initial load if no user messages are found', async () => {
+  it('scrolls to the bottom on initial open if no user messages are found', async () => {
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      currentLeafId: 'leaf-open-bottom'
+    };
     mockActiveMessages.value = [
       { id: 'a1', role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
+  });
+
+  it('scrolls to a process sequence anchor for the latest user turn', async () => {
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+
+    mockActiveMessages.value = [
+      { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'a1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }
+    ];
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: mockActiveMessages.value[0]!,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'process_sequence',
+        id: 'seq-1',
+        items: [],
+        flow: { position: 'standalone', nesting: 'none' },
+        summary: 'Process Details',
+        stats: {
+          thinkingSteps: 0,
+          toolCallCount: 1,
+          toolNames: ['shell_execute'],
+          isCurrentlyThinking: false,
+          isCurrentlyToolRunning: true,
+          isWaiting: false
+        },
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(300);
+  });
+
+  it('re-runs the initial open scroll when the active leaf changes in the same chat', async () => {
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      currentLeafId: 'leaf-1'
+    };
+    mockActiveMessages.value = [
+      { id: 'u1', role: 'user', content: 'first leaf', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'a1', role: 'assistant', content: 'reply', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     wrapper = mount(ChatArea, {
@@ -875,16 +1077,22 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
     scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
 
-    (wrapper.vm as any).isInitialLoad = true;
-    mockActiveMessages.value = [...mockActiveMessages.value, { id: 'a2', role: 'assistant', content: 'Hi again', timestamp: Date.now(), replies: { items: [] } }];
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      currentLeafId: 'leaf-2'
+    };
+    mockActiveMessages.value = [
+      { id: 'u2', role: 'user', content: 'second leaf', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'a2', role: 'assistant', content: 'reply', timestamp: Date.now(), replies: { items: [] } },
+    ];
 
     await flushPromises();
     await nextTick();
     await nextTick();
-
-    // Should fallback to bottom
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(200);
   });
 
   it('should not scroll to bottom on window resize (resize event suppression)', async () => {
@@ -897,16 +1105,13 @@ describe('ChatArea Scrolling Logic', () => {
 
     await flushPromises();
     await nextTick();
-    container.scrollTop = 0; // Ensure we are at the top
+    container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
 
-    // Trigger window resize
     window.dispatchEvent(new Event('resize'));
 
     await flushPromises();
     await nextTick();
-
-    // Should NOT have called scrollToBottom
     expect(scrollTopSetterSpy).not.toHaveBeenCalled();
   });
 });

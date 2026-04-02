@@ -32,7 +32,7 @@ function handleOpenRecent() {
 }
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     showOpfsMenu,
     handleOpenOPFS
   }

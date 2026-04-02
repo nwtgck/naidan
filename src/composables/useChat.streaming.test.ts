@@ -44,27 +44,28 @@ vi.mock('./useSettings', () => ({
 }));
 
 const mockLlmChat = vi.fn();
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: function() {
-      return {
-        chat: mockLlmChat,
-        listModels: vi.fn().mockResolvedValue(['gpt-4']),
-      };
-    },
-    OllamaProvider: function() {
-      return {
-        chat: mockLlmChat,
-        listModels: vi.fn().mockResolvedValue(['gpt-4']),
-      };
-    },
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: function() {
+    return {
+      chat: mockLlmChat,
+      listModels: vi.fn().mockResolvedValue(['gpt-4']),
+    };
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: function() {
+    return {
+      chat: mockLlmChat,
+      listModels: vi.fn().mockResolvedValue(['gpt-4']),
+    };
+  },
+}));
 
 describe('useChat Streaming State Logic', () => {
   const chatStore = useChat();
-  const { currentChat, __testOnly, streaming, sendMessage, createNewChat, abortChat } = chatStore;
-  const { activeGenerations, __testOnlySetCurrentChat } = __testOnly;
+  const { currentChat, TEST_ONLY, streaming, sendMessage, createNewChat, abortChat } = chatStore;
+  const { activeGenerations, __testOnlySetCurrentChat } = TEST_ONLY;
 
   const waitForRegistry = async (id: string) => {
     await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000 });

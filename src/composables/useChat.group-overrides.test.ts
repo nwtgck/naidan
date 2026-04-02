@@ -45,13 +45,16 @@ vi.mock('./useSettings', () => ({
 }));
 
 const mockLlmChat = vi.fn();
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
       chat: mockLlmChat,
       listModels: vi.fn().mockResolvedValue(['model-1', 'chat-model', 'group-model', 'group-special-model', 'global-model']),
     };
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
       chat: mockLlmChat,
@@ -65,7 +68,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.__testOnly.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
     chatStore.rootItems.value = [];
     mockRootItems.length = 0;
   });
@@ -201,13 +204,13 @@ describe('useChat Group Overrides Resolution', () => {
   });
 
   it('clears currentChatGroup when opening a chat or creating a new one', async () => {
-    chatStore.__testOnly.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
+    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
 
     vi.mocked(storageService.loadChat).mockResolvedValue({ id: 'c1', title: 'C1' } as any);
     await chatStore.openChat('c1');
     expect(chatStore.currentChatGroup.value).toBeNull();
 
-    chatStore.__testOnly.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
+    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
     await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     expect(chatStore.currentChatGroup.value).toBeNull();
   });

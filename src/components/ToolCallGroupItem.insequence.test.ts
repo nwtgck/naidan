@@ -44,7 +44,7 @@ describe('ToolCallGroupItem in-sequence auto-expand', () => {
       props: { toolCalls: [makeToolCall()] },
     });
 
-    expect(wrapper.vm.__testOnly.isExpanded.value).toBe(false);
+    expect(wrapper.vm.TEST_ONLY.isExpanded.value).toBe(false);
   });
 
   it('auto-expands when inSequence is provided', () => {
@@ -53,7 +53,7 @@ describe('ToolCallGroupItem in-sequence auto-expand', () => {
       global: { provide: { inSequence: true } },
     });
 
-    expect(wrapper.vm.__testOnly.isExpanded.value).toBe(true);
+    expect(wrapper.vm.TEST_ONLY.isExpanded.value).toBe(true);
   });
 
   it('renders ToolCallItem contents when inSequence', () => {
@@ -71,13 +71,13 @@ describe('ToolCallGroupItem in-sequence auto-expand', () => {
       global: { provide: { inSequence: true } },
     });
 
-    expect(wrapper.vm.__testOnly.isExpanded.value).toBe(true);
+    expect(wrapper.vm.TEST_ONLY.isExpanded.value).toBe(true);
 
     // Click inside the ToolCallItem (the preview area bubbles up in DOM)
     await wrapper.find('[data-testid="lm-tool-call"]').trigger('click');
 
     // Group should still be expanded — click.stop on content area prevents collapse
-    expect(wrapper.vm.__testOnly.isExpanded.value).toBe(true);
+    expect(wrapper.vm.TEST_ONLY.isExpanded.value).toBe(true);
   });
 
   it('clicking the group header collapses the group', async () => {
@@ -86,10 +86,10 @@ describe('ToolCallGroupItem in-sequence auto-expand', () => {
       global: { provide: { inSequence: true } },
     });
 
-    expect(wrapper.vm.__testOnly.isExpanded.value).toBe(true);
+    expect(wrapper.vm.TEST_ONLY.isExpanded.value).toBe(true);
 
     await wrapper.find('[data-testid="tool-call-group-header"]').trigger('click');
 
-    expect(wrapper.vm.__testOnly.isExpanded.value).toBe(false);
+    expect(wrapper.vm.TEST_ONLY.isExpanded.value).toBe(false);
   });
 });

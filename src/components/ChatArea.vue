@@ -2,6 +2,7 @@
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '@/composables/useChat';
+import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -326,13 +327,22 @@ function scrollToBottom({ scrollForce, behavior }: { scrollForce: ScrollForce, b
   }
 }
 
-async function scrollMessageToTop({ messageId, behavior = 'smooth' }: { messageId: string, behavior?: ScrollBehavior }) {
+async function waitForPaint({ frames }: { frames: number }) {
+  if (typeof window === 'undefined') return;
+  for (let index = 0; index < frames; index++) {
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  }
+}
+
+async function scrollAnchorToTop({ target, behavior }: { target: ChatAreaScrollTarget, behavior: ScrollBehavior }) {
   if (!container.value) return false;
 
   let el: HTMLElement | null = null;
   for (let i = 0; i < 5; i++) {
     await nextTick();
-    el = container.value.querySelector(`#message-${messageId}`) as HTMLElement | null;
+    el = container.value.querySelector(`#${target.anchorId}`) as HTMLElement | null;
     if (el) break;
   }
 
@@ -346,6 +356,27 @@ async function scrollMessageToTop({ messageId, behavior = 'smooth' }: { messageI
     offset: 50
   });
   return true;
+}
+
+async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpenTarget }) {
+  switch (target.kind) {
+  case 'bottom':
+    scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
+    return;
+  case 'message':
+  case 'process_sequence':
+  case 'tool_group': {
+    const didScroll = await scrollAnchorToTop({ target, behavior: 'instant' });
+    if (!didScroll) {
+      scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
+    }
+    return;
+  }
+  default: {
+    const _ex: never = target;
+    throw new Error(`Unhandled initial scroll target: ${_ex}`);
+  }
+  }
 }
 
 function jumpToMessage({ messageId }: { messageId: string }) {
@@ -367,7 +398,7 @@ function jumpToMessage({ messageId }: { messageId: string }) {
 
 // Expose for testing
 defineExpose({ scrollToBottom, container,
-  __testOnly: {
+  TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   },
 });
@@ -394,6 +425,12 @@ const canGenerateImage = computed(() => {
   return availableImageModels.value.length > 0;
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
+
+const autoScroll = useChatAreaAutoScroll({
+  currentChat,
+  activeMessages,
+  chatFlow,
+});
 
 async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
   await chatStore.editMessage(messageId, newContent, lmParameters);
@@ -450,131 +487,46 @@ function jumpToOrigin() {
   }
 }
 
-async function scrollToLatestUserMessage() {
-  if (!container.value || !chatFlow.value) return;
-
-  // Find last user message
-  const findLastUserMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
-    for (let i = items.length - 1; i >= 0; i--) {
-      const item = items[i]!;
-      const type = item.type;
-      switch (type) {
-      case 'message': {
-        const role = item.node.role;
-        switch (role) {
-        case 'user': return item;
-        case 'assistant':
-        case 'system':
-        case 'tool':
-          break;
-        default: {
-          const _ex: never = role;
-          return _ex;
-        }
-        }
-        break;
-      }
-      case 'process_sequence': {
-        const nested = findLastUserMessage(item.items);
-        if (nested) return nested;
-        break;
-      }
-      case 'tool_group':
-        break;
-      default: {
-        const _ex: never = type;
-        return _ex;
-      }
-      }
-    }
-    return null;
-  };
-
-  const lastUserMsgItem = findLastUserMessage(chatFlow.value);
-
-  if (lastUserMsgItem && lastUserMsgItem.type === 'message') {
-    const didScroll = await scrollMessageToTop({
-      messageId: lastUserMsgItem.node.id,
-      behavior: 'instant'
-    });
-    if (!didScroll) {
-      scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
-    }
-  } else {
-    scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
-  }
-}
-
-const isInitialLoad = ref(true);
-const hasScrolledToAssistant = ref(false);
-
 watch(
-  () => currentChat.value?.id,
   () => {
-    isInitialLoad.value = true;
-    hasScrolledToAssistant.value = false;
-  }
-);
-
-watch(
-  [() => chatFlow.value.length, () => currentChat.value?.id],
-  async ([_newLen, newId], [_oldLen, oldId]) => {
-    if (newId !== oldId) {
-      isInitialLoad.value = true;
-    }
-
+    const snapshot = autoScroll.snapshot.value;
+    return [
+      snapshot.contextKey,
+      snapshot.latestUserTurnId,
+      snapshot.firstAssistantVisibleTarget?.kind,
+      snapshot.firstAssistantVisibleTarget?.anchorId,
+    ];
+  },
+  async () => {
     await nextTick();
 
-    if (isInitialLoad.value) {
-      await scrollToLatestUserMessage();
-      isInitialLoad.value = false;
-      return;
-    }
+    const action = autoScroll.consumeScrollAction();
+    if (!action) return;
 
-    const lastItem = chatFlow.value[chatFlow.value.length - 1];
-    if (!lastItem) return;
-
-    const itemType = lastItem.type;
-    switch (itemType) {
-    case 'message': {
-      const role = lastItem.node.role;
-      switch (role) {
-      case 'user':
-        hasScrolledToAssistant.value = false;
-        break;
-      case 'assistant': {
-        if (!hasScrolledToAssistant.value) {
-          const didScroll = await scrollMessageToTop({ messageId: lastItem.node.id });
-          if (didScroll) {
-            hasScrolledToAssistant.value = true;
-          }
-        }
-        break;
-      }
-      case 'system':
-      case 'tool': {
-        // Tool and system items are part of the current AI block.
-        // Once the block has started, they must not trigger additional scrolling.
-        break;
-      }
-      default: {
-        const _ex: never = role;
-        throw new Error(`Unhandled role: ${_ex}`);
-      }
+    switch (action.kind) {
+    case 'initial_open':
+      await scrollInitialOpenTarget({ target: action.target });
+      break;
+    case 'assistant': {
+      await waitForPaint({ frames: 2 });
+      const didScroll = await scrollAnchorToTop({ target: action.target, behavior: 'smooth' });
+      if (didScroll) {
+        const contextKey = autoScroll.snapshot.value.contextKey;
+        if (!contextKey) return;
+        autoScroll.markAssistantAutoScrolled({
+          contextKey,
+          userTurnId: action.userTurnId,
+        });
       }
       break;
     }
-    case 'tool_group':
-    case 'process_sequence':
-      // Auto scroll to new AI items
-      // scrollToBottom();
-      break;
     default: {
-      const _ex: never = itemType;
-      throw new Error(`Unhandled ChatFlowItem type: ${_ex}`);
+      const _ex: never = action;
+      throw new Error(`Unhandled auto-scroll action: ${_ex}`);
     }
     }
   },
+  { flush: 'post', immediate: true }
 );
 </script>
 
@@ -877,6 +829,7 @@ watch(
               <!-- AI Process Sequence (Collapsible Group) -->
               <AssistantProcessSequence
                 v-if="flowItem.type === 'process_sequence'"
+                :id="'process-sequence-' + flowItem.id"
                 :items="flowItem.items"
                 :is-processing="isCurrentChatStreaming"
                 :flow="flowItem.flow"
@@ -969,6 +922,7 @@ watch(
               <!-- Standalone Tool Group -->
               <ToolCallGroupItem
                 v-else-if="flowItem.type === 'tool_group'"
+                :id="'tool-group-' + flowItem.id"
                 :tool-calls="flowItem.toolCalls"
                 :flow="flowItem.flow"
                 :is-first-in-turn="flowItem.isFirstInTurn"

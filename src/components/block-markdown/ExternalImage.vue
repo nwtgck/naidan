@@ -37,7 +37,7 @@ function loadAll() {
 }
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     showThisImage,
     isExternal,
     shouldShow,

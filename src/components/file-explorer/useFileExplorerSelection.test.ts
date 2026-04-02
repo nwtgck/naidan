@@ -4,15 +4,16 @@ import type { FileExplorerEntry } from './types';
 
 function makeEntry(name: string): FileExplorerEntry {
   return {
+    path: `/${name}`,
     name,
     kind: 'file',
-    handle: {} as FileSystemHandle,
-    directory: undefined,
     size: undefined,
     lastModified: undefined,
     extension: '.txt',
     mimeCategory: 'text',
     readOnly: false,
+    canNavigate: false,
+    canMutate: true,
   };
 }
 

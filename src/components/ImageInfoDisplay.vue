@@ -58,7 +58,7 @@ onUnmounted(() => {
 });
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     isOpen,
     copiedPrompt,
     copiedSeed

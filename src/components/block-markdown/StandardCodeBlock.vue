@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onBeforeUpdate, onUpdated } from 'vue';
-import { highlightCode } from './useMarkdown';
+import { ref, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, watch } from 'vue';
+import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight/worker/client-shared';
+import { escapeTextForHtml } from '@/utils/html';
 import { CheckIcon, CopyIcon, TerminalIcon, WrapTextIcon } from 'lucide-vue-next';
 import { useCodeBlockSettings } from '@/composables/useCodeBlockSettings';
 
@@ -13,10 +14,49 @@ const { isLineWrapEnabled, toggleLineWrap } = useCodeBlockSettings();
 
 const preRef = ref<HTMLElement | null>(null);
 const scrollState = ref({ top: 0, left: 0 });
+const renderedCodeHtml = ref(escapeTextForHtml({
+  text: props.code,
+}));
+let latestHighlightRequestId = 0;
+let isDisposed = false;
+let highlightWorkerClientPromise: ReturnType<typeof acquireSharedHighlightWorkerClient> | undefined;
 
-const highlightedCode = computed(() => {
-  return highlightCode({ code: props.code, lang: props.lang });
-});
+async function syncHighlightedCodeFromWorker({
+  code,
+  lang,
+}: {
+  code: string
+  lang: string
+}): Promise<void> {
+  const requestId = ++latestHighlightRequestId;
+
+  try {
+    highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient({})
+    const client = await highlightWorkerClientPromise
+    const response = await client.highlight({
+      request: {
+        code,
+        language: lang || undefined,
+        mode: 'named-language',
+      },
+    })
+
+    if (isDisposed || requestId !== latestHighlightRequestId) {
+      return
+    }
+
+    renderedCodeHtml.value = response.html
+  } catch (error) {
+    if (isDisposed || requestId !== latestHighlightRequestId) {
+      return
+    }
+
+    console.error('Failed to highlight code in worker:', error)
+    renderedCodeHtml.value = escapeTextForHtml({
+      text: code,
+    })
+  }
+}
 
 // Scroll preservation logic
 onBeforeUpdate(() => {
@@ -35,6 +75,29 @@ onUpdated(() => {
   }
 });
 
+onMounted(() => {
+  highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient({})
+  void syncHighlightedCodeFromWorker({
+    code: props.code,
+    lang: props.lang,
+  })
+});
+
+watch(() => [props.code, props.lang] as const, async ([code, lang], [previousCode, previousLang]) => {
+  if (code === previousCode && lang === previousLang) {
+    return;
+  }
+
+  await syncHighlightedCodeFromWorker({ code, lang });
+});
+
+onBeforeUnmount(() => {
+  isDisposed = true;
+  latestHighlightRequestId += 1;
+  highlightWorkerClientPromise = undefined;
+  void releaseSharedHighlightWorkerClient({});
+});
+
 const copied = ref(false);
 
 async function copyCode() {
@@ -51,7 +114,7 @@ async function copyCode() {
 
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   }
 });
@@ -91,7 +154,7 @@ defineExpose({
     ><code
       ref="codeRef"
       class="!bg-transparent !p-0 !border-none !text-sm font-mono leading-relaxed !text-gray-200"
-      v-html="highlightedCode"
+      v-html="renderedCodeHtml"
     ></code></pre>
   </div>
 </template>

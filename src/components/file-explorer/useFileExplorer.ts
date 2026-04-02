@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import type { InjectionKey } from 'vue';
+import { createFileExplorerWorkerClient } from '@/services/file-explorer/worker/client';
 import type {
   FileExplorerEntry,
   FileExplorerContext,
@@ -9,7 +10,7 @@ import type {
   SelectionAction,
   ContextMenuAction,
 } from './types';
-import type { ExplorerDirectory } from './explorer-directory';
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
 import { useFileExplorerNavigation } from './useFileExplorerNavigation';
 import { useFileExplorerSelection } from './useFileExplorerSelection';
 import { useFileExplorerOperations } from './useFileExplorerOperations';
@@ -23,142 +24,140 @@ import { usePrompt } from '@/composables/usePrompt';
 export const FILE_EXPLORER_INJECTION_KEY: InjectionKey<FileExplorerContext> =
   Symbol('FileExplorerContext');
 
-export function useFileExplorer({ root, initialStack, initialLocked }: { root: ExplorerDirectory; initialStack: ExplorerDirectory[] | undefined; initialLocked: boolean }) {
+function buildInitialPath({ initialPath }: { initialPath: string[] | undefined }): string | undefined {
+  if (!initialPath || initialPath.length === 0) {
+    return undefined;
+  }
+  return `/${initialPath.join('/')}`;
+}
+
+export async function useFileExplorer({
+  root,
+  initialPath,
+  initialLocked,
+}: {
+  root: FileExplorerRootDescriptor;
+  initialPath: string[] | undefined;
+  initialLocked: boolean;
+}) {
+  const client = await createFileExplorerWorkerClient({ root });
   const { addToast } = useToast();
   const { showPrompt } = usePrompt();
 
-  // --- State ---
   const viewMode = ref<ViewMode>('list');
   const sortConfig = ref<SortConfig>({ field: 'name', direction: 'ascending' });
   const filterQuery = ref('');
   const isLocked = ref(initialLocked);
 
-  // --- Navigation ---
   const nav = useFileExplorerNavigation({
-    root,
+    client,
+    initialPath: buildInitialPath({ initialPath }),
     sortConfig: sortConfig as { value: SortConfig },
     filterQuery: filterQuery as { value: string },
-    initialStack,
   });
 
-  // --- Selection ---
   const sel = useFileExplorerSelection();
 
-  // selectedEntries as computed from nav.sortedFilteredEntries
   const selectedEntries = computed(() =>
     sel.getSelectedEntries({ allEntries: nav.sortedFilteredEntries.value }),
   );
 
-  // Status bar
   const statusBarInfo = computed(() => {
-    const all = nav.sortedFilteredEntries.value;
+    const allEntries = nav.sortedFilteredEntries.value;
     const selected = selectedEntries.value;
     return {
-      totalItems: all.length,
+      totalItems: allEntries.length,
       selectedCount: selected.length,
-      totalSize: all.reduce((s, e) => s + (e.size ?? 0), 0),
-      selectedSize: selected.reduce((s, e) => s + (e.size ?? 0), 0),
+      totalSize: allEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0),
+      selectedSize: selected.reduce((sum, entry) => sum + (entry.size ?? 0), 0),
     };
   });
 
-  // --- Operations ---
   const ops = useFileExplorerOperations({
-    currentDirectory: nav.currentDirectory,
+    client,
+    currentDirectoryPath: nav.currentDirectoryPath,
     refresh: nav.refresh,
   });
 
-  // --- Preview ---
-  const preview = useFileExplorerPreview();
-
-  // --- Clipboard ---
+  const preview = useFileExplorerPreview({ client });
   const clipboard = useFileExplorerClipboard();
-
-  // --- Context menu ---
   const ctxMenu = useFileExplorerContextMenu();
-
-  // --- Drag and drop ---
   const dnd = useFileExplorerDragDrop({
     moveEntries: ops.moveEntries,
-    currentDirectory: nav.currentDirectory,
-    isReadOnly: () => isLocked.value || nav.currentDirectory.value.readOnly,
+    currentDirectoryPath: nav.currentDirectoryPath,
+    isReadOnly: () => isLocked.value || nav.currentDirectoryReadOnly.value,
   });
 
-  // --- View mode ---
   function setViewMode({ mode }: { mode: ViewMode }): void {
     viewMode.value = mode;
   }
 
-  // --- Sort ---
   function toggleSortField({ field }: { field: SortField }): void {
-    const cur = sortConfig.value;
-    if (cur.field === field) {
-      switch (cur.direction) {
-      case 'ascending':
-        sortConfig.value = { field, direction: 'descending' };
-        break;
-      case 'descending':
-        sortConfig.value = { field, direction: 'ascending' };
-        break;
-      default: {
-        const _ex: never = cur.direction;
-        throw new Error(`Unhandled direction: ${_ex}`);
-      }
-      }
-    } else {
-      sortConfig.value = { field, direction: 'ascending' };
+    const current = sortConfig.value;
+    if (current.field === field) {
+      sortConfig.value = {
+        field,
+        direction: (() => {
+          switch (current.direction) {
+          case 'ascending':
+            return 'descending';
+          case 'descending':
+            return 'ascending';
+          default: {
+            const _exhaustiveCheck: never = current.direction;
+            throw new Error(`Unhandled sort direction: ${_exhaustiveCheck}`);
+          }
+          }
+        })(),
+      };
+      return;
     }
+    sortConfig.value = { field, direction: 'ascending' };
   }
 
-  // --- Filter ---
   function setFilterQuery({ query }: { query: string }): void {
     filterQuery.value = query;
   }
 
-  // --- Lock ---
   function toggleLock(): void {
     isLocked.value = !isLocked.value;
   }
 
-  // --- Selection ---
   function applySelection({ action }: { action: SelectionAction }): void {
     sel.applySelection({ action });
   }
 
-  // --- Context menu execution ---
   async function executeContextAction({ action }: { action: ContextMenuAction }): Promise<void> {
     const targetCtx = ctxMenu.contextMenuState.value.target;
     ctxMenu.hideContextMenu();
 
     switch (action) {
-    case 'open': {
+    case 'open':
       switch (targetCtx.kind) {
-      case 'entry': {
-        const entry = targetCtx.entry;
-        switch (entry.kind) {
+      case 'entry':
+        switch (targetCtx.entry.kind) {
         case 'directory':
-          await nav.navigateToDirectory({ directory: entry.directory! });
+          await nav.navigateToDirectory({ path: targetCtx.entry.path });
           sel.clearSelectionForNewDirectory();
           break;
         case 'file':
-          await preview.loadPreview({ entry });
+          await preview.loadPreview({ entry: targetCtx.entry });
           break;
         default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled kind: ${_ex}`);
+          const _exhaustiveCheck: never = targetCtx.entry.kind;
+          throw new Error(`Unhandled entry kind: ${_exhaustiveCheck}`);
         }
         }
         break;
-      }
       case 'background':
         break;
       default: {
-        const _ex: never = targetCtx;
-        throw new Error(`Unhandled target: ${JSON.stringify(_ex)}`);
+        const _exhaustiveCheck: never = targetCtx;
+        throw new Error(`Unhandled context menu target: ${JSON.stringify(_exhaustiveCheck)}`);
       }
       }
       break;
-    }
-    case 'rename': {
+    case 'rename':
       switch (targetCtx.kind) {
       case 'entry':
         ops.startRename({ entry: targetCtx.entry });
@@ -166,64 +165,63 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
       case 'background':
         break;
       default: {
-        const _ex: never = targetCtx;
-        throw new Error(`Unhandled target: ${JSON.stringify(_ex)}`);
+        const _exhaustiveCheck: never = targetCtx;
+        throw new Error(`Unhandled context menu target: ${JSON.stringify(_exhaustiveCheck)}`);
       }
       }
       break;
-    }
-    case 'delete': {
+    case 'delete':
       switch (targetCtx.kind) {
-      case 'entry': {
-        const entriesToDelete = targetCtx.selectedEntries;
-        if (entriesToDelete.length > 0) {
-          await ops.deleteEntries({ entries: entriesToDelete });
+      case 'entry':
+        if (targetCtx.selectedEntries.length > 0) {
+          await ops.deleteEntries({ entries: targetCtx.selectedEntries });
           sel.clearSelectionForNewDirectory();
         }
         break;
-      }
       case 'background':
         break;
       default: {
-        const _ex: never = targetCtx;
-        throw new Error(`Unhandled target: ${JSON.stringify(_ex)}`);
+        const _exhaustiveCheck: never = targetCtx;
+        throw new Error(`Unhandled context menu target: ${JSON.stringify(_exhaustiveCheck)}`);
       }
       }
       break;
-    }
-    case 'copy': {
+    case 'copy':
       switch (targetCtx.kind) {
       case 'entry':
-        clipboard.clipboardCopy({ entries: targetCtx.selectedEntries, sourceDirectory: nav.currentDirectory.value });
+        clipboard.clipboardCopy({
+          entries: targetCtx.selectedEntries,
+          sourceDirectoryPath: nav.currentDirectoryPath.value,
+        });
         break;
       case 'background':
         break;
       default: {
-        const _ex: never = targetCtx;
-        throw new Error(`Unhandled target: ${JSON.stringify(_ex)}`);
+        const _exhaustiveCheck: never = targetCtx;
+        throw new Error(`Unhandled context menu target: ${JSON.stringify(_exhaustiveCheck)}`);
       }
       }
       break;
-    }
-    case 'cut': {
+    case 'cut':
       switch (targetCtx.kind) {
       case 'entry':
-        clipboard.clipboardCut({ entries: targetCtx.selectedEntries, sourceDirectory: nav.currentDirectory.value });
+        clipboard.clipboardCut({
+          entries: targetCtx.selectedEntries,
+          sourceDirectoryPath: nav.currentDirectoryPath.value,
+        });
         break;
       case 'background':
         break;
       default: {
-        const _ex: never = targetCtx;
-        throw new Error(`Unhandled target: ${JSON.stringify(_ex)}`);
+        const _exhaustiveCheck: never = targetCtx;
+        throw new Error(`Unhandled context menu target: ${JSON.stringify(_exhaustiveCheck)}`);
       }
       }
       break;
-    }
-    case 'paste': {
+    case 'paste':
       await clipboardPaste();
       break;
-    }
-    case 'download': {
+    case 'download':
       switch (targetCtx.kind) {
       case 'entry':
         for (const entry of targetCtx.selectedEntries) {
@@ -233,19 +231,20 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
       case 'background':
         break;
       default: {
-        const _ex: never = targetCtx;
-        throw new Error(`Unhandled target: ${JSON.stringify(_ex)}`);
+        const _exhaustiveCheck: never = targetCtx;
+        throw new Error(`Unhandled context menu target: ${JSON.stringify(_exhaustiveCheck)}`);
       }
       }
       break;
-    }
     case 'newFile': {
       const name = await showPrompt({
         title: 'New File',
         message: 'Enter a name for the new file:',
         confirmButtonText: 'Create',
       });
-      if (name) await ops.createFile({ name });
+      if (name) {
+        await ops.createFile({ name });
+      }
       break;
     }
     case 'newFolder': {
@@ -254,14 +253,16 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
         message: 'Enter a name for the new folder:',
         confirmButtonText: 'Create',
       });
-      if (name) await ops.createFolder({ name });
+      if (name) {
+        await ops.createFolder({ name });
+      }
       break;
     }
-    case 'getInfo': {
+    case 'getInfo':
       switch (targetCtx.kind) {
       case 'entry': {
         const entry = targetCtx.entry;
-        const path = [...nav.pathSegments.value.map(s => s.name), entry.name].join(' / ');
+        const path = [...nav.pathSegments.value.map(segment => segment.name), entry.name].join(' / ');
         const sizeStr = entry.size !== undefined ? `${entry.size.toLocaleString()} bytes` : '—';
         addToast({
           message: `${entry.name}\nKind: ${entry.kind}\nSize: ${sizeStr}\nPath: ${path}`,
@@ -272,58 +273,58 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
       case 'background':
         break;
       default: {
-        const _ex: never = targetCtx;
-        throw new Error(`Unhandled target: ${JSON.stringify(_ex)}`);
+        const _exhaustiveCheck: never = targetCtx;
+        throw new Error(`Unhandled context menu target: ${JSON.stringify(_exhaustiveCheck)}`);
       }
       }
       break;
-    }
-    case 'selectAll': {
+    case 'selectAll':
       applySelection({
         action: { type: 'all', allEntries: nav.sortedFilteredEntries.value },
       });
       break;
-    }
     default: {
-      const _ex: never = action;
-      throw new Error(`Unhandled context action: ${_ex}`);
+      const _exhaustiveCheck: never = action;
+      throw new Error(`Unhandled context action: ${_exhaustiveCheck}`);
     }
     }
   }
 
-  // --- Clipboard paste ---
   async function clipboardPaste(): Promise<void> {
-    const cb = clipboard.clipboardState.value;
-    if (!cb.operation || cb.entries.length === 0) return;
+    const clipboardState = clipboard.clipboardState.value;
+    if (!clipboardState.operation || clipboardState.entries.length === 0) {
+      return;
+    }
 
-    switch (cb.operation) {
+    switch (clipboardState.operation) {
     case 'copy':
-      await ops.copyEntriesToDir({ entries: cb.entries, targetDir: nav.currentDirectory.value });
+      await ops.copyEntriesToDir({
+        entries: clipboardState.entries,
+        targetPath: nav.currentDirectoryPath.value,
+      });
       break;
     case 'cut':
-      await ops.moveEntries({ entries: cb.entries, targetDir: nav.currentDirectory.value });
+      await ops.moveEntries({
+        entries: clipboardState.entries,
+        targetPath: nav.currentDirectoryPath.value,
+      });
       clipboard.clearClipboard();
       break;
     default: {
-      const _ex: never = cb.operation;
-      throw new Error(`Unhandled clipboard operation: ${_ex}`);
+      const _exhaustiveCheck: never = clipboardState.operation;
+      throw new Error(`Unhandled clipboard operation: ${_exhaustiveCheck}`);
     }
     }
   }
 
   const context: FileExplorerContext = {
-    // Navigation
     root,
-    get currentDirectory() {
-      return nav.currentDirectory.value;
+    get currentDirectoryPath() {
+      return nav.currentDirectoryPath.value;
     },
     get readOnly() {
-      return isLocked.value || nav.currentDirectory.value.readOnly;
+      return isLocked.value || nav.currentDirectoryReadOnly.value;
     },
-    get isLocked() {
-      return isLocked.value;
-    },
-    toggleLock,
     get pathSegments() {
       return nav.pathSegments.value;
     },
@@ -332,7 +333,6 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
     jumpToBreadcrumb: nav.jumpToBreadcrumb,
     refresh: nav.refresh,
 
-    // Entries
     get entries() {
       return nav.entries.value;
     },
@@ -346,25 +346,21 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
       return nav.loadError.value;
     },
 
-    // View mode
     get viewMode() {
       return viewMode.value;
     },
     setViewMode,
 
-    // Sort
     get sortConfig() {
       return sortConfig.value;
     },
     toggleSortField,
 
-    // Filter
     get filterQuery() {
       return filterQuery.value;
     },
     setFilterQuery,
 
-    // Selection
     get selectionState() {
       return sel.selectionState.value;
     },
@@ -372,10 +368,14 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
       return selectedEntries.value;
     },
     applySelection,
-    moveFocus: ({ direction, extend }: { direction: 'prev' | 'next'; extend: boolean }) =>
-      sel.moveFocus({ direction, extend, allEntries: nav.sortedFilteredEntries.value }),
+    moveFocus: ({ direction, extend }) => {
+      sel.moveFocus({
+        direction,
+        extend,
+        allEntries: nav.sortedFilteredEntries.value,
+      });
+    },
 
-    // Operations
     createFile: ops.createFile,
     createFolder: ops.createFolder,
     deleteEntries: ops.deleteEntries,
@@ -384,13 +384,13 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
     copyEntriesToDir: ops.copyEntriesToDir,
     downloadEntry: ops.downloadEntry,
     uploadFiles: ops.uploadFiles,
+
     get renamingEntryName() {
       return ops.renamingEntryName.value;
     },
     startRename: ops.startRename,
     cancelRename: ops.cancelRename,
 
-    // Preview
     get previewState() {
       return preview.previewState.value;
     },
@@ -400,7 +400,6 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
     togglePreviewVisibility: preview.togglePreviewVisibility,
     toggleJsonFormat: preview.toggleJsonFormat,
 
-    // Context menu
     get contextMenuState() {
       return ctxMenu.contextMenuState.value;
     },
@@ -408,17 +407,17 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
     hideContextMenu: ctxMenu.hideContextMenu,
     executeContextAction,
 
-    // Clipboard
     get clipboardState() {
       return clipboard.clipboardState.value;
     },
-    clipboardCut: ({ entries }: { entries: FileExplorerEntry[] }) =>
-      clipboard.clipboardCut({ entries, sourceDirectory: nav.currentDirectory.value }),
-    clipboardCopy: ({ entries }: { entries: FileExplorerEntry[] }) =>
-      clipboard.clipboardCopy({ entries, sourceDirectory: nav.currentDirectory.value }),
+    clipboardCut: ({ entries }: { entries: FileExplorerEntry[] }) => {
+      clipboard.clipboardCut({ entries, sourceDirectoryPath: nav.currentDirectoryPath.value });
+    },
+    clipboardCopy: ({ entries }: { entries: FileExplorerEntry[] }) => {
+      clipboard.clipboardCopy({ entries, sourceDirectoryPath: nav.currentDirectoryPath.value });
+    },
     clipboardPaste,
 
-    // Drag and drop
     get dragState() {
       return dnd.dragState.value;
     },
@@ -428,13 +427,16 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
     onDropEntry: dnd.onDropEntry,
     onDragEnd: dnd.onDragEnd,
 
-    // Column view
+    get isLocked() {
+      return isLocked.value;
+    },
+    toggleLock,
+
     get columnPanes() {
       return nav.columnPanes.value;
     },
     selectColumnEntry: nav.selectColumnEntry,
 
-    // Status bar
     get statusBarInfo() {
       return statusBarInfo.value;
     },
@@ -442,21 +444,10 @@ export function useFileExplorer({ root, initialStack, initialLocked }: { root: E
 
   return {
     context,
-    // Expose reactive refs for the provide/inject mechanism
-    _nav: nav,
-    _sel: sel,
-    _clipboard: clipboard,
-    _ops: ops,
-    _preview: preview,
-    _ctxMenu: ctxMenu,
-    _dnd: dnd,
+    client,
     _viewMode: viewMode,
-    _isLocked: isLocked,
-    _sortConfig: sortConfig,
-    _filterQuery: filterQuery,
-    _selectedEntries: selectedEntries,
-    _statusBarInfo: statusBarInfo,
-    __testOnly: {
+    _preview: preview,
+    TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },
   };

@@ -1,14 +1,13 @@
 import { ref } from 'vue';
 import type { FileExplorerEntry, DragState } from './types';
-import type { ExplorerDirectory } from './explorer-directory';
 
 export function useFileExplorerDragDrop({
   moveEntries,
-  currentDirectory,
+  currentDirectoryPath,
   isReadOnly,
 }: {
-  moveEntries: ({ entries, targetDir }: { entries: FileExplorerEntry[]; targetDir: ExplorerDirectory }) => Promise<void>;
-  currentDirectory: { readonly value: ExplorerDirectory };
+  moveEntries: ({ entries, targetPath }: { entries: FileExplorerEntry[]; targetPath: string }) => Promise<void>;
+  currentDirectoryPath: { readonly value: string };
   isReadOnly: () => boolean;
 }) {
   const dragState = ref<DragState>({ status: 'idle' });
@@ -32,7 +31,7 @@ export function useFileExplorerDragDrop({
     dragState.value = {
       status: 'dragging',
       entries,
-      sourceDirectory: currentDirectory.value,
+      sourceDirectoryPath: currentDirectoryPath.value,
     };
   }
 
@@ -79,7 +78,7 @@ export function useFileExplorerDragDrop({
       dragState.value = {
         status: 'dragging',
         entries: activeDragEntries.value,
-        sourceDirectory: currentDirectory.value,
+        sourceDirectoryPath: currentDirectoryPath.value,
       };
       break;
     case 'dragging':
@@ -115,9 +114,8 @@ export function useFileExplorerDragDrop({
     activeDragEntries.value = [];
     dragState.value = { status: 'idle' };
 
-    const targetDir = entry.directory!;
     if (entriesToMove.length > 0) {
-      await moveEntries({ entries: entriesToMove, targetDir });
+      await moveEntries({ entries: entriesToMove, targetPath: entry.path });
     }
   }
 
@@ -133,7 +131,7 @@ export function useFileExplorerDragDrop({
     onDragLeaveEntry,
     onDropEntry,
     onDragEnd,
-    __testOnly: {
+    TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },
   };

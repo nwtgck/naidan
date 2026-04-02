@@ -95,7 +95,7 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
         event.preventDefault();
         switch (focused.kind) {
         case 'directory':
-          await ctx.navigateToDirectory({ directory: focused.directory! });
+          await ctx.navigateToDirectory({ path: focused.path });
           ctx.applySelection({ action: { type: 'clear' } });
           break;
         case 'file':
@@ -166,7 +166,7 @@ export function useFileExplorerKeyboard({ ctx }: { ctx: FileExplorerContext }) {
   }
 
   return { handleKeyDown,
-    __testOnly: {
+    TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
     }, };
 }

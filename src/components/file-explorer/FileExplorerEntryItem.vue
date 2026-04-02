@@ -29,7 +29,7 @@ const emit = defineEmits<{
 
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   }
 });
@@ -76,7 +76,7 @@ defineExpose({
         {{ entry.name }}
       </span>
     </div>
-    <Lock
+    <LockIcon
       v-if="entry.readOnly"
       class="w-2.5 h-2.5 shrink-0 opacity-50"
       :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"
@@ -133,7 +133,7 @@ defineExpose({
       class="text-[11px] text-center leading-tight break-all line-clamp-2 w-full px-1"
       :class="isSelected ? 'text-white' : 'text-gray-700 dark:text-gray-300'"
     >{{ entry.name }}</span>
-    <Lock
+    <LockIcon
       v-if="entry.readOnly"
       class="w-2.5 h-2.5 shrink-0 opacity-50 absolute top-1 right-1"
       :class="isSelected ? 'text-white' : 'text-gray-400 dark:text-gray-500'"

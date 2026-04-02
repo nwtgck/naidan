@@ -8,7 +8,7 @@ const mockGetVolumeExtensions = vi.fn()
 const mockIsVolumeScanned = vi.fn()
 const mockStartVolumeExtensionScan = vi.fn()
 
-vi.mock('@/services/wesh-worker-client', () => ({
+vi.mock('@/services/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mockCreateClient,
 }))
 

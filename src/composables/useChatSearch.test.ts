@@ -23,7 +23,7 @@ vi.mock('../services/storage', () => ({
   },
 }))
 
-vi.mock('@/services/global-search-worker-client', () => ({
+vi.mock('@/services/global-search/worker/client', () => ({
   createGlobalSearchWorkerClient: mockCreateGlobalSearchWorkerClient,
 }))
 
@@ -38,20 +38,20 @@ describe('useChatSearch Composable', () => {
     vi.clearAllMocks()
 
     mockCreateGlobalSearchWorkerClient.mockImplementation(async () => {
-      const { createGlobalSearchWorker } = await import('@/services/global-search.worker.impl')
+      const { createGlobalSearchWorker } = await import('@/services/global-search/worker/impl')
       const worker = createGlobalSearchWorker({})
 
       return {
-        prepareSession({ request }: { request: import('@/services/global-search.worker.types').GlobalSearchWorkerPrepareSessionRequest }) {
+        prepareSession({ request }: { request: import('@/services/global-search/worker/types').GlobalSearchWorkerPrepareSessionRequest }) {
           return worker.prepareSession({ request })
         },
-        searchTitles({ request }: { request: import('@/services/global-search.worker.types').GlobalSearchWorkerSearchTitlesRequest }) {
+        searchTitles({ request }: { request: import('@/services/global-search/worker/types').GlobalSearchWorkerSearchTitlesRequest }) {
           return worker.searchTitles({ request })
         },
-        searchChatContent({ request }: { request: import('@/services/global-search.worker.types').GlobalSearchWorkerSearchChatContentRequest }) {
+        searchChatContent({ request }: { request: import('@/services/global-search/worker/types').GlobalSearchWorkerSearchChatContentRequest }) {
           return worker.searchChatContent({ request })
         },
-        disposeSession({ request }: { request: import('@/services/global-search.worker.types').GlobalSearchWorkerDisposeSessionRequest }) {
+        disposeSession({ request }: { request: import('@/services/global-search/worker/types').GlobalSearchWorkerDisposeSessionRequest }) {
           return worker.disposeSession({ request })
         },
         dispose: vi.fn().mockResolvedValue(undefined),

@@ -63,7 +63,7 @@ const modelId = computed(() => {
 });
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     isExpanded,
     toggle
   }

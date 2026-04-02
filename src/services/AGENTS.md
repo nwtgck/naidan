@@ -29,8 +29,11 @@ The goal is:
 Examples of public facades:
 
 - `@/services/wesh-worker-client`
-- `@/services/global-search-worker-client`
-- `@/services/transformers-js-worker-client`
+- `@/services/global-search/worker/client`
+- `@/services/file-explorer/worker/client`
+- `@/services/advanced-text-editor-v3/worker/client`
+- `@/services/highlight/worker/client`
+- `@/services/transformers-js/worker/client`
 
 ## Pattern A: Hosted + Standalone Hub
 
@@ -43,11 +46,12 @@ Examples:
 
 Structure:
 
-- `foo-worker-client.ts`
-- `foo-worker-client-hosted.ts`
-- `foo-worker-client-standalone.ts`
-- `foo.worker.impl.ts`
-- `foo.worker.ts`
+- `foo/worker/client.ts`
+- `foo/worker/client-hosted.ts`
+- `foo/worker/client-standalone.ts`
+- `foo/worker/impl.ts`
+- `foo/worker/entry.ts`
+- `foo/worker/types.ts`
 - `worker-hub-standalone.ts`
 - `worker-hub-standalone.worker.ts`
 
@@ -64,11 +68,17 @@ Why:
 
 Rules:
 
-1. Put reusable worker logic in `foo.worker.impl.ts`.
-2. Keep `foo.worker.ts` as the hosted entrypoint that only exposes the worker.
+1. Put reusable worker logic in `foo/worker/impl.ts`.
+2. Keep `foo/worker/entry.ts` as the hosted entrypoint that only exposes the worker.
 3. Add the service to `IWorkerHub` and `createStandaloneWorkerHub({})`.
 4. Wrap hub services with `Comlink.proxy(...)`.
-5. Add standalone Vite alias for the public facade.
+5. Add standalone Vite alias for the public facade path, normally `@/services/foo/worker/client`.
+
+Notes:
+
+- Put worker request and response schemas in `foo/worker/types.ts`.
+- Put worker-only helper code next to the worker, for example `highlight/worker/core.ts`.
+- If the feature also has non-worker code, keep it outside `worker/`, for example `global-search/types.ts`.
 
 ## Pattern B: Hosted Only + Standalone Unsupported
 
@@ -80,11 +90,13 @@ Example:
 
 Structure:
 
-- `foo-worker-client.ts`
-- `foo-worker-client-hosted.ts`
-- `foo-worker-client-standalone.ts`
-- optional helper facades like `foo-scanner-worker-client.ts`
-- hosted worker entrypoints stay normal
+- `foo/worker/client.ts`
+- `foo/worker/client-hosted.ts`
+- `foo/worker/client-standalone.ts`
+- `foo/worker/entry.ts`
+- `foo/worker/types.ts`
+- optional nested worker helpers such as `foo/scanner/worker/client.ts`
+- feature-level modules stay under `foo/`, for example `foo/types.ts`, `foo/provider.ts`, `foo/models/*`
 
 Behavior:
 
@@ -99,11 +111,11 @@ Why:
 
 Rules:
 
-1. Define a typed client interface in `foo.types.ts`.
+1. Define worker-facing interfaces in `foo/worker/types.ts`, and keep feature-level shared types in `foo/types.ts` when needed.
 2. Hosted client wraps the dedicated worker.
 3. Hosted client should handle `typeof Worker === 'undefined'` by returning an unavailable client surface instead of crashing at import time.
 4. Standalone client keeps the same methods but throws a clear unsupported error.
-5. Add standalone Vite alias for the facade.
+5. Add standalone Vite alias for the facade path, normally `@/services/foo/worker/client`.
 6. Do not keep a noop loader alias once the facade exists.
 
 ## Vite Rules

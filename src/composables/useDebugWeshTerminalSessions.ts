@@ -28,7 +28,7 @@ export function useDebugWeshTerminalSessions() {
     createWorkerSession: () => store.createSession({ buildMounts: buildWorkerMounts }),
     ensureActiveSession: () => store.ensureSession({ buildMounts: buildWorkerMounts }),
     reopenSessionIfNeeded: () => store.ensureSession({ buildMounts: buildWorkerMounts }),
-    __testOnly: {
+    TEST_ONLY: {
       buildWorkerMounts,
     },
   };

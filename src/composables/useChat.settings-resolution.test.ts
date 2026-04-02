@@ -32,25 +32,26 @@ const mockOpenAIModels = vi.fn();
 const mockOllamaModels = vi.fn();
 
 // Proper class mocking for Vitest
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: vi.fn().mockImplementation(function() {
-      return {
-        chat: mockOpenAIChat,
-        listModels: mockOpenAIModels,
-      };
-    }),
-    OllamaProvider: vi.fn().mockImplementation(function() {
-      return {
-        chat: mockOllamaChat,
-        listModels: mockOllamaModels,
-      };
-    }),
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: vi.fn().mockImplementation(function() {
+    return {
+      chat: mockOpenAIChat,
+      listModels: mockOpenAIModels,
+    };
+  }),
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: vi.fn().mockImplementation(function() {
+    return {
+      chat: mockOllamaChat,
+      listModels: mockOllamaModels,
+    };
+  }),
+}));
 
 describe('useChat Settings Resolution Policy', () => {
-  const { settings, __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
   const chatStore = useChat();
   const { sendMessage, currentChat, createNewChat, openChat, updateChatModel, updateChatSettings } = chatStore;
 
@@ -75,7 +76,7 @@ describe('useChat Settings Resolution Policy', () => {
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
 
-    chatStore.__testOnly.__testOnlySetCurrentChat(null);
+    chatStore.TEST_ONLY.__testOnlySetCurrentChat(null);
   });
 
   it('Scenario: Global setting change should be reflected in existing chat for subsequent messages', async () => {

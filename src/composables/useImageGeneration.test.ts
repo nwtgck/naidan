@@ -34,8 +34,8 @@ if (!global.crypto) {
 }
 
 // Mock LLM provider
-vi.mock('../services/llm', async (importOriginal) => {
-  const actual = await importOriginal<any>();
+vi.mock('../services/lm/ollama', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/lm/ollama')>();
   return {
     ...actual,
     OllamaProvider: class {
@@ -360,8 +360,8 @@ describe('useImageGeneration', () => {
 
     it('uses undefined for steps in the final output blocks if provider returns UNKNOWN_STEPS', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { OllamaProvider } = await import('../services/llm');
-      const { UNKNOWN_STEPS } = await import('../services/llm');
+      const { OllamaProvider } = await import('../services/lm/ollama');
+      const { UNKNOWN_STEPS } = await import('../services/lm/types');
 
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockResolvedValueOnce({
@@ -402,19 +402,19 @@ describe('useImageGeneration', () => {
 
     it('clears imageProgressMap at the start of each image in a batch', async () => {
       const { handleImageGeneration, imageProgressMap } = useImageGeneration();
-      const { OllamaProvider } = await import('../services/llm');
+      const { OllamaProvider } = await import('../services/lm/ollama');
 
       // Set stale progress
       imageProgressMap.value[chatId] = { currentStep: 50, totalSteps: 50 };
 
       // Spy on generateImage and check progress map state when it's called
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
-        .mockImplementation(async ({ onProgress }) => {
+        .mockImplementation(async (params: any) => {
           // When this is called, the progress map should have been cleared by the loop
           expect(imageProgressMap.value[chatId]).toBeUndefined();
 
           // Simulate some progress
-          if (onProgress) onProgress({ currentStep: 1, totalSteps: 10 });
+          if (params.onProgress) params.onProgress({ currentStep: 1, totalSteps: 10 });
           return {
             image: new Blob(['test'], { type: 'image/png' }),
             totalSteps: 10

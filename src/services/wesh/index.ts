@@ -323,6 +323,7 @@ export class Wesh {
     this.registerCommand({ definition: this.createShellAliasCommandDefinition({ name: 'bash' }) });
     this.vfs.registerSpecialFile({
       path: WESH_SHELL_SPECIAL_FILES.sh,
+      type: 'file',
       handler: () => new StaticTextFileHandle({
         text: WESH_SHELL_SPECIAL_FILE_CONTENT.sh,
         mode: 0o555,
@@ -330,6 +331,7 @@ export class Wesh {
     });
     this.vfs.registerSpecialFile({
       path: WESH_SHELL_SPECIAL_FILES.bash,
+      type: 'file',
       handler: () => new StaticTextFileHandle({
         text: WESH_SHELL_SPECIAL_FILE_CONTENT.bash,
         mode: 0o555,
@@ -2775,7 +2777,7 @@ usage: ${name} [-c command] [file [argument...]]
           if (!includeHiddenEntries && entry.name.startsWith('.')) {
             continue;
           }
-          nestedBases.add(resolvePath({ cwd: base, path: entry.name }));
+          nestedBases.add(entry.fullPath);
         }
       }
 
@@ -2822,7 +2824,7 @@ usage: ${name} [-c command] [file [argument...]]
         if (!matcher?.test(entry.name)) {
           continue;
         }
-        nextBases.push(resolvePath({ cwd: base, path: entry.name }));
+        nextBases.push(entry.fullPath);
       }
     }
 
@@ -3979,6 +3981,7 @@ usage: ${name} [-c command] [file [argument...]]
 
           this.vfs.registerSpecialFile({
             path,
+            type: 'fifo',
             handler: () => this.cloneFileHandleReference({ handle: read }),
           });
 
@@ -4001,6 +4004,7 @@ usage: ${name} [-c command] [file [argument...]]
 
           this.vfs.registerSpecialFile({
             path,
+            type: 'fifo',
             handler: () => this.cloneFileHandleReference({ handle: write }),
           });
           procSubPreTaskCleanups.push(() => {

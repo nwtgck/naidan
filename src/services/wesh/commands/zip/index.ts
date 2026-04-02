@@ -230,35 +230,34 @@ async function listZipEntriesForOperand({
         continue;
       }
 
-      const entries: Array<{ name: string; type: WeshFileType }> = [];
+      const entries: Array<{ name: string; type: WeshFileType; fullPath: string }> = [];
       for await (const entry of context.files.readDir({ path: currentPath })) {
         entries.push(entry);
       }
       entries.sort((left, right) => left.name.localeCompare(right.name));
 
       for (const entry of entries) {
-        const childPath = currentPath === '/' ? `/${entry.name}` : `${currentPath}/${entry.name}`;
         const archivePath = buildArchivePath({
           operand,
-          currentPath: childPath,
+          currentPath: entry.fullPath,
           junkPaths,
         });
 
         switch (entry.type) {
         case 'directory':
           output.push({
-            sourcePath: childPath,
+            sourcePath: entry.fullPath,
             archivePath: `${archivePath}/`,
             type: 'directory',
           });
-          stack.push(childPath);
+          stack.push(entry.fullPath);
           break;
         case 'file':
         case 'fifo':
         case 'chardev':
         case 'symlink':
           output.push({
-            sourcePath: childPath,
+            sourcePath: entry.fullPath,
             archivePath,
             type: entry.type,
           });

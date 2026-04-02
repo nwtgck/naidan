@@ -597,7 +597,7 @@ onUnmounted(() => {
 });
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     isMultiEditMode,
     searchMatches,
     history,

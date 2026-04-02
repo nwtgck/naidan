@@ -3,8 +3,11 @@ import { ref, computed, reactive, triggerRef, readonly, watch, toRaw, isProxy, t
 import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, Attachment, MultimodalContent, ChatMessage, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { OpenAIProvider, OllamaProvider, UNKNOWN_STEPS, type LLMProvider } from '@/services/llm';
-import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import type { LLMProvider } from '@/services/lm/types';
+import { UNKNOWN_STEPS } from '@/services/lm/types';
+import { OpenAIProvider } from '@/services/lm/openai';
+import { OllamaProvider } from '@/services/lm/ollama';
+import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
@@ -1100,7 +1103,7 @@ export function useChat() {
         provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
         break;
       case 'transformers_js':
-        provider = new (await import('../services/transformers-js-provider')).TransformersJsProvider();
+        provider = new (await import('../services/transformers-js/provider')).TransformersJsProvider();
         break;
       default: {
         const _ex: never = type;
@@ -2374,7 +2377,7 @@ export function useChat() {
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle, ensureChatTmpDirectory, getChatTmpDirectory,
     getVolatileToolOutput,
     chatFlow, isThinkingActive, isWaitingResponse,
-    __testOnly: {
+    TEST_ONLY: {
       liveChatRegistry,
       activeGenerations,
       activeTaskCounts,

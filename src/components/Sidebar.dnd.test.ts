@@ -252,7 +252,7 @@ describe('Sidebar DND Improvements', () => {
       x: 0, y: 180, toJSON: () => ({})
     });
 
-    const scrollPromise = (wrapper.vm as any).__testOnly.scheduleSidebarItemScroll({
+    const scrollPromise = (wrapper.vm as any).TEST_ONLY.scheduleSidebarItemScroll({
       itemType: 'chat',
       id: 'chat-scroll-test',
       onlyWhenOutOfView: true
@@ -260,6 +260,6 @@ describe('Sidebar DND Improvements', () => {
     await new Promise(resolve => setTimeout(resolve, 150));
     await scrollPromise;
 
-    expect((wrapper.vm as any).__testOnly.scheduleSidebarItemScroll).toBeTypeOf('function');
+    expect((wrapper.vm as any).TEST_ONLY.scheduleSidebarItemScroll).toBeTypeOf('function');
   });
 });

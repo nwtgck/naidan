@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { useChat, type AddToastOptions } from './useChat';
 import { storageService } from '@/services/storage';
-import { OpenAIProvider } from '@/services/llm';
+import { OpenAIProvider } from '@/services/lm/openai';
 import { reactive, triggerRef, toRaw } from 'vue';
 import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hierarchy, HierarchyChatGroupNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
@@ -59,7 +59,7 @@ const mockLlmChat = vi.fn().mockImplementation(async (params: { onChunk: (chunk:
   params.onChunk(' World');
 });
 
-vi.mock('../services/llm', () => {
+vi.mock('../services/lm/openai', () => {
   return {
     OpenAIProvider: function() {
       return {
@@ -67,6 +67,11 @@ vi.mock('../services/llm', () => {
         listModels: vi.fn().mockResolvedValue(['gpt-4']),
       };
     },
+  };
+});
+
+vi.mock('../services/lm/ollama', () => {
+  return {
     OllamaProvider: function() {
       return {
         chat: mockLlmChat,
@@ -79,9 +84,9 @@ vi.mock('../services/llm', () => {
 describe('useChat Composable Logic', () => {
   const chatStore = useChat();
   const {
-    activeMessages, sendMessage, currentChat, rootItems, __testOnly
+    activeMessages, sendMessage, currentChat, rootItems, TEST_ONLY
   } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   const { errorCount, clearEvents } = useGlobalEvents();
 
@@ -636,8 +641,8 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should preserve lmParameters when regenerating a message', async () => {
-    const { sendMessage, regenerateMessage, currentChat, __testOnly } = useChat();
-    const { __testOnlySetCurrentChat } = __testOnly;
+    const { sendMessage, regenerateMessage, currentChat, TEST_ONLY } = useChat();
+    const { __testOnlySetCurrentChat } = TEST_ONLY;
 
     const mockChat: Chat = {
       id: 'c1', title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
@@ -677,8 +682,8 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should apply new lmParameters when editing a message', async () => {
-    const { sendMessage, editMessage, currentChat, getLiveChat, __testOnly } = useChat();
-    const { __testOnlySetCurrentChat } = __testOnly;
+    const { sendMessage, editMessage, currentChat, getLiveChat, TEST_ONLY } = useChat();
+    const { __testOnlySetCurrentChat } = TEST_ONLY;
 
     const mockChat: Chat = {
       id: 'c1', title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
@@ -980,7 +985,7 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should only show generatingTitle as true for the current chat', async () => {
-    const { generateChatTitle, __testOnly: { __testOnlySetCurrentChat } } = useChat();
+    const { generateChatTitle, TEST_ONLY: { __testOnlySetCurrentChat } } = useChat();
 
     const chatA = reactive({
       id: 'chat-A',
@@ -1017,7 +1022,7 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should show fetchingModels as true for global fetch or current chat fetch', async () => {
-    const { fetchAvailableModels, __testOnly: { __testOnlySetCurrentChat, clearActiveTaskCounts } } = useChat();
+    const { fetchAvailableModels, TEST_ONLY: { __testOnlySetCurrentChat, clearActiveTaskCounts } } = useChat();
     clearActiveTaskCounts();
 
     const chatA = reactive({ id: 'chat-A', root: { items: [] } }) as any;
@@ -1079,7 +1084,7 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should allow aborting title generation', async () => {
-    const { generateChatTitle, abortTitleGeneration, __testOnly: { __testOnlySetCurrentChat } } = useChat();
+    const { generateChatTitle, abortTitleGeneration, TEST_ONLY: { __testOnlySetCurrentChat } } = useChat();
 
     const m1: MessageNode = { id: 'm1', role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
     const chatObj = reactive<Chat>({

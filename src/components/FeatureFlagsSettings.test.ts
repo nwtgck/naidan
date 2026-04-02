@@ -22,8 +22,8 @@ describe('FeatureFlagsSettings.vue', () => {
   beforeEach(() => {
     localStorage.clear();
     mockShowConfirm.mockReset();
-    const { __testOnly } = useFeatureFlags();
-    __testOnly.reset();
+    const { TEST_ONLY } = useFeatureFlags();
+    TEST_ONLY.reset();
   });
 
   it('disables a feature immediately when it is currently enabled', async () => {

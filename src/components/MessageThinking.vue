@@ -92,7 +92,7 @@ watch([displayThinking, mode], async ([, newMode]) => {
 }, { immediate: true });
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     isUserExpanded,
     mode,
     handleToggleThinking

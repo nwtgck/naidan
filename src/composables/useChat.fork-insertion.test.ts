@@ -59,7 +59,7 @@ describe('useChat Fork Insertion Logic', () => {
     vi.clearAllMocks();
     const chat = useChat();
     chat.rootItems.value = [];
-    chat.__testOnly.__testOnlySetCurrentChat(null);
+    chat.TEST_ONLY.__testOnlySetCurrentChat(null);
   });
 
   it('should insert fork at the top of the chat block when not in a chat group', async () => {
@@ -76,7 +76,7 @@ describe('useChat Fork Insertion Logic', () => {
       currentLeafId: 'm1'
     });
 
-    chat.__testOnly.__testOnlySetCurrentChat({
+    chat.TEST_ONLY.__testOnlySetCurrentChat({
       id: 'a', title: 'A', root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1'
@@ -129,7 +129,7 @@ describe('useChat Fork Insertion Logic', () => {
       currentLeafId: 'm1'
     });
 
-    chat.__testOnly.__testOnlySetCurrentChat({
+    chat.TEST_ONLY.__testOnlySetCurrentChat({
       id: 'a', title: 'A', groupId: 'g1',
       root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,

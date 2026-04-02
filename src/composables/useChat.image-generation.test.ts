@@ -11,17 +11,18 @@ const mockOllamaGenerateImage = vi.fn().mockResolvedValue({
   totalSteps: 10
 });
 
-vi.mock('../services/llm', () => {
-  return {
-    OllamaProvider: class {
-      chat = mockOllamaChat;
-      generateImage = mockOllamaGenerateImage;
-    },
-    OpenAIProvider: class {
-      chat = vi.fn();
-    },
-  };
-});
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: class {
+    chat = mockOllamaChat;
+    generateImage = mockOllamaGenerateImage;
+  },
+}));
+
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: class {
+    chat = vi.fn();
+  },
+}));
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -59,7 +60,7 @@ describe('useChat Image Generation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chatStore.availableModels.value = ['llama3', 'x/z-image-turbo:v1'];
-    chatStore.__testOnly.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('sendMessage in image mode adds sentinel markers', async () => {

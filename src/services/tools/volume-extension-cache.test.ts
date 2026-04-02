@@ -4,7 +4,7 @@ import {
   abortOngoingScans,
   getVolumeExtensions,
   isVolumeScanned,
-  __testOnly,
+  TEST_ONLY,
 } from './volume-extension-cache';
 
 function makeFileHandle(name: string): FileSystemFileHandle {
@@ -25,7 +25,7 @@ function makeDirHandle(
 }
 
 beforeEach(() => {
-  __testOnly.reset();
+  TEST_ONLY.reset();
 });
 
 describe('getVolumeExtensions', () => {
@@ -42,7 +42,7 @@ describe('isVolumeScanned', () => {
   it('returns true once a scan has been started for the volume', async () => {
     const handle = makeDirHandle('root', []);
     startVolumeExtensionScan({ volumeId: 'vol-x', handle });
-    await __testOnly.scanPromises.get('vol-x');
+    await TEST_ONLY.scanPromises.get('vol-x');
     expect(isVolumeScanned({ volumeId: 'vol-x' })).toBe(true);
   });
 });
@@ -56,7 +56,7 @@ describe('startVolumeExtensionScan', () => {
     ]);
 
     startVolumeExtensionScan({ volumeId: 'vol-flat', handle });
-    await __testOnly.scanPromises.get('vol-flat');
+    await TEST_ONLY.scanPromises.get('vol-flat');
 
     const exts = getVolumeExtensions({ volumeId: 'vol-flat' });
     expect(exts.has('.docx')).toBe(true);
@@ -70,7 +70,7 @@ describe('startVolumeExtensionScan', () => {
     const handle = makeDirHandle('root', [['sub', sub]]);
 
     startVolumeExtensionScan({ volumeId: 'vol-deep', handle });
-    await __testOnly.scanPromises.get('vol-deep');
+    await TEST_ONLY.scanPromises.get('vol-deep');
 
     expect(getVolumeExtensions({ volumeId: 'vol-deep' }).has('.pptx')).toBe(true);
   });
@@ -81,7 +81,7 @@ describe('startVolumeExtensionScan', () => {
     ]);
 
     startVolumeExtensionScan({ volumeId: 'vol-case', handle });
-    await __testOnly.scanPromises.get('vol-case');
+    await TEST_ONLY.scanPromises.get('vol-case');
 
     expect(getVolumeExtensions({ volumeId: 'vol-case' }).has('.docx')).toBe(true);
   });
@@ -110,7 +110,7 @@ describe('startVolumeExtensionScan', () => {
     const fastHandle = makeDirHandle('root', [['data.xlsx', makeFileHandle('data.xlsx')]]);
     startVolumeExtensionScan({ volumeId: 'vol-replace', handle: fastHandle });
 
-    await __testOnly.scanPromises.get('vol-replace');
+    await TEST_ONLY.scanPromises.get('vol-replace');
 
     expect(getVolumeExtensions({ volumeId: 'vol-replace' }).has('.xlsx')).toBe(true);
   });
@@ -131,7 +131,7 @@ describe('abortOngoingScans', () => {
     abortOngoingScans();
 
     // Await the scan promise — it should resolve quickly after abort
-    await __testOnly.scanPromises.get('vol-abort');
+    await TEST_ONLY.scanPromises.get('vol-abort');
 
     // Signal was aborted before the file entry could be recorded
     expect(getVolumeExtensions({ volumeId: 'vol-abort' }).size).toBe(0);

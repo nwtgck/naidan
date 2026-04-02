@@ -79,7 +79,7 @@ const explanationText = computed(() => {
 
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   }
 });

@@ -43,8 +43,8 @@ vi.mock('./useToast', () => ({
 
 describe('useChat Delete Undo Logic', () => {
   const chatStore = useChat();
-  const { deleteChat, __testOnly } = chatStore;
-  const { activeGenerations } = __testOnly;
+  const { deleteChat, TEST_ONLY } = chatStore;
+  const { activeGenerations } = TEST_ONLY;
 
   let capturedOnClose: ((reason: any) => void) | undefined;
 

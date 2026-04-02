@@ -722,7 +722,7 @@ const cropBoxStyle = computed(() => {
 });
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     history,
     historyIndex,
     undo,

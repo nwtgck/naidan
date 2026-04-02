@@ -78,10 +78,13 @@ vi.mock('./useSettings', () => ({
 vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
 vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
     return { chat: vi.fn().mockImplementation((_m, _mo, _u, onChunk) => onChunk('OK')), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: function() {
     return { chat: vi.fn(), listModels: vi.fn() };
   },

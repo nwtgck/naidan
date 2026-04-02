@@ -39,8 +39,8 @@ vi.mock('./useToast', () => ({
 }));
 
 describe('useChat fork title fix', () => {
-  const { forkChat, __testOnly } = useChat();
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { forkChat, TEST_ONLY } = useChat();
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   beforeEach(() => {
     vi.clearAllMocks();

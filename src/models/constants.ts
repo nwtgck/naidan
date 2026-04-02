@@ -30,7 +30,6 @@ export const NAIDAN_CACHE_DIRECTORY_NAME = 'naidan-cache';
 export const STANDALONE_WORKER_CACHE_DIRECTORY_NAME = 'standalone-workers';
 export const STANDALONE_WORKER_MANIFEST_SCRIPT_ID = 'naidan-standalone-worker-manifest';
 export const FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME = 'file-protocol-compatible-wesh-worker';
-export const FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_ID = FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME;
 
 export const FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID = 'file-protocol-compatible-standalone-worker-hub';
 export const FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_NAME = 'file-protocol-compatible-standalone-worker-hub';

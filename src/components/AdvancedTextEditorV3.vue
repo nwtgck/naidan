@@ -20,6 +20,11 @@ import {
   BarChart2Icon,
   AlignLeftIcon,
 } from 'lucide-vue-next';
+import { createAdvancedTextEditorV3WorkerClient } from '@/services/advanced-text-editor-v3/worker/client';
+import type {
+  AdvancedTextEditorV3Match,
+  AdvancedTextEditorV3WorkerClient,
+} from '@/services/advanced-text-editor-v3/worker/types';
 
 const props = defineProps<{
   initialValue: string;
@@ -56,7 +61,7 @@ function useTextModel({ initialValue }: {
   };
 
   return { fullText, lines, updateContent, syncLines,
-    __testOnly: {
+    TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
     }, };
 }
@@ -116,8 +121,11 @@ const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const lineNumbersContentRef = ref<HTMLElement | null>(null);
 const multiEditInputRef = ref<HTMLInputElement | null>(null);
 const searchIndex = ref(-1);
-const searchMatches = ref<{ start: number; end: number }[]>([]);
+const searchMatches = ref<AdvancedTextEditorV3Match[]>([]);
 const showStats = ref(false);
+const isSearchBusy = ref(false);
+const isReplaceBusy = ref(false);
+const isMultiEditBusy = ref(false);
 
 // Line Height Calculation State
 const lineHeights = ref<number[]>([]);
@@ -129,6 +137,16 @@ let killRing = '';
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const modKeyName = isMac ? 'Cmd' : 'Ctrl';
+let workerClient: AdvancedTextEditorV3WorkerClient | undefined;
+let searchRequestVersion = 0;
+let multiEditRequestVersion = 0;
+
+async function getWorkerClient() {
+  if (!workerClient) {
+    workerClient = await createAdvancedTextEditorV3WorkerClient({});
+  }
+  return workerClient;
+}
 
 // --- Computed Stats ---
 const stats = computed(() => {
@@ -289,82 +307,72 @@ function handleRedo() {
 let historyTimeout: ReturnType<typeof setTimeout> | undefined;
 
 // --- Helper: update lines from full text (for bulk operations like search/replace) ---
-function setFullText({ text }: { text: string }) {
+function setFullText({ text, recordInHistory }: {
+  text: string
+  recordInHistory?: boolean | undefined
+}) {
   updateContent({ text, immediateLines: true });
+  if (recordInHistory) {
+    recordHistory({ newLines: text.split('\n') });
+  }
 }
 
 // --- Search & Replace ---
-function performSearch() {
-  if (!findText.value) {
-    searchMatches.value = [];
+function updateSearchState({ matches, preserveIndex }: {
+  matches: AdvancedTextEditorV3Match[]
+  preserveIndex: boolean
+}) {
+  searchMatches.value = matches;
+  if (matches.length === 0) {
     searchIndex.value = -1;
     return;
   }
 
-  const matches: { start: number; end: number }[] = [];
-  const text = fullText.value;
-  const query = findText.value;
-
-  const currentUseRegex = useRegex.value;
-  switch (currentUseRegex) {
-  case 'regex-on': {
-    const currentCaseSensitive = caseSensitive.value;
-    const flags = (() => {
-      switch (currentCaseSensitive) {
-      case 'case-insensitive': return 'gi';
-      case 'case-sensitive': return 'g';
-      default: {
-        const _ex: never = currentCaseSensitive;
-        throw new Error(`Unhandled case sensitivity: ${_ex}`);
-      }
-      }
-    })();
-    try {
-      const re = new RegExp(query, flags);
-      let match;
-      while ((match = re.exec(text)) !== null) {
-        matches.push({ start: match.index, end: match.index + match[0].length });
-        if (!re.global) break;
-      }
-    } catch (e) {
-      console.error('Search error:', e);
-    }
-    break;
-  }
-  case 'regex-off': {
-    const currentCaseSensitive = caseSensitive.value;
-    const { searchStr, targetStr } = (() => {
-      switch (currentCaseSensitive) {
-      case 'case-insensitive':
-        return { searchStr: query.toLowerCase(), targetStr: text.toLowerCase() };
-      case 'case-sensitive':
-        return { searchStr: query, targetStr: text };
-      default: {
-        const _ex: never = currentCaseSensitive;
-        throw new Error(`Unhandled case sensitivity: ${_ex}`);
-      }
-      }
-    })();
-
-    let pos = targetStr.indexOf(searchStr);
-    while (pos !== -1) {
-      matches.push({ start: pos, end: pos + searchStr.length });
-      pos = targetStr.indexOf(searchStr, pos + 1);
-    }
-    break;
-  }
-  default: {
-    const _ex: never = currentUseRegex;
-    throw new Error(`Unhandled regex mode: ${_ex}`);
-  }
+  if (!preserveIndex || searchIndex.value === -1) {
+    searchIndex.value = 0;
+    return;
   }
 
-  searchMatches.value = matches;
-  if (matches.length > 0) {
-    if (searchIndex.value === -1) searchIndex.value = 0;
-    else if (searchIndex.value >= matches.length) searchIndex.value = matches.length - 1;
-  } else {
+  searchIndex.value = Math.min(searchIndex.value, matches.length - 1);
+}
+
+async function performSearch() {
+  if (!findText.value) {
+    searchRequestVersion += 1;
+    searchMatches.value = [];
     searchIndex.value = -1;
+    isSearchBusy.value = false;
+    return;
+  }
+
+  const requestVersion = ++searchRequestVersion;
+  isSearchBusy.value = true;
+
+  try {
+    const client = await getWorkerClient();
+    const response = await client.searchText({
+      request: {
+        text: fullText.value,
+        query: findText.value,
+        caseSensitive: caseSensitive.value,
+        useRegex: useRegex.value,
+      },
+    });
+    if (requestVersion !== searchRequestVersion) {
+      return;
+    }
+    updateSearchState({ matches: response.matches, preserveIndex: true });
+  } catch (error) {
+    if (requestVersion !== searchRequestVersion) {
+      return;
+    }
+    searchMatches.value = [];
+    searchIndex.value = -1;
+    console.error('Search error:', error);
+  } finally {
+    if (requestVersion === searchRequestVersion) {
+      isSearchBusy.value = false;
+    }
   }
 }
 
@@ -393,159 +401,101 @@ function prevMatch() {
   highlightMatch({ index: searchIndex.value });
 }
 
-function handleReplace({ mode }: { mode: 'single' | 'all' }) {
+async function handleReplace({ mode }: { mode: 'single' | 'all' }) {
   if (!findText.value) return;
+  isReplaceBusy.value = true;
 
-  switch (mode) {
-  case 'all': {
-    let newContent = '';
-    const text = fullText.value;
-    const currentUseRegex = useRegex.value;
-    switch (currentUseRegex) {
-    case 'regex-on': {
-      const currentCaseSensitive = caseSensitive.value;
-      const flags = (() => {
-        switch (currentCaseSensitive) {
-        case 'case-insensitive': return 'gi';
-        case 'case-sensitive': return 'g';
-        default: {
-          const _ex: never = currentCaseSensitive;
-          throw new Error(`Unhandled case sensitivity: ${_ex}`);
-        }
-        }
-      })();
-      const re = new RegExp(findText.value, flags);
-      newContent = text.replace(re, replaceText.value);
+  try {
+    const client = await getWorkerClient();
+    switch (mode) {
+    case 'all': {
+      const response = await client.replaceAll({
+        request: {
+          text: fullText.value,
+          query: findText.value,
+          replacement: replaceText.value,
+          caseSensitive: caseSensitive.value,
+          useRegex: useRegex.value,
+        },
+      });
+      setFullText({ text: response.text, recordInHistory: true });
+      updateSearchState({ matches: response.matches, preserveIndex: false });
       break;
     }
-    case 'regex-off': {
-      const currentCaseSensitive = caseSensitive.value;
-      switch (currentCaseSensitive) {
-      case 'case-insensitive': {
-        const re = new RegExp(findText.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-        newContent = text.replace(re, replaceText.value);
-        break;
+    case 'single': {
+      const el = textareaRef.value;
+      if (!el) return;
+      const response = await client.replaceSingle({
+        request: {
+          text: fullText.value,
+          query: findText.value,
+          replacement: replaceText.value,
+          caseSensitive: caseSensitive.value,
+          useRegex: useRegex.value,
+          selectionStart: el.selectionStart,
+          selectionEnd: el.selectionEnd,
+        },
+      });
+
+      if (!response.didReplace) {
+        updateSearchState({ matches: response.matches, preserveIndex: true });
+        nextMatch();
+        return;
       }
-      case 'case-sensitive':
-        newContent = text.split(findText.value).join(replaceText.value);
-        break;
-      default: {
-        const _ex: never = currentCaseSensitive;
-        throw new Error(`Unhandled case sensitivity: ${_ex}`);
-      }
+
+      setFullText({ text: response.text, recordInHistory: true });
+      updateSearchState({ matches: response.matches, preserveIndex: false });
+      await nextTick();
+      if (
+        textareaRef.value &&
+        response.replacementStart !== undefined &&
+        response.replacementEnd !== undefined
+      ) {
+        textareaRef.value.setSelectionRange(response.replacementStart, response.replacementEnd);
       }
       break;
     }
     default: {
-      const _ex: never = currentUseRegex;
-      throw new Error(`Unhandled regex mode: ${_ex}`);
+      const _ex: never = mode;
+      throw new Error(`Unhandled replace mode: ${_ex}`);
     }
     }
-    setFullText({ text: newContent });
-    performSearch();
-    break;
-  }
-  case 'single': {
-    const el = textareaRef.value;
-    if (!el) return;
-
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const text = fullText.value;
-    const selection = text.substring(start, end);
-
-    const isMatch = (() => {
-      const currentUseRegex = useRegex.value;
-      switch (currentUseRegex) {
-      case 'regex-on': {
-        const currentCaseSensitive = caseSensitive.value;
-        const flags = (() => {
-          switch (currentCaseSensitive) {
-          case 'case-insensitive': return 'i';
-          case 'case-sensitive': return '';
-          default: {
-            const _ex: never = currentCaseSensitive;
-            throw new Error(`Unhandled case sensitivity: ${_ex}`);
-          }
-          }
-        })();
-        const re = new RegExp(findText.value, flags);
-        return re.test(selection);
-      }
-      case 'regex-off': {
-        const currentCaseSensitive = caseSensitive.value;
-        switch (currentCaseSensitive) {
-        case 'case-insensitive':
-          return selection.toLowerCase() === findText.value.toLowerCase();
-        case 'case-sensitive':
-          return selection === findText.value;
-        default: {
-          const _ex: never = currentCaseSensitive;
-          throw new Error(`Unhandled case sensitivity: ${_ex}`);
-        }
-        }
-      }
-      default: {
-        const _ex: never = currentUseRegex;
-        throw new Error(`Unhandled regex mode: ${_ex}`);
-      }
-      }
-    })();
-
-    if (isMatch) {
-      const before = text.substring(0, start);
-      const after = text.substring(end);
-      setFullText({ text: before + replaceText.value + after });
-
-      nextTick(() => {
-        performSearch();
-      });
-    } else {
-      nextMatch();
-    }
-    break;
-  }
-  default: {
-    const _ex: never = mode;
-    throw new Error(`Unhandled replace mode: ${_ex}`);
-  }
+  } finally {
+    isReplaceBusy.value = false;
   }
 }
 
 // --- Cmd+D "Multi-Edit Mode" Implementation ---
-function handleCmdD() {
+async function handleCmdD() {
   const el = textareaRef.value;
   if (!el) return;
 
-  const text = fullText.value;
-  let selection = text.substring(el.selectionStart, el.selectionEnd);
-
-  if (!selection) {
-    let wordStart = el.selectionStart;
-    while (wordStart > 0 && /\w/.test(text[wordStart - 1] || '')) wordStart--;
-    let wordEnd = el.selectionEnd;
-    while (wordEnd < text.length && /\w/.test(text[wordEnd] || '')) wordEnd++;
-
-    if (wordStart !== wordEnd) {
-      el.setSelectionRange(wordStart, wordEnd);
-      selection = text.substring(wordStart, wordEnd);
-    } else {
+  isMultiEditBusy.value = true;
+  try {
+    const client = await getWorkerClient();
+    const response = await client.prepareMultiEdit({
+      request: {
+        text: fullText.value,
+        selectionStart: el.selectionStart,
+        selectionEnd: el.selectionEnd,
+      },
+    });
+    if (!response.selection) {
       return;
     }
-  }
 
-  isMultiEditMode.value = true;
-  multiEditInitialText.value = selection;
-  multiEditInitialContent.value = text;
-  multiEditReplacement.value = selection;
+    isMultiEditMode.value = true;
+    multiEditInitialText.value = response.selection;
+    multiEditInitialContent.value = fullText.value;
+    multiEditReplacement.value = response.selection;
+    multiEditMatches.value = response.matchStarts;
 
-  const matches: number[] = [];
-  let pos = text.indexOf(selection);
-  while (pos !== -1) {
-    matches.push(pos);
-    pos = text.indexOf(selection, pos + 1);
+    if (response.selectionStart !== undefined && response.selectionEnd !== undefined) {
+      el.setSelectionRange(response.selectionStart, response.selectionEnd);
+    }
+  } finally {
+    isMultiEditBusy.value = false;
   }
-  multiEditMatches.value = matches;
 
   nextTick(() => {
     multiEditInputRef.value?.focus();
@@ -558,14 +508,34 @@ function applyMultiEdit() {
 }
 
 function exitMultiEdit() {
+  multiEditRequestVersion += 1;
+  isMultiEditBusy.value = false;
   isMultiEditMode.value = false;
   textareaRef.value?.focus();
 }
 
-watch(multiEditReplacement, (newVal) => {
+watch(multiEditReplacement, async (newVal) => {
   if (isMultiEditMode.value) {
-    const newContent = multiEditInitialContent.value.split(multiEditInitialText.value).join(newVal);
-    setFullText({ text: newContent });
+    const requestVersion = ++multiEditRequestVersion;
+    isMultiEditBusy.value = true;
+    try {
+      const client = await getWorkerClient();
+      const response = await client.applyMultiEdit({
+        request: {
+          text: multiEditInitialContent.value,
+          target: multiEditInitialText.value,
+          replacement: newVal,
+        },
+      });
+      if (requestVersion !== multiEditRequestVersion) {
+        return;
+      }
+      setFullText({ text: response.text });
+    } finally {
+      if (requestVersion === multiEditRequestVersion) {
+        isMultiEditBusy.value = false;
+      }
+    }
   }
 });
 
@@ -798,7 +768,7 @@ function handleKeyDown(e: KeyboardEvent) {
     const selection = window.getSelection()?.toString();
     if (selection) {
       findText.value = selection;
-      performSearch();
+      void performSearch();
     }
     searchMode.value = 'visible';
     nextTick(() => {
@@ -809,7 +779,7 @@ function handleKeyDown(e: KeyboardEvent) {
   }
   if (isMod && e.key === 'd') {
     e.preventDefault();
-    handleCmdD();
+    void handleCmdD();
   }
   if (isMod && e.key === 'z') {
     e.preventDefault();
@@ -841,6 +811,7 @@ function handleKeyDown(e: KeyboardEvent) {
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('resize', calculateLineHeights);
+  void getWorkerClient();
   nextTick(() => {
     textareaRef.value?.focus();
     syncScroll();
@@ -856,11 +827,16 @@ onUnmounted(() => {
   if (ghostElement && ghostElement.parentNode) {
     ghostElement.parentNode.removeChild(ghostElement);
   }
+  if (workerClient) {
+    void workerClient.dispose({});
+  }
 });
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     isMultiEditMode,
+    isMultiEditBusy,
+    isSearchBusy,
     searchMatches,
     history,
     historyIndex,
@@ -901,7 +877,7 @@ defineExpose({
               <div class="relative flex-1 group">
                 <input
                   v-model="findText"
-                  @input="performSearch"
+                  @input="void performSearch()"
                   @keydown.enter="nextMatch"
                   placeholder="Search..."
                   class="w-full pl-10 pr-32 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
@@ -909,17 +885,24 @@ defineExpose({
                 />
                 <SearchIcon class="absolute left-3.5 top-2.5 w-4 h-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                 <div v-if="findText" class="absolute right-2 top-1.5 flex items-center gap-2 bg-gray-50 dark:bg-white/10 px-2 py-1 rounded-lg border border-gray-200 dark:border-white/10">
+                  <span
+                    v-if="isSearchBusy"
+                    class="text-[10px] text-blue-500 font-mono font-bold"
+                    data-testid="search-busy-indicator"
+                  >
+                    ...
+                  </span>
                   <span class="text-[10px] text-gray-400 font-mono font-bold">{{ searchMatches.length > 0 ? searchIndex + 1 : 0 }}/{{ searchMatches.length }}</span>
                   <div class="h-3 w-px bg-gray-300 dark:bg-white/20"></div>
                   <div class="flex items-center">
-                    <button @click="prevMatch" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowUpIcon class="w-3.5 h-3.5 text-gray-400" /></button>
-                    <button @click="nextMatch" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"><ArrowDownIcon class="w-3.5 h-3.5 text-gray-400" /></button>
+                    <button @click="prevMatch" :disabled="isSearchBusy" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors disabled:opacity-40"><ArrowUpIcon class="w-3.5 h-3.5 text-gray-400" /></button>
+                    <button @click="nextMatch" :disabled="isSearchBusy" class="p-0.5 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors disabled:opacity-40"><ArrowDownIcon class="w-3.5 h-3.5 text-gray-400" /></button>
                   </div>
                 </div>
               </div>
               <div class="flex items-center gap-1.5 bg-white dark:bg-black/20 p-1 border border-gray-200 dark:border-white/10 rounded-xl">
                 <button
-                  @click="caseSensitive = caseSensitive === 'case-sensitive' ? 'case-insensitive' : 'case-sensitive'; performSearch()"
+                  @click="caseSensitive = caseSensitive === 'case-sensitive' ? 'case-insensitive' : 'case-sensitive'; void performSearch()"
                   class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
                   :class="caseSensitive === 'case-sensitive' ? 'bg-blue-500/20 text-blue-400 shadow-inner' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10'"
                   title="Match Case"
@@ -927,7 +910,7 @@ defineExpose({
                   Aa
                 </button>
                 <button
-                  @click="useRegex = useRegex === 'regex-on' ? 'regex-off' : 'regex-on'; performSearch()"
+                  @click="useRegex = useRegex === 'regex-on' ? 'regex-off' : 'regex-on'; void performSearch()"
                   class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
                   :class="useRegex === 'regex-on' ? 'bg-blue-500/20 text-blue-400 shadow-inner' : 'text-gray-400 hover:bg-gray-50 dark:hover:bg-white/10'"
                   title="Use Regex"
@@ -940,7 +923,7 @@ defineExpose({
               <div class="relative flex-1 group">
                 <input
                   v-model="replaceText"
-                  @keydown.enter="handleReplace({ mode: 'single' })"
+                  @keydown.enter="void handleReplace({ mode: 'single' })"
                   placeholder="Replace with..."
                   class="w-full pl-10 pr-4 py-2 bg-white dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-400 font-mono"
                   data-testid="replace-input"
@@ -949,14 +932,18 @@ defineExpose({
               </div>
               <div class="flex items-center gap-2">
                 <button
-                  @click="handleReplace({ mode: 'single' })"
-                  class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-white dark:bg-white/10 hover:bg-gray-50 dark:hover:bg-white/20 text-gray-600 dark:text-gray-200 rounded-xl transition-all border border-gray-200 dark:border-white/10 shadow-sm"
+                  @click="void handleReplace({ mode: 'single' })"
+                  :disabled="isReplaceBusy"
+                  class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-white dark:bg-white/10 hover:bg-gray-50 dark:hover:bg-white/20 text-gray-600 dark:text-gray-200 rounded-xl transition-all border border-gray-200 dark:border-white/10 shadow-sm disabled:opacity-40"
+                  data-testid="replace-button"
                 >
                   Replace
                 </button>
                 <button
-                  @click="handleReplace({ mode: 'all' })"
-                  class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-lg shadow-blue-500/20"
+                  @click="void handleReplace({ mode: 'all' })"
+                  :disabled="isReplaceBusy"
+                  class="px-4 py-2 text-[11px] font-bold uppercase tracking-wider bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-lg shadow-blue-500/20 disabled:opacity-40"
+                  data-testid="replace-all-button"
                 >
                   Replace All
                 </button>
@@ -1069,9 +1056,10 @@ defineExpose({
                 @keydown.esc="exitMultiEdit"
                 placeholder="Type to replace all..."
                 class="w-full px-4 py-2.5 bg-gray-50 dark:bg-black/40 border border-gray-100 dark:border-white/10 rounded-xl text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-mono placeholder:text-gray-500 text-white"
+                data-testid="multi-edit-input"
               />
               <div class="absolute right-3 top-2.5 flex items-center gap-1">
-                <button @click="applyMultiEdit" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-green-500 transition-colors" title="Confirm (Enter)">
+                <button @click="applyMultiEdit" :disabled="isMultiEditBusy" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-green-500 transition-colors disabled:opacity-40" title="Confirm (Enter)">
                   <CheckIcon class="w-4 h-4" />
                 </button>
                 <button @click="exitMultiEdit" class="p-1 hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg text-gray-400 hover:text-red-500 transition-colors" title="Cancel (Esc)">
@@ -1080,7 +1068,8 @@ defineExpose({
               </div>
             </div>
             <div class="mt-2 text-[9px] text-gray-400 text-center font-medium">
-              Type to rename all. <span class="text-gray-500">Enter</span> to apply, <span class="text-gray-500">Esc</span> to cancel.
+              <span v-if="isMultiEditBusy" data-testid="multi-edit-busy-indicator">Updating...</span>
+              <span v-else>Type to rename all. <span class="text-gray-500">Enter</span> to apply, <span class="text-gray-500">Esc</span> to cancel.</span>
             </div>
           </div>
         </Transition>
@@ -1166,7 +1155,7 @@ defineExpose({
             <BarChart2Icon class="w-4.5 h-4.5" />
           </button>
           <button
-            @click="handleCmdD"
+            @click="void handleCmdD()"
             class="p-2.5 rounded-xl hover:bg-white dark:hover:bg-white/5 transition-all hover:shadow-sm group text-gray-500"
             :title="`Multi-Edit Occurrence (${modKeyName}+D)`"
           >

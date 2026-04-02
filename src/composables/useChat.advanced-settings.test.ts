@@ -33,13 +33,16 @@ const mockOllamaChat = vi.fn();
 const mockOpenAIModels = vi.fn();
 const mockOllamaModels = vi.fn();
 
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOpenAIChat,
       listModels: mockOpenAIModels,
     };
   }),
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: vi.fn().mockImplementation(function() {
     return {
       chat: mockOllamaChat,
@@ -49,7 +52,7 @@ vi.mock('../services/llm', () => ({
 }));
 
 describe('useChat Advanced Settings Resolution', () => {
-  const { settings, __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
   const { sendMessage, currentChat, createNewChat, openChat, updateChatSettings } = useChat();
 
   beforeEach(async () => {
@@ -204,7 +207,7 @@ describe('useChat Advanced Settings Resolution', () => {
   });
 
   describe('Chat Independence', () => {
-    const { __testOnly: { __testOnlySetCurrentChat } } = useChat();
+    const { TEST_ONLY: { __testOnlySetCurrentChat } } = useChat();
 
     it('should NOT leak lmParameters from Chat A to Chat B when switching', async () => {
       // 1. Create Chat A and set custom params
@@ -244,7 +247,7 @@ describe('useChat Advanced Settings Resolution', () => {
 // directly onto ChatMeta, but the storage layer only reads the nested `endpoint` object.
 // On reload, the endpoint reverted because the flat fields were never saved correctly.
 describe('Chat Specific Overrides - Endpoint Persistence', () => {
-  const { __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { TEST_ONLY: { __testOnlySetSettings } } = useSettings();
   const { currentChat, createNewChat, openChat, updateChatSettings, renameChat } = useChat();
 
   beforeEach(async () => {

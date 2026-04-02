@@ -50,7 +50,7 @@ function handleFolderLink() {
 }
 
 defineExpose({
-  __testOnly: {},
+  TEST_ONLY: {},
 });
 </script>
 

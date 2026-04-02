@@ -87,7 +87,7 @@ export function useChatTools() {
     addToolCall,
     updateToolCall,
     clearToolCallsForMessage,
-    __testOnly: {
+    TEST_ONLY: {
       _messageToolCalls,
       _toolEnabledByChat,
       _currentChatId,

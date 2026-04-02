@@ -7,6 +7,11 @@ import { setupScrollToMock } from '@/utils/test-utils';
 // Mock scrollTo
 setupScrollToMock();
 
+async function flushEditorTasks() {
+  await Promise.resolve();
+  await nextTick();
+}
+
 describe('AdvancedTextEditorV3.vue', () => {
   const initialValue = `Line 1
 Line 2
@@ -64,7 +69,7 @@ Line 3`;
 
     expect(textarea.element.value).toBe('Step 2');
     // V3 stores history as string[] arrays
-    expect(vm.__testOnly.history.value).toHaveLength(3);
+    expect(vm.TEST_ONLY.history.value).toHaveLength(3);
 
     // Undo to Step 1
     await wrapper.find('button[title^="Undo"]').trigger('click');
@@ -94,11 +99,12 @@ Line 3`;
       // Find input should be visible now
       const findInput = wrapper.find('[data-testid="find-input"]');
       await findInput.setValue('apple');
+      await flushEditorTasks();
 
       // Verify matches
-      expect(vm.__testOnly.searchMatches.value).toHaveLength(2);
-      expect(vm.__testOnly.searchMatches.value[0].start).toBe(0);
-      expect(vm.__testOnly.searchMatches.value[1].start).toBe(13);
+      expect(vm.TEST_ONLY.searchMatches.value).toHaveLength(2);
+      expect(vm.TEST_ONLY.searchMatches.value[0].start).toBe(0);
+      expect(vm.TEST_ONLY.searchMatches.value[1].start).toBe(13);
     });
 
     it('performs replace (single)', async () => {
@@ -121,12 +127,40 @@ Line 3`;
       textarea.element.setSelectionRange(0, 5); // "apple"
 
       // Click Replace button
-      const buttons = wrapper.findAll('button');
-      const replaceBtn = buttons.find(b => b.text() === 'Replace');
-
-      await replaceBtn?.trigger('click');
+      await wrapper.find('[data-testid="replace-button"]').trigger('click');
+      await flushEditorTasks();
 
       expect(textarea.element.value).toBe('orange banana apple');
+      wrapper.unmount();
+    });
+
+    it('allows undo after single replace', async () => {
+      const wrapper = mount(AdvancedTextEditorV3, {
+        props: { ...defaultProps, initialValue: 'apple banana apple' },
+        attachTo: document.body
+      });
+
+      await wrapper.find('button[title^="Find & Replace"]').trigger('click');
+
+      const findInput = wrapper.find('[data-testid="find-input"]');
+      await findInput.setValue('apple');
+      await flushEditorTasks();
+
+      const replaceInput = wrapper.find('[data-testid="replace-input"]');
+      await replaceInput.setValue('orange');
+
+      const textarea = wrapper.find('textarea');
+      textarea.element.setSelectionRange(0, 5);
+
+      await wrapper.find('[data-testid="replace-button"]').trigger('click');
+      await flushEditorTasks();
+
+      expect(textarea.element.value).toBe('orange banana apple');
+
+      await wrapper.find('button[title^="Undo"]').trigger('click');
+      await flushEditorTasks();
+
+      expect(textarea.element.value).toBe('apple banana apple');
       wrapper.unmount();
     });
 
@@ -145,12 +179,37 @@ Line 3`;
       await replaceInput.setValue('orange');
 
       // Click Replace All button
-      const buttons = wrapper.findAll('button');
-      const replaceAllBtn = buttons.find(b => b.text() === 'Replace All');
-      await replaceAllBtn?.trigger('click');
+      await wrapper.find('[data-testid="replace-all-button"]').trigger('click');
+      await flushEditorTasks();
 
       const textarea = wrapper.find('textarea');
       expect(textarea.element.value).toBe('orange banana orange');
+    });
+
+    it('allows undo after replace all', async () => {
+      const wrapper = mount(AdvancedTextEditorV3, {
+        props: { ...defaultProps, initialValue: 'apple banana apple' },
+      });
+
+      await wrapper.find('button[title^="Find & Replace"]').trigger('click');
+
+      const findInput = wrapper.find('[data-testid="find-input"]');
+      await findInput.setValue('apple');
+      await flushEditorTasks();
+
+      const replaceInput = wrapper.find('[data-testid="replace-input"]');
+      await replaceInput.setValue('orange');
+
+      await wrapper.find('[data-testid="replace-all-button"]').trigger('click');
+      await flushEditorTasks();
+
+      const textarea = wrapper.find('textarea');
+      expect(textarea.element.value).toBe('orange banana orange');
+
+      await wrapper.find('button[title^="Undo"]').trigger('click');
+      await flushEditorTasks();
+
+      expect(textarea.element.value).toBe('apple banana apple');
     });
   });
 
@@ -169,15 +228,18 @@ Line 3`;
 
     // Trigger Cmd+D (or Ctrl+D)
     await textarea.trigger('keydown', { key: 'd', metaKey: true });
+    await flushEditorTasks();
 
-    expect(vm.__testOnly.isMultiEditMode.value).toBe(true);
+    expect(vm.TEST_ONLY.isMultiEditMode.value).toBe(true);
 
     // Check overlay existence
     expect(wrapper.find('.absolute.bottom-12').exists()).toBe(true);
 
     // Simulate typing in multi-edit input
-    const multiInput = wrapper.findAll('input').filter(i => i.element.placeholder === 'Type to replace all...')[0];
+    const multiInput = wrapper.find('[data-testid="multi-edit-input"]');
     await multiInput?.setValue('qux');
+    await flushEditorTasks();
+    await flushEditorTasks();
 
     expect(textarea.element.value).toBe('qux bar qux baz');
 
@@ -227,7 +289,7 @@ Line 3` },
       const vm = wrapper.vm as any;
 
       // Ensure wrap is ON
-      vm.__testOnly.wrapMode.value = 'wrap-on';
+      vm.TEST_ONLY.wrapMode.value = 'wrap-on';
       await nextTick();
 
       // Mock textarea dimensions
@@ -235,13 +297,13 @@ Line 3` },
       Object.defineProperty(textarea, 'clientWidth', { value: 500, configurable: true });
 
       // Trigger calculation manually
-      await vm.__testOnly.calculateLineHeights();
+      await vm.TEST_ONLY.calculateLineHeights();
 
       // Verify ghost creation
       expect(createElementSpy).toHaveBeenCalledWith('div');
 
       // Verify line heights state
-      expect(vm.__testOnly.lineHeights.value).toEqual([40, 40, 40]);
+      expect(vm.TEST_ONLY.lineHeights.value).toEqual([40, 40, 40]);
 
       wrapper.unmount();
     });
@@ -253,16 +315,16 @@ Line 3` },
       const vm = wrapper.vm as any;
 
       // Set wrap mode to OFF
-      vm.__testOnly.wrapMode.value = 'wrap-off';
+      vm.TEST_ONLY.wrapMode.value = 'wrap-off';
       await nextTick();
 
       // Clear
-      vm.__testOnly.lineHeights.value = [];
+      vm.TEST_ONLY.lineHeights.value = [];
       createElementSpy.mockClear();
 
-      await vm.__testOnly.calculateLineHeights();
+      await vm.TEST_ONLY.calculateLineHeights();
 
-      expect(vm.__testOnly.lineHeights.value).toEqual([]);
+      expect(vm.TEST_ONLY.lineHeights.value).toEqual([]);
       expect(createElementSpy).not.toHaveBeenCalled();
     });
 
@@ -328,12 +390,12 @@ Line 3` },
       });
       const vm = wrapper.vm as any;
 
-      vm.__testOnly.isMultiEditMode.value = true;
+      vm.TEST_ONLY.isMultiEditMode.value = true;
 
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
       // Should exit multi-edit, not close editor
-      expect(vm.__testOnly.isMultiEditMode.value).toBe(false);
+      expect(vm.TEST_ONLY.isMultiEditMode.value).toBe(false);
       expect(wrapper.emitted('close')).toBeFalsy();
       wrapper.unmount();
     });
@@ -374,7 +436,7 @@ line3` },
       });
       const vm = wrapper.vm as any;
 
-      expect(vm.__testOnly.lines.value).toEqual(['line1', 'line2', 'line3']);
+      expect(vm.TEST_ONLY.lines.value).toEqual(['line1', 'line2', 'line3']);
     });
 
     it('updates lines when textarea value changes', async () => {
@@ -388,7 +450,23 @@ line3` },
 foo
 bar`);
 
-      expect(vm.__testOnly.lines.value).toEqual(['foo', 'bar']);
+      expect(vm.TEST_ONLY.lines.value).toEqual(['foo', 'bar']);
+    });
+
+    it('shows and clears busy indicator during async search updates', async () => {
+      const wrapper = mount(AdvancedTextEditorV3, {
+        props: { ...defaultProps, initialValue: 'alpha beta alpha' },
+      });
+
+      await wrapper.find('button[title^="Find & Replace"]').trigger('click');
+      const findInput = wrapper.find('[data-testid="find-input"]');
+      await findInput.setValue('alpha');
+
+      expect(wrapper.find('[data-testid="search-busy-indicator"]').exists()).toBe(true);
+      await flushEditorTasks();
+
+      expect(wrapper.find('[data-testid="search-busy-indicator"]').exists()).toBe(false);
+      expect((wrapper.vm as any).TEST_ONLY.searchMatches.value).toHaveLength(2);
     });
   });
 

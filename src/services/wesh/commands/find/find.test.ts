@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
-import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
+import {
+  MockFileSystemDirectoryHandle,
+  MockFileSystemFileHandle,
+} from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
@@ -14,6 +17,10 @@ describe('wesh find', () => {
     rootHandle = new MockFileSystemDirectoryHandle('root');
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   async function writeFile({
@@ -431,5 +438,43 @@ src/file3.txt
     expect(stdout.text).toBe('src/components/Button.ts\n');
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
+  });
+
+  it('avoids file metadata reads during ordinary physical traversal', async () => {
+    await writeFile({ path: 'src/app.ts', data: 'console.log(1);\n' });
+    await writeFile({ path: 'src/nested/main.ts', data: 'console.log(2);\n' });
+
+    const getFileSpy = vi.spyOn(MockFileSystemFileHandle.prototype, 'getFile');
+    const entriesSpy = vi.spyOn(MockFileSystemDirectoryHandle.prototype, 'entries');
+
+    const { result, stdout, stderr } = await execute({ script: 'find src' });
+
+    expect(stdout.text).toBe(`\
+src
+src/app.ts
+src/nested
+src/nested/main.ts
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(entriesSpy).toHaveBeenCalledTimes(2);
+    expect(getFileSpy).not.toHaveBeenCalled();
+  });
+
+  it('still reads file metadata when the expression requires it', async () => {
+    await writeFile({ path: 'src/app.ts', data: 'console.log(1);\n' });
+    await writeFile({ path: 'src/nested/main.ts', data: 'console.log(2);\n' });
+
+    const getFileSpy = vi.spyOn(MockFileSystemFileHandle.prototype, 'getFile');
+
+    const { result, stdout, stderr } = await execute({ script: 'find src -size +0c -type f' });
+
+    expect(stdout.text).toBe(`\
+src/app.ts
+src/nested/main.ts
+`);
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(getFileSpy).toHaveBeenCalledTimes(2);
   });
 });

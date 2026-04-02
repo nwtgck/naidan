@@ -7,20 +7,26 @@ import { useSettings } from '@/composables/useSettings';
 import { useTheme } from '@/composables/useTheme';
 import { useToast } from '@/composables/useToast';
 import { SettingsIcon } from 'lucide-vue-next';
-import * as llm from '@/services/llm';
-import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import * as openaiModule from '@/services/lm/openai';
+import * as ollamaModule from '@/services/lm/ollama';
+import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import { type EndpointType } from '@/models/types';
 import { detectOllama } from '@/utils/ollama-detection';
 
 // Mock the services.
-vi.mock('../services/llm', () => {
+vi.mock('../services/lm/openai', () => {
   return {
     OpenAIProvider: vi.fn(),
+  };
+});
+
+vi.mock('../services/lm/ollama', () => {
+  return {
     OllamaProvider: vi.fn(),
   };
 });
 
-vi.mock('../services/transformers-js-provider', () => ({
+vi.mock('../services/transformers-js/provider', () => ({
   TransformersJsProvider: vi.fn(),
 }));
 
@@ -82,10 +88,10 @@ describe('OnboardingModal.vue', () => {
 
     listModelsMock.mockResolvedValue(['model-1']);
 
-    (llm.OpenAIProvider as unknown as Mock).mockImplementation(function() {
+    (openaiModule.OpenAIProvider as unknown as Mock).mockImplementation(function() {
       return { listModels: listModelsMock };
     });
-    (llm.OllamaProvider as unknown as Mock).mockImplementation(function() {
+    (ollamaModule.OllamaProvider as unknown as Mock).mockImplementation(function() {
       return { listModels: listModelsMock };
     });
     (TransformersJsProvider as unknown as Mock).mockImplementation(function() {
@@ -417,7 +423,7 @@ describe('OnboardingModal.vue', () => {
       const wrapper = mount(OnboardingModal);
       await flushPromises();
 
-      const { effectiveType } = (wrapper.vm as any).__testOnly;
+      const { effectiveType } = (wrapper.vm as any).TEST_ONLY;
       expect(effectiveType.value).toBe('ollama');
       expect(vi.mocked(detectOllama)).toHaveBeenCalled();
 
@@ -428,7 +434,7 @@ describe('OnboardingModal.vue', () => {
     it('switches to Ollama type on manual localhost input but does NOT auto-connect', async () => {
       vi.mocked(detectOllama).mockResolvedValue(true);
       const wrapper = mount(OnboardingModal);
-      const { effectiveType, availableModels } = (wrapper.vm as any).__testOnly;
+      const { effectiveType, availableModels } = (wrapper.vm as any).TEST_ONLY;
 
       // Simulate user typing localhost URL
       await wrapper.find('input').setValue('http://localhost:11434');
@@ -444,7 +450,7 @@ describe('OnboardingModal.vue', () => {
 
     it('triggers auto-fetch automatically for Transformers.js', async () => {
       const wrapper = mount(OnboardingModal);
-      const { selectedType, effectiveType } = (wrapper.vm as any).__testOnly;
+      const { selectedType, effectiveType } = (wrapper.vm as any).TEST_ONLY;
 
       // Manually set selectedType to simulate clicking the button
       selectedType.value = 'transformers_js';
@@ -458,7 +464,7 @@ describe('OnboardingModal.vue', () => {
     it('remains on OpenAI type if detection fails on localhost', async () => {
       vi.mocked(detectOllama).mockResolvedValue(false);
       const wrapper = mount(OnboardingModal);
-      const { effectiveType } = (wrapper.vm as any).__testOnly;
+      const { effectiveType } = (wrapper.vm as any).TEST_ONLY;
 
       await wrapper.find('input').setValue('http://localhost:11434');
       await flushPromises();
@@ -470,7 +476,7 @@ describe('OnboardingModal.vue', () => {
     it('saves titleModelId as undefined when finishing onboarding with transformers_js', async () => {
       listModelsMock.mockResolvedValue(['Xenova/gpt2']);
       const wrapper = mount(OnboardingModal);
-      const { selectedType } = (wrapper.vm as any).__testOnly;
+      const { selectedType } = (wrapper.vm as any).TEST_ONLY;
 
       // 1. Select Transformers.js
       selectedType.value = 'transformers_js';

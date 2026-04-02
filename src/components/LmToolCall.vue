@@ -22,7 +22,7 @@ const formatArgs = ({ args }: { args: unknown }): string => {
 };
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     isExpanded,
     toggleExpand
   }

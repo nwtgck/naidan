@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { inject, ref } from 'vue';
+import { computed, inject, ref, watch } from 'vue';
 import { ChevronUpIcon, ChevronDownIcon } from 'lucide-vue-next';
 import FileExplorerEntryItem from './FileExplorerEntryItem.vue';
 import FileExplorerEmptyState from './FileExplorerEmptyState.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import type { FileExplorerEntry, SortField } from './types';
+import { LIST_ROW_HEIGHT, VIRTUAL_SCROLL_OVERSCAN } from './constants';
+import { useVirtualizedFileExplorerList } from './useVirtualizedFileExplorerList';
 
 const ctx = inject(FILE_EXPLORER_INJECTION_KEY)!;
+const scrollContainerRef = ref<HTMLElement | undefined>(undefined);
 
 const columns: Array<{ label: string; field: SortField; class: string }> = [
   { label: 'Name', field: 'name', class: 'flex-1 min-w-0' },
@@ -14,6 +17,37 @@ const columns: Array<{ label: string; field: SortField; class: string }> = [
   { label: 'Modified', field: 'dateModified', class: 'w-28 text-right shrink-0 hidden md:block' },
   { label: 'Type', field: 'type', class: 'w-16 text-right shrink-0 hidden lg:block' },
 ];
+
+const sortedFilteredEntriesRef = computed(() => ctx.sortedFilteredEntries);
+
+const {
+  visibleEntries,
+  totalHeight,
+  topSpacerHeight,
+  bottomSpacerHeight,
+  scrollEntryIntoView,
+} = useVirtualizedFileExplorerList({
+  containerRef: scrollContainerRef,
+  entries: sortedFilteredEntriesRef,
+  rowHeight: LIST_ROW_HEIGHT,
+  overscan: VIRTUAL_SCROLL_OVERSCAN,
+});
+
+watch(
+  () => ctx.selectionState.focusName,
+  focusName => {
+    scrollEntryIntoView({ entryName: focusName });
+  },
+  { flush: 'post' },
+);
+
+watch(
+  () => ctx.renamingEntryName,
+  renamingEntryName => {
+    scrollEntryIntoView({ entryName: renamingEntryName });
+  },
+  { flush: 'post' },
+);
 
 function isEntrySelected({ entry }: { entry: FileExplorerEntry }): boolean {
   return ctx.selectionState.selectedNames.has(entry.name);
@@ -53,7 +87,7 @@ function onEntryClick({ entry, event }: { entry: FileExplorerEntry; event: Mouse
 async function onEntryDblClick({ entry }: { entry: FileExplorerEntry }): Promise<void> {
   switch (entry.kind) {
   case 'directory':
-    await ctx.navigateToDirectory({ directory: entry.directory! });
+    await ctx.navigateToDirectory({ path: entry.path });
     ctx.applySelection({ action: { type: 'clear' } });
     break;
   case 'file':
@@ -105,7 +139,7 @@ async function onExternalDrop(event: DragEvent): Promise<void> {
 
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   }
 });
@@ -140,9 +174,11 @@ defineExpose({
 
     <!-- Entries -->
     <div
+      ref="scrollContainerRef"
       class="flex-1 overflow-y-auto overscroll-contain p-1 transition-colors"
       :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
       data-list-background="true"
+      data-testid="list-scroll-container"
       @contextmenu.self="onBackgroundContextMenu"
       @dragover.prevent="onExternalDragOver"
       @dragleave="isExternalDragOver = false"
@@ -152,26 +188,36 @@ defineExpose({
         v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading"
       />
 
-      <FileExplorerEntryItem
-        v-for="entry in ctx.sortedFilteredEntries"
-        :key="entry.name"
-        :entry="entry"
-        :is-selected="isEntrySelected({ entry })"
-        :is-focused="isEntryFocused({ entry })"
-        :is-renaming="isEntryRenaming({ entry })"
-        :is-cut="isEntryCut({ entry })"
-        :is-drag-target="isEntryDragTarget({ entry })"
-        display-mode="list"
-        @click="onEntryClick({ entry, event: $event.event })"
-        @dblclick="onEntryDblClick({ entry })"
-        @contextmenu="onContextMenu({ entry, event: $event.event })"
-        @rename-confirm="ctx.renameEntry({ entry, newName: $event.newName })"
-        @rename-cancel="ctx.cancelRename()"
-        @dragstart="ctx.onDragStart({ event: $event.event, entries: ctx.selectedEntries.length > 0 ? ctx.selectedEntries : [entry] })"
-        @dragover="ctx.onDragOverEntry({ event: $event.event, entry })"
-        @dragleave="ctx.onDragLeaveEntry()"
-        @drop="ctx.onDropEntry({ entry })"
-      />
+      <div
+        v-if="ctx.sortedFilteredEntries.length > 0"
+        :style="{ height: `${totalHeight}px` }"
+        data-testid="list-virtual-spacer"
+      >
+        <div :style="{ height: `${topSpacerHeight}px` }" />
+
+        <FileExplorerEntryItem
+          v-for="entry in visibleEntries"
+          :key="entry.path"
+          :entry="entry"
+          :is-selected="isEntrySelected({ entry })"
+          :is-focused="isEntryFocused({ entry })"
+          :is-renaming="isEntryRenaming({ entry })"
+          :is-cut="isEntryCut({ entry })"
+          :is-drag-target="isEntryDragTarget({ entry })"
+          display-mode="list"
+          @click="onEntryClick({ entry, event: $event.event })"
+          @dblclick="onEntryDblClick({ entry })"
+          @contextmenu="onContextMenu({ entry, event: $event.event })"
+          @rename-confirm="ctx.renameEntry({ entry, newName: $event.newName })"
+          @rename-cancel="ctx.cancelRename()"
+          @dragstart="ctx.onDragStart({ event: $event.event, entries: ctx.selectedEntries.length > 0 ? ctx.selectedEntries : [entry] })"
+          @dragover="ctx.onDragOverEntry({ event: $event.event, entry })"
+          @dragleave="ctx.onDragLeaveEntry()"
+          @drop="ctx.onDropEntry({ entry })"
+        />
+
+        <div :style="{ height: `${bottomSpacerHeight}px` }" />
+      </div>
     </div>
   </div>
 </template>

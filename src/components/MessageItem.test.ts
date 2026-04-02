@@ -1,6 +1,6 @@
 import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
@@ -45,12 +45,18 @@ describe('MessageItem Rendering', () => {
     expect(html).toContain('<a href="https://example.com"');
   });
 
-  it('applies syntax highlighting to code blocks', () => {
+  it('applies syntax highlighting to code blocks', async () => {
     const message = createMessage(`\
 \`\`\`python
 print("hello")
 \`\`\``);
     const wrapper = mount(MessageItem, { props: { message } });
+
+    expect(wrapper.html()).toContain('print("hello")');
+    expect(wrapper.html()).not.toContain('hljs');
+
+    await flushPromises();
+    await nextTick();
 
     const html = wrapper.html();
     // BlockMarkdownRenderer uses hljs for highlighting and shows the language label

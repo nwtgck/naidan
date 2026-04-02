@@ -30,21 +30,22 @@ vi.mock('../services/storage', () => ({
 const mockChat = vi.fn();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: class {
-      listModels = mockListModels;
-      chat = mockChat;
-    },
-    OllamaProvider: class {
-      listModels = mockListModels;
-      chat = mockChat;
-    },
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: class {
+    listModels = mockListModels;
+    chat = mockChat;
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: class {
+    listModels = mockListModels;
+    chat = mockChat;
+  },
+}));
 
 describe('useChat Error Handling', () => {
-  const { __testOnly: { __testOnlySetSettings } } = useSettings();
+  const { TEST_ONLY: { __testOnlySetSettings } } = useSettings();
 
   beforeEach(() => {
     vi.clearAllMocks();

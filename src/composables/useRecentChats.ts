@@ -78,7 +78,7 @@ export function useRecentChats() {
     closeRecent,
     toggleRecent,
     addRecentChat,
-    __testOnly: {
+    TEST_ONLY: {
       recentChatEntries,
       allRecentChats: recentChats,
       // Export internal state and logic used only for testing here. Do not reference these in production logic.

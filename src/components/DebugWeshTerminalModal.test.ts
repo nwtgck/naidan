@@ -31,7 +31,7 @@ vi.mock('@/services/storage', () => ({
   },
 }));
 
-vi.mock('@/services/wesh-worker-client', () => ({
+vi.mock('@/services/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mocks.createClient,
 }));
 

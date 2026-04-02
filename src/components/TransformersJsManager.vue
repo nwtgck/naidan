@@ -45,6 +45,7 @@ const defaultModels = [
   'onnx-community/Qwen3-0.6B-ONNX',
   // 'onnx-community/Qwen3-1.7B-ONNX', // failed
   'onnx-community/Qwen3-4B-Instruct-2507-ONNX',
+  'onnx-community/gemma-4-E2B-it-ONNX',
   'onnx-community/Llama-3.2-1B-Instruct',
   'onnx-community/gpt-oss-20b-ONNX',
 ];
@@ -281,7 +282,7 @@ const handleImportLocalModel = async (event: Event) => {
 
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   }
 });

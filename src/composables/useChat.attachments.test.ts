@@ -76,24 +76,25 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
-vi.mock('../services/llm', () => {
-  return {
-    OpenAIProvider: class {
-      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-        params.onChunk('Response');
-        return Promise.resolve();
-      });
-      listModels = vi.fn().mockResolvedValue(['test-model']);
-    },
-    OllamaProvider: class {
-      chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-        params.onChunk('Response');
-        return Promise.resolve();
-      });
-      listModels = vi.fn().mockResolvedValue(['test-model']);
-    }
-  };
-});
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: class {
+    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Response');
+      return Promise.resolve();
+    });
+    listModels = vi.fn().mockResolvedValue(['test-model']);
+  },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: class {
+    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+      params.onChunk('Response');
+      return Promise.resolve();
+    });
+    listModels = vi.fn().mockResolvedValue(['test-model']);
+  }
+}));
 
 vi.mock('./useConfirm', () => ({
   useConfirm: () => ({
@@ -189,8 +190,8 @@ describe('useChat - Attachment & Migration Logic', () => {
   });
 
   it('should rescue memory blobs during migration from LocalStorage to OPFS', async () => {
-    const { sendMessage, __testOnly, registerLiveInstance } = chatStore;
-    const { __testOnlySetCurrentChat } = __testOnly;
+    const { sendMessage, TEST_ONLY, registerLiveInstance } = chatStore;
+    const { __testOnlySetCurrentChat } = TEST_ONLY;
     const chatObj = reactive({
       id: 'rescue-chat',
       title: 'Rescue',

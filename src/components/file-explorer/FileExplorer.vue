@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { provide } from 'vue';
+import { onUnmounted, provide } from 'vue';
 import { Loader2Icon } from 'lucide-vue-next';
 import FileExplorerToolbar from './FileExplorerToolbar.vue';
 import FileExplorerListView from './FileExplorerListView.vue';
@@ -11,19 +11,28 @@ import FileExplorerContextMenu from './FileExplorerContextMenu.vue';
 import { useFileExplorer, FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import { useFileExplorerKeyboard } from './useFileExplorerKeyboard';
 import type { ViewMode, PreviewVisibility } from './types';
-import type { ExplorerDirectory } from './explorer-directory';
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
 
 const props = defineProps<{
-  root: ExplorerDirectory;
+  root: FileExplorerRootDescriptor;
   initialViewMode: ViewMode;
   initialPreviewVisibility: PreviewVisibility;
-  /** Pre-built navigation stack (from root's children down to target). */
-  initialStack: ExplorerDirectory[] | undefined;
+  initialPath: string[] | undefined;
   /** When true, the explorer starts in locked mode (write operations disabled). */
   initialLocked: boolean;
 }>();
 
-const { context, _viewMode, _preview } = useFileExplorer({ root: props.root, initialStack: props.initialStack, initialLocked: props.initialLocked });
+defineExpose({
+  TEST_ONLY: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  },
+});
+
+const { context, client, _viewMode, _preview } = await useFileExplorer({
+  root: props.root,
+  initialPath: props.initialPath,
+  initialLocked: props.initialLocked,
+});
 
 // Apply initial values
 _viewMode.value = props.initialViewMode;
@@ -35,10 +44,9 @@ provide(FILE_EXPLORER_INJECTION_KEY, context);
 // Keyboard handler
 const { handleKeyDown } = useFileExplorerKeyboard({ ctx: context });
 
-defineExpose({
-  __testOnly: {
-    context,
-  },
+onUnmounted(() => {
+  _preview.dispose();
+  void client.dispose({});
 });
 </script>
 

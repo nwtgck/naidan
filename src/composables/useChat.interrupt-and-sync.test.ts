@@ -16,17 +16,21 @@ const mockLlm = {
   listModels: vi.fn().mockResolvedValue(['gpt-4', 'x/z-image-turbo:v1']),
 };
 
-vi.mock('../services/llm', () => {
-  return {
-    UNKNOWN_STEPS: Symbol('unknown'),
-    OpenAIProvider: vi.fn().mockImplementation(function() {
-      return mockLlm;
-    }),
-    OllamaProvider: vi.fn().mockImplementation(function() {
-      return mockLlm;
-    }),
-  };
-});
+vi.mock('../services/lm/types', () => ({
+  UNKNOWN_STEPS: Symbol('unknown'),
+}));
+
+vi.mock('../services/lm/openai', () => ({
+  OpenAIProvider: vi.fn().mockImplementation(function() {
+    return mockLlm;
+  }),
+}));
+
+vi.mock('../services/lm/ollama', () => ({
+  OllamaProvider: vi.fn().mockImplementation(function() {
+    return mockLlm;
+  }),
+}));
 
 vi.mock('../services/storage', () => ({
   storageService: {
@@ -69,18 +73,18 @@ vi.mock('./useSettings', () => ({
 describe('useChat Interrupt and Sync Tests', () => {
   const chatStore = useChat();
   const {
-    sendMessage, editMessage, __testOnly
+    sendMessage, editMessage, TEST_ONLY
   } = chatStore;
-  const { __testOnlySetCurrentChat } = __testOnly;
+  const { __testOnlySetCurrentChat } = TEST_ONLY;
 
   const { clearEvents } = useGlobalEvents();
 
   beforeEach(() => {
     vi.clearAllMocks();
     __testOnlySetCurrentChat(null);
-    __testOnly.activeGenerations.clear();
-    __testOnly.clearActiveTaskCounts();
-    __testOnly.clearLiveChatRegistry();
+    TEST_ONLY.activeGenerations.clear();
+    TEST_ONLY.clearActiveTaskCounts();
+    TEST_ONLY.clearLiveChatRegistry();
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
     clearEvents();

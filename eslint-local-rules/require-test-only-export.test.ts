@@ -60,7 +60,7 @@ describe('require-test-only-export rule', () => {
     return results[0];
   }
 
-  it('should report error for useXxx function missing __testOnly', async () => {
+  it('should report error for useXxx function missing TEST_ONLY', async () => {
     const code = `
       export function useChat() {
         const chat = 'hello';
@@ -73,11 +73,11 @@ describe('require-test-only-export rule', () => {
     expect(result.messages.some(m => m.ruleId === 'local-rules-test-only/require-test-only-export')).toBe(true);
     
     const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('__testOnly: {');
+    expect(fixedResult.output).toContain('TEST_ONLY: {');
     expect(fixedResult.output).toContain('// Export internal state and logic used only for testing here.');
   });
 
-  it('should report error for arrow function useXxx missing __testOnly', async () => {
+  it('should report error for arrow function useXxx missing TEST_ONLY', async () => {
     const code = `
       export const useSettings = () => {
         return {
@@ -89,15 +89,15 @@ describe('require-test-only-export rule', () => {
     expect(result.messages.some(m => m.ruleId === 'local-rules-test-only/require-test-only-export')).toBe(true);
     
     const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('__testOnly: {');
+    expect(fixedResult.output).toContain('TEST_ONLY: {');
   });
 
-  it('should NOT report error if __testOnly already exists', async () => {
+  it('should NOT report error if TEST_ONLY already exists', async () => {
     const code = `
       export function useExisting() {
         return {
           data: [],
-          __testOnly: {
+          TEST_ONLY: {
             internal: true
           }
         };
@@ -137,7 +137,7 @@ describe('require-test-only-export rule', () => {
     expect(result.messages.some(m => m.ruleId === 'local-rules-test-only/require-test-only-export')).toBe(true);
     
     const fixedResult = await fix(code);
-    expect(fixedResult.output).toContain('__testOnly: {');
+    expect(fixedResult.output).toContain('TEST_ONLY: {');
   });
 
   it('should handle trailing commas correctly in autofix', async () => {
@@ -149,10 +149,10 @@ describe('require-test-only-export rule', () => {
       }
     `;
     const result = await fix(code);
-    // Check for correct comma placement: a: 1, \n __testOnly
-    // It should NOT be: a: 1 \n __testOnly ... ,,
-    expect(result.output).toMatch(/a: 1,\s+__testOnly: {/);
-    expect(result.output).not.toMatch(/a: 1\s+__testOnly: {/);
+    // Check for correct comma placement: a: 1, \n TEST_ONLY
+    // It should NOT be: a: 1 \n TEST_ONLY ... ,,
+    expect(result.output).toMatch(/a: 1,\s+TEST_ONLY: {/);
+    expect(result.output).not.toMatch(/a: 1\s+TEST_ONLY: {/);
   });
 
   it('should handle single-line object returns', async () => {
@@ -162,15 +162,15 @@ describe('require-test-only-export rule', () => {
       }
     `;
     const result = await fix(code);
-    // Should convert to multi-line or at least add __testOnly correctly
+    // Should convert to multi-line or at least add TEST_ONLY correctly
     expect(result.output).toContain('b: 2,');
-    expect(result.output).toContain('__testOnly: {');
+    expect(result.output).toContain('TEST_ONLY: {');
   });
 
   it('should handle single-line object without trailing comma', async () => {
     const code = `export function useMini() { return { x: 1 } }`;
     const result = await fix(code);
     expect(result.output).toContain('x: 1,');
-    expect(result.output).toContain('__testOnly: {');
+    expect(result.output).toContain('TEST_ONLY: {');
   });
 });

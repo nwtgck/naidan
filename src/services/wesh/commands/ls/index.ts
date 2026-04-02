@@ -2,6 +2,7 @@ import type {
   WeshCommandDefinition,
   WeshCommandResult,
   WeshCommandContext,
+  WeshDirEntry,
   WeshFileType,
   WeshStat,
 } from '@/services/wesh/types';
@@ -85,7 +86,80 @@ export const lsCommandDefinition: WeshCommandDefinition = {
     const R = parsed.optionValues.R === true;
     const classify = parsed.optionValues.classify === true;
     const symlinkMode = (parsed.optionValues.symlinkMode as LsSymlinkMode | undefined) ?? 'physical';
+    const pathStatCache = new Map<string, Promise<WeshStat>>();
+    const resolvedDirectoryPathCache = new Map<string, Promise<string>>();
     let exitCode = 0;
+
+    const getCachedPathStat = ({
+      path,
+      isCommandLineArgument,
+    }: {
+      path: string;
+      isCommandLineArgument: boolean;
+    }): Promise<WeshStat> => {
+      const key = (() => {
+        switch (symlinkMode) {
+        case 'logical':
+          return `stat:${path}`;
+        case 'command-line':
+          return `${isCommandLineArgument ? 'stat' : 'lstat'}:${path}`;
+        case 'physical':
+          return `lstat:${path}`;
+        default: {
+          const _ex: never = symlinkMode;
+          throw new Error(`Unhandled symlink mode: ${_ex}`);
+        }
+        }
+      })();
+
+      const cached = pathStatCache.get(key);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const pending = getPathStat({
+        context,
+        path,
+        symlinkMode,
+        isCommandLineArgument,
+      });
+      pathStatCache.set(key, pending);
+      return pending;
+    };
+
+    const getCachedDirectoryReadPath = async ({
+      path,
+      isCommandLineArgument,
+    }: {
+      path: string;
+      isCommandLineArgument: boolean;
+    }): Promise<string> => {
+      const stat = await getCachedPathStat({
+        path,
+        isCommandLineArgument,
+      });
+      switch (stat.type) {
+      case 'directory':
+      {
+        const cached = resolvedDirectoryPathCache.get(path);
+        if (cached !== undefined) {
+          return cached;
+        }
+        const pending = context.files.resolve({ path }).then(({ fullPath }) => fullPath);
+        resolvedDirectoryPathCache.set(path, pending);
+        return pending;
+      }
+      case 'file':
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        return path;
+      default: {
+        const _ex: never = stat.type;
+        throw new Error(`Unhandled stat type: ${_ex}`);
+      }
+      }
+    };
 
     async function listPath({
       displayPath,
@@ -99,10 +173,8 @@ export const lsCommandDefinition: WeshCommandDefinition = {
       printHeader: boolean;
     }): Promise<void> {
       try {
-        const directStat = await getPathStat({
-          context,
+        const directStat = await getCachedPathStat({
           path: fullPath,
-          symlinkMode,
           isCommandLineArgument,
         });
 
@@ -115,20 +187,18 @@ export const lsCommandDefinition: WeshCommandDefinition = {
             longFormat: l,
             humanReadable: h,
             classify,
-            symlinkMode,
-            isCommandLineArgument,
+            stat: directStat,
+            getStat: () => getCachedPathStat({ path: fullPath, isCommandLineArgument }),
           });
           await text.print({ text: `${line}\n` });
           return;
         }
 
-        const directoryPath = await getDirectoryReadPath({
-          context,
+        const directoryPath = await getCachedDirectoryReadPath({
           path: fullPath,
-          symlinkMode,
           isCommandLineArgument,
         });
-        const allEntries: Array<{ name: string; type: WeshFileType }> = [];
+        const allEntries: WeshDirEntry[] = [];
         for await (const entry of context.files.readDir({ path: directoryPath })) {
           allEntries.push(entry);
         }
@@ -140,17 +210,16 @@ export const lsCommandDefinition: WeshCommandDefinition = {
         }
 
         for (const entry of filtered) {
-          const entryPath = directoryPath.endsWith('/') ? `${directoryPath}${entry.name}` : `${directoryPath}/${entry.name}`;
           const line = await formatEntry({
             context,
             displayName: entry.name,
-            fullPath: entryPath,
+            fullPath: entry.fullPath,
             type: entry.type,
             longFormat: l,
             humanReadable: h,
             classify,
-            symlinkMode,
-            isCommandLineArgument: false,
+            stat: undefined,
+            getStat: () => getCachedPathStat({ path: entry.fullPath, isCommandLineArgument: false }),
           });
           await text.print({ text: line + (one || l ? '\n' : '  ') });
         }
@@ -166,11 +235,10 @@ export const lsCommandDefinition: WeshCommandDefinition = {
               continue;
             }
             const childDisplayPath = displayPath === '/' ? `/${entry.name}` : `${displayPath}/${entry.name}`;
-            const childFullPath = directoryPath.endsWith('/') ? `${directoryPath}${entry.name}` : `${directoryPath}/${entry.name}`;
             await text.print({ text: '\n' });
             await listPath({
               displayPath: childDisplayPath,
-              fullPath: childFullPath,
+              fullPath: entry.fullPath,
               isCommandLineArgument: false,
               printHeader: true,
             });
@@ -235,38 +303,6 @@ async function getPathStat({
   }
 }
 
-async function getDirectoryReadPath({
-  context,
-  path,
-  symlinkMode,
-  isCommandLineArgument,
-}: {
-  context: WeshCommandContext;
-  path: string;
-  symlinkMode: LsSymlinkMode;
-  isCommandLineArgument: boolean;
-}): Promise<string> {
-  const stat = await getPathStat({
-    context,
-    path,
-    symlinkMode,
-    isCommandLineArgument,
-  });
-  switch (stat.type) {
-  case 'directory':
-    return (await context.files.resolve({ path })).fullPath;
-  case 'file':
-  case 'fifo':
-  case 'chardev':
-  case 'symlink':
-    return path;
-  default: {
-    const _ex: never = stat.type;
-    throw new Error(`Unhandled stat type: ${_ex}`);
-  }
-  }
-}
-
 async function formatEntry({
   context,
   displayName,
@@ -275,8 +311,8 @@ async function formatEntry({
   longFormat,
   humanReadable,
   classify,
-  symlinkMode,
-  isCommandLineArgument,
+  stat,
+  getStat,
 }: {
   context: WeshCommandContext;
   displayName: string;
@@ -285,8 +321,8 @@ async function formatEntry({
   longFormat: boolean;
   humanReadable: boolean;
   classify: boolean;
-  symlinkMode: LsSymlinkMode;
-  isCommandLineArgument: boolean;
+  stat: WeshStat | undefined;
+  getStat: () => Promise<WeshStat>;
 }): Promise<string> {
   let line = displayName;
   if (classify) {
@@ -316,15 +352,10 @@ async function formatEntry({
     return line;
   }
 
-  const stat = await getPathStat({
-    context,
-    path: fullPath,
-    symlinkMode,
-    isCommandLineArgument,
-  });
-  const size = humanReadable ? formatSize(stat.size) : stat.size.toString();
+  const resolvedStat = stat ?? await getStat();
+  const size = humanReadable ? formatSize(resolvedStat.size) : resolvedStat.size.toString();
   let typeChar = '-';
-  switch (stat.type) {
+  switch (resolvedStat.type) {
   case 'directory':
     typeChar = 'd';
     break;
@@ -340,13 +371,13 @@ async function formatEntry({
   case 'file':
     break;
   default: {
-    const _ex: never = stat.type;
+    const _ex: never = resolvedStat.type;
     throw new Error(`Unhandled file type: ${_ex}`);
   }
   }
 
   let renderedName = line;
-  switch (stat.type) {
+  switch (resolvedStat.type) {
   case 'symlink':
     try {
       const target = await context.files.readlink({ path: fullPath });
@@ -361,7 +392,7 @@ async function formatEntry({
   case 'file':
     break;
   default: {
-    const _ex: never = stat.type;
+    const _ex: never = resolvedStat.type;
     throw new Error(`Unhandled file type: ${_ex}`);
   }
   }

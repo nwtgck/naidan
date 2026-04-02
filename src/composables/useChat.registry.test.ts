@@ -54,11 +54,14 @@ vi.mock('./useSettings', () => ({
 const mockLlmChat = vi.fn();
 const mockListModels = vi.fn();
 
-vi.mock('../services/llm', () => ({
+vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
     chat = mockLlmChat;
     listModels = mockListModels;
   },
+}));
+
+vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: class {
     async listModels() {
       return [];
@@ -76,8 +79,8 @@ describe('useChat Registry Lifecycle', () => {
 
   it('should keep chat in liveChatRegistry until ALL background tasks are finished', async () => {
     const chatStore = useChat();
-    const { createNewChat, sendMessage, fetchAvailableModels, currentChat, openChat, unregisterLiveInstance, __testOnly } = chatStore;
-    const { activeGenerations, liveChatRegistry, __testOnlySetCurrentChat } = __testOnly;
+    const { createNewChat, sendMessage, fetchAvailableModels, currentChat, openChat, unregisterLiveInstance, TEST_ONLY } = chatStore;
+    const { activeGenerations, liveChatRegistry, __testOnlySetCurrentChat } = TEST_ONLY;
 
     // Ensure we start clean
     activeGenerations.clear();
@@ -137,8 +140,8 @@ describe('useChat Registry Lifecycle', () => {
   });
 
   it('should not leak newly created chats in liveChatRegistry after creation is complete', async () => {
-    const { createNewChat, currentChat, openChat, unregisterLiveInstance, __testOnly } = useChat();
-    const { liveChatRegistry, __testOnlySetCurrentChat } = __testOnly;
+    const { createNewChat, currentChat, openChat, unregisterLiveInstance, TEST_ONLY } = useChat();
+    const { liveChatRegistry, __testOnlySetCurrentChat } = TEST_ONLY;
     liveChatRegistry.clear();
 
     const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });

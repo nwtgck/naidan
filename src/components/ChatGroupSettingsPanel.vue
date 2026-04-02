@@ -12,8 +12,6 @@ import type { Mount } from '@/models/types';
 import VolumeCreator from './VolumeCreator.vue';
 import MountBadgeList from './MountBadgeList.vue';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
-import { VfsExplorerDirectory } from './file-explorer/explorer-directory';
-import { WeshVFS } from '@/services/wesh/vfs';
 import { storageService } from '@/services/storage';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
@@ -89,16 +87,25 @@ async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volu
 async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {
   const mounts = chatGroupMounts.value;
   if (mounts.length === 0) return;
-  const vfs = new WeshVFS({ rootHandle: undefined });
+  const workerMounts = [];
   for (const m of mounts) {
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
-    await vfs.mount({ path: m.mountPath, handle, readOnly: m.readOnly });
+    workerMounts.push({
+      path: m.mountPath,
+      handle,
+      readOnly: m.readOnly,
+    });
   }
-  const rootDir = new VfsExplorerDirectory({ name: 'Files', path: '/', vfs });
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
-  openFileExplorer({ kind: 'explorer', root: rootDir, initialPath, title: 'Folders' });
+  openFileExplorer({
+    kind: 'wesh-mounts',
+    title: 'Folders',
+    rootName: 'Files',
+    mounts: workerMounts,
+    initialPath,
+  });
 }
 
 function handleCreateRecipe() {
@@ -292,7 +299,7 @@ async function setGroupNameFromModelId() {
 
 
 defineExpose({
-  __testOnly: {
+  TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   }
 });

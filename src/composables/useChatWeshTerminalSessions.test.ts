@@ -24,7 +24,7 @@ vi.mock('@/services/storage', () => ({
   },
 }));
 
-vi.mock('@/services/wesh-worker-client', () => ({
+vi.mock('@/services/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mocks.createClient,
 }));
 
@@ -63,9 +63,9 @@ describe('useChatWeshTerminalSessions', () => {
   describe('buildWorkerMountsForChat', () => {
     it('includes global settings mounts when chat has no mounts and no chatId', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
-      const { __testOnly } = useChatWeshTerminalSessions();
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: undefined });
 
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({ path: '/home/user/global', readOnly: true });
@@ -74,9 +74,9 @@ describe('useChatWeshTerminalSessions', () => {
 
     it('includes /tmp as first mount when chatId is provided', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
-      const { __testOnly } = useChatWeshTerminalSessions();
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: 'chat-1' });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: 'chat-1' });
 
       expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
       expect(result[0]).toMatchObject({ path: '/tmp', handle: tmpHandle, readOnly: false });
@@ -84,13 +84,13 @@ describe('useChatWeshTerminalSessions', () => {
 
     it('includes both global and chat mounts when paths differ', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
-      const { __testOnly } = useChatWeshTerminalSessions();
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
       const chatMounts = [
         { type: 'volume' as const, volumeId: 'chat-vol-1', mountPath: '/home/user/chat', readOnly: false },
       ];
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined });
 
       expect(result).toHaveLength(2);
       expect(result.some(m => m.path === '/home/user/global')).toBe(true);
@@ -99,14 +99,14 @@ describe('useChatWeshTerminalSessions', () => {
 
     it('chat mount overrides global mount at the same path', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
-      const { __testOnly } = useChatWeshTerminalSessions();
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
       // Chat mount uses the same path as the global mount but different volumeId and readOnly
       const chatMounts = [
         { type: 'volume' as const, volumeId: 'chat-vol-override', mountPath: '/home/user/global', readOnly: false },
       ];
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined });
 
       // Only one mount at that path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
@@ -116,7 +116,7 @@ describe('useChatWeshTerminalSessions', () => {
 
     it('includes chat group mounts between global and chat mounts', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
-      const { __testOnly } = useChatWeshTerminalSessions();
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
       const chatGroupMounts = [
         { type: 'volume' as const, volumeId: 'group-vol-1', mountPath: '/home/user/group', readOnly: true },
@@ -125,7 +125,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'chat-vol-1', mountPath: '/home/user/chat', readOnly: false },
       ];
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined });
 
       expect(result).toHaveLength(3);
       expect(result.some(m => m.path === '/home/user/global')).toBe(true);
@@ -135,13 +135,13 @@ describe('useChatWeshTerminalSessions', () => {
 
     it('chat group mount overrides global mount at the same path', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
-      const { __testOnly } = useChatWeshTerminalSessions();
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
       const chatGroupMounts = [
         { type: 'volume' as const, volumeId: 'group-vol-override', mountPath: '/home/user/global', readOnly: false },
       ];
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined });
 
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
@@ -150,7 +150,7 @@ describe('useChatWeshTerminalSessions', () => {
 
     it('chat mount overrides chat group mount at the same path', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
-      const { __testOnly } = useChatWeshTerminalSessions();
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
       const chatGroupMounts = [
         { type: 'volume' as const, volumeId: 'group-vol-1', mountPath: '/home/user/shared', readOnly: true },
@@ -159,7 +159,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'chat-vol-override', mountPath: '/home/user/shared', readOnly: false },
       ];
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined });
 
       // Only one mount at the shared path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/shared')).toHaveLength(1);
@@ -169,13 +169,13 @@ describe('useChatWeshTerminalSessions', () => {
 
     it('works with only chat group mounts and no chat-level mounts', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
-      const { __testOnly } = useChatWeshTerminalSessions();
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
 
       const chatGroupMounts = [
         { type: 'volume' as const, volumeId: 'group-vol-1', mountPath: '/home/user/group-only', readOnly: false },
       ];
 
-      const result = await __testOnly.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined });
 
       expect(result).toHaveLength(2); // global + group
       expect(result.some(m => m.path === '/home/user/global')).toBe(true);
