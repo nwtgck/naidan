@@ -209,6 +209,61 @@ describe('transformersJsService', () => {
     expect(statuses).toContain('ready');
   });
 
+  it('should include a processor scan task for Gemma 4 models', async () => {
+    const mockRemote = {
+      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
+      prefetchUrls: vi.fn().mockResolvedValue(undefined),
+    };
+    const scanModel = vi.fn().mockResolvedValue({
+      files: [
+        { url: 'https://hf.co/m/processor_config.json' },
+        { url: 'https://hf.co/m/model.onnx' },
+      ],
+    });
+    (Comlink.wrap as any).mockImplementation((_worker: any) => {
+      return Object.assign(mockRemote, {
+        [Comlink.releaseProxy]: vi.fn(),
+        scanModel,
+      });
+    });
+
+    const { transformersJsService } = await import('./index');
+    await transformersJsService.loadModel('hf.co/onnx-community/gemma-4-E2B-it-ONNX');
+
+    expect(scanModel).toHaveBeenCalledWith({
+      tasks: [
+        { type: 'tokenizer', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: {} },
+        { type: 'processor', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: {} },
+        { type: 'image-text-to-text', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: { dtype: 'q4f16', device: 'wasm' } },
+      ],
+    });
+  });
+
+  it('should fail downloadModel when pre-download discovers no files', async () => {
+    const mockRemote = {
+      loadModel: vi.fn().mockResolvedValue({ device: 'webgpu' }),
+      prefetchUrls: vi.fn().mockResolvedValue(undefined),
+      downloadModel: vi.fn().mockResolvedValue(undefined),
+    };
+    const scanModel = vi.fn().mockResolvedValue({
+      files: [],
+    });
+    (Comlink.wrap as any).mockImplementation((_worker: any) => {
+      return Object.assign(mockRemote, {
+        [Comlink.releaseProxy]: vi.fn(),
+        scanModel,
+      });
+    });
+
+    const { transformersJsService } = await import('./index');
+
+    await expect(transformersJsService.downloadModel('onnx-community/gemma-4-E2B-it-ONNX'))
+      .rejects
+      .toThrow('Pre-download did not discover any model files');
+
+    expect(mockRemote.downloadModel).not.toHaveBeenCalled();
+  });
+
   it('should skip scanner/prefetch when loading a fully cached model', async () => {
     const mockHuggingFaceDir = createMockDir({
       'some-org': createMockDir({

@@ -23,8 +23,10 @@
 
 import * as Comlink from 'comlink';
 import {
+  AutoProcessor,
   AutoTokenizer,
   AutoModelForCausalLM,
+  AutoModelForImageTextToText,
   env
 } from '@huggingface/transformers';
 import type { ITransformersJsScannerWorker, ScannedModelFile, ScanOptions, ScanTask } from '@/services/transformers-js/types';
@@ -54,7 +56,7 @@ let lastHeavyMockUrl: string | undefined;
 let lastMetadataFetchUrl: string | undefined;
 
 // Intercept fetch to collect URLs and mock heavy files
-self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   fetchCount += 1;
   lastFetchUrl = url;
@@ -85,6 +87,8 @@ self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   lastMetadataFetchUrl = url;
   return originalFetch(input, init);
 };
+self.fetch = interceptedFetch;
+env.fetch = interceptedFetch;
 
 const scannerWorker: ITransformersJsScannerWorker = {
   async scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
@@ -116,9 +120,15 @@ const scannerWorker: ITransformersJsScannerWorker = {
             ...task.options,
             silent: true,
           };
-          await AutoTokenizer.from_pretrained(task.modelId, options).catch(err => {
-            console.debug(`[scanner-worker] Tokenizer task ended:`, err.message);
-          });
+          await AutoTokenizer.from_pretrained(task.modelId, options);
+          break;
+        }
+        case 'processor': {
+          const options = {
+            ...task.options,
+            silent: true,
+          };
+          await AutoProcessor.from_pretrained(task.modelId, options);
           break;
         }
         case 'causal-lm': {
@@ -127,9 +137,16 @@ const scannerWorker: ITransformersJsScannerWorker = {
             silent: true,
             device: 'wasm' as const,
           };
-          await AutoModelForCausalLM.from_pretrained(task.modelId, options).catch(err => {
-            console.debug(`[scanner-worker] Causal-LM task ended:`, err.message);
-          });
+          await AutoModelForCausalLM.from_pretrained(task.modelId, options);
+          break;
+        }
+        case 'image-text-to-text': {
+          const options = {
+            ...task.options,
+            silent: true,
+            device: 'wasm' as const,
+          };
+          await AutoModelForImageTextToText.from_pretrained(task.modelId, options);
           break;
         }
         default: {

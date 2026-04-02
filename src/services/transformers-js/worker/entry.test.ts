@@ -15,8 +15,16 @@ vi.mock('@huggingface/transformers', () => ({
   },
   AutoModelForCausalLM: {
     from_pretrained: vi.fn(),
+    supports: vi.fn(),
+  },
+  AutoModelForImageTextToText: {
+    from_pretrained: vi.fn(),
+    supports: vi.fn(),
   },
   TextStreamer: vi.fn(),
+  RawImage: {
+    read: vi.fn(),
+  },
   InterruptableStoppingCriteria: class {
     reset = mockResetFn;
     interrupt = mockInterruptFn;
@@ -120,6 +128,10 @@ describe('transformers-js.worker', () => {
       },
       hardwareConcurrency: 4
     });
+
+    const { AutoModelForCausalLM, AutoModelForImageTextToText } = await import('@huggingface/transformers');
+    (AutoModelForCausalLM.supports as any).mockImplementation((modelType: string) => modelType !== 'gemma4');
+    (AutoModelForImageTextToText.supports as any).mockImplementation((modelType: string) => modelType === 'gemma4');
   });
 
   it('should initialize with custom OPFS cache', async () => {
@@ -253,6 +265,48 @@ describe('transformers-js.worker', () => {
     expect(AutoModelForCausalLM.from_pretrained).toHaveBeenLastCalledWith('org/repo', expect.objectContaining({
       device: 'wasm'
     }));
+  });
+
+  it('loadModel should load the Gemma 4 processor and use its tokenizer', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForImageTextToText, AutoProcessor, AutoTokenizer } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    (AutoModelForImageTextToText.from_pretrained as any).mockResolvedValue({
+      dispose: vi.fn(),
+      device: 'webgpu',
+      config: {
+        model_type: 'gemma4',
+      },
+    });
+    (AutoProcessor.from_pretrained as any).mockResolvedValue({
+      tokenizer: {
+        apply_chat_template: vi.fn(),
+      },
+    });
+
+    await workerObj.loadModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
+
+    expect(AutoModelForImageTextToText.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
+    expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
+    expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
+  });
+
+  it('loadModel should fail early when the active runtime does not support gemma4', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForImageTextToText, AutoModelForCausalLM } = await import('@huggingface/transformers');
+    await import('./entry');
+    const workerObj = (comlink.expose as any).mock.calls[0][0];
+
+    (AutoModelForImageTextToText.supports as any).mockReturnValueOnce(false);
+
+    await expect(workerObj.loadModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn()))
+      .rejects
+      .toThrow('does not support gemma4');
+
+    expect(AutoModelForImageTextToText.from_pretrained).not.toHaveBeenCalled();
+    expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
   });
 
   it('downloadModel should normalize various Hugging Face URL formats', async () => {
@@ -855,6 +909,136 @@ file-a
 
       const emitted = (onChunk.mock.calls as [string][]).map(([chunk]) => chunk).join('');
       expect(emitted).toBe('helloworld');
+    });
+  });
+
+  describe('generateText — Gemma 4 multimodal chat', () => {
+    let workerObj: any;
+    let capturedCallback: ((output: string) => void) | undefined;
+    let tokensToEmit: string[];
+    let mockProcessor: ReturnType<typeof vi.fn> & {
+      tokenizer: {
+        apply_chat_template: ReturnType<typeof vi.fn>;
+      };
+      apply_chat_template: ReturnType<typeof vi.fn>;
+    };
+    let mockModel: {
+      generate: ReturnType<typeof vi.fn>;
+      dispose: ReturnType<typeof vi.fn>;
+      device: string;
+      config: {
+        model_type: string;
+      };
+    };
+
+    beforeEach(async () => {
+      capturedCallback = undefined;
+      tokensToEmit = [];
+
+      const tfMock = await import('@huggingface/transformers');
+
+      (tfMock.TextStreamer as any).mockImplementation(
+        function(this: unknown, _tok: unknown, opts: { callback_function: (output: string) => void }) {
+          capturedCallback = opts.callback_function;
+        }
+      );
+      (tfMock.RawImage.read as any).mockResolvedValue({ kind: 'raw-image' });
+
+      mockModel = {
+        generate: vi.fn().mockImplementation(async () => {
+          for (const token of tokensToEmit) capturedCallback?.(token);
+          return { past_key_values: {} };
+        }),
+        dispose: vi.fn(),
+        device: 'webgpu',
+        config: {
+          model_type: 'gemma4',
+        },
+      };
+
+      mockProcessor = Object.assign(
+        vi.fn().mockResolvedValue({
+          input_ids: [7, 8, 9],
+          attention_mask: [1, 1, 1],
+          pixel_values: ['pixels'],
+          image_position_ids: ['positions'],
+        }),
+        {
+          tokenizer: {
+            apply_chat_template: vi.fn(),
+          },
+          apply_chat_template: vi.fn().mockReturnValue('gemma4 prompt'),
+        },
+      );
+
+      (tfMock.AutoModelForImageTextToText.from_pretrained as any).mockResolvedValue(mockModel);
+      (tfMock.AutoProcessor.from_pretrained as any).mockResolvedValue(mockProcessor);
+
+      await import('./entry');
+      const comlink = await import('comlink');
+      workerObj = (comlink.expose as any).mock.calls[0][0];
+      await workerObj.loadModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
+    });
+
+    it('uses the processor chat template and forwards multimodal inputs to model.generate', async () => {
+      tokensToEmit = ['hello'];
+
+      await workerObj.generateText(
+        [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this image' },
+            { type: 'image_url', image_url: { url: 'https://example.com/cat.png' } },
+          ],
+        }],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        undefined
+      );
+
+      expect(mockProcessor.apply_chat_template).toHaveBeenCalledWith(
+        [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Describe this image' },
+            { type: 'image' },
+          ],
+        }],
+        { add_generation_prompt: true }
+      );
+      expect(mockProcessor).toHaveBeenCalledWith(
+        'gemma4 prompt',
+        [{ kind: 'raw-image' }],
+        null,
+        { add_special_tokens: false }
+      );
+      expect(mockModel.generate).toHaveBeenCalledWith(expect.objectContaining({
+        input_ids: [7, 8, 9],
+        attention_mask: [1, 1, 1],
+        pixel_values: ['pixels'],
+        image_position_ids: ['positions'],
+        past_key_values: null,
+      }));
+    });
+
+    it('does not inject tool definitions into the Gemma 4 chat template', async () => {
+      const tools: WorkerToolDefinition[] = [
+        { type: 'function', function: { name: 'shell_execute', description: 'Run shell', parameters: {} } },
+      ];
+
+      await workerObj.generateText(
+        [{ role: 'user', content: 'list files' }],
+        vi.fn(),
+        vi.fn(),
+        undefined,
+        tools
+      );
+
+      expect(mockProcessor.apply_chat_template).toHaveBeenCalledWith(
+        [{ role: 'user', content: 'list files' }],
+        { add_generation_prompt: true }
+      );
     });
   });
 

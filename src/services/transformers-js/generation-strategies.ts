@@ -8,6 +8,11 @@ import {
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { ToolCallStreamParser } from './tool-call-parser';
+import {
+  buildGemma4TemplateInput,
+  isGemma4Model,
+  type Gemma4ProcessorLike,
+} from './models/gemma4';
 import { Qwen3_5ToolCallParser } from './models/qwen3_5-tool-call-parser';
 import { generateGptOss } from './models/gpt-oss';
 import {
@@ -36,6 +41,7 @@ interface TextGenerationModel extends PreTrainedModel {
 
 export interface WorkerGenerationRuntimeState {
   activeModelId: string | null;
+  gemma4Processor: Gemma4ProcessorLike | null;
   qwen3_5Processor: {
     (text: string): Promise<Record<string, unknown>>;
     batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[];
@@ -62,7 +68,7 @@ interface GenerationStrategyContext {
 }
 
 interface GenerationStrategy {
-  kind: 'standard' | 'gpt-oss' | 'qwen3_5';
+  kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4';
   generate(args: GenerationStrategyContext): Promise<void>;
 }
 
@@ -78,6 +84,9 @@ export function selectGenerationStrategy({
   const isGptOss = activeModelId?.toLowerCase().includes('gpt-oss') ?? false;
   if (isGptOss && hasTools) {
     return gptOssGenerationStrategy;
+  }
+  if (isGemma4Model({ modelType, activeModelId })) {
+    return gemma4GenerationStrategy;
   }
   if (isQwen3_5Model({ modelType, activeModelId })) {
     return qwen3_5GenerationStrategy;
@@ -184,6 +193,82 @@ const gptOssGenerationStrategy: GenerationStrategy = {
         stoppingCriteria,
       }),
     });
+  },
+};
+
+const gemma4GenerationStrategy: GenerationStrategy = {
+  kind: 'gemma4',
+  async generate({
+    model,
+    tokenizer,
+    messages,
+    onChunk,
+    params,
+    runtimeState,
+    stoppingCriteria,
+    debugLog,
+  }: GenerationStrategyContext) {
+    if (!runtimeState.gemma4Processor) {
+      throw new Error('Gemma 4 processor not loaded');
+    }
+
+    const { images, templateMessages } = await buildGemma4TemplateInput({ messages });
+    const prompt = runtimeState.gemma4Processor.apply_chat_template(templateMessages, {
+      add_generation_prompt: true,
+    });
+    const inputs = await runtimeState.gemma4Processor(
+      prompt,
+      images.length > 0 ? images : null,
+      null,
+      { add_special_tokens: false }
+    );
+    let rawChunkIndex = 0;
+    let rawStreamOutput = '';
+
+    debugLog({
+      event: 'gemma4 input shape',
+      details: {
+        activeModelId: runtimeState.activeModelId,
+        messageCount: messages.length,
+        imageCount: images.length,
+        inputKeys: Object.keys(inputs).sort(),
+      },
+    });
+
+    const streamer = new TextStreamer(tokenizer, {
+      skip_prompt: true,
+      skip_special_tokens: true,
+      callback_function: (output: string) => {
+        rawChunkIndex += 1;
+        rawStreamOutput += output;
+        console.log('[transformersJsWorker] gemma4 raw chunk:', JSON.stringify({
+          index: rawChunkIndex,
+          output,
+        }));
+        onChunk(output);
+      },
+    });
+
+    const result = await generateWithModel({
+      model,
+      inputs,
+      pastKeyValues: null,
+      params,
+      streamer,
+      stoppingCriteria,
+    });
+    console.log('[transformersJsWorker] gemma4 raw output start');
+    console.log(rawStreamOutput);
+    console.log('[transformersJsWorker] gemma4 raw output end');
+    debugLog({
+      event: 'gemma4 raw output summary',
+      details: {
+        activeModelId: runtimeState.activeModelId,
+        rawChunkCount: rawChunkIndex,
+        rawOutputLength: rawStreamOutput.length,
+      },
+    });
+    void result;
   },
 };
 

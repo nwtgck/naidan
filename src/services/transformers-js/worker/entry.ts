@@ -4,6 +4,7 @@ import {
   AutoProcessor,
   AutoTokenizer,
   AutoModelForCausalLM,
+  AutoModelForImageTextToText,
   InterruptableStoppingCriteria,
   env,
   type PreTrainedModel,
@@ -11,6 +12,10 @@ import {
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker, WorkerToolDefinition } from '@/services/transformers-js/types';
+import {
+  isGemma4Model,
+  type Gemma4ProcessorLike,
+} from '@/services/transformers-js/models/gemma4';
 import {
   isQwen3_5Model,
 } from '@/services/transformers-js/models/qwen3_5';
@@ -36,11 +41,15 @@ interface Qwen3_5ProcessorLike {
   batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[];
 }
 
+interface AutoModelWithSupports {
+  supports?: (modelType: string) => boolean;
+}
+
 const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
 // Intercept fetch to handle SPA 404 fallback and enforce local-only constraints
 const originalFetch = self.fetch;
-self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   let urlString = '';
   if (typeof input === 'string') {
     urlString = input;
@@ -114,6 +123,7 @@ self.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   return response;
 };
+self.fetch = interceptedFetch;
 
 // Configure environment
 env.allowLocalModels = true;
@@ -210,6 +220,7 @@ const opfsCache = {
 // Enable custom cache
 env.useCustomCache = true;
 env.customCache = opfsCache;
+env.fetch = interceptedFetch;
 
 if (env.backends.onnx.wasm) {
   env.backends.onnx.wasm.wasmPaths = '/transformers/';
@@ -218,10 +229,12 @@ if (env.backends.onnx.wasm) {
 // Singleton state
 let model: PreTrainedModel | null = null;
 let tokenizer: PreTrainedTokenizer | null = null;
+let gemma4Processor: Gemma4ProcessorLike | null = null;
 let qwen3_5Processor: Qwen3_5ProcessorLike | null = null;
 let activeModelId: string | null = null;
 const generationRuntimeState: WorkerGenerationRuntimeState = {
   activeModelId: null,
+  gemma4Processor: null,
   qwen3_5Processor: null,
   gptOssPastKeyValues: null,
   qwen3_5PastKeyValues: null,
@@ -254,6 +267,25 @@ function debugLog({ event, details }: { event: string; details: Record<string, u
 
 function clearQwen3_5ContinuationState(): void {
   generationRuntimeState.qwen3_5ConversationState = undefined;
+}
+
+function assertGemma4RuntimeSupport({ modelId }: { modelId: string }): void {
+  if (!isGemma4Model({
+    modelType: undefined,
+    activeModelId: modelId,
+  })) {
+    return;
+  }
+
+  const autoModel = AutoModelForImageTextToText as AutoModelWithSupports;
+  if (typeof autoModel.supports === 'function' && autoModel.supports('gemma4')) {
+    return;
+  }
+
+  throw new Error(
+    'The active @huggingface/transformers runtime does not support gemma4. ' +
+    'If you just upgraded dependencies, restart the Vite dev server so it rebuilds its optimized dependency cache.'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +399,8 @@ const transformersJsWorker: ITransformersJsWorker = {
     let loadedDevice: 'webgpu' | 'wasm' = 'wasm';
 
     try {
+      assertGemma4RuntimeSupport({ modelId: cleanModelId });
+
       await withModelAccessMode({
         isLocal,
         run: async () => {
@@ -383,7 +417,14 @@ const transformersJsWorker: ITransformersJsWorker = {
               },
             });
             try {
-              const loadedModel = await AutoModelForCausalLM.from_pretrained(cleanModelId, {
+              const loadedModel = await (
+                isGemma4Model({
+                  modelType: undefined,
+                  activeModelId: cleanModelId,
+                })
+                  ? AutoModelForImageTextToText
+                  : AutoModelForCausalLM
+              ).from_pretrained(cleanModelId, {
                 dtype,
                 device,
                 progress_callback: progressCallback,
@@ -440,7 +481,19 @@ const transformersJsWorker: ITransformersJsWorker = {
           console.log('[transformersJsWorker] Model loaded successfully.');
 
           // 2. Load Tokenizer
-          if (isQwen3_5Model({
+          if (isGemma4Model({
+            modelType: (model as ModelInternals | null)?.config?.model_type,
+            activeModelId: cleanModelId,
+          })) {
+            console.log('[transformersJsWorker] Loading Gemma 4 processor...');
+            gemma4Processor = await AutoProcessor.from_pretrained(cleanModelId, {
+              progress_callback: progressCallback,
+              local_files_only: isLocal,
+            }) as unknown as Gemma4ProcessorLike;
+            generationRuntimeState.gemma4Processor = gemma4Processor;
+            tokenizer = gemma4Processor.tokenizer;
+            console.log('[transformersJsWorker] Gemma 4 processor loaded.');
+          } else if (isQwen3_5Model({
             modelType: (model as ModelInternals | null)?.config?.model_type,
             activeModelId: cleanModelId,
           })) {
@@ -481,6 +534,8 @@ const transformersJsWorker: ITransformersJsWorker = {
       await model.dispose();
       model = null;
     }
+    gemma4Processor = null;
+    generationRuntimeState.gemma4Processor = null;
     qwen3_5Processor = null;
     generationRuntimeState.qwen3_5Processor = null;
     tokenizer = null;
