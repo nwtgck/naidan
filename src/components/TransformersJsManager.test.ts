@@ -133,6 +133,16 @@ describe('TransformersJsManager.vue', () => {
     expect(wrapper.text()).toContain('1.0 KB');
   });
 
+  it('shows Gemma 4 in the preset model list', async () => {
+    const wrapper = mount(TransformersJsManager);
+    await flushPromises();
+
+    const input = wrapper.find('input[placeholder*="Hugging Face model ID"]');
+    await input.trigger('focus');
+
+    expect(wrapper.text()).toContain('onnx-community/gemma-4-E2B-it-ONNX');
+  });
+
   it('renders incomplete models with Resume label', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
       { id: 'hf.co/org/incomplete', size: 500, fileCount: 2, lastModified: Date.now(), isComplete: false }

@@ -1,6 +1,7 @@
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { createTransformersJsWorkerClient } from '@/services/transformers-js/worker/client';
 import { createTransformersJsScannerWorkerClient } from '@/services/transformers-js/scanner/worker/client';
+import { isGemma4Model } from '@/services/transformers-js/models/gemma4';
 import type {
   ProgressInfo,
   ScanTask,
@@ -266,7 +267,7 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
   modelId: string,
   remote: TransformersJsWorkerClient,
   progress_callback: (info: ProgressInfo) => void
-}) {
+}): Promise<{ discoveredFileCount: number }> {
   const startedAt = performance.now();
   const scannerClient = createTransformersJsScannerWorkerClient({});
 
@@ -276,13 +277,16 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
     else if (cleanModelId.startsWith('https://huggingface.co/')) cleanModelId = cleanModelId.substring(23);
 
     const isLocal = cleanModelId.startsWith('user/');
-    if (isLocal) return;
+    if (isLocal) return { discoveredFileCount: 0 };
 
     // 1. Scan for URLs
     const tasks: ScanTask[] = [
       { type: 'tokenizer', modelId: cleanModelId, options: {} },
-      { type: 'causal-lm', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } }
     ];
+    if (isGemma4Model({ modelType: undefined, activeModelId: cleanModelId })) {
+      tasks.push({ type: 'processor', modelId: cleanModelId, options: {} });
+    }
+    tasks.push({ type: 'causal-lm', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } });
     debugLog({
       event: 'preDownload scan start',
       details: { modelId, elapsedMs: Math.round(performance.now() - startedAt) },
@@ -318,10 +322,12 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
         },
       });
     }
+    return { discoveredFileCount: files.length };
   } catch (err) {
     console.warn(`[transformersJsService] Pre-download scan/prefetch failed:`, err);
     // We don't throw here to avoid a complete failure if just the scanner/prefetcher has an issue,
     // as the original loadModel/downloadModel will still attempt to run normally.
+    return { discoveredFileCount: 0 };
   } finally {
     await scannerClient.dispose({});
   }
@@ -780,7 +786,12 @@ export const transformersJsService = {
       };
 
       // 1. Pre-download using scanner/prefetcher
-      await preDownloadModel({ modelId, remote: client, progress_callback });
+      const { discoveredFileCount } = await preDownloadModel({ modelId, remote: client, progress_callback });
+      if (discoveredFileCount === 0) {
+        throw new Error(
+          'Pre-download did not discover any model files. The download would be incomplete, so it was aborted.'
+        );
+      }
 
       // 2. Finalize with standard downloadModel (to ensure tokenizer and any missed files are handled)
       await client.downloadModel({ modelId, progressCallback: progress_callback });

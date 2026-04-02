@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-imports -- Worker-facing transformers.js type references are centralized here to keep service and worker contracts aligned. */
-import { AutoTokenizer, AutoModelForCausalLM } from '@huggingface/transformers';
+import { AutoProcessor, AutoTokenizer, AutoModelForCausalLM } from '@huggingface/transformers';
 import type { ChatMessage, EmptyArgs, LmParameters, ToolCall } from '@/models/types';
 
 /**
@@ -25,6 +25,7 @@ export interface ScannedModelFile {
 
 export type ScanTask =
   | { type: 'tokenizer'; modelId: string; options: Parameters<typeof AutoTokenizer.from_pretrained>[1] }
+  | { type: 'processor'; modelId: string; options: Parameters<typeof AutoProcessor.from_pretrained>[1] }
   | { type: 'causal-lm'; modelId: string; options: Parameters<typeof AutoModelForCausalLM.from_pretrained>[1] };
 
 export interface ScanOptions {
