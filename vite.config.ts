@@ -57,6 +57,14 @@ interface EmbeddedWorkerManifestEntry {
   size: number
 }
 
+function ensureExistingPath(relativePath: string): string {
+  const absolutePath = path.resolve(__dirname, relativePath)
+  if (!fs.existsSync(absolutePath)) {
+    throw new Error(`Alias target does not exist: ${relativePath}`)
+  }
+  return absolutePath
+}
+
 /**
  * Plugin to manually Gzip WASM files in the output directory and delete originals.
  * Replacing vite-plugin-compression per user request.
@@ -142,13 +150,13 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         ...(isStandalone ? {
-          '@/services/advanced-text-editor-v3-worker-client': path.resolve(__dirname, 'src/services/advanced-text-editor-v3-worker-client-standalone.ts'),
-          '@/services/highlight-worker-client': path.resolve(__dirname, 'src/services/highlight-worker-client-standalone.ts'),
-          '@/services/wesh-worker-client': path.resolve(__dirname, 'src/services/wesh-worker-client-standalone.ts'),
-          '@/services/global-search-worker-client': path.resolve(__dirname, 'src/services/global-search-worker-client-standalone.ts'),
-          '@/services/file-explorer-worker-client': path.resolve(__dirname, 'src/services/file-explorer-worker-client-standalone.ts'),
-          '@/services/transformers-js-worker-client': path.resolve(__dirname, 'src/services/transformers-js-worker-client-standalone.ts'),
-          '@/services/transformers-js-scanner-worker-client': path.resolve(__dirname, 'src/services/transformers-js-scanner-worker-client-standalone.ts'),
+          '@/services/advanced-text-editor-v3/worker/client': ensureExistingPath('src/services/advanced-text-editor-v3/worker/client-standalone.ts'),
+          '@/services/highlight/worker/client': ensureExistingPath('src/services/highlight/worker/client-standalone.ts'),
+          '@/services/wesh/worker/client': ensureExistingPath('src/services/wesh/worker/client-standalone.ts'),
+          '@/services/global-search/worker/client': ensureExistingPath('src/services/global-search/worker/client-standalone.ts'),
+          '@/services/file-explorer/worker/client': ensureExistingPath('src/services/file-explorer/worker/client-standalone.ts'),
+          '@/services/transformers-js/worker/client': ensureExistingPath('src/services/transformers-js/worker/client-standalone.ts'),
+          '@/services/transformers-js/scanner/worker/client': ensureExistingPath('src/services/transformers-js/scanner/worker/client-standalone.ts'),
         } : {}),
         '@': path.resolve(__dirname, 'src'),
       },

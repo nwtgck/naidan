@@ -2,7 +2,7 @@ import type { Tool } from './types';
 import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
 import { createWeshTool } from './wesh';
-import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh-worker-client';
+import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import type { WeshMount } from '@/services/wesh/types';

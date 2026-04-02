@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh-worker-client';
+import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import type { WeshMount } from '@/services/wesh/types';
 
 export type WeshTerminalLineKind = 'system' | 'command' | 'stdout' | 'stderr' | 'error';

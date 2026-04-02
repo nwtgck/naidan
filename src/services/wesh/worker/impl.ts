@@ -15,7 +15,7 @@ import {
   type IWeshWorker,
   type WeshWorkerRemoteExecutionEvent,
   type WeshWorkerExecutionSummary,
-} from './wesh-worker.types'
+} from './types'
 
 function createForwardingHandle({
   stream,

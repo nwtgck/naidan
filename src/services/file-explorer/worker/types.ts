@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { EmptyArgs } from '@/models/types'
-import { weshWorkerMountSchema } from '@/services/wesh-worker.types'
+import { weshWorkerMountSchema } from '@/services/wesh/worker/types'
 
 const fileExplorerPathSchema = z.string().min(1)
 

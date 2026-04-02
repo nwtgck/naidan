@@ -1,4 +1,4 @@
 import * as Comlink from 'comlink'
-import { createWeshWorker } from './wesh.worker.impl'
+import { createWeshWorker } from './impl'
 
 Comlink.expose(createWeshWorker({}))

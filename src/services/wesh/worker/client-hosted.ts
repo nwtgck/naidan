@@ -1,6 +1,6 @@
 import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
-import { createFileProtocolCompatibleWeshWorker } from '@/services/wesh-worker-loader'
+import { FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME } from '@/models/constants'
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
   weshWorkerExecutionSummarySchema,
@@ -12,7 +12,7 @@ import {
   type WeshWorkerExecutionEvent,
   type WeshWorkerExecuteRequest,
   type WeshWorkerRemoteExecutionEvent,
-} from './wesh-worker.types'
+} from './types'
 import type { WeshMount } from '@/services/wesh/types'
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
@@ -37,7 +37,13 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   })
 
   const createRuntime = async () => {
-    const worker = createFileProtocolCompatibleWeshWorker()
+    const worker = new Worker(
+      new URL('./entry.ts', import.meta.url),
+      {
+        type: 'module',
+        name: FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME,
+      },
+    )
     const remote = Comlink.wrap<IWeshWorker>(worker)
     await remote.init({ request: initRequest })
     return { worker, remote }

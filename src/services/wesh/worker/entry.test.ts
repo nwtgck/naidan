@@ -14,7 +14,7 @@ describe('wesh.worker', () => {
   it('executes a script after initialization', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
-    await import('./wesh.worker')
+    await import('./entry')
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     const rootHandle = new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle
@@ -42,7 +42,7 @@ describe('wesh.worker', () => {
   it('can read from a mounted directory', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
-    await import('./wesh.worker')
+    await import('./entry')
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     const rootHandle = new MockFileSystemDirectoryHandle('root')
@@ -77,7 +77,7 @@ describe('wesh.worker', () => {
   it('interrupts a foreground process group', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
-    await import('./wesh.worker')
+    await import('./entry')
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
@@ -106,7 +106,7 @@ describe('wesh.worker', () => {
   it('streams stdout and stderr events before awaitExecution resolves', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
-    await import('./wesh.worker')
+    await import('./entry')
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
@@ -118,12 +118,12 @@ describe('wesh.worker', () => {
       },
     })
 
-    const events: Array<import('./wesh-worker.types').WeshWorkerRemoteExecutionEvent> = []
+    const events: Array<import('./types').WeshWorkerRemoteExecutionEvent> = []
     const { executionId } = await workerApi.startExecution(
       {
         script: 'echo before-stream; echo partial-error >&2',
       },
-      async (event: import('./wesh-worker.types').WeshWorkerRemoteExecutionEvent) => {
+      async (event: import('./types').WeshWorkerRemoteExecutionEvent) => {
         events.push(event)
       },
     )

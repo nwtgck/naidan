@@ -5,7 +5,7 @@ import { createFileExplorerWorker } from './file-explorer/worker/impl'
 import { createHighlightWorker } from './highlight/worker/impl'
 import type { IWorkerHub } from './worker-hub.types'
 import { createGlobalSearchWorker } from './global-search/worker/impl'
-import { createWeshWorker } from './wesh.worker.impl'
+import { createWeshWorker } from './wesh/worker/impl'
 
 export function createStandaloneWorkerHub(_args: EmptyArgs): IWorkerHub {
   return {

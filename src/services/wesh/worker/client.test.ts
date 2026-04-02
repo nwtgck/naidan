@@ -1,12 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Comlink from 'comlink'
 
-const mockCreateWorker = vi.fn()
-
-vi.mock('@/services/wesh-worker-loader', () => ({
-  createFileProtocolCompatibleWeshWorker: mockCreateWorker,
-}))
-
 vi.mock('comlink', () => {
   const releaseProxy = Symbol('releaseProxy')
   return {
@@ -24,7 +18,12 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
   it('initializes the remote and disposes the worker', async () => {
     const terminate = vi.fn()
     const worker = { terminate } as unknown as Worker
-    mockCreateWorker.mockReturnValue(worker)
+    class WorkerMock {
+      constructor() {
+        return worker
+      }
+    }
+    vi.stubGlobal('Worker', WorkerMock)
 
     const release = vi.fn()
     const init = vi.fn().mockResolvedValue(undefined)
@@ -52,10 +51,10 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       interrupt,
       dispose,
       [Comlink.releaseProxy]: release,
-    } as unknown as Comlink.Remote<import('./wesh-worker.types').IWeshWorker>)
+    } as unknown as Comlink.Remote<import('./types').IWeshWorker>)
 
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
-    const { createFileProtocolCompatibleWeshWorkerClient } = await import('./wesh-worker-client')
+    const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
     const client = await createFileProtocolCompatibleWeshWorkerClient({
       rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
       mounts: [],
@@ -85,9 +84,13 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const terminate2 = vi.fn()
     const worker1 = { terminate: terminate1 } as unknown as Worker
     const worker2 = { terminate: terminate2 } as unknown as Worker
-    mockCreateWorker
-      .mockReturnValueOnce(worker1)
-      .mockReturnValueOnce(worker2)
+    class WorkerMock {
+      static nextWorkers = [worker1, worker2]
+      constructor() {
+        return WorkerMock.nextWorkers.shift()!
+      }
+    }
+    vi.stubGlobal('Worker', WorkerMock)
 
     const release1 = vi.fn().mockResolvedValue(undefined)
     const release2 = vi.fn().mockResolvedValue(undefined)
@@ -105,7 +108,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       interrupt: vi.fn().mockResolvedValue(true),
       dispose: vi.fn().mockResolvedValue(undefined),
       [Comlink.releaseProxy]: release1,
-    } as unknown as Comlink.Remote<import('./wesh-worker.types').IWeshWorker>
+    } as unknown as Comlink.Remote<import('./types').IWeshWorker>
 
     const remote2 = {
       init: vi.fn().mockResolvedValue(undefined),
@@ -117,14 +120,14 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       interrupt: vi.fn().mockResolvedValue(true),
       dispose: vi.fn().mockResolvedValue(undefined),
       [Comlink.releaseProxy]: release2,
-    } as unknown as Comlink.Remote<import('./wesh-worker.types').IWeshWorker>
+    } as unknown as Comlink.Remote<import('./types').IWeshWorker>
 
     vi.mocked(Comlink.wrap)
       .mockReturnValueOnce(remote1)
       .mockReturnValueOnce(remote2)
 
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
-    const { createFileProtocolCompatibleWeshWorkerClient } = await import('./wesh-worker-client')
+    const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
     const client = await createFileProtocolCompatibleWeshWorkerClient({
       rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
       mounts: [],

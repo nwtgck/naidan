@@ -1,6 +1,6 @@
 import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
-import { createFileProtocolCompatibleStandaloneWorkerHub } from './worker-hub-standalone-loader'
+import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
   weshWorkerExecutionSummarySchema,
@@ -11,8 +11,8 @@ import {
   type WeshWorkerExecutionEvent,
   type WeshWorkerExecuteRequest,
   type WeshWorkerRemoteExecutionEvent,
-} from './wesh-worker.types'
-import type { IWorkerHub } from './worker-hub.types'
+} from './types'
+import type { IWorkerHub } from '@/services/worker-hub.types'
 import type { WeshMount } from '@/services/wesh/types'
 
 export async function createFileProtocolCompatibleWeshWorkerClient({
