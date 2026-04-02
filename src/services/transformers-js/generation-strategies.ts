@@ -222,6 +222,8 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       null,
       { add_special_tokens: false }
     );
+    let rawChunkIndex = 0;
+    let rawStreamOutput = '';
 
     debugLog({
       event: 'gemma4 input shape',
@@ -237,6 +239,12 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       skip_prompt: true,
       skip_special_tokens: true,
       callback_function: (output: string) => {
+        rawChunkIndex += 1;
+        rawStreamOutput += output;
+        console.log('[transformersJsWorker] gemma4 raw chunk:', JSON.stringify({
+          index: rawChunkIndex,
+          output,
+        }));
         onChunk(output);
       },
     });
@@ -248,6 +256,17 @@ const gemma4GenerationStrategy: GenerationStrategy = {
       params,
       streamer,
       stoppingCriteria,
+    });
+    console.log('[transformersJsWorker] gemma4 raw output start');
+    console.log(rawStreamOutput);
+    console.log('[transformersJsWorker] gemma4 raw output end');
+    debugLog({
+      event: 'gemma4 raw output summary',
+      details: {
+        activeModelId: runtimeState.activeModelId,
+        rawChunkCount: rawChunkIndex,
+        rawOutputLength: rawStreamOutput.length,
+      },
     });
     void result;
   },

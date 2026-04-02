@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-imports -- Gemma 4 worker adapter intentionally depends on transformers.js runtime image utilities. */
-import { RawImage, type PreTrainedTokenizer } from '@huggingface/transformers';
+import type { RawImage as TransformersRawImage, PreTrainedTokenizer } from '@huggingface/transformers';
 import type { ChatMessage } from '@/models/types';
 
 export type Gemma4TemplateContentPart =
@@ -14,7 +14,7 @@ export interface Gemma4TemplateMessage {
 export interface Gemma4ProcessorLike {
   (
     text: string | string[],
-    images: RawImage[] | RawImage | null,
+    images: TransformersRawImage[] | TransformersRawImage | null,
     audio: Float32Array[] | Float32Array | null,
     options: Record<string, unknown>
   ): Promise<Record<string, unknown>>;
@@ -42,10 +42,10 @@ export async function buildGemma4TemplateInput({
 }: {
   messages: ChatMessage[];
 }): Promise<{
-  images: RawImage[];
+  images: TransformersRawImage[];
   templateMessages: Gemma4TemplateMessage[];
 }> {
-  const images: RawImage[] = [];
+  const images: TransformersRawImage[] = [];
   const templateMessages: Gemma4TemplateMessage[] = [];
 
   for (const message of messages) {
@@ -186,7 +186,9 @@ async function readGemma4Image({
   url,
 }: {
   url: string;
-}): Promise<RawImage> {
+}): Promise<TransformersRawImage> {
+  const { RawImage } = await import('@huggingface/transformers');
+
   if (url.startsWith('data:')) {
     const response = await fetch(url);
     if (!response.ok) {
