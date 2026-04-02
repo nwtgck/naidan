@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
+import { createStandaloneWorkerClientAliases } from './build/standalone-worker-facades.js'
 import {
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
   STANDALONE_WORKER_MANIFEST_SCRIPT_ID,
@@ -149,15 +150,11 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
-        ...(isStandalone ? {
-          '@/services/advanced-text-editor-v3/worker/client': ensureExistingPath('src/services/advanced-text-editor-v3/worker/client-standalone.ts'),
-          '@/services/highlight/worker/client': ensureExistingPath('src/services/highlight/worker/client-standalone.ts'),
-          '@/services/wesh/worker/client': ensureExistingPath('src/services/wesh/worker/client-standalone.ts'),
-          '@/services/global-search/worker/client': ensureExistingPath('src/services/global-search/worker/client-standalone.ts'),
-          '@/services/file-explorer/worker/client': ensureExistingPath('src/services/file-explorer/worker/client-standalone.ts'),
-          '@/services/transformers-js/worker/client': ensureExistingPath('src/services/transformers-js/worker/client-standalone.ts'),
-          '@/services/transformers-js/scanner/worker/client': ensureExistingPath('src/services/transformers-js/scanner/worker/client-standalone.ts'),
-        } : {}),
+        ...(isStandalone
+          ? createStandaloneWorkerClientAliases({
+            resolvePath: ensureExistingPath,
+          })
+          : {}),
         '@': path.resolve(__dirname, 'src'),
       },
     },

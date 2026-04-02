@@ -9,6 +9,7 @@ import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multili
 import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
 import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
+import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -185,6 +186,7 @@ export default tseslint.config(
   requireTestOnlyExport,
   requireDefineExposeTestOnly,
   requireIconSuffix,
+  requireWorkerClientFacade,
   {
     files: ['**/*.test.ts'],
     languageOptions: {
