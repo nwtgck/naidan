@@ -1,12 +1,12 @@
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
-import { createTransformersJsWorkerClient } from '@/services/transformers-js-worker-client';
-import { createTransformersJsScannerWorkerClient } from '@/services/transformers-js-scanner-worker-client';
+import { createTransformersJsWorkerClient } from '@/services/transformers-js/worker/client';
+import { createTransformersJsScannerWorkerClient } from '@/services/transformers-js/scanner/worker/client';
 import type {
   ProgressInfo,
   ScanTask,
   WorkerToolDefinition,
   TransformersJsWorkerClient,
-} from './transformers-js.types';
+} from './types';
 
 /**
  * Interface for FileSystemFileHandle with createWritable() method.

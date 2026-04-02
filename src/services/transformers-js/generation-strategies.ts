@@ -7,9 +7,9 @@ import {
   type Tensor,
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
-import { ToolCallStreamParser } from './transformers-js-tool-call-parser';
-import { Qwen3_5ToolCallParser } from './transformers-js-qwen3_5-tool-call-parser';
-import { generateGptOss } from './transformers-js-gpt-oss';
+import { ToolCallStreamParser } from './tool-call-parser';
+import { Qwen3_5ToolCallParser } from './models/qwen3_5-tool-call-parser';
+import { generateGptOss } from './models/gpt-oss';
 import {
   applyQwen3_5ConversationState,
   buildQwen3_5NoToolContinuationPrompt,
@@ -20,8 +20,8 @@ import {
   sanitizeQwen3_5VisibleText,
   type Qwen3_5ReasoningMode,
   type Qwen3_5ConversationState,
-} from './transformers-js-qwen3_5';
-import type { WorkerToolDefinition } from './transformers-js.types';
+} from './models/qwen3_5';
+import type { WorkerToolDefinition } from './types';
 
 type ModelOutput = Record<string, unknown>;
 

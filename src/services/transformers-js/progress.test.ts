@@ -61,7 +61,7 @@ describe('transformersJsService progress logic', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
     transformersJsService.subscribe((_status, progress) => {
@@ -93,7 +93,7 @@ describe('transformersJsService progress logic', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
     transformersJsService.subscribe((_status, progress) => {
@@ -136,7 +136,7 @@ describe('transformersJsService progress logic', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
     transformersJsService.subscribe((_status, progress) => {
@@ -180,7 +180,7 @@ describe('transformersJsService progress logic', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
 
     const progressHistory: number[] = [];
     transformersJsService.subscribe((_status, progress) => {
@@ -212,7 +212,7 @@ describe('transformersJsService progress logic', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
     transformersJsService.subscribe((status, progress) => {

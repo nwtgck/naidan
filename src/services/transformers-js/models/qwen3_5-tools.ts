@@ -1,4 +1,4 @@
-import type { WorkerToolDefinition } from './transformers-js.types';
+import type { WorkerToolDefinition } from '@/services/transformers-js/types';
 
 function jsonSchemaToQwen3_5Type({ schema }: { schema: Record<string, unknown> }): string {
   const type = schema.type;

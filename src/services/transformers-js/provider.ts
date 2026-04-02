@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import type { LLMProvider } from './lm/types';
+import type { LLMProvider } from '@/services/lm/types';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
-import { transformersJsService } from './transformers-js';
-import type { Tool } from './tools/types';
-import type { WorkerToolDefinition } from './transformers-js.types';
+import { transformersJsService } from './index';
+import type { Tool } from '@/services/tools/types';
+import type { WorkerToolDefinition } from './types';
 import { zodToJsonSchema } from '@/utils/llm-tools';
 
 export class TransformersJsProvider implements LLMProvider {
@@ -14,10 +14,10 @@ export class TransformersJsProvider implements LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: (params: { id: string; event: import('./tools/types').ToolExecutionEvent }) => void;
+    onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
     onToolResult?: (params: {
       id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string };
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
@@ -99,7 +99,7 @@ export class TransformersJsProvider implements LLMProvider {
         try {
           parsedArgs = JSON.parse(tc.function.arguments);
         } catch (e) {
-          const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = {
+          const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = {
             status: 'error',
             code: 'invalid_arguments',
             message: `Error: Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
@@ -110,7 +110,7 @@ export class TransformersJsProvider implements LLMProvider {
         }
 
         if (!tool) {
-          const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = {
+          const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = {
             status: 'error',
             code: 'other',
             message: `Tool "${tc.function.name}" not found.`,
@@ -146,7 +146,7 @@ export class TransformersJsProvider implements LLMProvider {
           } catch (e) {
             if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-            const errorResult: { status: 'error'; code: import('./tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
+            const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
               ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
               : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 

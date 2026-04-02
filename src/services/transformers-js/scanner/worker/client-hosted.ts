@@ -5,7 +5,7 @@ import type {
   ScanOptions,
   TransformersJsScannerWorkerClient,
   ScannedModelFile,
-} from './transformers-js.types'
+} from '@/services/transformers-js/types'
 
 function createUnavailableEnvironmentError(): Error {
   return new Error('Transformers.js scanner worker is not available in this environment')
@@ -23,7 +23,7 @@ export function createTransformersJsScannerWorkerClient(_args: EmptyArgs): Trans
   }
 
   const worker = new Worker(
-    new URL('./transformers-js.scanner.worker.ts', import.meta.url),
+    new URL('./entry.ts', import.meta.url),
     { type: 'module' }
   )
 

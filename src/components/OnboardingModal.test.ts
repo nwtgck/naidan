@@ -9,7 +9,7 @@ import { useToast } from '@/composables/useToast';
 import { SettingsIcon } from 'lucide-vue-next';
 import * as openaiModule from '@/services/lm/openai';
 import * as ollamaModule from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import { type EndpointType } from '@/models/types';
 import { detectOllama } from '@/utils/ollama-detection';
 
@@ -26,7 +26,7 @@ vi.mock('../services/lm/ollama', () => {
   };
 });
 
-vi.mock('../services/transformers-js-provider', () => ({
+vi.mock('../services/transformers-js/provider', () => ({
   TransformersJsProvider: vi.fn(),
 }));
 

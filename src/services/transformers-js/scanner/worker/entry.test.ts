@@ -39,7 +39,7 @@ describe('transformers-js.scanner.worker', () => {
   it('should collect URLs and mock heavy files', async () => {
     const comlink = await import('comlink');
     const { AutoTokenizer, AutoModelForCausalLM } = await import('@huggingface/transformers');
-    await import('./transformers-js.scanner.worker');
+    await import('./entry');
 
     const scannerObj = (comlink.expose as any).mock.calls[0][0];
 
@@ -87,7 +87,7 @@ describe('transformers-js.scanner.worker', () => {
   it('should handle scan task errors gracefully', async () => {
     const comlink = await import('comlink');
     const { AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./transformers-js.scanner.worker');
+    await import('./entry');
     const scannerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoTokenizer.from_pretrained as any).mockRejectedValue(new Error('Scan failed'));

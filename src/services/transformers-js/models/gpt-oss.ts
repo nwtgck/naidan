@@ -6,7 +6,7 @@ import {
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/utils/gpt-oss-harmony';
-import type { WorkerToolDefinition } from './transformers-js.types';
+import type { WorkerToolDefinition } from '@/services/transformers-js/types';
 
 interface GenerationResult {
   past_key_values: unknown;

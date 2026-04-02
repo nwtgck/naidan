@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ToolCallStreamParser } from './transformers-js-tool-call-parser';
+import { ToolCallStreamParser } from './tool-call-parser';
 
 describe('ToolCallStreamParser', () => {
   let onText: ReturnType<typeof vi.fn<(text: string) => void>>;

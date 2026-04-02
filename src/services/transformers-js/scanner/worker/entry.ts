@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports -- Dedicated scanner worker intentionally imports transformers.js runtime directly. */
 /**
  * Transformers.js Model URL Scanner Worker
  *
@@ -26,7 +27,7 @@ import {
   AutoModelForCausalLM,
   env
 } from '@huggingface/transformers';
-import type { ITransformersJsScannerWorker, ScannedModelFile, ScanOptions, ScanTask } from './transformers-js.types';
+import type { ITransformersJsScannerWorker, ScannedModelFile, ScanOptions, ScanTask } from '@/services/transformers-js/types';
 
 const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 

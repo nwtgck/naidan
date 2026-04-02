@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Qwen3_5ToolCallParser } from './transformers-js-qwen3_5-tool-call-parser';
+import { Qwen3_5ToolCallParser } from './qwen3_5-tool-call-parser';
 
 describe('Qwen3_5ToolCallParser', () => {
   let onText: ReturnType<typeof vi.fn<(text: string) => void>>;

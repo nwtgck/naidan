@@ -5,7 +5,7 @@ import {
   isQwen3_5Model,
   normalizeQwen3_5ToolCallsForTemplate,
   shouldRetryQwen3_5WithoutContinuation,
-} from './transformers-js-qwen3_5';
+} from './qwen3_5';
 
 describe('transformers-js-qwen3_5', () => {
   it('detects Qwen3.5 from model type or model id', () => {

@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports -- Dedicated worker entry intentionally imports transformers.js runtime directly. */
 import * as Comlink from 'comlink';
 import {
   AutoProcessor,
@@ -9,15 +10,15 @@ import {
   type PreTrainedTokenizer,
 } from '@huggingface/transformers';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
-import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker, WorkerToolDefinition } from './transformers-js.types';
+import type { ProgressInfo, ModelLoadResult, ITransformersJsWorker, WorkerToolDefinition } from '@/services/transformers-js/types';
 import {
   isQwen3_5Model,
-} from './transformers-js-qwen3_5';
+} from '@/services/transformers-js/models/qwen3_5';
 import {
   selectGenerationStrategy,
   type WorkerGenerationRuntimeState,
-} from './transformers-js-generation-strategies';
-import { urlToPath, writeToOpfs } from './transformers-js.utils';
+} from '@/services/transformers-js/generation-strategies';
+import { urlToPath, writeToOpfs } from '@/services/transformers-js/utils';
 
 /**
  * Internal interface for properties found on Transformers.js model instances

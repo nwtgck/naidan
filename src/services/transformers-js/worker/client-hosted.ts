@@ -6,7 +6,7 @@ import type {
   WorkerToolDefinition,
   ProgressInfo,
   ModelLoadResult,
-} from './transformers-js.types'
+} from '@/services/transformers-js/types'
 
 function createUnavailableEnvironmentError(): Error {
   return new Error('Transformers.js worker is not available in this environment')
@@ -42,7 +42,7 @@ export function createTransformersJsWorkerClient(_args: EmptyArgs): Transformers
   }
 
   const worker = new Worker(
-    new URL('./transformers-js.worker.ts', import.meta.url),
+    new URL('./entry.ts', import.meta.url),
     { type: 'module' }
   )
 

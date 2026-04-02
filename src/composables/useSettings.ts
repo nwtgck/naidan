@@ -6,7 +6,7 @@ import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
 import type { LLMProvider } from '@/services/lm/types';
 import { OpenAIProvider } from '@/services/lm/openai';
 import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import { transformersJsService } from '@/services/transformers-js';
 import { StorageTypeSchemaDto } from '@/models/dto';
 import { useGlobalEvents } from './useGlobalEvents';

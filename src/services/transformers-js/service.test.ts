@@ -95,7 +95,7 @@ describe('transformersJsService', () => {
   });
 
   it('should return empty list when no models directory exists', async () => {
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
     const models = await transformersJsService.listCachedModels();
     expect(models).toEqual([]);
   });
@@ -130,7 +130,7 @@ describe('transformersJsService', () => {
       }
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
     const models = await transformersJsService.listCachedModels();
 
     expect(models).toContainEqual(expect.objectContaining({
@@ -165,7 +165,7 @@ describe('transformersJsService', () => {
       }
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
     const models = await transformersJsService.listCachedModels();
     expect(models).toContainEqual(expect.objectContaining({
       id: 'user/incomplete-model',
@@ -191,7 +191,7 @@ describe('transformersJsService', () => {
       });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
 
     // Subscribe to track status changes
     const statuses: string[] = [];
@@ -244,7 +244,7 @@ describe('transformersJsService', () => {
       });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
     await transformersJsService.loadModel('hf.co/some-org/some-model');
 
     expect(mockRemote.loadModel).toHaveBeenCalledWith('hf.co/some-org/some-model', expect.any(Function));
@@ -262,7 +262,7 @@ describe('transformersJsService', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
 
     // Start first load
     const firstLoad = transformersJsService.loadModel('model-1');
@@ -288,7 +288,7 @@ describe('transformersJsService', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
     await transformersJsService.loadModel('some-model');
 
     const controller = new AbortController();
@@ -309,7 +309,7 @@ describe('transformersJsService', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
     await transformersJsService.loadModel('some-model');
 
     const reactiveParams = reactive({
@@ -341,7 +341,7 @@ describe('transformersJsService', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
     await transformersJsService.loadModel('some-model');
 
     const reactiveMessages = reactive([{
@@ -427,7 +427,7 @@ describe('transformersJsService', () => {
       }
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
     const data = new ArrayBuffer(10);
 
     await transformersJsService.importFile('my-model', 'onnx/model.onnx', data);
@@ -449,7 +449,7 @@ describe('transformersJsService', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('./index');
 
     await expect(transformersJsService.loadModel('bad-model')).rejects.toThrow('Failed to load');
     expect(transformersJsService.getState().status).toBe('error');

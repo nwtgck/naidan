@@ -1,5 +1,5 @@
 import type { ChatMessage, ToolCall } from '@/models/types';
-import type { WorkerToolDefinition } from './transformers-js.types';
+import type { WorkerToolDefinition } from '@/services/transformers-js/types';
 
 export type Qwen3_5ReasoningMode = 'default' | 'enabled' | 'disabled';
 

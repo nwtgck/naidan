@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { WorkerToolDefinition } from './transformers-js.types';
+import type { WorkerToolDefinition } from '@/services/transformers-js/types';
 
 // Hoisted spies for the module-level InterruptableStoppingCriteria singleton
 const mockInterruptFn = vi.hoisted(() => vi.fn());
@@ -124,7 +124,7 @@ describe('transformers-js.worker', () => {
 
   it('should initialize with custom OPFS cache', async () => {
     const { env } = await import('@huggingface/transformers');
-    await import('./transformers-js.worker');
+    await import('./entry');
 
     expect(env.useCustomCache).toBe(true);
     expect(env.customCache).toBeDefined();
@@ -133,7 +133,7 @@ describe('transformers-js.worker', () => {
   });
 
   it('opfsCache.match should return undefined for non-existent file', async () => {
-    await import('./transformers-js.worker');
+    await import('./entry');
     const { env } = await import('@huggingface/transformers');
     const cache = (env as any).customCache;
 
@@ -157,7 +157,7 @@ describe('transformers-js.worker', () => {
       throw new Error('Not found');
     });
 
-    await import('./transformers-js.worker');
+    await import('./entry');
     const { env } = await import('@huggingface/transformers');
     const cache = (env as any).customCache;
 
@@ -168,7 +168,7 @@ describe('transformers-js.worker', () => {
   });
 
   it('opfsCache.put should save file to OPFS and create marker', async () => {
-    await import('./transformers-js.worker');
+    await import('./entry');
     const { env } = await import('@huggingface/transformers');
     const cache = (env as any).customCache;
 
@@ -182,7 +182,7 @@ describe('transformers-js.worker', () => {
   });
 
   it('opfsCache.put should throw error when storage write fails', async () => {
-    await import('./transformers-js.worker');
+    await import('./entry');
     const { env } = await import('@huggingface/transformers');
     const cache = (env as any).customCache;
 
@@ -214,7 +214,7 @@ describe('transformers-js.worker', () => {
   });
 
   it('opfsCache.put should throw error when HTML response is received', async () => {
-    await import('./transformers-js.worker');
+    await import('./entry');
     const { env } = await import('@huggingface/transformers');
     const cache = (env as any).customCache;
 
@@ -230,7 +230,7 @@ describe('transformers-js.worker', () => {
   it('loadModel should try tiered fallback from WebGPU to WASM', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./transformers-js.worker');
+    await import('./entry');
 
     // Get the object that was passed to Comlink.expose
     const workerObj = (comlink.expose as any).mock.calls[0][0];
@@ -258,7 +258,7 @@ describe('transformers-js.worker', () => {
   it('downloadModel should normalize various Hugging Face URL formats', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer } = await import('@huggingface/transformers');
-    await import('./transformers-js.worker');
+    await import('./entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoTokenizer.from_pretrained as any).mockResolvedValue({});
@@ -280,7 +280,7 @@ describe('transformers-js.worker', () => {
   it('downloadModel should disable local model lookup for remote models', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-    await import('./transformers-js.worker');
+    await import('./entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
@@ -296,7 +296,7 @@ describe('transformers-js.worker', () => {
   it('downloadModel should keep local model lookup enabled for user models', async () => {
     const comlink = await import('comlink');
     const { AutoModelForCausalLM, AutoTokenizer, env } = await import('@huggingface/transformers');
-    await import('./transformers-js.worker');
+    await import('./entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     (AutoTokenizer.from_pretrained as any).mockImplementation(async () => {
@@ -311,7 +311,7 @@ describe('transformers-js.worker', () => {
 
   it('prefetchUrls should stream files to OPFS and report progress', async () => {
     const comlink = await import('comlink');
-    await import('./transformers-js.worker');
+    await import('./entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
     const mockResponse = new Response(new Uint8Array([10, 20, 30, 40]), {
@@ -336,7 +336,7 @@ describe('transformers-js.worker', () => {
 
   describe('Fetch Interceptor', () => {
     it('should block requests to "user/" models with 404', async () => {
-      await import('./transformers-js.worker');
+      await import('./entry');
       const interceptedFetch = self.fetch;
 
       const urls = [
@@ -354,7 +354,7 @@ describe('transformers-js.worker', () => {
     });
 
     it('should block requests to "local/" models with 404', async () => {
-      await import('./transformers-js.worker');
+      await import('./entry');
       const interceptedFetch = self.fetch;
 
       const res = await interceptedFetch('local/test/model.bin');
@@ -364,7 +364,7 @@ describe('transformers-js.worker', () => {
     });
 
     it('should convert HTML responses to 404 for model files (SPA fallback)', async () => {
-      await import('./transformers-js.worker');
+      await import('./entry');
       const interceptedFetch = self.fetch;
 
       originalFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
@@ -397,7 +397,7 @@ describe('transformers-js.worker', () => {
     });
 
     it('should allow normal JSON/Binary responses', async () => {
-      await import('./transformers-js.worker');
+      await import('./entry');
       const interceptedFetch = self.fetch;
 
       const mockRes = new Response('{}', { status: 200 });
@@ -411,7 +411,7 @@ describe('transformers-js.worker', () => {
     });
 
     it('should allow normal HTML pages (not model files)', async () => {
-      await import('./transformers-js.worker');
+      await import('./entry');
       const interceptedFetch = self.fetch;
 
       const mockRes = new Response('<html>ok</html>', {
@@ -466,7 +466,7 @@ describe('transformers-js.worker', () => {
         apply_chat_template: mockApplyTemplate,
       });
 
-      await import('./transformers-js.worker');
+      await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadModel('standard-model', vi.fn());
@@ -591,7 +591,7 @@ describe('transformers-js.worker', () => {
         },
       ));
 
-      await import('./transformers-js.worker');
+      await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadModel('onnx-community/Qwen3.5-2B-ONNX', vi.fn());
@@ -896,7 +896,7 @@ file-a
       (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
       (tfMock.AutoTokenizer.from_pretrained as any).mockResolvedValue(mockCallableTokenizer);
 
-      await import('./transformers-js.worker');
+      await import('./entry');
       const comlink = await import('comlink');
       workerObj = (comlink.expose as any).mock.calls[0][0];
       await workerObj.loadModel('my-gpt-oss-model', vi.fn());

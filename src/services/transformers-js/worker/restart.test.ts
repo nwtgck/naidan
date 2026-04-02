@@ -60,7 +60,7 @@ describe('transformersJsService worker restart', () => {
     });
 
     // 2. Import service
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('../index');
     const countAfterImport = MockWorker.constructorCount;
 
     // 3. Act
@@ -82,7 +82,7 @@ describe('transformersJsService worker restart', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('../index');
     const countBefore = MockWorker.constructorCount;
 
     try {
@@ -103,7 +103,7 @@ describe('transformersJsService worker restart', () => {
     });
 
     // 2. Import service
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('../index');
 
     // 3. Initial load success
     await transformersJsService.loadModel('some-model');
@@ -130,7 +130,7 @@ describe('transformersJsService worker restart', () => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
     });
 
-    const { transformersJsService } = await import('./transformers-js');
+    const { transformersJsService } = await import('../index');
     await transformersJsService.loadModel('some-model');
     const countAfterLoad = MockWorker.constructorCount;
 

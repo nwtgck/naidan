@@ -7,7 +7,7 @@ import type { LLMProvider } from '@/services/lm/types';
 import { UNKNOWN_STEPS } from '@/services/lm/types';
 import { OpenAIProvider } from '@/services/lm/openai';
 import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js-provider';
+import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
@@ -1103,7 +1103,7 @@ export function useChat() {
         provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
         break;
       case 'transformers_js':
-        provider = new (await import('../services/transformers-js-provider')).TransformersJsProvider();
+        provider = new (await import('../services/transformers-js/provider')).TransformersJsProvider();
         break;
       default: {
         const _ex: never = type;

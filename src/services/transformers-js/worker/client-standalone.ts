@@ -4,7 +4,7 @@ import type {
   ProgressInfo,
   ModelLoadResult,
   WorkerToolDefinition,
-} from './transformers-js.types'
+} from '@/services/transformers-js/types'
 
 function createUnsupportedError(): Error {
   return new Error('Transformers.js is not available in standalone mode')

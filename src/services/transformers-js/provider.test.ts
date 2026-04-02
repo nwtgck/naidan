@@ -10,7 +10,7 @@ const mockService = {
   listCachedModels: vi.fn(),
 };
 
-vi.mock('./transformers-js', () => ({
+vi.mock('./index', () => ({
   transformersJsService: mockService
 }));
 
@@ -45,7 +45,7 @@ describe('TransformersJsProvider', () => {
     mockService.loadModel.mockResolvedValue(undefined);
     setupGenerateTextMock();
 
-    const { TransformersJsProvider } = await import('./transformers-js-provider');
+    const { TransformersJsProvider } = await import('./provider');
     const provider = new TransformersJsProvider();
 
     await provider.chat({
@@ -63,7 +63,7 @@ describe('TransformersJsProvider', () => {
     mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'some-model' });
     setupGenerateTextMock();
 
-    const { TransformersJsProvider } = await import('./transformers-js-provider');
+    const { TransformersJsProvider } = await import('./provider');
     const provider = new TransformersJsProvider();
 
     await provider.chat({
@@ -79,7 +79,7 @@ describe('TransformersJsProvider', () => {
   it('should throw error if engine is already loading a model', async () => {
     mockService.getState.mockReturnValue({ status: 'loading', activeModelId: null });
 
-    const { TransformersJsProvider } = await import('./transformers-js-provider');
+    const { TransformersJsProvider } = await import('./provider');
     const provider = new TransformersJsProvider();
 
     await expect(provider.chat({
@@ -95,7 +95,7 @@ describe('TransformersJsProvider', () => {
       { id: 'model-2', isComplete: false }
     ]);
 
-    const { TransformersJsProvider } = await import('./transformers-js-provider');
+    const { TransformersJsProvider } = await import('./provider');
     const provider = new TransformersJsProvider();
 
     const models = await provider.listModels({});
@@ -124,7 +124,7 @@ describe('TransformersJsProvider', () => {
       const onToolCall = vi.fn();
       const onToolResult = vi.fn();
 
-      const { TransformersJsProvider } = await import('./transformers-js-provider');
+      const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
       await provider.chat({
@@ -163,7 +163,7 @@ describe('TransformersJsProvider', () => {
 
       const onToolResult = vi.fn();
 
-      const { TransformersJsProvider } = await import('./transformers-js-provider');
+      const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
       await provider.chat({
@@ -199,7 +199,7 @@ describe('TransformersJsProvider', () => {
       const onToolCall = vi.fn();
       const onToolResult = vi.fn();
 
-      const { TransformersJsProvider } = await import('./transformers-js-provider');
+      const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
       await provider.chat({
@@ -235,7 +235,7 @@ describe('TransformersJsProvider', () => {
       tool.execute.mockResolvedValue({ status: 'error' as const, code: 'execution_failed' as const, message: 'something broke' });
       const onToolResult = vi.fn();
 
-      const { TransformersJsProvider } = await import('./transformers-js-provider');
+      const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
       await provider.chat({
@@ -283,7 +283,7 @@ describe('TransformersJsProvider', () => {
 
       const tool = makeTool('my_tool');
 
-      const { TransformersJsProvider } = await import('./transformers-js-provider');
+      const { TransformersJsProvider } = await import('./provider');
       const provider = new TransformersJsProvider();
 
       await expect(provider.chat({

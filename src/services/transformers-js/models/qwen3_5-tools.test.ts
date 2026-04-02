@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildQwen3_5ToolSystemPrompt } from './transformers-js-qwen3_5-tools';
+import { buildQwen3_5ToolSystemPrompt } from './qwen3_5-tools';
 
 describe('buildQwen3_5ToolSystemPrompt', () => {
   it('renders tool definitions without passing raw JSON schema into the template', () => {
