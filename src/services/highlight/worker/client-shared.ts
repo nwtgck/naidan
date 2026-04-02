@@ -1,5 +1,5 @@
 import type { EmptyArgs } from '@/models/types'
-import { createHighlightWorkerClient } from './client'
+import { createHighlightWorkerClient } from '@/services/highlight/worker/client'
 import type { HighlightWorkerClient } from './types'
 
 let sharedHighlightWorkerClientPromise: Promise<HighlightWorkerClient> | undefined
