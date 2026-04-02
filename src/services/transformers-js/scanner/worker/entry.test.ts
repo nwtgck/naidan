@@ -11,6 +11,9 @@ vi.mock('@huggingface/transformers', () => ({
   AutoModelForCausalLM: {
     from_pretrained: vi.fn(),
   },
+  AutoModelForImageTextToText: {
+    from_pretrained: vi.fn(),
+  },
   env: {
     allowLocalModels: false,
     allowRemoteModels: true,
@@ -94,6 +97,29 @@ describe('transformers-js.scanner.worker', () => {
     const heavyData = new Uint8Array(await heavyRes.arrayBuffer());
     expect(heavyData).toEqual(new Uint8Array([0, 1, 2, 3]));
     expect(originalFetchMock).not.toHaveBeenCalledWith('https://huggingface.co/org/repo/resolve/main/model.onnx', expect.anything());
+  });
+
+  it('should support image-text-to-text scan tasks', async () => {
+    const comlink = await import('comlink');
+    const { AutoModelForImageTextToText, env } = await import('@huggingface/transformers');
+    await import('./entry');
+    const scannerObj = (comlink.expose as any).mock.calls[0][0];
+
+    originalFetchMock.mockResolvedValue(new Response('{}', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+
+    (AutoModelForImageTextToText.from_pretrained as any).mockImplementation(async (id: string) => {
+      await env.fetch(`https://huggingface.co/${id}/resolve/main/config.json`);
+      await env.fetch(`https://huggingface.co/${id}/resolve/main/vision_encoder.onnx`);
+    });
+
+    const result = await scannerObj.scanModel({
+      tasks: [{ type: 'image-text-to-text', modelId: 'org/repo', options: {} }]
+    });
+
+    expect(result.files.map((file: { url: string }) => file.url)).toContain('https://huggingface.co/org/repo/resolve/main/vision_encoder.onnx');
   });
 
   it('should wire env.fetch to the scanner interceptor', async () => {

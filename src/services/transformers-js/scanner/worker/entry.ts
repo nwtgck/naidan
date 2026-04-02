@@ -26,6 +26,7 @@ import {
   AutoProcessor,
   AutoTokenizer,
   AutoModelForCausalLM,
+  AutoModelForImageTextToText,
   env
 } from '@huggingface/transformers';
 import type { ITransformersJsScannerWorker, ScannedModelFile, ScanOptions, ScanTask } from '@/services/transformers-js/types';
@@ -137,6 +138,15 @@ const scannerWorker: ITransformersJsScannerWorker = {
             device: 'wasm' as const,
           };
           await AutoModelForCausalLM.from_pretrained(task.modelId, options);
+          break;
+        }
+        case 'image-text-to-text': {
+          const options = {
+            ...task.options,
+            silent: true,
+            device: 'wasm' as const,
+          };
+          await AutoModelForImageTextToText.from_pretrained(task.modelId, options);
           break;
         }
         default: {

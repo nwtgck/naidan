@@ -4,6 +4,7 @@ import {
   AutoProcessor,
   AutoTokenizer,
   AutoModelForCausalLM,
+  AutoModelForImageTextToText,
   InterruptableStoppingCriteria,
   env,
   type PreTrainedModel,
@@ -276,7 +277,7 @@ function assertGemma4RuntimeSupport({ modelId }: { modelId: string }): void {
     return;
   }
 
-  const autoModel = AutoModelForCausalLM as AutoModelWithSupports;
+  const autoModel = AutoModelForImageTextToText as AutoModelWithSupports;
   if (typeof autoModel.supports === 'function' && autoModel.supports('gemma4')) {
     return;
   }
@@ -416,7 +417,14 @@ const transformersJsWorker: ITransformersJsWorker = {
               },
             });
             try {
-              const loadedModel = await AutoModelForCausalLM.from_pretrained(cleanModelId, {
+              const loadedModel = await (
+                isGemma4Model({
+                  modelType: undefined,
+                  activeModelId: cleanModelId,
+                })
+                  ? AutoModelForImageTextToText
+                  : AutoModelForCausalLM
+              ).from_pretrained(cleanModelId, {
                 dtype,
                 device,
                 progress_callback: progressCallback,

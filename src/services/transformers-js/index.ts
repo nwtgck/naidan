@@ -285,8 +285,10 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
     ];
     if (isGemma4Model({ modelType: undefined, activeModelId: cleanModelId })) {
       tasks.push({ type: 'processor', modelId: cleanModelId, options: {} });
+      tasks.push({ type: 'image-text-to-text', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } });
+    } else {
+      tasks.push({ type: 'causal-lm', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } });
     }
-    tasks.push({ type: 'causal-lm', modelId: cleanModelId, options: { dtype: 'q4f16', device: 'wasm' } });
     debugLog({
       event: 'preDownload scan start',
       details: { modelId, elapsedMs: Math.round(performance.now() - startedAt) },

@@ -234,7 +234,7 @@ describe('transformersJsService', () => {
       tasks: [
         { type: 'tokenizer', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: {} },
         { type: 'processor', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: {} },
-        { type: 'causal-lm', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: { dtype: 'q4f16', device: 'wasm' } },
+        { type: 'image-text-to-text', modelId: 'onnx-community/gemma-4-E2B-it-ONNX', options: { dtype: 'q4f16', device: 'wasm' } },
       ],
     });
   });

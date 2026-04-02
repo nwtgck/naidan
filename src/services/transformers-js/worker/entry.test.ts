@@ -17,6 +17,10 @@ vi.mock('@huggingface/transformers', () => ({
     from_pretrained: vi.fn(),
     supports: vi.fn(),
   },
+  AutoModelForImageTextToText: {
+    from_pretrained: vi.fn(),
+    supports: vi.fn(),
+  },
   TextStreamer: vi.fn(),
   RawImage: {
     read: vi.fn(),
@@ -125,8 +129,9 @@ describe('transformers-js.worker', () => {
       hardwareConcurrency: 4
     });
 
-    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
-    (AutoModelForCausalLM.supports as any).mockImplementation((modelType: string) => modelType === 'gemma4');
+    const { AutoModelForCausalLM, AutoModelForImageTextToText } = await import('@huggingface/transformers');
+    (AutoModelForCausalLM.supports as any).mockImplementation((modelType: string) => modelType !== 'gemma4');
+    (AutoModelForImageTextToText.supports as any).mockImplementation((modelType: string) => modelType === 'gemma4');
   });
 
   it('should initialize with custom OPFS cache', async () => {
@@ -264,11 +269,11 @@ describe('transformers-js.worker', () => {
 
   it('loadModel should load the Gemma 4 processor and use its tokenizer', async () => {
     const comlink = await import('comlink');
-    const { AutoModelForCausalLM, AutoProcessor, AutoTokenizer } = await import('@huggingface/transformers');
+    const { AutoModelForImageTextToText, AutoProcessor, AutoTokenizer } = await import('@huggingface/transformers');
     await import('./entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
-    (AutoModelForCausalLM.from_pretrained as any).mockResolvedValue({
+    (AutoModelForImageTextToText.from_pretrained as any).mockResolvedValue({
       dispose: vi.fn(),
       device: 'webgpu',
       config: {
@@ -283,22 +288,24 @@ describe('transformers-js.worker', () => {
 
     await workerObj.loadModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn());
 
+    expect(AutoModelForImageTextToText.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
     expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith('onnx-community/gemma-4-E2B-it-ONNX', expect.anything());
     expect(AutoTokenizer.from_pretrained).not.toHaveBeenCalled();
   });
 
   it('loadModel should fail early when the active runtime does not support gemma4', async () => {
     const comlink = await import('comlink');
-    const { AutoModelForCausalLM } = await import('@huggingface/transformers');
+    const { AutoModelForImageTextToText, AutoModelForCausalLM } = await import('@huggingface/transformers');
     await import('./entry');
     const workerObj = (comlink.expose as any).mock.calls[0][0];
 
-    (AutoModelForCausalLM.supports as any).mockReturnValueOnce(false);
+    (AutoModelForImageTextToText.supports as any).mockReturnValueOnce(false);
 
     await expect(workerObj.loadModel('onnx-community/gemma-4-E2B-it-ONNX', vi.fn()))
       .rejects
       .toThrow('does not support gemma4');
 
+    expect(AutoModelForImageTextToText.from_pretrained).not.toHaveBeenCalled();
     expect(AutoModelForCausalLM.from_pretrained).not.toHaveBeenCalled();
   });
 
@@ -964,7 +971,7 @@ file-a
         },
       );
 
-      (tfMock.AutoModelForCausalLM.from_pretrained as any).mockResolvedValue(mockModel);
+      (tfMock.AutoModelForImageTextToText.from_pretrained as any).mockResolvedValue(mockModel);
       (tfMock.AutoProcessor.from_pretrained as any).mockResolvedValue(mockProcessor);
 
       await import('./entry');
