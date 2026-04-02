@@ -1,6 +1,6 @@
 import { ref } from 'vue';
-import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
-import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight-worker-client-shared';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/types';
+import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight/worker/client-shared';
 import type { FileExplorerEntry, PreviewState } from './types';
 import { EXTENSION_LANGUAGE_MAP } from './constants';
 

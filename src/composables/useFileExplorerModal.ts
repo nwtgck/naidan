@@ -1,6 +1,6 @@
 import { ref, shallowRef } from 'vue';
 import type { WeshMount } from '@/services/wesh/types';
-import type { FileExplorerRootDescriptor } from '@/services/file-explorer.worker.types';
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
 
 export type FileExplorerModalOptions =
   | { kind: 'opfs-root' }

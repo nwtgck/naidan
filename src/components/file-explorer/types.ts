@@ -1,4 +1,4 @@
-import type { FileExplorerRootDescriptor } from '@/services/file-explorer.worker.types';
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
 
 export type EntryKind = 'file' | 'directory';
 export type MimeCategory = 'text' | 'image' | 'video' | 'audio' | 'binary';

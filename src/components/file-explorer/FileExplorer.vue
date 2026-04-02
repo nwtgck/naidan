@@ -11,7 +11,7 @@ import FileExplorerContextMenu from './FileExplorerContextMenu.vue';
 import { useFileExplorer, FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import { useFileExplorerKeyboard } from './useFileExplorerKeyboard';
 import type { ViewMode, PreviewVisibility } from './types';
-import type { FileExplorerRootDescriptor } from '@/services/file-explorer.worker.types';
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
 
 const props = defineProps<{
   root: FileExplorerRootDescriptor;

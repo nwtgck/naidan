@@ -2,16 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useFileExplorerPreview } from './useFileExplorerPreview';
 import type { FileExplorerEntry, MimeCategory } from './types';
 import { TEXT_PREVIEW_SIZE_LIMIT, MEDIA_PREVIEW_SIZE_LIMIT } from './constants';
-import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
-import type { FileExplorerReadPreviewResponse } from '@/services/file-explorer.worker.types';
-import type { HighlightRequest } from '@/services/highlight.worker.types';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/types';
+import type { FileExplorerReadPreviewResponse } from '@/services/file-explorer/worker/types';
+import type { HighlightRequest } from '@/services/highlight/worker/types';
 
 const highlightMock = vi.fn(async ({ request }: { request: HighlightRequest }) => ({
   html: request.language ? `<span>${request.language}</span>` : '<span>auto</span>',
   resolvedLanguage: request.language ?? 'plaintext',
 }));
 
-vi.mock('@/services/highlight-worker-client-shared', () => ({
+vi.mock('@/services/highlight/worker/client-shared', () => ({
   acquireSharedHighlightWorkerClient: vi.fn(async () => ({
     highlight: highlightMock,
     dispose: vi.fn(async () => undefined),

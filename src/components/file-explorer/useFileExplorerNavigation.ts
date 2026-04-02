@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/types';
 import type { FileExplorerEntry, SortConfig, ColumnPaneState, FileExplorerPathSegment } from './types';
 import { sortEntries, filterEntries } from './utils';
 

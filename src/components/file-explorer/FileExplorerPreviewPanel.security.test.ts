@@ -2,9 +2,9 @@ import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue'
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer'
-import { createHighlightWorker } from '@/services/highlight.worker.impl'
+import { createHighlightWorker } from '@/services/highlight/worker/impl'
 import type { FileExplorerContext, FileExplorerEntry } from './types'
-import type { FileExplorerRootDescriptor } from '@/services/file-explorer.worker.types'
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types'
 
 const rootDescriptor: FileExplorerRootDescriptor = {
   kind: 'opfs-root',

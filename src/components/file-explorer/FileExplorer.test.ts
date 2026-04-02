@@ -2,7 +2,7 @@ import { defineComponent, h, Suspense } from 'vue';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import FileExplorer from './FileExplorer.vue';
-import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/types';
 import type { FileExplorerEntry } from './types';
 import type { ExplorerDirectory, ExplorerChild } from './explorer-directory';
 import { LIST_ROW_HEIGHT } from './constants';
@@ -297,7 +297,7 @@ const mockShowConfirm = vi.fn().mockResolvedValue(true);
 const mockShowPrompt = vi.fn().mockResolvedValue(undefined);
 const mockAddToast = vi.fn();
 
-vi.mock('@/services/file-explorer-worker-client', () => ({
+vi.mock('@/services/file-explorer/worker/client', () => ({
   createFileExplorerWorkerClient: vi.fn(async () => createMockWorkerClient()),
 }));
 

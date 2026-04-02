@@ -5,7 +5,7 @@ import { useFileExplorerNavigation } from './useFileExplorerNavigation';
 import type { SortConfig } from './types';
 import type { ExplorerDirectory, ExplorerChild } from './explorer-directory';
 import type { FileExplorerEntry, FileExplorerPathSegment } from './types';
-import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/types';
 
 class MockFileSystemFileHandle {
   kind = 'file' as const;

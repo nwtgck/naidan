@@ -20,11 +20,11 @@ import {
   BarChart2Icon,
   AlignLeftIcon,
 } from 'lucide-vue-next';
-import { createAdvancedTextEditorV3WorkerClient } from '@/services/advanced-text-editor-v3-worker-client';
+import { createAdvancedTextEditorV3WorkerClient } from '@/services/advanced-text-editor-v3/worker/client';
 import type {
   AdvancedTextEditorV3Match,
   AdvancedTextEditorV3WorkerClient,
-} from '@/services/advanced-text-editor-v3.worker.types';
+} from '@/services/advanced-text-editor-v3/worker/types';
 
 const props = defineProps<{
   initialValue: string;

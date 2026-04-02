@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue';
 import type { InjectionKey } from 'vue';
-import { createFileExplorerWorkerClient } from '@/services/file-explorer-worker-client';
+import { createFileExplorerWorkerClient } from '@/services/file-explorer/worker/client';
 import type {
   FileExplorerEntry,
   FileExplorerContext,
@@ -10,7 +10,7 @@ import type {
   SelectionAction,
   ContextMenuAction,
 } from './types';
-import type { FileExplorerRootDescriptor } from '@/services/file-explorer.worker.types';
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
 import { useFileExplorerNavigation } from './useFileExplorerNavigation';
 import { useFileExplorerSelection } from './useFileExplorerSelection';
 import { useFileExplorerOperations } from './useFileExplorerOperations';

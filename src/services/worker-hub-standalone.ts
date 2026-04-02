@@ -1,10 +1,10 @@
 import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
-import { createAdvancedTextEditorV3Worker } from './advanced-text-editor-v3.worker.impl'
-import { createFileExplorerWorker } from './file-explorer.worker.impl'
-import { createHighlightWorker } from './highlight.worker.impl'
+import { createAdvancedTextEditorV3Worker } from './advanced-text-editor-v3/worker/impl'
+import { createFileExplorerWorker } from './file-explorer/worker/impl'
+import { createHighlightWorker } from './highlight/worker/impl'
 import type { IWorkerHub } from './worker-hub.types'
-import { createGlobalSearchWorker } from './global-search.worker.impl'
+import { createGlobalSearchWorker } from './global-search/worker/impl'
 import { createWeshWorker } from './wesh.worker.impl'
 
 export function createStandaloneWorkerHub(_args: EmptyArgs): IWorkerHub {

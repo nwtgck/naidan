@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { useFileExplorerOperations } from './useFileExplorerOperations';
 import type { FileExplorerEntry } from './types';
-import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/types';
 
 const mockShowConfirm = vi.fn().mockResolvedValue(true);
 const mockAddToast = vi.fn();

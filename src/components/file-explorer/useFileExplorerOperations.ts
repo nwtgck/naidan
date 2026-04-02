@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
+import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/types';
 import type { FileExplorerEntry } from './types';
 import { useConfirm } from '@/composables/useConfirm';
 import { useToast } from '@/composables/useToast';

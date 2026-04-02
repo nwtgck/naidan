@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, watch } from 'vue';
-import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight-worker-client-shared';
+import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight/worker/client-shared';
 import { escapeTextForHtml } from '@/utils/html';
 import { CheckIcon, CopyIcon, TerminalIcon, WrapTextIcon } from 'lucide-vue-next';
 import { useCodeBlockSettings } from '@/composables/useCodeBlockSettings';
