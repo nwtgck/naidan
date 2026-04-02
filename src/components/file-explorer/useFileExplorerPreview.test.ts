@@ -4,17 +4,20 @@ import type { FileExplorerEntry, MimeCategory } from './types';
 import { TEXT_PREVIEW_SIZE_LIMIT, MEDIA_PREVIEW_SIZE_LIMIT } from './constants';
 import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
 import type { FileExplorerReadPreviewResponse } from '@/services/file-explorer.worker.types';
+import type { HighlightRequest } from '@/services/highlight.worker.types';
 
-vi.mock('highlight.js/lib/core', () => ({
-  default: {
-    registerLanguage: vi.fn(),
-    highlight: vi.fn().mockReturnValue({ value: '<span>highlighted</span>' }),
-    highlightAuto: vi.fn().mockReturnValue({ value: '<span>auto</span>' }),
-  },
+const highlightMock = vi.fn(async ({ request }: { request: HighlightRequest }) => ({
+  html: request.language ? `<span>${request.language}</span>` : '<span>auto</span>',
+  resolvedLanguage: request.language ?? 'plaintext',
 }));
 
-vi.mock('highlight.js/lib/languages/typescript', () => ({ default: vi.fn() }));
-vi.mock('highlight.js/lib/languages/json', () => ({ default: vi.fn() }));
+vi.mock('@/services/highlight-worker-client-shared', () => ({
+  acquireSharedHighlightWorkerClient: vi.fn(async () => ({
+    highlight: highlightMock,
+    dispose: vi.fn(async () => undefined),
+  })),
+  releaseSharedHighlightWorkerClient: vi.fn(async () => undefined),
+}))
 
 function makeEntry(overrides: Partial<FileExplorerEntry> & { name: string }): FileExplorerEntry {
   return {
@@ -40,6 +43,7 @@ describe('useFileExplorerPreview', () => {
   beforeEach(() => {
     createObjectURLSpy.mockClear();
     revokeObjectURLSpy.mockClear();
+    highlightMock.mockClear();
     client = {
       readDirectory: vi.fn(),
       readPreview: vi.fn(async ({ path, mode }: { path: string, mode: 'bounded' | 'force' }): Promise<FileExplorerReadPreviewResponse> => {
@@ -143,6 +147,13 @@ describe('useFileExplorerPreview', () => {
     const { previewState, loadPreview } = useFileExplorerPreview({ client });
     await loadPreview({ entry: makeEntry({ name: 'index.ts', extension: '.ts', mimeCategory: 'text' }) });
     expect(previewState.value.highlightedHtml).toBeDefined();
+    expect(highlightMock).toHaveBeenCalledWith({
+      request: {
+        code: 'const x = 1;',
+        language: 'typescript',
+        mode: 'named-language',
+      },
+    });
   });
 
   it('loadPreview for text marks oversized when file exceeds TEXT_PREVIEW_SIZE_LIMIT', async () => {
@@ -242,5 +253,17 @@ describe('useFileExplorerPreview', () => {
     const modeBefore = previewState.value.jsonFormatMode;
     toggleJsonFormat();
     expect(previewState.value.jsonFormatMode).toBe(modeBefore);
+  });
+
+  it('falls back to auto-detect when no extension language mapping exists', async () => {
+    const { loadPreview } = useFileExplorerPreview({ client });
+    await loadPreview({ entry: makeEntry({ name: 'hello.txt', extension: '.txt', mimeCategory: 'text' }) });
+    expect(highlightMock).toHaveBeenCalledWith({
+      request: {
+        code: 'hello world',
+        language: undefined,
+        mode: 'auto-detect',
+      },
+    });
   });
 });

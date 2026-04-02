@@ -45,6 +45,7 @@ provide(FILE_EXPLORER_INJECTION_KEY, context);
 const { handleKeyDown } = useFileExplorerKeyboard({ ctx: context });
 
 onUnmounted(() => {
+  _preview.dispose();
   void client.dispose({});
 });
 </script>

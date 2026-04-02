@@ -139,6 +139,18 @@ export default tseslint.config(
           {
             name: './transformers-js.worker',
             message: 'Do not import the worker directly. Use transformers-js-loader instead.'
+          },
+          {
+            name: 'highlight.js',
+            message: 'Do not import highlight.js in main-thread code. Use the highlight worker client and keep highlight.js bundled only in the worker path.'
+          },
+          {
+            name: '@/services/highlight.worker-core',
+            message: 'Do not import worker-only highlight helpers from main-thread code. Use the highlight worker client or plain HTML escaping.'
+          },
+          {
+            name: './highlight.worker-core',
+            message: 'Do not import worker-only highlight helpers from main-thread code. Use the highlight worker client or plain HTML escaping.'
           }
         ]
       }]
@@ -149,7 +161,12 @@ export default tseslint.config(
     files: [
       'src/services/transformers-js.worker.ts',
       'src/services/transformers-js.scanner.worker.ts',
-      'src/services/transformers-js.types.ts'
+      'src/services/transformers-js.types.ts',
+      'src/services/highlight.worker.ts',
+      'src/services/highlight.worker.impl.ts',
+      'src/services/highlight.worker.types.ts',
+      'src/services/highlight.worker-core.ts',
+      'src/services/highlight.worker.test.ts'
     ],
     rules: {
       'no-restricted-imports': 'off'

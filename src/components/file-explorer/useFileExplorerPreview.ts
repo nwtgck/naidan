@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import type { FileExplorerWorkerClient } from '@/services/file-explorer.worker.types';
+import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight-worker-client-shared';
 import type { FileExplorerEntry, PreviewState } from './types';
 import { EXTENSION_LANGUAGE_MAP } from './constants';
 
@@ -20,6 +21,9 @@ export function useFileExplorerPreview({
     errorMessage: undefined,
     oversized: false,
   });
+  let latestPreviewRequestId = 0;
+  let latestHighlightRequestId = 0;
+  const highlightWorkerClientPromise = acquireSharedHighlightWorkerClient({});
 
   function revokeObjectUrl(): void {
     if (previewState.value.objectUrl) {
@@ -35,18 +39,16 @@ export function useFileExplorerPreview({
     displayText: string;
   }): Promise<string | undefined> {
     try {
-      const hljs = await import('highlight.js/lib/core');
       const language = EXTENSION_LANGUAGE_MAP[entry.extension];
-      if (language) {
-        try {
-          const module = await loadHighlightLanguage({ lang: language });
-          hljs.default.registerLanguage(language, module.default);
-          return hljs.default.highlight(displayText, { language }).value;
-        } catch {
-          return hljs.default.highlightAuto(displayText).value;
-        }
-      }
-      return hljs.default.highlightAuto(displayText).value;
+      const client = await highlightWorkerClientPromise
+      const response = await client.highlight({
+        request: {
+          code: displayText,
+          language,
+          mode: language ? 'named-language' : 'auto-detect',
+        },
+      })
+      return response.html;
     } catch {
       return undefined;
     }
@@ -59,6 +61,7 @@ export function useFileExplorerPreview({
     entry: FileExplorerEntry;
     mode: 'bounded' | 'force';
   }): Promise<void> {
+    const requestId = ++latestPreviewRequestId;
     revokeObjectUrl();
     previewState.value = {
       ...previewState.value,
@@ -95,6 +98,9 @@ export function useFileExplorerPreview({
           entry,
           displayText: response.displayText,
         });
+        if (requestId !== latestPreviewRequestId) {
+          return;
+        }
         previewState.value = {
           ...previewState.value,
           rawTextContent: response.rawText,
@@ -151,10 +157,6 @@ export function useFileExplorerPreview({
     await loadPreviewWithMode({ entry, mode: 'force' });
   }
 
-  async function loadHighlightLanguage({ lang }: { lang: string }): Promise<{ default: import('highlight.js').LanguageFn }> {
-    return await import(`highlight.js/lib/languages/${lang}`) as { default: import('highlight.js').LanguageFn };
-  }
-
   function toggleJsonFormat(): void {
     const state = previewState.value;
     if (!state.entry || state.entry.extension !== '.json' || !state.rawTextContent) {
@@ -190,7 +192,11 @@ export function useFileExplorerPreview({
       highlightedHtml: undefined,
     };
 
+    const requestId = ++latestHighlightRequestId;
     void highlightText({ entry: state.entry, displayText: nextText }).then(highlightedHtml => {
+      if (requestId !== latestHighlightRequestId) {
+        return;
+      }
       previewState.value = {
         ...previewState.value,
         highlightedHtml,
@@ -199,6 +205,8 @@ export function useFileExplorerPreview({
   }
 
   function clearPreview(): void {
+    latestPreviewRequestId += 1;
+    latestHighlightRequestId += 1;
     revokeObjectUrl();
     previewState.value = {
       visibility: previewState.value.visibility,
@@ -239,6 +247,9 @@ export function useFileExplorerPreview({
     clearPreview,
     togglePreviewVisibility,
     toggleJsonFormat,
+    dispose() {
+      void releaseSharedHighlightWorkerClient({});
+    },
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },

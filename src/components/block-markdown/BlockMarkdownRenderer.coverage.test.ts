@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
 import { normalizeDom } from './test-utils';
 
@@ -138,7 +139,7 @@ Body
       expect(dom).toContain('<summary><span><strong>Bold</strong><a href="http://example.com">Link</a><code>code</code></span></summary>');
     });
 
-    it('handles various block types inside details', () => {
+    it('handles various block types inside details', async () => {
       const content = `\
 <details>
 <summary>Blocks</summary>
@@ -155,6 +156,8 @@ ${'```'}
 > Quote
 </details>`;
       const wrapper = mountRenderer({ content });
+      await flushPromises();
+      await nextTick();
       const dom = getDom(wrapper);
 
       expect(dom).toContain('<summary><span>Blocks</span></summary>');

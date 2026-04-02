@@ -1,7 +1,6 @@
 import { Marked } from 'marked';
 import markedKatex from 'marked-katex-extension';
 import createDOMPurify from 'dompurify';
-import hljs from 'highlight.js';
 import { z } from 'zod';
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
@@ -91,9 +90,4 @@ export const sanitizeHtml = ({ html }: { html: string }): string => {
     ADD_TAGS: ['naidan-external-image'],
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
   });
-};
-
-export const highlightCode = ({ code, lang }: { code: string, lang: string }): string => {
-  const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-  return hljs.highlight(code, { language }).value;
 };

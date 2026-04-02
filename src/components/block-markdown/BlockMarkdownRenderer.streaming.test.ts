@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import BlockMarkdownRenderer from './BlockMarkdownRenderer.vue';
 
@@ -82,6 +82,8 @@ ${'```'}js
 const a = 2;
 ${'```'}
 ` });
+    await nextTick();
+    await flushPromises();
     await nextTick();
 
     expect(wrapper.find('code').text()).toContain('a = 2');
