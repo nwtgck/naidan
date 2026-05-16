@@ -1,4 +1,7 @@
+// TODO: Consider renaming this collection if more non-worker standalone aliases are added.
 export const STANDALONE_WORKER_CLIENT_FACADES = [
+  '@/services/transformers-js/provider',
+  '@/services/transformers-js',
   '@/services/advanced-text-editor-v3/worker/client',
   '@/services/highlight/worker/client',
   '@/services/wesh/worker/client',
@@ -12,8 +15,9 @@ export function createStandaloneWorkerClientAliases({ resolvePath }) {
   return Object.fromEntries(
     STANDALONE_WORKER_CLIENT_FACADES.map((facadePath) => [
       facadePath,
-      resolvePath(
-        `${facadePath.replace('@/services/', 'src/services/')}-standalone.ts`,
+      resolvePath(facadePath === '@/services/transformers-js'
+        ? 'src/services/transformers-js/index-standalone.ts'
+        : `${facadePath.replace('@/services/', 'src/services/')}-standalone.ts`,
       ),
     ]),
   )

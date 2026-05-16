@@ -1103,7 +1103,7 @@ export function useChat() {
         provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
         break;
       case 'transformers_js':
-        provider = new (await import('../services/transformers-js/provider')).TransformersJsProvider();
+        provider = new (await import('@/services/transformers-js/provider')).TransformersJsProvider();
         break;
       default: {
         const _ex: never = type;
