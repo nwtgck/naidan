@@ -402,7 +402,7 @@ async function waitForPaint({ frames }: { frames: number }) {
   }
 }
 
-async function scrollAnchorToTop({ target, behavior }: { target: ChatAreaScrollTarget, behavior: ScrollBehavior }) {
+async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatAreaScrollTarget, behavior: ScrollBehavior, offset: number }) {
   if (!container.value) return false;
 
   let el: HTMLElement | null = null;
@@ -419,9 +419,21 @@ async function scrollAnchorToTop({ target, behavior }: { target: ChatAreaScrollT
     element: el,
     behavior,
     block: 'start',
-    offset: 50
+    offset
   });
   return true;
+}
+
+async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: string, behavior: ScrollBehavior }) {
+  return scrollAnchorToTop({
+    target: {
+      kind: 'message',
+      anchorId: `message-${userTurnId}`,
+      messageId: userTurnId,
+    },
+    behavior,
+    offset: 0,
+  });
 }
 
 async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpenTarget }) {
@@ -432,7 +444,7 @@ async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpen
   case 'message':
   case 'process_sequence':
   case 'tool_group': {
-    const didScroll = await scrollAnchorToTop({ target, behavior: 'instant' });
+    const didScroll = await scrollAnchorToTop({ target, behavior: 'instant', offset: 50 });
     if (!didScroll) {
       scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
     }
@@ -540,7 +552,54 @@ const autoScroll = useChatAreaAutoScroll({
   currentChat,
   activeMessages,
   chatFlow,
+  processingStatus: computed(() => isCurrentChatStreaming.value ? 'processing' : 'idle'),
 });
+
+const responseViewportReserve = ref<{ chatId: string, navigationKey: string, userTurnId: string, heightPx: number } | undefined>(undefined);
+
+const isResponseViewportReserveActive = computed(() => {
+  if (props.targetMessageId) return false;
+
+  const snapshot = autoScroll.snapshot.value;
+  return !!responseViewportReserve.value
+    && responseViewportReserve.value.chatId === snapshot.chatId
+    && responseViewportReserve.value.navigationKey === snapshot.navigationKey
+    && responseViewportReserve.value.userTurnId === snapshot.latestUserTurnId;
+});
+
+const responseViewportReserveHeightPx = computed(() => {
+  if (!isResponseViewportReserveActive.value) return 0;
+  return responseViewportReserve.value?.heightPx ?? 0;
+});
+
+function getElementTopInContainer({
+  element,
+  scrollContainer,
+}: {
+  element: HTMLElement,
+  scrollContainer: HTMLElement,
+}) {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  return scrollContainer.scrollTop + elementRect.top - containerRect.top;
+}
+
+function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: string }) {
+  const scrollContainer = container.value;
+  if (!scrollContainer) return 0;
+
+  const userElement = scrollContainer.querySelector(`#message-${userTurnId}`);
+  if (!(userElement instanceof HTMLElement)) return 0;
+
+  const userTop = getElementTopInContainer({
+    element: userElement,
+    scrollContainer,
+  });
+  const currentReserveHeight = responseViewportReserve.value?.heightPx ?? 0;
+  const scrollHeightWithoutReserve = scrollContainer.scrollHeight - currentReserveHeight;
+  const maxScrollTopWithoutReserve = scrollHeightWithoutReserve - scrollContainer.clientHeight;
+  return Math.max(0, Math.ceil(userTop - maxScrollTopWithoutReserve));
+}
 
 async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
   await chatStore.editMessage(messageId, newContent, lmParameters);
@@ -601,7 +660,9 @@ watch(
   () => {
     const snapshot = autoScroll.snapshot.value;
     return [
-      snapshot.contextKey,
+      snapshot.chatId,
+      snapshot.navigationKey,
+      snapshot.processingStatus,
       snapshot.latestUserTurnId,
       snapshot.firstAssistantVisibleTarget?.kind,
       snapshot.firstAssistantVisibleTarget?.anchorId,
@@ -616,16 +677,32 @@ watch(
 
     switch (action.kind) {
     case 'initial_open':
+      responseViewportReserve.value = undefined;
       await scrollInitialOpenTarget({ target: action.target });
       break;
     case 'assistant': {
+      const snapshot = autoScroll.snapshot.value;
+      if (!snapshot.chatId || !snapshot.navigationKey) return;
+      responseViewportReserve.value = {
+        chatId: snapshot.chatId,
+        navigationKey: snapshot.navigationKey,
+        userTurnId: action.userTurnId,
+        heightPx: 0,
+      };
+      await nextTick();
+      const reserve = responseViewportReserve.value;
+      if (!reserve) return;
+      responseViewportReserve.value = {
+        ...reserve,
+        heightPx: calculateResponseViewportReserveHeight({ userTurnId: action.userTurnId }),
+      };
+      await nextTick();
       await waitForPaint({ frames: 2 });
-      const didScroll = await scrollAnchorToTop({ target: action.target, behavior: 'smooth' });
+      const didScroll = await scrollUserTurnToTop({ userTurnId: action.userTurnId, behavior: 'smooth' });
       if (didScroll) {
-        const contextKey = autoScroll.snapshot.value.contextKey;
-        if (!contextKey) return;
         autoScroll.markAssistantAutoScrolled({
-          contextKey,
+          chatId: snapshot.chatId,
+          navigationKey: snapshot.navigationKey,
           userTurnId: action.userTurnId,
         });
       }
@@ -1063,6 +1140,12 @@ watch(
               v-if="resolvedSettings?.endpointType === 'transformers_js'"
               mode="full"
             />
+            <div
+              v-if="isResponseViewportReserveActive && responseViewportReserveHeightPx > 0"
+              class="shrink-0 pointer-events-none"
+              :style="{ height: `${responseViewportReserveHeightPx}px` }"
+              data-testid="response-viewport-reserve"
+            ></div>
           </div>
           <WelcomeScreen
             v-else
