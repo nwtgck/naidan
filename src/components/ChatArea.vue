@@ -402,7 +402,7 @@ async function waitForPaint({ frames }: { frames: number }) {
   }
 }
 
-async function scrollAnchorToTop({ target, behavior }: { target: ChatAreaScrollTarget, behavior: ScrollBehavior }) {
+async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatAreaScrollTarget, behavior: ScrollBehavior, offset: number }) {
   if (!container.value) return false;
 
   let el: HTMLElement | null = null;
@@ -419,9 +419,21 @@ async function scrollAnchorToTop({ target, behavior }: { target: ChatAreaScrollT
     element: el,
     behavior,
     block: 'start',
-    offset: 50
+    offset
   });
   return true;
+}
+
+async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: string, behavior: ScrollBehavior }) {
+  return scrollAnchorToTop({
+    target: {
+      kind: 'message',
+      anchorId: `message-${userTurnId}`,
+      messageId: userTurnId,
+    },
+    behavior,
+    offset: 0,
+  });
 }
 
 async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpenTarget }) {
@@ -432,7 +444,7 @@ async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpen
   case 'message':
   case 'process_sequence':
   case 'tool_group': {
-    const didScroll = await scrollAnchorToTop({ target, behavior: 'instant' });
+    const didScroll = await scrollAnchorToTop({ target, behavior: 'instant', offset: 50 });
     if (!didScroll) {
       scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
     }
@@ -540,6 +552,19 @@ const autoScroll = useChatAreaAutoScroll({
   currentChat,
   activeMessages,
   chatFlow,
+  processingStatus: computed(() => isCurrentChatStreaming.value ? 'processing' : 'idle'),
+});
+
+const responseViewportReserve = ref<{ chatId: string, navigationKey: string, userTurnId: string } | undefined>(undefined);
+
+const isResponseViewportReserveActive = computed(() => {
+  if (props.targetMessageId) return false;
+
+  const snapshot = autoScroll.snapshot.value;
+  return !!responseViewportReserve.value
+    && responseViewportReserve.value.chatId === snapshot.chatId
+    && responseViewportReserve.value.navigationKey === snapshot.navigationKey
+    && responseViewportReserve.value.userTurnId === snapshot.latestUserTurnId;
 });
 
 async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
@@ -601,7 +626,9 @@ watch(
   () => {
     const snapshot = autoScroll.snapshot.value;
     return [
-      snapshot.contextKey,
+      snapshot.chatId,
+      snapshot.navigationKey,
+      snapshot.processingStatus,
       snapshot.latestUserTurnId,
       snapshot.firstAssistantVisibleTarget?.kind,
       snapshot.firstAssistantVisibleTarget?.anchorId,
@@ -619,13 +646,20 @@ watch(
       await scrollInitialOpenTarget({ target: action.target });
       break;
     case 'assistant': {
+      const snapshot = autoScroll.snapshot.value;
+      if (!snapshot.chatId || !snapshot.navigationKey) return;
+      responseViewportReserve.value = {
+        chatId: snapshot.chatId,
+        navigationKey: snapshot.navigationKey,
+        userTurnId: action.userTurnId,
+      };
+      await nextTick();
       await waitForPaint({ frames: 2 });
-      const didScroll = await scrollAnchorToTop({ target: action.target, behavior: 'smooth' });
+      const didScroll = await scrollUserTurnToTop({ userTurnId: action.userTurnId, behavior: 'smooth' });
       if (didScroll) {
-        const contextKey = autoScroll.snapshot.value.contextKey;
-        if (!contextKey) return;
         autoScroll.markAssistantAutoScrolled({
-          contextKey,
+          chatId: snapshot.chatId,
+          navigationKey: snapshot.navigationKey,
           userTurnId: action.userTurnId,
         });
       }
@@ -1063,6 +1097,11 @@ watch(
               v-if="resolvedSettings?.endpointType === 'transformers_js'"
               mode="full"
             />
+            <div
+              v-if="isResponseViewportReserveActive"
+              class="h-[65vh] min-h-[320px] max-h-[720px] shrink-0 pointer-events-none"
+              data-testid="response-viewport-reserve"
+            ></div>
           </div>
           <WelcomeScreen
             v-else

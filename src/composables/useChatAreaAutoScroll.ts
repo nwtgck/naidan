@@ -7,6 +7,7 @@ type ChatAreaContext = {
   id: string;
   currentLeafId?: string;
 };
+type ChatAreaProcessingStatus = 'idle' | 'processing';
 
 export type ChatAreaScrollTarget =
   | { kind: 'message'; anchorId: string; messageId: string }
@@ -18,7 +19,9 @@ export type ChatAreaInitialOpenTarget =
   | { kind: 'bottom' };
 
 export interface ChatAreaAutoScrollSnapshot {
-  contextKey: string | undefined;
+  chatId: string | undefined;
+  navigationKey: string | undefined;
+  processingStatus: ChatAreaProcessingStatus;
   latestUserTurnId: string | undefined;
   initialOpenTarget: ChatAreaInitialOpenTarget;
   firstAssistantVisibleTarget: ChatAreaScrollTarget | undefined;
@@ -26,9 +29,15 @@ export interface ChatAreaAutoScrollSnapshot {
 
 type ChatAreaAutoScrollState =
   | { kind: 'uninitialized' }
-  | { kind: 'awaiting_user_turn'; contextKey: string }
-  | { kind: 'ready_for_assistant'; contextKey: string; userTurnId: string }
-  | { kind: 'assistant_scrolled'; contextKey: string; userTurnId: string };
+  | {
+      kind: 'tracking';
+      chatId: string;
+      navigationKey: string;
+      response:
+        | { kind: 'awaiting_user_turn' }
+        | { kind: 'ready_for_assistant'; userTurnId: string }
+        | { kind: 'assistant_scrolled'; userTurnId: string };
+    };
 
 export type ChatAreaAutoScrollAction =
   | { kind: 'initial_open'; target: ChatAreaInitialOpenTarget }
@@ -137,61 +146,78 @@ function getFirstAssistantVisibleTarget({
   return undefined;
 }
 
-function getNextStateForSnapshot({
-  currentState,
-  snapshot,
+function getNavigationKey({ chat }: { chat: ChatAreaContext }): string {
+  return `${chat.id}:${chat.currentLeafId ?? ''}`;
+}
+
+function getOpenedResponseState({
+  latestUserTurnId,
 }: {
-  currentState: ChatAreaAutoScrollState;
-  snapshot: ChatAreaAutoScrollSnapshot;
-}): ChatAreaAutoScrollState {
-  if (!snapshot.contextKey) {
-    return { kind: 'uninitialized' };
+  latestUserTurnId: string | undefined;
+}): Extract<ChatAreaAutoScrollState, { kind: 'tracking' }>['response'] {
+  if (!latestUserTurnId) {
+    return { kind: 'awaiting_user_turn' };
+  }
+  return {
+    kind: 'assistant_scrolled',
+    userTurnId: latestUserTurnId,
+  };
+}
+
+function getResponseStateAfterContentChange({
+  currentResponse,
+  latestUserTurnId,
+}: {
+  currentResponse: Extract<ChatAreaAutoScrollState, { kind: 'tracking' }>['response'];
+  latestUserTurnId: string | undefined;
+}): Extract<ChatAreaAutoScrollState, { kind: 'tracking' }>['response'] {
+  if (!latestUserTurnId) {
+    return { kind: 'awaiting_user_turn' };
   }
 
-  if (currentState.kind === 'uninitialized' || currentState.contextKey !== snapshot.contextKey) {
-    if (!snapshot.latestUserTurnId) {
-      return { kind: 'awaiting_user_turn', contextKey: snapshot.contextKey };
+  switch (currentResponse.kind) {
+  case 'assistant_scrolled':
+  case 'ready_for_assistant':
+    if (currentResponse.userTurnId === latestUserTurnId) {
+      return currentResponse;
     }
     return {
-      kind: 'assistant_scrolled',
-      contextKey: snapshot.contextKey,
-      userTurnId: snapshot.latestUserTurnId,
+      kind: 'ready_for_assistant',
+      userTurnId: latestUserTurnId,
     };
+  case 'awaiting_user_turn':
+    return {
+      kind: 'ready_for_assistant',
+      userTurnId: latestUserTurnId,
+    };
+  default: {
+    const _ex: never = currentResponse;
+    return _ex;
   }
-
-  if (!snapshot.latestUserTurnId) {
-    return { kind: 'awaiting_user_turn', contextKey: snapshot.contextKey };
   }
-
-  if (currentState.kind === 'assistant_scrolled' && currentState.userTurnId === snapshot.latestUserTurnId) {
-    return currentState;
-  }
-
-  return {
-    kind: 'ready_for_assistant',
-    contextKey: snapshot.contextKey,
-    userTurnId: snapshot.latestUserTurnId,
-  };
 }
 
 export function useChatAreaAutoScroll({
   currentChat,
   activeMessages,
   chatFlow,
+  processingStatus,
 }: {
   currentChat: MaybeReadonlyRef<ChatAreaContext | null>;
   activeMessages: MaybeReadonlyRef<readonly MessageNode[]>;
   chatFlow: MaybeReadonlyRef<readonly ChatFlowItem[]>;
+  processingStatus: MaybeReadonlyRef<ChatAreaProcessingStatus>;
 }) {
   const state = ref<ChatAreaAutoScrollState>({ kind: 'uninitialized' });
 
   const snapshot = computed<ChatAreaAutoScrollSnapshot>(() => {
     const chat = currentChat.value;
-    const contextKey = chat ? `${chat.id}:${chat.currentLeafId ?? ''}` : undefined;
     const latestUserTurnId = getLatestUserTurnId({ activeMessages: [...activeMessages.value] });
 
     return {
-      contextKey,
+      chatId: chat?.id,
+      navigationKey: chat ? getNavigationKey({ chat }) : undefined,
+      processingStatus: processingStatus.value,
       latestUserTurnId,
       initialOpenTarget: getInitialOpenTarget({ latestUserTurnId }),
       firstAssistantVisibleTarget: getFirstAssistantVisibleTarget({
@@ -204,28 +230,52 @@ export function useChatAreaAutoScroll({
   function consumeScrollAction(): ChatAreaAutoScrollAction | undefined {
     const currentSnapshot = snapshot.value;
     const previousState = state.value;
-    const nextState = getNextStateForSnapshot({
-      currentState: previousState,
-      snapshot: currentSnapshot,
-    });
-    state.value = nextState;
 
-    if (currentSnapshot.contextKey && (previousState.kind === 'uninitialized' || previousState.contextKey !== currentSnapshot.contextKey)) {
+    if (!currentSnapshot.chatId || !currentSnapshot.navigationKey) {
+      state.value = { kind: 'uninitialized' };
+      return undefined;
+    }
+
+    const openedDifferentChat = previousState.kind === 'uninitialized' || previousState.chatId !== currentSnapshot.chatId;
+    const changedBranchWhileIdle = previousState.kind === 'tracking'
+      && previousState.navigationKey !== currentSnapshot.navigationKey
+      && currentSnapshot.processingStatus === 'idle';
+
+    if (openedDifferentChat || changedBranchWhileIdle) {
+      state.value = {
+        kind: 'tracking',
+        chatId: currentSnapshot.chatId,
+        navigationKey: currentSnapshot.navigationKey,
+        response: getOpenedResponseState({ latestUserTurnId: currentSnapshot.latestUserTurnId }),
+      };
       return {
         kind: 'initial_open',
         target: currentSnapshot.initialOpenTarget,
       };
     }
 
-    switch (nextState.kind) {
+    const previousResponse = previousState.kind === 'tracking'
+      ? previousState.response
+      : { kind: 'awaiting_user_turn' as const };
+    const nextResponse = getResponseStateAfterContentChange({
+      currentResponse: previousResponse,
+      latestUserTurnId: currentSnapshot.latestUserTurnId,
+    });
+    state.value = {
+      kind: 'tracking',
+      chatId: currentSnapshot.chatId,
+      navigationKey: currentSnapshot.navigationKey,
+      response: nextResponse,
+    };
+
+    switch (nextResponse.kind) {
     case 'ready_for_assistant':
       break;
-    case 'uninitialized':
     case 'awaiting_user_turn':
     case 'assistant_scrolled':
       return undefined;
     default: {
-      const _ex: never = nextState;
+      const _ex: never = nextResponse;
       return _ex;
     }
     }
@@ -237,21 +287,27 @@ export function useChatAreaAutoScroll({
     return {
       kind: 'assistant',
       target: currentSnapshot.firstAssistantVisibleTarget,
-      userTurnId: nextState.userTurnId,
+      userTurnId: nextResponse.userTurnId,
     };
   }
 
   function markAssistantAutoScrolled({
-    contextKey,
+    chatId,
+    navigationKey,
     userTurnId,
   }: {
-    contextKey: string;
+    chatId: string;
+    navigationKey: string;
     userTurnId: string;
   }): void {
     state.value = {
-      kind: 'assistant_scrolled',
-      contextKey,
-      userTurnId,
+      kind: 'tracking',
+      chatId,
+      navigationKey,
+      response: {
+        kind: 'assistant_scrolled',
+        userTurnId,
+      },
     };
   }
 
