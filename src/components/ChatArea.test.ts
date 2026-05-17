@@ -727,6 +727,63 @@ describe('ChatArea Scrolling Logic', () => {
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(200);
   });
 
+  it('scrolls to and highlights the target message from a message-id link', async () => {
+    mockActiveMessages.value = [
+      { id: 'target-message', role: 'assistant', content: 'Target message', timestamp: Date.now(), replies: { items: [] } },
+    ];
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    const targetEl = document.createElement('div');
+    targetEl.id = 'message-target-message';
+    targetEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({ top: 250 - container.scrollTop, bottom: 350 - container.scrollTop, height: 100 }));
+    container.querySelector = vi.fn().mockImplementation((selector: string) => {
+      if (selector === '#message-target-message') return targetEl;
+      return null;
+    });
+
+    await wrapper.setProps({ targetMessageId: 'target-message' });
+    await flushPromises();
+    await nextTick();
+
+    expect(scrollTopSetterSpy).toHaveBeenCalled();
+    expect(targetEl.className).toContain('bg-blue-50/50');
+  });
+
+  it('retries message-id link scrolling after the target message is rendered', async () => {
+    wrapper = mount(ChatArea, {
+      props: { targetMessageId: 'late-message' },
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    const targetEl = document.createElement('div');
+    targetEl.id = 'message-late-message';
+    targetEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({ top: 250 - container.scrollTop, bottom: 350 - container.scrollTop, height: 100 }));
+    container.querySelector = vi.fn().mockImplementation((selector: string) => {
+      if (selector === '#message-late-message') return targetEl;
+      return null;
+    });
+    scrollTopSetterSpy.mockClear();
+
+    mockActiveMessages.value = [
+      { id: 'late-message', role: 'assistant', content: 'Late target message', timestamp: Date.now(), replies: { items: [] } },
+    ];
+
+    await flushPromises();
+    await nextTick();
+
+    expect(scrollTopSetterSpy).toHaveBeenCalled();
+    expect(scrollTopSetterSpy.mock.calls.at(-1)?.[0]).toBe(50);
+    expect(targetEl.className).toContain('bg-blue-50/50');
+  });
+
   it('scrolls when a new user turn and assistant placeholder appear in the same update', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
@@ -1852,6 +1909,23 @@ Line 6`;
     await flushPromises();
 
     expect(textarea.element.value).toBe('Keep this text');
+  });
+
+  it('removes message-id from the URL after sending a new message', async () => {
+    await router.push('/?message-id=target-message&leaf=leaf-1');
+    const replaceSpy = vi.spyOn(router, 'replace').mockResolvedValue(undefined);
+    wrapper = mount(ChatArea, {
+      props: { targetMessageId: 'target-message' },
+      global: { plugins: [router] },
+    });
+
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Continue from here');
+
+    await wrapper.find('[data-testid="send-button"]').trigger('click');
+    await flushPromises();
+
+    expect(replaceSpy).toHaveBeenCalledWith({ query: { leaf: 'leaf-1' } });
   });
 
   it('should clear input IMMEDIATELY after handleSend returns, even if streaming continues (Regression Test)', async () => {

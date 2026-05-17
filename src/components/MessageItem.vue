@@ -726,6 +726,7 @@ defineExpose({
 
           <!-- Message Actions -->
           <MessageActions
+            :chat-id="chatId"
             :message="message"
             :is-image-response="isImageResponse"
             :is-user="isUser"

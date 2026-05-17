@@ -140,6 +140,7 @@ const router = useRouter();
 
 const props = defineProps<{
   autoSendPrompt?: string
+  targetMessageId?: string
 }>();
 
 const emit = defineEmits<{
@@ -216,6 +217,15 @@ function closeOutline(_args: Record<string, never>) {
 function jumpToOutlineMessage({ messageId }: { messageId: string }) {
   jumpToMessage({ messageId });
   closeOutline({});
+}
+
+function clearTargetMessageQuery() {
+  const currentQuery = router.currentRoute?.value?.query ?? {};
+  if (!currentQuery['message-id']) return;
+
+  const query = { ...currentQuery };
+  delete query['message-id'];
+  router.replace({ query });
 }
 
 async function handleMoveToGroup(groupId: string | null) {
@@ -435,8 +445,8 @@ async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpen
   }
 }
 
-function jumpToMessage({ messageId }: { messageId: string }) {
-  if (!container.value) return;
+function jumpToMessage({ messageId }: { messageId: string }): boolean {
+  if (!container.value) return false;
   const el = container.value.querySelector(`#message-${messageId}`);
   if (el instanceof HTMLElement) {
     scrollIntoViewSafe({
@@ -449,8 +459,52 @@ function jumpToMessage({ messageId }: { messageId: string }) {
     setTimeout(() => {
       el.classList.remove('bg-blue-50/50', 'dark:bg-blue-900/20');
     }, 2000);
+    return true;
   }
+  return false;
 }
+
+const lastJumpedTargetMessageKey = ref<string | undefined>(undefined);
+
+watch(
+  () => {
+    const flowKey = chatFlow.value.map((item) => {
+      switch (item.type) {
+      case 'message':
+        return `${item.node.id}:${item.mode}`;
+      case 'process_sequence':
+        return `${item.id}:${item.items.length}`;
+      case 'tool_group':
+        return item.id;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }
+      }
+    }).join('|');
+    return {
+      messageId: props.targetMessageId,
+      chatId: currentChat.value?.id,
+      leafId: currentChat.value?.currentLeafId,
+      flowKey,
+    };
+  },
+  async ({ messageId, chatId, leafId, flowKey }) => {
+    if (!messageId) {
+      lastJumpedTargetMessageKey.value = undefined;
+      return;
+    }
+    const targetKey = `${chatId ?? ''}:${leafId ?? ''}:${messageId}:${flowKey}`;
+    if (lastJumpedTargetMessageKey.value === targetKey) return;
+
+    await nextTick();
+    await waitForPaint({ frames: 1 });
+    if (jumpToMessage({ messageId })) {
+      lastJumpedTargetMessageKey.value = targetKey;
+    }
+  },
+  { flush: 'post', immediate: true }
+);
 
 // Expose for testing
 defineExpose({ scrollToBottom, container,
@@ -558,6 +612,7 @@ watch(
 
     const action = autoScroll.consumeScrollAction();
     if (!action) return;
+    if (props.targetMessageId) return;
 
     switch (action.kind) {
     case 'initial_open':
@@ -1054,6 +1109,7 @@ watch(
       :available-image-models="availableImageModels"
       :auto-send-prompt="autoSendPrompt"
       @auto-sent="emit('auto-sent')"
+      @sent="clearTargetMessageQuery"
       @scroll-to-bottom="(force) => scrollToBottom({ scrollForce: force ? 'force' : 'if-near-bottom', behavior: 'smooth' })"
     />
 

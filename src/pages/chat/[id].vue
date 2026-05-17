@@ -7,7 +7,7 @@ import ChatArea from '@/components/ChatArea.vue';
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
 const chatStore = useChat();
-const { openChat } = chatStore;
+const { openChat, openChatAtMessage } = chatStore;
 
 const chatId = computed(() => {
   const params = currentRoute.value?.params;
@@ -19,11 +19,16 @@ const chatId = computed(() => {
 });
 
 const leafId = computed(() => currentRoute.value?.query?.leaf?.toString());
+const messageId = computed(() => currentRoute.value?.query?.['message-id']?.toString());
 
 async function syncChat() {
   const id = chatId.value;
   if (id) {
-    await openChat(id, leafId.value);
+    if (messageId.value) {
+      await openChatAtMessage({ chatId: id, messageId: messageId.value });
+    } else {
+      await openChat(id, leafId.value);
+    }
   }
 }
 
@@ -34,7 +39,7 @@ function handleAutoSent() {
 }
 
 onMounted(syncChat);
-watch([chatId, leafId], syncChat);
+watch([chatId, leafId, messageId], syncChat);
 
 
 defineExpose({
@@ -48,6 +53,7 @@ defineExpose({
   <ChatArea
     v-if="chatId"
     :auto-send-prompt="currentRoute?.query?.q?.toString()"
+    :target-message-id="messageId"
     @auto-sent="handleAutoSent"
   />
 </template>

@@ -77,6 +77,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'auto-sent'): void;
+  (e: 'sent'): void;
   (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void;
   (e: 'update:isAnimatingHeight', value: boolean): void;
   (e: 'scroll-to-bottom', force?: boolean): void;
@@ -849,6 +850,7 @@ async function handleGenerateImage() {
       attachments.value = [];
     }
     clearDraft(sendingChatId);
+    emit('sent');
     nextTick(adjustTextareaHeight);
   }
 }
@@ -892,6 +894,7 @@ async function handleSend() {
       attachments.value = [];
     }
     clearDraft(sendingChatId);
+    emit('sent');
 
     nextTick(() => { // Ensure textarea is cleared before adjusting height
       adjustTextareaHeight();

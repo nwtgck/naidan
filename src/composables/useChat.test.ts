@@ -1149,6 +1149,75 @@ describe('useChat Composable Logic', () => {
     expect(currentChat.value).toBeNull();
   });
 
+  it('should open a message-id link without persisting the selected current leaf', async () => {
+    const { openChatAtMessage, currentChat, activeMessages } = useChat();
+    const mockChat: Chat = {
+      id: 'message-link-chat',
+      title: 'Message Link Chat',
+      root: {
+        items: [
+          {
+            id: 'user-1',
+            role: 'user',
+            content: 'Question',
+            timestamp: 1,
+            replies: {
+              items: [
+                {
+                  id: 'assistant-1',
+                  role: 'assistant',
+                  content: 'Target answer',
+                  timestamp: 2,
+                  replies: {
+                    items: [
+                      {
+                        id: 'user-followup',
+                        role: 'user',
+                        content: 'Follow up',
+                        timestamp: 3,
+                        replies: {
+                          items: [
+                            {
+                              id: 'target-leaf',
+                              role: 'assistant',
+                              content: 'Target leaf',
+                              timestamp: 4,
+                              replies: { items: [] },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  id: 'assistant-2',
+                  role: 'assistant',
+                  content: 'Saved answer',
+                  timestamp: 5,
+                  replies: { items: [] },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      currentLeafId: 'assistant-2',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+    };
+
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
+    vi.mocked(storageService.updateChatContent).mockClear();
+
+    await openChatAtMessage({ chatId: 'message-link-chat', messageId: 'assistant-1' });
+
+    expect(currentChat.value?.currentLeafId).toBe('target-leaf');
+    expect(activeMessages.value.map(message => message.id)).toContain('assistant-1');
+    expect(storageService.updateChatContent).not.toHaveBeenCalled();
+  });
+
   it('should clear chat modelId if it is not in the newly fetched models in fetchAvailableModels', async () => {
     const chat = reactive({ id: 'chat-1', modelId: 'old-model', root: { items: [] } }) as any;
     const { registerLiveInstance, fetchAvailableModels } = useChat();
