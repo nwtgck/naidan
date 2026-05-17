@@ -18,7 +18,7 @@ const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted(() => import
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
 const { query, isSearching, isScanningContent, results, search, stopSearch } = useChatSearch();
-const { openChat, openChatGroup, chatGroups, currentChat } = useChat();
+const { openChat, openChatAtMessage, openChatGroup, chatGroups, currentChat } = useChat();
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
   searchPreviewMode,
@@ -408,10 +408,10 @@ async function selectItem({ index }: { index: number }) {
   case 'message': {
     const matchItem = target.item;
     const parentChat = target.parentChat;
-    await openChat(parentChat.chatId, matchItem.targetLeafId);
+    await openChatAtMessage({ chatId: parentChat.chatId, messageId: matchItem.messageId });
     router.push({
       path: `/chat/${parentChat.chatId}`,
-      query: { leaf: matchItem.targetLeafId }
+      query: { 'message-id': matchItem.messageId }
     });
     closeSearch();
     break;

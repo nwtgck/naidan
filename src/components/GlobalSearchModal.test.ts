@@ -57,10 +57,12 @@ vi.mock('../composables/useChatSearch', () => ({
 }));
 
 const mockOpenChat = vi.fn();
+const mockOpenChatAtMessage = vi.fn();
 const mockOpenChatGroup = vi.fn();
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     openChat: mockOpenChat,
+    openChatAtMessage: mockOpenChatAtMessage,
     openChatGroup: mockOpenChatGroup,
     chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
     currentChat: ref(null),
@@ -264,6 +266,39 @@ describe('GlobalSearchModal Component', () => {
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
     expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockCloseSearch).toHaveBeenCalled();
+  });
+
+  it('should open message results with message-id links', async () => {
+    mockQuery.value = 'target';
+    mockResults.value = [
+      {
+        type: 'message',
+        parentChat: { type: 'chat', chatId: 'chat1', title: 'Chat 1', updatedAt: 1, matchType: 'content', contentMatches: [] },
+        item: {
+          chatId: 'chat1',
+          messageId: 'message-1',
+          excerpt: 'target excerpt',
+          fullContent: 'target excerpt',
+          role: 'assistant',
+          targetLeafId: 'leaf-1',
+          timestamp: 1,
+          isCurrentThread: true,
+        },
+      },
+    ] as any;
+
+    const wrapper = mount(GlobalSearchModal);
+    await nextTick();
+
+    await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
+
+    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat1', messageId: 'message-1' });
+    expect(mockOpenChat).not.toHaveBeenCalledWith('chat1', 'leaf-1');
+    expect(mockPush).toHaveBeenCalledWith({
+      path: '/chat/chat1',
+      query: { 'message-id': 'message-1' },
+    });
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
