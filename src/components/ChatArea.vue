@@ -555,7 +555,7 @@ const autoScroll = useChatAreaAutoScroll({
   processingStatus: computed(() => isCurrentChatStreaming.value ? 'processing' : 'idle'),
 });
 
-const responseViewportReserve = ref<{ chatId: string, navigationKey: string, userTurnId: string } | undefined>(undefined);
+const responseViewportReserve = ref<{ chatId: string, navigationKey: string, userTurnId: string, heightPx: number } | undefined>(undefined);
 
 const isResponseViewportReserveActive = computed(() => {
   if (props.targetMessageId) return false;
@@ -566,6 +566,40 @@ const isResponseViewportReserveActive = computed(() => {
     && responseViewportReserve.value.navigationKey === snapshot.navigationKey
     && responseViewportReserve.value.userTurnId === snapshot.latestUserTurnId;
 });
+
+const responseViewportReserveHeightPx = computed(() => {
+  if (!isResponseViewportReserveActive.value) return 0;
+  return responseViewportReserve.value?.heightPx ?? 0;
+});
+
+function getElementTopInContainer({
+  element,
+  scrollContainer,
+}: {
+  element: HTMLElement,
+  scrollContainer: HTMLElement,
+}) {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  return scrollContainer.scrollTop + elementRect.top - containerRect.top;
+}
+
+function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: string }) {
+  const scrollContainer = container.value;
+  if (!scrollContainer) return 0;
+
+  const userElement = scrollContainer.querySelector(`#message-${userTurnId}`);
+  if (!(userElement instanceof HTMLElement)) return 0;
+
+  const userTop = getElementTopInContainer({
+    element: userElement,
+    scrollContainer,
+  });
+  const currentReserveHeight = responseViewportReserve.value?.heightPx ?? 0;
+  const scrollHeightWithoutReserve = scrollContainer.scrollHeight - currentReserveHeight;
+  const maxScrollTopWithoutReserve = scrollHeightWithoutReserve - scrollContainer.clientHeight;
+  return Math.max(0, Math.ceil(userTop - maxScrollTopWithoutReserve));
+}
 
 async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
   await chatStore.editMessage(messageId, newContent, lmParameters);
@@ -643,6 +677,7 @@ watch(
 
     switch (action.kind) {
     case 'initial_open':
+      responseViewportReserve.value = undefined;
       await scrollInitialOpenTarget({ target: action.target });
       break;
     case 'assistant': {
@@ -652,6 +687,14 @@ watch(
         chatId: snapshot.chatId,
         navigationKey: snapshot.navigationKey,
         userTurnId: action.userTurnId,
+        heightPx: 0,
+      };
+      await nextTick();
+      const reserve = responseViewportReserve.value;
+      if (!reserve) return;
+      responseViewportReserve.value = {
+        ...reserve,
+        heightPx: calculateResponseViewportReserveHeight({ userTurnId: action.userTurnId }),
       };
       await nextTick();
       await waitForPaint({ frames: 2 });
@@ -1098,8 +1141,9 @@ watch(
               mode="full"
             />
             <div
-              v-if="isResponseViewportReserveActive"
-              class="h-[65vh] min-h-[320px] max-h-[720px] shrink-0 pointer-events-none"
+              v-if="isResponseViewportReserveActive && responseViewportReserveHeightPx > 0"
+              class="shrink-0 pointer-events-none"
+              :style="{ height: `${responseViewportReserveHeightPx}px` }"
               data-testid="response-viewport-reserve"
             ></div>
           </div>

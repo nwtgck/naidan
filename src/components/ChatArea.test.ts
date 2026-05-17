@@ -661,7 +661,11 @@ describe('ChatArea Scrolling Logic', () => {
           'group-1': 300,
         };
         const top = positions[id] ?? 0;
-        mockEl.getBoundingClientRect = vi.fn().mockReturnValue({ top, bottom: top + 100, height: 100 });
+        mockEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({
+          top: top - internalScrollTop,
+          bottom: top + 100 - internalScrollTop,
+          height: 100,
+        }));
         return mockEl;
       }
       return originalQuerySelector(selector);
@@ -799,6 +803,7 @@ describe('ChatArea Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
 
     const assistantId = 'a1';
     mockActiveMessages.value = [
@@ -831,7 +836,141 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
 
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(100);
-    expect(wrapper.find('[data-testid="response-viewport-reserve"]').exists()).toBe(true);
+    const reserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(reserve.exists()).toBe(true);
+    expect((reserve.element as HTMLElement).style.height).toBe('50px');
+  });
+
+  it('keeps the response viewport reserve stable until the next send or branch change', async () => {
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
+
+    const userMessage = { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const assistantMessage = { id: 'a1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    mockStreaming.value = true;
+    mockActiveMessages.value = [userMessage, assistantMessage];
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: userMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: assistantMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    const reserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(reserve.exists()).toBe(true);
+    expect((reserve.element as HTMLElement).style.height).toBe('50px');
+
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 650 });
+    assistantMessage.content = 'Assistant content now occupies the planned response viewport.';
+    mockChatFlowOverride.value = [
+      mockChatFlowOverride.value[0]!,
+      {
+        type: 'message',
+        node: assistantMessage,
+        mode: 'content',
+        partContent: assistantMessage.content,
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    const updatedReserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(updatedReserve.exists()).toBe(true);
+    expect((updatedReserve.element as HTMLElement).style.height).toBe('50px');
+
+    mockStreaming.value = false;
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    const completedReserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(completedReserve.exists()).toBe(true);
+    expect((completedReserve.element as HTMLElement).style.height).toBe('50px');
+
+    const secondUserMessage = { id: 'u2', role: 'user', content: 'next question', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const secondAssistantMessage = { id: 'a2', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    mockStreaming.value = true;
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 730 });
+    mockActiveMessages.value = [userMessage, assistantMessage, secondUserMessage, secondAssistantMessage];
+    mockChatFlowOverride.value = [
+      mockChatFlowOverride.value[0]!,
+      mockChatFlowOverride.value[1]!,
+      {
+        type: 'message',
+        node: secondUserMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: secondAssistantMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    const nextSendReserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(nextSendReserve.exists()).toBe(true);
+    expect((nextSendReserve.element as HTMLElement).style.height).toBe('20px');
+
+    mockStreaming.value = false;
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      currentLeafId: 'changed-branch'
+    };
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="response-viewport-reserve"]').exists()).toBe(false);
   });
 
   it('does not treat a processing leaf update as an initial open', async () => {
@@ -857,6 +996,7 @@ describe('ChatArea Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
 
     mockStreaming.value = true;
     mockCurrentChat.value = {
@@ -913,7 +1053,9 @@ describe('ChatArea Scrolling Logic', () => {
 
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(100);
     expect(scrollTopSetterSpy).not.toHaveBeenCalledWith(50);
-    expect(wrapper.find('[data-testid="response-viewport-reserve"]').exists()).toBe(true);
+    const reserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(reserve.exists()).toBe(true);
+    expect((reserve.element as HTMLElement).style.height).toBe('50px');
   });
 
   it('scrolls again after abort when a new user turn starts', async () => {
@@ -1201,6 +1343,7 @@ describe('ChatArea Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
 
     mockActiveMessages.value = [
       { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
@@ -1238,6 +1381,9 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(100);
+    const reserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(reserve.exists()).toBe(true);
+    expect((reserve.element as HTMLElement).style.height).toBe('50px');
   });
 
   it('re-runs the initial open scroll when the active leaf changes in the same chat', async () => {
