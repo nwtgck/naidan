@@ -29,15 +29,13 @@ import {
   Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
-import { useRouter } from 'vue-router';
-import type { Attachment, Chat, LmParameters } from '@/models/types';
+import type { Attachment, LmParameters } from '@/models/types';
 
 const chatStore = useChat();
 const { setToolEnabled } = useChatTools();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
 const reasoningStore = useReasoning();
-const router = useRouter();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
 const {
   currentChat,
@@ -902,40 +900,6 @@ async function handleSend() {
 
   focusInput();
 }
-
-import { findDeepestLeaf } from '@/utils/chat-tree';
-
-watch(
-  () => currentChat.value?.currentLeafId,
-  (newLeafId) => {
-    if (!newLeafId || !currentChat.value) return;
-
-    const currentLeafInUrl = router.currentRoute.value.query.leaf;
-    if (newLeafId !== currentLeafInUrl) {
-      const query = { ...router.currentRoute.value.query };
-
-      // If we are at the deepest leaf, we don't need the leaf param in URL
-      // Use toRaw and cast to Chat to avoid deep-readonly type issues with findDeepestLeaf
-      const rawChat = toRaw(currentChat.value) as Chat | null;
-      if (rawChat && rawChat.root.items.length > 0) {
-        const deepestLeaf = findDeepestLeaf(rawChat.root.items[rawChat.root.items.length - 1]!);
-        if (newLeafId === deepestLeaf.id) {
-          delete query.leaf;
-        } else {
-          query.leaf = newLeafId;
-        }
-      } else if (newLeafId) {
-        query.leaf = newLeafId;
-      }
-
-      // If we are just loading the chat or there's no leaf in URL, use replace to avoid polluting history
-      const method = !currentLeafInUrl ? 'replace' : 'push';
-      router[method]({
-        query
-      });
-    }
-  }
-);
 
 watch(input, () => {
   adjustTextareaHeight();

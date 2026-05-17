@@ -410,7 +410,7 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should branch into a new version when regenerateMessage is called', async () => {
-    const { sendMessage, regenerateMessage } = useChat();
+    const { sendMessage, regenerateMessage, switchVersion } = useChat();
 
     __testOnlySetCurrentChat(reactive({
       id: 'regen-test', title: 'Regen', root: { items: [] },
@@ -449,6 +449,16 @@ describe('useChat Composable Logic', () => {
     // 4. Verify current view points to the new version
     expect(currentChat.value?.currentLeafId).toBe(secondAssistantMsg?.id);
     expect(activeMessages.value[1]?.content).toBe('Second Response');
+
+    await switchVersion(firstAssistantMsg!.id);
+    triggerRef(currentChat);
+
+    expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
+    expect(activeMessages.value[1]?.content).toBe('First Response');
+    expect(storageService.updateChatContent).toHaveBeenCalledWith(
+      'regen-test',
+      expect.any(Function),
+    );
   });
 
   it('should store lmParameters in UserMessageNode and AssistantMessageNode after sendMessage', async () => {
