@@ -23,6 +23,8 @@ import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
+// Lazily load the outline overlay, prefetch on mounted.
+const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted(() => import('./ConversationOutlineOverlay.vue'));
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
@@ -41,7 +43,7 @@ import {
   XIcon, GitForkIcon, RefreshCwIcon,
   ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon,
   FolderIcon, FolderInputIcon, ChevronRightIcon, HammerIcon, SearchIcon, ImageIcon,
-  PrinterIcon, LinkIcon, TerminalIcon
+  PrinterIcon, LinkIcon, TerminalIcon, ListIcon
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
@@ -161,6 +163,60 @@ const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
 const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
+const outlineVisibility = ref<'hidden' | 'visible'>('hidden');
+const initialOutlineMessageId = ref<string | undefined>(undefined);
+
+function getCurrentViewportMessageId(_args: Record<string, never>) {
+  const scrollContainer = container.value;
+  if (!scrollContainer) return undefined;
+
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const targetY = containerRect.top + Math.min(120, containerRect.height * 0.25);
+  const messageElements = Array.from(scrollContainer.querySelectorAll('[id^="message-"]'));
+
+  let closest: { id: string; distance: number } | undefined;
+  for (const element of messageElements) {
+    if (!(element instanceof HTMLElement)) continue;
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom < containerRect.top || rect.top > containerRect.bottom) continue;
+
+    const distance = Math.abs(rect.top - targetY);
+    if (!closest || distance < closest.distance) {
+      closest = {
+        id: element.id.replace(/^message-/, ''),
+        distance,
+      };
+    }
+  }
+
+  return closest?.id;
+}
+
+function toggleOutline(_args: Record<string, never>) {
+  const currentVisibility = outlineVisibility.value;
+  switch (currentVisibility) {
+  case 'visible':
+    outlineVisibility.value = 'hidden';
+    return;
+  case 'hidden':
+    initialOutlineMessageId.value = getCurrentViewportMessageId({});
+    outlineVisibility.value = 'visible';
+    return;
+  default: {
+    const _ex: never = currentVisibility;
+    throw new Error(`Unhandled outline visibility: ${_ex}`);
+  }
+  }
+}
+
+function closeOutline(_args: Record<string, never>) {
+  outlineVisibility.value = 'hidden';
+}
+
+function jumpToOutlineMessage({ messageId }: { messageId: string }) {
+  jumpToMessage({ messageId });
+  closeOutline({});
+}
 
 async function handleMoveToGroup(groupId: string | null) {
   if (!currentChat.value) return;
@@ -626,6 +682,16 @@ watch(
 
       <div class="flex items-center gap-0.5 relative">
         <div v-if="currentChat" class="flex items-center gap-0.5">
+          <button
+            v-if="activeMessages.length > 0"
+            @click="handleForkLastMessage"
+            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+            title="Fork Chat from last message"
+            data-testid="fork-chat-button"
+          >
+            <GitForkIcon class="w-4.5 h-4.5" />
+          </button>
+
           <!-- Move to Group Dropdown -->
           <div class="relative">
             <button
@@ -680,30 +746,13 @@ watch(
 
           <button
             v-if="activeMessages.length > 0"
-            @click="handleForkLastMessage"
-            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-            title="Fork Chat from last message"
-            data-testid="fork-chat-button"
+            @click="toggleOutline({})"
+            class="p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
+            :class="outlineVisibility === 'visible' ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
+            title="Conversation Outline"
+            data-testid="conversation-outline-button"
           >
-            <GitForkIcon class="w-4.5 h-4.5" />
-          </button>
-
-          <button
-            @click="showHistoryModal = true"
-            class="p-1.5 rounded-lg transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
-            title="Super Edit (Full History Manipulation)"
-            data-testid="super-edit-button"
-          >
-            <HammerIcon class="w-4.5 h-4.5 group-hover/hammer:-rotate-12 transition-all" />
-          </button>
-
-          <button
-            @click="exportChat"
-            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-            title="Export as Markdown"
-            data-testid="export-markdown-button"
-          >
-            <DownloadIcon class="w-4.5 h-4.5" />
+            <ListIcon class="w-4.5 h-4.5" />
           </button>
 
           <button
@@ -739,6 +788,24 @@ watch(
             >
               <SearchIcon class="w-4 h-4" />
               <span>Search in Chat</span>
+            </button>
+            <button
+              @click="showHistoryModal = true; showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-orange-500 dark:hover:text-orange-400"
+              title="Super Edit (Full History Manipulation)"
+              data-testid="super-edit-button"
+            >
+              <HammerIcon class="w-4 h-4" />
+              <span>Super Edit</span>
+            </button>
+            <button
+              @click="exportChat(); showMoreMenu = false"
+              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+              title="Export as Markdown"
+              data-testid="export-markdown-button"
+            >
+              <DownloadIcon class="w-4 h-4" />
+              <span>Export Markdown</span>
             </button>
             <button
               @click="toggleMediaShelf(); showMoreMenu = false"
@@ -813,6 +880,13 @@ watch(
 
     <!-- Messages Layer -->
     <div class="flex-1 relative overflow-hidden">
+      <ConversationOutlineOverlay
+        :visibility="outlineVisibility"
+        :flow-items="chatFlow"
+        :initial-message-id="initialOutlineMessageId"
+        @close="closeOutline({})"
+        @select-message="(messageId) => jumpToOutlineMessage({ messageId })"
+      />
       <div
         ref="container"
         data-testid="scroll-container"

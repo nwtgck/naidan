@@ -89,4 +89,37 @@ describe('useSampleChat', () => {
     expect(mockLoadChats).toHaveBeenCalled();
     expect(mockOpenChat).toHaveBeenCalledWith(chatId);
   });
+
+  it('creates a long sample chat for navigation stress testing without large fixtures', async () => {
+    const { createLongSampleChat } = useSampleChat();
+    await createLongSampleChat();
+
+    const contentCall = vi.mocked(storageService.updateChatContent).mock.calls[0];
+    expect(contentCall).toBeDefined();
+    const content = await contentCall![1](null);
+
+    const metaCall = vi.mocked(storageService.updateChatMeta).mock.calls[0];
+    expect(metaCall).toBeDefined();
+    const meta = await metaCall![1](null);
+    const chatId = metaCall![0];
+
+    expect(meta.title).toBe('Long Sample: Outline Stress Test');
+    expect(meta.debugEnabled).toBe(false);
+
+    const messages: Array<{ id: string; role: string; content: string | undefined }> = [];
+    let current = content.root.items[0];
+    while (current) {
+      messages.push({ id: current.id, role: current.role, content: current.content });
+      current = current.replies.items[0];
+    }
+
+    expect(messages).toHaveLength(36);
+    expect(messages[0]?.role).toBe('user');
+    expect(messages[1]?.role).toBe('assistant');
+    expect(messages[0]?.content?.length).toBeGreaterThan(600);
+    expect(messages[1]?.content?.length).toBeGreaterThan(900);
+    expect(content.currentLeafId).toBe(messages[messages.length - 1]?.id);
+    expect(mockLoadChats).toHaveBeenCalled();
+    expect(mockOpenChat).toHaveBeenCalledWith(chatId);
+  });
 });

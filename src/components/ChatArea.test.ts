@@ -416,6 +416,48 @@ describe('ChatArea UI States', () => {
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({ chatId: '1' });
   });
 
+  it('should open a conversation outline and jump to a selected message', async () => {
+    mockActiveMessages.value = [
+      { id: 'u1', role: 'user', content: 'First long user message to revisit later', timestamp: 0, replies: { items: [] } },
+      { id: 'a1', role: 'assistant', content: 'Assistant response with useful details', timestamp: 0, replies: { items: [] } },
+    ];
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+      attachTo: document.body,
+    });
+    await nextTick();
+
+    const outlineButton = wrapper.find('[data-testid="conversation-outline-button"]');
+    expect(outlineButton.exists()).toBe(true);
+    await outlineButton.trigger('click');
+    await flushPromises();
+
+    const panel = wrapper.find('[data-testid="conversation-outline-panel"]');
+    expect(panel.exists()).toBe(true);
+    expect(panel.text()).toContain('First long user message');
+    expect(panel.text()).toContain('Assistant response');
+
+    const items = wrapper.findAll('[data-testid="conversation-outline-jump-button"]');
+    expect(items).toHaveLength(2);
+    await items[1]!.trigger('click');
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="conversation-outline-panel"]').exists()).toBe(false);
+  });
+
+  it('should expose Super Edit from the more actions menu', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    const superEditButton = wrapper.find('[data-testid="super-edit-button"]');
+
+    expect(superEditButton.exists()).toBe(true);
+    expect(superEditButton.text()).toContain('Super Edit');
+  });
+
   it('should ignore title hover state immediately after starting generation until mouseleave', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGeneratingTitle.value = false;
@@ -468,12 +510,13 @@ describe('ChatArea UI States', () => {
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
   });
 
-  it('should render header icons (Export, Settings, More)', async () => {
+  it('should render header icons (Settings, Outline, More)', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
-    expect(wrapper.find('[data-testid="export-markdown-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="conversation-outline-button"]').exists()).toBe(true);
     expect(wrapper.find('button[title="Chat Settings & Model Override"]').exists()).toBe(true);
     expect(wrapper.find('button[title="More Actions"]').exists()).toBe(true);
   });
@@ -1255,6 +1298,7 @@ describe('ChatArea Export Functionality', () => {
 
     await nextTick(); // Ensure component is rendered and mocks are applied
 
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     expect(exportButton.exists()).toBe(true);
     await exportButton.trigger('click');
@@ -1323,6 +1367,7 @@ Hello User`);
 
     await nextTick();
 
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
 
@@ -1361,6 +1406,7 @@ Another message`);
 
     await nextTick();
 
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
 

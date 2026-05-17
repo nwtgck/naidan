@@ -23,6 +23,7 @@ describe('DeveloperTab', () => {
   const needRefresh = ref(false);
   const setNeedRefresh = vi.fn();
   const createSampleChat = vi.fn();
+  const createLongSampleChat = vi.fn();
   const showConfirm = vi.fn();
 
   beforeEach(() => {
@@ -40,6 +41,7 @@ describe('DeveloperTab', () => {
 
     (useSampleChat as any).mockReturnValue({
       createSampleChat,
+      createLongSampleChat,
     });
   });
 
@@ -49,6 +51,17 @@ describe('DeveloperTab', () => {
     });
     expect(wrapper.text()).toContain('Developer Tools');
     expect(wrapper.find('[data-testid="toggle-pwa-update-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="setting-create-long-sample-button"]').exists()).toBe(true);
+  });
+
+  it('creates a long sample chat when the long sample button is clicked', async () => {
+    const wrapper = mount(DeveloperTab, {
+      props: { storageType: 'localStorage' }
+    });
+
+    await wrapper.find('[data-testid="setting-create-long-sample-button"]').trigger('click');
+
+    expect(createLongSampleChat).toHaveBeenCalled();
   });
 
   it('toggles PWA update simulation when the button is clicked', async () => {
