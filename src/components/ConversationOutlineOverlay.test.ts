@@ -171,4 +171,44 @@ describe('ConversationOutlineOverlay', () => {
       behavior: 'auto',
     });
   });
+
+  it('does not re-scroll to the initial message when a peek is toggled', async () => {
+    const wrapper = mount(ConversationOutlineOverlay, {
+      props: {
+        visibility: 'visible',
+        initialMessageId: 'm5',
+        flowItems: Array.from({ length: 8 }, (_, index) => messageFlowItem({
+          id: `m${index}`,
+          role: 'user',
+          content: `Message ${index}`,
+        })),
+      },
+    });
+
+    const body = wrapper.find('[data-testid="conversation-outline-body"]');
+    const scrollTo = vi.fn();
+    Object.defineProperty(body.element, 'scrollTo', { configurable: true, value: scrollTo });
+    Object.defineProperty(body.element, 'scrollTop', { configurable: true, value: 0 });
+    Object.defineProperty(body.element, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ top: 0, bottom: 100, height: 100 }),
+    });
+
+    const rows = wrapper.findAll('[data-testid="conversation-outline-item"]');
+    for (const [index, row] of rows.entries()) {
+      Object.defineProperty(row.element, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => ({ top: index * 40, bottom: index * 40 + 20, height: 20 }),
+      });
+    }
+
+    await wrapper.setProps({ initialMessageId: 'm4' });
+    await nextTick();
+    scrollTo.mockClear();
+
+    await wrapper.find('[data-testid="conversation-outline-peek-button"]').trigger('click');
+    await nextTick();
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
 });

@@ -88,9 +88,13 @@ function scrollToInitialMessage(_args: Record<string, never>) {
   updateScrollHints({});
 }
 
-watch([() => props.visibility, () => props.initialMessageId, outlineItems, peekMessageId], () => {
+watch([() => props.visibility, () => props.initialMessageId, outlineItems], () => {
   nextTick(() => scrollToInitialMessage({}));
 }, { immediate: true });
+
+watch(peekMessageId, () => {
+  nextTick(() => updateScrollHints({}));
+});
 
 function togglePeek({ messageId }: { messageId: string }) {
   const currentPeekMessageId = peekMessageId.value;
