@@ -77,11 +77,11 @@ export class URLImportExportLogic {
   /**
    * Gets the export URL for the current state.
    */
-  async getExportURL({ exclude }: { exclude: Array<'chat' | 'binary_object'> | undefined }): Promise<string> {
+  async getExportURL({ exclude, baseUrl }: { exclude: Array<'chat' | 'binary_object'> | undefined; baseUrl: string }): Promise<string> {
     let data: { zipBase64: string; size: number } | null = await this.exportToBase64({ exclude });
     const zipBase64 = data.zipBase64;
     const currentType = storageService.getCurrentType();
-    const url = new URL(window.location.href);
+    const url = new URL(baseUrl);
 
     // Use hash for vue-router compatibility (fragment)
     const params = new URLSearchParams();

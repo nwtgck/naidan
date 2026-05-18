@@ -5,6 +5,7 @@ import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { storageService } from '@/services/storage';
 import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
+import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 
 defineProps<{
   storageType: string;
@@ -100,6 +101,8 @@ defineExpose({
           </div>
           <p class="text-[11px] font-medium text-gray-400 ml-1">Adds sample conversations for rendering checks and long-thread navigation testing.</p>
         </div>
+
+        <DeveloperOpenStateLinks />
 
         <div class="space-y-4">
           <button
