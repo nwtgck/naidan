@@ -17,6 +17,7 @@ import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection'
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -96,21 +97,8 @@ const isAnimatingHeight = computed({
   set: (val) => emit('update:isAnimatingHeight', val)
 });
 
-function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
-  if (!value) return 'Default';
-  switch (source) {
-  case 'chat_group':
-    return `${value} (Group)`;
-  case 'global':
-    return `${value} (Global)`;
-  case 'chat':
-  case undefined:
-    return value;
-  default: {
-    const _ex: never = source;
-    throw new Error(`Unhandled source: ${_ex}`);
-  }
-  }
+function formatLabel(value: string | undefined, source: SettingsSource | undefined) {
+  return formatSettingsSourceLabel({ value, source });
 }
 
 
