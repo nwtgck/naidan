@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import ChatAreaHeader from './ChatAreaHeader.vue';
 import type { Chat, ChatGroup } from '@/models/types';
 
@@ -56,7 +57,7 @@ function mountHeader({
     },
     global: {
       stubs: {
-        Transition: false,
+        Transition: true,
       },
     },
   });
@@ -103,5 +104,23 @@ describe('ChatAreaHeader', () => {
     await wrapper.find('[data-testid="print-chat-button"]').trigger('click');
 
     expect(wrapper.emitted('print')).toEqual([[]]);
+  });
+
+  it('keeps the more menu open on mouseleave and closes it on outside click', async () => {
+    const wrapper = mountHeader({
+      chat: makeChat(),
+      groups: [makeGroup()],
+    });
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    expect(wrapper.find('[data-testid="open-chat-wesh-terminal-button"]').exists()).toBe(true);
+
+    await wrapper.find('[data-testid="open-chat-wesh-terminal-button"]').trigger('mouseleave');
+    expect(wrapper.find('[data-testid="open-chat-wesh-terminal-button"]').exists()).toBe(true);
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="open-chat-wesh-terminal-button"]').exists()).toBe(false);
   });
 });

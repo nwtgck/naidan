@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import {
   XIcon, GitForkIcon, RefreshCwIcon,
   ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon,
@@ -56,6 +56,24 @@ const emit = defineEmits<{
 const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
 const ignoreTitleHover = ref(false);
+const actionsMenuRoot = ref<HTMLElement | null>(null);
+
+function closeFloatingMenus(_args: Record<string, never>) {
+  showMoreMenu.value = false;
+  showMoveMenu.value = false;
+}
+
+function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
+  if (!showMoreMenu.value && !showMoveMenu.value) return;
+  const target = event.target;
+  if (!(target instanceof Node)) return;
+  if (actionsMenuRoot.value?.contains(target)) return;
+  closeFloatingMenus({});
+}
+
+function handleDocumentPointerDownEvent(event: PointerEvent) {
+  handleDocumentPointerDown({ event });
+}
 
 function emitMoveToGroup({ groupId }: { groupId: string | null }) {
   emit('move-to-group', groupId);
@@ -110,6 +128,14 @@ function emitTitleAction() {
   ignoreTitleHover.value = true;
   emit('title-action');
 }
+
+onMounted(() => {
+  document.addEventListener('pointerdown', handleDocumentPointerDownEvent);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', handleDocumentPointerDownEvent);
+});
 
 
 defineExpose({
@@ -200,7 +226,7 @@ defineExpose({
       </div>
     </div>
 
-    <div class="flex items-center gap-0.5 relative">
+    <div ref="actionsMenuRoot" class="flex items-center gap-0.5 relative">
       <div v-if="currentChat" class="flex items-center gap-0.5">
         <button
           v-if="activeMessageCount > 0"
@@ -227,7 +253,6 @@ defineExpose({
             <div
               v-if="showMoveMenu"
               class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-top-right"
-              @mouseleave="showMoveMenu = false"
             >
               <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
                 Move to Group
@@ -288,7 +313,6 @@ defineExpose({
         <div
           v-if="showMoreMenu"
           class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
-          @mouseleave="showMoreMenu = false"
         >
           <button
             @click="emitMoreAction({ action: 'print' })"
