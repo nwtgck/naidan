@@ -33,6 +33,8 @@ import type { LmParameters } from '@/models/types';
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const ChatTitleDialog = defineAsyncComponentAndLoadOnMounted(() => import('./ChatTitleDialog.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./ChatDebugInspector.vue'));
@@ -46,7 +48,7 @@ import {
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { hasChatOverrides } from '@/utils/chat-settings-resolver';
-import { formatSettingsSourceLabel } from '@/utils/settings-labels';
+import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { generateChatShareURL } from '@/services/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
@@ -68,12 +70,17 @@ const {
   currentChat,
   currentChatGroup,
   generatingTitle,
+  renameChat,
+  updateChatSettings,
+  updateChatGroupMetadata,
   activeMessages,
   allMessages,
   availableModels,
+  fetchingModels,
   resolvedSettings,
   isProcessing,
   getSortedImageModels,
+  fetchAvailableModels,
   abortTitleGeneration,
   chatFlow,
   isThinkingActive,
@@ -90,15 +97,6 @@ type ScrollForce = 'force' | 'if-near-bottom';
 const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
-
-function handleTitleAction() {
-  if (!currentChat.value) return;
-  if (generatingTitle.value) {
-    abortTitleGeneration({ chatId: currentChat.value.id });
-  } else {
-    chatStore.generateChatTitle({ chatId: currentChat.value.id, signal: undefined });
-  }
-}
 
 function handleDragOver(event: DragEvent) {
   event.preventDefault();
@@ -132,7 +130,10 @@ async function handleDrop(event: DragEvent) {
 
 const container = ref<HTMLElement | null>(null);
 
-useSettings();
+const {
+  settings,
+  save: saveSettings,
+} = useSettings();
 const router = useRouter();
 
 const props = defineProps<{
@@ -159,6 +160,8 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
 const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
+const showTitleDialog = ref(false);
+const generatedTitleHistory = ref<string[]>([]);
 const outlineVisibility = ref<'hidden' | 'visible'>('hidden');
 const initialOutlineMessageId = ref<string | undefined>(undefined);
 
@@ -226,6 +229,31 @@ function clearTargetMessageQuery() {
 async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
   if (!currentChat.value) return;
   await chatStore.moveChatToGroup(currentChat.value.id, groupId);
+}
+
+async function handleSaveTitle({ title }: { title: string }) {
+  if (!currentChat.value) return;
+  await renameChat(currentChat.value.id, title);
+}
+
+async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
+  if (!currentChat.value) return;
+  const titleBeforeGeneration = currentChat.value.title?.trim();
+  await updateActiveTitleModel({ modelId });
+  const generatedTitle = await chatStore.generateChatTitle({
+    chatId: currentChat.value.id,
+    signal: undefined,
+    titleModelIdOverride: modelId,
+  });
+  if (!generatedTitle) return;
+  const nextHistory = titleBeforeGeneration
+    ? [generatedTitle, titleBeforeGeneration, ...generatedTitleHistory.value]
+    : [generatedTitle, ...generatedTitleHistory.value];
+  generatedTitleHistory.value = Array.from(new Set(nextHistory));
+}
+
+function handleAbortTitleGeneration(_args: Record<string, never>) {
+  abortTitleGeneration({ chatId: currentChat.value?.id });
 }
 
 async function exportChat() {
@@ -555,6 +583,57 @@ const currentModelLabel = computed(() => formatSettingsSourceLabel({
   source: resolvedSettings.value?.sources.modelId,
 }));
 
+const activeTitleModelSource = computed<SettingsSource>(() => resolvedSettings.value?.sources.titleModelId ?? 'global');
+
+const activeTitleModelId = computed(() => {
+  const source = activeTitleModelSource.value;
+  switch (source) {
+  case 'chat':
+    return currentChat.value?.titleModelId;
+  case 'chat_group':
+    return currentChatGroup.value?.titleModelId;
+  case 'global':
+    return settings.value.titleModelId;
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled title model source: ${_ex}`);
+  }
+  }
+});
+
+async function updateActiveTitleModel({ modelId }: { modelId: string | undefined }) {
+  const source = activeTitleModelSource.value;
+  switch (source) {
+  case 'chat':
+    if (!currentChat.value) return;
+    await updateChatSettings(currentChat.value.id, { titleModelId: modelId });
+    return;
+  case 'chat_group':
+    if (!currentChat.value?.groupId) {
+      await saveSettings({ titleModelId: modelId });
+      return;
+    }
+    await updateChatGroupMetadata(currentChat.value.groupId, { titleModelId: modelId });
+    return;
+  case 'global':
+    await saveSettings({ titleModelId: modelId });
+    return;
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled title model source: ${_ex}`);
+  }
+  }
+}
+
+watch(
+  showTitleDialog,
+  (isOpen) => {
+    if (isOpen) {
+      generatedTitleHistory.value = [];
+    }
+  }
+);
+
 const autoScroll = useChatAreaAutoScroll({
   currentChat,
   activeMessages,
@@ -755,11 +834,10 @@ watch(
       :show-chat-settings="showChatSettings"
       :outline-visibility="outlineVisibility"
       :generating-title="generatingTitle"
-      :is-current-chat-streaming="isCurrentChatStreaming"
       :media-shelf-visibility="mediaShelfVisibility"
       :is-chat-wesh-terminal-open="isChatWeshTerminalOpen"
       @jump-origin="jumpToOrigin"
-      @title-action="handleTitleAction"
+      @edit-title="showTitleDialog = true"
       @update:show-chat-settings="showChatSettings = $event"
       @fork-last-message="handleForkLastMessage"
       @move-to-group="groupId => handleMoveToGroup({ groupId })"
@@ -778,6 +856,22 @@ watch(
     <ChatSettingsPanel
       :show="showChatSettings"
       @close="showChatSettings = false"
+    />
+
+    <ChatTitleDialog
+      :is-open="showTitleDialog"
+      :title="currentChat?.title ?? null"
+      :available-models="availableModels"
+      :selected-title-model="activeTitleModelId"
+      :title-model-source="activeTitleModelSource"
+      :generated-titles="generatedTitleHistory"
+      :generating-title="generatingTitle"
+      :fetching-models="fetchingModels"
+      @close="showTitleDialog = false"
+      @save-title="title => handleSaveTitle({ title })"
+      @generate-title="modelId => handleGenerateTitle({ modelId })"
+      @abort-title="handleAbortTitleGeneration({})"
+      @refresh-models="fetchAvailableModels({ chatId: currentChat?.id, customEndpoint: undefined })"
     />
 
     <!-- History Manipulation Modal -->

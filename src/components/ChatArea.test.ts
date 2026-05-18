@@ -27,6 +27,12 @@ const mockGeneratingTitle = ref(false);
 const mockFetchAvailableModels = vi.fn();
 const mockGenerateChatTitle = vi.fn();
 const mockAbortTitleGeneration = vi.fn();
+const mockRenameChat = vi.fn().mockImplementation((_id: string, title: string) => {
+  if (mockCurrentChat.value) {
+    mockCurrentChat.value.title = title;
+  }
+});
+const mockSaveSettings = vi.fn().mockResolvedValue(undefined);
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<Chat | null>({
   id: '1',
@@ -55,6 +61,11 @@ const mockUpdateChatSettings = vi.fn().mockImplementation((id, updates) => {
     Object.assign(mockCurrentChat.value, updates);
   }
 });
+const mockUpdateChatGroupMetadata = vi.fn().mockImplementation((id, updates) => {
+  if (mockCurrentChatGroup.value && mockCurrentChatGroup.value.id === id) {
+    Object.assign(mockCurrentChatGroup.value, updates);
+  }
+});
 
 const mockOpenChatGroup = vi.fn();
 const mockMoveChatToGroup = vi.fn();
@@ -77,6 +88,7 @@ vi.mock('../composables/useChat', () => ({
     resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
+    renameChat: mockRenameChat,
     updateChatModel: mockUpdateChatModel,
     saveChat: mockSaveChat,
     streaming: mockStreaming,
@@ -103,6 +115,7 @@ vi.mock('../composables/useChat', () => ({
     moveChatToGroup: mockMoveChatToGroup,
     getLiveChat: mockGetLiveChat,
     updateChatSettings: mockUpdateChatSettings,
+    updateChatGroupMetadata: mockUpdateChatGroupMetadata,
     isTaskRunning: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
     isProcessing: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
     isImageMode: vi.fn(() => false),
@@ -157,6 +170,7 @@ vi.mock('../composables/useSettings', () => ({
     availableModels: mockAvailableModels,
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
+    save: mockSaveSettings,
   }),
 }));
 
@@ -201,6 +215,7 @@ function resetMocks() {
   clearAllDrafts();
   vi.clearAllMocks();
   mockStreaming.value = false;
+  mockGeneratingTitle.value = false;
   mockActiveGenerations.clear();
   mockActiveMessages.value = [];
   mockChatFlowOverride.value = null;
@@ -210,7 +225,8 @@ function resetMocks() {
   mockFetchingModels.value = false;
   mockResolvedSettings.value = {
     modelId: 'global-default-model',
-    sources: { modelId: 'global' }
+    titleModelId: undefined,
+    sources: { modelId: 'global', titleModelId: 'global' }
   };
   mockInheritedSettings.value = {
     modelId: 'global-default-model',
@@ -442,28 +458,212 @@ describe('ChatArea UI States', () => {
     expect(inspector.text()).toContain('Chat Inspector');
   });
 
-  it('should show the regenerate title button and call generateChatTitle when clicked', async () => {
+  it('should open the title dialog and save a manual title', async () => {
+    vi.useFakeTimers();
+    try {
+      mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+      wrapper = mount(ChatArea, {
+        global: { plugins: [router] },
+      });
+
+      expect(wrapper.find('[data-testid="regenerate-title-button"]').exists()).toBe(false);
+
+      await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-testid="chat-title-dialog"]').exists()).toBe(true);
+
+      await wrapper.find('[data-testid="chat-title-input"]').setValue('Manual Title');
+      await vi.advanceTimersByTimeAsync(600);
+      await flushPromises();
+
+      expect(mockRenameChat).toHaveBeenCalledWith('1', 'Manual Title');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should generate a title from the title dialog using the selected global title model', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGenerateChatTitle.mockResolvedValue('Generated Title');
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
+    await flushPromises();
+    await wrapper.findComponent({ name: 'ModelSelector' }).vm.$emit('update:modelValue', 'model-2');
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+
+    expect(mockSaveSettings).toHaveBeenCalledWith({ titleModelId: 'model-2' });
+    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: '1', signal: undefined, titleModelIdOverride: 'model-2' });
+  });
+
+  it('should keep title model and generated title history hidden until options are opened', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
-    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-    expect(btn.exists()).toBe(true);
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
 
-    await btn.trigger('click');
-    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: '1', signal: undefined });
+    expect(wrapper.find('[data-testid="chat-title-model-select"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('Generated in this dialog');
+
+    await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="chat-title-model-select"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Generated in this dialog');
   });
 
-  it('should call abortTitleGeneration when clicked while generating', async () => {
+  it('should show Stop and the title scan animation while title generation is running', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGeneratingTitle.value = true;
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
-    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-    await btn.trigger('click');
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="generate-chat-title-button"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="abort-title-generation-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="title-magic-scan"]').exists()).toBe(true);
+  });
+
+  it('should preserve the previous title in dialog history when generation replaces it', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGenerateChatTitle.mockImplementation(async () => {
+      if (mockCurrentChat.value) mockCurrentChat.value.title = 'Generated Title';
+      return 'Generated Title';
+    });
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
+
+    const historyOptions = wrapper.findAll('[data-testid="generated-title-option"]').map(option => option.text());
+    expect(historyOptions).toContain('Generated Title');
+    expect(historyOptions).toContain('Test Chat');
+  });
+
+  it('should keep generating the title in the background after the dialog is closed', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    let resolveTitleGeneration: ((title: string) => void) | undefined;
+    mockGenerateChatTitle.mockImplementation(async () => new Promise<string>((resolve) => {
+      resolveTitleGeneration = (title) => {
+        if (mockCurrentChat.value) mockCurrentChat.value.title = title;
+        resolve(title);
+      };
+    }));
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+    await wrapper.find('[data-testid="chat-title-dialog-close"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-title-dialog"]').exists()).toBe(false);
+    expect(mockAbortTitleGeneration).not.toHaveBeenCalled();
+
+    resolveTitleGeneration?.('Background Generated Title');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-header-title"]').text()).toContain('Background Generated Title');
+  });
+
+  it('should apply a generated history title to the input and save it when Use is clicked', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGenerateChatTitle.mockResolvedValue('Generated Title');
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
+    await wrapper.find('[data-testid="use-generated-title-button"]').trigger('click');
+
+    expect((wrapper.find('[data-testid="chat-title-input"]').element as HTMLInputElement).value).toBe('Generated Title');
+    expect(mockRenameChat).toHaveBeenCalledWith('1', 'Generated Title');
+  });
+
+  it('should update the chat title model override when the active title model source is chat', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockResolvedSettings.value = ref({
+      modelId: 'global-default-model',
+      titleModelId: 'model-2',
+      sources: { modelId: 'global', titleModelId: 'chat' }
+    });
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      titleModelId: 'model-2',
+    };
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+
+    expect(mockUpdateChatSettings).toHaveBeenCalledWith('1', { titleModelId: 'model-2' });
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    expect(mockUpdateChatGroupMetadata).not.toHaveBeenCalled();
+  });
+
+  it('should update the group title model override when the active title model source is group', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockResolvedSettings.value = ref({
+      modelId: 'global-default-model',
+      titleModelId: 'model-2',
+      sources: { modelId: 'global', titleModelId: 'chat_group' }
+    });
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      groupId: 'group-1',
+    };
+    mockCurrentChatGroup.value = {
+      id: 'group-1',
+      name: 'Group 1',
+      titleModelId: 'model-2',
+    };
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('group-1', { titleModelId: 'model-2' });
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    expect(mockUpdateChatSettings).not.toHaveBeenCalled();
+  });
+
+  it('should abort title generation from the title dialog', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGeneratingTitle.value = true;
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="abort-title-generation-button"]').trigger('click');
+
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({ chatId: '1' });
   });
 
@@ -507,49 +707,6 @@ describe('ChatArea UI States', () => {
 
     expect(superEditButton.exists()).toBe(true);
     expect(superEditButton.text()).toContain('Super Edit');
-  });
-
-  it('should ignore title hover state immediately after starting generation until mouseleave', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    mockGeneratingTitle.value = false;
-    wrapper = mount(ChatArea, {
-      global: { plugins: [router] },
-    });
-
-    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-
-    // 1. Click to start generation
-    await btn.trigger('click');
-    expect(mockGenerateChatTitle).toHaveBeenCalled();
-
-    // Simulate generation starting in store
-    mockGeneratingTitle.value = true;
-    await nextTick();
-
-    // 2. Even if we are "hovering" (implied after click), the X should be hidden by ignoreTitleHover logic
-    const xIcon = btn.find('svg.text-red-500'); // This is the X icon
-    expect(xIcon.classes()).not.toContain('group-hover/title:opacity-100');
-
-    // 3. Trigger mouseleave
-    await btn.trigger('mouseleave');
-    await nextTick();
-
-    // 4. Now the X should be eligible to show on hover
-    expect(xIcon.classes()).toContain('group-hover/title:opacity-100');
-  });
-
-  it('should spin but NOT disable the regenerate title button while generatingTitle is true (to allow aborting)', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    mockGeneratingTitle.value = true;
-    wrapper = mount(ChatArea, {
-      global: { plugins: [router] },
-    });
-
-    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-    const icon = btn.find('svg'); // RefreshCw is an SVG
-    expect(icon.classes()).toContain('animate-spin');
-    // It should NOT be disabled because we want to allow aborting
-    expect((btn.element as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('should hide the chat inspector when debug mode is disabled', async () => {
@@ -2515,6 +2672,8 @@ describe('ChatArea Model Selection', () => {
       global: { plugins: [router] },
     });
     mockFetchAvailableModels.mockClear();
+    mockRenameChat.mockClear();
+    mockSaveSettings.mockClear();
 
     // Simulate chat ID change
     if (mockCurrentChat.value) {

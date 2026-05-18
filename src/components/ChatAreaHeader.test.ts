@@ -51,7 +51,6 @@ function mountHeader({
       showChatSettings: false,
       outlineVisibility: 'hidden',
       generatingTitle: false,
-      isCurrentChatStreaming: false,
       mediaShelfVisibility: 'hidden',
       isChatWeshTerminalOpen: false,
     },
@@ -76,6 +75,37 @@ describe('ChatAreaHeader', () => {
     await wrapper.find('[data-testid="model-trigger"]').trigger('click');
 
     expect(wrapper.emitted('update:show-chat-settings')).toEqual([[true]]);
+  });
+
+  it('emits edit-title from the title edit button', async () => {
+    const wrapper = mountHeader({
+      chat: makeChat(),
+      groups: [makeGroup()],
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+
+    expect(wrapper.emitted('edit-title')).toEqual([[]]);
+  });
+
+  it('animates the title text while title generation is running', () => {
+    const wrapper = mount(ChatAreaHeader, {
+      props: {
+        currentChat: makeChat(),
+        chatGroups: [makeGroup()],
+        currentChatGroupBadge: makeGroup(),
+        activeMessageCount: 2,
+        modelLabel: 'gpt-test (Group)',
+        hasOverrides: true,
+        showChatSettings: false,
+        outlineVisibility: 'hidden',
+        generatingTitle: true,
+        mediaShelfVisibility: 'hidden',
+        isChatWeshTerminalOpen: false,
+      },
+    });
+
+    expect(wrapper.find('[data-testid="chat-header-title"]').classes()).toContain('title-header-generating');
   });
 
   it('emits move-to-group from the move menu', async () => {

@@ -1469,7 +1469,7 @@ export function useChat() {
       mutableChat.updatedAt = Date.now();
 
       if (mutableChat.title === null && resolved.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
-        await generateChatTitle({ chatId: mutableChat.id, signal: controller.signal });
+        await generateChatTitle({ chatId: mutableChat.id, signal: controller.signal, titleModelIdOverride: undefined });
       }
     } catch (e) {
       // Close thinking tag if open
@@ -1733,7 +1733,7 @@ export function useChat() {
     }
   };
 
-  const generateChatTitle = async ({ chatId, signal }: { chatId: string | undefined, signal: AbortSignal | undefined }) => {
+  const generateChatTitle = async ({ chatId, signal, titleModelIdOverride }: { chatId: string | undefined, signal: AbortSignal | undefined, titleModelIdOverride: string | undefined }): Promise<string | undefined> => {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return;
     const mutableChat = getLiveChat(target);
@@ -1779,7 +1779,7 @@ export function useChat() {
         throw new Error(`Unsupported endpoint type for title generation: ${_ex}`);
       }
       }
-      const titleGenModel = resolved.titleModelId || resolved.modelId;
+      const titleGenModel = titleModelIdOverride || resolved.titleModelId || resolved.modelId;
       if (!titleGenModel) return;
 
       const lang = detectLanguage({
@@ -1834,7 +1834,9 @@ export function useChat() {
           await loadData();
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         }
+        return finalTitle;
       }
+      return undefined;
     } finally {
       decTask(taskId, 'title');
       if (activeTitleGenerations.get(taskId) === controller) {

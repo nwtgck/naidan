@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import {
-  XIcon, GitForkIcon, RefreshCwIcon,
-  ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon,
+  XIcon, GitForkIcon,
+  ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon, PencilIcon,
   FolderIcon, FolderInputIcon, ChevronRightIcon, HammerIcon, SearchIcon, ImageIcon,
   PrinterIcon, LinkIcon, TerminalIcon, ListIcon
 } from 'lucide-vue-next';
 import type { MediaShelfVisibility } from '@/composables/useLayout';
+import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 
 type HeaderChat = {
   readonly id: string;
@@ -31,14 +32,13 @@ defineProps<{
   showChatSettings: boolean;
   outlineVisibility: 'hidden' | 'visible';
   generatingTitle: boolean;
-  isCurrentChatStreaming: boolean;
   mediaShelfVisibility: MediaShelfVisibility;
   isChatWeshTerminalOpen: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'jump-origin'): void;
-  (e: 'title-action'): void;
+  (e: 'edit-title'): void;
   (e: 'update:show-chat-settings', value: boolean): void;
   (e: 'fork-last-message'): void;
   (e: 'move-to-group', groupId: string | null): void;
@@ -55,7 +55,6 @@ const emit = defineEmits<{
 
 const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
-const ignoreTitleHover = ref(false);
 const actionsMenuRoot = ref<HTMLElement | null>(null);
 
 function closeFloatingMenus(_args: Record<string, never>) {
@@ -124,11 +123,6 @@ function emitMoreAction({ action }: {
   showMoreMenu.value = false;
 }
 
-function emitTitleAction() {
-  ignoreTitleHover.value = true;
-  emit('title-action');
-}
-
 onMounted(() => {
   document.addEventListener('pointerdown', handleDocumentPointerDownEvent);
 });
@@ -160,30 +154,30 @@ defineExpose({
             >
               <ArrowUpIcon class="w-4 h-4" />
             </button>
-            <h2 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
-            <button
-              v-if="activeMessageCount > 0"
-              @click="emitTitleAction"
-              @mouseleave="ignoreTitleHover = false"
-              class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50 group/title"
-              :disabled="isCurrentChatStreaming"
-              :title="generatingTitle ? 'Stop Title Generation' : 'Regenerate Title'"
-              data-testid="regenerate-title-button"
+            <h2
+              class="relative text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate"
+              :class="{ 'title-header-generating': generatingTitle }"
+              :data-title="currentChat.title || UNTITLED_CHAT_TITLE"
+              data-testid="chat-header-title"
             >
-              <div class="relative w-3.5 h-3.5 flex items-center justify-center">
-                <RefreshCwIcon
-                  class="w-full h-full transition-all"
-                  :class="{
-                    'animate-spin': generatingTitle,
-                    'group-hover/title:opacity-0 group-hover/title:scale-75': generatingTitle && !ignoreTitleHover
-                  }"
-                />
-                <XIcon
-                  v-if="generatingTitle"
-                  class="w-3.5 h-3.5 absolute opacity-0 transition-all text-red-500 scale-75"
-                  :class="{ 'group-hover/title:opacity-100 group-hover/title:scale-100': !ignoreTitleHover }"
-                />
-              </div>
+              <span class="title-header-base">
+                {{ currentChat.title || UNTITLED_CHAT_TITLE }}
+              </span>
+              <span
+                v-if="generatingTitle"
+                class="title-header-scan"
+                aria-hidden="true"
+              >
+                {{ currentChat.title || UNTITLED_CHAT_TITLE }}
+              </span>
+            </h2>
+            <button
+              @click="emit('edit-title')"
+              class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
+              title="Edit Chat Title"
+              data-testid="edit-title-button"
+            >
+              <PencilIcon class="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -399,3 +393,64 @@ defineExpose({
     </div>
   </div>
 </template>
+
+<style scoped>
+.title-header-generating {
+  text-shadow: none;
+}
+
+.title-header-base {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title-header-scan {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 43%,
+    rgba(59, 130, 246, 0.9) 48%,
+    rgb(255 255 255) 50%,
+    rgba(59, 130, 246, 0.9) 52%,
+    transparent 57%,
+    transparent 100%
+  );
+  background-size: 260% 100%;
+  background-position: 130% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  pointer-events: none;
+  animation: title-header-scan 2.35s linear infinite;
+}
+
+:global(.dark) .title-header-scan {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 43%,
+    rgba(96, 165, 250, 0.85) 48%,
+    rgb(255 255 255) 50%,
+    rgba(96, 165, 250, 0.85) 52%,
+    transparent 57%,
+    transparent 100%
+  );
+}
+
+@keyframes title-header-scan {
+  0% {
+    background-position: 130% 0;
+  }
+  100% {
+    background-position: -130% 0;
+  }
+}
+</style>

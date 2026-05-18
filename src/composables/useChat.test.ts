@@ -985,7 +985,7 @@ describe('useChat Composable Logic', () => {
       params.onChunk(' Title');
     });
 
-    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined });
+    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
     await promise;
     expect(chatStore.generatingTitle.value).toBe(false);
@@ -1016,7 +1016,7 @@ describe('useChat Composable Logic', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
     });
 
-    const promiseA = generateChatTitle({ chatId: chatA.id, signal: undefined });
+    const promiseA = generateChatTitle({ chatId: chatA.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
 
     // Switch to Chat B (which is not generating)
@@ -1087,7 +1087,7 @@ describe('useChat Composable Logic', () => {
     });
 
     chatObj.title = null; // Clear title to allow auto-generation to proceed
-    await generateChatTitle({ chatId: chatObj.id, signal: undefined });
+    await generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
 
     expect(chatObj.title).toBe('New Better Title');
     expect(storageService.updateChatMeta).toHaveBeenCalled();
@@ -1121,7 +1121,7 @@ describe('useChat Composable Logic', () => {
       }
     });
 
-    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined });
+    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
 
     abortTitleGeneration({ chatId: chatObj.id });
