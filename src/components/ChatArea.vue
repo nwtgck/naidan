@@ -548,6 +548,12 @@ const canGenerateImage = computed(() => {
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
+const currentChatGroupBadge = computed(() => {
+  const groupId = currentChat.value?.groupId;
+  if (!groupId) return undefined;
+  return chatStore.chatGroups.value.find(group => group.id === groupId);
+});
+
 const autoScroll = useChatAreaAutoScroll({
   currentChat,
   activeMessages,
@@ -780,31 +786,42 @@ watch(
               </button>
             </div>
 
-            <!-- Model Badge/Trigger -->
-            <button
-              @click="showChatSettings = !showChatSettings"
-              class="flex items-center gap-1.5 w-fit group"
-              title="Chat Settings & Model Override"
-              data-testid="model-trigger"
-            >
+            <div class="flex items-center gap-1.5 min-w-0">
               <div
-                class="px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5"
-                :class="showChatSettings
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
+                v-if="currentChatGroupBadge"
+                class="min-w-0 max-w-[120px] sm:max-w-[180px] px-1.5 py-0.5 rounded-md text-[9px] font-bold transition-colors flex items-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/70 border border-gray-100 dark:border-gray-800"
+                :title="`Group: ${currentChatGroupBadge.name}`"
+                data-testid="chat-group-badge"
               >
-                <span class="truncate max-w-[120px] sm:max-w-[200px]">
-                  {{ chatInputRef?.formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId) }}
-                </span>
-                <Settings2Icon class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
+                <span class="truncate">{{ currentChatGroupBadge.name }}</span>
               </div>
-              <div
-                v-if="currentChat && hasChatOverrides({ chat: currentChat })"
-                class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"
-                title="Custom overrides active"
-                data-testid="custom-overrides-indicator"
-              ></div>
-            </button>
+
+              <!-- Model Badge/Trigger -->
+              <button
+                @click="showChatSettings = !showChatSettings"
+                class="flex items-center gap-1.5 min-w-0 w-fit group"
+                title="Chat Settings & Model Override"
+                data-testid="model-trigger"
+              >
+                <div
+                  class="px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5 min-w-0"
+                  :class="showChatSettings
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
+                >
+                  <span class="truncate max-w-[120px] sm:max-w-[200px]">
+                    {{ chatInputRef?.formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId) }}
+                  </span>
+                  <Settings2Icon class="w-3 h-3 shrink-0" :class="{ 'animate-pulse': showChatSettings }" />
+                </div>
+                <div
+                  v-if="currentChat && hasChatOverrides({ chat: currentChat })"
+                  class="w-1 h-1 rounded-full bg-blue-500 animate-pulse shrink-0"
+                  title="Custom overrides active"
+                  data-testid="custom-overrides-indicator"
+                ></div>
+              </button>
+            </div>
           </template>
           <template v-else>
             <!-- Header empty when no chat is selected -->

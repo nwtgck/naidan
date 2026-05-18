@@ -204,6 +204,8 @@ function resetMocks() {
   mockActiveGenerations.clear();
   mockActiveMessages.value = [];
   mockChatFlowOverride.value = null;
+  mockChatGroups.value = [];
+  mockCurrentChatGroup.value = null;
   mockAvailableModels.value = ['model-1', 'model-2'];
   mockFetchingModels.value = false;
   mockResolvedSettings.value = {
@@ -250,6 +252,55 @@ describe('ChatArea UI States', () => {
 
     const textarea = wrapper.find('[data-testid="chat-input"]');
     expect((textarea.element as HTMLTextAreaElement).disabled).toBe(false);
+  });
+
+  it('shows the current chat group beside the model badge when the chat belongs to a group', () => {
+    mockChatGroups.value = [
+      {
+        id: 'group-1',
+        name: 'Research Notes',
+        items: [],
+        isCollapsed: false,
+        updatedAt: Date.now(),
+      },
+    ];
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      groupId: 'group-1',
+    };
+
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+
+    const badge = wrapper.find('[data-testid="chat-group-badge"]');
+    expect(badge.exists()).toBe(true);
+    expect(badge.text()).toContain('Research Notes');
+    expect(badge.attributes('title')).toBe('Group: Research Notes');
+  });
+
+  it('hides the chat group badge when the chat is not in a group', () => {
+    mockChatGroups.value = [
+      {
+        id: 'group-1',
+        name: 'Research Notes',
+        items: [],
+        isCollapsed: false,
+        updatedAt: Date.now(),
+      },
+    ];
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      groupId: null,
+    };
+
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+
+    expect(wrapper.find('[data-testid="chat-group-badge"]').exists()).toBe(false);
   });
 
   it('should show the abort button and hide the send button during streaming', async () => {
