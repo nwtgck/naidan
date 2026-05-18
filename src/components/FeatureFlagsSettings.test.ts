@@ -1,9 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { ref } from 'vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 
 const mockShowConfirm = vi.fn();
+const mockSaveSettings = vi.fn();
+const mockSettings = ref({
+  endpointType: 'openai',
+  endpointUrl: 'http://localhost',
+  storageType: 'local',
+  autoTitleEnabled: true,
+  defaultModelId: 'gpt-4',
+  providerProfiles: [],
+  mounts: [],
+  experimental: undefined as { sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
+});
 
 vi.mock('@/composables/useConfirm', () => ({
   useConfirm: () => ({
@@ -11,10 +23,18 @@ vi.mock('@/composables/useConfirm', () => ({
   }),
 }));
 
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: mockSettings,
+    save: mockSaveSettings,
+  }),
+}));
+
 vi.mock('lucide-vue-next', () => ({
   AlertTriangleIcon: { template: '<span>AlertTriangle</span>' },
   FlaskConicalIcon: { template: '<span>FlaskConical</span>' },
   FolderIcon: { template: '<span>Folder</span>' },
+  ListRestartIcon: { template: '<span>ListRestart</span>' },
   TerminalIcon: { template: '<span>Terminal</span>' },
 }));
 
@@ -22,6 +42,8 @@ describe('FeatureFlagsSettings.vue', () => {
   beforeEach(() => {
     localStorage.clear();
     mockShowConfirm.mockReset();
+    mockSaveSettings.mockReset();
+    mockSettings.value.experimental = undefined;
     const { TEST_ONLY } = useFeatureFlags();
     TEST_ONLY.reset();
   });
@@ -53,5 +75,16 @@ describe('FeatureFlagsSettings.vue', () => {
 
     expect(mockShowConfirm).toHaveBeenCalled();
     expect(useFeatureFlags().isFeatureEnabled({ feature: 'volume' })).toBe(true);
+  });
+
+  it('auto-saves the sidebar send reorder setting when toggled', async () => {
+    const wrapper = mount(FeatureFlagsSettings);
+    await wrapper.find('[data-testid="feature-sidebar-send-reorder-toggle"]').trigger('click');
+
+    expect(mockSaveSettings).toHaveBeenCalledWith({
+      experimental: {
+        sidebarSendMessageReorder: 'move_sent_chat',
+      },
+    });
   });
 });

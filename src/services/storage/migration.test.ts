@@ -126,6 +126,9 @@ const mockSettings: Settings = {
   mounts: [],
   providerProfiles: [],
   lmParameters: EMPTY_LM_PARAMETERS,
+  experimental: {
+    sidebarSendMessageReorder: 'disabled',
+  },
 };
 
 // --- Test Suite ---

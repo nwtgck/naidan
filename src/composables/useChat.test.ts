@@ -12,6 +12,16 @@ import { findRestorationIndex } from '@/utils/chat-tree';
 const { mocks } = vi.hoisted(() => ({
   mocks: {
     capturedListener: null as ((event: any) => void | Promise<void>) | null,
+    settings: {
+      endpointType: 'openai',
+      endpointUrl: 'http://localhost',
+      storageType: 'local',
+      autoTitleEnabled: true,
+      defaultModelId: 'gpt-4',
+      providerProfiles: [],
+      mounts: [],
+      experimental: undefined as { sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
+    },
   }
 }));
 
@@ -46,7 +56,7 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
+    settings: { value: mocks.settings },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
@@ -96,6 +106,7 @@ describe('useChat Composable Logic', () => {
     rootItems.value = [];
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
+    mocks.settings.experimental = undefined;
     clearEvents();
 
     // Setup persistence mocks
@@ -948,7 +959,7 @@ describe('useChat Composable Logic', () => {
     expect(mockHierarchy.items[1]?.id).toBe('c1');
   });
 
-  it('should maintain the correct position after sending a message', async () => {
+  it('should maintain the correct position after sending a message when sidebar send reorder is disabled', async () => {
     const { sendMessage } = useChat();
     const c2 = { id: 'c2', title: 'C2', updatedAt: 0 };
     mockHierarchy.items = [
@@ -963,6 +974,43 @@ describe('useChat Composable Logic', () => {
     // but waiting ensures clean state.
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockHierarchy.items[2]?.id).toBe('c2');
+  });
+
+  it('moves a top-level chat before existing top-level chats after sending when sidebar send reorder is enabled', async () => {
+    const { sendMessage } = useChat();
+    const c2 = { id: 'c2', title: 'C2', updatedAt: 0 };
+    mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
+    mockHierarchy.items = [
+      { type: 'chat_group', id: 'g1', chat_ids: [] },
+      { type: 'chat', id: 'c1' },
+      { type: 'chat', id: 'c2' }
+    ];
+
+    __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    expect(mockHierarchy.items.map(i => i.id)).toEqual(['g1', 'c2', 'c1']);
+  });
+
+  it('moves a grouped chat to the top of its current group after sending when sidebar send reorder is enabled', async () => {
+    const { sendMessage } = useChat();
+    const c2 = { id: 'c2', title: 'C2', updatedAt: 0, groupId: 'g1' };
+    mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
+    mockHierarchy.items = [
+      { type: 'chat_group', id: 'g1', chat_ids: ['c1', 'c2', 'c3'] },
+      { type: 'chat', id: 'top' }
+    ];
+
+    __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    const group = mockHierarchy.items[0];
+    expect(group?.type).toBe('chat_group');
+    if (group?.type !== 'chat_group') throw new Error('Expected chat group');
+    expect(group.chat_ids).toEqual(['c2', 'c1', 'c3']);
+    expect(mockHierarchy.items[1]?.id).toBe('top');
   });
 
   it('should generate a chat title based on the first message', async () => {

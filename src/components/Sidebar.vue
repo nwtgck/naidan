@@ -333,10 +333,78 @@ onUnmounted(() => {
   document.removeEventListener('mousedown', handleClickOutside);
 });
 
+function captureSidebarItemRects() {
+  const rects = new Map<string, DOMRect>();
+  if (!navContainer.value) return rects;
+
+  navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-chat-id]').forEach(element => {
+    const id = element.dataset.sidebarChatId;
+    if (!id) return;
+    rects.set(`chat:${id}`, element.getBoundingClientRect());
+  });
+
+  navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-group-id]').forEach(element => {
+    const id = element.dataset.sidebarGroupId;
+    if (!id) return;
+    rects.set(`group:${id}`, element.getBoundingClientRect());
+  });
+
+  return rects;
+}
+
+function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string, DOMRect> }) {
+  if (previousRects.size === 0 || typeof window === 'undefined') return;
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+  void nextTick(() => {
+    if (!navContainer.value || isDragging.value) return;
+
+    const applyMove = ({ key, element }: { key: string; element: HTMLElement }) => {
+      const previous = previousRects.get(key);
+      if (!previous) return;
+
+      const current = element.getBoundingClientRect();
+      const deltaY = previous.top - current.top;
+      const deltaX = previous.left - current.left;
+      if (Math.abs(deltaY) < 1 && Math.abs(deltaX) < 1) return;
+
+      element.classList.add('sidebar-reorder-animating');
+      element.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+      element.style.transition = 'transform 0ms';
+
+      const runNextFrame = window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 16));
+      runNextFrame(() => {
+        element.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
+        element.style.transform = '';
+      });
+
+      window.setTimeout(() => {
+        element.classList.remove('sidebar-reorder-animating');
+        element.style.transition = '';
+        element.style.transform = '';
+      }, 220);
+    };
+
+    navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-chat-id]').forEach(element => {
+      const id = element.dataset.sidebarChatId;
+      if (!id) return;
+      applyMove({ key: `chat:${id}`, element });
+    });
+
+    navContainer.value.querySelectorAll<HTMLElement>('[data-sidebar-group-id]').forEach(element => {
+      const id = element.dataset.sidebarGroupId;
+      if (!id) return;
+      applyMove({ key: `group:${id}`, element });
+    });
+  });
+}
+
 function syncLocalItems() {
   if (isDragging.value || isInternalUpdate) return;
+  const previousRects = captureSidebarItemRects();
   // Use JSON.parse/stringify for robust deep cloning of reactive objects in test environments
   sidebarItemsLocal.value = JSON.parse(JSON.stringify(chatStore.sidebarItems.value));
+  animateSidebarItemMoves({ previousRects });
 }
 
 // Watch for external sidebar changes (new chats, deletions, reordering) to sync local list
@@ -1146,9 +1214,32 @@ defineExpose({
   border-radius: 0.75rem;
 }
 
-/* Reordering is always instant */
 .list-move {
-  transition: none !important;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.sidebar-reorder-move {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar-reorder-enter-active {
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.sidebar-reorder-leave-active {
+  transition: opacity 100ms ease, transform 100ms ease;
+  position: absolute;
+}
+
+.sidebar-reorder-enter-from,
+.sidebar-reorder-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.sidebar-reorder-animating {
+  will-change: transform;
+  pointer-events: none;
 }
 
 /* Ensure the dragged element itself doesn't have transitions */

@@ -1678,6 +1678,7 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       });
+      await reorderSidebarChatAfterSend({ chatId: chat.id });
       generateResponse({ chat: chat, assistantId: assistantMsg.id, lmParameters: lmParameters }).catch(e => console.error('Background generation failed:', e));
       await Promise.resolve();
       return true;
@@ -2317,6 +2318,61 @@ export function useChat() {
       })
     };
     await storageService.updateHierarchy(() => newHierarchy);
+  };
+
+  const reorderSidebarChatAfterSend = async ({ chatId }: { chatId: string }) => {
+    const reorderSetting = settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled';
+    switch (reorderSetting) {
+    case 'disabled':
+      return;
+    case 'move_sent_chat':
+      break;
+    default: {
+      const _ex: never = reorderSetting;
+      throw new Error(`Unhandled sidebar send reorder setting: ${_ex}`);
+    }
+    }
+
+    await storageService.updateHierarchy((curr) => {
+      let chatNode: HierarchyNode | undefined;
+      let sourceGroup: HierarchyChatGroupNode | undefined;
+
+      curr.items = curr.items.filter(i => {
+        switch (i.type) {
+        case 'chat':
+          if (i.id === chatId) {
+            chatNode = i;
+            return false;
+          }
+          return true;
+        case 'chat_group': {
+          const chatIndex = i.chat_ids.indexOf(chatId);
+          if (chatIndex !== -1) {
+            sourceGroup = i;
+            i.chat_ids.splice(chatIndex, 1);
+          }
+          return true;
+        }
+        default: {
+          const _ex: never = i;
+          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+        }
+        }
+      });
+
+      if (sourceGroup) {
+        sourceGroup.chat_ids.unshift(chatId);
+        return curr;
+      }
+
+      const node = chatNode ?? { type: 'chat', id: chatId };
+      const firstTopLevelChatIndex = curr.items.findIndex(i => i.type === 'chat');
+      const insertIndex = firstTopLevelChatIndex === -1 ? curr.items.length : firstTopLevelChatIndex;
+      curr.items.splice(insertIndex, 0, node);
+      return curr;
+    });
+
+    await loadData();
   };
 
   const moveChatToGroup = async (chatId: string, targetGroupId: string | null) => {

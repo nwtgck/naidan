@@ -1,8 +1,8 @@
 import { generateId } from '@/utils/id';
 import { describe, it, expect } from 'vitest';
-import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto } from './mappers';
-import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode } from './types';
-import type { MessageNodeDto } from './dto';
+import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto, settingsToDomain, settingsToDto } from './mappers';
+import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode, Settings } from './types';
+import type { MessageNodeDto, SettingsDto } from './dto';
 
 describe('MessageNode Mapping (Discriminated Union)', () => {
   it('should map user message with lmParameters and thinking: undefined', () => {
@@ -163,6 +163,55 @@ describe('Sidebar assembly', () => {
     };
     const items = buildSidebarItemsFromHierarchy(hierarchy, [], []);
     expect(items).toHaveLength(0);
+  });
+});
+
+describe('Settings Mapping', () => {
+  it('defaults sidebar send reorder to disabled when experimental settings are missing', () => {
+    const dto: SettingsDto = {
+      endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
+      defaultModelId: 'gpt-4',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: undefined,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      experimental: undefined,
+    };
+
+    const domain = settingsToDomain(dto);
+
+    expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
+  });
+
+  it('preserves sidebar send reorder through settings mapping', () => {
+    const domain: Settings = {
+      endpointType: 'openai',
+      endpointUrl: 'http://localhost',
+      endpointHttpHeaders: undefined,
+      defaultModelId: 'gpt-4',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: false,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      experimental: {
+        markdownRendering: undefined,
+        sidebarSendMessageReorder: 'move_sent_chat',
+      },
+    };
+
+    const dto = settingsToDto(domain);
+    const mapped = settingsToDomain(dto);
+
+    expect(dto.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
+    expect(mapped.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
   });
 });
 

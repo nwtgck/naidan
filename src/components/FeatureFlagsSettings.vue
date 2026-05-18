@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { FlaskConicalIcon, FolderIcon, TerminalIcon, AlertTriangleIcon } from 'lucide-vue-next';
+import { computed } from 'vue';
+import { FlaskConicalIcon, FolderIcon, TerminalIcon, AlertTriangleIcon, ListRestartIcon } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
+import { useSettings } from '@/composables/useSettings';
 
 const { isFeatureEnabled, setFeatureEnabled } = useFeatureFlags();
 const { showConfirm } = useConfirm();
+const { settings, save } = useSettings();
+
+const sidebarSendMessageReorder = computed(() => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled');
 
 async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool' }) {
   if (isFeatureEnabled({ feature })) {
@@ -32,9 +37,31 @@ async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool
   });
 }
 
+async function handleSidebarSendMessageReorderToggle() {
+  const next = (() => {
+    switch (sidebarSendMessageReorder.value) {
+    case 'disabled':
+      return 'move_sent_chat';
+    case 'move_sent_chat':
+      return 'disabled';
+    default: {
+      const _ex: never = sidebarSendMessageReorder.value;
+      throw new Error(`Unhandled sidebar send reorder setting: ${_ex}`);
+    }
+    }
+  })();
+  await save({
+    experimental: {
+      ...settings.value.experimental,
+      sidebarSendMessageReorder: next,
+    },
+  });
+}
+
 defineExpose({
   TEST_ONLY: {
     handleFeatureToggle,
+    handleSidebarSendMessageReorderToggle,
   }
 });
 </script>
@@ -114,6 +141,44 @@ defineExpose({
             data-testid="feature-flag-wesh-tool-toggle"
           >
             {{ isFeatureEnabled({ feature: 'wesh_tool' }) ? 'Disable experimental feature' : 'Enable' }}
+          </button>
+        </div>
+      </div>
+
+      <div
+        class="rounded-3xl border p-5 shadow-sm transition-all"
+        :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'border-red-200/80 dark:border-red-900/30 bg-red-50/60 dark:bg-red-950/10' : 'border-gray-200/80 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/40'"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+              <ListRestartIcon class="w-4 h-4" :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'text-red-500' : 'text-gray-400'" />
+            </div>
+            <div class="flex flex-col min-w-0">
+              <span class="text-sm font-bold text-gray-900 dark:text-gray-100">Move chat on send</span>
+              <span class="text-[10px] font-medium text-gray-500">Moves the chat after you send a message.</span>
+            </div>
+          </div>
+          <div
+            class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+            :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300'"
+          >
+            <AlertTriangleIcon v-if="sidebarSendMessageReorder === 'move_sent_chat'" class="w-3 h-3" />
+            {{ sidebarSendMessageReorder === 'move_sent_chat' ? 'Enabled' : 'Disabled' }}
+          </div>
+        </div>
+
+        <div class="mt-4 flex items-center justify-between gap-4">
+          <p class="text-[11px] font-medium leading-relaxed" :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'text-red-800/80 dark:text-red-200/80' : 'text-gray-600 dark:text-gray-300'">
+            {{ sidebarSendMessageReorder === 'move_sent_chat' ? 'When a message is sent, chats move to the top of their group. Top-level chats move just below chat groups.' : 'Disabled by default. Enable it if long chat lists make active conversations hard to find.' }}
+          </p>
+          <button
+            @click="handleSidebarSendMessageReorderToggle"
+            class="shrink-0 rounded-2xl px-4 py-2 text-xs font-bold transition-all active:scale-95"
+            :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 ring-2 ring-red-500/20' : 'bg-gray-900 hover:bg-black text-white dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white'"
+            data-testid="feature-sidebar-send-reorder-toggle"
+          >
+            {{ sidebarSendMessageReorder === 'move_sent_chat' ? 'Disable experimental feature' : 'Enable' }}
           </button>
         </div>
       </div>
