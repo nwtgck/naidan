@@ -742,6 +742,19 @@ export function useChat() {
     }
   };
 
+  const openChatAtMessage = async ({ chatId, messageId }: { chatId: string, messageId: string }): Promise<Chat | null> => {
+    const chat = await openChat(chatId);
+    if (!chat) return null;
+
+    const mutableChat = getLiveChat(chat);
+    const node = findNodeInBranch(mutableChat.root.items, messageId);
+    if (!node) return chat;
+
+    mutableChat.currentLeafId = findDeepestLeaf(node).id;
+    if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
+    return chat;
+  };
+
   const openChatGroup = (id: string | null) => {
     if (id === null) {
       _currentChatGroup.value = null; return;
@@ -1103,7 +1116,7 @@ export function useChat() {
         provider = new OllamaProvider({ endpoint: url, headers: resolved.endpointHttpHeaders });
         break;
       case 'transformers_js':
-        provider = new (await import('../services/transformers-js/provider')).TransformersJsProvider();
+        provider = new (await import('@/services/transformers-js/provider')).TransformersJsProvider();
         break;
       default: {
         const _ex: never = type;
@@ -1456,7 +1469,7 @@ export function useChat() {
       mutableChat.updatedAt = Date.now();
 
       if (mutableChat.title === null && resolved.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
-        await generateChatTitle({ chatId: mutableChat.id, signal: controller.signal });
+        await generateChatTitle({ chatId: mutableChat.id, signal: controller.signal, titleModelIdOverride: undefined });
       }
     } catch (e) {
       // Close thinking tag if open
@@ -1665,6 +1678,7 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       });
+      await reorderSidebarChatAfterSend({ chatId: chat.id });
       generateResponse({ chat: chat, assistantId: assistantMsg.id, lmParameters: lmParameters }).catch(e => console.error('Background generation failed:', e));
       await Promise.resolve();
       return true;
@@ -1720,7 +1734,7 @@ export function useChat() {
     }
   };
 
-  const generateChatTitle = async ({ chatId, signal }: { chatId: string | undefined, signal: AbortSignal | undefined }) => {
+  const generateChatTitle = async ({ chatId, signal, titleModelIdOverride }: { chatId: string | undefined, signal: AbortSignal | undefined, titleModelIdOverride: string | undefined }): Promise<string | undefined> => {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return;
     const mutableChat = getLiveChat(target);
@@ -1766,7 +1780,7 @@ export function useChat() {
         throw new Error(`Unsupported endpoint type for title generation: ${_ex}`);
       }
       }
-      const titleGenModel = resolved.titleModelId || resolved.modelId;
+      const titleGenModel = titleModelIdOverride || resolved.titleModelId || resolved.modelId;
       if (!titleGenModel) return;
 
       const lang = detectLanguage({
@@ -1821,7 +1835,9 @@ export function useChat() {
           await loadData();
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         }
+        return finalTitle;
       }
+      return undefined;
     } finally {
       decTask(taskId, 'title');
       if (activeTitleGenerations.get(taskId) === controller) {
@@ -2304,6 +2320,61 @@ export function useChat() {
     await storageService.updateHierarchy(() => newHierarchy);
   };
 
+  const reorderSidebarChatAfterSend = async ({ chatId }: { chatId: string }) => {
+    const reorderSetting = settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled';
+    switch (reorderSetting) {
+    case 'disabled':
+      return;
+    case 'move_sent_chat':
+      break;
+    default: {
+      const _ex: never = reorderSetting;
+      throw new Error(`Unhandled sidebar send reorder setting: ${_ex}`);
+    }
+    }
+
+    await storageService.updateHierarchy((curr) => {
+      let chatNode: HierarchyNode | undefined;
+      let sourceGroup: HierarchyChatGroupNode | undefined;
+
+      curr.items = curr.items.filter(i => {
+        switch (i.type) {
+        case 'chat':
+          if (i.id === chatId) {
+            chatNode = i;
+            return false;
+          }
+          return true;
+        case 'chat_group': {
+          const chatIndex = i.chat_ids.indexOf(chatId);
+          if (chatIndex !== -1) {
+            sourceGroup = i;
+            i.chat_ids.splice(chatIndex, 1);
+          }
+          return true;
+        }
+        default: {
+          const _ex: never = i;
+          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+        }
+        }
+      });
+
+      if (sourceGroup) {
+        sourceGroup.chat_ids.unshift(chatId);
+        return curr;
+      }
+
+      const node = chatNode ?? { type: 'chat', id: chatId };
+      const firstTopLevelChatIndex = curr.items.findIndex(i => i.type === 'chat');
+      const insertIndex = firstTopLevelChatIndex === -1 ? curr.items.length : firstTopLevelChatIndex;
+      curr.items.splice(insertIndex, 0, node);
+      return curr;
+    });
+
+    await loadData();
+  };
+
   const moveChatToGroup = async (chatId: string, targetGroupId: string | null) => {
     await storageService.updateHierarchy((curr) => {
       const node: HierarchyNode = { type: 'chat', id: chatId };
@@ -2373,7 +2444,7 @@ export function useChat() {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount, addMountToChatGroup, removeMountFromChatGroup, updateChatGroupMount,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatAtMessage, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount, addMountToChatGroup, removeMountFromChatGroup, updateChatGroupMount,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle, ensureChatTmpDirectory, getChatTmpDirectory,
     getVolatileToolOutput,
     chatFlow, isThinkingActive, isWaitingResponse,

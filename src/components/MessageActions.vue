@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { GitForkIcon, PencilIcon, CopyIcon, CheckIcon, RefreshCwIcon, SendIcon, MoreVerticalIcon, HistoryIcon, MoreHorizontalIcon } from 'lucide-vue-next';
+import { GitForkIcon, PencilIcon, CopyIcon, CheckIcon, RefreshCwIcon, SendIcon, MoreVerticalIcon, HistoryIcon, MoreHorizontalIcon, LinkIcon } from 'lucide-vue-next';
 import type { MessageNode, LmParameters } from '@/models/types';
 import { isImageGenerationPending } from '@/utils/image-generation';
+import { generateMessageLink } from '@/utils/chat-links';
+import { useToast } from '@/composables/useToast';
 import SpeechControl from './SpeechControl.vue';
 import MessageActionsMenu from './MessageActionsMenu.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 
 const props = defineProps<{
+  chatId?: string;
   message: MessageNode;
   isImageResponse: boolean;
   isUser: boolean;
@@ -29,6 +32,7 @@ const emit = defineEmits<{
 const copied = ref(false);
 const showMoreMenu = ref(false);
 const moreActionsTriggerRef = ref<HTMLElement | null>(null);
+const { addToast } = useToast();
 
 async function handleCopy() {
   try {
@@ -49,6 +53,25 @@ async function handleCopyRaw() {
     // For now, let's just close the menu which is handled by the click
   } catch (err) {
     console.error('Failed to copy raw text: ', err);
+  }
+}
+
+async function handleCopyLink() {
+  if (!props.chatId) return;
+
+  try {
+    const url = generateMessageLink({ chatId: props.chatId, messageId: props.message.id });
+    await navigator.clipboard.writeText(url);
+    addToast({
+      message: 'Message link copied to clipboard.',
+      duration: 3000,
+    });
+  } catch (err) {
+    console.error('Failed to copy message link: ', err);
+    addToast({
+      message: 'Failed to copy message link.',
+      duration: 5000,
+    });
   }
 }
 
@@ -149,6 +172,16 @@ defineExpose({
         >
           <CopyIcon class="w-3.5 h-3.5" />
           <span>Copy Raw</span>
+        </button>
+
+        <button
+          v-if="chatId"
+          @click="handleCopyLink(); showMoreMenu = false"
+          class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+          data-testid="copy-message-link-button"
+        >
+          <LinkIcon class="w-3.5 h-3.5" />
+          <span>Copy Link</span>
         </button>
 
         <button

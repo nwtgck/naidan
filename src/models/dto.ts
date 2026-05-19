@@ -431,6 +431,7 @@ export const SettingsSchemaDto = z.object({
   experimental: z.union([
     z.object({
       markdownRendering: z.union([z.literal('block_markdown'), z.literal('monolithic_html'), z.undefined()]),
+      sidebarSendMessageReorder: z.union([z.literal('disabled'), z.literal('move_sent_chat'), z.undefined()]),
     }),
     z.undefined(),
   ]),

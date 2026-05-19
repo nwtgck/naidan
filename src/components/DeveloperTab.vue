@@ -3,14 +3,15 @@ import { useSampleChat } from '@/composables/useSampleChat';
 import { useConfirm } from '@/composables/useConfirm';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { storageService } from '@/services/storage';
-import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon } from 'lucide-vue-next';
+import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
+import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 
 defineProps<{
   storageType: string;
 }>();
 
-const { createSampleChat } = useSampleChat();
+const { createSampleChat, createLongSampleChat } = useSampleChat();
 const { showConfirm } = useConfirm();
 const { needRefresh, setNeedRefresh } = usePWAUpdate();
 
@@ -89,9 +90,19 @@ defineExpose({
               <FlaskConicalIcon class="w-5 h-5" />
               Create Sample Chat
             </button>
+            <button
+              @click="createLongSampleChat"
+              class="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95"
+              data-testid="setting-create-long-sample-button"
+            >
+              <ScrollTextIcon class="w-5 h-5" />
+              Create Long Sample Chat
+            </button>
           </div>
-          <p class="text-[11px] font-medium text-gray-400 ml-1">Adds a sample conversation with complex structures to verify rendering.</p>
+          <p class="text-[11px] font-medium text-gray-400 ml-1">Adds sample conversations for rendering checks and long-thread navigation testing.</p>
         </div>
+
+        <DeveloperOpenStateLinks />
 
         <div class="space-y-4">
           <button

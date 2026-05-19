@@ -53,8 +53,10 @@ function handleSelectNode(node: Readonly<MessageNode>) {
   selectedNode.value = node;
 }
 
-function handleOpenLeaf(leafId: string) {
-  router.push({ query: { ...router.currentRoute.value.query, leaf: leafId } });
+function handleOpenMessage(messageId: string) {
+  const query = { ...(router.currentRoute.value.query ?? {}) };
+  delete query.leaf;
+  router.push({ query: { ...query, 'message-id': messageId } });
   emit('close');
 }
 
@@ -355,11 +357,11 @@ defineExpose({
                 <div v-if="selectedPath.length > 1" class="mb-8 border-b border-gray-100 dark:border-white/5 pb-4 flex justify-between items-end">
                   <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">Context Path</span>
                   <button
-                    @click="handleOpenLeaf(selectedNode!.id)"
+                    @click="handleOpenMessage(selectedNode!.id)"
                     class="flex items-center gap-2 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
                   >
                     <CornerUpRightIcon class="w-3 h-3" />
-                    <span>Open at this leaf</span>
+                    <span>Open at this message</span>
                   </button>
                 </div>
                 <ChatDebugTreeNode

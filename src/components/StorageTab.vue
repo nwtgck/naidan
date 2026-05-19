@@ -168,7 +168,7 @@ async function handleCopyExportURL() {
     if (excludeChats.value) exclude.push('chat');
     if (excludeAttachments.value) exclude.push('binary_object');
 
-    const url = await urlImportExportLogic.getExportURL({ exclude });
+    const url = await urlImportExportLogic.getExportURL({ exclude, baseUrl: window.location.href });
     await navigator.clipboard.writeText(url);
     addToast({ message: 'Export URL copied to clipboard!', duration: 3000 });
   } catch (err) {

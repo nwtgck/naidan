@@ -27,6 +27,12 @@ const mockGeneratingTitle = ref(false);
 const mockFetchAvailableModels = vi.fn();
 const mockGenerateChatTitle = vi.fn();
 const mockAbortTitleGeneration = vi.fn();
+const mockRenameChat = vi.fn().mockImplementation((_id: string, title: string) => {
+  if (mockCurrentChat.value) {
+    mockCurrentChat.value.title = title;
+  }
+});
+const mockSaveSettings = vi.fn().mockResolvedValue(undefined);
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<Chat | null>({
   id: '1',
@@ -55,6 +61,11 @@ const mockUpdateChatSettings = vi.fn().mockImplementation((id, updates) => {
     Object.assign(mockCurrentChat.value, updates);
   }
 });
+const mockUpdateChatGroupMetadata = vi.fn().mockImplementation((id, updates) => {
+  if (mockCurrentChatGroup.value && mockCurrentChatGroup.value.id === id) {
+    Object.assign(mockCurrentChatGroup.value, updates);
+  }
+});
 
 const mockOpenChatGroup = vi.fn();
 const mockMoveChatToGroup = vi.fn();
@@ -77,6 +88,7 @@ vi.mock('../composables/useChat', () => ({
     resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
     inheritedSettings: mockInheritedSettings,
     sendMessage: mockSendMessage,
+    renameChat: mockRenameChat,
     updateChatModel: mockUpdateChatModel,
     saveChat: mockSaveChat,
     streaming: mockStreaming,
@@ -103,6 +115,7 @@ vi.mock('../composables/useChat', () => ({
     moveChatToGroup: mockMoveChatToGroup,
     getLiveChat: mockGetLiveChat,
     updateChatSettings: mockUpdateChatSettings,
+    updateChatGroupMetadata: mockUpdateChatGroupMetadata,
     isTaskRunning: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
     isProcessing: vi.fn((id: string) => mockStreaming.value || mockActiveGenerations.has(id)),
     isImageMode: vi.fn(() => false),
@@ -157,6 +170,7 @@ vi.mock('../composables/useSettings', () => ({
     availableModels: mockAvailableModels,
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
+    save: mockSaveSettings,
   }),
 }));
 
@@ -201,14 +215,18 @@ function resetMocks() {
   clearAllDrafts();
   vi.clearAllMocks();
   mockStreaming.value = false;
+  mockGeneratingTitle.value = false;
   mockActiveGenerations.clear();
   mockActiveMessages.value = [];
   mockChatFlowOverride.value = null;
+  mockChatGroups.value = [];
+  mockCurrentChatGroup.value = null;
   mockAvailableModels.value = ['model-1', 'model-2'];
   mockFetchingModels.value = false;
   mockResolvedSettings.value = {
     modelId: 'global-default-model',
-    sources: { modelId: 'global' }
+    titleModelId: undefined,
+    sources: { modelId: 'global', titleModelId: 'global' }
   };
   mockInheritedSettings.value = {
     modelId: 'global-default-model',
@@ -250,6 +268,55 @@ describe('ChatArea UI States', () => {
 
     const textarea = wrapper.find('[data-testid="chat-input"]');
     expect((textarea.element as HTMLTextAreaElement).disabled).toBe(false);
+  });
+
+  it('shows the current chat group beside the model badge when the chat belongs to a group', () => {
+    mockChatGroups.value = [
+      {
+        id: 'group-1',
+        name: 'Research Notes',
+        items: [],
+        isCollapsed: false,
+        updatedAt: Date.now(),
+      },
+    ];
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      groupId: 'group-1',
+    };
+
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+
+    const badge = wrapper.find('[data-testid="chat-group-badge"]');
+    expect(badge.exists()).toBe(true);
+    expect(badge.text()).toContain('Research Notes');
+    expect(badge.attributes('title')).toBe('Group: Research Notes');
+  });
+
+  it('hides the chat group badge when the chat is not in a group', () => {
+    mockChatGroups.value = [
+      {
+        id: 'group-1',
+        name: 'Research Notes',
+        items: [],
+        isCollapsed: false,
+        updatedAt: Date.now(),
+      },
+    ];
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      groupId: null,
+    };
+
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+
+    expect(wrapper.find('[data-testid="chat-group-badge"]').exists()).toBe(false);
   });
 
   it('should show the abort button and hide the send button during streaming', async () => {
@@ -391,72 +458,255 @@ describe('ChatArea UI States', () => {
     expect(inspector.text()).toContain('Chat Inspector');
   });
 
-  it('should show the regenerate title button and call generateChatTitle when clicked', async () => {
+  it('should open the title dialog and save a manual title', async () => {
+    vi.useFakeTimers();
+    try {
+      mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+      wrapper = mount(ChatArea, {
+        global: { plugins: [router] },
+      });
+
+      expect(wrapper.find('[data-testid="regenerate-title-button"]').exists()).toBe(false);
+
+      await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-testid="chat-title-dialog"]').exists()).toBe(true);
+
+      await wrapper.find('[data-testid="chat-title-input"]').setValue('Manual Title');
+      await vi.advanceTimersByTimeAsync(600);
+      await flushPromises();
+
+      expect(mockRenameChat).toHaveBeenCalledWith('1', 'Manual Title');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should generate a title from the title dialog using the selected global title model', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGenerateChatTitle.mockResolvedValue('Generated Title');
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
+    await flushPromises();
+    await wrapper.findComponent({ name: 'ModelSelector' }).vm.$emit('update:modelValue', 'model-2');
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+
+    expect(mockSaveSettings).toHaveBeenCalledWith({ titleModelId: 'model-2' });
+    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: '1', signal: undefined, titleModelIdOverride: 'model-2' });
+  });
+
+  it('should keep title model and generated title history hidden until options are opened', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
-    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-    expect(btn.exists()).toBe(true);
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
 
-    await btn.trigger('click');
-    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: '1', signal: undefined });
+    expect(wrapper.find('[data-testid="chat-title-model-select"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('Generated in this dialog');
+
+    await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="chat-title-model-select"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Generated in this dialog');
   });
 
-  it('should call abortTitleGeneration when clicked while generating', async () => {
+  it('should show Stop and the title scan animation while title generation is running', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGeneratingTitle.value = true;
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
-    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-    await btn.trigger('click');
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="generate-chat-title-button"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="abort-title-generation-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="title-magic-scan"]').exists()).toBe(true);
+  });
+
+  it('should preserve the previous title in dialog history when generation replaces it', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGenerateChatTitle.mockImplementation(async () => {
+      if (mockCurrentChat.value) mockCurrentChat.value.title = 'Generated Title';
+      return 'Generated Title';
+    });
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
+
+    const historyOptions = wrapper.findAll('[data-testid="generated-title-option"]').map(option => option.text());
+    expect(historyOptions).toContain('Generated Title');
+    expect(historyOptions).toContain('Test Chat');
+  });
+
+  it('should keep generating the title in the background after the dialog is closed', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    let resolveTitleGeneration: ((title: string) => void) | undefined;
+    mockGenerateChatTitle.mockImplementation(async () => new Promise<string>((resolve) => {
+      resolveTitleGeneration = (title) => {
+        if (mockCurrentChat.value) mockCurrentChat.value.title = title;
+        resolve(title);
+      };
+    }));
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+    await wrapper.find('[data-testid="chat-title-dialog-close"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-title-dialog"]').exists()).toBe(false);
+    expect(mockAbortTitleGeneration).not.toHaveBeenCalled();
+
+    resolveTitleGeneration?.('Background Generated Title');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="chat-header-title"]').text()).toContain('Background Generated Title');
+  });
+
+  it('should apply a generated history title to the input and save it when Use is clicked', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGenerateChatTitle.mockResolvedValue('Generated Title');
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="title-options-toggle"]').trigger('click');
+    await wrapper.find('[data-testid="use-generated-title-button"]').trigger('click');
+
+    expect((wrapper.find('[data-testid="chat-title-input"]').element as HTMLInputElement).value).toBe('Generated Title');
+    expect(mockRenameChat).toHaveBeenCalledWith('1', 'Generated Title');
+  });
+
+  it('should update the chat title model override when the active title model source is chat', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockResolvedSettings.value = ref({
+      modelId: 'global-default-model',
+      titleModelId: 'model-2',
+      sources: { modelId: 'global', titleModelId: 'chat' }
+    });
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      titleModelId: 'model-2',
+    };
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+
+    expect(mockUpdateChatSettings).toHaveBeenCalledWith('1', { titleModelId: 'model-2' });
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    expect(mockUpdateChatGroupMetadata).not.toHaveBeenCalled();
+  });
+
+  it('should update the group title model override when the active title model source is group', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockResolvedSettings.value = ref({
+      modelId: 'global-default-model',
+      titleModelId: 'model-2',
+      sources: { modelId: 'global', titleModelId: 'chat_group' }
+    });
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      groupId: 'group-1',
+    };
+    mockCurrentChatGroup.value = {
+      id: 'group-1',
+      name: 'Group 1',
+      titleModelId: 'model-2',
+    };
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
+
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('group-1', { titleModelId: 'model-2' });
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    expect(mockUpdateChatSettings).not.toHaveBeenCalled();
+  });
+
+  it('should abort title generation from the title dialog', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockGeneratingTitle.value = true;
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="edit-title-button"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="abort-title-generation-button"]').trigger('click');
+
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({ chatId: '1' });
   });
 
-  it('should ignore title hover state immediately after starting generation until mouseleave', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    mockGeneratingTitle.value = false;
+  it('should open a conversation outline and jump to a selected message', async () => {
+    mockActiveMessages.value = [
+      { id: 'u1', role: 'user', content: 'First long user message to revisit later', timestamp: 0, replies: { items: [] } },
+      { id: 'a1', role: 'assistant', content: 'Assistant response with useful details', timestamp: 0, replies: { items: [] } },
+    ];
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
+      attachTo: document.body,
     });
-
-    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-
-    // 1. Click to start generation
-    await btn.trigger('click');
-    expect(mockGenerateChatTitle).toHaveBeenCalled();
-
-    // Simulate generation starting in store
-    mockGeneratingTitle.value = true;
     await nextTick();
 
-    // 2. Even if we are "hovering" (implied after click), the X should be hidden by ignoreTitleHover logic
-    const xIcon = btn.find('svg.text-red-500'); // This is the X icon
-    expect(xIcon.classes()).not.toContain('group-hover/title:opacity-100');
+    const outlineButton = wrapper.find('[data-testid="conversation-outline-button"]');
+    expect(outlineButton.exists()).toBe(true);
+    await outlineButton.trigger('click');
+    await flushPromises();
 
-    // 3. Trigger mouseleave
-    await btn.trigger('mouseleave');
+    const panel = wrapper.find('[data-testid="conversation-outline-panel"]');
+    expect(panel.exists()).toBe(true);
+    expect(panel.text()).toContain('First long user message');
+    expect(panel.text()).toContain('Assistant response');
+
+    const items = wrapper.findAll('[data-testid="conversation-outline-jump-button"]');
+    expect(items).toHaveLength(2);
+    await items[1]!.trigger('click');
     await nextTick();
 
-    // 4. Now the X should be eligible to show on hover
-    expect(xIcon.classes()).toContain('group-hover/title:opacity-100');
+    expect(wrapper.find('[data-testid="conversation-outline-panel"]').exists()).toBe(false);
   });
 
-  it('should spin but NOT disable the regenerate title button while generatingTitle is true (to allow aborting)', async () => {
+  it('should expose Super Edit from the more actions menu', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    mockGeneratingTitle.value = true;
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
-    const btn = wrapper.find('[data-testid="regenerate-title-button"]');
-    const icon = btn.find('svg'); // RefreshCw is an SVG
-    expect(icon.classes()).toContain('animate-spin');
-    // It should NOT be disabled because we want to allow aborting
-    expect((btn.element as HTMLButtonElement).disabled).toBe(false);
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    const superEditButton = wrapper.find('[data-testid="super-edit-button"]');
+
+    expect(superEditButton.exists()).toBe(true);
+    expect(superEditButton.text()).toContain('Super Edit');
   });
 
   it('should hide the chat inspector when debug mode is disabled', async () => {
@@ -468,12 +718,13 @@ describe('ChatArea UI States', () => {
     expect(wrapper.find('[data-testid="chat-inspector"]').exists()).toBe(false);
   });
 
-  it('should render header icons (Export, Settings, More)', async () => {
+  it('should render header icons (Settings, Outline, More)', async () => {
+    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     wrapper = mount(ChatArea, {
       global: { plugins: [router] },
     });
 
-    expect(wrapper.find('[data-testid="export-markdown-button"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="conversation-outline-button"]').exists()).toBe(true);
     expect(wrapper.find('button[title="Chat Settings & Model Override"]').exists()).toBe(true);
     expect(wrapper.find('button[title="More Actions"]').exists()).toBe(true);
   });
@@ -612,12 +863,17 @@ describe('ChatArea Scrolling Logic', () => {
           'a1': 450,
           'a2': 550,
           'msg-asst': 450,
+          'u1': 100,
           'user-1': 100,
           'seq-1': 350,
           'group-1': 300,
         };
         const top = positions[id] ?? 0;
-        mockEl.getBoundingClientRect = vi.fn().mockReturnValue({ top, bottom: top + 100, height: 100 });
+        mockEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({
+          top: top - internalScrollTop,
+          bottom: top + 100 - internalScrollTop,
+          height: 100,
+        }));
         return mockEl;
       }
       return originalQuerySelector(selector);
@@ -684,7 +940,64 @@ describe('ChatArea Scrolling Logic', () => {
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(200);
   });
 
-  it('scrolls when a new user turn and assistant placeholder appear in the same update', async () => {
+  it('scrolls to and highlights the target message from a message-id link', async () => {
+    mockActiveMessages.value = [
+      { id: 'target-message', role: 'assistant', content: 'Target message', timestamp: Date.now(), replies: { items: [] } },
+    ];
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    const targetEl = document.createElement('div');
+    targetEl.id = 'message-target-message';
+    targetEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({ top: 250 - container.scrollTop, bottom: 350 - container.scrollTop, height: 100 }));
+    container.querySelector = vi.fn().mockImplementation((selector: string) => {
+      if (selector === '#message-target-message') return targetEl;
+      return null;
+    });
+
+    await wrapper.setProps({ targetMessageId: 'target-message' });
+    await flushPromises();
+    await nextTick();
+
+    expect(scrollTopSetterSpy).toHaveBeenCalled();
+    expect(targetEl.className).toContain('bg-blue-50/50');
+  });
+
+  it('retries message-id link scrolling after the target message is rendered', async () => {
+    wrapper = mount(ChatArea, {
+      props: { targetMessageId: 'late-message' },
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    const targetEl = document.createElement('div');
+    targetEl.id = 'message-late-message';
+    targetEl.getBoundingClientRect = vi.fn().mockImplementation(() => ({ top: 250 - container.scrollTop, bottom: 350 - container.scrollTop, height: 100 }));
+    container.querySelector = vi.fn().mockImplementation((selector: string) => {
+      if (selector === '#message-late-message') return targetEl;
+      return null;
+    });
+    scrollTopSetterSpy.mockClear();
+
+    mockActiveMessages.value = [
+      { id: 'late-message', role: 'assistant', content: 'Late target message', timestamp: Date.now(), replies: { items: [] } },
+    ];
+
+    await flushPromises();
+    await nextTick();
+
+    expect(scrollTopSetterSpy).toHaveBeenCalled();
+    expect(scrollTopSetterSpy.mock.calls.at(-1)?.[0]).toBe(50);
+    expect(targetEl.className).toContain('bg-blue-50/50');
+  });
+
+  it('reserves response viewport and scrolls the new user turn to the top when an assistant placeholder appears', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -698,6 +1011,7 @@ describe('ChatArea Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
 
     const assistantId = 'a1';
     mockActiveMessages.value = [
@@ -729,7 +1043,227 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
 
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(400);
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(100);
+    const reserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(reserve.exists()).toBe(true);
+    expect((reserve.element as HTMLElement).style.height).toBe('50px');
+  });
+
+  it('keeps the response viewport reserve stable until the next send or branch change', async () => {
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
+
+    const userMessage = { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const assistantMessage = { id: 'a1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    mockStreaming.value = true;
+    mockActiveMessages.value = [userMessage, assistantMessage];
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: userMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: assistantMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    const reserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(reserve.exists()).toBe(true);
+    expect((reserve.element as HTMLElement).style.height).toBe('50px');
+
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 650 });
+    assistantMessage.content = 'Assistant content now occupies the planned response viewport.';
+    mockChatFlowOverride.value = [
+      mockChatFlowOverride.value[0]!,
+      {
+        type: 'message',
+        node: assistantMessage,
+        mode: 'content',
+        partContent: assistantMessage.content,
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    const updatedReserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(updatedReserve.exists()).toBe(true);
+    expect((updatedReserve.element as HTMLElement).style.height).toBe('50px');
+
+    mockStreaming.value = false;
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    const completedReserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(completedReserve.exists()).toBe(true);
+    expect((completedReserve.element as HTMLElement).style.height).toBe('50px');
+
+    const secondUserMessage = { id: 'u2', role: 'user', content: 'next question', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const secondAssistantMessage = { id: 'a2', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    mockStreaming.value = true;
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 730 });
+    mockActiveMessages.value = [userMessage, assistantMessage, secondUserMessage, secondAssistantMessage];
+    mockChatFlowOverride.value = [
+      mockChatFlowOverride.value[0]!,
+      mockChatFlowOverride.value[1]!,
+      {
+        type: 'message',
+        node: secondUserMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: secondAssistantMessage,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    const nextSendReserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(nextSendReserve.exists()).toBe(true);
+    expect((nextSendReserve.element as HTMLElement).style.height).toBe('20px');
+
+    mockStreaming.value = false;
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      currentLeafId: 'changed-branch'
+    };
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="response-viewport-reserve"]').exists()).toBe(false);
+  });
+
+  it('does not treat a processing leaf update as an initial open', async () => {
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      currentLeafId: 'old-leaf'
+    };
+    mockActiveMessages.value = [
+      { id: 'old-user', role: 'user', content: 'before', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'old-assistant', role: 'assistant', content: 'before reply', timestamp: Date.now(), replies: { items: [] } },
+    ];
+
+    wrapper = mount(ChatArea, {
+      attachTo: document.body,
+      global: { plugins: [router] },
+    });
+    const container = wrapper.find('[data-testid="scroll-container"]').element as HTMLElement;
+    setupScrollMock(container);
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+    scrollTopSetterSpy.mockClear();
+    container.scrollTop = 0;
+    scrollTopSetterSpy.mockClear();
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
+
+    mockStreaming.value = true;
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value!,
+      currentLeafId: 'streaming-assistant-leaf'
+    };
+    mockActiveMessages.value = [
+      ...mockActiveMessages.value,
+      { id: 'u1', role: 'user', content: 'hello, world', timestamp: Date.now(), replies: { items: [] } },
+      { id: 'a1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } },
+    ];
+    mockChatFlowOverride.value = [
+      {
+        type: 'message',
+        node: mockActiveMessages.value[0]!,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: mockActiveMessages.value[1]!,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: mockActiveMessages.value[2]!,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      },
+      {
+        type: 'message',
+        node: mockActiveMessages.value[3]!,
+        mode: 'content',
+        flow: { position: 'standalone', nesting: 'none' },
+        isFirstInNode: true,
+        isLastInNode: true,
+        isFirstInTurn: true
+      }
+    ];
+
+    await flushPromises();
+    await nextTick();
+    await nextTick();
+
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(100);
+    expect(scrollTopSetterSpy).not.toHaveBeenCalledWith(50);
+    const reserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(reserve.exists()).toBe(true);
+    expect((reserve.element as HTMLElement).style.height).toBe('50px');
   });
 
   it('scrolls again after abort when a new user turn starts', async () => {
@@ -777,7 +1311,7 @@ describe('ChatArea Scrolling Logic', () => {
     await flushPromises();
     await nextTick();
     await nextTick();
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(400);
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(100);
 
     scrollTopSetterSpy.mockClear();
     container.scrollTop = 0;
@@ -825,7 +1359,7 @@ describe('ChatArea Scrolling Logic', () => {
     await flushPromises();
     await nextTick();
     await nextTick();
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(500);
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(250);
   });
 
   it('only scrolls once for the same user turn', async () => {
@@ -887,7 +1421,7 @@ describe('ChatArea Scrolling Logic', () => {
     await nextTick();
     await nextTick();
 
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(400);
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(100);
 
     scrollTopSetterSpy.mockClear();
     container.scrollTop = 0;
@@ -1003,7 +1537,7 @@ describe('ChatArea Scrolling Logic', () => {
     expect(scrollTopSetterSpy).toHaveBeenCalledWith(1000);
   });
 
-  it('scrolls to a process sequence anchor for the latest user turn', async () => {
+  it('reserves response viewport and scrolls the latest user turn to the top when a process sequence appears', async () => {
     wrapper = mount(ChatArea, {
       attachTo: document.body,
       global: { plugins: [router] },
@@ -1017,6 +1551,7 @@ describe('ChatArea Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
+    Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
 
     mockActiveMessages.value = [
       { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
@@ -1053,7 +1588,10 @@ describe('ChatArea Scrolling Logic', () => {
     await flushPromises();
     await nextTick();
     await nextTick();
-    expect(scrollTopSetterSpy).toHaveBeenCalledWith(300);
+    expect(scrollTopSetterSpy).toHaveBeenCalledWith(100);
+    const reserve = wrapper.find('[data-testid="response-viewport-reserve"]');
+    expect(reserve.exists()).toBe(true);
+    expect((reserve.element as HTMLElement).style.height).toBe('50px');
   });
 
   it('re-runs the initial open scroll when the active leaf changes in the same chat', async () => {
@@ -1255,6 +1793,7 @@ describe('ChatArea Export Functionality', () => {
 
     await nextTick(); // Ensure component is rendered and mocks are applied
 
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     expect(exportButton.exists()).toBe(true);
     await exportButton.trigger('click');
@@ -1323,6 +1862,7 @@ Hello User`);
 
     await nextTick();
 
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
 
@@ -1361,6 +1901,7 @@ Another message`);
 
     await nextTick();
 
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     const exportButton = wrapper.find('[data-testid="export-markdown-button"]');
     await exportButton.trigger('click');
 
@@ -1808,6 +2349,23 @@ Line 6`;
     expect(textarea.element.value).toBe('Keep this text');
   });
 
+  it('removes message-id from the URL after sending a new message', async () => {
+    await router.push('/?message-id=target-message&leaf=leaf-1');
+    const replaceSpy = vi.spyOn(router, 'replace').mockResolvedValue(undefined);
+    wrapper = mount(ChatArea, {
+      props: { targetMessageId: 'target-message' },
+      global: { plugins: [router] },
+    });
+
+    const textarea = wrapper.find<HTMLTextAreaElement>('[data-testid="chat-input"]');
+    await textarea.setValue('Continue from here');
+
+    await wrapper.find('[data-testid="send-button"]').trigger('click');
+    await flushPromises();
+
+    expect(replaceSpy).toHaveBeenCalledWith({ query: { leaf: 'leaf-1' } });
+  });
+
   it('should clear input IMMEDIATELY after handleSend returns, even if streaming continues (Regression Test)', async () => {
     // 1. Setup: mockSendMessage returns immediately while setting streaming to true
     mockSendMessage.mockImplementationOnce(async () => {
@@ -2114,6 +2672,8 @@ describe('ChatArea Model Selection', () => {
       global: { plugins: [router] },
     });
     mockFetchAvailableModels.mockClear();
+    mockRenameChat.mockClear();
+    mockSaveSettings.mockClear();
 
     // Simulate chat ID change
     if (mockCurrentChat.value) {

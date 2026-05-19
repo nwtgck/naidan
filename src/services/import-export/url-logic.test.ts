@@ -63,7 +63,7 @@ describe('URLImportExportLogic', () => {
       configurable: true
     });
 
-    const url = await urlImportExportLogic.getExportURL({ exclude: undefined });
+    const url = await urlImportExportLogic.getExportURL({ exclude: undefined, baseUrl: window.location.href });
     const urlObj = new URL(url);
 
     expect(urlObj.hash).toContain('storage-type=local');
@@ -77,6 +77,28 @@ describe('URLImportExportLogic', () => {
     });
   });
 
+  it('should generate an export URL for an explicit base URL without requiring a hash suffix', async () => {
+    mockExportData.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('data'));
+          controller.close();
+        },
+      }),
+    });
+
+    const url = await urlImportExportLogic.getExportURL({
+      exclude: undefined,
+      baseUrl: 'https://develop.naidan.pages.dev',
+    });
+
+    const urlObj = new URL(url);
+    expect(urlObj.origin).toBe('https://develop.naidan.pages.dev');
+    expect(urlObj.hash).toMatch(/^#\/\?/);
+    expect(urlObj.hash).toContain('storage-type=local');
+    expect(urlObj.hash).toContain('data-zip=');
+  });
+
   it('should pass exclude option to the service', async () => {
     mockExportData.mockResolvedValue({
       stream: new ReadableStream({
@@ -88,7 +110,7 @@ describe('URLImportExportLogic', () => {
     });
 
     const exclude: Array<'chat' | 'binary_object'> = ['chat'];
-    await urlImportExportLogic.getExportURL({ exclude });
+    await urlImportExportLogic.getExportURL({ exclude, baseUrl: window.location.href });
 
     expect(mockExportData).toHaveBeenCalledWith(expect.objectContaining({ exclude }));
   });
@@ -138,4 +160,3 @@ describe('URLImportExportLogic', () => {
     });
   });
 });
-

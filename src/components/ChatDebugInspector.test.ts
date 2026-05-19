@@ -343,6 +343,26 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Target Text to Copy');
   });
 
+  it('opens the selected tree node with a message-id query parameter', async () => {
+    const nodeB = createNode('B', 'assistant', 'B content', [
+      createNode('C', 'user', 'C content')
+    ]);
+    const chat = createMockChat([
+      createNode('A', 'user', 'A content', [nodeB])
+    ]);
+    const wrapper = mountInspector(chat);
+
+    await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
+    await nextTick();
+    await (wrapper.vm as any).handleSelectNode(nodeB);
+    await nextTick();
+
+    await wrapper.findAll('button').find(b => b.text().includes('Open at this message'))?.trigger('click');
+
+    expect(mockPush).toHaveBeenCalledWith({ query: { 'message-id': 'B' } });
+    expect(wrapper.emitted('close')).toBeTruthy();
+  });
+
   it('Scenario 12: Empty Chat Root', async () => {
     const chat = createMockChat([]);
     const wrapper = mountInspector(chat);

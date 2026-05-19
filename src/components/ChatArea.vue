@@ -18,17 +18,22 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
+import ChatAreaHeader from './ChatAreaHeader.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
+// Lazily load the outline overlay, prefetch on mounted.
+const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted(() => import('./ConversationOutlineOverlay.vue'));
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
+// Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
+const ChatTitleDialog = defineAsyncComponentAndLoadOnMounted(() => import('./ChatTitleDialog.vue'));
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
@@ -38,14 +43,12 @@ const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./Chat
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted(() => import('./ChatWeshTerminalModal.vue'));
 import {
-  XIcon, GitForkIcon, RefreshCwIcon,
-  ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon,
-  FolderIcon, FolderInputIcon, ChevronRightIcon, HammerIcon, SearchIcon, ImageIcon,
-  PrinterIcon, LinkIcon, TerminalIcon
+  FolderInputIcon
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { hasChatOverrides } from '@/utils/chat-settings-resolver';
+import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { generateChatShareURL } from '@/services/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
@@ -67,12 +70,17 @@ const {
   currentChat,
   currentChatGroup,
   generatingTitle,
+  renameChat,
+  updateChatSettings,
+  updateChatGroupMetadata,
   activeMessages,
   allMessages,
   availableModels,
+  fetchingModels,
   resolvedSettings,
   isProcessing,
   getSortedImageModels,
+  fetchAvailableModels,
   abortTitleGeneration,
   chatFlow,
   isThinkingActive,
@@ -89,17 +97,6 @@ type ScrollForce = 'force' | 'if-near-bottom';
 const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
-const ignoreTitleHover = ref(false);
-
-function handleTitleAction() {
-  if (!currentChat.value) return;
-  if (generatingTitle.value) {
-    abortTitleGeneration({ chatId: currentChat.value.id });
-  } else {
-    ignoreTitleHover.value = true;
-    chatStore.generateChatTitle({ chatId: currentChat.value.id, signal: undefined });
-  }
-}
 
 function handleDragOver(event: DragEvent) {
   event.preventDefault();
@@ -133,11 +130,15 @@ async function handleDrop(event: DragEvent) {
 
 const container = ref<HTMLElement | null>(null);
 
-useSettings();
+const {
+  settings,
+  save: saveSettings,
+} = useSettings();
 const router = useRouter();
 
 const props = defineProps<{
   autoSendPrompt?: string
+  targetMessageId?: string
 }>();
 
 const emit = defineEmits<{
@@ -159,13 +160,100 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
 const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
-const showMoreMenu = ref(false);
-const showMoveMenu = ref(false);
+const showTitleDialog = ref(false);
+const generatedTitleHistory = ref<string[]>([]);
+const outlineVisibility = ref<'hidden' | 'visible'>('hidden');
+const initialOutlineMessageId = ref<string | undefined>(undefined);
 
-async function handleMoveToGroup(groupId: string | null) {
+function getCurrentViewportMessageId(_args: Record<string, never>) {
+  const scrollContainer = container.value;
+  if (!scrollContainer) return undefined;
+
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const targetY = containerRect.top + Math.min(120, containerRect.height * 0.25);
+  const messageElements = Array.from(scrollContainer.querySelectorAll('[id^="message-"]'));
+
+  let closest: { id: string; distance: number } | undefined;
+  for (const element of messageElements) {
+    if (!(element instanceof HTMLElement)) continue;
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom < containerRect.top || rect.top > containerRect.bottom) continue;
+
+    const distance = Math.abs(rect.top - targetY);
+    if (!closest || distance < closest.distance) {
+      closest = {
+        id: element.id.replace(/^message-/, ''),
+        distance,
+      };
+    }
+  }
+
+  return closest?.id;
+}
+
+function toggleOutline(_args: Record<string, never>) {
+  const currentVisibility = outlineVisibility.value;
+  switch (currentVisibility) {
+  case 'visible':
+    outlineVisibility.value = 'hidden';
+    return;
+  case 'hidden':
+    initialOutlineMessageId.value = getCurrentViewportMessageId({});
+    outlineVisibility.value = 'visible';
+    return;
+  default: {
+    const _ex: never = currentVisibility;
+    throw new Error(`Unhandled outline visibility: ${_ex}`);
+  }
+  }
+}
+
+function closeOutline(_args: Record<string, never>) {
+  outlineVisibility.value = 'hidden';
+}
+
+function jumpToOutlineMessage({ messageId }: { messageId: string }) {
+  jumpToMessage({ messageId });
+  closeOutline({});
+}
+
+function clearTargetMessageQuery() {
+  const currentQuery = router.currentRoute?.value?.query ?? {};
+  if (!currentQuery['message-id']) return;
+
+  const query = { ...currentQuery };
+  delete query['message-id'];
+  router.replace({ query });
+}
+
+async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
   if (!currentChat.value) return;
   await chatStore.moveChatToGroup(currentChat.value.id, groupId);
-  showMoveMenu.value = false;
+}
+
+async function handleSaveTitle({ title }: { title: string }) {
+  if (!currentChat.value) return;
+  await renameChat(currentChat.value.id, title);
+}
+
+async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
+  if (!currentChat.value) return;
+  const titleBeforeGeneration = currentChat.value.title?.trim();
+  await updateActiveTitleModel({ modelId });
+  const generatedTitle = await chatStore.generateChatTitle({
+    chatId: currentChat.value.id,
+    signal: undefined,
+    titleModelIdOverride: modelId,
+  });
+  if (!generatedTitle) return;
+  const nextHistory = titleBeforeGeneration
+    ? [generatedTitle, titleBeforeGeneration, ...generatedTitleHistory.value]
+    : [generatedTitle, ...generatedTitleHistory.value];
+  generatedTitleHistory.value = Array.from(new Set(nextHistory));
+}
+
+function handleAbortTitleGeneration(_args: Record<string, never>) {
+  abortTitleGeneration({ chatId: currentChat.value?.id });
 }
 
 async function exportChat() {
@@ -336,7 +424,7 @@ async function waitForPaint({ frames }: { frames: number }) {
   }
 }
 
-async function scrollAnchorToTop({ target, behavior }: { target: ChatAreaScrollTarget, behavior: ScrollBehavior }) {
+async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatAreaScrollTarget, behavior: ScrollBehavior, offset: number }) {
   if (!container.value) return false;
 
   let el: HTMLElement | null = null;
@@ -353,9 +441,21 @@ async function scrollAnchorToTop({ target, behavior }: { target: ChatAreaScrollT
     element: el,
     behavior,
     block: 'start',
-    offset: 50
+    offset
   });
   return true;
+}
+
+async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: string, behavior: ScrollBehavior }) {
+  return scrollAnchorToTop({
+    target: {
+      kind: 'message',
+      anchorId: `message-${userTurnId}`,
+      messageId: userTurnId,
+    },
+    behavior,
+    offset: 0,
+  });
 }
 
 async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpenTarget }) {
@@ -366,7 +466,7 @@ async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpen
   case 'message':
   case 'process_sequence':
   case 'tool_group': {
-    const didScroll = await scrollAnchorToTop({ target, behavior: 'instant' });
+    const didScroll = await scrollAnchorToTop({ target, behavior: 'instant', offset: 50 });
     if (!didScroll) {
       scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
     }
@@ -379,8 +479,8 @@ async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpen
   }
 }
 
-function jumpToMessage({ messageId }: { messageId: string }) {
-  if (!container.value) return;
+function jumpToMessage({ messageId }: { messageId: string }): boolean {
+  if (!container.value) return false;
   const el = container.value.querySelector(`#message-${messageId}`);
   if (el instanceof HTMLElement) {
     scrollIntoViewSafe({
@@ -393,8 +493,52 @@ function jumpToMessage({ messageId }: { messageId: string }) {
     setTimeout(() => {
       el.classList.remove('bg-blue-50/50', 'dark:bg-blue-900/20');
     }, 2000);
+    return true;
   }
+  return false;
 }
+
+const lastJumpedTargetMessageKey = ref<string | undefined>(undefined);
+
+watch(
+  () => {
+    const flowKey = chatFlow.value.map((item) => {
+      switch (item.type) {
+      case 'message':
+        return `${item.node.id}:${item.mode}`;
+      case 'process_sequence':
+        return `${item.id}:${item.items.length}`;
+      case 'tool_group':
+        return item.id;
+      default: {
+        const _ex: never = item;
+        return _ex;
+      }
+      }
+    }).join('|');
+    return {
+      messageId: props.targetMessageId,
+      chatId: currentChat.value?.id,
+      leafId: currentChat.value?.currentLeafId,
+      flowKey,
+    };
+  },
+  async ({ messageId, chatId, leafId, flowKey }) => {
+    if (!messageId) {
+      lastJumpedTargetMessageKey.value = undefined;
+      return;
+    }
+    const targetKey = `${chatId ?? ''}:${leafId ?? ''}:${messageId}:${flowKey}`;
+    if (lastJumpedTargetMessageKey.value === targetKey) return;
+
+    await nextTick();
+    await waitForPaint({ frames: 1 });
+    if (jumpToMessage({ messageId })) {
+      lastJumpedTargetMessageKey.value = targetKey;
+    }
+  },
+  { flush: 'post', immediate: true }
+);
 
 // Expose for testing
 defineExpose({ scrollToBottom, container,
@@ -426,11 +570,122 @@ const canGenerateImage = computed(() => {
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
+const availableChatGroups = computed(() => chatStore.chatGroups?.value ?? []);
+
+const currentChatGroupBadge = computed(() => {
+  const groupId = currentChat.value?.groupId;
+  if (!groupId) return undefined;
+  return availableChatGroups.value.find(group => group.id === groupId);
+});
+
+const currentModelLabel = computed(() => formatSettingsSourceLabel({
+  value: resolvedSettings.value?.modelId,
+  source: resolvedSettings.value?.sources.modelId,
+}));
+
+const activeTitleModelSource = computed<SettingsSource>(() => resolvedSettings.value?.sources.titleModelId ?? 'global');
+
+const activeTitleModelId = computed(() => {
+  const source = activeTitleModelSource.value;
+  switch (source) {
+  case 'chat':
+    return currentChat.value?.titleModelId;
+  case 'chat_group':
+    return currentChatGroup.value?.titleModelId;
+  case 'global':
+    return settings.value.titleModelId;
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled title model source: ${_ex}`);
+  }
+  }
+});
+
+async function updateActiveTitleModel({ modelId }: { modelId: string | undefined }) {
+  const source = activeTitleModelSource.value;
+  switch (source) {
+  case 'chat':
+    if (!currentChat.value) return;
+    await updateChatSettings(currentChat.value.id, { titleModelId: modelId });
+    return;
+  case 'chat_group':
+    if (!currentChat.value?.groupId) {
+      await saveSettings({ titleModelId: modelId });
+      return;
+    }
+    await updateChatGroupMetadata(currentChat.value.groupId, { titleModelId: modelId });
+    return;
+  case 'global':
+    await saveSettings({ titleModelId: modelId });
+    return;
+  default: {
+    const _ex: never = source;
+    throw new Error(`Unhandled title model source: ${_ex}`);
+  }
+  }
+}
+
+watch(
+  showTitleDialog,
+  (isOpen) => {
+    if (isOpen) {
+      generatedTitleHistory.value = [];
+    }
+  }
+);
+
 const autoScroll = useChatAreaAutoScroll({
   currentChat,
   activeMessages,
   chatFlow,
+  processingStatus: computed(() => isCurrentChatStreaming.value ? 'processing' : 'idle'),
 });
+
+const responseViewportReserve = ref<{ chatId: string, navigationKey: string, userTurnId: string, heightPx: number } | undefined>(undefined);
+
+const isResponseViewportReserveActive = computed(() => {
+  if (props.targetMessageId) return false;
+
+  const snapshot = autoScroll.snapshot.value;
+  return !!responseViewportReserve.value
+    && responseViewportReserve.value.chatId === snapshot.chatId
+    && responseViewportReserve.value.navigationKey === snapshot.navigationKey
+    && responseViewportReserve.value.userTurnId === snapshot.latestUserTurnId;
+});
+
+const responseViewportReserveHeightPx = computed(() => {
+  if (!isResponseViewportReserveActive.value) return 0;
+  return responseViewportReserve.value?.heightPx ?? 0;
+});
+
+function getElementTopInContainer({
+  element,
+  scrollContainer,
+}: {
+  element: HTMLElement,
+  scrollContainer: HTMLElement,
+}) {
+  const containerRect = scrollContainer.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  return scrollContainer.scrollTop + elementRect.top - containerRect.top;
+}
+
+function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: string }) {
+  const scrollContainer = container.value;
+  if (!scrollContainer) return 0;
+
+  const userElement = scrollContainer.querySelector(`#message-${userTurnId}`);
+  if (!(userElement instanceof HTMLElement)) return 0;
+
+  const userTop = getElementTopInContainer({
+    element: userElement,
+    scrollContainer,
+  });
+  const currentReserveHeight = responseViewportReserve.value?.heightPx ?? 0;
+  const scrollHeightWithoutReserve = scrollContainer.scrollHeight - currentReserveHeight;
+  const maxScrollTopWithoutReserve = scrollHeightWithoutReserve - scrollContainer.clientHeight;
+  return Math.max(0, Math.ceil(userTop - maxScrollTopWithoutReserve));
+}
 
 async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
   await chatStore.editMessage(messageId, newContent, lmParameters);
@@ -491,7 +746,9 @@ watch(
   () => {
     const snapshot = autoScroll.snapshot.value;
     return [
-      snapshot.contextKey,
+      snapshot.chatId,
+      snapshot.navigationKey,
+      snapshot.processingStatus,
       snapshot.latestUserTurnId,
       snapshot.firstAssistantVisibleTarget?.kind,
       snapshot.firstAssistantVisibleTarget?.anchorId,
@@ -502,19 +759,36 @@ watch(
 
     const action = autoScroll.consumeScrollAction();
     if (!action) return;
+    if (props.targetMessageId) return;
 
     switch (action.kind) {
     case 'initial_open':
+      responseViewportReserve.value = undefined;
       await scrollInitialOpenTarget({ target: action.target });
       break;
     case 'assistant': {
+      const snapshot = autoScroll.snapshot.value;
+      if (!snapshot.chatId || !snapshot.navigationKey) return;
+      responseViewportReserve.value = {
+        chatId: snapshot.chatId,
+        navigationKey: snapshot.navigationKey,
+        userTurnId: action.userTurnId,
+        heightPx: 0,
+      };
+      await nextTick();
+      const reserve = responseViewportReserve.value;
+      if (!reserve) return;
+      responseViewportReserve.value = {
+        ...reserve,
+        heightPx: calculateResponseViewportReserveHeight({ userTurnId: action.userTurnId }),
+      };
+      await nextTick();
       await waitForPaint({ frames: 2 });
-      const didScroll = await scrollAnchorToTop({ target: action.target, behavior: 'smooth' });
+      const didScroll = await scrollUserTurnToTop({ userTurnId: action.userTurnId, behavior: 'smooth' });
       if (didScroll) {
-        const contextKey = autoScroll.snapshot.value.contextKey;
-        if (!contextKey) return;
         autoScroll.markAssistantAutoScrolled({
-          contextKey,
+          chatId: snapshot.chatId,
+          navigationKey: snapshot.navigationKey,
           userTurnId: action.userTurnId,
         });
       }
@@ -550,250 +824,54 @@ watch(
       </div>
     </div>
 
-    <!-- Header -->
-    <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-1.5 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
-      <div class="flex items-center gap-3 overflow-hidden min-h-[34px]">
-        <div class="flex flex-col overflow-hidden">
-          <template v-if="currentChat">
-            <div class="flex items-center gap-2">
-              <button
-                v-if="currentChat.originChatId"
-                @click="jumpToOrigin"
-                class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
-                title="Jump to original chat"
-                data-testid="jump-to-origin-button"
-              >
-                <ArrowUpIcon class="w-4 h-4" />
-              </button>
-              <h2 class="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate">{{ currentChat.title || 'New Chat' }}</h2>
-              <button
-                v-if="activeMessages.length > 0"
-                @click="handleTitleAction"
-                @mouseleave="ignoreTitleHover = false"
-                class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-all disabled:opacity-50 group/title"
-                :disabled="isCurrentChatStreaming"
-                :title="generatingTitle ? 'Stop Title Generation' : 'Regenerate Title'"
-                data-testid="regenerate-title-button"
-              >
-                <div class="relative w-3.5 h-3.5 flex items-center justify-center">
-                  <RefreshCwIcon
-                    class="w-full h-full transition-all"
-                    :class="{
-                      'animate-spin': generatingTitle,
-                      'group-hover/title:opacity-0 group-hover/title:scale-75': generatingTitle && !ignoreTitleHover
-                    }"
-                  />
-                  <XIcon
-                    v-if="generatingTitle"
-                    class="w-3.5 h-3.5 absolute opacity-0 transition-all text-red-500 scale-75"
-                    :class="{ 'group-hover/title:opacity-100 group-hover/title:scale-100': !ignoreTitleHover }"
-                  />
-                </div>
-              </button>
-            </div>
-
-            <!-- Model Badge/Trigger -->
-            <button
-              @click="showChatSettings = !showChatSettings"
-              class="flex items-center gap-1.5 w-fit group"
-              title="Chat Settings & Model Override"
-              data-testid="model-trigger"
-            >
-              <div
-                class="px-2 py-0.5 rounded-full text-[9px] font-bold transition-all flex items-center gap-1.5"
-                :class="showChatSettings
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 group-hover:text-gray-700 dark:group-hover:text-gray-200'"
-              >
-                <span class="truncate max-w-[120px] sm:max-w-[200px]">
-                  {{ chatInputRef?.formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId) }}
-                </span>
-                <Settings2Icon class="w-3 h-3" :class="{ 'animate-pulse': showChatSettings }" />
-              </div>
-              <div
-                v-if="currentChat && hasChatOverrides({ chat: currentChat })"
-                class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"
-                title="Custom overrides active"
-                data-testid="custom-overrides-indicator"
-              ></div>
-            </button>
-          </template>
-          <template v-else>
-            <!-- Header empty when no chat is selected -->
-          </template>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-0.5 relative">
-        <div v-if="currentChat" class="flex items-center gap-0.5">
-          <!-- Move to Group Dropdown -->
-          <div class="relative">
-            <button
-              @click="showMoveMenu = !showMoveMenu"
-              class="p-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"
-              :class="showMoveMenu ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'"
-              title="Move to Group"
-              data-testid="move-to-group-button"
-            >
-              <FolderInputIcon class="w-4.5 h-4.5" />
-            </button>
-
-            <Transition name="dropdown">
-              <div
-                v-if="showMoveMenu"
-                class="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden origin-top-right"
-                @mouseleave="showMoveMenu = false"
-              >
-                <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
-                  Move to Group
-                </div>
-                <div class="max-h-64 overflow-y-auto">
-                  <button
-                    @click="handleMoveToGroup(null)"
-                    class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
-                    :class="!currentChat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
-                  >
-                    <div class="flex items-center gap-2">
-                      <XIcon class="w-4 h-4 opacity-50" />
-                      <span>Top Level</span>
-                    </div>
-                    <ChevronRightIcon v-if="!currentChat.groupId" class="w-4 h-4" />
-                  </button>
-
-                  <button
-                    v-for="group in chatStore.chatGroups.value"
-                    :key="group.id"
-                    @click="handleMoveToGroup(group.id)"
-                    class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
-                    :class="currentChat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
-                  >
-                    <div class="flex items-center gap-2 overflow-hidden">
-                      <FolderIcon class="w-4 h-4 opacity-50 shrink-0" />
-                      <span class="truncate">{{ group.name }}</span>
-                    </div>
-                    <ChevronRightIcon v-if="currentChat.groupId === group.id" class="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </Transition>
-          </div>
-
-          <button
-            v-if="activeMessages.length > 0"
-            @click="handleForkLastMessage"
-            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-            title="Fork Chat from last message"
-            data-testid="fork-chat-button"
-          >
-            <GitForkIcon class="w-4.5 h-4.5" />
-          </button>
-
-          <button
-            @click="showHistoryModal = true"
-            class="p-1.5 rounded-lg transition-all text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 group/hammer"
-            title="Super Edit (Full History Manipulation)"
-            data-testid="super-edit-button"
-          >
-            <HammerIcon class="w-4.5 h-4.5 group-hover/hammer:-rotate-12 transition-all" />
-          </button>
-
-          <button
-            @click="exportChat"
-            class="p-1.5 rounded-lg transition-colors text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-            title="Export as Markdown"
-            data-testid="export-markdown-button"
-          >
-            <DownloadIcon class="w-4.5 h-4.5" />
-          </button>
-
-          <button
-            @click="showMoreMenu = !showMoreMenu"
-            class="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            title="More Actions"
-            data-testid="more-actions-button"
-          >
-            <MoreVerticalIcon class="w-4.5 h-4.5" />
-          </button>
-        </div>
-
-        <!-- Kebab Menu Dropdown -->
-        <Transition name="dropdown">
-          <div
-            v-if="showMoreMenu"
-            class="absolute right-0 top-full mt-2 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl z-50 py-1.5 origin-top-right"
-            @mouseleave="showMoreMenu = false"
-          >
-            <button
-              @click="handlePrint(); showMoreMenu = false"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-green-600 dark:hover:text-green-400"
-              title="Open print dialog (can be used to Save as PDF)"
-              data-testid="print-chat-button"
-            >
-              <PrinterIcon class="w-4 h-4" />
-              <span>Print</span>
-            </button>
-            <button
-              @click="() => { if(currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); showMoreMenu = false; }"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
-              data-testid="search-in-chat-button"
-            >
-              <SearchIcon class="w-4 h-4" />
-              <span>Search in Chat</span>
-            </button>
-            <button
-              @click="toggleMediaShelf(); showMoreMenu = false"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-              :class="mediaShelfVisibility === 'visible'
-                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
-              "
-              data-testid="toggle-media-gallery-button"
-            >
-              <ImageIcon class="w-4 h-4" />
-              <span>Media Gallery</span>
-            </button>
-            <button
-              @click="shareAsURL(); showMoreMenu = false"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
-              title="Copy a shareable URL containing this chat"
-              data-testid="export-url-button"
-            >
-              <LinkIcon class="w-4 h-4" />
-              <span>Export as URL</span>
-            </button>
-            <button
-              @click="toggleChatWeshTerminal(); showMoreMenu = false"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-              :class="isChatWeshTerminalOpen
-                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
-              "
-              data-testid="open-chat-wesh-terminal-button"
-            >
-              <TerminalIcon class="w-4 h-4" />
-              <span>Wesh Terminal</span>
-            </button>
-            <button
-              @click="chatStore.toggleDebug(); showMoreMenu = false"
-              class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-              :class="currentChat?.debugEnabled
-                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
-              "
-              data-testid="toggle-debug-button"
-            >
-              <BugIcon class="w-4 h-4" />
-              <span>Debug Mode</span>
-            </button>
-          </div>
-        </Transition>
-      </div>
-    </div>
+    <ChatAreaHeader
+      :current-chat="currentChat"
+      :chat-groups="availableChatGroups"
+      :current-chat-group-badge="currentChatGroupBadge"
+      :active-message-count="activeMessages.length"
+      :model-label="currentModelLabel"
+      :has-overrides="!!(currentChat && hasChatOverrides({ chat: currentChat }))"
+      :show-chat-settings="showChatSettings"
+      :outline-visibility="outlineVisibility"
+      :generating-title="generatingTitle"
+      :media-shelf-visibility="mediaShelfVisibility"
+      :is-chat-wesh-terminal-open="isChatWeshTerminalOpen"
+      @jump-origin="jumpToOrigin"
+      @edit-title="showTitleDialog = true"
+      @update:show-chat-settings="showChatSettings = $event"
+      @fork-last-message="handleForkLastMessage"
+      @move-to-group="groupId => handleMoveToGroup({ groupId })"
+      @toggle-outline="toggleOutline({})"
+      @print="handlePrint"
+      @search-chat="() => { if (currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); }"
+      @open-history="showHistoryModal = true"
+      @export-chat="exportChat"
+      @toggle-media-shelf="toggleMediaShelf"
+      @share-url="shareAsURL"
+      @toggle-wesh-terminal="toggleChatWeshTerminal"
+      @toggle-debug="chatStore.toggleDebug"
+    />
 
     <!-- Chat Settings Panel -->
     <ChatSettingsPanel
       :show="showChatSettings"
       @close="showChatSettings = false"
+    />
+
+    <ChatTitleDialog
+      :is-open="showTitleDialog"
+      :title="currentChat?.title ?? null"
+      :available-models="availableModels"
+      :selected-title-model="activeTitleModelId"
+      :title-model-source="activeTitleModelSource"
+      :generated-titles="generatedTitleHistory"
+      :generating-title="generatingTitle"
+      :fetching-models="fetchingModels"
+      @close="showTitleDialog = false"
+      @save-title="title => handleSaveTitle({ title })"
+      @generate-title="modelId => handleGenerateTitle({ modelId })"
+      @abort-title="handleAbortTitleGeneration({})"
+      @refresh-models="fetchAvailableModels({ chatId: currentChat?.id, customEndpoint: undefined })"
     />
 
     <!-- History Manipulation Modal -->
@@ -813,6 +891,13 @@ watch(
 
     <!-- Messages Layer -->
     <div class="flex-1 relative overflow-hidden">
+      <ConversationOutlineOverlay
+        :visibility="outlineVisibility"
+        :flow-items="chatFlow"
+        :initial-message-id="initialOutlineMessageId"
+        @close="closeOutline({})"
+        @select-message="(messageId) => jumpToOutlineMessage({ messageId })"
+      />
       <div
         ref="container"
         data-testid="scroll-container"
@@ -934,6 +1019,12 @@ watch(
               v-if="resolvedSettings?.endpointType === 'transformers_js'"
               mode="full"
             />
+            <div
+              v-if="isResponseViewportReserveActive && responseViewportReserveHeightPx > 0"
+              class="shrink-0 pointer-events-none"
+              :style="{ height: `${responseViewportReserveHeightPx}px` }"
+              data-testid="response-viewport-reserve"
+            ></div>
           </div>
           <WelcomeScreen
             v-else
@@ -980,6 +1071,7 @@ watch(
       :available-image-models="availableImageModels"
       :auto-send-prompt="autoSendPrompt"
       @auto-sent="emit('auto-sent')"
+      @sent="clearTargetMessageQuery"
       @scroll-to-bottom="(force) => scrollToBottom({ scrollForce: force ? 'force' : 'if-near-bottom', behavior: 'smooth' })"
     />
 

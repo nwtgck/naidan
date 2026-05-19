@@ -768,7 +768,7 @@ export const buildSidebarItemsFromHierarchy = (
 };
 
 export const settingsToDomain = (dto: SettingsDto): Settings => {
-  const { endpoint, providerProfiles, storageType, experimental: _experimental, ...rest } = dto;
+  const { endpoint, providerProfiles, storageType, ...rest } = dto;
 
   const endpointInfo = (() => {
     switch (endpoint.type) {
@@ -796,6 +796,10 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
     ...rest,
     ...endpointInfo,
     storageType: storageType as StorageType,
+    experimental: {
+      ...rest.experimental,
+      sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
+    },
     providerProfiles: providerProfiles?.map(p => {
       const { endpoint: pEndpoint, ...pRest } = p;
       const pEndpointInfo = (() => {
@@ -868,7 +872,10 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
     heavyContentAlertDismissed: rest.heavyContentAlertDismissed,
     systemPrompt: rest.systemPrompt,
     lmParameters: lmParametersToDto(rest.lmParameters),
-    experimental: undefined,
+    experimental: {
+      markdownRendering: rest.experimental?.markdownRendering,
+      sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
+    },
     mounts: (domain.mounts || []).map(m => {
       const type = m.type;
       switch (type) {

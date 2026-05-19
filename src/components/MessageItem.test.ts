@@ -204,6 +204,30 @@ print("hello")
     wrapper.unmount();
   });
 
+  it('copies a message link via more actions menu', async () => {
+    const message = createMessage('Linkable message');
+    const wrapper = mount(MessageItem, { props: { chatId: 'chat-1', message }, attachTo: document.body });
+
+    const writeText = vi.fn().mockImplementation(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    await wrapper.find('[data-testid="message-more-actions-button"]').trigger('click');
+    await nextTick();
+
+    const copyLinkBtn = document.body.querySelector('[data-testid="copy-message-link-button"]');
+    expect(copyLinkBtn).toBeTruthy();
+
+    await (copyLinkBtn as HTMLButtonElement).click();
+    await nextTick();
+
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}${window.location.pathname}${window.location.search}#/chat/chat-1?message-id=${message.id}`);
+
+    wrapper.unmount();
+  });
+
   it('toggles mermaid display modes', async () => {
     const message = createMessage(`\
 \`\`\`mermaid

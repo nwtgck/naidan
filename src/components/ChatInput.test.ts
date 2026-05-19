@@ -3,6 +3,14 @@ import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { nextTick, ref } from 'vue';
 
+const { mockRouter } = vi.hoisted(() => ({
+  mockRouter: {
+    currentRoute: { value: { query: {} as Record<string, string> } },
+    replace: vi.fn(),
+    push: vi.fn(),
+  },
+}));
+
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
   SquareIcon: { template: '<span>Square</span>' },
@@ -227,11 +235,7 @@ vi.mock('../composables/useLayout', () => ({
 }));
 
 vi.mock('vue-router', () => ({
-  useRouter: () => ({
-    currentRoute: { value: { query: {} } },
-    replace: vi.fn(),
-    push: vi.fn(),
-  }),
+  useRouter: () => mockRouter,
 }));
 
 // Mock URL
@@ -241,6 +245,7 @@ global.URL.revokeObjectURL = vi.fn();
 describe('ChatInput Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRouter.currentRoute.value = { query: {} };
     mockCurrentChat.value = { id: 'chat-1', modelId: 'model-1' };
     mockSettings.value = { mounts: [] };
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
@@ -266,6 +271,28 @@ describe('ChatInput Integration', () => {
         }
       }
     }
+  });
+
+  it('does not synchronize currentLeafId changes into the URL query', async () => {
+    mockRouter.currentRoute.value = { query: {} };
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      currentLeafId: 'leaf-1',
+      root: { items: [] },
+    };
+
+    getWrapper();
+    await nextTick();
+
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value,
+      currentLeafId: 'leaf-2',
+    };
+    await nextTick();
+
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(mockRouter.push).not.toHaveBeenCalled();
   });
 
   it('should open ImageEditor when edit button is clicked', async () => {

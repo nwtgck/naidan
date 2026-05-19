@@ -12,6 +12,16 @@ import { findRestorationIndex } from '@/utils/chat-tree';
 const { mocks } = vi.hoisted(() => ({
   mocks: {
     capturedListener: null as ((event: any) => void | Promise<void>) | null,
+    settings: {
+      endpointType: 'openai',
+      endpointUrl: 'http://localhost',
+      storageType: 'local',
+      autoTitleEnabled: true,
+      defaultModelId: 'gpt-4',
+      providerProfiles: [],
+      mounts: [],
+      experimental: undefined as { sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
+    },
   }
 }));
 
@@ -46,7 +56,7 @@ vi.mock('../services/storage', () => ({
 // Mock settings
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: true, defaultModelId: 'gpt-4' } },
+    settings: { value: mocks.settings },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
@@ -96,6 +106,7 @@ describe('useChat Composable Logic', () => {
     rootItems.value = [];
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
+    mocks.settings.experimental = undefined;
     clearEvents();
 
     // Setup persistence mocks
@@ -410,7 +421,7 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should branch into a new version when regenerateMessage is called', async () => {
-    const { sendMessage, regenerateMessage } = useChat();
+    const { sendMessage, regenerateMessage, switchVersion } = useChat();
 
     __testOnlySetCurrentChat(reactive({
       id: 'regen-test', title: 'Regen', root: { items: [] },
@@ -449,6 +460,16 @@ describe('useChat Composable Logic', () => {
     // 4. Verify current view points to the new version
     expect(currentChat.value?.currentLeafId).toBe(secondAssistantMsg?.id);
     expect(activeMessages.value[1]?.content).toBe('Second Response');
+
+    await switchVersion(firstAssistantMsg!.id);
+    triggerRef(currentChat);
+
+    expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
+    expect(activeMessages.value[1]?.content).toBe('First Response');
+    expect(storageService.updateChatContent).toHaveBeenCalledWith(
+      'regen-test',
+      expect.any(Function),
+    );
   });
 
   it('should store lmParameters in UserMessageNode and AssistantMessageNode after sendMessage', async () => {
@@ -938,7 +959,7 @@ describe('useChat Composable Logic', () => {
     expect(mockHierarchy.items[1]?.id).toBe('c1');
   });
 
-  it('should maintain the correct position after sending a message', async () => {
+  it('should maintain the correct position after sending a message when sidebar send reorder is disabled', async () => {
     const { sendMessage } = useChat();
     const c2 = { id: 'c2', title: 'C2', updatedAt: 0 };
     mockHierarchy.items = [
@@ -953,6 +974,43 @@ describe('useChat Composable Logic', () => {
     // but waiting ensures clean state.
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockHierarchy.items[2]?.id).toBe('c2');
+  });
+
+  it('moves a top-level chat before existing top-level chats after sending when sidebar send reorder is enabled', async () => {
+    const { sendMessage } = useChat();
+    const c2 = { id: 'c2', title: 'C2', updatedAt: 0 };
+    mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
+    mockHierarchy.items = [
+      { type: 'chat_group', id: 'g1', chat_ids: [] },
+      { type: 'chat', id: 'c1' },
+      { type: 'chat', id: 'c2' }
+    ];
+
+    __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    expect(mockHierarchy.items.map(i => i.id)).toEqual(['g1', 'c2', 'c1']);
+  });
+
+  it('moves a grouped chat to the top of its current group after sending when sidebar send reorder is enabled', async () => {
+    const { sendMessage } = useChat();
+    const c2 = { id: 'c2', title: 'C2', updatedAt: 0, groupId: 'g1' };
+    mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
+    mockHierarchy.items = [
+      { type: 'chat_group', id: 'g1', chat_ids: ['c1', 'c2', 'c3'] },
+      { type: 'chat', id: 'top' }
+    ];
+
+    __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
+    await sendMessage({ content: 'Hello' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    const group = mockHierarchy.items[0];
+    expect(group?.type).toBe('chat_group');
+    if (group?.type !== 'chat_group') throw new Error('Expected chat group');
+    expect(group.chat_ids).toEqual(['c2', 'c1', 'c3']);
+    expect(mockHierarchy.items[1]?.id).toBe('top');
   });
 
   it('should generate a chat title based on the first message', async () => {
@@ -975,7 +1033,7 @@ describe('useChat Composable Logic', () => {
       params.onChunk(' Title');
     });
 
-    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined });
+    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
     await promise;
     expect(chatStore.generatingTitle.value).toBe(false);
@@ -1006,7 +1064,7 @@ describe('useChat Composable Logic', () => {
       await new Promise(resolve => setTimeout(resolve, 50));
     });
 
-    const promiseA = generateChatTitle({ chatId: chatA.id, signal: undefined });
+    const promiseA = generateChatTitle({ chatId: chatA.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
 
     // Switch to Chat B (which is not generating)
@@ -1077,7 +1135,7 @@ describe('useChat Composable Logic', () => {
     });
 
     chatObj.title = null; // Clear title to allow auto-generation to proceed
-    await generateChatTitle({ chatId: chatObj.id, signal: undefined });
+    await generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
 
     expect(chatObj.title).toBe('New Better Title');
     expect(storageService.updateChatMeta).toHaveBeenCalled();
@@ -1111,7 +1169,7 @@ describe('useChat Composable Logic', () => {
       }
     });
 
-    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined });
+    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
 
     abortTitleGeneration({ chatId: chatObj.id });
@@ -1137,6 +1195,75 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(null);
     await openChat('missing');
     expect(currentChat.value).toBeNull();
+  });
+
+  it('should open a message-id link without persisting the selected current leaf', async () => {
+    const { openChatAtMessage, currentChat, activeMessages } = useChat();
+    const mockChat: Chat = {
+      id: 'message-link-chat',
+      title: 'Message Link Chat',
+      root: {
+        items: [
+          {
+            id: 'user-1',
+            role: 'user',
+            content: 'Question',
+            timestamp: 1,
+            replies: {
+              items: [
+                {
+                  id: 'assistant-1',
+                  role: 'assistant',
+                  content: 'Target answer',
+                  timestamp: 2,
+                  replies: {
+                    items: [
+                      {
+                        id: 'user-followup',
+                        role: 'user',
+                        content: 'Follow up',
+                        timestamp: 3,
+                        replies: {
+                          items: [
+                            {
+                              id: 'target-leaf',
+                              role: 'assistant',
+                              content: 'Target leaf',
+                              timestamp: 4,
+                              replies: { items: [] },
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  id: 'assistant-2',
+                  role: 'assistant',
+                  content: 'Saved answer',
+                  timestamp: 5,
+                  replies: { items: [] },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      currentLeafId: 'assistant-2',
+      createdAt: 0,
+      updatedAt: 0,
+      debugEnabled: false,
+    };
+
+    vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
+    vi.mocked(storageService.updateChatContent).mockClear();
+
+    await openChatAtMessage({ chatId: 'message-link-chat', messageId: 'assistant-1' });
+
+    expect(currentChat.value?.currentLeafId).toBe('target-leaf');
+    expect(activeMessages.value.map(message => message.id)).toContain('assistant-1');
+    expect(storageService.updateChatContent).not.toHaveBeenCalled();
   });
 
   it('should clear chat modelId if it is not in the newly fetched models in fetchAvailableModels', async () => {

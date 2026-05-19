@@ -14,7 +14,7 @@ vi.mock('vuedraggable', () => ({
   default: {
     name: 'draggable',
     template: `
-      <div class="draggable-stub" :data-tag="tag" :data-animation="animation">
+      <div class="draggable-stub" :data-tag="tag" :data-animation="animation" :data-component-data="JSON.stringify(componentData)">
         <div v-for="item in modelValue" :key="item.id || item.type">
           <slot name="item" :element="item"></slot>
         </div>
@@ -23,7 +23,7 @@ vi.mock('vuedraggable', () => ({
     props: [
       'modelValue', 'itemKey', 'ghostClass', 'swapThreshold', 'invertSwap',
       'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass',
-      'tag', 'animation', 'delay', 'delayOnTouchOnly'
+      'tag', 'animation', 'delay', 'delayOnTouchOnly', 'componentData'
     ],
   }
 }));
@@ -71,7 +71,7 @@ describe('Sidebar DND Improvements', () => {
     });
   });
 
-  it('ensures reordering is instant by setting animation to 0', async () => {
+  it('keeps sortable reordering instant during drag', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
     const draggables = wrapper.findAllComponents({ name: 'draggable' });
@@ -80,14 +80,45 @@ describe('Sidebar DND Improvements', () => {
     });
   });
 
-  it('uses stable div tag for draggables to prevent TransitionGroup crashes', async () => {
+  it('uses stable div roots so cross-list drag and drop keeps working', async () => {
     const wrapper = mount(Sidebar, { global: { plugins: [router] } });
     await nextTick();
     const draggables = wrapper.findAllComponents({ name: 'draggable' });
     draggables.forEach(d => {
-      // Regression check: should NOT be TransitionGroup
       expect(d.props('tag')).toBe('div');
     });
+  });
+
+  it('allows chats to be dragged into chat groups', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const nestedTarget = document.createElement('div');
+    nestedTarget.classList.add('nested-draggable');
+
+    const result = (wrapper.vm as any).checkMove({
+      draggedContext: {
+        element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
+      },
+      to: nestedTarget,
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it('prevents chat groups from being dragged into other chat groups', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const nestedTarget = document.createElement('div');
+    nestedTarget.classList.add('nested-draggable');
+
+    const result = (wrapper.vm as any).checkMove({
+      draggedContext: {
+        element: { type: 'chat_group', id: 'g2', chatGroup: { id: 'g2', name: 'Group 2', items: [], isCollapsed: false, updatedAt: 0 } },
+      },
+      to: nestedTarget,
+    });
+
+    expect(result).toBe(false);
   });
 
   it('implements group expansion using CSS Grid for stability', async () => {

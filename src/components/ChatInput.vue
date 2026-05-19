@@ -17,6 +17,7 @@ import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection'
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
@@ -29,15 +30,13 @@ import {
   Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
-import { useRouter } from 'vue-router';
-import type { Attachment, Chat, LmParameters } from '@/models/types';
+import type { Attachment, LmParameters } from '@/models/types';
 
 const chatStore = useChat();
 const { setToolEnabled } = useChatTools();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
 const reasoningStore = useReasoning();
-const router = useRouter();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
 const {
   currentChat,
@@ -79,6 +78,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'auto-sent'): void;
+  (e: 'sent'): void;
   (e: 'update:visibility', value: 'submerged' | 'peeking' | 'active'): void;
   (e: 'update:isAnimatingHeight', value: boolean): void;
   (e: 'scroll-to-bottom', force?: boolean): void;
@@ -97,21 +97,8 @@ const isAnimatingHeight = computed({
   set: (val) => emit('update:isAnimatingHeight', val)
 });
 
-function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
-  if (!value) return 'Default';
-  switch (source) {
-  case 'chat_group':
-    return `${value} (Group)`;
-  case 'global':
-    return `${value} (Global)`;
-  case 'chat':
-  case undefined:
-    return value;
-  default: {
-    const _ex: never = source;
-    throw new Error(`Unhandled source: ${_ex}`);
-  }
-  }
+function formatLabel(value: string | undefined, source: SettingsSource | undefined) {
+  return formatSettingsSourceLabel({ value, source });
 }
 
 
@@ -851,6 +838,7 @@ async function handleGenerateImage() {
       attachments.value = [];
     }
     clearDraft(sendingChatId);
+    emit('sent');
     nextTick(adjustTextareaHeight);
   }
 }
@@ -894,6 +882,7 @@ async function handleSend() {
       attachments.value = [];
     }
     clearDraft(sendingChatId);
+    emit('sent');
 
     nextTick(() => { // Ensure textarea is cleared before adjusting height
       adjustTextareaHeight();
@@ -902,40 +891,6 @@ async function handleSend() {
 
   focusInput();
 }
-
-import { findDeepestLeaf } from '@/utils/chat-tree';
-
-watch(
-  () => currentChat.value?.currentLeafId,
-  (newLeafId) => {
-    if (!newLeafId || !currentChat.value) return;
-
-    const currentLeafInUrl = router.currentRoute.value.query.leaf;
-    if (newLeafId !== currentLeafInUrl) {
-      const query = { ...router.currentRoute.value.query };
-
-      // If we are at the deepest leaf, we don't need the leaf param in URL
-      // Use toRaw and cast to Chat to avoid deep-readonly type issues with findDeepestLeaf
-      const rawChat = toRaw(currentChat.value) as Chat | null;
-      if (rawChat && rawChat.root.items.length > 0) {
-        const deepestLeaf = findDeepestLeaf(rawChat.root.items[rawChat.root.items.length - 1]!);
-        if (newLeafId === deepestLeaf.id) {
-          delete query.leaf;
-        } else {
-          query.leaf = newLeafId;
-        }
-      } else if (newLeafId) {
-        query.leaf = newLeafId;
-      }
-
-      // If we are just loading the chat or there's no leaf in URL, use replace to avoid polluting history
-      const method = !currentLeafInUrl ? 'replace' : 'push';
-      router[method]({
-        query
-      });
-    }
-  }
-);
 
 watch(input, () => {
   adjustTextareaHeight();
