@@ -4,16 +4,18 @@ This directory contains utility scripts for codebase maintenance and refactoring
 
 ## Release Start (`release_start.py`)
 
-Starts a release branch without requiring `git flow`. The script requires the current branch to be `develop`, refuses to run with a dirty working tree, creates `release/<version>`, updates `package.json` and `package-lock.json`, and commits the version bump.
+Starts a release branch without requiring `git flow`. The script requires the current branch to be `develop`, updates `package.json` and `package-lock.json`, and commits the version bump. For `major`, `minor`, and `patch`, it creates `release/<version>`. For `dev`, it stays on `develop` and bumps to the next `-dev` version.
+
+`patch` follows the repository's release flow: if the current version ends with `-dev`, it removes the suffix without incrementing the patch number. Otherwise, it increments the patch number.
 
 ### Usage
 
 ```bash
-./scripts/release_start.py <major|minor|patch>
+./scripts/release_start.py <major|minor|patch|dev>
 ```
 
 ```bash
-./scripts/release_start.py --dry-run <major|minor|patch>
+./scripts/release_start.py --dry-run <major|minor|patch|dev>
 ```
 
 ### Example
@@ -24,6 +26,10 @@ Starts a release branch without requiring `git flow`. The script requires the cu
 
 ```bash
 ./scripts/release_start.py --dry-run minor
+```
+
+```bash
+./scripts/release_start.py dev
 ```
 
 ## Refactor Named Arguments (`refactor-named-args.ts`)

@@ -31,17 +31,25 @@ def main() -> int:
         current_version=current_version,
         bump_kind=args.bump_kind,
     )
+    release_branch_name = create_release_branch_name(
+        bump_kind=args.bump_kind,
+        next_version=next_version,
+    )
 
-    release_branch_name = f'release/{next_version}'
-
-    ensure_branch_does_not_exist(branch_name=release_branch_name)
+    if release_branch_name is not None:
+        ensure_branch_does_not_exist(branch_name=release_branch_name)
 
     print(f'Current version: {current_version}')
     print(f'Next version: {next_version}')
-    print(f'Creating branch: {release_branch_name}')
+    if release_branch_name is not None:
+        print(f'Creating branch: {release_branch_name}')
+    else:
+        print('No release branch will be created for dev bump.')
 
     if args.dry_run:
         print('Dry run only. No branch, file, or commit changes were made.')
+        if release_branch_name is not None:
+            print(f'Branch to create: {release_branch_name}')
         print('Files to update:')
         print('- package.json')
         print('- package-lock.json')
@@ -50,7 +58,8 @@ def main() -> int:
 
     ensure_clean_worktree()
 
-    run_git_command(args=['checkout', '-b', release_branch_name])
+    if release_branch_name is not None:
+        run_git_command(args=['checkout', '-b', release_branch_name])
 
     try:
         update_versions(
@@ -74,7 +83,10 @@ def main() -> int:
         print(f'Inspect branch: {release_branch_name}', file=sys.stderr)
         raise
 
-    print(f'Release branch ready: {release_branch_name}')
+    if release_branch_name is not None:
+        print(f'Release branch ready: {release_branch_name}')
+    else:
+        print(f'Development version committed on develop: {next_version}')
     return 0
 
 
@@ -84,8 +96,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         'bump_kind',
-        choices=['major', 'minor', 'patch'],
-        help='Semantic version segment to increment.',
+        choices=['major', 'minor', 'patch', 'dev'],
+        help='Release bump kind or the next development bump.',
     )
     parser.add_argument(
         '--dry-run',
@@ -155,15 +167,26 @@ def bump_version(*, current_version: str, bump_kind: str) -> str:
     if match is None:
         raise SystemExit(f'Unsupported version format: {current_version}')
 
+    has_dev_suffix = current_version.endswith('-dev')
     major = int(match.group('major'))
     minor = int(match.group('minor'))
     patch = int(match.group('patch'))
 
+    if bump_kind == 'dev':
+        return f'{major}.{minor}.{patch + 1}-dev'
     if bump_kind == 'major':
         return f'{major + 1}.0.0'
     if bump_kind == 'minor':
         return f'{major}.{minor + 1}.0'
+    if has_dev_suffix:
+        return f'{major}.{minor}.{patch}'
     return f'{major}.{minor}.{patch + 1}'
+
+
+def create_release_branch_name(*, bump_kind: str, next_version: str) -> str | None:
+    if bump_kind == 'dev':
+        return None
+    return f'release/{next_version}'
 
 
 def update_versions(*, package_json: dict[str, Any], package_lock_json: dict[str, Any], next_version: str) -> None:
