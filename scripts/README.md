@@ -2,6 +2,30 @@
 
 This directory contains utility scripts for codebase maintenance and refactoring.
 
+## Release Start (`release_start.py`)
+
+Starts a release branch without requiring `git flow`. The script requires the current branch to be `develop`, refuses to run with a dirty working tree, creates `release/<version>`, updates `package.json` and `package-lock.json`, and commits the version bump.
+
+### Usage
+
+```bash
+./scripts/release_start.py <major|minor|patch>
+```
+
+```bash
+./scripts/release_start.py --dry-run <major|minor|patch>
+```
+
+### Example
+
+```bash
+./scripts/release_start.py minor
+```
+
+```bash
+./scripts/release_start.py --dry-run minor
+```
+
 ## Refactor Named Arguments (`refactor-named-args.ts`)
 
 A powerful codemod tool to convert positional function arguments into named arguments (object destructuring). It automatically updates the function definition and all its call sites across `.ts` and `.vue` files.

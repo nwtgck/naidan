@@ -25,6 +25,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+__pycache__/
 
 /coverage
 src/test-tmp/
