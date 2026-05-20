@@ -696,7 +696,7 @@ async function handleRegenerate(messageId: string) {
 }
 
 function handleSwitchVersion(messageId: string) {
-  chatStore.switchVersion(messageId);
+  chatStore.switchVersion({ messageId });
 }
 
 async function handleFork(messageId: string) {
@@ -950,7 +950,7 @@ watch(
                       :id="'message-' + subItem.node.id"
                       :chat-id="currentChat!.id"
                       :message="subItem.node"
-                      :siblings="chatStore.getSiblings(subItem.node.id)"
+                      :siblings="chatStore.getSiblings({ messageId: subItem.node.id })"
                       :can-generate-image="canGenerateImage && hasImageModel"
                       :is-processing="isCurrentChatStreaming"
                       :is-generating="isCurrentChatStreaming && subItem.node.id === currentChat?.currentLeafId"
@@ -984,7 +984,7 @@ watch(
                 :id="'message-' + flowItem.node.id"
                 :chat-id="currentChat!.id"
                 :message="flowItem.node"
-                :siblings="chatStore.getSiblings(flowItem.node.id)"
+                :siblings="chatStore.getSiblings({ messageId: flowItem.node.id })"
                 :can-generate-image="canGenerateImage && hasImageModel"
                 :is-processing="isCurrentChatStreaming"
                 :is-generating="isCurrentChatStreaming && flowItem.node.id === currentChat?.currentLeafId"

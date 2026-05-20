@@ -461,7 +461,7 @@ describe('useChat Composable Logic', () => {
     expect(currentChat.value?.currentLeafId).toBe(secondAssistantMsg?.id);
     expect(activeMessages.value[1]?.content).toBe('Second Response');
 
-    await switchVersion(firstAssistantMsg!.id);
+    await switchVersion({ messageId: firstAssistantMsg!.id });
     triggerRef(currentChat);
 
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);

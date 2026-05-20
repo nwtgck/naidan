@@ -2024,7 +2024,7 @@ export function useChat() {
     }
   };
 
-  const switchVersion = async (messageId: string) => {
+  const switchVersion = async ({ messageId }: { messageId: string }) => {
     if (!_currentChat.value) return;
     const chat = getLiveChat(_currentChat.value);
     const node = findNodeInBranch(chat.root.items, messageId);
@@ -2035,7 +2035,7 @@ export function useChat() {
     }
   };
 
-  const getSiblings = (messageId: string, chatId?: string) => {
+  const getSiblings = ({ messageId, chatId }: { messageId: string, chatId?: string }) => {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return [];
     const mutableChat = getLiveChat(target);
@@ -2072,7 +2072,7 @@ export function useChat() {
     await updateChatSettings(chatId, { lmParameters });
   };
 
-  const commitFullHistoryManipulation = async (chatId: string, messages: HistoryItem[], systemPrompt: SystemPrompt | undefined) => {
+  const commitFullHistoryManipulation = async ({ chatId, messages, systemPrompt }: { chatId: string, messages: HistoryItem[], systemPrompt: SystemPrompt | undefined }) => {
     const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
     if (!target) return;
     const chat = getLiveChat(target);

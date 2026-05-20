@@ -176,10 +176,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = buttons.find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Msg 2' }),
-      expect.objectContaining({ content: 'Msg 1' })
-    ], undefined);
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Msg 2' }),
+        expect.objectContaining({ content: 'Msg 1' })
+      ],
+      systemPrompt: undefined
+    });
   });
 
   it('calls commitFullHistoryManipulation on save', async () => {
@@ -192,10 +196,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = buttons.find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Updated Msg 1' }),
-      expect.objectContaining({ content: 'Msg 2' })
-    ], undefined);
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Updated Msg 1' }),
+        expect.objectContaining({ content: 'Msg 2' })
+      ],
+      systemPrompt: undefined
+    });
     expect(wrapper.emitted().close).toBeTruthy();
   });
 
@@ -215,10 +223,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = wrapper.findAll('button').find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Msg 1' }),
-      expect.objectContaining({ content: 'Msg 2' })
-    ], { behavior: 'override', content: 'New System Prompt' });
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Msg 1' }),
+        expect.objectContaining({ content: 'Msg 2' })
+      ],
+      systemPrompt: { behavior: 'override', content: 'New System Prompt' }
+    });
   });
 
   it('commits system prompt CLEAR behavior', async () => {
@@ -231,10 +243,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = wrapper.findAll('button').find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Msg 1' }),
-      expect.objectContaining({ content: 'Msg 2' })
-    ], { behavior: 'override', content: null });
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Msg 1' }),
+        expect.objectContaining({ content: 'Msg 2' })
+      ],
+      systemPrompt: { behavior: 'override', content: null }
+    });
   });
 
   it('commits system prompt INHERIT behavior', async () => {
@@ -248,10 +264,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = wrapper.findAll('button').find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Msg 1' }),
-      expect.objectContaining({ content: 'Msg 2' })
-    ], undefined);
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Msg 1' }),
+        expect.objectContaining({ content: 'Msg 2' })
+      ],
+      systemPrompt: undefined
+    });
   });
 
   it('emits close on discard', async () => {
