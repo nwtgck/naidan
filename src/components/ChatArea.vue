@@ -146,7 +146,7 @@ const emit = defineEmits<{
 }>();
 
 const isCurrentChatStreaming = computed(() => {
-  return currentChat.value ? isProcessing(currentChat.value.id) : false;
+  return currentChat.value ? isProcessing({ chatId: currentChat.value.id }) : false;
 });
 
 // The index of the single flow item that should display the GeneratingIndicator.

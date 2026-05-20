@@ -1269,7 +1269,7 @@ describe('useChat Composable Logic', () => {
   it('should clear chat modelId if it is not in the newly fetched models in fetchAvailableModels', async () => {
     const chat = reactive({ id: 'chat-1', modelId: 'old-model', root: { items: [] } }) as any;
     const { registerLiveInstance, fetchAvailableModels } = useChat();
-    registerLiveInstance(chat);
+    registerLiveInstance({ chat });
 
     // Mock provider to return a different model
     const mockListModels = vi.fn().mockResolvedValue(['new-model']);

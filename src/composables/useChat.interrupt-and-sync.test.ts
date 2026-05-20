@@ -129,7 +129,7 @@ describe('useChat Interrupt and Sync Tests', () => {
 
     const sendResultPromise = sendMessage({ content: 'First version' });
     const signal = await genStarted;
-    expect(chatStore.isProcessing(chat.id)).toBe(true);
+    expect(chatStore.isProcessing({ chatId: chat.id })).toBe(true);
 
     const userMsgId = chat.root.items[0].id;
 
@@ -237,13 +237,13 @@ describe('useChat Interrupt and Sync Tests', () => {
     const genPromise = generateResponse({ chat: chat, assistantId: assistantId });
 
     // 3. Wait for it to be processing
-    await vi.waitUntil(() => isProcessing(chatId));
+    await vi.waitUntil(() => isProcessing({ chatId }));
 
     // 4. Abort the chat
     abortChat({ chatId: chatId });
 
     await genPromise;
-    await vi.waitUntil(() => !isProcessing(chatId));
+    await vi.waitUntil(() => !isProcessing({ chatId }));
 
     // 5. Verify that the reactive assistant node was updated with the aborted message
     const userMsg = chat.root.items[0];

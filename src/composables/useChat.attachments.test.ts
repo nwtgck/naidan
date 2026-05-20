@@ -202,7 +202,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       modelId: 'm1'
     }) as any;
     __testOnlySetCurrentChat(chatObj);
-    registerLiveInstance(chatObj);
+    registerLiveInstance({ chat: chatObj });
 
     const mockBlob = new Blob(['binary data'], { type: 'image/png' });
     const mockAttachment: Attachment = {

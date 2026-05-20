@@ -59,7 +59,7 @@ export function useChatDisplayFlow({
   isProcessing
 }: {
   chat: ComputedRef<Chat | null>,
-  isProcessing: (chatId: string) => boolean
+  isProcessing: ({ chatId }: { chatId: string }) => boolean
 }) {
 
   /**
@@ -124,7 +124,7 @@ export function useChatDisplayFlow({
         const lastOpen = remaining.lastIndexOf('<think>');
         const lastClose = remaining.lastIndexOf('</think>');
         const chatVal = chat.value;
-        const isActiveThinking = lastOpen > -1 && lastClose < lastOpen && chatVal && isProcessing(chatVal.id);
+        const isActiveThinking = lastOpen > -1 && lastClose < lastOpen && chatVal && isProcessing({ chatId: chatVal.id });
 
         if (isActiveThinking) {
           const bodyBefore = remaining.slice(0, lastOpen).trim();
@@ -146,7 +146,7 @@ export function useChatDisplayFlow({
         }
 
         // 4. Waiting indicator
-        if (nodeAtoms.length === 0 && chatVal && isProcessing(chatVal.id) && nodeIdx === nodeArray.length - 1) {
+        if (nodeAtoms.length === 0 && chatVal && isProcessing({ chatId: chatVal.id }) && nodeIdx === nodeArray.length - 1) {
           nodeAtoms.push({ type: 'waiting', node, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         }
 

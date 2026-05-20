@@ -1045,7 +1045,7 @@ defineExpose({
                               <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'New Chat' }}</span>
                             </div>
                             <div class="flex items-center gap-1">
-                              <Loader2Icon v-if="isProcessing(nestedItem.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                              <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                               <div v-if="editingId !== nestedItem.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
                                 <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
                                 <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>
@@ -1103,7 +1103,7 @@ defineExpose({
                   <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
                 </div>
                 <div class="flex items-center gap-1">
-                  <Loader2Icon v-if="isProcessing(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                  <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                   <div v-if="editingId !== element.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
                     <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
                     <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>

@@ -329,8 +329,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
 
     // Verify both tabs see chat1 as running
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
 
     // 4. Start generation for chat2 in tab2
     const p2 = tab2.sendMessage({ content: 'Msg 2' });
@@ -338,10 +338,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
 
     // Verify both tabs see BOTH chats as running
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab1.isTaskRunning(chat2!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat2!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat2!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat2!.id })).toBe(true);
 
     // 5. Tab 1 requests abort for chat2 (which is running in Tab 2)
     tab1.abortChat({ chatId: chat2!.id });
@@ -349,10 +349,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await p2;
 
     // Verify chat2 stopped everywhere, but chat1 is still running
-    expect(tab1.isTaskRunning(chat2!.id)).toBe(false);
-    expect(tab2.isTaskRunning(chat2!.id)).toBe(false);
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat2!.id })).toBe(false);
+    expect(tab2.isTaskRunning({ chatId: chat2!.id })).toBe(false);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
 
     // Cleanup p1
     tab1.abortChat({ chatId: chat1!.id });

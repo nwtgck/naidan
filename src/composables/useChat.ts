@@ -93,19 +93,19 @@ if ((() => {
 
 // --- Registry Helpers ---
 
-function incTask(chatId: string, type: 'title' | 'fetch' | 'process') {
+function incTask({ chatId, type }: { chatId: string, type: 'title' | 'fetch' | 'process' }) {
   const key = `${type}:${chatId}`;
   activeTaskCounts.set(key, (activeTaskCounts.get(key) || 0) + 1);
 }
 
-function decTask(chatId: string, type: 'title' | 'fetch' | 'process') {
+function decTask({ chatId, type }: { chatId: string, type: 'title' | 'fetch' | 'process' }) {
   const key = `${type}:${chatId}`;
   const val = (activeTaskCounts.get(key) || 0) - 1;
   if (val <= 0) activeTaskCounts.delete(key);
   else activeTaskCounts.set(key, val);
 }
 
-function isTaskRunning(chatId: string) {
+function isTaskRunning({ chatId }: { chatId: string }) {
   if (activeGenerations.has(chatId) || externalGenerations.has(chatId)) return true;
   for (const [key, count] of activeTaskCounts.entries()) {
     if (count > 0 && key.endsWith(':' + chatId)) return true;
@@ -113,12 +113,12 @@ function isTaskRunning(chatId: string) {
   return false;
 }
 
-function isProcessing(chatId: string) {
+function isProcessing({ chatId }: { chatId: string }) {
   if (activeGenerations.has(chatId) || externalGenerations.has(chatId)) return true;
   return (activeTaskCounts.get('process:' + chatId) || 0) > 0;
 }
 
-function registerLiveInstance(chat: Chat) {
+function registerLiveInstance({ chat }: { chat: Chat }) {
   const raw = toRaw(chat);
   if (!raw || !raw.id) return;
 
@@ -170,9 +170,9 @@ function applyVolatileAssistantErrorsToChat({ chat }: { chat: Chat }) {
   }
 }
 
-function unregisterLiveInstance(chatId: string) {
+function unregisterLiveInstance({ chatId }: { chatId: string }) {
   if (_currentChat.value && toRaw(_currentChat.value).id === chatId) return;
-  if (!isTaskRunning(chatId)) {
+  if (!isTaskRunning({ chatId })) {
     liveChatRegistry.delete(chatId);
   }
 }
@@ -210,8 +210,8 @@ function getChatTmpDirectory({
 }
 
 watch(_currentChat, (newChat, oldChat) => {
-  if (oldChat) unregisterLiveInstance(toRaw(oldChat).id);
-  if (newChat) registerLiveInstance(newChat); // Already reactive or raw
+  if (oldChat) unregisterLiveInstance({ chatId: toRaw(oldChat).id });
+  if (newChat) registerLiveInstance({ chat: newChat }); // Already reactive or raw
 });
 
 transformersJsService.subscribeModelList(async () => {
@@ -468,7 +468,7 @@ export function useChat() {
 
   const fetchAvailableModels = async ({ chatId, customEndpoint }: { chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] } }) => {
     const mutableChat = chatId ? liveChatRegistry.get(chatId) : undefined;
-    if (mutableChat) incTask(mutableChat.id, 'fetch');
+    if (mutableChat) incTask({ chatId: mutableChat.id, type: 'fetch' });
     else if (!customEndpoint) activeTaskCounts.set('fetch:global', (activeTaskCounts.get('fetch:global') || 0) + 1);
 
     let type: EndpointType;
@@ -496,7 +496,7 @@ export function useChat() {
 
     if (!url && type !== 'transformers_js') {
       if (mutableChat) {
-        decTask(mutableChat.id, 'fetch');
+        decTask({ chatId: mutableChat.id, type: 'fetch' });
       } else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
         if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
@@ -543,7 +543,7 @@ export function useChat() {
       return [];
     } finally {
       if (mutableChat) {
-        decTask(mutableChat.id, 'fetch');
+        decTask({ chatId: mutableChat.id, type: 'fetch' });
       } else if (!customEndpoint) {
         const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
         if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
@@ -660,7 +660,7 @@ export function useChat() {
         systemPrompt,
       });
 
-      registerLiveInstance(chatObj);
+      registerLiveInstance({ chat: chatObj });
       await updateChatContent(chatId, () => ({ root: chatObj.root, currentLeafId: chatObj.currentLeafId }));
       await updateChatMeta(chatId, () => chatObj);
 
@@ -727,7 +727,7 @@ export function useChat() {
       }
       applyVolatileAssistantErrorsToChat({ chat: loaded });
       const reactiveChat = reactive(loaded);
-      registerLiveInstance(reactiveChat);
+      registerLiveInstance({ chat: reactiveChat });
       _currentChatGroup.value = null;
       _currentChat.value = reactiveChat;
       if (hasMountsForChat({ chat: loaded })) {
@@ -1030,8 +1030,8 @@ export function useChat() {
       triggerChatRef: ({ chatId }) => {
         if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
       },
-      incTask: ({ chatId, type }) => incTask(chatId, type),
-      decTask: ({ chatId, type }) => decTask(chatId, type)
+      incTask: ({ chatId, type }) => incTask({ chatId, type }),
+      decTask: ({ chatId, type }) => decTask({ chatId, type })
     });
   };
 
@@ -1058,7 +1058,7 @@ export function useChat() {
     const controller = new AbortController();
     activeGenerations.set(mutableChat.id, { controller, chat: mutableChat });
     storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'started', timestamp: Date.now() });
-    registerLiveInstance(mutableChat);
+    registerLiveInstance({ chat: mutableChat });
 
     const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
     const type = resolved.endpointType;
@@ -1534,11 +1534,11 @@ export function useChat() {
     const target = chatTarget || _currentChat.value;
     if (!target) return false;
     const rawTarget = toRaw(target);
-    if (isProcessing(rawTarget.id)) return false;
+    if (isProcessing({ chatId: rawTarget.id })) return false;
 
     const chat = getLiveChat(target);
-    incTask(chat.id, 'process');
-    registerLiveInstance(chat);
+    incTask({ chatId: chat.id, type: 'process' });
+    registerLiveInstance({ chat });
 
     try {
       const { settings: globalSettings, setHeavyContentAlertDismissed, setOnboardingDraft, setIsOnboardingDismissed } = useSettings();
@@ -1683,24 +1683,24 @@ export function useChat() {
       await Promise.resolve();
       return true;
     } finally {
-      decTask(chat.id, 'process');
+      decTask({ chatId: chat.id, type: 'process' });
     }
   };
 
   const regenerateMessage = async (failedMessageId: string) => {
     if (!_currentChat.value) return;
     const chatId = toRaw(_currentChat.value).id;
-    if (isProcessing(chatId)) {
+    if (isProcessing({ chatId })) {
       abortChat({ chatId });
       // Wait for the task to actually stop and decTask to be called
-      while (isProcessing(chatId)) {
+      while (isProcessing({ chatId })) {
         await new Promise(r => setTimeout(r, 10));
       }
     }
 
     const chat = getLiveChat(_currentChat.value);
-    incTask(chat.id, 'process');
-    registerLiveInstance(chat);
+    incTask({ chatId: chat.id, type: 'process' });
+    registerLiveInstance({ chat });
     try {
       const failedNode = findNodeInBranch(chat.root.items, failedMessageId);
       if (!failedNode || failedNode.role !== 'assistant') return;
@@ -1730,7 +1730,7 @@ export function useChat() {
       });
       generateResponse({ chat: chat, assistantId: newAssistantMsg.id, lmParameters: failedNode.lmParameters }).catch(e => console.error('Background generation failed:', e));
     } finally {
-      decTask(chat.id, 'process');
+      decTask({ chatId: chat.id, type: 'process' });
     }
   };
 
@@ -1749,17 +1749,17 @@ export function useChat() {
     const controller = new AbortController();
     activeTitleGenerations.set(taskId, controller);
 
-    incTask(taskId, 'title');
-    registerLiveInstance(mutableChat);
+    incTask({ chatId: taskId, type: 'title' });
+    registerLiveInstance({ chat: mutableChat });
     try {
       const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
       if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
-        decTask(taskId, 'title'); return;
+        decTask({ chatId: taskId, type: 'title' }); return;
       }
       const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
       const content = stripNaidanSentinels(history[0]?.content || '');
       if (!content || typeof content !== 'string') {
-        decTask(taskId, 'title'); return;
+        decTask({ chatId: taskId, type: 'title' }); return;
       }
 
       let generatedTitle = '';
@@ -1839,7 +1839,7 @@ export function useChat() {
       }
       return undefined;
     } finally {
-      decTask(taskId, 'title');
+      decTask({ chatId: taskId, type: 'title' });
       if (activeTitleGenerations.get(taskId) === controller) {
         activeTitleGenerations.delete(taskId);
       }
@@ -1945,7 +1945,7 @@ export function useChat() {
         createdAt: Date.now(), updatedAt: Date.now(),
         modelId: mutableChat.modelId,
       });
-      registerLiveInstance(newChatObj);
+      registerLiveInstance({ chat: newChatObj });
       await updateChatContent(newChatId, () => ({ root: newChatObj.root, currentLeafId: newChatObj.currentLeafId }));
       await updateChatMeta(newChatId, () => newChatObj);
       await storageService.updateHierarchy((curr) => {
@@ -1971,10 +1971,10 @@ export function useChat() {
   const editMessage = async (messageId: string, newContent: string, lmParameters?: LmParameters) => {
     if (!_currentChat.value) return;
     const chatId = toRaw(_currentChat.value).id;
-    if (isProcessing(chatId)) {
+    if (isProcessing({ chatId })) {
       abortChat({ chatId });
       // Wait for the task to actually stop and decTask to be called
-      while (isProcessing(chatId)) {
+      while (isProcessing({ chatId })) {
         await new Promise(r => setTimeout(r, 10));
       }
     }
@@ -2414,7 +2414,7 @@ export function useChat() {
 
   const __testOnlySetCurrentChat = (chat: Chat | null) => {
     _currentChat.value = chat;
-    if (chat) registerLiveInstance(chat);
+    if (chat) registerLiveInstance({ chat });
   };
   const __testOnlySetCurrentChatGroup = (group: ChatGroup | null) => {
     _currentChatGroup.value = group;
@@ -2437,7 +2437,7 @@ export function useChat() {
     isWaitingResponse
   } = useChatDisplayFlow({
     chat: currentChat as unknown as ComputedRef<Chat | null>,
-    isProcessing: (id) => isProcessing(id)
+    isProcessing
   });
 
   return {

@@ -65,7 +65,7 @@ describe('useChat Image Generation', () => {
 
   it('sendMessage in image mode adds sentinel markers', async () => {
     const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] } } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
     chatStore.toggleImageMode({ chatId: 'chat-1' });
 
     const success = await chatStore.sendMessage({ content: 'draw a cat', parentId: null, attachments: [], chatTarget: chat });
@@ -84,7 +84,7 @@ describe('useChat Image Generation', () => {
 
   it('sendImageRequest triggers message sending with correct parameters', async () => {
     const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
     await chatStore.openChat('chat-1');
 
     // Verify currentChat is set
@@ -113,7 +113,7 @@ describe('useChat Image Generation', () => {
 
   it('sendImageRequest with attachments passes them to sendMessage', async () => {
     const chat = { id: 'chat-attachments', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
     await chatStore.openChat('chat-attachments');
 
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
@@ -148,7 +148,7 @@ describe('useChat Image Generation', () => {
         }]
       }
     } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
 
     await chatStore.generateChatTitle({ chatId: 'chat-title-test', signal: undefined, titleModelIdOverride: undefined });
 
@@ -173,7 +173,7 @@ describe('useChat Image Generation', () => {
         }]
       }
     } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
 
     // Mock loadChat to return the chat structure so forkChat can work
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
@@ -218,7 +218,7 @@ describe('useChat Image Generation', () => {
         }]
       }
     } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
 
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
 
