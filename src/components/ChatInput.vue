@@ -837,7 +837,7 @@ async function handleGenerateImage() {
       input.value = '';
       attachments.value = [];
     }
-    clearDraft(sendingChatId);
+    clearDraft({ chatId: sendingChatId });
     emit('sent');
     nextTick(adjustTextareaHeight);
   }
@@ -881,7 +881,7 @@ async function handleSend() {
       input.value = '';
       attachments.value = [];
     }
-    clearDraft(sendingChatId);
+    clearDraft({ chatId: sendingChatId });
     emit('sent');
 
     nextTick(() => { // Ensure textarea is cleared before adjusting height
@@ -906,14 +906,14 @@ watch(
   () => currentChat.value?.id,
   (newId, oldId) => {
     // Save previous draft
-    saveDraft(oldId, {
+    saveDraft({ chatId: oldId, draft: {
       input: input.value,
       attachments: attachments.value,
       attachmentUrls: attachmentUrls.value
-    });
+    } });
 
     // Load new draft
-    const draft = getDraft(newId);
+    const draft = getDraft({ chatId: newId });
     input.value = draft.input;
     attachments.value = draft.attachments;
     attachmentUrls.value = draft.attachmentUrls;
@@ -980,11 +980,11 @@ onUnmounted(() => {
   window.removeEventListener('resize', adjustTextareaHeight);
 
   // Save final state
-  saveDraft(currentChat.value?.id, {
+  saveDraft({ chatId: currentChat.value?.id, draft: {
     input: input.value,
     attachments: attachments.value,
     attachmentUrls: attachmentUrls.value
-  });
+  } });
 
   // Revoke all created URLs across all drafts to prevent leaks
   const { revokeAll } = useChatDraft();
