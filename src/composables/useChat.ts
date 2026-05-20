@@ -235,7 +235,7 @@ transformersJsService.subscribeModelList(async () => {
 
 // --- Synchronization ---
 function syncLiveInstancesWithSidebar(_params: Record<string, never>) {
-  const sync = (items: SidebarItem[], parentGroupId: string | null) => {
+  const sync = ({ items, parentGroupId }: { items: SidebarItem[], parentGroupId: string | null }) => {
     for (const item of items) {
       switch (item.type) {
       case 'chat': {
@@ -247,7 +247,7 @@ function syncLiveInstancesWithSidebar(_params: Record<string, never>) {
         break;
       }
       case 'chat_group':
-        sync(item.chatGroup.items, item.chatGroup.id);
+        sync({ items: item.chatGroup.items, parentGroupId: item.chatGroup.id });
         break;
       default: {
         const _ex: never = item;
@@ -256,7 +256,7 @@ function syncLiveInstancesWithSidebar(_params: Record<string, never>) {
       }
     }
   };
-  sync(rootItems.value, null);
+  sync({ items: rootItems.value, parentGroupId: null });
 }
 
 let sidebarReloadTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -266,7 +266,7 @@ let lastSidebarReload = 0;
 const debouncedSidebarReload = (_params: Record<string, never>) => {
   const now = Date.now();
 
-  const performReload = async () => {
+  const performReload = async (_params: Record<string, never>) => {
     if (sidebarReloadTimeout) {
       clearTimeout(sidebarReloadTimeout);
       sidebarReloadTimeout = null;
@@ -277,10 +277,12 @@ const debouncedSidebarReload = (_params: Record<string, never>) => {
   };
 
   if (now - lastSidebarReload > THROTTLE_MS) {
-    performReload();
+    performReload({});
   } else if (!sidebarReloadTimeout) {
     const delay = THROTTLE_MS - (now - lastSidebarReload);
-    sidebarReloadTimeout = setTimeout(performReload, delay);
+    sidebarReloadTimeout = setTimeout(() => {
+      void performReload({});
+    }, delay);
   }
 };
 
@@ -384,14 +386,14 @@ export function useChat() {
 
   const chats = computed(() => {
     const all: ChatSummary[] = [];
-    const collect = (items: SidebarItem[]) => {
+    const collect = ({ items }: { items: SidebarItem[] }) => {
       items.forEach(item => {
         switch (item.type) {
         case 'chat':
           all.push(item.chat);
           break;
         case 'chat_group':
-          collect(item.chatGroup.items);
+          collect({ items: item.chatGroup.items });
           break;
         default: {
           const _ex: never = item;
@@ -400,7 +402,7 @@ export function useChat() {
         }
       });
     };
-    collect(rootItems.value);
+    collect({ items: rootItems.value });
     return all;
   });
 
@@ -794,7 +796,7 @@ export function useChat() {
     if (_currentChat.value && toRaw(_currentChat.value).id === id) _currentChat.value = null;
     await loadData({});
 
-    const cleanup = async () => {
+    const cleanup = async (_params: Record<string, never>) => {
       if (activeGenerations.has(id)) {
         activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id);
       }
@@ -839,7 +841,7 @@ export function useChat() {
           return;
         case 'timeout':
         case 'dismiss':
-          await cleanup();
+          await cleanup({});
           break;
         default: {
           const _ex: never = reason;
@@ -849,7 +851,7 @@ export function useChat() {
       }    });
 
     if (!toastId) {
-      await cleanup();
+      await cleanup({});
     }
   };
 
