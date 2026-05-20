@@ -304,7 +304,7 @@ export function useSettings() {
     _isOnboardingDismissed.value = dismissed;
   }
 
-  function setOnboardingDraft(draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null) {
+  function setOnboardingDraft({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) {
     _onboardingDraft.value = draft;
   }
 

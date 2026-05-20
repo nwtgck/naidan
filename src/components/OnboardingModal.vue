@@ -317,13 +317,13 @@ async function handleConnect() {
 }
 
 async function handleClose() {
-  setOnboardingDraft({
+  setOnboardingDraft({ draft: {
     url: customUrl.value,
     type: effectiveType.value,
     headers: customHeaders.value,
     models: availableModels.value,
     selectedModel: selectedModel.value,
-  });
+  } });
   setIsOnboardingDismissed({ dismissed: true });
 }
 
@@ -361,7 +361,7 @@ async function handleFinish() {
       })(),
     });
 
-    setOnboardingDraft(null);
+    setOnboardingDraft({ draft: null });
     setIsOnboardingDismissed({ dismissed: true });
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save settings.';

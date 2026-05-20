@@ -1560,7 +1560,7 @@ export function useChat() {
 
       if ((!url && type !== 'transformers_js') || !resolvedModel) {
         const models = await fetchAvailableModels({ chatId: chat.id, customEndpoint: undefined });
-        setOnboardingDraft({ url, type, models, selectedModel: models[0] || '', });
+        setOnboardingDraft({ draft: { url, type, models, selectedModel: models[0] || '', } });
         setIsOnboardingDismissed({ dismissed: false });
         return false;
       }

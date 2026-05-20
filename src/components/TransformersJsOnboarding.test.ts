@@ -103,8 +103,8 @@ describe('Transformers.js Onboarding Integration', () => {
       setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => {
         mockIsOnboardingDismissed.value = dismissed;
       },
-      setOnboardingDraft: (val: any) => {
-        mockOnboardingDraft.value = val;
+      setOnboardingDraft: ({ draft }: { draft: any }) => {
+        mockOnboardingDraft.value = draft;
       },
     });
 
