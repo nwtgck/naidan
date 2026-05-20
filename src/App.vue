@@ -127,7 +127,7 @@ watch(
   async ([modelId, initialized]) => {
     if (!initialized) return;
     if (typeof modelId === 'string') {
-      await settingsStore.updateGlobalModel(modelId);
+      await settingsStore.updateGlobalModel({ modelId });
     }
   },
   { immediate: true }

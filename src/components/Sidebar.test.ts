@@ -229,7 +229,7 @@ describe('Sidebar Logic Stability', () => {
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
       await selector.vm.$emit('update:modelValue', 'mistral');
 
-      expect(mockUpdateGlobalModel).toHaveBeenCalledWith('mistral');
+      expect(mockUpdateGlobalModel).toHaveBeenCalledWith({ modelId: 'mistral' });
     });
 
     it('shows a loading spinner when models are being fetched', async () => {

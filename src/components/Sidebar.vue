@@ -592,7 +592,7 @@ async function saveChatGroupRename() {
 
 async function handleGlobalModelChange(newModelId: string | undefined) {
   if (!newModelId) return;
-  await updateGlobalModel(newModelId);
+  await updateGlobalModel({ modelId: newModelId });
 }
 
 function getGroupItems(groupId: string) {

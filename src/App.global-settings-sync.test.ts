@@ -66,7 +66,7 @@ vi.mock('./composables/useSettings', async () => {
       updateGlobalEndpoint: async (options: any) => {
         settings.value = { ...settings.value, endpointType: options.type, endpointUrl: options.url };
       },
-      updateGlobalModel: async (modelId: string) => {
+      updateGlobalModel: async ({ modelId }: { modelId: string }) => {
         settings.value = { ...settings.value, defaultModelId: modelId };
       },
       // Test Helpers

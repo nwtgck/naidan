@@ -372,7 +372,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       // Still false because model is missing
       expect(isOnboardingDismissed.value).toBe(false);
 
-      await updateGlobalModel('test-model');
+      await updateGlobalModel({ modelId: 'test-model' });
 
       // Now true because both are present
       expect(isOnboardingDismissed.value).toBe(true);

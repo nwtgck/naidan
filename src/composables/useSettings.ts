@@ -262,7 +262,7 @@ export function useSettings() {
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), ...patch } as Settings));
   }
 
-  async function updateGlobalModel(modelId: string) {
+  async function updateGlobalModel({ modelId }: { modelId: string }) {
     _settings.value.defaultModelId = modelId;
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), defaultModelId: modelId }));
   }

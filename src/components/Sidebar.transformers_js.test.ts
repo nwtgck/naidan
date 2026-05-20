@@ -135,6 +135,6 @@ describe('Sidebar Transformers.js Support', () => {
     const selector = wrapper.getComponent({ name: 'ModelSelector' });
     await selector.vm.$emit('update:modelValue', 'model-2');
 
-    expect(mockUpdateGlobalModel).toHaveBeenCalledWith('model-2');
+    expect(mockUpdateGlobalModel).toHaveBeenCalledWith({ modelId: 'model-2' });
   });
 });
