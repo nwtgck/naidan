@@ -252,7 +252,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     await Promise.resolve();
 
     expect(chatStore.currentChat.value?.groupId).toBe('group-x');
-    await (updateChatMeta as any)(chatId, () => chat as any);
+    await (updateChatMeta as any)({ id: chatId, updater: () => chat as any });
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('group-x');
     activeGenerations.delete(chatId);
   });
@@ -281,7 +281,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     await Promise.resolve();
 
     expect(chatStore.currentChat.value?.groupId).toBe('ge');
-    await (updateChatMeta as any)(chatId, () => chatStore.currentChat.value! as any);
+    await (updateChatMeta as any)({ id: chatId, updater: () => chatStore.currentChat.value! as any });
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('ge');
     activeGenerations.delete(chatId);
   });

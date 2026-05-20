@@ -551,7 +551,7 @@ export function useChat() {
     }
   };
 
-  const updateChatContent = async (id: string, updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>) => {
+  const updateChatContent = async ({ id, updater }: { id: string, updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent> }) => {
     const existing = liveChatRegistry.get(id);
     if (existing) {
       const updated = await updater({ root: existing.root, currentLeafId: existing.currentLeafId });
@@ -562,7 +562,7 @@ export function useChat() {
     await storageService.updateChatContent(id, updater);
   };
 
-  const updateChatMeta = async (id: string, updater: (current: Chat | null) => Chat | Promise<Chat>) => {
+  const updateChatMeta = async ({ id, updater }: { id: string, updater: (current: Chat | null) => Chat | Promise<Chat> }) => {
     const existing = liveChatRegistry.get(id);
     if (existing) {
       const updated = await updater(toRaw(existing));
@@ -642,12 +642,11 @@ export function useChat() {
     }
   };
 
-  const createNewChat = async (options: {
+  const createNewChat = async ({ groupId, modelId, systemPrompt }: {
     groupId: string | undefined;
     modelId: string | undefined;
     systemPrompt: SystemPrompt | undefined;
   }): Promise<Chat | null> => {
-    const { groupId, modelId, systemPrompt } = options;
     if (creatingChat.value) return null;
     _currentChatGroup.value = null;
     creatingChat.value = true;
@@ -661,8 +660,8 @@ export function useChat() {
       });
 
       registerLiveInstance({ chat: chatObj });
-      await updateChatContent(chatId, () => ({ root: chatObj.root, currentLeafId: chatObj.currentLeafId }));
-      await updateChatMeta(chatId, () => chatObj);
+      await updateChatContent({ id: chatId, updater: () => ({ root: chatObj.root, currentLeafId: chatObj.currentLeafId }) });
+      await updateChatMeta({ id: chatId, updater: () => chatObj });
 
       await storageService.updateHierarchy((curr) => {
         if (groupId) {
@@ -881,10 +880,10 @@ export function useChat() {
       if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
     }
 
-    await updateChatMeta(id, (curr) => {
+    await updateChatMeta({ id, updater: (curr) => {
       if (!curr) throw new Error('Chat not found');
       return { ...curr, title: newTitle, updatedAt: Date.now() };
-    });
+    } });
     await loadData();
   };
 
@@ -895,10 +894,10 @@ export function useChat() {
       liveChat.updatedAt = Date.now();
       if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
     }
-    await updateChatMeta(id, (curr) => {
+    await updateChatMeta({ id, updater: (curr) => {
       if (!curr) throw new Error('Chat not found');
       return { ...curr, modelId, updatedAt: Date.now() };
-    });
+    } });
   };
 
   const updateChatGroupOverride = async ({ id, groupId }: { id: string, groupId: string | null }) => {
@@ -908,10 +907,10 @@ export function useChat() {
       liveChat.updatedAt = Date.now();
       if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
     }
-    await updateChatMeta(id, (curr) => {
+    await updateChatMeta({ id, updater: (curr) => {
       if (!curr) throw new Error('Chat not found');
       return { ...curr, groupId, updatedAt: Date.now() };
-    });
+    } });
     await loadData();
   };
 
@@ -922,7 +921,7 @@ export function useChat() {
       liveChat.updatedAt = Date.now();
       if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
     }
-    await updateChatMeta(id, (curr) => {
+    await updateChatMeta({ id, updater: (curr) => {
       if (!curr) throw new Error('Chat not found');
       // WORKAROUND: Chat stores endpoint as flat fields (endpointType / endpointUrl /
       // endpointHttpHeaders) but the storage layer reads the nested `endpoint` object from
@@ -957,7 +956,7 @@ export function useChat() {
         }),
       };
       return { ...currRest, ...metaUpdates, updatedAt: Date.now() };
-    });
+    } });
   };
 
   const {
@@ -1023,10 +1022,10 @@ export function useChat() {
       storageType: settings.value.storageType,
       signal,
       getLiveChat: ({ chat }) => getLiveChat(chat),
-      updateChatContent: ({ chatId, updater }) => updateChatContent(chatId, (curr) => {
+      updateChatContent: ({ chatId, updater }) => updateChatContent({ id: chatId, updater: (curr) => {
         if (!curr) throw new Error('Chat content not found');
         return updater(curr);
-      }),
+      } }),
       triggerChatRef: ({ chatId }) => {
         if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
       },
@@ -1445,10 +1444,10 @@ export function useChat() {
             if (now - lastSave > 500 && !isSaving) {
               isSaving = true;
               try {
-                await updateChatContent(mutableChat.id, (current) => {
+                await updateChatContent({ id: mutableChat.id, updater: (current) => {
                   if (!current) throw new Error('Chat content not found');
                   return { ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId };
-                });
+                } });
                 lastSave = Date.now();
               } finally {
                 isSaving = false;
@@ -1464,7 +1463,7 @@ export function useChat() {
         }));
       }
 
-      await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
+      await updateChatContent({ id: mutableChat.id, updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) });
       processThinking(assistantNode);
       mutableChat.updatedAt = Date.now();
 
@@ -1483,7 +1482,7 @@ export function useChat() {
       if ((e as Error).name === 'AbortError' || (e as Error).message === 'Generation aborted') {
         assistantNode.content += '\n\n[Generation Aborted]';
         if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
-        await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
+        await updateChatContent({ id: mutableChat.id, updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) });
       } else {
         assistantNode.error = (e as Error).message;
         setVolatileAssistantError({
@@ -1497,7 +1496,7 @@ export function useChat() {
           error: assistantNode.error,
         });
         if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
-        await updateChatContent(mutableChat.id, (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }));
+        await updateChatContent({ id: mutableChat.id, updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) });
         if (_currentChat.value && toRaw(_currentChat.value).id !== mutableChat.id) {
           try {
             const { useToast } = await import('./useToast');
@@ -1514,10 +1513,10 @@ export function useChat() {
         storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'stopped', timestamp: Date.now() });
 
         // Update meta one last time in the background
-        updateChatMeta(mutableChat.id, (curr) => {
+        updateChatMeta({ id: mutableChat.id, updater: (curr) => {
           if (!curr) return mutableChat;
           return { ...curr, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
-        }).then(() => loadData()).catch(() => {});
+        } }).then(() => loadData()).catch(() => {});
 
         // Request storage persistence after the first assistant response
         const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
@@ -1673,11 +1672,11 @@ export function useChat() {
 
       chat.currentLeafId = assistantMsg.id;
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-      await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
-      await updateChatMeta(chat.id, (curr) => {
+      await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
+      await updateChatMeta({ id: chat.id, updater: (curr) => {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
-      });
+      } });
       await reorderSidebarChatAfterSend({ chatId: chat.id });
       generateResponse({ chat: chat, assistantId: assistantMsg.id, lmParameters: lmParameters }).catch(e => console.error('Background generation failed:', e));
       await Promise.resolve();
@@ -1723,11 +1722,11 @@ export function useChat() {
       parent.replies.items.push(newAssistantMsg);
       chat.currentLeafId = newAssistantMsg.id;
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-      await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
-      await updateChatMeta(chat.id, (curr) => {
+      await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
+      await updateChatMeta({ id: chat.id, updater: (curr) => {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
-      });
+      } });
       generateResponse({ chat: chat, assistantId: newAssistantMsg.id, lmParameters: failedNode.lmParameters }).catch(e => console.error('Background generation failed:', e));
     } finally {
       decTask({ chatId: chat.id, type: 'process' });
@@ -1828,10 +1827,10 @@ export function useChat() {
         // If the user manually renamed it while we were generating, don't overwrite.
         // We only apply the title if it hasn't changed since we started.
         if (mutableChat.title === titleAtStart) {
-          await updateChatMeta(mutableChat.id, (curr) => {
+          await updateChatMeta({ id: mutableChat.id, updater: (curr) => {
             if (!curr) return mutableChat;
             return { ...curr, title: finalTitle, updatedAt: Date.now() };
-          });
+          } });
           await loadData();
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         }
@@ -1946,8 +1945,8 @@ export function useChat() {
         modelId: mutableChat.modelId,
       });
       registerLiveInstance({ chat: newChatObj });
-      await updateChatContent(newChatId, () => ({ root: newChatObj.root, currentLeafId: newChatObj.currentLeafId }));
-      await updateChatMeta(newChatId, () => newChatObj);
+      await updateChatContent({ id: newChatId, updater: () => ({ root: newChatObj.root, currentLeafId: newChatObj.currentLeafId }) });
+      await updateChatMeta({ id: newChatId, updater: () => newChatObj });
       await storageService.updateHierarchy((curr) => {
         const node: HierarchyNode = { type: 'chat', id: newChatId };
         const chatGroupId = mutableChat.groupId;
@@ -2001,7 +2000,7 @@ export function useChat() {
       if (parent) parent.replies.items.push(correctedNode);
       else chat.root.items.push(correctedNode);
       chat.currentLeafId = correctedNode.id;
-      await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
+      await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
       break;
     }
@@ -2031,7 +2030,7 @@ export function useChat() {
     if (node) {
       chat.currentLeafId = findDeepestLeaf(node).id;
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-      await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
+      await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
     }
   };
 
@@ -2049,10 +2048,10 @@ export function useChat() {
     const newVal = !chat.debugEnabled;
     chat.debugEnabled = newVal;
     if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-    await updateChatMeta(chat.id, (curr) => {
+    await updateChatMeta({ id: chat.id, updater: (curr) => {
       if (!curr) throw new Error('Chat not found');
       return { ...curr, debugEnabled: newVal, updatedAt: Date.now() };
-    });
+    } });
   };
 
   const getReasoningEffort = ({ chatId }: { chatId: string }) => {
@@ -2121,11 +2120,11 @@ export function useChat() {
     chat.updatedAt = Date.now();
     if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
 
-    await updateChatContent(chat.id, (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }));
-    await updateChatMeta(chat.id, (curr) => {
+    await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
+    await updateChatMeta({ id: chat.id, updater: (curr) => {
       if (!curr) return chat;
       return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
-    });
+    } });
   };
 
   const generateImage = async ({ prompt, model, width, height, steps, seed, images, chat, signal }: {

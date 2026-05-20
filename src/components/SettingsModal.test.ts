@@ -1231,16 +1231,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await vm.handleImportRecipes(recipes);
 
       expect(mockCreateChatGroup).toHaveBeenCalledTimes(2);
-      expect(mockCreateChatGroup).toHaveBeenCalledWith('Recipe 1', {
+      expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 1', options: expect.objectContaining({
         modelId: 'm1',
         systemPrompt: { content: 'p1', behavior: 'override' },
-        lmParameters: { temperature: 0.5, reasoning: { effort: undefined } }
-      });
-      expect(mockCreateChatGroup).toHaveBeenCalledWith('Recipe 2', {
+        lmParameters: expect.objectContaining({ temperature: 0.5, reasoning: { effort: undefined } })
+      }) });
+      expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 2', options: expect.objectContaining({
         modelId: undefined,
         systemPrompt: undefined,
-        lmParameters: { reasoning: { effort: undefined } }
-      });
+        lmParameters: expect.objectContaining({ reasoning: { effort: undefined } })
+      }) });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: 'Successfully imported 2 recipes as chat groups'
