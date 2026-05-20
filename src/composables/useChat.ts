@@ -444,7 +444,7 @@ export function useChat() {
     return getAllMessages(_currentChat.value);
   });
 
-  const getLiveChat = (chat: Chat | Readonly<Chat>): Chat => {
+  const getLiveChat = ({ chat }: { chat: Chat | Readonly<Chat> }): Chat => {
     const raw = toRaw(chat) as Chat;
     const chatId = raw.id;
 
@@ -745,7 +745,7 @@ export function useChat() {
     const chat = await openChat({ id: chatId });
     if (!chat) return null;
 
-    const mutableChat = getLiveChat(chat);
+    const mutableChat = getLiveChat({ chat });
     const node = findNodeInBranch(mutableChat.root.items, messageId);
     if (!node) return chat;
 
@@ -1000,7 +1000,7 @@ export function useChat() {
     model: string | undefined;
     signal: AbortSignal | undefined;
   }) => {
-    const target = getLiveChat({ id: chatId } as Chat);
+    const target = getLiveChat({ chat: { id: chatId } as Chat });
     if (!target) return;
     const resolved = resolveChatSettings(target, chatGroups.value, settings.value);
 
@@ -1021,7 +1021,7 @@ export function useChat() {
       endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
       storageType: settings.value.storageType,
       signal,
-      getLiveChat: ({ chat }) => getLiveChat(chat),
+      getLiveChat: ({ chat }) => getLiveChat({ chat }),
       updateChatContent: ({ chatId, updater }) => updateChatContent({ id: chatId, updater: (curr) => {
         if (!curr) throw new Error('Chat content not found');
         return updater(curr);
@@ -1035,7 +1035,7 @@ export function useChat() {
   };
 
   const generateResponse = async ({ chat, assistantId, lmParameters }: { chat: Chat | Readonly<Chat>, assistantId: string, lmParameters?: LmParameters }) => {
-    const mutableChat = getLiveChat(chat);
+    const mutableChat = getLiveChat({ chat });
     const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
     if (!assistantNode) throw new Error('Assistant node not found');
     switch (assistantNode.role) {
@@ -1535,7 +1535,7 @@ export function useChat() {
     const rawTarget = toRaw(target);
     if (isProcessing({ chatId: rawTarget.id })) return false;
 
-    const chat = getLiveChat(target);
+    const chat = getLiveChat({ chat: target });
     incTask({ chatId: chat.id, type: 'process' });
     registerLiveInstance({ chat });
 
@@ -1697,7 +1697,7 @@ export function useChat() {
       }
     }
 
-    const chat = getLiveChat(_currentChat.value);
+    const chat = getLiveChat({ chat: _currentChat.value });
     incTask({ chatId: chat.id, type: 'process' });
     registerLiveInstance({ chat });
     try {
@@ -1736,7 +1736,7 @@ export function useChat() {
   const generateChatTitle = async ({ chatId, signal, titleModelIdOverride }: { chatId: string | undefined, signal: AbortSignal | undefined, titleModelIdOverride: string | undefined }): Promise<string | undefined> => {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return;
-    const mutableChat = getLiveChat(target);
+    const mutableChat = getLiveChat({ chat: target });
     const taskId = mutableChat.id;
     const titleAtStart = mutableChat.title;
 
@@ -1870,7 +1870,7 @@ export function useChat() {
   const forkChat = async ({ messageId, chatId }: { messageId: string, chatId?: string }): Promise<string | null> => {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return null;
-    const mutableChat = getLiveChat(target);
+    const mutableChat = getLiveChat({ chat: target });
     const path = Array.from(getChatBranchIterator({ chat: mutableChat }));
     const idx = path.findIndex(m => m.id === messageId);
     if (idx === -1) return null;
@@ -1978,7 +1978,7 @@ export function useChat() {
       }
     }
 
-    const chat = getLiveChat(_currentChat.value);
+    const chat = getLiveChat({ chat: _currentChat.value });
     const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
     switch (node.role) {
     case 'assistant': {
@@ -2025,7 +2025,7 @@ export function useChat() {
 
   const switchVersion = async ({ messageId }: { messageId: string }) => {
     if (!_currentChat.value) return;
-    const chat = getLiveChat(_currentChat.value);
+    const chat = getLiveChat({ chat: _currentChat.value });
     const node = findNodeInBranch(chat.root.items, messageId);
     if (node) {
       chat.currentLeafId = findDeepestLeaf(node).id;
@@ -2037,14 +2037,14 @@ export function useChat() {
   const getSiblings = ({ messageId, chatId }: { messageId: string, chatId?: string }) => {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return [];
-    const mutableChat = getLiveChat(target);
+    const mutableChat = getLiveChat({ chat: target });
     const parent = findParentInBranch(mutableChat.root.items, messageId);
     return parent ? parent.replies.items : mutableChat.root.items;
   };
 
   const toggleDebug = async (_params: Record<string, never>) => {
     if (!_currentChat.value) return;
-    const chat = getLiveChat(_currentChat.value);
+    const chat = getLiveChat({ chat: _currentChat.value });
     const newVal = !chat.debugEnabled;
     chat.debugEnabled = newVal;
     if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
@@ -2074,7 +2074,7 @@ export function useChat() {
   const commitFullHistoryManipulation = async ({ chatId, messages, systemPrompt }: { chatId: string, messages: HistoryItem[], systemPrompt: SystemPrompt | undefined }) => {
     const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
     if (!target) return;
-    const chat = getLiveChat(target);
+    const chat = getLiveChat({ chat: target });
 
     // Update system prompt (can be undefined to reset to inheritance)
     chat.systemPrompt = systemPrompt;

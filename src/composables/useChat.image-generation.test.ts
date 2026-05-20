@@ -182,7 +182,7 @@ describe('useChat Image Generation', () => {
     const forkedChatId = await chatStore.forkChat({ messageId: 'a1', chatId: 'chat-fork' });
 
     expect(forkedChatId).toBeDefined();
-    const forkedChat = chatStore.getLiveChat({ id: forkedChatId! } as any) as any;
+    const forkedChat = chatStore.getLiveChat({ chat: { id: forkedChatId! } as any }) as any;
     expect(forkedChat).toBeDefined();
     expect(forkedChat.root.items[0].content).toContain('naidan_experimental_image_request');
 

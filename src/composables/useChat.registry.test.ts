@@ -99,7 +99,7 @@ describe('useChat Registry Lifecycle', () => {
     const fetchTask = fetchAvailableModels({ chatId: chat.id });
 
     // Wait for the registry to populate via fetchAvailableModels (using busy check)
-    await vi.waitUntil(() => toRaw(chatStore.getLiveChat(chat as any)) === toRaw(chat), { timeout: 1000 });
+    await vi.waitUntil(() => toRaw(chatStore.getLiveChat({ chat: chat as any })) === toRaw(chat), { timeout: 1000 });
 
     // 2. Start sendMessage({ content: which also awaits fetchAvailableModels })
     let resolveChat: () => void;

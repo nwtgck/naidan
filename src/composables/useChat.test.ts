@@ -720,7 +720,7 @@ describe('useChat Composable Logic', () => {
     // In some mock environments, the recursive tree might be flat or detached.
     // Let's try to get the User message ID.
     // We know it's the first message sent in this clean chat.
-    const liveChat = getLiveChat(toRaw(currentChat.value!) as Chat);
+    const liveChat = getLiveChat({ chat: toRaw(currentChat.value!) as Chat });
     const userMsgId = liveChat.root.items[0]?.id;
 
     if (!userMsgId) {
