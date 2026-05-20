@@ -287,7 +287,7 @@ export function useSettings() {
     }
   }
 
-  async function updateSystemPrompt(prompt: string) {
+  async function updateSystemPrompt({ prompt }: { prompt: string }) {
     _settings.value.systemPrompt = prompt;
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), systemPrompt: prompt }));
   }
