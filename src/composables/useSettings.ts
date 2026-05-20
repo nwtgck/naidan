@@ -267,22 +267,22 @@ export function useSettings() {
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), defaultModelId: modelId }));
   }
 
-  async function updateGlobalEndpoint(options: { type: EndpointType, url: string, headers?: [string, string][] }) {
+  async function updateGlobalEndpoint({ type, url, headers }: { type: EndpointType, url: string, headers?: [string, string][] }) {
     const oldUrl = _settings.value.endpointUrl;
     const oldType = _settings.value.endpointType;
 
-    _settings.value.endpointType = options.type;
-    _settings.value.endpointUrl = options.url;
-    _settings.value.endpointHttpHeaders = options.headers;
+    _settings.value.endpointType = type;
+    _settings.value.endpointUrl = url;
+    _settings.value.endpointHttpHeaders = headers;
 
     await storageService.updateSettings((curr) => ({
       ...(curr || _settings.value),
-      endpointType: options.type,
-      endpointUrl: options.url,
-      endpointHttpHeaders: options.headers
+      endpointType: type,
+      endpointUrl: url,
+      endpointHttpHeaders: headers
     }));
 
-    if (options.url !== oldUrl || options.type !== oldType) {
+    if (url !== oldUrl || type !== oldType) {
       await fetchModels({});
     }
   }
