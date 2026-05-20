@@ -317,7 +317,7 @@ export function useSettings() {
     _searchPreviewMode.value = mode;
   }
 
-  function setSearchContextSize(size: number) {
+  function setSearchContextSize({ size }: { size: number }) {
     _searchContextSize.value = size;
   }
 

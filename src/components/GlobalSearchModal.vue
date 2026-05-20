@@ -622,7 +622,7 @@ defineExpose({
                 <span>CONTEXT</span>
                 <select
                   :value="searchContextSize === Infinity ? 'max' : searchContextSize"
-                  @change="e => setSearchContextSize((e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value))"
+                  @change="e => setSearchContextSize({ size: (e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value) })"
                   class="bg-transparent border-none outline-none text-gray-600 dark:text-gray-300 font-black cursor-pointer"
                 >
                   <option :value="1">1</option>
