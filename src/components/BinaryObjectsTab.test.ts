@@ -306,7 +306,7 @@ describe('BinaryObjectsTab.vue', () => {
     const downloadBtn = wrapper.get('[data-testid="download-button-150"]');
     await downloadBtn?.trigger('click');
 
-    expect(mockDownloadBinaryObject).toHaveBeenCalledWith(expect.objectContaining({ id: '150' }));
+    expect(mockDownloadBinaryObject).toHaveBeenCalledWith({ obj: expect.objectContaining({ id: '150' }) });
   });
 
   it('deletes an object after confirmation', async () => {
@@ -320,7 +320,7 @@ describe('BinaryObjectsTab.vue', () => {
 
     await flushPromises();
 
-    expect(mockDeleteBinaryObject).toHaveBeenCalledWith('150');
+    expect(mockDeleteBinaryObject).toHaveBeenCalledWith({ id: '150' });
     expect(wrapper.text()).not.toContain('file150.png');
   });
 

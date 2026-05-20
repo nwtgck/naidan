@@ -6,7 +6,7 @@ export function useBinaryActions() {
   const { showConfirm } = useConfirm();
   const { closePreview } = useImagePreview();
 
-  const deleteBinaryObject = async (id: string) => {
+  const deleteBinaryObject = async ({ id }: { id: string }) => {
     const obj = await storageService.getBinaryObject({ binaryObjectId: id });
     const name = obj?.name || id;
 
@@ -29,7 +29,7 @@ export function useBinaryActions() {
     return false;
   };
 
-  const downloadBinaryObject = async (obj: { id: string; name?: string }) => {
+  const downloadBinaryObject = async ({ obj }: { obj: { id: string; name?: string } }) => {
     const blob = await storageService.getFile(obj.id);
     if (!blob) return;
 

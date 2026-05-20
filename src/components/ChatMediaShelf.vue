@@ -237,7 +237,7 @@ const handleDownload = async (item: MediaItem, { withMetadata }: { withMetadata:
       createdAt: 0,
       name: item.name || (item.prompt ? item.prompt.slice(0, 30) : 'generated-image')
     };
-    await downloadBinaryObject(obj);
+    await downloadBinaryObject({ obj });
   }
 };
 

@@ -1081,8 +1081,8 @@ watch(
       :objects="previewState.objects"
       :initial-id="previewState.initialId"
       @close="closePreview"
-      @delete="(obj) => deleteBinaryObject(obj.id)"
-      @download="(obj) => downloadBinaryObject(obj)"
+      @delete="(obj) => deleteBinaryObject({ id: obj.id })"
+      @download="(obj) => downloadBinaryObject({ obj })"
     />
   </div>
 </template>

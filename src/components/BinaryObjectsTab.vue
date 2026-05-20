@@ -170,7 +170,7 @@ const formatDate = (timestamp: number) => {
 };
 
 const handleDownload = async (obj: BinaryObject) => {
-  await downloadBinaryObject(obj);
+  await downloadBinaryObject({ obj });
 };
 
 const handlePreview = (obj: BinaryObject) => {
@@ -178,7 +178,7 @@ const handlePreview = (obj: BinaryObject) => {
 };
 
 const handleDelete = async (obj: BinaryObject) => {
-  const success = await deleteBinaryObject(obj.id);
+  const success = await deleteBinaryObject({ id: obj.id });
   if (success) {
     objects.value = objects.value.filter(o => o.id !== obj.id);
   }
