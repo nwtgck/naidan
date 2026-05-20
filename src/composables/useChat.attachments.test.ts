@@ -123,8 +123,8 @@ describe('useChat - Attachment & Migration Logic', () => {
       settings,
       isOnboardingDismissed: ref(true),
       onboardingDraft: ref({}),
-      setHeavyContentAlertDismissed: (val: boolean) => {
-        settings.value.heavyContentAlertDismissed = val;
+      setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => {
+        settings.value.heavyContentAlertDismissed = dismissed;
       },
       setOnboardingDraft: vi.fn(),
       setIsOnboardingDismissed: vi.fn(),

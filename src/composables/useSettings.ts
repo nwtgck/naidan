@@ -308,7 +308,7 @@ export function useSettings() {
     _onboardingDraft.value = draft;
   }
 
-  function setHeavyContentAlertDismissed(dismissed: boolean) {
+  function setHeavyContentAlertDismissed({ dismissed }: { dismissed: boolean }) {
     _settings.value.heavyContentAlertDismissed = dismissed;
     storageService.updateSettings((curr) => ({ ...(curr || _settings.value), heavyContentAlertDismissed: dismissed }));
   }

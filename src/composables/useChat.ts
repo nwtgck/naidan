@@ -1574,7 +1574,7 @@ export function useChat() {
           confirmButtonText: 'Continue anyway', cancelButtonText: 'Cancel',
         });
         if (!confirmed) return false;
-        setHeavyContentAlertDismissed(true);
+        setHeavyContentAlertDismissed({ dismissed: true });
       }
 
       for (const att of attachments) {
