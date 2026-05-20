@@ -24,7 +24,7 @@ const { addToast } = useToast();
 const editingProviderProfileId = ref<string | null>(null);
 const editingProviderProfileName = ref('');
 
-async function handleDeleteProviderProfile(id: string) {
+async function handleDeleteProviderProfile({ id }: { id: string }) {
   const index = props.profiles.findIndex(p => p.id === id);
   if (index === -1) return;
 
@@ -49,7 +49,7 @@ async function handleDeleteProviderProfile(id: string) {
   });
 }
 
-function startRename(providerProfile: ProviderProfile) {
+function startRename({ providerProfile }: { providerProfile: ProviderProfile }) {
   editingProviderProfileId.value = providerProfile.id;
   editingProviderProfileName.value = providerProfile.name;
 }
@@ -132,7 +132,7 @@ defineExpose({
 
           <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
             <button
-              @click="startRename(providerProfile)"
+              @click="startRename({ providerProfile })"
               class="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"
               title="Rename Profile"
               data-testid="provider-profile-rename-button"
@@ -140,7 +140,7 @@ defineExpose({
               <PencilIcon class="w-4 h-4" />
             </button>
             <button
-              @click="handleDeleteProviderProfile(providerProfile.id)"
+              @click="handleDeleteProviderProfile({ id: providerProfile.id })"
               class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"
               title="Delete Profile"
               data-testid="provider-profile-delete-button"
