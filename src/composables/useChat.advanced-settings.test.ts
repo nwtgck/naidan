@@ -59,7 +59,7 @@ describe('useChat Advanced Settings Resolution', () => {
     vi.clearAllMocks();
 
     // Default Global Settings
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       endpointType: 'openai',
       endpointUrl: 'http://global-openai',
       defaultModelId: 'global-gpt',
@@ -74,7 +74,7 @@ describe('useChat Advanced Settings Resolution', () => {
         maxCompletionTokens: 1000,
         reasoning: { effort: undefined },
       },
-    });
+    } });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'profile-gpt', 'chat-gpt']);
     mockOllamaModels.mockResolvedValue(['llama3']);
@@ -95,7 +95,7 @@ describe('useChat Advanced Settings Resolution', () => {
     });
 
     it('ignores Profile System Prompt at runtime (Resolution is Chat > Global)', async () => {
-      __testOnlySetSettings({
+      __testOnlySetSettings({ newSettings: {
         ...JSON.parse(JSON.stringify(settings.value)),
         providerProfiles: [{
           id: 'p1',
@@ -104,7 +104,7 @@ describe('useChat Advanced Settings Resolution', () => {
           endpointUrl: 'http://global-openai',
           systemPrompt: 'Profile Prompt',
         }],
-      });
+      } });
 
       await sendMessage({ content: 'Hi' });
       const params = mockOpenAIChat.mock.calls[0]![0];
@@ -124,7 +124,7 @@ describe('useChat Advanced Settings Resolution', () => {
     });
 
     it('appends Chat System Prompt to Global Prompt, ignoring Profile at runtime', async () => {
-      __testOnlySetSettings({
+      __testOnlySetSettings({ newSettings: {
         ...JSON.parse(JSON.stringify(settings.value)),
         providerProfiles: [{
           id: 'p1',
@@ -133,7 +133,7 @@ describe('useChat Advanced Settings Resolution', () => {
           endpointUrl: 'http://global-openai',
           systemPrompt: 'Profile Prompt',
         } as any],
-      });
+      } });
       await updateChatSettings({ id: currentChat.value!.id, updates: { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } } });
 
       await sendMessage({ content: 'Hi' });
@@ -147,7 +147,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
   describe('LM Parameters Resolution (Deep Merge)', () => {
     it('merges Chat > Global parameters correctly, ignoring Profile at runtime', async () => {
-      __testOnlySetSettings({
+      __testOnlySetSettings({ newSettings: {
         ...JSON.parse(JSON.stringify(settings.value)),
         lmParameters: {
           ...EMPTY_LM_PARAMETERS,
@@ -169,7 +169,7 @@ describe('useChat Advanced Settings Resolution', () => {
             reasoning: { effort: undefined },
           },
         } as any],
-      });
+      } });
 
       await updateChatSettings({ id: currentChat.value!.id, updates: {
         lmParameters: {
@@ -252,7 +252,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       endpointType: 'openai',
       endpointUrl: 'http://global-openai',
       defaultModelId: 'global-gpt',
@@ -262,7 +262,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
       mounts: [],
       systemPrompt: undefined,
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } },
-    });
+    } });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await openChat({ id: chat!.id });
   });

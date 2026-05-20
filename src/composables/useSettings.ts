@@ -321,7 +321,7 @@ export function useSettings() {
     _searchContextSize.value = size;
   }
 
-  function __testOnlySetSettings(newSettings: Settings) {
+  function __testOnlySetSettings({ newSettings }: { newSettings: Settings }) {
     _settings.value = JSON.parse(JSON.stringify(newSettings));
   }
 

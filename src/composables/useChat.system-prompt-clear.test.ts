@@ -46,7 +46,7 @@ describe('useChat System Prompt Clear Policy', () => {
     vi.clearAllMocks();
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       endpointType: 'openai',
       endpointUrl: 'http://global',
       defaultModelId: 'gpt',
@@ -55,7 +55,7 @@ describe('useChat System Prompt Clear Policy', () => {
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
-    });
+    } });
   });
 
   it('Policy: Override with null (Clear) should result in empty system message', async () => {
