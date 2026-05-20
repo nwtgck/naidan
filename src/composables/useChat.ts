@@ -234,7 +234,7 @@ transformersJsService.subscribeModelList(async () => {
 });
 
 // --- Synchronization ---
-function syncLiveInstancesWithSidebar() {
+function syncLiveInstancesWithSidebar(_params: Record<string, never>) {
   const sync = (items: SidebarItem[], parentGroupId: string | null) => {
     for (const item of items) {
       switch (item.type) {
@@ -263,7 +263,7 @@ let sidebarReloadTimeout: ReturnType<typeof setTimeout> | null = null;
 const THROTTLE_MS = 200;
 let lastSidebarReload = 0;
 
-const debouncedSidebarReload = () => {
+const debouncedSidebarReload = (_params: Record<string, never>) => {
   const now = Date.now();
 
   const performReload = async () => {
@@ -272,7 +272,7 @@ const debouncedSidebarReload = () => {
       sidebarReloadTimeout = null;
     }
     rootItems.value = await storageService.getSidebarStructure();
-    syncLiveInstancesWithSidebar();
+    syncLiveInstancesWithSidebar({});
     lastSidebarReload = Date.now();
   };
 
@@ -287,7 +287,7 @@ const debouncedSidebarReload = () => {
 storageService.subscribeToChanges(async (event) => {
   switch (event.type) {
   case 'chat_meta_and_chat_group': {
-    debouncedSidebarReload();
+    debouncedSidebarReload({});
 
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
       const fresh = await storageService.loadChat(event.id);
@@ -2301,7 +2301,7 @@ export function useChat() {
 
   const persistSidebarStructure = async ({ topLevelItems }: { topLevelItems: SidebarItem[] }) => {
     rootItems.value = topLevelItems;
-    syncLiveInstancesWithSidebar();
+    syncLiveInstancesWithSidebar({});
     const newHierarchy: Hierarchy = {
       items: topLevelItems.map(item => {
         switch (item.type) {
