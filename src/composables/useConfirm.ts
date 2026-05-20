@@ -19,14 +19,14 @@ const confirmIcon = shallowRef<Component | undefined>(undefined); // Use shallow
 let resolvePromise: ((value: boolean) => void) | undefined;
 
 export function useConfirm() {
-  const showConfirm = (options: ConfirmOptions): Promise<boolean> => {
+  const showConfirm = ({ title, message, confirmButtonText, cancelButtonText, confirmButtonVariant: buttonVariant, icon }: ConfirmOptions): Promise<boolean> => {
     return new Promise((resolve) => {
-      confirmTitle.value = options.title || 'Confirm';
-      confirmMessage.value = options.message || '';
-      confirmConfirmButtonText.value = options.confirmButtonText || 'Confirm';
-      confirmCancelButtonText.value = options.cancelButtonText || 'Cancel';
-      confirmButtonVariant.value = options.confirmButtonVariant || 'default'; // Set variant
-      confirmIcon.value = options.icon; // Set icon
+      confirmTitle.value = title || 'Confirm';
+      confirmMessage.value = message || '';
+      confirmConfirmButtonText.value = confirmButtonText || 'Confirm';
+      confirmCancelButtonText.value = cancelButtonText || 'Cancel';
+      confirmButtonVariant.value = buttonVariant || 'default'; // Set variant
+      confirmIcon.value = icon; // Set icon
       isConfirmOpen.value = true;
       resolvePromise = resolve;
     });
