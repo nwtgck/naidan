@@ -854,7 +854,7 @@ defineExpose({
           <MessageSquarePlusIcon class="w-4 h-4 shrink-0" />
         </button>
         <button
-          @click="useGlobalSearch().openSearch()"
+          @click="useGlobalSearch().openSearch({})"
           class="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           :class="isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0'"
           title="Search (Cmd+K)"
