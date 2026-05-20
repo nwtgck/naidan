@@ -3,7 +3,7 @@ import { ref, readonly } from 'vue';
 const _allowAllExternalImages = ref(false);
 
 export function useExternalResourceSettings() {
-  function setAllowAllExternalImages(allow: boolean) {
+  function setAllowAllExternalImages({ allow }: { allow: boolean }) {
     _allowAllExternalImages.value = allow;
   }
 
