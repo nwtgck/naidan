@@ -27,7 +27,7 @@ const chatListContainer = ref<HTMLElement | null>(null);
 const selectedChat = computed(() => chats.value.find(c => c.id === selectedChatId.value) || null);
 
 async function selectAndNavigate(chatId: string) {
-  await openChat(chatId);
+  await openChat({ id: chatId });
   router.push(`/chat/${chatId}`);
   closeSearch();
 }

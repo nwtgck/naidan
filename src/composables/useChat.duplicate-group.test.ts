@@ -52,7 +52,7 @@ describe('useChat.duplicateChatGroup', () => {
     // Inject mock data into rootItems (which is internal but exposed via sidebarItems/rootItems in useChat)
     rootItems.value = [{ id: 'g1', type: 'chat_group', chatGroup: originalGroup as any }];
 
-    const newGroupId = await duplicateChatGroup('g1');
+    const newGroupId = await duplicateChatGroup({ groupId: 'g1' });
 
     expect(newGroupId).toBeDefined();
     expect(storageService.updateChatGroup).toHaveBeenCalledWith(
@@ -82,7 +82,7 @@ describe('useChat.duplicateChatGroup', () => {
       capturedHierarchy = updater(capturedHierarchy);
     });
 
-    await duplicateChatGroup('g1');
+    await duplicateChatGroup({ groupId: 'g1' });
 
     expect(capturedHierarchy.items).toHaveLength(2);
     expect(capturedHierarchy.items[0].id).toBe('g1');

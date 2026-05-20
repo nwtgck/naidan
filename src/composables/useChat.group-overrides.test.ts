@@ -207,7 +207,7 @@ describe('useChat Group Overrides Resolution', () => {
     chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });
 
     vi.mocked(storageService.loadChat).mockResolvedValue({ id: 'c1', title: 'C1' } as any);
-    await chatStore.openChat('c1');
+    await chatStore.openChat({ id: 'c1' });
     expect(chatStore.currentChatGroup.value).toBeNull();
 
     chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false });

@@ -101,8 +101,8 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('llama3');
 
     // 3. Custom Override (gpt-3.5-turbo)
-    await updateChatSettings(chatObj.id, { endpointType: 'openai' });
-    await updateChatModel(chatObj.id, 'gpt-3.5-turbo');
+    await updateChatSettings({ id: chatObj.id, updates: { endpointType: 'openai' } });
+    await updateChatModel({ id: chatObj.id, modelId: 'gpt-3.5-turbo' });
     await sendMessage({ content: 'M3' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat.mock.calls[1]![0].model).toBe('gpt-3.5-turbo');

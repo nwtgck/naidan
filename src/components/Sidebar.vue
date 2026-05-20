@@ -491,7 +491,7 @@ async function handleCreateChatGroup() {
     return;
   }
   skipLeaveAnimation.value = true;
-  await chatStore.createChatGroup(name);
+  await chatStore.createChatGroup({ name });
   newChatGroupName.value = '';
   isCreatingChatGroup.value = false;
   // Reset flag after transition would have finished
@@ -528,7 +528,7 @@ async function handleDeleteChatGroup(group: ChatGroup) {
     if (!confirmed) return;
   }
 
-  await chatStore.deleteChatGroup(group.id);
+  await chatStore.deleteChatGroup({ id: group.id });
 }
 
 async function handleNewChat(groupId: string | undefined = undefined) {
@@ -544,12 +544,12 @@ async function handleNewChat(groupId: string | undefined = undefined) {
 }
 
 async function handleOpenChat(id: string) {
-  await chatStore.openChat(id);
+  await chatStore.openChat({ id });
   router.push(`/chat/${id}`);
 }
 
 async function handleOpenChatGroup(id: string) {
-  chatStore.openChatGroup(id);
+  chatStore.openChatGroup({ id });
   router.push(`/chat-group/${id}`);
 }
 
@@ -573,7 +573,7 @@ function startEditing(id: string, title: string | null) {
 
 async function saveRename() {
   if (editingId.value && editingTitle.value.trim()) {
-    await chatStore.renameChat(editingId.value, editingTitle.value.trim());
+    await chatStore.renameChat({ id: editingId.value, newTitle: editingTitle.value.trim() });
   }
   editingId.value = null;
 }
@@ -585,7 +585,7 @@ function startEditingChatGroup(chatGroup: ChatGroup) {
 
 async function saveChatGroupRename() {
   if (editingChatGroupId.value && editingChatGroupName.value.trim()) {
-    await chatStore.renameChatGroup(editingChatGroupId.value, editingChatGroupName.value.trim());
+    await chatStore.renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
   }
   editingChatGroupId.value = null;
 }
@@ -978,7 +978,7 @@ defineExpose({
                       :chat-group="element.chatGroup"
                       :is-open="activeActionGroupId === element.chatGroup.id"
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
-                      @duplicate="() => { chatStore.duplicateChatGroup(element.chatGroup.id); activeActionGroupId = null; }"
+                      @duplicate="() => { chatStore.duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
                       @delete="() => { handleDeleteChatGroup(element.chatGroup); activeActionGroupId = null; }"
                       @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
                     />

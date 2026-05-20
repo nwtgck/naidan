@@ -120,8 +120,8 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     mocks.mockChatStorage.set('c1', chat1);
 
     // Both tabs open Chat 1. They now both have a LOCAL COPY of the message tree.
-    await chatStoreA.openChat('c1');
-    await chatStoreB.openChat('c1');
+    await chatStoreA.openChat({ id: 'c1' });
+    await chatStoreB.openChat({ id: 'c1' });
 
     // 1. Tab A adds a branch (Branch A). It modifies its local currentChat and calls updateChatContent.
     await chatStoreA.regenerateMessage('m2');
@@ -153,8 +153,8 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     };
     mocks.mockChatStorage.set('c1', chat1);
 
-    await chatStoreA.openChat('c1');
-    await chatStoreB.openChat('c1');
+    await chatStoreA.openChat({ id: 'c1' });
+    await chatStoreB.openChat({ id: 'c1' });
 
     // 1. Tab B starts generating (Slow)
     let resolveGen: () => void;
@@ -170,7 +170,7 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
 
     // 2. Tab A renames the chat
     // This updates the ChatMeta
-    await chatStoreA.renameChat('c1', 'New Title');
+    await chatStoreA.renameChat({ id: 'c1', newTitle: 'New Title' });
     expect(mocks.mockChatStorage.get('c1').title).toBe('New Title');
 
     // 3. Tab B finishes generating and saves content

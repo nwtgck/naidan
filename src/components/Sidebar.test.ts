@@ -353,7 +353,7 @@ describe('Sidebar Logic Stability', () => {
       await input.setValue('My New Group');
       await input.trigger('keydown.enter');
 
-      expect(mockCreateChatGroup).toHaveBeenCalledWith('My New Group');
+      expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'My New Group' });
       expect(wrapper.find('[data-testid="chat-group-name-input"]').exists()).toBe(false);
     });
 
@@ -544,7 +544,7 @@ describe('Sidebar Logic Stability', () => {
       await deleteBtn.trigger('click');
 
       expect(mockShowConfirm).not.toHaveBeenCalled();
-      expect(mockDeleteChatGroup).toHaveBeenCalledWith('g1');
+      expect(mockDeleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
     });
 
     it('should call deleteChatGroup after confirmation is accepted', async () => {
@@ -568,7 +568,7 @@ describe('Sidebar Logic Stability', () => {
       await nextTick();
       await nextTick();
 
-      expect(mockDeleteChatGroup).toHaveBeenCalledWith('g1');
+      expect(mockDeleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
     });
 
     it('should NOT call deleteChatGroup if confirmation is cancelled', async () => {

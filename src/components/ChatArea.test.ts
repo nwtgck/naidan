@@ -27,9 +27,9 @@ const mockGeneratingTitle = ref(false);
 const mockFetchAvailableModels = vi.fn();
 const mockGenerateChatTitle = vi.fn();
 const mockAbortTitleGeneration = vi.fn();
-const mockRenameChat = vi.fn().mockImplementation((_id: string, title: string) => {
+const mockRenameChat = vi.fn().mockImplementation(({ newTitle }) => {
   if (mockCurrentChat.value) {
-    mockCurrentChat.value.title = title;
+    mockCurrentChat.value.title = newTitle;
   }
 });
 const mockSaveSettings = vi.fn().mockResolvedValue(undefined);
@@ -56,12 +56,12 @@ const mockGetLiveChat = vi.fn().mockImplementation((chat) => {
   return chat;
 });
 
-const mockUpdateChatSettings = vi.fn().mockImplementation((id, updates) => {
+const mockUpdateChatSettings = vi.fn().mockImplementation(({ id, updates }) => {
   if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
     Object.assign(mockCurrentChat.value, updates);
   }
 });
-const mockUpdateChatGroupMetadata = vi.fn().mockImplementation((id, updates) => {
+const mockUpdateChatGroupMetadata = vi.fn().mockImplementation(({ id, updates }) => {
   if (mockCurrentChatGroup.value && mockCurrentChatGroup.value.id === id) {
     Object.assign(mockCurrentChatGroup.value, updates);
   }
@@ -69,7 +69,7 @@ const mockUpdateChatGroupMetadata = vi.fn().mockImplementation((id, updates) => 
 
 const mockOpenChatGroup = vi.fn();
 const mockMoveChatToGroup = vi.fn();
-const mockUpdateChatModel = vi.fn().mockImplementation((id, modelId) => {
+const mockUpdateChatModel = vi.fn().mockImplementation(({ id, modelId }) => {
   if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
     mockCurrentChat.value.modelId = modelId;
   }
@@ -476,7 +476,7 @@ describe('ChatArea UI States', () => {
       await vi.advanceTimersByTimeAsync(600);
       await flushPromises();
 
-      expect(mockRenameChat).toHaveBeenCalledWith('1', 'Manual Title');
+      expect(mockRenameChat).toHaveBeenCalledWith({ id: '1', newTitle: 'Manual Title' });
     } finally {
       vi.useRealTimers();
     }
@@ -597,7 +597,7 @@ describe('ChatArea UI States', () => {
     await wrapper.find('[data-testid="use-generated-title-button"]').trigger('click');
 
     expect((wrapper.find('[data-testid="chat-title-input"]').element as HTMLInputElement).value).toBe('Generated Title');
-    expect(mockRenameChat).toHaveBeenCalledWith('1', 'Generated Title');
+    expect(mockRenameChat).toHaveBeenCalledWith({ id: '1', newTitle: 'Generated Title' });
   });
 
   it('should update the chat title model override when the active title model source is chat', async () => {
@@ -619,7 +619,7 @@ describe('ChatArea UI States', () => {
     await flushPromises();
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockUpdateChatSettings).toHaveBeenCalledWith('1', { titleModelId: 'model-2' });
+    expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: '1', updates: { titleModelId: 'model-2' } });
     expect(mockSaveSettings).not.toHaveBeenCalled();
     expect(mockUpdateChatGroupMetadata).not.toHaveBeenCalled();
   });
@@ -648,7 +648,7 @@ describe('ChatArea UI States', () => {
     await flushPromises();
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('group-1', { titleModelId: 'model-2' });
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'group-1', updates: { titleModelId: 'model-2' } });
     expect(mockSaveSettings).not.toHaveBeenCalled();
     expect(mockUpdateChatSettings).not.toHaveBeenCalled();
   });
@@ -757,7 +757,7 @@ describe('ChatArea UI States', () => {
     const groupBtn = wrapper.findAll('button').find(b => b.text().includes('Group 1'));
     await groupBtn?.trigger('click');
 
-    expect(mockMoveChatToGroup).toHaveBeenCalledWith('1', 'group-1');
+    expect(mockMoveChatToGroup).toHaveBeenCalledWith({ chatId: '1', targetGroupId: 'group-1' });
   });
 
   describe('Custom Overrides Indicator', () => {
@@ -2646,7 +2646,7 @@ describe('ChatArea Model Selection', () => {
     (model2Btn as HTMLElement).click();
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(mockUpdateChatModel).toHaveBeenCalledWith('1', 'model-2');
+    expect(mockUpdateChatModel).toHaveBeenCalledWith({ id: '1', modelId: 'model-2' });
     expect(mockCurrentChat.value!.modelId).toBe('model-2');
   });
 

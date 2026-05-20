@@ -400,7 +400,7 @@ async function selectItem({ index }: { index: number }) {
   switch (type) {
   case 'chat': {
     const chatItem = target.item;
-    await openChat(chatItem.chatId);
+    await openChat({ id: chatItem.chatId });
     router.push(`/chat/${chatItem.chatId}`);
     closeSearch();
     break;
@@ -418,7 +418,7 @@ async function selectItem({ index }: { index: number }) {
   }
   case 'chat_group': {
     const groupItem = target.item;
-    openChatGroup(groupItem.groupId);
+    openChatGroup({ id: groupItem.groupId });
     closeSearch();
     break;
   }

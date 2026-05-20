@@ -289,7 +289,7 @@ describe('useChat Cross-Tab Synchronization', () => {
   it('should update current group view when renamed in another tab', async () => {
     const { createChatGroup, currentChatGroup, TEST_ONLY } = chatStore;
     const { __testOnlySetCurrentChatGroup } = TEST_ONLY;
-    const groupId = await createChatGroup('Old');
+    const groupId = await createChatGroup({ name: 'Old' });
     const group = Array.from(mocks.mockGroupStorage.values())[0];
     __testOnlySetCurrentChatGroup(reactive(group));
     const renamed = { ...group, name: 'New' };

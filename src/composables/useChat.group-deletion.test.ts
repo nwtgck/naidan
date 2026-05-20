@@ -73,7 +73,7 @@ describe('useChat Group Deletion', () => {
     expect(rootItems.value).toHaveLength(1);
 
     // Act
-    await deleteChatGroup('g1');
+    await deleteChatGroup({ id: 'g1' });
 
     // Assert
     expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith('c1');
@@ -100,7 +100,7 @@ describe('useChat Group Deletion', () => {
     await chatStore.loadChats();
 
     // Act
-    await deleteChatGroup('g1');
+    await deleteChatGroup({ id: 'g1' });
 
     // Assert
     expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith('c_in');
@@ -120,7 +120,7 @@ describe('useChat Group Deletion', () => {
     await chatStore.loadChats();
     __testOnlySetCurrentChat(reactive(chat1) as any);
 
-    await deleteChatGroup('g1');
+    await deleteChatGroup({ id: 'g1' });
 
     expect(currentChat.value).toBeNull();
   });
@@ -137,7 +137,7 @@ describe('useChat Group Deletion', () => {
     await chatStore.loadChats();
     __testOnlySetCurrentChat(reactive(chatOut) as any);
 
-    await deleteChatGroup('g1');
+    await deleteChatGroup({ id: 'g1' });
 
     expect(currentChat.value).not.toBeNull();
     expect(currentChat.value?.id).toBe('c_out');

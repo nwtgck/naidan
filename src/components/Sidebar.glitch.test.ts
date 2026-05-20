@@ -26,8 +26,8 @@ vi.mock('../composables/useChat', () => ({
     sidebarItems: computed<SidebarItem[]>(() => {
       return mockChats.value.map(c => ({ id: `chat:${c.id}`, type: 'chat', chat: c }));
     }),
-    isTaskRunning: (id: string) => Array.from(mockActiveTasks).some(t => t.endsWith(':' + id)),
-    isProcessing: (id: string) => Array.from(mockActiveTasks).some(t => t.startsWith('process:') && t.endsWith(':' + id)),
+    isTaskRunning: ({ chatId }: { chatId: string }) => Array.from(mockActiveTasks).some(t => t.endsWith(':' + chatId)),
+    isProcessing: ({ chatId }: { chatId: string }) => Array.from(mockActiveTasks).some(t => t.startsWith('process:') && t.endsWith(':' + chatId)),
     openChat: vi.fn(),
     openChatGroup: vi.fn(),
   }),

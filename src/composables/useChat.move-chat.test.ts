@@ -89,7 +89,7 @@ describe('useChat moveChatToGroup', () => {
     await chatStore.loadChats();
 
     // Move chat c1 to group g1
-    await chatStore.moveChatToGroup('c1', 'g1');
+    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g1' });
 
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
@@ -128,7 +128,7 @@ describe('useChat moveChatToGroup', () => {
     ]);
     await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup('c1', 'g2');
+    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g2' });
 
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
@@ -156,7 +156,7 @@ describe('useChat moveChatToGroup', () => {
     ]);
     await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup('c1', null);
+    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: null });
 
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
@@ -177,7 +177,7 @@ describe('useChat moveChatToGroup', () => {
     mockGetSidebarStructure.mockResolvedValue([{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 }]);
     await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup('c1', null);
+    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: null });
 
     const rootItems = chatStore.rootItems.value;
     expect(rootItems).toHaveLength(2);
@@ -196,7 +196,7 @@ describe('useChat moveChatToGroup', () => {
     ]);
     await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup('c1', 'g1');
+    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g1' });
 
     expect(chat.groupId).toBe('g1');
     expect(chatStore.currentChat.value?.groupId).toBe('g1');

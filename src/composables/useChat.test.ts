@@ -202,7 +202,7 @@ describe('useChat Composable Logic', () => {
     mockRootItems.push(...rootItems.value);
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
 
-    await renameChat('1', 'New');
+    await renameChat({ id: '1', newTitle: 'New' });
     expect(storageService.updateChatMeta).toHaveBeenCalled();
     const [id, updater] = vi.mocked(storageService.updateChatMeta).mock.calls[0]!;
     expect(id).toBe('1');
@@ -952,7 +952,7 @@ describe('useChat Composable Logic', () => {
     const { createChatGroup } = useChat();
     await chatStore.loadChats();
 
-    await createChatGroup('New Group');
+    await createChatGroup({ name: 'New Group' });
 
     expect(mockHierarchy.items).toHaveLength(2);
     expect(mockHierarchy.items[0]?.type).toBe('chat_group');
@@ -1189,11 +1189,11 @@ describe('useChat Composable Logic', () => {
     const mockChat: Chat = { id: 'found', title: 'Found', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
 
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
-    await openChat('found');
+    await openChat({ id: 'found' });
     expect(currentChat.value?.id).toBe('found');
 
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(null);
-    await openChat('missing');
+    await openChat({ id: 'missing' });
     expect(currentChat.value).toBeNull();
   });
 

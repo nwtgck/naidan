@@ -85,7 +85,7 @@ describe('useChat Image Generation', () => {
   it('sendImageRequest triggers message sending with correct parameters', async () => {
     const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
     chatStore.registerLiveInstance({ chat });
-    await chatStore.openChat('chat-1');
+    await chatStore.openChat({ id: 'chat-1' });
 
     // Verify currentChat is set
     expect(toRaw(chatStore.currentChat.value)).toMatchObject({ id: 'chat-1' });
@@ -114,7 +114,7 @@ describe('useChat Image Generation', () => {
   it('sendImageRequest with attachments passes them to sendMessage', async () => {
     const chat = { id: 'chat-attachments', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
     chatStore.registerLiveInstance({ chat });
-    await chatStore.openChat('chat-attachments');
+    await chatStore.openChat({ id: 'chat-attachments' });
 
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
     const mockAttachment = { id: 'att-1', originalName: 'test.png', mimeType: 'image/png', status: 'memory', blob: new Blob(['test'], { type: 'image/png' }) } as any;

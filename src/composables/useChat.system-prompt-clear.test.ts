@@ -61,7 +61,7 @@ describe('useChat System Prompt Clear Policy', () => {
   it('Policy: Override with null (Clear) should result in empty system message', async () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat(id);
+    await openChat({ id });
 
     // 1. Initial State: Global Default
     await sendMessage({ content: 'Hello' });
@@ -70,9 +70,9 @@ describe('useChat System Prompt Clear Policy', () => {
     }));
 
     // 2. Chat-level Clear (behavior: override, content: null)
-    await updateChatSettings(id, {
+    await updateChatSettings({ id, updates: {
       systemPrompt: { behavior: 'override', content: null }
-    });
+    } });
     await sendMessage({ content: 'Hello again' });
 
     // Check that system prompt is NOT present
@@ -84,12 +84,12 @@ describe('useChat System Prompt Clear Policy', () => {
   it('Policy: Override with empty string ("") should also result in empty system message', async () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat(id);
+    await openChat({ id });
 
     // Chat-level override with empty string
-    await updateChatSettings(id, {
+    await updateChatSettings({ id, updates: {
       systemPrompt: { behavior: 'override', content: '' }
-    });
+    } });
     await sendMessage({ content: 'Empty string override' });
 
     const lastCall = mockOpenAIChat.mock.calls[mockOpenAIChat.mock.calls.length - 1]![0];
@@ -100,7 +100,7 @@ describe('useChat System Prompt Clear Policy', () => {
   it('Policy: Group-level Clear should affect chats in that group', async () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat(id);
+    await openChat({ id });
 
     // Create a group that Clears system prompt
     const group = reactive({
@@ -109,7 +109,7 @@ describe('useChat System Prompt Clear Policy', () => {
     }) as any;
     chatStore.rootItems.value = [{ id: 'chat_group:g-clear', type: 'chat_group', chatGroup: group }];
 
-    await updateChatGroupOverride(id, 'g-clear');
+    await updateChatGroupOverride({ id, groupId: 'g-clear' });
     await nextTick();
 
     await sendMessage({ content: 'In group' });
@@ -122,19 +122,19 @@ describe('useChat System Prompt Clear Policy', () => {
   it('Policy: Chat can Override a Group-level Clear', async () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat(id);
+    await openChat({ id });
 
     const group = reactive({
       id: 'g-clear', name: 'Clear Group', items: [], updatedAt: Date.now(), isCollapsed: false,
       systemPrompt: { behavior: 'override', content: null }
     }) as any;
     chatStore.rootItems.value = [{ id: 'chat_group:g-clear', type: 'chat_group', chatGroup: group }];
-    await updateChatGroupOverride(id, 'g-clear');
+    await updateChatGroupOverride({ id, groupId: 'g-clear' });
 
     // Chat overrides with its own prompt
-    await updateChatSettings(id, {
+    await updateChatSettings({ id, updates: {
       systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' }
-    });
+    } });
 
     await sendMessage({ content: 'Override' });
 

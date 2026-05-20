@@ -88,7 +88,7 @@ describe('useChat Registry Lifecycle', () => {
 
     const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
-    await openChat(chatId!);
+    await openChat({ id: chatId! });
     const chat = currentChat.value!;
 
     // 1. Start fetch models (long running)
@@ -134,7 +134,7 @@ describe('useChat Registry Lifecycle', () => {
 
     // Now it should be gone from registry
     mockLoadChat.mockClear();
-    await openChat(chatId!);
+    await openChat({ id: chatId! });
     expect(mockLoadChat).toHaveBeenCalledWith(chatId!);
     expect(currentChat.value).not.toBe(chat);
   });
@@ -146,7 +146,7 @@ describe('useChat Registry Lifecycle', () => {
 
     const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
-    await openChat(chatId!);
+    await openChat({ id: chatId! });
     const chat = currentChat.value!;
 
     // Switch away to ensure it's not kept alive by currentChat
@@ -159,7 +159,7 @@ describe('useChat Registry Lifecycle', () => {
     // If it's leaked in registry, openChat will return the same instance
     // If NOT leaked, it will call storageService.loadChat
     mockLoadChat.mockClear();
-    await openChat(chatId!);
+    await openChat({ id: chatId! });
 
     // THIS IS EXPECTED TO FAIL IF THERE IS A LEAK
     expect(mockLoadChat).toHaveBeenCalledWith(chatId!);

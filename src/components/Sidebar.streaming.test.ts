@@ -36,8 +36,8 @@ vi.mock('../composables/useChat', () => ({
     persistSidebarStructure: vi.fn(),
 
     deleteAllChats: vi.fn(),
-    isTaskRunning: (id: string) => mockActiveGenerations.has(id),
-    isProcessing: (id: string) => mockActiveGenerations.has(id),
+    isTaskRunning: ({ chatId }: { chatId: string }) => mockActiveGenerations.has(chatId),
+    isProcessing: ({ chatId }: { chatId: string }) => mockActiveGenerations.has(chatId),
     abortChat: vi.fn(),
   }),
 }));

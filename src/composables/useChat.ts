@@ -697,7 +697,7 @@ export function useChat() {
     return false;
   }
 
-  const openChat = async (id: string, leafId?: string): Promise<Chat | null> => {
+  const openChat = async ({ id, leafId }: { id: string, leafId?: string }): Promise<Chat | null> => {
     const { setToolEnabled, setCurrentChatId } = useChatTools();
     setCurrentChatId({ chatId: id });
     if (liveChatRegistry.has(id)) {
@@ -743,7 +743,7 @@ export function useChat() {
   };
 
   const openChatAtMessage = async ({ chatId, messageId }: { chatId: string, messageId: string }): Promise<Chat | null> => {
-    const chat = await openChat(chatId);
+    const chat = await openChat({ id: chatId });
     if (!chat) return null;
 
     const mutableChat = getLiveChat(chat);
@@ -755,7 +755,7 @@ export function useChat() {
     return chat;
   };
 
-  const openChatGroup = (id: string | null) => {
+  const openChatGroup = ({ id }: { id: string | null }) => {
     if (id === null) {
       _currentChatGroup.value = null; return;
     }
@@ -832,7 +832,7 @@ export function useChat() {
           return curr;
         });
         await loadData();
-        await openChat(chatData.id);
+        await openChat({ id: chatData.id });
       },
       onClose: async (reason) => {
         switch (reason) {
@@ -873,7 +873,7 @@ export function useChat() {
     await loadData();
   };
 
-  const renameChat = async (id: string, newTitle: string) => {
+  const renameChat = async ({ id, newTitle }: { id: string, newTitle: string }) => {
     const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
     if (liveChat) {
       liveChat.title = newTitle;
@@ -888,7 +888,7 @@ export function useChat() {
     await loadData();
   };
 
-  const updateChatModel = async (id: string, modelId: string) => {
+  const updateChatModel = async ({ id, modelId }: { id: string, modelId: string }) => {
     const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
     if (liveChat) {
       liveChat.modelId = modelId;
@@ -901,7 +901,7 @@ export function useChat() {
     });
   };
 
-  const updateChatGroupOverride = async (id: string, groupId: string | null) => {
+  const updateChatGroupOverride = async ({ id, groupId }: { id: string, groupId: string | null }) => {
     const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
     if (liveChat) {
       liveChat.groupId = groupId;
@@ -915,7 +915,7 @@ export function useChat() {
     await loadData();
   };
 
-  const updateChatSettings = async (id: string, updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>) => {
+  const updateChatSettings = async ({ id, updates }: { id: string, updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>> }) => {
     const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
     if (liveChat) {
       Object.assign(liveChat, updates);
@@ -1503,7 +1503,7 @@ export function useChat() {
             const { useToast } = await import('./useToast');
             const { addToast } = useToast();
             addToast({ message: `Generation failed in "${mutableChat.title || 'New Chat'}"`, actionLabel: 'View', onAction: async () => {
-              await openChat(mutableChat.id);
+              await openChat({ id: mutableChat.id });
             }, });
           } catch (toastErr) { /* ignore */ }
         }
@@ -1963,7 +1963,7 @@ export function useChat() {
         return curr;
       });
       await loadData();
-      await openChat(newChatObj.id);
+      await openChat({ id: newChatObj.id });
       return newChatObj.id;
     } finally { /* No explicit unregister here */ }
   };
@@ -2069,7 +2069,7 @@ export function useChat() {
       reasoning: { effort }
     };
 
-    await updateChatSettings(chatId, { lmParameters });
+    await updateChatSettings({ id: chatId, updates: { lmParameters } });
   };
 
   const commitFullHistoryManipulation = async ({ chatId, messages, systemPrompt }: { chatId: string, messages: HistoryItem[], systemPrompt: SystemPrompt | undefined }) => {
@@ -2182,7 +2182,7 @@ export function useChat() {
     });
   };
 
-  const createChatGroup = async (name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>) => {
+  const createChatGroup = async ({ name, options }: { name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>> }) => {
     const id = generateId();
     const newGroup: ChatGroup = {
       id,
@@ -2200,7 +2200,7 @@ export function useChat() {
     return id;
   };
 
-  const deleteChatGroup = async (id: string) => {
+  const deleteChatGroup = async ({ id }: { id: string }) => {
     const group = chatGroups.value.find(g => g.id === id);
     if (!group) return;
     const items = [...group.items];
@@ -2248,7 +2248,7 @@ export function useChat() {
     });
   };
 
-  const duplicateChatGroup = async (groupId: string) => {
+  const duplicateChatGroup = async ({ groupId }: { groupId: string }) => {
     const originalGroup = chatGroups.value.find(g => g.id === groupId);
     if (!originalGroup) return;
 
@@ -2278,7 +2278,7 @@ export function useChat() {
     return newId;
   };
 
-  const renameChatGroup = async (groupId: string, newName: string) => {
+  const renameChatGroup = async ({ groupId, newName }: { groupId: string, newName: string }) => {
     if (_currentChatGroup.value?.id === groupId) {
       _currentChatGroup.value.name = newName; _currentChatGroup.value.updatedAt = Date.now();
     }
@@ -2289,7 +2289,7 @@ export function useChat() {
     await loadData();
   };
 
-  const updateChatGroupMetadata = async (id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>) => {
+  const updateChatGroupMetadata = async ({ id, updates }: { id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>> }) => {
     if (_currentChatGroup.value?.id === id) {
       Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now();
     }
@@ -2375,7 +2375,7 @@ export function useChat() {
     await loadData();
   };
 
-  const moveChatToGroup = async (chatId: string, targetGroupId: string | null) => {
+  const moveChatToGroup = async ({ chatId, targetGroupId }: { chatId: string, targetGroupId: string | null }) => {
     await storageService.updateHierarchy((curr) => {
       const node: HierarchyNode = { type: 'chat', id: chatId };
       curr.items = curr.items.filter(i => {

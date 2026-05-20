@@ -228,12 +228,12 @@ function clearTargetMessageQuery() {
 
 async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
   if (!currentChat.value) return;
-  await chatStore.moveChatToGroup(currentChat.value.id, groupId);
+  await chatStore.moveChatToGroup({ chatId: currentChat.value.id, targetGroupId: groupId });
 }
 
 async function handleSaveTitle({ title }: { title: string }) {
   if (!currentChat.value) return;
-  await renameChat(currentChat.value.id, title);
+  await renameChat({ id: currentChat.value.id, newTitle: title });
 }
 
 async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
@@ -606,14 +606,14 @@ async function updateActiveTitleModel({ modelId }: { modelId: string | undefined
   switch (source) {
   case 'chat':
     if (!currentChat.value) return;
-    await updateChatSettings(currentChat.value.id, { titleModelId: modelId });
+    await updateChatSettings({ id: currentChat.value.id, updates: { titleModelId: modelId } });
     return;
   case 'chat_group':
     if (!currentChat.value?.groupId) {
       await saveSettings({ titleModelId: modelId });
       return;
     }
-    await updateChatGroupMetadata(currentChat.value.groupId, { titleModelId: modelId });
+    await updateChatGroupMetadata({ id: currentChat.value.groupId, updates: { titleModelId: modelId } });
     return;
   case 'global':
     await saveSettings({ titleModelId: modelId });

@@ -31,7 +31,7 @@ const mockSettings = reactive({
   providerProfiles: [],
 });
 
-const mockUpdateChatGroupMetadata = vi.fn().mockImplementation((id, updates) => {
+const mockUpdateChatGroupMetadata = vi.fn().mockImplementation(({ id, updates }) => {
   if (mockGroup.id === id) {
     Object.assign(mockGroup, updates);
   }
@@ -181,9 +181,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await select.setValue('ollama');
     await select.trigger('change');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
       endpoint: expect.objectContaining({ type: 'ollama' })
-    }));
+    }) });
 
     await nextTick();
     // Now local endpoint is set, so URL input should exist
@@ -228,17 +228,17 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
     await appendBtn?.trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
       systemPrompt: expect.objectContaining({ behavior: 'append' })
-    }));
+    }) });
 
     // Click Override
     const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
     await overrideBtn?.trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
       systemPrompt: expect.objectContaining({ behavior: 'override' })
-    }));
+    }) });
   });
 
   it('clears system prompt override when clicking Inherit button', async () => {
@@ -256,9 +256,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await inheritBtn?.trigger('click');
     await nextTick();
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
       systemPrompt: undefined
-    }));
+    }) });
 
     // Verify UI state
     expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(false);
@@ -295,9 +295,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await textarea.setValue('Custom prompt');
     await textarea.trigger('blur');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
       systemPrompt: expect.objectContaining({ content: 'Custom prompt' })
-    }));
+    }) });
   });
 
   it('restores defaults when the button is clicked', async () => {
@@ -307,10 +307,10 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await wrapper.find('[data-testid="group-setting-restore-defaults"]').trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
       modelId: undefined,
       systemPrompt: undefined
-    }));
+    }) });
   });
 
   it('passes a naturally sorted list of models to ModelSelector', async () => {
@@ -346,9 +346,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await urlInput.setValue('http://localhost:11434');
     await flushPromises();
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
       modelId: undefined
-    }));
+    }) });
   });
 
   it('sets active focus area to chat-group-settings on click or focus', async () => {
@@ -382,9 +382,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     await setNameBtn.trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith('g1', expect.objectContaining({
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
       name: 'my-model:latest'
-    }));
+    }) });
   });
 
   describe('Folders (chat group mounts)', () => {

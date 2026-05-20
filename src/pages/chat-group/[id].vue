@@ -15,7 +15,7 @@ async function syncGroup() {
   const params = route.params as unknown as RouteParams;
   const id = params.id;
   if (id) {
-    chatStore.openChatGroup(id);
+    chatStore.openChatGroup({ id });
   }
 }
 

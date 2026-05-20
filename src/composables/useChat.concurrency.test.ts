@@ -273,7 +273,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // Manual rename happens while streaming
-    await renameChat(chatAId, 'Manual New Title');
+    await renameChat({ id: chatAId, newTitle: 'Manual New Title' });
 
     resolveA!();
     await sendPromise;
@@ -377,7 +377,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     expect(currentChat.value?.id).not.toBe(chatAId);
 
     // 3. Rename A in background (simulating sidebar edit)
-    await renameChat(chatAId, 'New Title');
+    await renameChat({ id: chatAId, newTitle: 'New Title' });
 
     // 4. Finish A
     resolveA!();
@@ -417,7 +417,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await vi.waitUntil(() => mockLlmChat.mock.calls.length >= 2); // Wait for title gen to start
 
     // 3. User manually renames while title gen is "calculating"
-    await renameChat(chatAId, 'User Manual Title');
+    await renameChat({ id: chatAId, newTitle: 'User Manual Title' });
     expect(chatA.title).toBe('User Manual Title');
 
     // 4. Let auto-title finish

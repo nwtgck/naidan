@@ -122,7 +122,7 @@ describe('Sidebar Keyboard Navigation', () => {
     // Switch back to sidebar
     mockActiveFocusArea.value = 'sidebar';
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    expect(mockOpenChat).toHaveBeenCalledWith('2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: '2' });
   });
 
   it('sets focus area to sidebar when focused or clicked', async () => {
@@ -147,7 +147,7 @@ describe('Sidebar Keyboard Navigation', () => {
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
 
-    expect(mockOpenChat).toHaveBeenCalledWith('1');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: '1' });
   });
 
   it('selects a chat group when navigating to it', async () => {
@@ -161,7 +161,7 @@ describe('Sidebar Keyboard Navigation', () => {
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
   });
 
   it('expands a collapsed group on ArrowRight', async () => {
@@ -207,7 +207,7 @@ describe('Sidebar Keyboard Navigation', () => {
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
   });
 
   it('correctly navigates down through multiple groups and chats', async () => {
@@ -224,12 +224,12 @@ describe('Sidebar Keyboard Navigation', () => {
     await nextTick();
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g2');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g2' });
 
     mockCurrentChatGroup.value = { id: 'g2' };
     await nextTick();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    expect(mockOpenChat).toHaveBeenCalledWith('c1');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c1' });
   });
 
   it('recovers navigation when current item is hidden (e.g. parent collapsed)', async () => {
@@ -247,7 +247,7 @@ describe('Sidebar Keyboard Navigation', () => {
     await nextTick();
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g2');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g2' });
   });
 
   it('handles rapid navigation correctly despite store update lags', async () => {
@@ -269,19 +269,19 @@ describe('Sidebar Keyboard Navigation', () => {
     await nextTick();
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g2');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g2' });
 
     mockCurrentChatGroup.value = { id: 'g2' };
     await nextTick();
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
-    expect(mockOpenChat).toHaveBeenCalledWith('c2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c2' });
 
     mockCurrentChatGroup.value = null;
     await nextTick();
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
 
-    expect(mockOpenChat).toHaveBeenCalledWith('c3');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c3' });
     expect(mockOpenChatGroup).toHaveBeenCalledTimes(1);
   });
 

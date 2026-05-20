@@ -208,8 +208,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
-    await tabA.renameChat(chat!.id, 'New Title');
+    await tabB.openChat({ id: chat!.id });
+    await tabA.renameChat({ id: chat!.id, newTitle: 'New Title' });
     vi.advanceTimersByTime(600);
     await nextTick();
     expect(tabB.currentChat.value?.title).toBe('New Title');
@@ -223,8 +223,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
     expect(tabB.rootItems.value.length).toBe(1);
 
-    const groupId = await tabA.createChatGroup('Group');
-    await tabA.moveChatToGroup(chat!.id, groupId);
+    const groupId = await tabA.createChatGroup({ name: 'Group' });
+    await tabA.moveChatToGroup({ chatId: chat!.id, targetGroupId: groupId });
     vi.advanceTimersByTime(600);
     await nextTick();
 
@@ -241,7 +241,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
 
     const p = tabA.sendMessage({ content: 'Hello' });
     await vi.advanceTimersByTimeAsync(1000);
@@ -269,7 +269,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
     expect(tabB.currentChat.value).not.toBeNull();
 
     const { storageService } = await import('../services/storage');
@@ -287,7 +287,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
 
     // 1. Tab A starts sending a message
     const sendPromise = tabA.sendMessage({ content: 'Slow msg' });

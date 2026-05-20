@@ -89,7 +89,7 @@ const hasUnsavedConnectionChanges = computed(() => {
 async function handleImportRecipes(recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[]) {
   try {
     for (const item of recipes) {
-      await chatStore.createChatGroup(item.newName, {
+      await chatStore.createChatGroup({ name: item.newName, options: {
         modelId: item.matchedModelId,
         systemPrompt: item.recipe.systemPrompt,
         lmParameters: item.recipe.lmParameters ? {
@@ -97,7 +97,7 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
           ...item.recipe.lmParameters,
           reasoning: { effort: item.recipe.lmParameters.reasoning?.effort }
         } : EMPTY_LM_PARAMETERS,
-      });
+      } });
     }
 
     addToast({
