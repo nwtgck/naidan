@@ -23,7 +23,7 @@ function flattenSidebarForSearch({ sidebarItems }: {
   const chatGroups: SearchChatGroup[] = []
   const chats: SearchChatSource[] = []
 
-  const flattenItems = (items: SidebarItem[]) => {
+  const flattenItems = ({ items }: { items: SidebarItem[] }) => {
     for (const item of items) {
       switch (item.type) {
       case 'chat_group':
@@ -72,7 +72,7 @@ function flattenSidebarForSearch({ sidebarItems }: {
     }
   }
 
-  flattenItems(sidebarItems)
+  flattenItems({ items: sidebarItems })
 
   return { chatGroups, chats }
 }
