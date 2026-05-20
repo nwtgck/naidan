@@ -139,7 +139,7 @@ function isLocalhost(url: string | undefined) {
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
-async function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   localSettings.value.endpointType = preset.type;
   localSettings.value.endpointUrl = preset.url;
   error.value = null;
@@ -166,7 +166,7 @@ async function addHeader() {
   localSettings.value.endpointHttpHeaders.push(['', '']);
 }
 
-async function removeHeader(index: number) {
+async function removeHeader({ index }: { index: number }) {
   if (localSettings.value.endpointHttpHeaders) {
     localSettings.value.endpointHttpHeaders.splice(index, 1);
     await saveChanges();
@@ -216,7 +216,7 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inherit', isClear = false) {
+async function updateSystemPromptBehavior({ behavior, isClear = false }: { behavior: 'override' | 'append' | 'inherit'; isClear?: boolean }) {
   switch (behavior) {
   case 'inherit':
     localSettings.value.systemPrompt = undefined;
@@ -240,7 +240,7 @@ async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inh
   await saveChanges();
 }
 
-async function updateSystemPromptContent(content: string) {
+async function updateSystemPromptContent({ content }: { content: string }) {
   if (localSettings.value.systemPrompt) {
     localSettings.value.systemPrompt.content = content;
   } else {
@@ -327,7 +327,7 @@ defineExpose({
                   <button
                     v-for="preset in ENDPOINT_PRESETS"
                     :key="preset.name"
-                    @click="applyPreset(preset)"
+                    @click="applyPreset({ preset })"
                     type="button"
                     class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
                     :class="localSettings.endpointUrl === preset.url && localSettings.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
@@ -410,7 +410,7 @@ defineExpose({
                     placeholder="Value"
                   />
                   <button
-                    @click="removeHeader(index)"
+                    @click="removeHeader({ index })"
                     class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                   >
                     <Trash2Icon class="w-3.5 h-3.5" />
@@ -553,28 +553,28 @@ defineExpose({
 
                   <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                     <button
-                      @click="updateSystemPromptBehavior('inherit')"
+                      @click="updateSystemPromptBehavior({ behavior: 'inherit' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Inherit
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior('override', true)"
+                      @click="updateSystemPromptBehavior({ behavior: 'override', isClear: true })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Clear
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior('override')"
+                      @click="updateSystemPromptBehavior({ behavior: 'override' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Override
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior('append')"
+                      @click="updateSystemPromptBehavior({ behavior: 'append' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
@@ -595,7 +595,7 @@ defineExpose({
                 <textarea
                   v-else
                   :value="localSettings.systemPrompt?.content || ''"
-                  @input="e => updateSystemPromptContent((e.target as HTMLTextAreaElement).value)"
+                  @input="e => updateSystemPromptContent({ content: (e.target as HTMLTextAreaElement).value })"
                   @blur="saveChanges"
                   rows="4"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
