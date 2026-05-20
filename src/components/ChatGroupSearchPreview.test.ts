@@ -100,7 +100,7 @@ describe('ChatGroupSearchPreview Component', () => {
     const openButton = wrapper.find('button[title="Open Chat"]');
     await openButton.trigger('click');
 
-    expect(mockOpenChat).toHaveBeenCalledWith('c2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c2' });
     expect(mockPush).toHaveBeenCalledWith('/chat/c2');
     expect(mockCloseSearch).toHaveBeenCalled();
   });

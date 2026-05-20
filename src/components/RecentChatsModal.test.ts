@@ -132,7 +132,7 @@ describe('RecentChatsModal Component', () => {
 
     await input.trigger('keydown', { key: 'Enter' });
 
-    expect(mockOpenChat).toHaveBeenCalledWith('c1');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c1' });
     expect(mockPush).toHaveBeenCalledWith('/chat/c1');
     expect(mockCloseRecent).toHaveBeenCalled();
   });
@@ -145,7 +145,7 @@ describe('RecentChatsModal Component', () => {
 
     await secondItem.trigger('click');
 
-    expect(mockOpenChat).toHaveBeenCalledWith('c2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c2' });
     expect(mockPush).toHaveBeenCalledWith('/chat/c2');
     expect(mockCloseRecent).toHaveBeenCalled();
   });

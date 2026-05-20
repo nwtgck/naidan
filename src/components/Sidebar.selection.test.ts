@@ -24,11 +24,11 @@ vi.mock('../composables/useChat', () => ({
       mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
       return items;
     }),
-    openChatGroup: vi.fn((id) => {
+    openChatGroup: vi.fn(({ id }) => {
       if (id === null) mockCurrentChatGroup.value = null;
       else mockCurrentChatGroup.value = mockChatGroups.value.find(g => g.id === id);
     }),
-    openChat: vi.fn((id) => {
+    openChat: vi.fn(({ id }) => {
       mockCurrentChatGroup.value = null;
       mockCurrentChat.value = mockChats.value.find(c => c.id === id);
     }),
