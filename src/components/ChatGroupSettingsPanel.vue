@@ -99,13 +99,13 @@ async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string
   }
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
-  openFileExplorer({
+  openFileExplorer({ options: {
     kind: 'wesh-mounts',
     title: 'Folders',
     rootName: 'Files',
     mounts: workerMounts,
     initialPath,
-  });
+  } });
 }
 
 function handleCreateRecipe() {

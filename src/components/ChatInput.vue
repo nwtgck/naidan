@@ -566,13 +566,13 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
 
-  openFileExplorer({
+  openFileExplorer({ options: {
     kind: 'wesh-mounts',
     title: 'Files',
     rootName: 'Files',
     mounts: workerMounts,
     initialPath,
-  });
+  } });
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: string }) {
