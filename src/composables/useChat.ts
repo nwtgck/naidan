@@ -462,7 +462,7 @@ export function useChat() {
     return live;
   };
 
-  const loadData = async () => {
+  const loadData = async (_params: Record<string, never>) => {
     rootItems.value = await storageService.getSidebarStructure();
   };
 
@@ -679,7 +679,7 @@ export function useChat() {
       const { setCurrentChatId } = useChatTools();
       setCurrentChatId({ chatId: chatId });
       _currentChat.value = chatObj;
-      await loadData();
+      await loadData({});
       return chatObj;
     } finally {
       creatingChat.value = false;
@@ -792,7 +792,7 @@ export function useChat() {
     });
 
     if (_currentChat.value && toRaw(_currentChat.value).id === id) _currentChat.value = null;
-    await loadData();
+    await loadData({});
 
     const cleanup = async () => {
       if (activeGenerations.has(id)) {
@@ -830,7 +830,7 @@ export function useChat() {
           curr.items.push({ type: 'chat', id: chatData.id });
           return curr;
         });
-        await loadData();
+        await loadData({});
         await openChat({ id: chatData.id });
       },
       onClose: async (reason) => {
@@ -869,7 +869,7 @@ export function useChat() {
       curr.items = []; return curr;
     });
     _currentChat.value = null;
-    await loadData();
+    await loadData({});
   };
 
   const renameChat = async ({ id, newTitle }: { id: string, newTitle: string }) => {
@@ -884,7 +884,7 @@ export function useChat() {
       if (!curr) throw new Error('Chat not found');
       return { ...curr, title: newTitle, updatedAt: Date.now() };
     } });
-    await loadData();
+    await loadData({});
   };
 
   const updateChatModel = async ({ id, modelId }: { id: string, modelId: string }) => {
@@ -911,7 +911,7 @@ export function useChat() {
       if (!curr) throw new Error('Chat not found');
       return { ...curr, groupId, updatedAt: Date.now() };
     } });
-    await loadData();
+    await loadData({});
   };
 
   const updateChatSettings = async ({ id, updates }: { id: string, updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>> }) => {
@@ -1516,7 +1516,7 @@ export function useChat() {
         updateChatMeta({ id: mutableChat.id, updater: (curr) => {
           if (!curr) return mutableChat;
           return { ...curr, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
-        } }).then(() => loadData()).catch(() => {});
+        } }).then(() => loadData({})).catch(() => {});
 
         // Request storage persistence after the first assistant response
         const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
@@ -1831,7 +1831,7 @@ export function useChat() {
             if (!curr) return mutableChat;
             return { ...curr, title: finalTitle, updatedAt: Date.now() };
           } });
-          await loadData();
+          await loadData({});
           if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
         }
         return finalTitle;
@@ -1961,7 +1961,7 @@ export function useChat() {
         curr.items.splice(insertIdx, 0, node);
         return curr;
       });
-      await loadData();
+      await loadData({});
       await openChat({ id: newChatObj.id });
       return newChatObj.id;
     } finally { /* No explicit unregister here */ }
@@ -2195,7 +2195,7 @@ export function useChat() {
     await storageService.updateHierarchy((curr) => {
       curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr;
     });
-    await loadData();
+    await loadData({});
     return id;
   };
 
@@ -2223,7 +2223,7 @@ export function useChat() {
       });
       return curr;
     });
-    await loadData();
+    await loadData({});
   };
 
   const setChatGroupCollapsed = async ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) => {
@@ -2273,7 +2273,7 @@ export function useChat() {
       }
       return curr;
     });
-    await loadData();
+    await loadData({});
     return newId;
   };
 
@@ -2285,7 +2285,7 @@ export function useChat() {
       if (!chatGroup) throw new Error('Chat group not found');
       chatGroup.name = newName; chatGroup.updatedAt = Date.now(); return chatGroup;
     });
-    await loadData();
+    await loadData({});
   };
 
   const updateChatGroupMetadata = async ({ id, updates }: { id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>> }) => {
@@ -2296,7 +2296,7 @@ export function useChat() {
       if (!curr) throw new Error('Chat group not found');
       return { ...curr, ...updates, updatedAt: Date.now() };
     });
-    await loadData();
+    await loadData({});
   };
 
   const persistSidebarStructure = async ({ topLevelItems }: { topLevelItems: SidebarItem[] }) => {
@@ -2371,7 +2371,7 @@ export function useChat() {
       return curr;
     });
 
-    await loadData();
+    await loadData({});
   };
 
   const moveChatToGroup = async ({ chatId, targetGroupId }: { chatId: string, targetGroupId: string | null }) => {
@@ -2408,7 +2408,7 @@ export function useChat() {
     if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
       _currentChat.value.groupId = targetGroupId; triggerRef(_currentChat);
     }
-    await loadData();
+    await loadData({});
   };
 
   const __testOnlySetCurrentChat = ({ chat }: { chat: Chat | null }) => {

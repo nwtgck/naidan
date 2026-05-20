@@ -199,7 +199,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
 
   it('Reliability: sidebar should update eventually even during continuous event stream (Starvation Test)', async () => {
     const chatStore = useChat();
-    await chatStore.loadChats();
+    await chatStore.loadChats({});
     expect(chatStore.rootItems.value).toHaveLength(0);
 
     mocks.mockRootItems.push({ id: 'chat:ext', type: 'chat', chat: { id: 'ext', title: 'External', updatedAt: Date.now(), groupId: null } });
