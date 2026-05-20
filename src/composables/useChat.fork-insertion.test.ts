@@ -86,7 +86,7 @@ describe('useChat Fork Insertion Logic', () => {
       return chat.rootItems.value;
     });
 
-    await chat.forkChat('m1');
+    await chat.forkChat({ messageId: 'm1' });
 
     // Expected: Chat Group, Fork, Chat A
     expect(chat.rootItems.value[0]?.type).toBe('chat_group');
@@ -140,7 +140,7 @@ describe('useChat Fork Insertion Logic', () => {
       return chat.rootItems.value;
     });
 
-    await chat.forkChat('m1');
+    await chat.forkChat({ messageId: 'm1' });
 
     // Expected: Chat Group with [Fork, Chat A]
     const groupItem = chat.rootItems.value[0];

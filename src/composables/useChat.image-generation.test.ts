@@ -179,7 +179,7 @@ describe('useChat Image Generation', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // Fork from assistant message 'a1'
-    const forkedChatId = await chatStore.forkChat('a1', 'chat-fork');
+    const forkedChatId = await chatStore.forkChat({ messageId: 'a1', chatId: 'chat-fork' });
 
     expect(forkedChatId).toBeDefined();
     const forkedChat = chatStore.getLiveChat({ id: forkedChatId! } as any) as any;
@@ -188,7 +188,7 @@ describe('useChat Image Generation', () => {
 
     // Regerenerating on the forked chat should trigger image generation again
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
-    await chatStore.regenerateMessage('a1');
+    await chatStore.regenerateMessage({ failedMessageId: 'a1' });
 
     expect(updateSpy).toHaveBeenCalled();
   });
@@ -223,7 +223,7 @@ describe('useChat Image Generation', () => {
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
 
     // Directly call regenerateMessage to trigger background generation
-    await chatStore.regenerateMessage('a1');
+    await chatStore.regenerateMessage({ failedMessageId: 'a1' });
 
     // It should trigger updateChatContent at least once (for pending)
     await vi.waitFor(() => {

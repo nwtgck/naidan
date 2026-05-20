@@ -143,7 +143,7 @@ describe('ChatArea Fork Functionality', () => {
     const forkBtn = wrapper.find('[data-testid="fork-chat-button"]');
     await forkBtn.trigger('click');
 
-    expect(mockForkChat).toHaveBeenCalledWith('msg-2');
+    expect(mockForkChat).toHaveBeenCalledWith({ messageId: 'msg-2' });
   });
 
   it('should change jump-to-origin button icon to ArrowUp', async () => {

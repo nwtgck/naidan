@@ -426,7 +426,7 @@ async function onDragEnd() {
     dragHoverTimeout = null;
   }
   // Sync the UI structure to storage
-  await chatStore.persistSidebarStructure(sidebarItemsLocal.value);
+  await chatStore.persistSidebarStructure({ topLevelItems: sidebarItemsLocal.value });
 
   // Wait for DOM and Sortable cleanup
   await nextTick();
@@ -562,7 +562,7 @@ watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId,
 
 async function handleDeleteChat(id: string) {
   const isCurrent = currentChat.value?.id === id;
-  await chatStore.deleteChat(id);
+  await chatStore.deleteChat({ id });
   if (isCurrent) router.push('/');
 }
 

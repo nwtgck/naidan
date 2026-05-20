@@ -59,7 +59,7 @@ describe('useChat fork title fix', () => {
 
     __testOnlySetCurrentChat(reactive(untitledChat) as any);
 
-    const newId = await forkChat('m1');
+    const newId = await forkChat({ messageId: 'm1' });
 
     expect(newId).toBeDefined();
 
@@ -86,7 +86,7 @@ describe('useChat fork title fix', () => {
 
     __testOnlySetCurrentChat(reactive(titledChat) as any);
 
-    const newId = await forkChat('m1');
+    const newId = await forkChat({ messageId: 'm1' });
 
     const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call: any[]) => call[0] === newId);
     const metaUpdater = updaterCall![1];

@@ -106,7 +106,7 @@ describe('useChat Interruption', () => {
       params.onChunk('Second Response');
     });
 
-    await regenerateMessage(firstAssistantMsgId);
+    await regenerateMessage({ failedMessageId: firstAssistantMsgId });
 
     // Expect first generation to be aborted
     expect(firstGenAborted).toBe(true);
@@ -158,7 +158,7 @@ describe('useChat Interruption', () => {
       params.onChunk('Edited Response');
     });
 
-    await editMessage(userMsg.id, 'Hello Again');
+    await editMessage({ messageId: userMsg.id, newContent: 'Hello Again' });
 
     // Expect first generation to be aborted
     expect(firstGenAborted).toBe(true);

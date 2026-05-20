@@ -766,7 +766,7 @@ export function useChat() {
     }
   };
 
-  const deleteChat = async (id: string, injectAddToast?: (toast: AddToastOptions) => string) => {
+  const deleteChat = async ({ id, injectAddToast }: { id: string, injectAddToast?: (toast: AddToastOptions) => string }) => {
     const { useToast } = await import('./useToast');
     const { addToast: originalAddToast } = useToast();
     const addToast = injectAddToast || originalAddToast;
@@ -1687,7 +1687,7 @@ export function useChat() {
     }
   };
 
-  const regenerateMessage = async (failedMessageId: string) => {
+  const regenerateMessage = async ({ failedMessageId }: { failedMessageId: string }) => {
     if (!_currentChat.value) return;
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing({ chatId })) {
@@ -1868,7 +1868,7 @@ export function useChat() {
     }
   };
 
-  const forkChat = async (messageId: string, chatId?: string): Promise<string | null> => {
+  const forkChat = async ({ messageId, chatId }: { messageId: string, chatId?: string }): Promise<string | null> => {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return null;
     const mutableChat = getLiveChat(target);
@@ -1968,7 +1968,7 @@ export function useChat() {
     } finally { /* No explicit unregister here */ }
   };
 
-  const editMessage = async (messageId: string, newContent: string, lmParameters?: LmParameters) => {
+  const editMessage = async ({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) => {
     if (!_currentChat.value) return;
     const chatId = toRaw(_currentChat.value).id;
     if (isProcessing({ chatId })) {
@@ -2205,7 +2205,7 @@ export function useChat() {
     if (!group) return;
     const items = [...group.items];
     for (const item of items) {
-      await deleteChat(item.chat.id, () => '');
+      await deleteChat({ id: item.chat.id, injectAddToast: () => '' });
     }
     if (_currentChatGroup.value?.id === id) _currentChatGroup.value = null;
     await storageService.deleteChatGroup(id);
@@ -2300,7 +2300,7 @@ export function useChat() {
     await loadData();
   };
 
-  const persistSidebarStructure = async (topLevelItems: SidebarItem[]) => {
+  const persistSidebarStructure = async ({ topLevelItems }: { topLevelItems: SidebarItem[] }) => {
     rootItems.value = topLevelItems;
     syncLiveInstancesWithSidebar();
     const newHierarchy: Hierarchy = {

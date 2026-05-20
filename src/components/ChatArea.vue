@@ -688,11 +688,11 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
 }
 
 async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
-  await chatStore.editMessage(messageId, newContent, lmParameters);
+  await chatStore.editMessage({ messageId, newContent, lmParameters });
 }
 
 async function handleRegenerate(messageId: string) {
-  await chatStore.regenerateMessage(messageId);
+  await chatStore.regenerateMessage({ failedMessageId: messageId });
 }
 
 function handleSwitchVersion(messageId: string) {
@@ -700,7 +700,7 @@ function handleSwitchVersion(messageId: string) {
 }
 
 async function handleFork(messageId: string) {
-  const newId = await chatStore.forkChat(messageId);
+  const newId = await chatStore.forkChat({ messageId });
   if (newId) {
     router.push(`/chat/${newId}`);
   }

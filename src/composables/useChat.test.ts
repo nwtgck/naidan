@@ -235,7 +235,7 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.listChats).mockResolvedValue([]);
 
     // Fork at message 'm1'
-    const newId = await forkChat('m1');
+    const newId = await forkChat({ messageId: 'm1' });
 
     expect(newId).toBeDefined();
     expect(storageService.updateChatMeta).toHaveBeenCalledWith(newId, expect.any(Function));
@@ -261,7 +261,7 @@ describe('useChat Composable Logic', () => {
       createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null
     }) as any);
 
-    await forkChat('m1');
+    await forkChat({ messageId: 'm1' });
 
     // Expected: g1, fork_of_c1, c1
     expect(mockHierarchy.items).toHaveLength(3);
@@ -301,7 +301,7 @@ describe('useChat Composable Logic', () => {
     __testOnlySetCurrentChat(reactive(mockChat) as any);
     mockHierarchy.items = [{ type: 'chat', id: 'old-chat' }];
 
-    const newId = await forkChat('m1');
+    const newId = await forkChat({ messageId: 'm1' });
 
     const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => call[0] === newId);
     const contentUpdater = updaterCall?.[1];
@@ -341,7 +341,7 @@ describe('useChat Composable Logic', () => {
     }) as any);
 
     // Edit assistant message
-    await editMessage('m1', 'New Content');
+    await editMessage({ messageId: 'm1', newContent: 'New Content' });
 
     expect(currentChat.value?.root.items).toHaveLength(2);
     const newMsg = currentChat.value?.root.items[1];
@@ -373,7 +373,7 @@ describe('useChat Composable Logic', () => {
     const firstId = currentChat.value?.root.items[0]?.id;
 
     // 2. Rewrite the first message
-    await editMessage(firstId!, 'Second version');
+    await editMessage({ messageId: firstId!, newContent: 'Second version' });
     await vi.waitUntil(() => (currentChat.value?.root.items.length ?? 0) >= 2);
     triggerRef(currentChat);
 
@@ -408,7 +408,7 @@ describe('useChat Composable Logic', () => {
     expect(assistantMsg?.role).toBe('assistant');
 
     // 2. Manually edit the assistant's message
-    await editMessage(assistantMsg!.id, 'Manually corrected answer');
+    await editMessage({ messageId: assistantMsg!.id, newContent: 'Manually corrected answer' });
     await vi.waitUntil(() => (currentChat.value?.root.items[0]?.replies.items.length ?? 0) >= 2);
     triggerRef(currentChat);
 
@@ -446,7 +446,7 @@ describe('useChat Composable Logic', () => {
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
       params.onChunk('Second Response');
     });
-    await regenerateMessage(firstAssistantMsg!.id);
+    await regenerateMessage({ failedMessageId: firstAssistantMsg!.id });
     await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2);
     await vi.waitUntil(() => !chatStore.streaming.value); // Also wait for content to be fully there
     triggerRef(currentChat);
@@ -519,7 +519,7 @@ describe('useChat Composable Logic', () => {
       { id: 'chat_group:g1', type: 'chat_group' as const, chatGroup: { ...mockChatGroup, items: [] } },
     ];
 
-    await persistSidebarStructure(newItems);
+    await persistSidebarStructure({ topLevelItems: newItems });
 
     expect(mockHierarchy.items[0]?.id).toBe('c1');
   });
@@ -554,7 +554,7 @@ describe('useChat Composable Logic', () => {
       },
     ];
 
-    await persistSidebarStructure(newItems);
+    await persistSidebarStructure({ topLevelItems: newItems });
     const groupNode = mockHierarchy.items.find(i => i.id === 'g1') as HierarchyChatGroupNode;
     expect(groupNode.chat_ids).toContain('c1');
   });
@@ -591,7 +591,7 @@ describe('useChat Composable Logic', () => {
       },
     ];
 
-    await persistSidebarStructure(newItems);
+    await persistSidebarStructure({ topLevelItems: newItems });
     const groupNode = mockHierarchy.items[0] as HierarchyChatGroupNode;
     expect(groupNode.chat_ids[0]).toBe('c2');
     expect(groupNode.chat_ids[1]).toBe('c1');
@@ -616,7 +616,7 @@ describe('useChat Composable Logic', () => {
       { id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: null } },
     ];
 
-    await persistSidebarStructure(newItems);
+    await persistSidebarStructure({ topLevelItems: newItems });
     expect(mockHierarchy.items.find(i => i.type === 'chat' && i.id === 'c1')).toBeDefined();
   });
 
@@ -656,7 +656,7 @@ describe('useChat Composable Logic', () => {
       },
     ];
 
-    await persistSidebarStructure(newItems);
+    await persistSidebarStructure({ topLevelItems: newItems });
     const groupNode = mockHierarchy.items.find(i => i.id === 'g2') as HierarchyChatGroupNode;
     expect(groupNode.chat_ids).toContain('c1');
   });
@@ -691,7 +691,7 @@ describe('useChat Composable Logic', () => {
     mockLlmChat.mockClear();
 
     // 2. Regenerate the message
-    await regenerateMessage(assistantMsgId);
+    await regenerateMessage({ failedMessageId: assistantMsgId });
     await flushPromises();
 
     // 3. Verify that the second call ALSO used the same customParams
@@ -728,11 +728,11 @@ describe('useChat Composable Logic', () => {
       // but we can still test the logic by manually inserting a node
       const manualId = 'manual-u1';
       liveChat.root.items.push({ id: manualId, role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] }, thinking: undefined, modelId: undefined });
-      await editMessage(manualId, 'Updated Hello', newParams);
+      await editMessage({ messageId: manualId, newContent: 'Updated Hello', lmParameters: newParams });
     } else {
       mockLlmChat.mockClear();
       // 2. Edit the message with NEW lmParameters
-      await editMessage(userMsgId, 'Updated Hello', newParams);
+      await editMessage({ messageId: userMsgId, newContent: 'Updated Hello', lmParameters: newParams });
     }
 
     await flushPromises();
@@ -1347,8 +1347,7 @@ describe('useChat Composable Logic', () => {
       };
 
       // 3. Act: Delete C2 (the last item) with injection
-      const { deleteChat: delChat } = useChat();
-      await delChat(chat2Id, mockAdd);
+      await chatStore.deleteChat({ id: chat2Id, injectAddToast: mockAdd });
 
       // 4. Simulate Tab B removing it from hierarchy
       await storageService.updateHierarchy((curr) => {

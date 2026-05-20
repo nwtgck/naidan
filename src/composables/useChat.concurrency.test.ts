@@ -302,7 +302,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // Delete chat while it's still generating in background
-    await deleteChat(chatAId);
+    await deleteChat({ id: chatAId });
     expect(mockChatStorage.has(chatAId)).toBe(false);
 
     resolveA!();

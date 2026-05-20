@@ -134,7 +134,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     const userMsgId = chat.root.items[0].id;
 
     // 2. Edit the message while processing. This should now wait for isProcessing to become false.
-    await editMessage(userMsgId, 'Second version');
+    await editMessage({ messageId: userMsgId, newContent: 'Second version' });
 
     expect(chat.root.items).toHaveLength(2);
     expect(chat.root.items[1].content).toBe('Second version');
