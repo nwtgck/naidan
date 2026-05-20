@@ -230,7 +230,7 @@ watch(recipeJsonInput, () => {
 // Watch for modal open to reset form
 watch(() => props.isOpen, async (open) => {
   if (open) {
-    setActiveFocusArea('settings');
+    setActiveFocusArea({ area: 'settings' });
     form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
     initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
 
@@ -239,7 +239,7 @@ watch(() => props.isOpen, async (open) => {
       connectionTabRef.value.fetchModels();
     }
   } else {
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
   }
 });
 

@@ -993,7 +993,7 @@ onUnmounted(() => {
 
 function handleFocus() {
   isFocused.value = true;
-  setActiveFocusArea('chat');
+  setActiveFocusArea({ area: 'chat' });
   emit('update:visibility', 'active');
 }
 
@@ -1159,7 +1159,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @paste="handlePaste"
         @focus="handleFocus"
         @blur="handleBlur"
-        @click="setActiveFocusArea('chat')"
+        @click="setActiveFocusArea({ area: 'chat' })"
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
         @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat({ chatId: undefined }) : null"

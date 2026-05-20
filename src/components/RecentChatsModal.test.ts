@@ -169,10 +169,10 @@ describe('RecentChatsModal Component', () => {
 
     mockIsRecentOpen.value = true;
     await nextTick();
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('search');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'search' });
 
     mockIsRecentOpen.value = false;
     await nextTick();
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
   });
 });

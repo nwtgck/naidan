@@ -322,12 +322,12 @@ describe('GlobalSearchModal Component', () => {
 
     mockIsSearchOpen.value = true;
     await nextTick();
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('search');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'search' });
 
     mockIsSearchOpen.value = false;
     await nextTick();
     // Should restore to previous ('sidebar')
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('sidebar');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'sidebar' });
   });
 
   it('should switch between results and preview panes with ArrowRight/Left', async () => {

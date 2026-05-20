@@ -226,7 +226,7 @@ describe('Sidebar Focus Sync', () => {
     await vi.runAllTimersAsync();
     mockScrollIntoViewSafe.mockClear();
 
-    layout.setActiveFocusArea('chat');
+    layout.setActiveFocusArea({ area: 'chat' });
     await nextTick();
     await vi.runAllTimersAsync();
 

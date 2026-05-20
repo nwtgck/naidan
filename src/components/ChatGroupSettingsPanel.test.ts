@@ -355,11 +355,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
     await wrapper.trigger('click');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-group-settings');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-group-settings' });
 
     mockSetActiveFocusArea.mockClear();
     await wrapper.trigger('focusin');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-group-settings');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-group-settings' });
   });
 
   it('triggers global search when clicking search button', async () => {

@@ -434,7 +434,7 @@ const previousFocusArea = ref<import('../composables/useLayout').FocusArea | und
 watch(isSearchOpen, (isOpen) => {
   if (isOpen) {
     previousFocusArea.value = activeFocusArea.value;
-    setActiveFocusArea('search');
+    setActiveFocusArea({ area: 'search' });
     nextTick(() => {
       if (searchInput.value) {
         searchInput.value.focus();
@@ -447,10 +447,10 @@ watch(isSearchOpen, (isOpen) => {
   } else {
     stopSearch();
     if (previousFocusArea.value) {
-      setActiveFocusArea(previousFocusArea.value);
+      setActiveFocusArea({ area: previousFocusArea.value });
       previousFocusArea.value = undefined;
     } else {
-      setActiveFocusArea('chat');
+      setActiveFocusArea({ area: 'chat' });
     }
   }
 });

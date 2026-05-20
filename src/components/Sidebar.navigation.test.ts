@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
+import type { FocusArea } from '@/composables/useLayout';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -14,7 +15,7 @@ const mockOpenChatGroup = vi.fn();
 const mockSetChatGroupCollapsed = vi.fn();
 
 const mockActiveFocusArea = ref('chat');
-const mockSetActiveFocusArea = vi.fn((area) => {
+const mockSetActiveFocusArea = vi.fn(({ area }: { area: FocusArea }) => {
   mockActiveFocusArea.value = area;
 });
 
@@ -130,10 +131,10 @@ describe('Sidebar Keyboard Navigation', () => {
     const nav = wrapper.get('[data-testid="sidebar-nav"]');
 
     await nav.trigger('focus');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('sidebar');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'sidebar' });
 
     await nav.trigger('click');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('sidebar');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'sidebar' });
   });
 
   it('includes chat groups in navigation', async () => {

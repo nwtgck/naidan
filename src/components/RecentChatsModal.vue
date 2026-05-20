@@ -181,7 +181,7 @@ const previousFocusArea = ref<import('../composables/useLayout').FocusArea | und
 watch(isRecentOpen, (isOpen) => {
   if (isOpen) {
     previousFocusArea.value = activeFocusArea.value;
-    setActiveFocusArea('search');
+    setActiveFocusArea({ area: 'search' });
     selectedIndex.value = 0;
     activePane.value = 'results';
     filterQuery.value = '';
@@ -190,10 +190,10 @@ watch(isRecentOpen, (isOpen) => {
     });
   } else {
     if (previousFocusArea.value) {
-      setActiveFocusArea(previousFocusArea.value);
+      setActiveFocusArea({ area: previousFocusArea.value });
       previousFocusArea.value = undefined;
     } else {
-      setActiveFocusArea('chat');
+      setActiveFocusArea({ area: 'chat' });
     }
   }
 });

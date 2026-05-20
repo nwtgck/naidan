@@ -310,8 +310,8 @@ defineExpose({
     v-if="currentChatGroup"
     class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative overflow-hidden focus:outline-none"
     tabindex="-1"
-    @click="setActiveFocusArea('chat-group-settings')"
-    @focusin="setActiveFocusArea('chat-group-settings')"
+    @click="setActiveFocusArea({ area: 'chat-group-settings' })"
+    @focusin="setActiveFocusArea({ area: 'chat-group-settings' })"
   >
     <!-- Header -->
     <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">

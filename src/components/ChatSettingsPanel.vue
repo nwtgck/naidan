@@ -101,9 +101,9 @@ watch(() => currentChat.value?.lmParameters, (newParams) => {
 watch(() => props.show, (show) => {
   if (show) {
     syncLocalWithCurrent();
-    setActiveFocusArea('chat-settings');
+    setActiveFocusArea({ area: 'chat-settings' });
   } else {
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
     saveChanges();
   }
 });

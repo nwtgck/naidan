@@ -810,7 +810,7 @@ watch(
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
     @drop="handleDrop"
-    @click="setActiveFocusArea('chat')"
+    @click="setActiveFocusArea({ area: 'chat' })"
   >
     <!-- Drag Overlay -->
     <div

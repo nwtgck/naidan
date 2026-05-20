@@ -861,10 +861,10 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
 
       await wrapper.setProps({ show: true });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-settings');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-settings' });
 
       await wrapper.setProps({ show: false });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
 });

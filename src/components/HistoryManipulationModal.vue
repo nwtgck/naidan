@@ -43,7 +43,7 @@ function setFileInputRef(el: unknown, index: number) {
 
 watch(() => props.isOpen, async (open) => {
   if (open && currentChat.value) {
-    setActiveFocusArea('dialog');
+    setActiveFocusArea({ area: 'dialog' });
 
     // Clear old URLs
     Object.values(attachmentUrls.value).forEach(URL.revokeObjectURL);
@@ -91,7 +91,7 @@ watch(() => props.isOpen, async (open) => {
       }
     }
   } else {
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
   }
 });
 

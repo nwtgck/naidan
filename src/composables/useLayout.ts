@@ -17,7 +17,7 @@ export function useLayout() {
     isSidebarOpen.value = !isSidebarOpen.value;
   };
 
-  const setSidebarOpen = (open: boolean) => {
+  const setSidebarOpen = ({ open }: { open: boolean }) => {
     isSidebarOpen.value = open;
   };
 
@@ -25,7 +25,7 @@ export function useLayout() {
     isDebugOpen.value = !isDebugOpen.value;
   };
 
-  const setDebugOpen = (open: boolean) => {
+  const setDebugOpen = ({ open }: { open: boolean }) => {
     isDebugOpen.value = open;
   };
 
@@ -33,7 +33,7 @@ export function useLayout() {
     isWeshTerminalOpen.value = !isWeshTerminalOpen.value;
   };
 
-  const setWeshTerminalOpen = (open: boolean) => {
+  const setWeshTerminalOpen = ({ open }: { open: boolean }) => {
     isWeshTerminalOpen.value = open;
   };
 
@@ -41,11 +41,11 @@ export function useLayout() {
     isChatWeshTerminalOpen.value = !isChatWeshTerminalOpen.value;
   };
 
-  const setChatWeshTerminalOpen = (open: boolean) => {
+  const setChatWeshTerminalOpen = ({ open }: { open: boolean }) => {
     isChatWeshTerminalOpen.value = open;
   };
 
-  const setActiveFocusArea = (area: FocusArea) => {
+  const setActiveFocusArea = ({ area }: { area: FocusArea }) => {
     activeFocusArea.value = area;
     activeFocusAreaVersion.value += 1;
   };

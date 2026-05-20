@@ -1277,10 +1277,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
 
       await wrapper.setProps({ isOpen: true });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('settings');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'settings' });
 
       await wrapper.setProps({ isOpen: false });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
 });

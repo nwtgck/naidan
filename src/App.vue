@@ -153,7 +153,7 @@ watch(
     // This ignores URL parameters and just ensures the user has something to interact with.
     if (len === 0 && !q) {
       const { setActiveFocusArea } = useLayout();
-      setActiveFocusArea('chat');
+      setActiveFocusArea({ area: 'chat' });
       await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
       if (chatStore.currentChat.value) {
         router.push(`/chat/${chatStore.currentChat.value.id}`);
@@ -181,7 +181,7 @@ watch(
         : undefined;
 
       const { setActiveFocusArea } = useLayout();
-      setActiveFocusArea('chat');
+      setActiveFocusArea({ area: 'chat' });
       await chatStore.createNewChat({
         groupId: targetGroupId,
         modelId: targetModelId,
@@ -206,7 +206,7 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
     e.preventDefault();
     const { setActiveFocusArea } = useLayout();
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
     await chatStore.createNewChat({
       groupId: undefined,
       modelId: undefined,

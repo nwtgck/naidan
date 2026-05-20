@@ -7,6 +7,7 @@ import type { MessageNode, Chat } from '@/models/types';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
+import type { FocusArea } from '@/composables/useLayout';
 
 
 // Mock dependencies
@@ -23,7 +24,7 @@ const mockCurrentChat = ref<Chat | null>({
 const mockActiveMessages = ref<MessageNode[]>([]);
 
 const mockActiveFocusArea = ref('chat');
-const mockSetActiveFocusArea = vi.fn((area) => {
+const mockSetActiveFocusArea = vi.fn(({ area }: { area: FocusArea }) => {
   mockActiveFocusArea.value = area;
 });
 
@@ -130,7 +131,7 @@ describe('ChatArea Focus Specifications', () => {
 
     // Click the main container
     await wrapper.trigger('click');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
   });
 
   it('sets focus area to chat when the textarea is focused', async () => {
@@ -141,7 +142,7 @@ describe('ChatArea Focus Specifications', () => {
 
     const textarea = wrapper.find('[data-testid="chat-input"]');
     await textarea.trigger('focus');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
   });
 
   it('prevents automatic focus on textarea when focus area is sidebar', async () => {

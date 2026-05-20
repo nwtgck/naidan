@@ -532,7 +532,7 @@ async function handleDeleteChatGroup(group: ChatGroup) {
 }
 
 async function handleNewChat(groupId: string | undefined = undefined) {
-  setActiveFocusArea('chat');
+  setActiveFocusArea({ area: 'chat' });
   await chatStore.createNewChat({
     groupId,
     modelId: undefined,
@@ -880,8 +880,8 @@ defineExpose({
       :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
       tabindex="0"
-      @focus="setActiveFocusArea('sidebar')"
-      @click="setActiveFocusArea('sidebar')"
+      @focus="setActiveFocusArea({ area: 'sidebar' })"
+      @click="setActiveFocusArea({ area: 'sidebar' })"
     >
       <template v-if="isSidebarOpen">
         <Transition name="chat-group-new">

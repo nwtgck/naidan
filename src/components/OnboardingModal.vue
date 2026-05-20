@@ -64,9 +64,9 @@ const show = computed(() => initialized.value && !isOnboardingDismissed.value);
 
 watch(show, (val) => {
   if (val) {
-    setActiveFocusArea('onboarding');
+    setActiveFocusArea({ area: 'onboarding' });
   } else {
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
   }
 }, { immediate: true });
 

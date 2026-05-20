@@ -399,17 +399,17 @@ describe('OnboardingModal.vue', () => {
       mockIsOnboardingDismissed.value = true;
       mount(OnboardingModal);
       await flushPromises();
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
 
       mockSetActiveFocusArea.mockClear();
       mockIsOnboardingDismissed.value = false;
       await flushPromises();
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('onboarding');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'onboarding' });
 
       mockSetActiveFocusArea.mockClear();
       mockIsOnboardingDismissed.value = true;
       await flushPromises();
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
 
