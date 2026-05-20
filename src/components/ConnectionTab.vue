@@ -106,7 +106,7 @@ function copySetupUrl() {
   });
 }
 
-function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   form.value = {
     ...form.value,
     endpointType: preset.type,
@@ -242,7 +242,7 @@ function addHeader() {
   form.value.endpointHttpHeaders.push(['', '']);
 }
 
-function removeHeader(index: number) {
+function removeHeader({ index }: { index: number }) {
   if (form.value.endpointHttpHeaders) {
     form.value.endpointHttpHeaders.splice(index, 1);
   }
@@ -329,7 +329,7 @@ defineExpose({
                     <button
                       v-for="preset in ENDPOINT_PRESETS"
                       :key="preset.name"
-                      @click="applyPreset(preset)"
+                      @click="applyPreset({ preset })"
                       type="button"
                       class="px-3 py-1 text-[10px] font-bold rounded-lg border transition-all"
                       :class="form.endpointUrl === preset.url && form.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
@@ -411,7 +411,7 @@ defineExpose({
                       placeholder="Value"
                     />
                     <button
-                      @click="removeHeader(index)"
+                      @click="removeHeader({ index })"
                       class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                     >
                       <Trash2Icon class="w-4 h-4" />
