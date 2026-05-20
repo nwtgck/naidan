@@ -123,11 +123,11 @@ async function fetchModels() {
   try {
     const url = form.value.endpointUrl || '';
     // Trigger global fetch with current form values (may be unsaved)
-    const models = await fetchModelsGlobal({
+    const models = await fetchModelsGlobal({ overrides: {
       url,
       type: form.value.endpointType,
       headers: form.value.endpointHttpHeaders
-    });
+    } });
 
     if (models.length === 0 && form.value.endpointType !== 'transformers_js') {
       throw new Error('No models found at this endpoint.');

@@ -218,7 +218,7 @@ async function handleRefresh(e: Event) {
   if (hasRefreshListener) {
     emit('refresh');
   } else {
-    await internalFetch();
+    await internalFetch({});
   }
 }
 

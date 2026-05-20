@@ -46,7 +46,7 @@ transformersJsService.subscribeModelList(async () => {
   switch (type) {
   case 'transformers_js': {
     const { fetchModels } = useSettings();
-    await fetchModels();
+    await fetchModels({});
     break;
   }
   case 'openai':
@@ -166,7 +166,7 @@ export function useSettings() {
           _settings.value = s;
           if (s.endpointUrl || s.endpointType === 'transformers_js') {
             // Initial fetch of models if we have an endpoint
-            fetchModels();
+            fetchModels({});
           }
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
@@ -182,7 +182,7 @@ export function useSettings() {
     return initPromise;
   }
 
-  async function fetchModels(overrides?: { url: string; type: EndpointType; headers?: [string, string][] }): Promise<string[]> {
+  async function fetchModels({ overrides }: { overrides?: { url: string; type: EndpointType; headers?: [string, string][] } }): Promise<string[]> {
     const url = overrides?.url ?? _settings.value.endpointUrl;
     const type = overrides?.type ?? _settings.value.endpointType;
     const headers = overrides?.headers ?? _settings.value.endpointHttpHeaders;
@@ -250,7 +250,7 @@ export function useSettings() {
     const urlChanged = patch.endpointUrl !== undefined && patch.endpointUrl !== oldUrl;
     const typeChanged = patch.endpointType !== undefined && patch.endpointType !== oldType;
     if (urlChanged || typeChanged) {
-      await fetchModels();
+      await fetchModels({});
     }
   }
 
@@ -283,7 +283,7 @@ export function useSettings() {
     }));
 
     if (options.url !== oldUrl || options.type !== oldType) {
-      await fetchModels();
+      await fetchModels({});
     }
   }
 

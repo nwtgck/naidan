@@ -322,7 +322,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
       mockListModels.mockClear();
 
-      await fetchModels();
+      await fetchModels({});
 
       expect(mockListModels).toHaveBeenCalledWith({});
     });
@@ -339,11 +339,11 @@ describe('useSettings Initialization and Bootstrap', () => {
       await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
       mockListModels.mockClear();
 
-      await fetchModels({
+      await fetchModels({ overrides: {
         url: 'http://override-url',
         type: 'ollama',
         headers: [['X-Test', 'true']],
-      });
+      } });
 
       expect(mockListModels).toHaveBeenCalledWith({});
       expect(mockListModels).toHaveBeenCalledTimes(1);
