@@ -8,7 +8,7 @@ async function handleAction(id: string, onAction?: () => void | Promise<void>) {
   if (onAction) {
     await onAction();
   }
-  removeToast(id, 'action');
+  removeToast({ id, reason: 'action' });
 }
 
 
@@ -38,7 +38,7 @@ defineExpose({
         </button>
 
         <button
-          @click="removeToast(toast.id, 'dismiss')"
+          @click="removeToast({ id: toast.id, reason: 'dismiss' })"
           class="text-gray-500 hover:text-gray-300 transition-colors"
         >
           <XIcon class="w-4 h-4" />

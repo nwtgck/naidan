@@ -48,7 +48,7 @@ describe('ToastContainer', () => {
     const wrapper = mount(ToastContainer);
     const closeButton = wrapper.find('button:not(.text-indigo-400)');
     await closeButton.trigger('click');
-    expect(mockRemoveToast).toHaveBeenCalledWith('1', 'dismiss');
+    expect(mockRemoveToast).toHaveBeenCalledWith({ id: '1', reason: 'dismiss' });
   });
 
   it('calls handleAction and removeToast when action button is clicked', async () => {
@@ -61,7 +61,7 @@ describe('ToastContainer', () => {
     const actionButton = wrapper.find('button.text-indigo-400');
     await actionButton.trigger('click');
     expect(onAction).toHaveBeenCalled();
-    expect(mockRemoveToast).toHaveBeenCalledWith('1', 'action');
+    expect(mockRemoveToast).toHaveBeenCalledWith({ id: '1', reason: 'action' });
   });
 
   it('renders multiple toasts in order', () => {
