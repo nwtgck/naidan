@@ -21,7 +21,7 @@ const PREVIEW_KEY: InjectionKey<{
  *
  * Can be used either as a singleton or as a scoped instance via provide/inject.
  */
-export function useImagePreview(scoped = false) {
+export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}) {
   if (scoped) {
     const state = ref<PreviewState | null>(null);
     const api = {

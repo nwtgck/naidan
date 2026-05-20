@@ -57,7 +57,7 @@ import { storageService } from '@/services/storage';
 
 const chatStore = useChat();
 const { addToast } = useToast();
-const { state: previewState, closePreview } = useImagePreview(true);
+const { state: previewState, closePreview } = useImagePreview({ scoped: true });
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
   mediaShelfVisibility,
