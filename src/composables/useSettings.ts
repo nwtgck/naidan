@@ -292,7 +292,7 @@ export function useSettings() {
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), systemPrompt: prompt }));
   }
 
-  async function updateStorageType(type: StorageType) {
+  async function updateStorageType({ type }: { type: StorageType }) {
     if (_settings.value.storageType === type) return;
 
     _settings.value.storageType = type;
