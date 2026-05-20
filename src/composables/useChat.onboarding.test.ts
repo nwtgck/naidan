@@ -44,8 +44,8 @@ vi.mock('./useSettings', () => ({
     setOnboardingDraft: (val: any) => {
       mockOnboardingDraft.value = val;
     },
-    setIsOnboardingDismissed: (val: boolean) => {
-      mockIsOnboardingDismissed.value = val;
+    setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => {
+      mockIsOnboardingDismissed.value = dismissed;
     },
   }),
 }));

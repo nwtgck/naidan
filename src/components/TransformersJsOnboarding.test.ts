@@ -100,8 +100,8 @@ describe('Transformers.js Onboarding Integration', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       fetchModels: vi.fn(),
-      setIsOnboardingDismissed: (val: boolean) => {
-        mockIsOnboardingDismissed.value = val;
+      setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => {
+        mockIsOnboardingDismissed.value = dismissed;
       },
       setOnboardingDraft: (val: any) => {
         mockOnboardingDraft.value = val;

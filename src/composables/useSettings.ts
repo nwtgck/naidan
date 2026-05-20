@@ -300,7 +300,7 @@ export function useSettings() {
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), storageType: type }));
   }
 
-  function setIsOnboardingDismissed(dismissed: boolean) {
+  function setIsOnboardingDismissed({ dismissed }: { dismissed: boolean }) {
     _isOnboardingDismissed.value = dismissed;
   }
 

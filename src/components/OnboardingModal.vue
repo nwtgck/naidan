@@ -324,7 +324,7 @@ async function handleClose() {
     models: availableModels.value,
     selectedModel: selectedModel.value,
   });
-  setIsOnboardingDismissed(true);
+  setIsOnboardingDismissed({ dismissed: true });
 }
 
 async function handleFinish() {
@@ -362,7 +362,7 @@ async function handleFinish() {
     });
 
     setOnboardingDraft(null);
-    setIsOnboardingDismissed(true);
+    setIsOnboardingDismissed({ dismissed: true });
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save settings.';
   }
