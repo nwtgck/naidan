@@ -51,7 +51,7 @@ const saveFormats = [
 
 const seedInputRef = ref<HTMLInputElement | null>(null);
 
-function handleCountInput(event: Event) {
+function handleCountInput({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const val = parseInt(target.value);
   if (!isNaN(val) && val > 0) {
@@ -59,7 +59,7 @@ function handleCountInput(event: Event) {
   }
 }
 
-function handleStepsInput(event: Event) {
+function handleStepsInput({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const val = parseInt(target.value);
   if (!isNaN(val) && val > 0) {
@@ -69,7 +69,7 @@ function handleStepsInput(event: Event) {
   }
 }
 
-function handleSeedInput(event: Event) {
+function handleSeedInput({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const val = parseInt(target.value);
   if (!isNaN(val)) {
@@ -86,7 +86,7 @@ function handleSeedReEnable() {
   });
 }
 
-function handleWidthInput(event: Event) {
+function handleWidthInput({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const val = parseInt(target.value);
   if (!isNaN(val) && val > 0) {
@@ -94,7 +94,7 @@ function handleWidthInput(event: Event) {
   }
 }
 
-function handleHeightInput(event: Event) {
+function handleHeightInput({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const val = parseInt(target.value);
   if (!isNaN(val) && val > 0) {
@@ -102,7 +102,7 @@ function handleHeightInput(event: Event) {
   }
 }
 
-function handleModelUpdate(modelId: string) {
+function handleModelUpdate({ modelId }: { modelId: string }) {
   emit('update:model', modelId);
 }
 
@@ -138,7 +138,7 @@ defineExpose({
       <div class="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Image Model</div>
       <ModelSelector
         :model-value="selectedImageModel"
-        @update:model-value="val => val && handleModelUpdate(val)"
+        @update:model-value="val => val && handleModelUpdate({ modelId: val })"
         :models="availableImageModels"
         placeholder="Select image model"
         class="w-full"
@@ -168,7 +168,7 @@ defineExpose({
             type="number"
             min="1"
             :value="selectedWidth"
-            @input="handleWidthInput"
+            @input="handleWidthInput({ event: $event })"
             class="flex-1 min-w-0 px-1 py-1 text-[10px] font-mono text-center border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             placeholder="Width"
           />
@@ -183,7 +183,7 @@ defineExpose({
             type="number"
             min="1"
             :value="selectedHeight"
-            @input="handleHeightInput"
+            @input="handleHeightInput({ event: $event })"
             class="flex-1 min-w-0 px-1 py-1 text-[10px] font-mono text-center border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
             placeholder="Height"
           />
@@ -212,7 +212,7 @@ defineExpose({
           type="number"
           min="1"
           :value="selectedCount"
-          @input="handleCountInput"
+          @input="handleCountInput({ event: $event })"
           class="w-12 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           placeholder="Qty"
         />
@@ -227,7 +227,7 @@ defineExpose({
           type="number"
           min="1"
           :value="selectedSteps"
-          @input="handleStepsInput"
+          @input="handleStepsInput({ event: $event })"
           class="w-full h-7 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all block m-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           placeholder="Auto"
         />
@@ -250,7 +250,7 @@ defineExpose({
               ref="seedInputRef"
               type="number"
               :value="typeof selectedSeed === 'number' ? selectedSeed : ''"
-              @input="handleSeedInput"
+              @input="handleSeedInput({ event: $event })"
               :disabled="selectedSeed === 'browser_random'"
               class="w-full h-full min-w-0 px-1.5 py-1 text-[10px] font-mono border rounded-md bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-blue-500/50 transition-all disabled:opacity-50 block m-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               placeholder="Auto"
