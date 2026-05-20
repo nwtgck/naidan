@@ -496,7 +496,7 @@ describe('ChatArea UI States', () => {
     await wrapper.findComponent({ name: 'ModelSelector' }).vm.$emit('update:modelValue', 'model-2');
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockSaveSettings).toHaveBeenCalledWith({ titleModelId: 'model-2' });
+    expect(mockSaveSettings).toHaveBeenCalledWith({ patch: { titleModelId: 'model-2' } });
     expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: '1', signal: undefined, titleModelIdOverride: 'model-2' });
   });
 

@@ -610,13 +610,13 @@ async function updateActiveTitleModel({ modelId }: { modelId: string | undefined
     return;
   case 'chat_group':
     if (!currentChat.value?.groupId) {
-      await saveSettings({ titleModelId: modelId });
+      await saveSettings({ patch: { titleModelId: modelId } });
       return;
     }
     await updateChatGroupMetadata({ id: currentChat.value.groupId, updates: { titleModelId: modelId } });
     return;
   case 'global':
-    await saveSettings({ titleModelId: modelId });
+    await saveSettings({ patch: { titleModelId: modelId } });
     return;
   default: {
     const _ex: never = source;

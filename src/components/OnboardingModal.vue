@@ -338,7 +338,7 @@ async function handleFinish() {
 
   try {
     const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
-    await save({
+    await save({ patch: {
       ...baseSettings,
       endpointType: type,
       endpointUrl: url || undefined,
@@ -359,7 +359,7 @@ async function handleFinish() {
         }
         }
       })(),
-    });
+    } });
 
     setOnboardingDraft({ draft: null });
     setIsOnboardingDismissed({ dismissed: true });

@@ -37,7 +37,7 @@ vi.mock('../composables/useSettings', () => ({
     mounts: [],
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
-    save: vi.fn().mockImplementation(async (patch) => {
+    save: vi.fn().mockImplementation(async ({ patch }) => {
       const currentType = storageService.getCurrentType();
       if (patch.storageType && patch.storageType !== currentType) {
         await storageService.switchProvider(patch.storageType);
@@ -198,7 +198,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       settings: ref(JSON.parse(JSON.stringify(mockSettings))),
       availableModels: ref([]),
       isFetchingModels: ref(false),
-      save: mockSave.mockImplementation(async (patch) => {
+      save: mockSave.mockImplementation(async ({ patch }) => {
         const currentType = storageService.getCurrentType();
         if (patch.storageType && patch.storageType !== currentType) {
           await storageService.switchProvider(patch.storageType);

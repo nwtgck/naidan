@@ -162,7 +162,7 @@ async function fetchModels() {
 
 async function handleSave() {
   try {
-    await save({
+    await save({ patch: {
       endpointType: form.value.endpointType,
       endpointUrl: form.value.endpointUrl,
       endpointHttpHeaders: form.value.endpointHttpHeaders,
@@ -171,7 +171,7 @@ async function handleSave() {
       autoTitleEnabled: form.value.autoTitleEnabled,
       systemPrompt: form.value.systemPrompt,
       lmParameters: form.value.lmParameters,
-    });
+    } });
 
     emit('save');
     saveSuccess.value = true;

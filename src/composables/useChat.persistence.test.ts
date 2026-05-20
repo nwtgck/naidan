@@ -58,14 +58,14 @@ describe('useChat Persistence Timing', () => {
 
     const { useSettings } = await import('./useSettings');
     const settings = useSettings();
-    await settings.save({
+    await settings.save({ patch: {
       endpointType: 'openai',
       endpointUrl: 'http://localhost:11434',
       defaultModelId: 'gpt-4',
       autoTitleEnabled: false,
       storageType: 'local',
       providerProfiles: [],
-    } as any);
+    } as any });
   });
 
   it('should call navigator.storage.persist after the first assistant response', async () => {

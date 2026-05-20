@@ -132,7 +132,7 @@ async function handleStorageChange(targetType: 'local' | 'opfs' | 'memory') {
 
   try {
     // Only pass storageType to save as a patch
-    await save({ storageType: targetType });
+    await save({ patch: { storageType: targetType } });
     emit('update:storageType', targetType);
   } catch (err) {
     console.error('Failed to migrate storage:', err);

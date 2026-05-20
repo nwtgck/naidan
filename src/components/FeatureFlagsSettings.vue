@@ -50,12 +50,12 @@ async function handleSidebarSendMessageReorderToggle() {
     }
     }
   })();
-  await save({
+  await save({ patch: {
     experimental: {
       ...settings.value.experimental,
       sidebarSendMessageReorder: next,
     },
-  });
+  } });
 }
 
 defineExpose({

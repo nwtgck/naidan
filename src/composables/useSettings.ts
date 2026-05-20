@@ -228,7 +228,7 @@ export function useSettings() {
     }
   }
 
-  async function save(patch: Partial<Settings>) {
+  async function save({ patch }: { patch: Partial<Settings> }) {
     const oldUrl = _settings.value.endpointUrl;
     const oldType = _settings.value.endpointType;
 
