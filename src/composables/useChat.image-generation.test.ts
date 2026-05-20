@@ -60,7 +60,7 @@ describe('useChat Image Generation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chatStore.availableModels.value = ['llama3', 'x/z-image-turbo:v1'];
-    chatStore.TEST_ONLY.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry({});
   });
 
   it('sendMessage in image mode adds sentinel markers', async () => {

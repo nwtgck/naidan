@@ -81,10 +81,10 @@ describe('useChat Interrupt and Sync Tests', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
     TEST_ONLY.activeGenerations.clear();
-    TEST_ONLY.clearActiveTaskCounts();
-    TEST_ONLY.clearLiveChatRegistry();
+    TEST_ONLY.clearActiveTaskCounts({});
+    TEST_ONLY.clearLiveChatRegistry({});
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
     clearEvents();
@@ -106,7 +106,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // 1. Start a slow regular chat generation
@@ -164,7 +164,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       modelId: 'x/z-image-turbo:v1',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     const { handleImageGeneration, availableModels } = chatStore;
@@ -215,7 +215,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // 1. Mock LLM to simulate an abortion

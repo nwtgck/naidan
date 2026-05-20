@@ -102,7 +102,7 @@ describe('useChat Composable Logic', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
     rootItems.value = [];
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
@@ -149,10 +149,10 @@ describe('useChat Composable Logic', () => {
   };
 
   it('should update activeMessages in real-time during streaming', async () => {
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-1', title: 'Test', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
     const sendPromise = sendMessage({ content: 'Ping' });
     await new Promise(r => setTimeout(r, 20));
     triggerRef(currentChat);
@@ -165,10 +165,10 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should return true from sendMessage immediately while generation continues in background (Regression Test)', async () => {
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'bg-gen-test', title: 'BG Test', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
 
     // Mock a slow LLM response
     let resolveGen: () => void;
@@ -227,7 +227,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'special-model',
     };
 
-    __testOnlySetCurrentChat(reactive(mockChat) as any);
+    __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
     rootItems.value = [{ id: 'chat:old-chat', type: 'chat', chat: { id: 'old-chat', title: 'Original', updatedAt: 0 } }];
     mockRootItems.push(...rootItems.value);
     mockHierarchy.items = [{ type: 'chat', id: 'old-chat' }];
@@ -256,10 +256,10 @@ describe('useChat Composable Logic', () => {
     ];
 
     const m1: MessageNode = { id: 'm1', role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'c1', title: 'C1', root: { items: [m1] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null
-    }) as any);
+    }) as any });
 
     await forkChat({ messageId: 'm1' });
 
@@ -298,7 +298,7 @@ describe('useChat Composable Logic', () => {
       modelId: 'special-model',
     };
 
-    __testOnlySetCurrentChat(reactive(mockChat) as any);
+    __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
     mockHierarchy.items = [{ type: 'chat', id: 'old-chat' }];
 
     const newId = await forkChat({ messageId: 'm1' });
@@ -331,14 +331,14 @@ describe('useChat Composable Logic', () => {
       lmParameters: EMPTY_LM_PARAMETERS
     };
 
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'c1',
       title: 'T',
       root: { items: [m1] },
       createdAt: 0,
       updatedAt: 0,
       debugEnabled: false,
-    }) as any);
+    }) as any });
 
     // Edit assistant message
     await editMessage({ messageId: 'm1', newContent: 'New Content' });
@@ -360,7 +360,7 @@ describe('useChat Composable Logic', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     };
-    __testOnlySetCurrentChat(reactive(chatObj) as any);
+    __testOnlySetCurrentChat({ chat: reactive(chatObj) as any });
     const initial = [{ id: 'chat:chat-root-test', type: 'chat', chat: { id: 'chat-root-test', title: 'Root Test', updatedAt: Date.now() } }] as SidebarItem[];
     rootItems.value = initial;
     mockRootItems.push(...initial);
@@ -394,7 +394,7 @@ describe('useChat Composable Logic', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     };
-    __testOnlySetCurrentChat(reactive(chatObj) as any);
+    __testOnlySetCurrentChat({ chat: reactive(chatObj) as any });
     const initial = [{ id: 'chat:assistant-edit-test', type: 'chat', chat: { id: 'assistant-edit-test', title: 'Assistant Edit', updatedAt: Date.now() } }] as SidebarItem[];
     rootItems.value = initial;
     mockRootItems.push(...initial);
@@ -423,10 +423,10 @@ describe('useChat Composable Logic', () => {
   it('should branch into a new version when regenerateMessage is called', async () => {
     const { sendMessage, regenerateMessage, switchVersion } = useChat();
 
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'regen-test', title: 'Regen', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
 
     // 1. Send first message and get first response
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
@@ -474,10 +474,10 @@ describe('useChat Composable Logic', () => {
 
   it('should store lmParameters in UserMessageNode and AssistantMessageNode after sendMessage', async () => {
     const { sendMessage, currentChat } = useChat();
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'store-params-test', title: 'Store Params', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
 
     const customParams = {
       ...EMPTY_LM_PARAMETERS,
@@ -668,7 +668,7 @@ describe('useChat Composable Logic', () => {
     const mockChat: Chat = {
       id: 'c1', title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
     };
-    __testOnlySetCurrentChat(mockChat);
+    __testOnlySetCurrentChat({ chat: mockChat });
 
     const customParams = {
       ...EMPTY_LM_PARAMETERS,
@@ -709,7 +709,7 @@ describe('useChat Composable Logic', () => {
     const mockChat: Chat = {
       id: 'c1', title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
     };
-    __testOnlySetCurrentChat(mockChat);
+    __testOnlySetCurrentChat({ chat: mockChat });
 
     // 1. Send first message with default params
     await sendMessage({ content: 'Hello', parentId: null });
@@ -746,10 +746,10 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should keep the assistant error on the failed message after generation fails', async () => {
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-error', title: 'Test', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockLlmChat.mockImplementationOnce(async () => {
@@ -768,10 +768,10 @@ describe('useChat Composable Logic', () => {
   });
 
   it('should reapply volatile assistant errors after chat content reloads from storage', async () => {
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-error-reload', title: 'Test', root: { items: [] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     mockLlmChat.mockImplementationOnce(async () => {
@@ -967,7 +967,7 @@ describe('useChat Composable Logic', () => {
       { type: 'chat', id: 'c1' },
       { type: 'chat', id: 'c2' }
     ];
-    __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
+    __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
     await sendMessage({ content: 'Hello' });
     // Note: Position is updated synchronously in sendMessage({ content: create/update meta }),
     // so we don't necessarily need to wait for streaming to verify position,
@@ -986,7 +986,7 @@ describe('useChat Composable Logic', () => {
       { type: 'chat', id: 'c2' }
     ];
 
-    __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
+    __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
     await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
@@ -1002,7 +1002,7 @@ describe('useChat Composable Logic', () => {
       { type: 'chat', id: 'top' }
     ];
 
-    __testOnlySetCurrentChat(reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any);
+    __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
     await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
@@ -1025,7 +1025,7 @@ describe('useChat Composable Logic', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     });
-    __testOnlySetCurrentChat(chatObj as any);
+    __testOnlySetCurrentChat({ chat: chatObj as any });
 
     // Mock the LLM provider for title generation
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
@@ -1059,7 +1059,7 @@ describe('useChat Composable Logic', () => {
     }) as any;
 
     // Start generating title for Chat A
-    __testOnlySetCurrentChat(chatA);
+    __testOnlySetCurrentChat({ chat: chatA });
     mockLlmChat.mockImplementationOnce(async () => {
       await new Promise(resolve => setTimeout(resolve, 50));
     });
@@ -1068,11 +1068,11 @@ describe('useChat Composable Logic', () => {
     expect(chatStore.generatingTitle.value).toBe(true);
 
     // Switch to Chat B (which is not generating)
-    __testOnlySetCurrentChat(chatB);
+    __testOnlySetCurrentChat({ chat: chatB });
     expect(chatStore.generatingTitle.value).toBe(false);
 
     // Switch back to Chat A
-    __testOnlySetCurrentChat(chatA);
+    __testOnlySetCurrentChat({ chat: chatA });
     expect(chatStore.generatingTitle.value).toBe(true);
 
     await promiseA;
@@ -1081,7 +1081,7 @@ describe('useChat Composable Logic', () => {
 
   it('should show fetchingModels as true for global fetch or current chat fetch', async () => {
     const { fetchAvailableModels, TEST_ONLY: { __testOnlySetCurrentChat, clearActiveTaskCounts } } = useChat();
-    clearActiveTaskCounts();
+    clearActiveTaskCounts({});
 
     const chatA = reactive({ id: 'chat-A', root: { items: [] } }) as any;
     const chatB = reactive({ id: 'chat-B', root: { items: [] } }) as any;
@@ -1100,16 +1100,16 @@ describe('useChat Composable Logic', () => {
     expect(chatStore.fetchingModels.value).toBe(false);
 
     // 2. Chat-specific fetch
-    __testOnlySetCurrentChat(chatA);
+    __testOnlySetCurrentChat({ chat: chatA });
     const promiseA = fetchAvailableModels({ chatId: chatA.id });
     expect(chatStore.fetchingModels.value).toBe(true);
 
     // Switch to Chat B
-    __testOnlySetCurrentChat(chatB);
+    __testOnlySetCurrentChat({ chat: chatB });
     expect(chatStore.fetchingModels.value).toBe(false);
 
     // Switch back to Chat A
-    __testOnlySetCurrentChat(chatA);
+    __testOnlySetCurrentChat({ chat: chatA });
     expect(chatStore.fetchingModels.value).toBe(true);
 
     await promiseA;
@@ -1128,7 +1128,7 @@ describe('useChat Composable Logic', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     });
-    __testOnlySetCurrentChat(chatObj as any);
+    __testOnlySetCurrentChat({ chat: chatObj as any });
 
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
       params.onChunk('New Better Title');
@@ -1153,7 +1153,7 @@ describe('useChat Composable Logic', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     });
-    __testOnlySetCurrentChat(chatObj as any);
+    __testOnlySetCurrentChat({ chat: chatObj as any });
 
     let wasAborted = false;
     mockLlmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {

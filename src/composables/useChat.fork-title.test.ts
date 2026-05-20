@@ -57,7 +57,7 @@ describe('useChat fork title fix', () => {
       debugEnabled: false,
     };
 
-    __testOnlySetCurrentChat(reactive(untitledChat) as any);
+    __testOnlySetCurrentChat({ chat: reactive(untitledChat) as any });
 
     const newId = await forkChat({ messageId: 'm1' });
 
@@ -84,7 +84,7 @@ describe('useChat fork title fix', () => {
       debugEnabled: false,
     };
 
-    __testOnlySetCurrentChat(reactive(titledChat) as any);
+    __testOnlySetCurrentChat({ chat: reactive(titledChat) as any });
 
     const newId = await forkChat({ messageId: 'm1' });
 

@@ -223,7 +223,7 @@ describe('useChat Advanced Settings Resolution', () => {
           reasoning: { effort: 'high' as const }
         }
       };
-      __testOnlySetCurrentChat(reactive(chatAObj) as any);
+      __testOnlySetCurrentChat({ chat: reactive(chatAObj) as any });
 
       expect(currentChat.value?.lmParameters?.temperature).toBe(0.1);
       expect(currentChat.value?.lmParameters?.reasoning?.effort).toBe('high');

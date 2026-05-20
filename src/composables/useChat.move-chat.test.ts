@@ -188,7 +188,7 @@ describe('useChat moveChatToGroup', () => {
     const chat: Chat = reactive({
       id: 'c1', title: 'C1', groupId: null, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
 
     mockGetSidebarStructure.mockResolvedValue([
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },

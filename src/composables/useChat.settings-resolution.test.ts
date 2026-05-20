@@ -76,7 +76,7 @@ describe('useChat Settings Resolution Policy', () => {
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
 
-    chatStore.TEST_ONLY.__testOnlySetCurrentChat(null);
+    chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
   });
 
   it('Scenario: Global setting change should be reflected in existing chat for subsequent messages', async () => {

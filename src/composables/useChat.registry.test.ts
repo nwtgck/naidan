@@ -128,7 +128,7 @@ describe('useChat Registry Lifecycle', () => {
     await nextTick();
 
     // VERIFY: It should NOT be in registry anymore if tasks are done and it's not current
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
     unregisterLiveInstance({ chatId: chatId! });
     expect(liveChatRegistry.has(chatId!)).toBe(false);
 
@@ -150,7 +150,7 @@ describe('useChat Registry Lifecycle', () => {
     const chat = currentChat.value!;
 
     // Switch away to ensure it's not kept alive by currentChat
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
     unregisterLiveInstance({ chatId: chatId! });
 
     // VERIFY: It should NOT be in registry anymore

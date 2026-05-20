@@ -89,7 +89,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chatObj);
+    __testOnlySetCurrentChat({ chat: chatObj });
 
     // 2. Send first message with default model
     await sendMessage({ content: 'Hello with 3.5' });

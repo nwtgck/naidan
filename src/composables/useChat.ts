@@ -853,7 +853,7 @@ export function useChat() {
     }
   };
 
-  const deleteAllChats = async ({}: Record<string, never>) => {
+  const deleteAllChats = async (_params: Record<string, never>) => {
     for (const [, item] of activeGenerations.entries()) item.controller.abort();
     activeGenerations.clear();
     activeTaskCounts.clear();
@@ -2042,7 +2042,7 @@ export function useChat() {
     return parent ? parent.replies.items : mutableChat.root.items;
   };
 
-  const toggleDebug = async ({}: Record<string, never>) => {
+  const toggleDebug = async (_params: Record<string, never>) => {
     if (!_currentChat.value) return;
     const chat = getLiveChat(_currentChat.value);
     const newVal = !chat.debugEnabled;
@@ -2411,18 +2411,18 @@ export function useChat() {
     await loadData();
   };
 
-  const __testOnlySetCurrentChat = (chat: Chat | null) => {
+  const __testOnlySetCurrentChat = ({ chat }: { chat: Chat | null }) => {
     _currentChat.value = chat;
     if (chat) registerLiveInstance({ chat });
   };
-  const __testOnlySetCurrentChatGroup = (group: ChatGroup | null) => {
+  const __testOnlySetCurrentChatGroup = ({ group }: { group: ChatGroup | null }) => {
     _currentChatGroup.value = group;
   };
-  const clearLiveChatRegistry = () => {
+  const clearLiveChatRegistry = (_params: Record<string, never>) => {
     liveChatRegistry.clear();
   };
 
-  const clearActiveTaskCounts = () => {
+  const clearActiveTaskCounts = (_params: Record<string, never>) => {
     activeTaskCounts.clear();
   };
 

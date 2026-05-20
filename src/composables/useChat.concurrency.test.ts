@@ -153,7 +153,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
     rootItems.value = [];
     activeGenerations.clear();
     mockRootItems.length = 0;

@@ -291,7 +291,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     const { __testOnlySetCurrentChatGroup } = TEST_ONLY;
     const groupId = await createChatGroup({ name: 'Old' });
     const group = Array.from(mocks.mockGroupStorage.values())[0];
-    __testOnlySetCurrentChatGroup(reactive(group));
+    __testOnlySetCurrentChatGroup({ group: reactive(group) });
     const renamed = { ...group, name: 'New' };
     mocks.mockGroupStorage.set(groupId, renamed);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: groupId });

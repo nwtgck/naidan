@@ -56,7 +56,7 @@ describe('useChat Interruption', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry({});
   });
 
   it('should interrupt current generation and start new one when regenerateMessage is called', async () => {
@@ -70,7 +70,7 @@ describe('useChat Interruption', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
 
     // 1. Start a slow generation
     let firstGenAborted = false;
@@ -133,7 +133,7 @@ describe('useChat Interruption', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
 
     // 1. Start a slow generation
     let firstGenAborted = false;

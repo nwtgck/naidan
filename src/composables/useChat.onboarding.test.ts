@@ -81,10 +81,10 @@ describe('useChat Onboarding Trigger', () => {
   });
 
   it('should trigger onboarding if endpointUrl is missing when sending a message', async () => {
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
 
     await sendMessage({ content: 'Hello' });
 
@@ -93,10 +93,10 @@ describe('useChat Onboarding Trigger', () => {
 
   it('should trigger onboarding and populate draft if modelId is missing when sending a message', async () => {
     mockSettings.value.endpointUrl = 'http://localhost:11434';
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
 
     await sendMessage({ content: 'Hello' });
 
@@ -112,10 +112,10 @@ describe('useChat Onboarding Trigger', () => {
   it('should NOT use gpt-3.5-turbo as fallback model anymore', async () => {
     mockSettings.value.endpointUrl = 'http://localhost:11434';
     // No default model in settings and no model in chat
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'chat-1', title: 'Test', root: { items: [] }, modelId: '',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-    }) as any);
+    }) as any });
 
     await sendMessage({ content: 'Hello' });
 

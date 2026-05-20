@@ -45,7 +45,7 @@ describe('useChat Group Deletion', () => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
     rootItems.value = [];
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
   });
 
   it('should delete a chat group and all its contained chats', async () => {
@@ -118,7 +118,7 @@ describe('useChat Group Deletion', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chat1);
 
     await chatStore.loadChats();
-    __testOnlySetCurrentChat(reactive(chat1) as any);
+    __testOnlySetCurrentChat({ chat: reactive(chat1) as any });
 
     await deleteChatGroup({ id: 'g1' });
 
@@ -135,7 +135,7 @@ describe('useChat Group Deletion', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chatOut);
 
     await chatStore.loadChats();
-    __testOnlySetCurrentChat(reactive(chatOut) as any);
+    __testOnlySetCurrentChat({ chat: reactive(chatOut) as any });
 
     await deleteChatGroup({ id: 'g1' });
 
