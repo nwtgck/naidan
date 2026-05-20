@@ -854,7 +854,7 @@ export function useChat() {
     }
   };
 
-  const deleteAllChats = async () => {
+  const deleteAllChats = async ({}: Record<string, never>) => {
     for (const [, item] of activeGenerations.entries()) item.controller.abort();
     activeGenerations.clear();
     activeTaskCounts.clear();
@@ -2043,7 +2043,7 @@ export function useChat() {
     return parent ? parent.replies.items : mutableChat.root.items;
   };
 
-  const toggleDebug = async () => {
+  const toggleDebug = async ({}: Record<string, never>) => {
     if (!_currentChat.value) return;
     const chat = getLiveChat(_currentChat.value);
     const newVal = !chat.debugEnabled;

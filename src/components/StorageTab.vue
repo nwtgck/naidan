@@ -153,7 +153,7 @@ async function handleDeleteAllHistory() {
   });
 
   if (confirmed) {
-    await chatStore.deleteAllChats();
+    await chatStore.deleteAllChats({});
     emit('close');
     router.push('/');
   }

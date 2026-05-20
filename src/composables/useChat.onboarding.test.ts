@@ -129,7 +129,7 @@ describe('useChat Onboarding Trigger', () => {
     const { deleteAllChats } = useChat();
     mockIsOnboardingDismissed.value = true;
 
-    await deleteAllChats();
+    await deleteAllChats({});
 
     expect(mockIsOnboardingDismissed.value).toBe(true);
   });

@@ -849,7 +849,7 @@ watch(
       @toggle-media-shelf="toggleMediaShelf"
       @share-url="shareAsURL"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
-      @toggle-debug="chatStore.toggleDebug"
+      @toggle-debug="() => chatStore.toggleDebug({})"
     />
 
     <!-- Chat Settings Panel -->
@@ -1047,7 +1047,7 @@ watch(
         :show="currentChat.debugEnabled"
         :chat="currentChat"
         :active-messages="activeMessages"
-        @close="chatStore.toggleDebug"
+        @close="() => chatStore.toggleDebug({})"
         data-testid="chat-inspector"
       />
     </div>
