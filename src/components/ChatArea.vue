@@ -146,7 +146,7 @@ const emit = defineEmits<{
 }>();
 
 const isCurrentChatStreaming = computed(() => {
-  return currentChat.value ? isProcessing(currentChat.value.id) : false;
+  return currentChat.value ? isProcessing({ chatId: currentChat.value.id }) : false;
 });
 
 // The index of the single flow item that should display the GeneratingIndicator.
@@ -228,12 +228,12 @@ function clearTargetMessageQuery() {
 
 async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
   if (!currentChat.value) return;
-  await chatStore.moveChatToGroup(currentChat.value.id, groupId);
+  await chatStore.moveChatToGroup({ chatId: currentChat.value.id, targetGroupId: groupId });
 }
 
 async function handleSaveTitle({ title }: { title: string }) {
   if (!currentChat.value) return;
-  await renameChat(currentChat.value.id, title);
+  await renameChat({ id: currentChat.value.id, newTitle: title });
 }
 
 async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
@@ -606,14 +606,14 @@ async function updateActiveTitleModel({ modelId }: { modelId: string | undefined
   switch (source) {
   case 'chat':
     if (!currentChat.value) return;
-    await updateChatSettings(currentChat.value.id, { titleModelId: modelId });
+    await updateChatSettings({ id: currentChat.value.id, updates: { titleModelId: modelId } });
     return;
   case 'chat_group':
     if (!currentChat.value?.groupId) {
       await saveSettings({ titleModelId: modelId });
       return;
     }
-    await updateChatGroupMetadata(currentChat.value.groupId, { titleModelId: modelId });
+    await updateChatGroupMetadata({ id: currentChat.value.groupId, updates: { titleModelId: modelId } });
     return;
   case 'global':
     await saveSettings({ titleModelId: modelId });
@@ -688,19 +688,19 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
 }
 
 async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
-  await chatStore.editMessage(messageId, newContent, lmParameters);
+  await chatStore.editMessage({ messageId, newContent, lmParameters });
 }
 
 async function handleRegenerate(messageId: string) {
-  await chatStore.regenerateMessage(messageId);
+  await chatStore.regenerateMessage({ failedMessageId: messageId });
 }
 
 function handleSwitchVersion(messageId: string) {
-  chatStore.switchVersion(messageId);
+  chatStore.switchVersion({ messageId });
 }
 
 async function handleFork(messageId: string) {
-  const newId = await chatStore.forkChat(messageId);
+  const newId = await chatStore.forkChat({ messageId });
   if (newId) {
     router.push(`/chat/${newId}`);
   }
@@ -849,7 +849,7 @@ watch(
       @toggle-media-shelf="toggleMediaShelf"
       @share-url="shareAsURL"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
-      @toggle-debug="chatStore.toggleDebug"
+      @toggle-debug="() => chatStore.toggleDebug({})"
     />
 
     <!-- Chat Settings Panel -->
@@ -950,7 +950,7 @@ watch(
                       :id="'message-' + subItem.node.id"
                       :chat-id="currentChat!.id"
                       :message="subItem.node"
-                      :siblings="chatStore.getSiblings(subItem.node.id)"
+                      :siblings="chatStore.getSiblings({ messageId: subItem.node.id })"
                       :can-generate-image="canGenerateImage && hasImageModel"
                       :is-processing="isCurrentChatStreaming"
                       :is-generating="isCurrentChatStreaming && subItem.node.id === currentChat?.currentLeafId"
@@ -984,7 +984,7 @@ watch(
                 :id="'message-' + flowItem.node.id"
                 :chat-id="currentChat!.id"
                 :message="flowItem.node"
-                :siblings="chatStore.getSiblings(flowItem.node.id)"
+                :siblings="chatStore.getSiblings({ messageId: flowItem.node.id })"
                 :can-generate-image="canGenerateImage && hasImageModel"
                 :is-processing="isCurrentChatStreaming"
                 :is-generating="isCurrentChatStreaming && flowItem.node.id === currentChat?.currentLeafId"
@@ -1047,7 +1047,7 @@ watch(
         :show="currentChat.debugEnabled"
         :chat="currentChat"
         :active-messages="activeMessages"
-        @close="chatStore.toggleDebug"
+        @close="() => chatStore.toggleDebug({})"
         data-testid="chat-inspector"
       />
     </div>

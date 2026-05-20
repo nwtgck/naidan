@@ -171,7 +171,7 @@ async function selectItem({ index }: { index: number }) {
   const target = filteredRecentChats.value[index];
   if (!target) return;
 
-  await openChat(target.id);
+  await openChat({ id: target.id });
   router.push(`/chat/${target.id}`);
   closeRecent();
 }

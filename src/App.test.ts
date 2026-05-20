@@ -375,7 +375,7 @@ describe('App', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockCreateChatGroup).toHaveBeenCalledWith('New Group Name');
+    expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'New Group Name' });
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: 'new-group-uuid',
       modelId: undefined,

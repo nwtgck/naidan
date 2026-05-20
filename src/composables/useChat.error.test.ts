@@ -101,7 +101,7 @@ describe('useChat Error Handling', () => {
       params.onChunk('Success');
     });
 
-    await regenerateMessage(failedMsg!.id);
+    await regenerateMessage({ failedMessageId: failedMsg!.id });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for success retry
 
     // Should have a NEW assistant message at the end

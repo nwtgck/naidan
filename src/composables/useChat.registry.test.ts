@@ -88,7 +88,7 @@ describe('useChat Registry Lifecycle', () => {
 
     const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
-    await openChat(chatId!);
+    await openChat({ id: chatId! });
     const chat = currentChat.value!;
 
     // 1. Start fetch models (long running)
@@ -99,7 +99,7 @@ describe('useChat Registry Lifecycle', () => {
     const fetchTask = fetchAvailableModels({ chatId: chat.id });
 
     // Wait for the registry to populate via fetchAvailableModels (using busy check)
-    await vi.waitUntil(() => toRaw(chatStore.getLiveChat(chat as any)) === toRaw(chat), { timeout: 1000 });
+    await vi.waitUntil(() => toRaw(chatStore.getLiveChat({ chat: chat as any })) === toRaw(chat), { timeout: 1000 });
 
     // 2. Start sendMessage({ content: which also awaits fetchAvailableModels })
     let resolveChat: () => void;
@@ -128,13 +128,13 @@ describe('useChat Registry Lifecycle', () => {
     await nextTick();
 
     // VERIFY: It should NOT be in registry anymore if tasks are done and it's not current
-    __testOnlySetCurrentChat(null);
-    unregisterLiveInstance(chatId!);
+    __testOnlySetCurrentChat({ chat: null });
+    unregisterLiveInstance({ chatId: chatId! });
     expect(liveChatRegistry.has(chatId!)).toBe(false);
 
     // Now it should be gone from registry
     mockLoadChat.mockClear();
-    await openChat(chatId!);
+    await openChat({ id: chatId! });
     expect(mockLoadChat).toHaveBeenCalledWith(chatId!);
     expect(currentChat.value).not.toBe(chat);
   });
@@ -146,12 +146,12 @@ describe('useChat Registry Lifecycle', () => {
 
     const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
-    await openChat(chatId!);
+    await openChat({ id: chatId! });
     const chat = currentChat.value!;
 
     // Switch away to ensure it's not kept alive by currentChat
-    __testOnlySetCurrentChat(null);
-    unregisterLiveInstance(chatId!);
+    __testOnlySetCurrentChat({ chat: null });
+    unregisterLiveInstance({ chatId: chatId! });
 
     // VERIFY: It should NOT be in registry anymore
     expect(liveChatRegistry.has(chatId!)).toBe(false);
@@ -159,7 +159,7 @@ describe('useChat Registry Lifecycle', () => {
     // If it's leaked in registry, openChat will return the same instance
     // If NOT leaked, it will call storageService.loadChat
     mockLoadChat.mockClear();
-    await openChat(chatId!);
+    await openChat({ id: chatId! });
 
     // THIS IS EXPECTED TO FAIL IF THERE IS A LEAK
     expect(mockLoadChat).toHaveBeenCalledWith(chatId!);

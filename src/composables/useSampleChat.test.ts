@@ -87,7 +87,7 @@ describe('useSampleChat', () => {
     expect(m3.content).toContain('arrows');
 
     expect(mockLoadChats).toHaveBeenCalled();
-    expect(mockOpenChat).toHaveBeenCalledWith(chatId);
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: chatId });
   });
 
   it('creates a long sample chat for navigation stress testing without large fixtures', async () => {
@@ -120,6 +120,6 @@ describe('useSampleChat', () => {
     expect(messages[1]?.content?.length).toBeGreaterThan(900);
     expect(content.currentLeafId).toBe(messages[messages.length - 1]?.id);
     expect(mockLoadChats).toHaveBeenCalled();
-    expect(mockOpenChat).toHaveBeenCalledWith(chatId);
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: chatId });
   });
 });

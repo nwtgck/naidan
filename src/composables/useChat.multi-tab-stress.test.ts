@@ -117,7 +117,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
     };
     mocks.mockChatStorage.set('c1', chat1);
 
-    await chatStoreB.openChat('c1');
+    await chatStoreB.openChat({ id: 'c1' });
     const initialLoadCount = vi.mocked(storageService.loadChat).mock.calls.length;
 
     for (let i = 0; i < 50; i++) {
@@ -138,7 +138,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
     const chat1: Chat = { id: 'c1', title: 'C1', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
     mocks.mockChatStorage.set('c1', chat1);
 
-    await chatStoreB.openChat('c1');
+    await chatStoreB.openChat({ id: 'c1' });
     expect(chatStoreB.currentChat.value?.id).toBe('c1');
 
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(null);
@@ -199,7 +199,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
 
   it('Reliability: sidebar should update eventually even during continuous event stream (Starvation Test)', async () => {
     const chatStore = useChat();
-    await chatStore.loadChats();
+    await chatStore.loadChats({});
     expect(chatStore.rootItems.value).toHaveLength(0);
 
     mocks.mockRootItems.push({ id: 'chat:ext', type: 'chat', chat: { id: 'ext', title: 'External', updatedAt: Date.now(), groupId: null } });

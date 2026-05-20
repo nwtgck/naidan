@@ -86,7 +86,7 @@ watch(() => currentChat.value?.id, async (newId, oldId) => {
   if (oldId && oldId !== newId) {
     // If we're switching chats while the panel is open, ensure any pending changes in the OLD chat are saved.
     // We use the ID that was active when the changes were made.
-    await chatStore.updateChatSettings(oldId, localSettings.value);
+    await chatStore.updateChatSettings({ id: oldId, updates: localSettings.value });
   }
   syncLocalWithCurrent();
 });
@@ -110,7 +110,7 @@ watch(() => props.show, (show) => {
 
 async function saveChanges() {
   if (currentChat.value) {
-    await chatStore.updateChatSettings(currentChat.value.id, localSettings.value);
+    await chatStore.updateChatSettings({ id: currentChat.value.id, updates: localSettings.value });
   }
 }
 

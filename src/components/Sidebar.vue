@@ -426,7 +426,7 @@ async function onDragEnd() {
     dragHoverTimeout = null;
   }
   // Sync the UI structure to storage
-  await chatStore.persistSidebarStructure(sidebarItemsLocal.value);
+  await chatStore.persistSidebarStructure({ topLevelItems: sidebarItemsLocal.value });
 
   // Wait for DOM and Sortable cleanup
   await nextTick();
@@ -491,7 +491,7 @@ async function handleCreateChatGroup() {
     return;
   }
   skipLeaveAnimation.value = true;
-  await chatStore.createChatGroup(name);
+  await chatStore.createChatGroup({ name });
   newChatGroupName.value = '';
   isCreatingChatGroup.value = false;
   // Reset flag after transition would have finished
@@ -528,7 +528,7 @@ async function handleDeleteChatGroup(group: ChatGroup) {
     if (!confirmed) return;
   }
 
-  await chatStore.deleteChatGroup(group.id);
+  await chatStore.deleteChatGroup({ id: group.id });
 }
 
 async function handleNewChat(groupId: string | undefined = undefined) {
@@ -544,12 +544,12 @@ async function handleNewChat(groupId: string | undefined = undefined) {
 }
 
 async function handleOpenChat(id: string) {
-  await chatStore.openChat(id);
+  await chatStore.openChat({ id });
   router.push(`/chat/${id}`);
 }
 
 async function handleOpenChatGroup(id: string) {
-  chatStore.openChatGroup(id);
+  chatStore.openChatGroup({ id });
   router.push(`/chat-group/${id}`);
 }
 
@@ -562,7 +562,7 @@ watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId,
 
 async function handleDeleteChat(id: string) {
   const isCurrent = currentChat.value?.id === id;
-  await chatStore.deleteChat(id);
+  await chatStore.deleteChat({ id });
   if (isCurrent) router.push('/');
 }
 
@@ -573,7 +573,7 @@ function startEditing(id: string, title: string | null) {
 
 async function saveRename() {
   if (editingId.value && editingTitle.value.trim()) {
-    await chatStore.renameChat(editingId.value, editingTitle.value.trim());
+    await chatStore.renameChat({ id: editingId.value, newTitle: editingTitle.value.trim() });
   }
   editingId.value = null;
 }
@@ -585,7 +585,7 @@ function startEditingChatGroup(chatGroup: ChatGroup) {
 
 async function saveChatGroupRename() {
   if (editingChatGroupId.value && editingChatGroupName.value.trim()) {
-    await chatStore.renameChatGroup(editingChatGroupId.value, editingChatGroupName.value.trim());
+    await chatStore.renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
   }
   editingChatGroupId.value = null;
 }
@@ -978,7 +978,7 @@ defineExpose({
                       :chat-group="element.chatGroup"
                       :is-open="activeActionGroupId === element.chatGroup.id"
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
-                      @duplicate="() => { chatStore.duplicateChatGroup(element.chatGroup.id); activeActionGroupId = null; }"
+                      @duplicate="() => { chatStore.duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
                       @delete="() => { handleDeleteChatGroup(element.chatGroup); activeActionGroupId = null; }"
                       @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
                     />
@@ -1045,7 +1045,7 @@ defineExpose({
                               <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'New Chat' }}</span>
                             </div>
                             <div class="flex items-center gap-1">
-                              <Loader2Icon v-if="isProcessing(nestedItem.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                              <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                               <div v-if="editingId !== nestedItem.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
                                 <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
                                 <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>
@@ -1103,7 +1103,7 @@ defineExpose({
                   <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
                 </div>
                 <div class="flex items-center gap-1">
-                  <Loader2Icon v-if="isProcessing(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                  <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                   <div v-if="editingId !== element.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
                     <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
                     <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>

@@ -38,7 +38,7 @@ defineExpose({
         v-for="msg in activeMessages"
         :key="msg.id"
         :message="msg"
-        :siblings="chatStore.getSiblings(msg.id)"
+        :siblings="chatStore.getSiblings({ messageId: msg.id })"
         class="chat-print-message-item"
       />
     </div>

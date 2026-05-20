@@ -8,7 +8,7 @@ import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChatGroup = ref<ChatGroup | null>(null);
-const mockOpenChatGroup = vi.fn((id: string | null) => {
+const mockOpenChatGroup = vi.fn(({ id }: { id: string | null }) => {
   if (id === null) {
     mockCurrentChatGroup.value = null; return;
   }
@@ -113,7 +113,7 @@ describe('Sidebar Group Overrides', () => {
     expect(groupItem.exists()).toBe(true);
     await groupItem.trigger('click');
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
   });
 
   it('calls setChatGroupCollapsed when clicking the expansion icon', async () => {

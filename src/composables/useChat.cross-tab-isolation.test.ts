@@ -199,7 +199,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     const { useChat } = await import('./useChat');
     const store = useChat();
-    await store.loadChats();
+    await store.loadChats({});
     return store;
   }
 
@@ -208,8 +208,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
-    await tabA.renameChat(chat!.id, 'New Title');
+    await tabB.openChat({ id: chat!.id });
+    await tabA.renameChat({ id: chat!.id, newTitle: 'New Title' });
     vi.advanceTimersByTime(600);
     await nextTick();
     expect(tabB.currentChat.value?.title).toBe('New Title');
@@ -223,8 +223,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
     expect(tabB.rootItems.value.length).toBe(1);
 
-    const groupId = await tabA.createChatGroup('Group');
-    await tabA.moveChatToGroup(chat!.id, groupId);
+    const groupId = await tabA.createChatGroup({ name: 'Group' });
+    await tabA.moveChatToGroup({ chatId: chat!.id, targetGroupId: groupId });
     vi.advanceTimersByTime(600);
     await nextTick();
 
@@ -241,7 +241,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
 
     const p = tabA.sendMessage({ content: 'Hello' });
     await vi.advanceTimersByTimeAsync(1000);
@@ -269,7 +269,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
     expect(tabB.currentChat.value).not.toBeNull();
 
     const { storageService } = await import('../services/storage');
@@ -287,7 +287,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
 
     // 1. Tab A starts sending a message
     const sendPromise = tabA.sendMessage({ content: 'Slow msg' });
@@ -329,8 +329,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
 
     // Verify both tabs see chat1 as running
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
 
     // 4. Start generation for chat2 in tab2
     const p2 = tab2.sendMessage({ content: 'Msg 2' });
@@ -338,10 +338,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
 
     // Verify both tabs see BOTH chats as running
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab1.isTaskRunning(chat2!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat2!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat2!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat2!.id })).toBe(true);
 
     // 5. Tab 1 requests abort for chat2 (which is running in Tab 2)
     tab1.abortChat({ chatId: chat2!.id });
@@ -349,10 +349,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await p2;
 
     // Verify chat2 stopped everywhere, but chat1 is still running
-    expect(tab1.isTaskRunning(chat2!.id)).toBe(false);
-    expect(tab2.isTaskRunning(chat2!.id)).toBe(false);
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat2!.id })).toBe(false);
+    expect(tab2.isTaskRunning({ chatId: chat2!.id })).toBe(false);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
 
     // Cleanup p1
     tab1.abortChat({ chatId: chat1!.id });

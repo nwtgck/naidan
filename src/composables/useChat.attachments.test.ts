@@ -135,7 +135,7 @@ describe('useChat - Attachment & Migration Logic', () => {
   it('should keep attachments in memory status when using LocalStorage', async () => {
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    const chatObj = await openChat(newChat!.id);
+    const chatObj = await openChat({ id: newChat!.id });
 
     const mockAttachment: Attachment = {
       id: '550e8400-e29b-41d4-a716-446655440000',
@@ -164,7 +164,7 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    const chatObj = await openChat(newChat!.id);
+    const chatObj = await openChat({ id: newChat!.id });
 
     const mockAttachment: Attachment = {
       id: '550e8400-e29b-41d4-a716-446655440001',
@@ -201,8 +201,8 @@ describe('useChat - Attachment & Migration Logic', () => {
       debugEnabled: false,
       modelId: 'm1'
     }) as any;
-    __testOnlySetCurrentChat(chatObj);
-    registerLiveInstance(chatObj);
+    __testOnlySetCurrentChat({ chat: chatObj });
+    registerLiveInstance({ chat: chatObj });
 
     const mockBlob = new Blob(['binary data'], { type: 'image/png' });
     const mockAttachment: Attachment = {

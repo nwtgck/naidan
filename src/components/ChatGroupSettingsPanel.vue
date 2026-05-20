@@ -152,7 +152,7 @@ const hasActiveOverrides = computed(() => {
 
 async function saveChanges() {
   if (currentChatGroup.value) {
-    await chatStore.updateChatGroupMetadata(currentChatGroup.value.id, localSettings.value);
+    await chatStore.updateChatGroupMetadata({ id: currentChatGroup.value.id, updates: localSettings.value });
   }
 }
 
@@ -294,7 +294,7 @@ async function setGroupNameFromModelId() {
   if (!modelId || !currentChatGroup.value) return;
 
   const newName = modelId.split('/').pop() || modelId;
-  await chatStore.updateChatGroupMetadata(currentChatGroup.value.id, { name: newName });
+  await chatStore.updateChatGroupMetadata({ id: currentChatGroup.value.id, updates: { name: newName } });
 }
 
 

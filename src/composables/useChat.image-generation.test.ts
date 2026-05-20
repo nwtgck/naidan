@@ -60,12 +60,12 @@ describe('useChat Image Generation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chatStore.availableModels.value = ['llama3', 'x/z-image-turbo:v1'];
-    chatStore.TEST_ONLY.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry({});
   });
 
   it('sendMessage in image mode adds sentinel markers', async () => {
     const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] } } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
     chatStore.toggleImageMode({ chatId: 'chat-1' });
 
     const success = await chatStore.sendMessage({ content: 'draw a cat', parentId: null, attachments: [], chatTarget: chat });
@@ -84,8 +84,8 @@ describe('useChat Image Generation', () => {
 
   it('sendImageRequest triggers message sending with correct parameters', async () => {
     const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
-    chatStore.registerLiveInstance(chat);
-    await chatStore.openChat('chat-1');
+    chatStore.registerLiveInstance({ chat });
+    await chatStore.openChat({ id: 'chat-1' });
 
     // Verify currentChat is set
     expect(toRaw(chatStore.currentChat.value)).toMatchObject({ id: 'chat-1' });
@@ -113,8 +113,8 @@ describe('useChat Image Generation', () => {
 
   it('sendImageRequest with attachments passes them to sendMessage', async () => {
     const chat = { id: 'chat-attachments', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
-    chatStore.registerLiveInstance(chat);
-    await chatStore.openChat('chat-attachments');
+    chatStore.registerLiveInstance({ chat });
+    await chatStore.openChat({ id: 'chat-attachments' });
 
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
     const mockAttachment = { id: 'att-1', originalName: 'test.png', mimeType: 'image/png', status: 'memory', blob: new Blob(['test'], { type: 'image/png' }) } as any;
@@ -148,7 +148,7 @@ describe('useChat Image Generation', () => {
         }]
       }
     } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
 
     await chatStore.generateChatTitle({ chatId: 'chat-title-test', signal: undefined, titleModelIdOverride: undefined });
 
@@ -173,22 +173,22 @@ describe('useChat Image Generation', () => {
         }]
       }
     } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
 
     // Mock loadChat to return the chat structure so forkChat can work
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // Fork from assistant message 'a1'
-    const forkedChatId = await chatStore.forkChat('a1', 'chat-fork');
+    const forkedChatId = await chatStore.forkChat({ messageId: 'a1', chatId: 'chat-fork' });
 
     expect(forkedChatId).toBeDefined();
-    const forkedChat = chatStore.getLiveChat({ id: forkedChatId! } as any) as any;
+    const forkedChat = chatStore.getLiveChat({ chat: { id: forkedChatId! } as any }) as any;
     expect(forkedChat).toBeDefined();
     expect(forkedChat.root.items[0].content).toContain('naidan_experimental_image_request');
 
     // Regerenerating on the forked chat should trigger image generation again
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
-    await chatStore.regenerateMessage('a1');
+    await chatStore.regenerateMessage({ failedMessageId: 'a1' });
 
     expect(updateSpy).toHaveBeenCalled();
   });
@@ -218,12 +218,12 @@ describe('useChat Image Generation', () => {
         }]
       }
     } as any;
-    chatStore.registerLiveInstance(chat);
+    chatStore.registerLiveInstance({ chat });
 
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
 
     // Directly call regenerateMessage to trigger background generation
-    await chatStore.regenerateMessage('a1');
+    await chatStore.regenerateMessage({ failedMessageId: 'a1' });
 
     // It should trigger updateChatContent at least once (for pending)
     await vi.waitFor(() => {

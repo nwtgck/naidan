@@ -171,7 +171,7 @@ watch(
         if (group) {
           targetGroupId = group.id;
         } else {
-          targetGroupId = await chatStore.createChatGroup(chatGroupId);
+          targetGroupId = await chatStore.createChatGroup({ name: chatGroupId });
         }
       }
 

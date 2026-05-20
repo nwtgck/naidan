@@ -75,7 +75,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Response'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Response'));
 
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
   });
 
   it('Scenario: Full lifecycle of a chat through multiple provider and model changes', async () => {
@@ -87,7 +87,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chatObj);
+    __testOnlySetCurrentChat({ chat: chatObj });
 
     // 1. OpenAI (gpt-4-showcase -> resolves to gpt-4)
     await sendMessage({ content: 'M1' });
@@ -101,8 +101,8 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('llama3');
 
     // 3. Custom Override (gpt-3.5-turbo)
-    await updateChatSettings(chatObj.id, { endpointType: 'openai' });
-    await updateChatModel(chatObj.id, 'gpt-3.5-turbo');
+    await updateChatSettings({ id: chatObj.id, updates: { endpointType: 'openai' } });
+    await updateChatModel({ id: chatObj.id, modelId: 'gpt-3.5-turbo' });
     await sendMessage({ content: 'M3' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat.mock.calls[1]![0].model).toBe('gpt-3.5-turbo');
@@ -116,12 +116,12 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     });
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);
 
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'fallback-test',
       title: 'Fallback Test',
       root: { items: [] },
       createdAt: 0, updatedAt: 0, debugEnabled: false,
-    }) as any);
+    }) as any });
 
     await sendMessage({ content: 'Test' });
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('first-available');

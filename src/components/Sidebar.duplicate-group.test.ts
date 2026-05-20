@@ -118,6 +118,6 @@ describe('Sidebar Duplicate Group Feature', () => {
     expect(duplicateBtn.exists()).toBe(true);
 
     await duplicateBtn.trigger('click');
-    expect(mockDuplicateChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockDuplicateChatGroup).toHaveBeenCalledWith({ groupId: 'g1' });
   });
 });

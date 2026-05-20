@@ -71,7 +71,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
-  await chatStore.loadChats()
+  await chatStore.loadChats({})
 
   app.mount('#app')
 

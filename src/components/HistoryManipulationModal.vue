@@ -267,7 +267,7 @@ const systemPromptBehavior = computed({
 async function handleSave() {
   if (!currentChat.value) return;
   const cleanMessages: HistoryItem[] = editableMessages.value.map(({ localId: _, ...msg }) => msg);
-  await chatStore.commitFullHistoryManipulation(currentChat.value.id, cleanMessages, localSystemPrompt.value);
+  await chatStore.commitFullHistoryManipulation({ chatId: currentChat.value.id, messages: cleanMessages, systemPrompt: localSystemPrompt.value });
   emit('close');
 }
 

@@ -201,7 +201,7 @@ describe('GlobalSearchModal Component', () => {
     // Enter to select the item
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Enter' });
 
-    expect(mockOpenChat).toHaveBeenCalledWith('chat2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'chat2' });
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
@@ -234,7 +234,7 @@ describe('GlobalSearchModal Component', () => {
 
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
-    expect(mockOpenChat).toHaveBeenCalledWith('chat1');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'chat1' });
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
@@ -265,7 +265,7 @@ describe('GlobalSearchModal Component', () => {
 
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
@@ -294,7 +294,7 @@ describe('GlobalSearchModal Component', () => {
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
     expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat1', messageId: 'message-1' });
-    expect(mockOpenChat).not.toHaveBeenCalledWith('chat1', 'leaf-1');
+    expect(mockOpenChat).not.toHaveBeenCalledWith({ id: 'chat1', leafId: 'leaf-1' });
     expect(mockPush).toHaveBeenCalledWith({
       path: '/chat/chat1',
       query: { 'message-id': 'message-1' },

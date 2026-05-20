@@ -381,7 +381,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     expect(wrapper.findAll('.sidebar-chat-item')).toHaveLength(7);
 
     // Should have navigated to 6th item (c5)
-    expect(mockOpenChat).toHaveBeenCalledWith('c5');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c5' });
   });
 
   it('handles keyboard navigation: ArrowLeft on chat item jumps to group header', async () => {
@@ -419,6 +419,6 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     await nextTick();
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
   });
 });

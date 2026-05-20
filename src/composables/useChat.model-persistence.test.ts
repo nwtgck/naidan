@@ -89,7 +89,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chatObj);
+    __testOnlySetCurrentChat({ chat: chatObj });
 
     // 2. Send first message with default model
     await sendMessage({ content: 'Hello with 3.5' });
@@ -102,7 +102,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
     expect(activeMessages.value[1]?.content).toContain('Response from gpt-3.5-turbo');
 
     // 3. Change the model for the chat
-    await updateChatModel(chatObj.id, 'gpt-4');
+    await updateChatModel({ id: chatObj.id, modelId: 'gpt-4' });
 
     // 4. Send second message with new model
     await sendMessage({ content: 'Hello with 4' });

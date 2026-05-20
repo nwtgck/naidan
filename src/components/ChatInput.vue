@@ -1207,7 +1207,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           <div class="w-[100px] sm:w-[180px]">
             <ModelSelector
               :model-value="currentChat.modelId"
-              @update:model-value="val => currentChat && chatStore.updateChatModel(currentChat.id, val!)"
+              @update:model-value="val => currentChat && chatStore.updateChatModel({ id: currentChat.id, modelId: val! })"
               :models="sortedAvailableModels"
               :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
               :loading="fetchingModels"

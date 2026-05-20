@@ -27,7 +27,7 @@ async function syncChat() {
     if (messageId.value) {
       await openChatAtMessage({ chatId: id, messageId: messageId.value });
     } else {
-      await openChat(id, leafId.value);
+      await openChat({ id, leafId: leafId.value });
     }
   }
 }

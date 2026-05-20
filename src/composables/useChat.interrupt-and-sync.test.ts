@@ -81,10 +81,10 @@ describe('useChat Interrupt and Sync Tests', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
     TEST_ONLY.activeGenerations.clear();
-    TEST_ONLY.clearActiveTaskCounts();
-    TEST_ONLY.clearLiveChatRegistry();
+    TEST_ONLY.clearActiveTaskCounts({});
+    TEST_ONLY.clearLiveChatRegistry({});
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
     clearEvents();
@@ -106,7 +106,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // 1. Start a slow regular chat generation
@@ -129,12 +129,12 @@ describe('useChat Interrupt and Sync Tests', () => {
 
     const sendResultPromise = sendMessage({ content: 'First version' });
     const signal = await genStarted;
-    expect(chatStore.isProcessing(chat.id)).toBe(true);
+    expect(chatStore.isProcessing({ chatId: chat.id })).toBe(true);
 
     const userMsgId = chat.root.items[0].id;
 
     // 2. Edit the message while processing. This should now wait for isProcessing to become false.
-    await editMessage(userMsgId, 'Second version');
+    await editMessage({ messageId: userMsgId, newContent: 'Second version' });
 
     expect(chat.root.items).toHaveLength(2);
     expect(chat.root.items[1].content).toBe('Second version');
@@ -164,7 +164,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       modelId: 'x/z-image-turbo:v1',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     const { handleImageGeneration, availableModels } = chatStore;
@@ -215,7 +215,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       modelId: 'gpt-4',
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // 1. Mock LLM to simulate an abortion
@@ -237,13 +237,13 @@ describe('useChat Interrupt and Sync Tests', () => {
     const genPromise = generateResponse({ chat: chat, assistantId: assistantId });
 
     // 3. Wait for it to be processing
-    await vi.waitUntil(() => isProcessing(chatId));
+    await vi.waitUntil(() => isProcessing({ chatId }));
 
     // 4. Abort the chat
     abortChat({ chatId: chatId });
 
     await genPromise;
-    await vi.waitUntil(() => !isProcessing(chatId));
+    await vi.waitUntil(() => !isProcessing({ chatId }));
 
     // 5. Verify that the reactive assistant node was updated with the aborted message
     const userMsg = chat.root.items[0];
