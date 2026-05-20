@@ -34,7 +34,7 @@ async function handleDeleteProviderProfile(id: string) {
   const newProfiles = [...props.profiles];
   newProfiles.splice(index, 1);
   emit('update:profiles', newProfiles);
-  await updateProviderProfiles(JSON.parse(JSON.stringify(newProfiles)));
+  await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(newProfiles)) });
 
   addToast({
     message: `Profile "${deletedProfile.name}" deleted`,
@@ -43,7 +43,7 @@ async function handleDeleteProviderProfile(id: string) {
       const restoredProfiles = [...newProfiles];
       restoredProfiles.splice(index, 0, deletedProfile);
       emit('update:profiles', restoredProfiles);
-      await updateProviderProfiles(JSON.parse(JSON.stringify(restoredProfiles)));
+      await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(restoredProfiles)) });
     },
     duration: 5000,
   });
@@ -63,7 +63,7 @@ async function saveRename() {
     if (profile) {
       profile.name = editingProviderProfileName.value.trim();
       emit('update:profiles', newProfiles);
-      await updateProviderProfiles(newProfiles);
+      await updateProviderProfiles({ profiles: newProfiles });
     }
   }
   editingProviderProfileId.value = null;

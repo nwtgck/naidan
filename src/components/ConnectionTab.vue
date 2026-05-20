@@ -213,7 +213,7 @@ async function handleCreateProviderProfile() {
 
   if (!form.value.providerProfiles) form.value.providerProfiles = [];
   form.value.providerProfiles.push(newProviderProfile);
-  await updateProviderProfiles(JSON.parse(JSON.stringify(form.value.providerProfiles)));
+  await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(form.value.providerProfiles)) });
 
   addToast({
     message: `Profile "${name}" created`,

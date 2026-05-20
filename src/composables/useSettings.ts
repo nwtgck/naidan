@@ -256,7 +256,7 @@ export function useSettings() {
 
   // --- Explicit Actions ---
 
-  async function updateProviderProfiles(profiles: ProviderProfile[]) {
+  async function updateProviderProfiles({ profiles }: { profiles: ProviderProfile[] }) {
     const patch = { providerProfiles: [...profiles] };
     _settings.value.providerProfiles = patch.providerProfiles;
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), ...patch } as Settings));
