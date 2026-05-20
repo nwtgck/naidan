@@ -168,11 +168,11 @@ function addHeader() {
   customHeaders.value.push(['', '']);
 }
 
-function removeHeader(index: number) {
+function removeHeader({ index }: { index: number }) {
   customHeaders.value.splice(index, 1);
 }
 
-function handleModelLoaded(modelId: string) {
+function handleModelLoaded({ modelId }: { modelId: string }) {
   if (isTransformersJs.value) {
     selectedModel.value = modelId;
   }
@@ -239,7 +239,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
     handleConnect();
   }
 });
-function selectPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+function selectPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   selectedType.value = preset.type;
   customUrl.value = preset.url;
   // Reset models if user changes preset/url
@@ -447,7 +447,7 @@ defineExpose({
                   </div>
                 </div>
 
-                <TransformersJsManager @model-loaded="handleModelLoaded" />
+                <TransformersJsManager @model-loaded="modelId => handleModelLoaded({ modelId })" />
 
                 <div class="flex flex-col sm:flex-row items-center gap-4 pt-6 border-t border-gray-100 dark:border-gray-800">
                   <button
@@ -477,7 +477,7 @@ defineExpose({
                   <button
                     v-for="preset in ENDPOINT_PRESETS"
                     :key="preset.name"
-                    @click="selectPreset(preset)"
+                    @click="selectPreset({ preset })"
                     class="px-2.5 py-1.5 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold border rounded-lg transition-all duration-200"
                     :class="customUrl === preset.url ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600'"
                   >
@@ -554,7 +554,7 @@ defineExpose({
                         placeholder="Value"
                       />
                       <button
-                        @click="removeHeader(index)"
+                        @click="removeHeader({ index })"
                         class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                       >
                         <Trash2Icon class="w-3.5 h-3.5" />
