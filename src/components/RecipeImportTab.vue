@@ -69,7 +69,7 @@ function handleAnalyzeRecipes() {
     }
 
     const recipe = validation.data;
-    const match = matchRecipeModels(recipe.models, props.availableModels);
+    const match = matchRecipeModels({ recipeModels: recipe.models, availableModelIds: props.availableModels });
 
     newAnalyzed.push({
       id: generateId(),

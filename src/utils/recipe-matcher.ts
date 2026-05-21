@@ -10,8 +10,7 @@ export interface MatchResult {
  * Returns the first matching model ID and any error encountered.
  */
 export function matchRecipeModels(
-  recipeModels: RecipeModel[],
-  availableModelIds: readonly string[]
+  { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] }
 ): MatchResult {
   for (const recipeModel of recipeModels) {
     switch (recipeModel.type) {
@@ -44,8 +43,7 @@ export interface MultiMatchResult {
  * Checks all recipe patterns and returns all matching model IDs and errors.
  */
 export function getAllMatchingModels(
-  recipeModels: RecipeModel[],
-  availableModelIds: readonly string[]
+  { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] }
 ): MultiMatchResult {
   const matches = new Set<string>();
   const errors: string[] = [];
@@ -81,7 +79,7 @@ export function getAllMatchingModels(
  * Generates sensible default regex patterns for a given model ID.
  * Returns an array of patterns from most specific to most general.
  */
-export function generateDefaultModelPatterns(modelId: string): string[] {
+export function generateDefaultModelPatterns({ modelId }: { modelId: string }): string[] {
   if (!modelId) return [];
 
   const patterns: string[] = [];

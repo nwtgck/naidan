@@ -22,7 +22,7 @@ export interface ResolvableSettings {
   lmParameters?: ResolvableLmParameters;
 }
 
-export function resolveChatSettings(chat: Chat, groups: ChatGroup[], globalSettings: ResolvableSettings) {
+export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Chat, groups: ChatGroup[], globalSettings: ResolvableSettings }) {
 
   const group = chat.groupId ? groups.find(g => g.id === chat.groupId) : null;
 

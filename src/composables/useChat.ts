@@ -426,14 +426,14 @@ export function useChat() {
 
   const resolvedSettings = computed(() => {
     if (!_currentChat.value) return null;
-    return resolveChatSettings(toRaw(_currentChat.value), chatGroups.value, settings.value);
+    return resolveChatSettings({ chat: toRaw(_currentChat.value), groups: chatGroups.value, globalSettings: settings.value });
   });
 
   const inheritedSettings = computed(() => {
     if (!_currentChat.value) return null;
     const chat = toRaw(_currentChat.value);
     const virtualChat: Chat = { ...chat, modelId: undefined, endpointType: undefined, endpointUrl: undefined, endpointHttpHeaders: undefined, systemPrompt: undefined, lmParameters: undefined, };
-    return resolveChatSettings(virtualChat, chatGroups.value, settings.value);
+    return resolveChatSettings({ chat: virtualChat, groups: chatGroups.value, globalSettings: settings.value });
   });
 
   const activeMessages = computed(() => {
@@ -1004,7 +1004,7 @@ export function useChat() {
   }) => {
     const target = getLiveChat({ chat: { id: chatId } as Chat });
     if (!target) return;
-    const resolved = resolveChatSettings(target, chatGroups.value, settings.value);
+    const resolved = resolveChatSettings({ chat: target, groups: chatGroups.value, globalSettings: settings.value });
 
     await _handleImageGeneration({
       chatId,
@@ -1061,7 +1061,7 @@ export function useChat() {
     storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'started', timestamp: Date.now() });
     registerLiveInstance({ chat: mutableChat });
 
-    const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
+    const resolved = resolveChatSettings({ chat: mutableChat, groups: chatGroups.value, globalSettings: settings.value });
     const type = resolved.endpointType;
     const url = resolved.endpointUrl;
     const resolvedModel = assistantNode.modelId || resolved.modelId;
@@ -1544,7 +1544,7 @@ export function useChat() {
     try {
       const { settings: globalSettings, setHeavyContentAlertDismissed, setOnboardingDraft, setIsOnboardingDismissed } = useSettings();
       const { showConfirm } = useConfirm();
-      const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
       const type = resolved.endpointType;
       const url = resolved.endpointUrl;
       let resolvedModel = chat.modelId || resolved.modelId;
@@ -1753,7 +1753,7 @@ export function useChat() {
     incTask({ chatId: taskId, type: 'title' });
     registerLiveInstance({ chat: mutableChat });
     try {
-      const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
+      const resolved = resolveChatSettings({ chat: mutableChat, groups: chatGroups.value, globalSettings: settings.value });
       if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
         decTask({ chatId: taskId, type: 'title' }); return;
       }
@@ -2140,7 +2140,7 @@ export function useChat() {
     chat: Chat,
     signal: AbortSignal | undefined
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
-    const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+    const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
     return await _performGeneration({
       prompt,
       model,

@@ -29,7 +29,7 @@ const recipeForm = ref({
 
 function initForm() {
   const modelPatterns = props.initialModelId
-    ? generateDefaultModelPatterns(props.initialModelId).map(p => ({ id: generateId(), pattern: p, caseSensitive: false }))
+    ? generateDefaultModelPatterns({ modelId: props.initialModelId }).map(p => ({ id: generateId(), pattern: p, caseSensitive: false }))
     : [];
 
   recipeForm.value = {
