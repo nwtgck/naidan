@@ -62,7 +62,7 @@ export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilte
 
         if (allMatch) {
           // Find the deepest leaf from this node to ensure it appears in the active path
-          const leafNode = findDeepestLeaf(node);
+          const leafNode = findDeepestLeaf({ node });
 
           matches.push({
             chatId,

@@ -204,7 +204,7 @@ export function useImageGeneration() {
     const target = getLiveChat({ chat: { id: chatId } as Chat });
     if (!target) return;
     const mutableChat = target;
-    const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
+    const assistantNode = findNodeInBranch({ items: mutableChat.root.items, targetId: assistantId });
     if (!assistantNode) return;
     switch (assistantNode.role) {
     case 'assistant':

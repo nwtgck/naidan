@@ -1289,27 +1289,27 @@ describe('useChat Composable Logic', () => {
     ];
 
     it('should return index after prevId if prevId is present', () => {
-      expect(findRestorationIndex(items, 'i1', 'i3')).toBe(1);
-      expect(findRestorationIndex(items, 'i2', 'i3')).toBe(2);
+      expect(findRestorationIndex({ items, prevId: 'i1', nextId: 'i3' })).toBe(1);
+      expect(findRestorationIndex({ items, prevId: 'i2', nextId: 'i3' })).toBe(2);
     });
 
     it('should return index before nextId if prevId is missing but nextId is present', () => {
-      expect(findRestorationIndex(items, 'deleted-prev', 'i2')).toBe(1);
-      expect(findRestorationIndex(items, null, 'i1')).toBe(0);
-      expect(findRestorationIndex(items, null, 'i3')).toBe(2);
+      expect(findRestorationIndex({ items, prevId: 'deleted-prev', nextId: 'i2' })).toBe(1);
+      expect(findRestorationIndex({ items, prevId: null, nextId: 'i1' })).toBe(0);
+      expect(findRestorationIndex({ items, prevId: null, nextId: 'i3' })).toBe(2);
     });
 
     it('should return 0 (top) if both prevId and nextId are missing or not in list', () => {
-      expect(findRestorationIndex(items, 'ghost-1', 'ghost-2')).toBe(0);
-      expect(findRestorationIndex(items, null, null)).toBe(0);
+      expect(findRestorationIndex({ items, prevId: 'ghost-1', nextId: 'ghost-2' })).toBe(0);
+      expect(findRestorationIndex({ items, prevId: null, nextId: null })).toBe(0);
     });
 
     it('should return 0 for empty list', () => {
-      expect(findRestorationIndex([], 'any', 'any')).toBe(0);
+      expect(findRestorationIndex({ items: [], prevId: 'any', nextId: 'any' })).toBe(0);
     });
 
     it('should handle last position correctly', () => {
-      expect(findRestorationIndex(items, 'i3', null)).toBe(3);
+      expect(findRestorationIndex({ items, prevId: 'i3', nextId: null })).toBe(3);
     });
 
     it('should restore the last item of a group correctly in an integrated flow', async () => {

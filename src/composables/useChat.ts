@@ -164,7 +164,7 @@ function applyVolatileAssistantErrorsToChat({ chat }: { chat: Chat }) {
   if (!errors || errors.size === 0) return;
 
   for (const [messageId, error] of errors.entries()) {
-    const node = findNodeInBranch(chat.root.items, messageId);
+    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
     if (!node || node.role !== 'assistant') continue;
     node.error = error;
   }
@@ -443,7 +443,7 @@ export function useChat() {
 
   const allMessages = computed(() => {
     if (!_currentChat.value) return [];
-    return getAllMessages(_currentChat.value);
+    return getAllMessages({ chat: _currentChat.value });
   });
 
   const getLiveChat = ({ chat }: { chat: Chat | Readonly<Chat> }): Chat => {
@@ -704,7 +704,7 @@ export function useChat() {
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
       if (leafId && leafId !== chat.currentLeafId) {
-        const node = findNodeInBranch(chat.root.items, leafId);
+        const node = findNodeInBranch({ items: chat.root.items, targetId: leafId });
         if (node) {
           chat.currentLeafId = leafId;
           storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
@@ -720,7 +720,7 @@ export function useChat() {
     const loaded = await storageService.loadChat(id);
     if (loaded) {
       if (leafId && leafId !== loaded.currentLeafId) {
-        const node = findNodeInBranch(loaded.root.items, leafId);
+        const node = findNodeInBranch({ items: loaded.root.items, targetId: leafId });
         if (node) {
           loaded.currentLeafId = leafId;
           storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
@@ -748,10 +748,10 @@ export function useChat() {
     if (!chat) return null;
 
     const mutableChat = getLiveChat({ chat });
-    const node = findNodeInBranch(mutableChat.root.items, messageId);
+    const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
     if (!node) return chat;
 
-    mutableChat.currentLeafId = findDeepestLeaf(node).id;
+    mutableChat.currentLeafId = findDeepestLeaf({ node }).id;
     if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
     return chat;
   };
@@ -1038,7 +1038,7 @@ export function useChat() {
 
   const generateResponse = async ({ chat, assistantId, lmParameters }: { chat: Chat | Readonly<Chat>, assistantId: string, lmParameters?: LmParameters }) => {
     const mutableChat = getLiveChat({ chat });
-    const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
+    const assistantNode = findNodeInBranch({ items: mutableChat.root.items, targetId: assistantId });
     if (!assistantNode) throw new Error('Assistant node not found');
     switch (assistantNode.role) {
     case 'assistant':
@@ -1071,7 +1071,7 @@ export function useChat() {
     assistantNode.lmParameters = finalLmParameters;
     assistantNode.modelId = resolvedModel;
 
-    const parentNode = findParentInBranch(mutableChat.root.items, assistantId);
+    const parentNode = findParentInBranch({ items: mutableChat.root.items, childId: assistantId });
     const imageRequest = parentNode ? parseImageRequest({ content: parentNode.content || '' }) : null;
 
     try {
@@ -1214,7 +1214,7 @@ export function useChat() {
               }
               }
               if (blob && att.mimeType.startsWith('image/')) {
-                const b64 = await fileToDataUrl(blob);
+                const b64 = await fileToDataUrl({ blob });
                 contentParts.push({ type: 'image_url', image_url: { url: b64 } });
               }
             }
@@ -1387,7 +1387,7 @@ export function useChat() {
                           result: | { status: 'success'; content: string } | { status: 'error'; code: import('../services/tools/types').ToolExecutionErrorCode; message: string };
                         }) => {
           // Find the tool node containing this toolCallId
-            const allMessages = getAllMessages(mutableChat);
+            const allMessages = getAllMessages({ chat: mutableChat });
             const toolNode = allMessages.find(n => n.role === 'tool' && n.results.some(er => er.toolCallId === params.id)) as import('../models/types').ToolMessageNode | undefined;
 
             if (toolNode) {
@@ -1466,7 +1466,7 @@ export function useChat() {
       }
 
       await updateChatContent({ id: mutableChat.id, updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) });
-      processThinking(assistantNode);
+      processThinking({ node: assistantNode });
       mutableChat.updatedAt = Date.now();
 
       if (mutableChat.title === null && resolved.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
@@ -1479,7 +1479,7 @@ export function useChat() {
       if (lastOpen > -1 && lastClose < lastOpen) {
         assistantNode.content += '</think>';
       }
-      processThinking(assistantNode);
+      processThinking({ node: assistantNode });
 
       if ((e as Error).name === 'AbortError' || (e as Error).message === 'Generation aborted') {
         assistantNode.content += '\n\n[Generation Aborted]';
@@ -1667,7 +1667,7 @@ export function useChat() {
       if (parentId === null) chat.root.items.push(userMsg);
       else {
         const pId = parentId || chat.currentLeafId;
-        const parentNode = pId ? findNodeInBranch(chat.root.items, pId) : null;
+        const parentNode = pId ? findNodeInBranch({ items: chat.root.items, targetId: pId }) : null;
         if (parentNode) parentNode.replies.items.push(userMsg);
         else chat.root.items.push(userMsg);
       }
@@ -1703,9 +1703,9 @@ export function useChat() {
     incTask({ chatId: chat.id, type: 'process' });
     registerLiveInstance({ chat });
     try {
-      const failedNode = findNodeInBranch(chat.root.items, failedMessageId);
+      const failedNode = findNodeInBranch({ items: chat.root.items, targetId: failedMessageId });
       if (!failedNode || failedNode.role !== 'assistant') return;
-      const parent = findParentInBranch(chat.root.items, failedMessageId);
+      const parent = findParentInBranch({ items: chat.root.items, childId: failedMessageId });
       if (!parent || parent.role !== 'user') return;
       const newAssistantMsg: AssistantMessageNode = {
         id: generateId(),
@@ -1981,7 +1981,7 @@ export function useChat() {
     }
 
     const chat = getLiveChat({ chat: _currentChat.value });
-    const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
+    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId }); if (!node) return;
     switch (node.role) {
     case 'assistant': {
       const correctedNode: AssistantMessageNode = {
@@ -1998,7 +1998,7 @@ export function useChat() {
         toolCalls: undefined,
         results: undefined,
       };
-      const parent = findParentInBranch(chat.root.items, messageId);
+      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
       if (parent) parent.replies.items.push(correctedNode);
       else chat.root.items.push(correctedNode);
       chat.currentLeafId = correctedNode.id;
@@ -2007,12 +2007,12 @@ export function useChat() {
       break;
     }
     case 'user': {
-      const parent = findParentInBranch(chat.root.items, messageId);
+      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
       await sendMessage({ content: newContent, parentId: parent ? parent.id : null, attachments: node.attachments, chatTarget: chat, lmParameters: lmParameters });
       break;
     }
     case 'system': {
-      const parent = findParentInBranch(chat.root.items, messageId);
+      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
       await sendMessage({ content: newContent, parentId: parent ? parent.id : null, attachments: undefined, chatTarget: chat, lmParameters: lmParameters });
       break;
     }
@@ -2028,9 +2028,9 @@ export function useChat() {
   const switchVersion = async ({ messageId }: { messageId: string }) => {
     if (!_currentChat.value) return;
     const chat = getLiveChat({ chat: _currentChat.value });
-    const node = findNodeInBranch(chat.root.items, messageId);
+    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
     if (node) {
-      chat.currentLeafId = findDeepestLeaf(node).id;
+      chat.currentLeafId = findDeepestLeaf({ node }).id;
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
       await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
     }
@@ -2040,7 +2040,7 @@ export function useChat() {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return [];
     const mutableChat = getLiveChat({ chat: target });
-    const parent = findParentInBranch(mutableChat.root.items, messageId);
+    const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
     return parent ? parent.replies.items : mutableChat.root.items;
   };
 
@@ -2111,7 +2111,7 @@ export function useChat() {
       }
     }
 
-    const newNodes = createBranchFromMessages(messages);
+    const newNodes = createBranchFromMessages({ messages });
 
     if (newNodes.length > 0) {
       if (!chat.root) chat.root = { items: [] };
