@@ -11,7 +11,7 @@ import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
-const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted(() => import('./SidebarDebugControls.vue'));
+const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SidebarDebugControls.vue') });
 import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/models/types';
 import {
   Trash2Icon, SettingsIcon,
@@ -21,7 +21,7 @@ import {
   SearchIcon, GhostIcon, MessageSquarePlusIcon
 } from 'lucide-vue-next';
 
-const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
+const ChatGroupActions = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupActions.vue') });
 import { useLayout } from '@/composables/useLayout';
 import { useConfirm } from '@/composables/useConfirm';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';

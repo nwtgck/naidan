@@ -50,7 +50,7 @@ const handleMouseMove = () => {
   showControls();
 };
 
-const loadPreview = async (obj: BinaryObject) => {
+const loadPreview = async ({ obj }: { obj: BinaryObject }) => {
   if (loadingTimeout) clearTimeout(loadingTimeout);
   loadingTimeout = setTimeout(() => {
     isLoading.value = true;
@@ -82,7 +82,7 @@ const loadPreview = async (obj: BinaryObject) => {
 };
 
 watch(() => currentObject.value, (newObj) => {
-  if (newObj) loadPreview(newObj);
+  if (newObj) loadPreview({ obj: newObj });
 }, { immediate: true });
 
 const next = () => {

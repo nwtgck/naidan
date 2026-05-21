@@ -13,7 +13,7 @@ export type AsyncComponentLoader<T = Component> = () => Promise<AsyncComponentRe
  */
 export function defineAsyncComponentAndLoadOnMounted<T extends Component = {
     new (): ComponentPublicInstance;
-}>(loader: AsyncComponentLoader<T>) {
+}>({ loader }: { loader: AsyncComponentLoader<T> }) {
   const Comp = defineAsyncComponent(loader);
 
   onMounted(() => {

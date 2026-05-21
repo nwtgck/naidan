@@ -211,11 +211,11 @@ async function handleImportExecute() {
 
   try {
     // 1. Verify before destructive restore
-    await service.verify(file, importConfig.value);
+    await service.verify({ zipFile: file, config: importConfig.value });
 
     // 2. Execute
     processingMessage.value = 'Importing data...';
-    await service.executeImport(file, importConfig.value);
+    await service.executeImport({ zipFile: file, config: importConfig.value });
 
     addToast({ message: 'Import successful!', duration: 3000 });
 

@@ -429,7 +429,7 @@ function executeAction({ action }: { action: ActionType }) {
   /**
    * Helper to create path based on current shape
    */
-  const createSelectionPath = (context: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+  const createSelectionPath = ({ context, x, y, w, h }: { context: CanvasRenderingContext2D; x: number; y: number; w: number; h: number }) => {
     context.beginPath();
     switch (shape) {
     case 'rectangle':
@@ -484,7 +484,7 @@ function executeAction({ action }: { action: ActionType }) {
     switch (action) {
     case 'mask-inside':
       if (isTransparent) ctx.globalCompositeOperation = 'destination-out';
-      createSelectionPath(ctx, sx, sy, sw, sh);
+      createSelectionPath({ context: ctx, x: sx, y: sy, w: sw, h: sh });
       ctx.fill();
       break;
     case 'mask-outside': {
@@ -499,7 +499,7 @@ function executeAction({ action }: { action: ActionType }) {
         tctx.fillRect(0, 0, canvas.width, canvas.height);
         // "Punch a hole" for the selection
         tctx.globalCompositeOperation = 'destination-out';
-        createSelectionPath(tctx, sx, sy, sw, sh);
+        createSelectionPath({ context: tctx, x: sx, y: sy, w: sw, h: sh });
         tctx.fill();
 
         // Draw the mask onto the main canvas
@@ -548,8 +548,8 @@ function pickColor({ event }: { event: MouseEvent }) {
   if (a === 0) {
     selectedFill.value = TRANSPARENT;
   } else {
-    const toHex = (v: number) => v.toString(16).padStart(2, '0');
-    selectedFill.value = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    const toHex = ({ v }: { v: number }) => v.toString(16).padStart(2, '0');
+    selectedFill.value = `#${toHex({ v: r })}${toHex({ v: g })}${toHex({ v: b })}`;
   }
   isPickingColor.value = false;
 }

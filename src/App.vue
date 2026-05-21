@@ -27,17 +27,17 @@ import type { EndpointType } from './models/types';
 
 // PWA manager (only for hosted mode)
 const PWAManager = __BUILD_MODE_IS_HOSTED__
-  ? defineAsyncComponentAndLoadOnMounted(() => import('./components/PWAManager.vue'))
+  ? defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/PWAManager.vue') })
   : undefined;
 // Lazily load components that are not visible on initial mount, but prefetch them when idle.
-const SettingsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/SettingsModal.vue'));
-const DebugWeshTerminalModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugWeshTerminalModal.vue'));
-const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/GlobalSearchModal.vue'));
-const RecentChatsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/RecentChatsModal.vue'));
-const DebugPanel = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugPanel.vue'));
-const CustomDialog = defineAsyncComponentAndLoadOnMounted(() => import('./components/CustomDialog.vue'));
-const OPFSExplorer = defineAsyncComponentAndLoadOnMounted(() => import('./components/OPFSExplorer.vue'));
-const FileExplorerModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/FileExplorerModal.vue'));
+const SettingsModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/SettingsModal.vue') });
+const DebugWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/DebugWeshTerminalModal.vue') });
+const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/GlobalSearchModal.vue') });
+const RecentChatsModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/RecentChatsModal.vue') });
+const DebugPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/DebugPanel.vue') });
+const CustomDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/CustomDialog.vue') });
+const OPFSExplorer = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/OPFSExplorer.vue') });
+const FileExplorerModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/FileExplorerModal.vue') });
 
 const chatStore = useChat();
 const settingsStore = useSettings();

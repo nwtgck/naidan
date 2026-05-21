@@ -6,9 +6,9 @@ import { useElementBounding, useWindowSize } from '@vueuse/core';
 import { useChatTools } from '@/composables/useChatTools';
 
 // Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
-const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
-const ReasoningSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ReasoningSettings.vue'));
-const LmToolsSettings = defineAsyncComponentAndLoadOnMounted(() => import('./LmToolsSettings.vue'));
+const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageGenerationSettings.vue') });
+const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ReasoningSettings.vue') });
+const LmToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmToolsSettings.vue') });
 
 const props = withDefaults(defineProps<{
   canGenerateImage: boolean;

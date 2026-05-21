@@ -14,8 +14,8 @@ describe('Semaphore', () => {
       return current;
     };
 
-    const p1 = semaphore.run(task);
-    const p2 = semaphore.run(task);
+    const p1 = semaphore.run({ task });
+    const p2 = semaphore.run({ task });
 
     // Both should have started immediately (or almost immediately)
     // We check if they are running concurrently
@@ -37,9 +37,9 @@ describe('Semaphore', () => {
       activeCount--;
     };
 
-    const p1 = semaphore.run(() => task(1));
-    const p2 = semaphore.run(() => task(2));
-    const p3 = semaphore.run(() => task(3));
+    const p1 = semaphore.run({ task: () => task(1) });
+    const p2 = semaphore.run({ task: () => task(2) });
+    const p3 = semaphore.run({ task: () => task(3) });
 
     await Promise.all([p1, p2, p3]);
 
@@ -57,9 +57,9 @@ describe('Semaphore', () => {
       activeCount--;
     };
 
-    const p1 = semaphore.run(task);
-    const p2 = semaphore.run(task);
-    const p3 = semaphore.run(task);
+    const p1 = semaphore.run({ task });
+    const p2 = semaphore.run({ task });
+    const p3 = semaphore.run({ task });
 
     // Initial state: 2 running, 1 queued
     await new Promise(resolve => setTimeout(resolve, 10));
@@ -84,10 +84,10 @@ describe('Semaphore', () => {
     const successTask = vi.fn().mockResolvedValue('success');
 
     // Run failing task
-    await expect(semaphore.run(failingTask)).rejects.toThrow('Task failed');
+    await expect(semaphore.run({ task: failingTask })).rejects.toThrow('Task failed');
 
     // The next task should still run because the semaphore was released
-    const result = await semaphore.run(successTask);
+    const result = await semaphore.run({ task: successTask });
     expect(result).toBe('success');
     expect(successTask).toHaveBeenCalled();
   });
@@ -127,14 +127,14 @@ describe('Semaphore', () => {
     let totalCompleted = 0;
 
     const tasks = Array.from({ length: totalTasks }).map((_, i) => {
-      return semaphore.run(async () => {
+      return semaphore.run({ task: async () => {
         activeCount++;
         maxActive = Math.max(maxActive, activeCount);
         await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
         activeCount--;
         totalCompleted++;
         return i;
-      });
+      } });
     });
 
     const results = await Promise.all(tasks);
@@ -149,10 +149,10 @@ describe('Semaphore', () => {
     const semaphore = new Semaphore(1);
     const order: number[] = [];
 
-    const task = (id: number) => semaphore.run(async () => {
+    const task = (id: number) => semaphore.run({ task: async () => {
       await new Promise(resolve => setTimeout(resolve, 10));
       order.push(id);
-    });
+    } });
 
     // Start one
     const p1 = task(1);

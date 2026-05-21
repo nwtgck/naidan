@@ -18,8 +18,8 @@ import Logo from './Logo.vue';
 import ModelSelector from './ModelSelector.vue';
 
 // Lazily load onboarding guides and managers, but prefetch them when idle.
-const ServerSetupGuide = defineAsyncComponentAndLoadOnMounted(() => import('./ServerSetupGuide.vue'));
-const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsManager.vue'));
+const ServerSetupGuide = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ServerSetupGuide.vue') });
+const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsManager.vue') });
 import { transformersJsService } from '@/services/transformers-js';
 import { PlayIcon, ArrowLeftIcon, CheckCircle2Icon, ActivityIcon, SettingsIcon, XIcon, PlusIcon, Trash2Icon, FlaskConicalIcon } from 'lucide-vue-next';
 import { naturalSort } from '@/utils/string';

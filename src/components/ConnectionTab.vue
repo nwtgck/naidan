@@ -16,11 +16,11 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import ModelSelector from './ModelSelector.vue';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
-const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
+const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 // Lazily load previews that are only shown during specific actions
-const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted(() => import('./ProviderProfilePreview.vue'));
+const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilePreview.vue') });
 // Lazily load upsell UI
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
 
 import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';

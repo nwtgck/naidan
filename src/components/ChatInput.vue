@@ -20,8 +20,8 @@ import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-const ImageEditor = defineAsyncComponentAndLoadOnMounted(() => import('./ImageEditor.vue'));
-const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
+const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
+const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AdvancedTextEditorV3.vue') });
 
 import {
   SquareIcon, Minimize2Icon, Maximize2Icon, SendIcon,
@@ -414,8 +414,7 @@ async function onAttachFolderCopy({ folderName, files }: { folderName: string; f
 // Collects all files from a FileSystemDirectoryEntry recursively.
 // relativePath is relative to the dropped directory root (does not include the root name).
 async function collectFilesFromDirectoryEntry(
-  dirEntry: FileSystemDirectoryEntry,
-  prefix = '',
+  { dirEntry, prefix = '' }: { dirEntry: FileSystemDirectoryEntry; prefix?: string },
 ): Promise<Array<{ file: File; relativePath: string }>> {
   const reader = dirEntry.createReader();
   const allEntries: FileSystemEntry[] = [];
@@ -436,7 +435,7 @@ async function collectFilesFromDirectoryEntry(
       );
       results.push({ file, relativePath: entryPath });
     } else {
-      const sub = await collectFilesFromDirectoryEntry(entry as FileSystemDirectoryEntry, entryPath);
+      const sub = await collectFilesFromDirectoryEntry({ dirEntry: entry as FileSystemDirectoryEntry, prefix: entryPath });
       results.push(...sub);
     }
   }
@@ -505,7 +504,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
         plainFiles.push(file);
       } else if (entry.isDirectory) {
         // Non-Chromium fallback: collect files and copy to OPFS
-        const entries = await collectFilesFromDirectoryEntry(entry as FileSystemDirectoryEntry);
+        const entries = await collectFilesFromDirectoryEntry({ dirEntry: entry as FileSystemDirectoryEntry });
         await attachCopyAsVolume({ entries, name: entry.name });
       }
       break;

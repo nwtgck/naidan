@@ -10,7 +10,7 @@ import {
 import { Semaphore } from '@/utils/concurrency';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // Lazily load the preview modal since it's only shown after user interaction, but prefetch it when idle.
-const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
+const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 
@@ -169,7 +169,7 @@ const formatDate = ({ timestamp }: { timestamp: number }) => {
   return new Date(timestamp).toLocaleString();
 };
 
-const handleDownload = async (obj: BinaryObject) => {
+const handleDownload = async ({ obj }: { obj: BinaryObject }) => {
   await downloadBinaryObject({ obj });
 };
 
@@ -177,7 +177,7 @@ const handlePreview = ({ obj }: { obj: BinaryObject }) => {
   openPreview({ objects: filteredObjects.value, initialId: obj.id });
 };
 
-const handleDelete = async (obj: BinaryObject) => {
+const handleDelete = async ({ obj }: { obj: BinaryObject }) => {
   const success = await deleteBinaryObject({ id: obj.id });
   if (success) {
     objects.value = objects.value.filter(o => o.id !== obj.id);
@@ -190,7 +190,7 @@ const thumbnailLoading = ref<Set<string>>(new Set());
 const visibleIds = new Set<string>(); // Not reactive for performance
 const thumbnailCount = ref(0);
 
-const createThumbnailUrl = (blob: Blob, size: number = 120): Promise<string> => {
+const createThumbnailUrl = ({ blob, size = 120 }: { blob: Blob; size?: number }): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
@@ -240,13 +240,13 @@ const createThumbnailUrl = (blob: Blob, size: number = 120): Promise<string> => 
   });
 };
 
-const loadThumbnail = async (obj: BinaryObject) => {
+const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
   if (thumbnails.value[obj.id] || thumbnailLoading.value.has(obj.id)) return;
   if (!obj.mimeType.startsWith('image/')) return;
 
   thumbnailLoading.value.add(obj.id);
   try {
-    await thumbnailSemaphore.run(async () => {
+    await thumbnailSemaphore.run({ task: async () => {
       const blob = await storageService.getFile(obj.id);
       if (blob) {
         // requestIdleCallback (with fallback) to avoid blocking the main thread during scroll
@@ -255,7 +255,7 @@ const loadThumbnail = async (obj: BinaryObject) => {
         const thumbUrl = await new Promise<string>((resolve, reject) => {
           scheduleWork(async () => {
             try {
-              resolve(await createThumbnailUrl(blob));
+              resolve(await createThumbnailUrl({ blob }));
             } catch (e) {
               reject(e);
             }
@@ -267,7 +267,7 @@ const loadThumbnail = async (obj: BinaryObject) => {
           thumbnailCount.value++;
         }
       }
-    });
+    } });
   } catch (e) {
     console.error('Failed to load thumbnail:', e);
   } finally {
@@ -326,7 +326,7 @@ onMounted(() => {
       if (entry.isIntersecting) {
         visibleIds.add(id);
         const obj = objectMap.value.get(id);
-        if (obj) loadThumbnail(obj);
+        if (obj) loadThumbnail({ obj });
       } else {
         visibleIds.delete(id);
         if (thumbnailCount.value > 300) {
@@ -346,7 +346,7 @@ onUnmounted(() => {
   }
 });
 
-const registerObserver = (el: HTMLElement | null, id: string) => {
+const registerObserver = ({ el, id }: { el: HTMLElement | null; id: string }) => {
   if (el && itemObserver && !observedElements.has(el)) {
     el.dataset.id = id;
     itemObserver.observe(el);
@@ -494,7 +494,7 @@ defineExpose({
             <tr
               v-for="obj in renderedObjects"
               :key="obj.id"
-              :ref="el => registerObserver(el as HTMLElement, obj.id)"
+              :ref="el => registerObserver({ el: el as HTMLElement, id: obj.id })"
               @click="handlePreview({ obj })"
               class="group cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors"
               :data-testid="`binary-object-row-${obj.id}`"
@@ -528,7 +528,7 @@ defineExpose({
               <td class="px-6 py-3 text-right">
                 <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
-                    @click.stop="handleDownload(obj)"
+                    @click.stop="handleDownload({ obj })"
                     class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
                     title="Download"
                     :data-testid="`download-button-${obj.id}`"
@@ -536,7 +536,7 @@ defineExpose({
                     <DownloadIcon class="w-4 h-4" />
                   </button>
                   <button
-                    @click.stop="handleDelete(obj)"
+                    @click.stop="handleDelete({ obj })"
                     class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
                     title="Delete"
                     :data-testid="`delete-button-${obj.id}`"
@@ -558,7 +558,7 @@ defineExpose({
         <div
           v-for="obj in renderedObjects"
           :key="obj.id"
-          :ref="el => registerObserver(el as HTMLElement, obj.id)"
+          :ref="el => registerObserver({ el: el as HTMLElement, id: obj.id })"
           @click="handlePreview({ obj })"
           class="group relative aspect-square bg-gray-50 dark:bg-gray-800 rounded-2xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-500 hover:shadow-lg transition-all"
           :data-testid="`binary-object-grid-${obj.id}`"
@@ -607,8 +607,8 @@ defineExpose({
       :objects="previewState.objects"
       :initial-id="previewState.initialId"
       @close="closePreview"
-      @delete="(obj: BinaryObject) => handleDelete(obj)"
-      @download="(obj: BinaryObject) => handleDownload(obj)"
+      @delete="(obj: BinaryObject) => handleDelete({ obj })"
+      @download="(obj: BinaryObject) => handleDownload({ obj })"
     />
   </div>
 </template>

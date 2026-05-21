@@ -67,21 +67,21 @@ const selectedPath = computed(() => {
   const targetId = selectedNode.value.id;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const findPath = (items: ReadonlyArray<any>, currentPath: MessageNode[]): boolean => {
+  const findPath = ({ items, currentPath }: { items: ReadonlyArray<any>; currentPath: MessageNode[] }): boolean => {
     for (const item of items) {
       if (item.id === targetId) {
         path.push(...currentPath, item as MessageNode);
         return true;
       }
       if (item.replies?.items?.length) {
-        if (findPath(item.replies.items, [...currentPath, item as MessageNode])) return true;
+        if (findPath({ items: item.replies.items, currentPath: [...currentPath, item as MessageNode] })) return true;
       }
     }
     return false;
   };
 
   if (props.chat?.root?.items) {
-    findPath(props.chat.root.items, []);
+    findPath({ items: props.chat.root.items, currentPath: [] });
   }
   return path;
 });
@@ -172,7 +172,7 @@ function handleClose() {
 }
 
 // Simple highlighter for the raw JSON view
-const highlightJson = (json: string) => {
+const highlightJson = ({ json }: { json: string }) => {
   // 1. First, encode everything as plain text by escaping HTML special chars
   const escaped = json
     .replace(/&/g, '&amp;')
@@ -214,7 +214,7 @@ const rawJsonOutput = computed(() => {
     return '';
   case 'raw': {
     const json = JSON.stringify(props.chat, null, 2);
-    return highlightJson(json);
+    return highlightJson({ json });
   }
   default: {
     const _ex: never = m;

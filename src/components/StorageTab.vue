@@ -17,7 +17,7 @@ import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
-const ImportExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./ImportExportModal.vue'));
+const ImportExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImportExportModal.vue') });
 
 const props = defineProps<{
   storageType: 'local' | 'opfs' | 'memory';

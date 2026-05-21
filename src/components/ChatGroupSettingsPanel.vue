@@ -21,11 +21,11 @@ import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
-const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
+const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 // Lazily load modals that are only shown on-demand
-const RecipeExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeExportModal.vue'));
+const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeExportModal.vue') });
 // Lazily load upsell UI
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
 
 import { ENDPOINT_PRESETS } from '@/models/constants';
 import type { ChatGroup } from '@/models/types';

@@ -23,14 +23,14 @@ import {
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load tabs that are not visible by default, but prefetch them when idle.
-const RecipeImportTab = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeImportTab.vue'));
-const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted(() => import('./ProviderProfilesTab.vue'));
-const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsManager.vue'));
-const StorageTab = defineAsyncComponentAndLoadOnMounted(() => import('./StorageTab.vue'));
-const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectsTab.vue'));
-const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted(() => import('./VolumeSettingsTab.vue'));
-const DeveloperTab = defineAsyncComponentAndLoadOnMounted(() => import('./DeveloperTab.vue'));
-const AboutTab = defineAsyncComponentAndLoadOnMounted(() => import('./AboutTab.vue'));
+const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeImportTab.vue') });
+const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilesTab.vue') });
+const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsManager.vue') });
+const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
+const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
+const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./VolumeSettingsTab.vue') });
+const DeveloperTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./DeveloperTab.vue') });
+const AboutTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AboutTab.vue') });
 
 // IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';

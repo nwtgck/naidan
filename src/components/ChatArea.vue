@@ -23,25 +23,25 @@ import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
+const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 // Lazily load the outline overlay, prefetch on mounted.
-const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted(() => import('./ConversationOutlineOverlay.vue'));
+const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ConversationOutlineOverlay.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
+const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatTitleDialog = defineAsyncComponentAndLoadOnMounted(() => import('./ChatTitleDialog.vue'));
+const ChatTitleDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatTitleDialog.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
+const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./HistoryManipulationModal.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./ChatDebugInspector.vue'));
+const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatDebugInspector.vue') });
 // Lazily load the media shelf, prefetch on mounted.
-const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./ChatMediaShelf.vue'));
+const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatMediaShelf.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted(() => import('./ChatWeshTerminalModal.vue'));
+const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatWeshTerminalModal.vue') });
 import {
   FolderInputIcon
 } from 'lucide-vue-next';

@@ -61,7 +61,7 @@ const copyContent = async () => {
 };
 
 // JSON Processing (Escaping + Optional Highlighting + Sanitization)
-const processJsonOutput = (json: string) => {
+const processJsonOutput = ({ json }: { json: string }) => {
   // 1. First, encode everything as plain text by escaping HTML special chars
   const escaped = json
     .replace(/&/g, '&amp;')
@@ -100,7 +100,7 @@ const processJsonOutput = (json: string) => {
 const jsonOutput = computed(() => {
   const cleanNode = { ...props.node, replies: undefined };
   const json = JSON.stringify(cleanNode, null, 2);
-  return processJsonOutput(json);
+  return processJsonOutput({ json });
 });
 
 const isoTimestamp = computed(() => {

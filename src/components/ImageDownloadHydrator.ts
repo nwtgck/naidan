@@ -15,7 +15,7 @@ export const ImageDownloadHydrator = {
    * Extract all necessary data from the placeholder element to prepare for hydration.
    * If a blob is already available, it can be passed to avoid redundant storage reads.
    */
-  async prepareContext(el: HTMLElement, storageService: StorageService, blob?: Blob) {
+  async prepareContext({ el, storageService, blob }: { el: HTMLElement; storageService: StorageService; blob?: Blob }) {
     const id = el.dataset.id;
     if (!id) return null;
 
@@ -211,4 +211,3 @@ export const ImageDownloadHydrator = {
     };
   }
 }
-

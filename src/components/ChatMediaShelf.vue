@@ -197,7 +197,7 @@ onUnmounted(() => {
   Object.values(thumbnails.value).forEach(url => URL.revokeObjectURL(url));
 });
 
-const handlePreview = (item: MediaItem) => {
+const handlePreview = ({ item }: { item: MediaItem }) => {
   const objects: BinaryObject[] = allMediaItems.value.map(i => ({
     id: i.binaryObjectId,
     mimeType: i.mimeType,
@@ -212,7 +212,7 @@ const handlePreview = (item: MediaItem) => {
   });
 };
 
-const handleDownload = async (item: MediaItem, { withMetadata }: { withMetadata: boolean }) => {
+const handleDownload = async ({ item, withMetadata }: { item: MediaItem; withMetadata: boolean }) => {
   if (withMetadata) {
     await ImageDownloadHydrator.download({
       id: item.binaryObjectId,
@@ -242,7 +242,7 @@ const handleDownload = async (item: MediaItem, { withMetadata }: { withMetadata:
 };
 
 const copiedPromptId = ref<string | null>(null);
-const copyPrompt = async (prompt: string, messageId: string) => {
+const copyPrompt = async ({ prompt, messageId }: { prompt: string; messageId: string }) => {
   try {
     await navigator.clipboard.writeText(prompt);
     copiedPromptId.value = messageId;
@@ -257,7 +257,7 @@ const copyPrompt = async (prompt: string, messageId: string) => {
 const showingInfoId = ref<string | null>(null);
 const copiedField = ref<string | null>(null);
 
-const copyField = async (text: string | number | undefined, field: string) => {
+const copyField = async ({ text, field }: { text: string | number | undefined; field: string }) => {
   if (text === undefined) return;
   try {
     await navigator.clipboard.writeText(String(text));
@@ -345,7 +345,7 @@ defineExpose({
                 <div
                   v-if="group.prompt"
                   class="group/prompt relative flex-1 min-w-0 cursor-pointer"
-                  @click="copyPrompt(group.prompt, group.messageId)"
+                  @click="copyPrompt({ prompt: group.prompt, messageId: group.messageId })"
                   title="Click to copy prompt"
                 >
                   <div class="text-[10px] font-bold text-gray-400 dark:text-gray-500 truncate italic hover:text-blue-500 transition-colors pr-8">
@@ -376,7 +376,7 @@ defineExpose({
               :key="item.id"
               :data-id="item.binaryObjectId"
               class="media-item-trigger relative w-36 h-36 shrink-0 group/item hover:z-40"
-              @click="handlePreview(item)"
+              @click="handlePreview({ item })"
             >
               <div class="absolute inset-0 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-sm hover:shadow-md hover:border-blue-500/50 transition-all overflow-hidden">
                 <img
@@ -397,7 +397,7 @@ defineExpose({
                 <div @click.stop>
                   <ImageDownloadButton
                     :is-supported="isSupportedMap[item.binaryObjectId]"
-                    :on-download="(options) => handleDownload(item, options)"
+                    :on-download="(options) => handleDownload({ item, withMetadata: options.withMetadata })"
                     :align="item.index === 1 ? 'left' : 'right'"
                   />
                 </div>
@@ -432,7 +432,7 @@ defineExpose({
                       <span>Steps</span>
                     </div>
                     <button
-                      @click="copyField(item.steps, 'steps')"
+                      @click="copyField({ text: item.steps, field: 'steps' })"
                       class="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-[10px] font-mono text-gray-700 dark:text-gray-300 transition-all"
                     >
                       <span>{{ item.steps ?? 'N/A' }}</span>
@@ -450,7 +450,7 @@ defineExpose({
                       <span>Seed</span>
                     </div>
                     <button
-                      @click="copyField(item.seed, 'seed')"
+                      @click="copyField({ text: item.seed, field: 'seed' })"
                       class="flex items-center gap-1.5 px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-[10px] font-mono text-gray-700 dark:text-gray-300 transition-all"
                     >
                       <span class="truncate max-w-[60px]">{{ item.seed ?? 'N/A' }}</span>
@@ -468,7 +468,7 @@ defineExpose({
                       <span>Model</span>
                     </div>
                     <button
-                      @click="copyField(item.model, 'model')"
+                      @click="copyField({ text: item.model, field: 'model' })"
                       class="flex items-center justify-between w-full px-1.5 py-0.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 text-[9px] font-mono text-gray-700 dark:text-gray-300 transition-all text-left"
                     >
                       <span class="truncate">{{ item.model ?? 'N/A' }}</span>

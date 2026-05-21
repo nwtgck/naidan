@@ -353,10 +353,10 @@ export class ImportExportService {
           }
         });
       } catch (e) {
-        this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
+        this.assembleLegacyHierarchy({ chatsMap, chatGroupsMap, items });
       }
     } else {
-      this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
+      this.assembleLegacyHierarchy({ chatsMap, chatGroupsMap, items });
     }
 
     const manifestFile = zip.file(rootPath + 'export-manifest.json');
@@ -373,11 +373,15 @@ export class ImportExportService {
     return { appVersion, exportedAt, items, stats, previewSettings };
   }
 
-  private assembleLegacyHierarchy(
+  private assembleLegacyHierarchy({
+    chatsMap,
+    chatGroupsMap,
+    items
+  }: {
     chatsMap: Map<string, PreviewChat & { _groupId?: string | null }>,
     chatGroupsMap: Map<string, PreviewChatGroup>,
     items: ImportPreviewItem[]
-  ) {
+  }) {
     let order = 0;
     for (const chat of chatsMap.values()) {
       if (chat._groupId && chatGroupsMap.has(chat._groupId)) {
@@ -397,7 +401,7 @@ export class ImportExportService {
   /**
    * Verify that the ZIP content is valid by dry-running the restoration snapshots.
    */
-  async verify(zipFile: Blob, config: ImportConfig): Promise<void> {
+  async verify({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
     const zip = await this.loadZip(zipFile);
     const rootPath = this.findRootPath(zip);
 
@@ -405,10 +409,10 @@ export class ImportExportService {
     const mode = config.data.mode;
     switch (mode) {
     case 'replace':
-      snapshot = await this.createRestoreSnapshot(zip, rootPath);
+      snapshot = await this.createRestoreSnapshot({ zip, rootPath });
       break;
     case 'append':
-      snapshot = await this.createAppendSnapshot(zip, rootPath, config);
+      snapshot = await this.createAppendSnapshot({ zip, rootPath, config });
       break;
     default: {
       const _ex: never = mode;
@@ -422,7 +426,7 @@ export class ImportExportService {
   /**
    * Execute Import.
    */
-  async executeImport(zipFile: Blob, config: ImportConfig): Promise<void> {
+  async executeImport({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
     const zip = await this.loadZip(zipFile);
     const rootPath = this.findRootPath(zip);
     const settingsFile = zip.file(rootPath + 'settings.json');
@@ -434,10 +438,10 @@ export class ImportExportService {
       if (settingsFile) {
         try {
           const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
-          if (result.success) await this.applySettingsImport(result.data, config.settings);
+          if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
         } catch (e) { /* Ignore */ }
       }
-      const replaceSnapshot = await this.createRestoreSnapshot(zip, rootPath);
+      const replaceSnapshot = await this.createRestoreSnapshot({ zip, rootPath });
       await this.storage.restore(replaceSnapshot);
       break;
     }
@@ -445,10 +449,10 @@ export class ImportExportService {
       if (settingsFile) {
         try {
           const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
-          if (result.success) await this.applySettingsImport(result.data, config.settings);
+          if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
         } catch (e) { /* Ignore */ }
       }
-      const appendSnapshot = await this.createAppendSnapshot(zip, rootPath, config);
+      const appendSnapshot = await this.createAppendSnapshot({ zip, rootPath, config });
       await this.storage.restore(appendSnapshot);
       break;
     }
@@ -476,24 +480,24 @@ export class ImportExportService {
     return lastSlash !== -1 ? manifestPath.substring(0, lastSlash + 1) : '';
   }
 
-  private async applySettingsImport(zipSettings: SettingsDto, strategies: ImportConfig['settings']) {
+  private async applySettingsImport({ zipSettings, strategies }: { zipSettings: SettingsDto; strategies: ImportConfig['settings'] }) {
     await this.storage.updateSettings((currentSettings) => {
       const newSettingsDomain = settingsToDomain({ dto: zipSettings });
       const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
-      const applyField = <K extends keyof Settings>(strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K) => {
+      const applyField = <K extends keyof Settings>({ strategy, newValue, targetKey }: { strategy: ImportFieldStrategy; newValue: Settings[K]; targetKey: K }) => {
         if (strategy === 'replace' && newValue !== undefined) {
           finalSettings[targetKey] = newValue;
         }
       };
 
-      applyField(strategies.endpoint, newSettingsDomain.endpointType, 'endpointType');
-      applyField(strategies.endpoint, newSettingsDomain.endpointUrl, 'endpointUrl');
-      applyField(strategies.endpoint, newSettingsDomain.endpointHttpHeaders, 'endpointHttpHeaders');
-      applyField(strategies.model, newSettingsDomain.defaultModelId, 'defaultModelId');
-      applyField(strategies.titleModel, newSettingsDomain.titleModelId, 'titleModelId');
-      applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
-      applyField(strategies.lmParameters, newSettingsDomain.lmParameters, 'lmParameters');
+      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointType, targetKey: 'endpointType' });
+      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointUrl, targetKey: 'endpointUrl' });
+      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointHttpHeaders, targetKey: 'endpointHttpHeaders' });
+      applyField({ strategy: strategies.model, newValue: newSettingsDomain.defaultModelId, targetKey: 'defaultModelId' });
+      applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleModelId, targetKey: 'titleModelId' });
+      applyField({ strategy: strategies.systemPrompt, newValue: newSettingsDomain.systemPrompt, targetKey: 'systemPrompt' });
+      applyField({ strategy: strategies.lmParameters, newValue: newSettingsDomain.lmParameters, targetKey: 'lmParameters' });
 
       // Always merge UI flags if present in the import
       if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
@@ -523,7 +527,7 @@ export class ImportExportService {
     });
   }
 
-  private async createRestoreSnapshot(zip: JSZip, rootPath: string): Promise<StorageSnapshot> {
+  private async createRestoreSnapshot({ zip, rootPath }: { zip: JSZip; rootPath: string }): Promise<StorageSnapshot> {
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
     const hierarchyDto: HierarchyDto = hierarchyFile
       ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')))
@@ -626,7 +630,7 @@ export class ImportExportService {
     };
   }
 
-  private async createAppendSnapshot(zip: JSZip, rootPath: string, config: ImportConfig): Promise<StorageSnapshot> {
+  private async createAppendSnapshot({ zip, rootPath, config }: { zip: JSZip; rootPath: string; config: ImportConfig }): Promise<StorageSnapshot> {
     const groupIdMap = new Map<string, string>();
     const chatIdMap = new Map<string, string>();
 
