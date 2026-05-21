@@ -1805,7 +1805,7 @@ export function useChat() {
           }
         })()
       });
-      const systemPrompt = getTitleSystemPrompt(lang);
+      const systemPrompt = getTitleSystemPrompt({ language: lang });
       const promptMsgs: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
@@ -1824,7 +1824,7 @@ export function useChat() {
         signal: combinedSignal
       });
 
-      const finalTitle = cleanGeneratedTitle(generatedTitle);
+      const finalTitle = cleanGeneratedTitle({ title: generatedTitle });
       if (finalTitle) {
         // If the user manually renamed it while we were generating, don't overwrite.
         // We only apply the title if it hasn't changed since we started.

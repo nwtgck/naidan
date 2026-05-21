@@ -187,7 +187,7 @@ function handleAnalyzeRecipes() {
   }
 
   recipeAnalysisError.value = null;
-  const parseResults = parseConcatenatedJson(trimmed);
+  const parseResults = parseConcatenatedJson({ input: trimmed });
   const newAnalyzed: AnalyzedRecipe[] = [];
 
   for (const result of parseResults) {

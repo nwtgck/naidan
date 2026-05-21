@@ -58,46 +58,46 @@ describe('title-generator utilities', () => {
 
   describe('getTitleSystemPrompt', () => {
     it('returns the correct prompt for supported languages', () => {
-      const jaPrompt = getTitleSystemPrompt('ja');
+      const jaPrompt = getTitleSystemPrompt({ language: 'ja' });
       expect(jaPrompt).toContain('主題');
       expect(jaPrompt).toContain('15文字以内');
 
-      const enPrompt = getTitleSystemPrompt('en');
+      const enPrompt = getTitleSystemPrompt({ language: 'en' });
       expect(enPrompt).toContain('main topic');
       expect(enPrompt).toContain('3-5 words');
     });
 
     it('falls back to English for unsupported languages', () => {
       // @ts-expect-error testing fallback
-      expect(getTitleSystemPrompt('unknown')).toBe(getTitleSystemPrompt('en'));
+      expect(getTitleSystemPrompt({ language: 'unknown' })).toBe(getTitleSystemPrompt({ language: 'en' }));
     });
   });
 
   describe('cleanGeneratedTitle', () => {
     it('removes surrounding quotes', () => {
-      expect(cleanGeneratedTitle('"My Awesome Title"')).toBe('My Awesome Title');
-      expect(cleanGeneratedTitle("'Single Quotes'")).toBe('Single Quotes');
+      expect(cleanGeneratedTitle({ title: '"My Awesome Title"' })).toBe('My Awesome Title');
+      expect(cleanGeneratedTitle({ title: "'Single Quotes'" })).toBe('Single Quotes');
     });
 
     it('removes common prefixes', () => {
-      expect(cleanGeneratedTitle('Title: Hello World')).toBe('Hello World');
-      expect(cleanGeneratedTitle('Topic: Vue.js Tips')).toBe('Vue.js Tips');
-      expect(cleanGeneratedTitle('タイトル：今日の天気')).toBe('今日の天気');
-      expect(cleanGeneratedTitle('Subject: Refactoring Plan')).toBe('Refactoring Plan');
+      expect(cleanGeneratedTitle({ title: 'Title: Hello World' })).toBe('Hello World');
+      expect(cleanGeneratedTitle({ title: 'Topic: Vue.js Tips' })).toBe('Vue.js Tips');
+      expect(cleanGeneratedTitle({ title: 'タイトル：今日の天気' })).toBe('今日の天気');
+      expect(cleanGeneratedTitle({ title: 'Subject: Refactoring Plan' })).toBe('Refactoring Plan');
     });
 
     it('trims whitespace', () => {
-      expect(cleanGeneratedTitle('   Messy Title   ')).toBe('Messy Title');
+      expect(cleanGeneratedTitle({ title: '   Messy Title   ' })).toBe('Messy Title');
     });
 
     it('handles mixed cleaning', () => {
-      expect(cleanGeneratedTitle(' "Title: Mixed Cleanup" ')).toBe('Mixed Cleanup');
+      expect(cleanGeneratedTitle({ title: ' "Title: Mixed Cleanup" ' })).toBe('Mixed Cleanup');
     });
 
     it('removes thinking tags and content', () => {
-      expect(cleanGeneratedTitle('<think>Thinking about a title...</think>Final Title')).toBe('Final Title');
-      expect(cleanGeneratedTitle('<think>Wrapped</think>')).toBe('');
-      expect(cleanGeneratedTitle('Title with <think>some</think> thoughts')).toBe('Title with thoughts');
+      expect(cleanGeneratedTitle({ title: '<think>Thinking about a title...</think>Final Title' })).toBe('Final Title');
+      expect(cleanGeneratedTitle({ title: '<think>Wrapped</think>' })).toBe('');
+      expect(cleanGeneratedTitle({ title: 'Title with <think>some</think> thoughts' })).toBe('Title with thoughts');
     });
   });
 });
