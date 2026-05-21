@@ -1,10 +1,10 @@
-export function capitalize(s: string) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+export function capitalize({ value }: { value: string }) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export function naturalSort(arr: readonly string[]): string[] {
+export function naturalSort({ values }: { values: readonly string[] }): string[] {
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-  return [...arr].sort(collator.compare);
+  return [...values].sort(collator.compare);
 }
 
 /**

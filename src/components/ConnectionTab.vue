@@ -40,7 +40,7 @@ const emit = defineEmits<{
   (e: 'goToTransformersJs'): void;
 }>();
 
-const sortedModels = computed(() => naturalSort(Array.isArray(props.availableModels) ? props.availableModels : []));
+const sortedModels = computed(() => naturalSort({ values: Array.isArray(props.availableModels) ? props.availableModels : [] }));
 
 const { save, fetchModels: fetchModelsGlobal, updateProviderProfiles } = useSettings();
 const { showConfirm } = useConfirm();
@@ -192,7 +192,7 @@ async function handleCreateProviderProfile() {
   const name = await showPrompt({
     title: 'Create New Profile',
     message: 'Give this configuration a name:',
-    defaultValue: `${capitalize(form.value.endpointType)} - ${form.value.defaultModelId || 'Default'}`,
+    defaultValue: `${capitalize({ value: form.value.endpointType })} - ${form.value.defaultModelId || 'Default'}`,
     confirmButtonText: 'Create',
     bodyComponent: h(ProviderProfilePreview, { form: form.value })
   });
@@ -281,7 +281,7 @@ defineExpose({
                 data-testid="setting-quick-provider-profile-select"
               >
                 <option value="" disabled>Load from saved profiles...</option>
-                <option v-for="p in form.providerProfiles" :key="p.id" :value="p.id">{{ p.name }} ({{ capitalize(p.endpointType) }})</option>
+                <option v-for="p in form.providerProfiles" :key="p.id" :value="p.id">{{ p.name }} ({{ capitalize({ value: p.endpointType }) }})</option>
               </select>
             </div>
           </div>

@@ -191,7 +191,7 @@ function toggleImageMode() {
   isImageMode.value = !isImageMode.value;
 }
 
-const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
+const sortedAvailableModels = computed(() => naturalSort({ values: availableModels?.value || [] }));
 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);

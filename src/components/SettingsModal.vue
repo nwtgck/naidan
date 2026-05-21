@@ -50,7 +50,7 @@ const emit = defineEmits<{
 }>();
 
 const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
-const availableModels = computed(() => naturalSort(Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : []));
+const availableModels = computed(() => naturalSort({ values: Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : [] }));
 
 const chatStore = useChat();
 const { addToast } = useToast();

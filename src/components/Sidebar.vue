@@ -34,7 +34,7 @@ const {
 } = chatStore;
 
 const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
-const sortedModels = computed(() => naturalSort(availableModels.value || []));
+const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
 const layout = useLayout();
 const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = layout;
 const activeFocusAreaVersion = 'activeFocusAreaVersion' in layout ? layout.activeFocusAreaVersion : ref(0);

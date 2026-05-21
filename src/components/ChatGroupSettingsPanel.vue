@@ -48,7 +48,7 @@ const { openFileExplorer } = useFileExplorerModal();
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
 const groupModels = ref<string[]>([]);
-const sortedGroupModels = computed(() => naturalSort(groupModels.value || []));
+const sortedGroupModels = computed(() => naturalSort({ values: groupModels.value || [] }));
 
 const effectiveEndpointType = computed(() => {
   return localSettings.value.endpoint?.type || settings.value.endpointType;

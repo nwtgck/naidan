@@ -40,7 +40,7 @@ const {
   resolvedSettings,
   inheritedSettings,
 } = chatStore;
-const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
+const sortedAvailableModels = computed(() => naturalSort({ values: availableModels?.value || [] }));
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 

@@ -33,7 +33,7 @@ const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
 const recipeAnalysisError = ref<string | null>(null);
 
 function getSortedModels(matchedModelId?: string) {
-  const models = naturalSort(props.availableModels || []);
+  const models = naturalSort({ values: props.availableModels || [] });
   if (!matchedModelId) return models;
 
   const index = models.indexOf(matchedModelId);

@@ -121,7 +121,7 @@ defineExpose({
             </div>
             <div v-else class="flex items-center gap-4">
               <h3 class="text-base font-bold text-gray-800 dark:text-white truncate">{{ providerProfile.name }}</h3>
-              <span class="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-900/30" data-testid="provider-type-badge">{{ capitalize(providerProfile.endpointType) }}</span>
+              <span class="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-900/30" data-testid="provider-type-badge">{{ capitalize({ value: providerProfile.endpointType }) }}</span>
             </div>
             <div class="text-xs font-medium text-gray-400 mt-1.5 truncate">{{ providerProfile.endpointUrl }}</div>
             <div class="text-[11px] font-bold text-gray-500 mt-2 flex items-center gap-3">

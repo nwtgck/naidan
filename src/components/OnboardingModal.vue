@@ -160,7 +160,7 @@ const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? J
 const isTesting = ref(false);
 const error = ref<string | null>(null);
 const availableModels = ref<string[]>(onboardingDraft.value?.models ? JSON.parse(JSON.stringify(onboardingDraft.value.models)) : []);
-const sortedModels = computed(() => naturalSort(availableModels.value));
+const sortedModels = computed(() => naturalSort({ values: availableModels.value }));
 const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
 

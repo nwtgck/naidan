@@ -25,7 +25,7 @@ defineExpose({
       <div class="flex items-center justify-between text-[11px]">
         <span class="text-gray-400 font-medium">Provider & Model</span>
         <span class="font-bold text-gray-500 dark:text-gray-400">
-          {{ capitalize(form.endpointType) }} / {{ form.defaultModelId || 'None' }}
+          {{ capitalize({ value: form.endpointType }) }} / {{ form.defaultModelId || 'None' }}
         </span>
       </div>
 

@@ -122,7 +122,7 @@ export function useImageGeneration() {
   const getSortedImageModels = ({ availableModels }: {
     availableModels: string[]
   }) => {
-    return naturalSort(getImageGenerationModels({ models: availableModels }));
+    return naturalSort({ values: getImageGenerationModels({ models: availableModels }) });
   };
 
   const performBase64Generation = async ({ prompt, model, width, height, steps, seed, images, endpointUrl, endpointHttpHeaders, onProgress, signal }: {
