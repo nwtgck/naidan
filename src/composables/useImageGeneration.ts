@@ -135,7 +135,7 @@ export function useImageGeneration() {
     images: { blob: Blob }[],
     endpointUrl: string,
     endpointHttpHeaders: [string, string][] | undefined,
-    onProgress: (params: { currentStep: number, totalSteps: number }) => void,
+    onProgress: ({ currentStep, totalSteps }: { currentStep: number, totalSteps: number }) => void,
     signal: AbortSignal | undefined
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
     const provider = new OllamaProvider({
