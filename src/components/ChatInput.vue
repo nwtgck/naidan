@@ -97,7 +97,7 @@ const isAnimatingHeight = computed({
   set: (val) => emit('update:isAnimatingHeight', val)
 });
 
-function formatLabel(value: string | undefined, source: SettingsSource | undefined) {
+function formatLabel({ value, source }: { value: string | undefined; source: SettingsSource | undefined }) {
   return formatSettingsSourceLabel({ value, source });
 }
 
@@ -115,7 +115,7 @@ const currentResolution = computed(() => {
   return currentChat.value ? getResolution({ chatId: currentChat.value.id }) : { width: 512, height: 512 };
 });
 
-function updateResolution(width: number, height: number) {
+function updateResolution({ width, height }: { width: number; height: number }) {
   if (currentChat.value) {
     _updateResolution({ chatId: currentChat.value.id, width, height });
   }
@@ -125,7 +125,7 @@ const currentCount = computed(() => {
   return currentChat.value ? getCount({ chatId: currentChat.value.id }) : 1;
 });
 
-function updateCount(count: number) {
+function updateCount({ count }: { count: number }) {
   if (currentChat.value) {
     _updateCount({ chatId: currentChat.value.id, count });
   }
@@ -135,7 +135,7 @@ const currentPersistAs = computed(() => {
   return currentChat.value ? getPersistAs({ chatId: currentChat.value.id }) : 'original';
 });
 
-function updatePersistAs(format: 'original' | 'webp' | 'jpeg' | 'png') {
+function updatePersistAs({ format }: { format: 'original' | 'webp' | 'jpeg' | 'png' }) {
   if (currentChat.value) {
     _updatePersistAs({ chatId: currentChat.value.id, format });
   }
@@ -145,7 +145,7 @@ const currentSteps = computed(() => {
   return currentChat.value ? getSteps({ chatId: currentChat.value.id }) : undefined;
 });
 
-function updateSteps(steps: number | undefined) {
+function updateSteps({ steps }: { steps: number | undefined }) {
   if (currentChat.value) {
     _updateSteps({ chatId: currentChat.value.id, steps });
   }
@@ -155,7 +155,7 @@ const currentSeed = computed(() => {
   return currentChat.value ? getSeed({ chatId: currentChat.value.id }) : undefined;
 });
 
-function updateSeed(seed: number | 'browser_random' | undefined) {
+function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
   if (currentChat.value) {
     _updateSeed({ chatId: currentChat.value.id, seed });
   }
@@ -175,7 +175,7 @@ const selectedImageModel = computed(() => {
   return currentChat.value ? getSelectedImageModel({ chatId: currentChat.value.id, availableModels: availableModels.value }) : undefined;
 });
 
-function handleUpdateImageModel(modelId: string) {
+function handleUpdateImageModel({ modelId }: { modelId: string }) {
   if (currentChat.value) {
     setImageModel({ chatId: currentChat.value.id, modelId });
   }
@@ -304,7 +304,7 @@ watch(attachments, (newAtts) => {
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 
-async function processFiles(files: File[]) {
+async function processFiles({ files }: { files: File[] }) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
 
@@ -395,10 +395,10 @@ async function attachLinkAsVolume() {
 }
 
 // Handlers for ChatAttachMenu emits
-async function onAttachFilesSelected(files: File[]) {
+async function onAttachFilesSelected({ files }: { files: File[] }) {
   if (files.length === 0) return;
   if (files.every(f => f.type.startsWith('image/'))) {
-    await processFiles(files);
+    await processFiles({ files });
   } else {
     const name = files.length === 1 ? files[0]!.name : `${files.length} files`;
     const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
@@ -406,7 +406,7 @@ async function onAttachFilesSelected(files: File[]) {
   }
 }
 
-async function onAttachFolderCopy(folderName: string, files: File[]) {
+async function onAttachFolderCopy({ folderName, files }: { folderName: string; files: File[] }) {
   const entries = files.map(f => ({ file: f, relativePath: f.webkitRelativePath || f.name }));
   await attachCopyAsVolume({ entries, name: folderName });
 }
@@ -446,7 +446,7 @@ async function collectFilesFromDirectoryEntry(
 // Called by ChatArea when files/directories are dropped onto the chat area.
 // Phase 1 (synchronous): collect handles/entries while DataTransfer is still valid.
 // Phase 2 (async): process them — directories become host volumes (link) or OPFS copies.
-async function processDropItems(items: DataTransferItem[]) {
+async function processDropItems({ items }: { items: DataTransferItem[] }) {
   if (!currentChat.value) return;
 
   type DropCollected =
@@ -523,7 +523,7 @@ async function processDropItems(items: DataTransferItem[]) {
   }
 
   if (plainFiles.length > 0) {
-    await onAttachFilesSelected(plainFiles);
+    await onAttachFilesSelected({ files: plainFiles });
   }
 }
 
@@ -663,7 +663,7 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: str
   await updateChatMount({ chatId: currentChat.value.id, volumeId, readOnly });
 }
 
-async function handlePaste(event: ClipboardEvent) {
+async function handlePaste({ event }: { event: ClipboardEvent }) {
   const items = event.clipboardData?.items;
   if (!items) return;
 
@@ -679,16 +679,16 @@ async function handlePaste(event: ClipboardEvent) {
   }
 
   if (files.length > 0) {
-    await processFiles(files);
+    await processFiles({ files });
   }
 }
 
-function removeAttachment(id: string) {
+function removeAttachment({ id }: { id: string }) {
   attachments.value = attachments.value.filter(a => a.id !== id);
   nextTick(adjustTextareaHeight);
 }
 
-function applySuggestion(text: string) {
+function applySuggestion({ text }: { text: string }) {
   input.value = text;
   nextTick(() => {
     adjustTextareaHeight();
@@ -1142,7 +1142,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
               <Edit2Icon class="w-3 h-3" />
             </button>
             <button
-              @click="removeAttachment(att.id)"
+              @click="removeAttachment({ id: att.id })"
               class="p-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-sm transition-colors touch-visible"
               title="Remove"
             >
@@ -1156,7 +1156,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         ref="textareaRef"
         v-model="input"
         @input="adjustTextareaHeight"
-        @paste="handlePaste"
+        @paste="handlePaste({ event: $event })"
         @focus="handleFocus"
         @blur="handleBlur"
         @click="setActiveFocusArea({ area: 'chat' })"
@@ -1209,7 +1209,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
               :model-value="currentChat.modelId"
               @update:model-value="val => currentChat && chatStore.updateChatModel({ id: currentChat.id, modelId: val! })"
               :models="sortedAvailableModels"
-              :placeholder="formatLabel(inheritedSettings?.modelId, inheritedSettings?.sources.modelId)"
+              :placeholder="formatLabel({ value: inheritedSettings?.modelId, source: inheritedSettings?.sources.modelId })"
               :loading="fetchingModels"
               allow-clear
               @refresh="fetchModels"
@@ -1219,8 +1219,8 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 
           <ChatAttachMenu
             :has-file-system-access="hasFileSystemAccess"
-            @files-selected="onAttachFilesSelected"
-            @folder-copy="onAttachFolderCopy"
+            @files-selected="onAttachFilesSelected({ files: $event })"
+            @folder-copy="(folderName, files) => onAttachFolderCopy({ folderName, files })"
             @folder-link="attachLinkAsVolume"
           />
 
@@ -1239,12 +1239,12 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
             :selected-image-model="selectedImageModel"
             :selected-reasoning-effort="selectedReasoningEffort"
             @toggle-image-mode="toggleImageMode"
-            @update:resolution="updateResolution"
-            @update:count="updateCount"
-            @update:steps="updateSteps"
-            @update:seed="updateSeed"
-            @update:persist-as="updatePersistAs"
-            @update:model="handleUpdateImageModel"
+            @update:resolution="(width, height) => updateResolution({ width, height })"
+            @update:count="updateCount({ count: $event })"
+            @update:steps="updateSteps({ steps: $event })"
+            @update:seed="updateSeed({ seed: $event })"
+            @update:persist-as="updatePersistAs({ format: $event })"
+            @update:model="handleUpdateImageModel({ modelId: $event })"
             @update:reasoning-effort="e => updateReasoningEffort({ effort: e })"
           />
         </div>

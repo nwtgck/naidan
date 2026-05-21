@@ -109,7 +109,7 @@ export class LocalStorageProvider extends IStorageProvider {
     };
     findAndCacheBlobs(content.root.items);
 
-    const dto = chatContentToDto(content);
+    const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
     localStorage.setItem(`${KEY_CONTENT_PREFIX}${id}`, JSON.stringify(dto));
   }
@@ -122,7 +122,7 @@ export class LocalStorageProvider extends IStorageProvider {
     try {
       const meta = ChatMetaSchemaDto.parse(JSON.parse(rawMeta));
       const content = ChatContentSchemaDto.parse(JSON.parse(rawContent));
-      const chat = chatToDomain({ ...meta, ...content, messages: undefined });
+      const chat = chatToDomain({ dto: { ...meta, ...content, messages: undefined } });
 
       // Resolve groupId from hierarchy
       const hierarchy = await this.loadHierarchy();
@@ -184,7 +184,7 @@ export class LocalStorageProvider extends IStorageProvider {
     if (!rawContent) return null;
     try {
       const dto = ChatContentSchemaDto.parse(JSON.parse(rawContent));
-      const content = chatContentToDomain(dto);
+      const content = chatContentToDomain({ dto });
 
       const restoreBlobs = (nodes: MessageNode[]) => {
         for (const node of nodes) {
@@ -223,7 +223,7 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async saveChatGroup(chatGroup: ChatGroup): Promise<void> {
-    const dto = chatGroupToDto(chatGroup);
+    const dto = chatGroupToDto({ domain: chatGroup });
     ChatGroupSchemaDto.parse(dto);
     localStorage.setItem(`${KEY_GROUP_PREFIX}${chatGroup.id}`, JSON.stringify(dto));
   }
@@ -238,7 +238,7 @@ export class LocalStorageProvider extends IStorageProvider {
       ]);
       const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
       const h = hierarchy || { items: [] };
-      return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(raw)), h, chatMetas);
+      return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(JSON.parse(raw)), hierarchy: h, chatMetas });
     } catch {
       return null;
     }
@@ -257,9 +257,9 @@ export class LocalStorageProvider extends IStorageProvider {
 
     const hierarchy = hierarchyToDomain({ dto: rawHierarchy || { items: [] } });
     const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
-    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
+    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
 
-    return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
+    return buildSidebarItemsFromHierarchy({ hierarchy, chatMetas, chatGroups });
   }
 
   async saveSettings(settings: Settings): Promise<void> {
@@ -383,12 +383,12 @@ export class LocalStorageProvider extends IStorageProvider {
 
     const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
     const h = hierarchy || { items: [] };
-    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, h, chatMetas));
+    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy: h, chatMetas }));
 
     const contentStream = async function* (this: LocalStorageProvider) {
       for (const m of rawMetas) {
         const chat = await this.loadChat(m.id);
-        if (chat) yield { type: 'chat' as const, data: chatToDto(chat) };
+        if (chat) yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
       }
     };
 
@@ -428,7 +428,7 @@ export class LocalStorageProvider extends IStorageProvider {
       const type = chunk.type;
       switch (type) {
       case 'chat': {
-        const domainChat = chatToDomain(chunk.data);
+        const domainChat = chatToDomain({ dto: chunk.data });
         await this.saveChatContent(domainChat.id, domainChat);
         // Ensure meta is consistent with content
         await this.saveChatMeta(domainChat);

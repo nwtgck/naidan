@@ -126,7 +126,7 @@ watch([searchQuery, sortBy, sortOrder], () => {
   displayLimit.value = 60;
 });
 
-const handleSort = (key: typeof sortBy.value) => {
+const handleSort = ({ key }: { key: typeof sortBy.value }) => {
   if (sortBy.value === key) {
     sortOrder.value = (() => {
       switch (sortOrder.value) {
@@ -157,7 +157,7 @@ const handleSort = (key: typeof sortBy.value) => {
   }
 };
 
-const formatSize = (bytes: number) => {
+const formatSize = ({ bytes }: { bytes: number }) => {
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
@@ -165,7 +165,7 @@ const formatSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const formatDate = (timestamp: number) => {
+const formatDate = ({ timestamp }: { timestamp: number }) => {
   return new Date(timestamp).toLocaleString();
 };
 
@@ -173,7 +173,7 @@ const handleDownload = async (obj: BinaryObject) => {
   await downloadBinaryObject({ obj });
 };
 
-const handlePreview = (obj: BinaryObject) => {
+const handlePreview = ({ obj }: { obj: BinaryObject }) => {
   openPreview({ objects: filteredObjects.value, initialId: obj.id });
 };
 
@@ -454,7 +454,7 @@ defineExpose({
         <table class="w-full text-left border-collapse min-w-[700px]">
           <thead>
             <tr class="bg-gray-50/50 dark:bg-black/20 border-b border-gray-100 dark:border-gray-800 sticky top-0 z-10">
-              <th @click="handleSort('name')" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+              <th @click="handleSort({ key: 'name' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   Name
                   <span class="transition-opacity" :class="sortBy === 'name' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
@@ -463,7 +463,7 @@ defineExpose({
                   </span>
                 </div>
               </th>
-              <th @click="handleSort('size')" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+              <th @click="handleSort({ key: 'size' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   Size
                   <span class="transition-opacity" :class="sortBy === 'size' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
@@ -472,7 +472,7 @@ defineExpose({
                   </span>
                 </div>
               </th>
-              <th @click="handleSort('createdAt')" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
+              <th @click="handleSort({ key: 'createdAt' })" class="px-6 py-3 cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/5 transition-colors group">
                 <div class="flex items-center gap-2 text-[10px] font-bold text-gray-400 tracking-widest">
                   Date
                   <span class="transition-opacity" :class="sortBy === 'createdAt' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'">
@@ -495,7 +495,7 @@ defineExpose({
               v-for="obj in renderedObjects"
               :key="obj.id"
               :ref="el => registerObserver(el as HTMLElement, obj.id)"
-              @click="handlePreview(obj)"
+              @click="handlePreview({ obj })"
               class="group cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors"
               :data-testid="`binary-object-row-${obj.id}`"
             >
@@ -520,10 +520,10 @@ defineExpose({
                 </div>
               </td>
               <td class="px-6 py-3">
-                <span class="text-[11px] font-bold text-gray-500">{{ formatSize(obj.size) }}</span>
+                <span class="text-[11px] font-bold text-gray-500">{{ formatSize({ bytes: obj.size }) }}</span>
               </td>
               <td class="px-6 py-3">
-                <span class="text-[11px] font-medium text-gray-400 whitespace-nowrap">{{ formatDate(obj.createdAt) }}</span>
+                <span class="text-[11px] font-medium text-gray-400 whitespace-nowrap">{{ formatDate({ timestamp: obj.createdAt }) }}</span>
               </td>
               <td class="px-6 py-3 text-right">
                 <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -559,7 +559,7 @@ defineExpose({
           v-for="obj in renderedObjects"
           :key="obj.id"
           :ref="el => registerObserver(el as HTMLElement, obj.id)"
-          @click="handlePreview(obj)"
+          @click="handlePreview({ obj })"
           class="group relative aspect-square bg-gray-50 dark:bg-gray-800 rounded-2xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-500 hover:shadow-lg transition-all"
           :data-testid="`binary-object-grid-${obj.id}`"
         >
@@ -581,7 +581,7 @@ defineExpose({
           <!-- Overlay Info -->
           <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
             <p class="text-[10px] font-bold text-white truncate">{{ obj.name || 'Unnamed' }}</p>
-            <p class="text-[9px] text-white/70">{{ formatSize(obj.size) }}</p>
+            <p class="text-[9px] text-white/70">{{ formatSize({ bytes: obj.size }) }}</p>
           </div>
         </div>
       </div>

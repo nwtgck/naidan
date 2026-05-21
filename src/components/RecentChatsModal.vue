@@ -86,21 +86,21 @@ const shouldLoadPreview = computed(() => {
 
 const isPreviewVisible = computed(() => searchPreviewMode.value !== 'disabled');
 
-const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
+const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
     selectedIndex.value = Math.min(selectedIndex.value + 1, totalItems.value - 1);
     scrollToSelected();
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
     selectedIndex.value = Math.max(selectedIndex.value - 1, 0);
     scrollToSelected();
-  } else if (e.key === 'ArrowRight') {
+  } else if (event.key === 'ArrowRight') {
     const pane = activePane.value;
     switch (pane) {
     case 'results':
       if (currentSelectedItem.value) {
-        e.preventDefault();
+        event.preventDefault();
         activePane.value = 'preview';
       }
       break;
@@ -111,11 +111,11 @@ const handleKeydown = (e: KeyboardEvent) => {
       throw new Error(`Unhandled pane: ${_ex}`);
     }
     }
-  } else if (e.key === 'ArrowLeft') {
+  } else if (event.key === 'ArrowLeft') {
     const pane = activePane.value;
     switch (pane) {
     case 'preview':
-      e.preventDefault();
+      event.preventDefault();
       activePane.value = 'results';
       nextTick(() => {
         searchInput.value?.focus();
@@ -128,11 +128,11 @@ const handleKeydown = (e: KeyboardEvent) => {
       throw new Error(`Unhandled pane: ${_ex}`);
     }
     }
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
     selectItem({ index: selectedIndex.value });
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
     closeRecent();
   }
 };
@@ -224,14 +224,14 @@ defineExpose({
     <div v-if="isRecentOpen" class="fixed inset-0 z-50 flex items-start justify-center pt-[10vh] px-4" @click.self="closeRecent">
       <div class="absolute inset-0 bg-black/20 dark:bg-black/50 backdrop-blur-sm transition-opacity" aria-hidden="true" @click="closeRecent" />
 
-      <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[70vh] overflow-hidden transform transition-all scale-100 outline-none" @click.stop @keydown="handleKeydown" tabindex="-1">
+      <div class="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-800 flex flex-col h-[70vh] overflow-hidden transform transition-all scale-100 outline-none" @click.stop @keydown="event => handleKeydown({ event })" tabindex="-1">
 
         <div class="flex items-center gap-3 p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
           <SearchIcon class="w-5 h-5 text-gray-400" />
           <input
             ref="searchInput"
             v-model="filterQuery"
-            @keydown="handleKeydown"
+            @keydown="event => handleKeydown({ event })"
             type="text"
             class="flex-1 bg-transparent border-none outline-none text-lg text-gray-900 dark:text-gray-100 placeholder-gray-400"
             placeholder="Filter recent chats..."

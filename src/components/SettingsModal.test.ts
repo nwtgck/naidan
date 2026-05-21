@@ -1228,7 +1228,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       // Access handleImportRecipes via vm
       const vm = wrapper.vm as any;
-      await vm.handleImportRecipes(recipes);
+      await vm.handleImportRecipes({ recipes });
 
       expect(mockCreateChatGroup).toHaveBeenCalledTimes(2);
       expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 1', options: expect.objectContaining({
@@ -1261,7 +1261,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       const vm = wrapper.vm as any;
-      await vm.handleImportRecipes([{ newName: 'Fail', recipe: {} as any }]);
+      await vm.handleImportRecipes({ recipes: [{ newName: 'Fail', recipe: {} as any }] });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: expect.stringContaining('Failed to import recipes: Import failed')

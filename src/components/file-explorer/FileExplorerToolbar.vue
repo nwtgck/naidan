@@ -17,7 +17,7 @@ function handleUploadClick(): void {
   fileInputRef.value?.click();
 }
 
-async function handleFileInputChange(event: Event): Promise<void> {
+async function handleFileInputChange({ event }: { event: Event }): Promise<void> {
   const input = event.target as HTMLInputElement;
   if (input.files && input.files.length > 0) {
     await ctx.uploadFiles({ files: input.files });
@@ -147,7 +147,7 @@ defineExpose({
         multiple
         class="hidden"
         data-testid="upload-input"
-        @change="handleFileInputChange"
+        @change="handleFileInputChange({ event: $event })"
       />
 
       <button

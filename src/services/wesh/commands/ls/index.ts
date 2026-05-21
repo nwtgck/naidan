@@ -271,7 +271,7 @@ export const lsCommandDefinition: WeshCommandDefinition = {
   },
 };
 
-function formatSize(bytes: number): string {
+function formatSize({ bytes }: { bytes: number }): string {
   if (bytes < 1024) return bytes + 'B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'K';
   if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + 'M';
@@ -353,7 +353,7 @@ async function formatEntry({
   }
 
   const resolvedStat = stat ?? await getStat();
-  const size = humanReadable ? formatSize(resolvedStat.size) : resolvedStat.size.toString();
+  const size = humanReadable ? formatSize({ bytes: resolvedStat.size }) : resolvedStat.size.toString();
   let typeChar = '-';
   switch (resolvedStat.type) {
   case 'directory':

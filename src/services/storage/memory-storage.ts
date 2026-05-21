@@ -90,7 +90,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     };
     findAndCacheBlobs(content.root.items);
 
-    const dto = chatContentToDto(content);
+    const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
     this.chatContents.set(id, dto);
   }
@@ -103,7 +103,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     try {
       const meta = ChatMetaSchemaDto.parse(rawMeta);
       const content = ChatContentSchemaDto.parse(rawContent);
-      const chat = chatToDomain({ ...meta, ...content, messages: undefined });
+      const chat = chatToDomain({ dto: { ...meta, ...content, messages: undefined } });
 
       // Resolve groupId from hierarchy
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
@@ -159,7 +159,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     if (!rawContent) return null;
     try {
       const dto = ChatContentSchemaDto.parse(rawContent);
-      const content = chatContentToDomain(dto);
+      const content = chatContentToDomain({ dto });
 
       const restoreBlobs = (nodes: MessageNode[]) => {
         for (const node of nodes) {
@@ -198,7 +198,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async saveChatGroup(chatGroup: ChatGroup): Promise<void> {
-    const dto = chatGroupToDto(chatGroup);
+    const dto = chatGroupToDto({ domain: chatGroup });
     ChatGroupSchemaDto.parse(dto);
     this.chatGroups.set(chatGroup.id, dto);
   }
@@ -208,7 +208,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     if (!raw) return null;
     try {
       const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-      return chatGroupToDomain(ChatGroupSchemaDto.parse(raw), this.hierarchy, chatMetas);
+      return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: this.hierarchy, chatMetas });
     } catch {
       return null;
     }
@@ -221,9 +221,9 @@ export class MemoryStorageProvider extends IStorageProvider {
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
     const hierarchy = hierarchyToDomain({ dto: this.hierarchy });
     const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-    const chatGroups = Array.from(this.chatGroups.values()).map(g => chatGroupToDomain(g, hierarchy, chatMetas));
+    const chatGroups = Array.from(this.chatGroups.values()).map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
 
-    return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
+    return buildSidebarItemsFromHierarchy({ hierarchy, chatMetas, chatGroups });
   }
 
   async saveSettings(settings: Settings): Promise<void> {
@@ -356,13 +356,13 @@ export class MemoryStorageProvider extends IStorageProvider {
   async dump(): Promise<StorageSnapshot> {
     const settings = await this.loadSettings();
     const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-    const chatGroups = Array.from(this.chatGroups.values()).map(g => chatGroupToDomain(g, this.hierarchy, []));
+    const chatGroups = Array.from(this.chatGroups.values()).map(dto => chatGroupToDomain({ dto, hierarchy: this.hierarchy, chatMetas: [] }));
 
     const contentStream = async function* (this: MemoryStorageProvider) {
       // 1. Stream all chats
       for (const id of this.chatMetas.keys()) {
         const chat = await this.loadChat(id);
-        if (chat) yield { type: 'chat' as const, data: chatToDto(chat) };
+        if (chat) yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
       }
 
       // 2. Stream all binary objects
@@ -413,7 +413,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       const type = chunk.type;
       switch (type) {
       case 'chat': {
-        const domainChat = chatToDomain(chunk.data);
+        const domainChat = chatToDomain({ dto: chunk.data });
         await this.saveChatContent(domainChat.id, domainChat);
         await this.saveChatMeta(domainChat);
         break;

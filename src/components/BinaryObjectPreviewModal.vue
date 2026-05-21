@@ -123,12 +123,12 @@ onUnmounted(() => {
   if (controlsTimeout) clearTimeout(controlsTimeout);
 });
 
-const handleWheel = (e: WheelEvent) => {
+const handleWheel = ({ event }: { event: WheelEvent }) => {
   if (!isImage.value) return;
-  e.preventDefault();
+  event.preventDefault();
 
   const zoomFactor = 1.1;
-  const delta = -e.deltaY;
+  const delta = -event.deltaY;
   const oldZoom = zoom.value;
   const newZoom = delta > 0 ? oldZoom * zoomFactor : oldZoom / zoomFactor;
   const clampedZoom = Math.min(Math.max(newZoom, 0.1), 20);
@@ -136,9 +136,9 @@ const handleWheel = (e: WheelEvent) => {
   if (clampedZoom === oldZoom) return;
 
   // Calculate focal point relative to the container
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const mouseX = event.clientX - rect.left;
+  const mouseY = event.clientY - rect.top;
 
   // Calculate where the mouse is relative to the image center (in current zoom pixels)
   const relativeX = mouseX - rect.width / 2 - position.value.x;
@@ -164,28 +164,28 @@ const resetZoom = () => {
   position.value = { x: 0, y: 0 };
 };
 
-const startDrag = (e: MouseEvent) => {
+const startDrag = ({ event }: { event: MouseEvent }) => {
   if (zoom.value <= 1) return;
   isDragging.value = true;
-  lastMousePos.value = { x: e.clientX, y: e.clientY };
+  lastMousePos.value = { x: event.clientX, y: event.clientY };
 };
 
-const onDrag = (e: MouseEvent) => {
+const onDrag = ({ event }: { event: MouseEvent }) => {
   if (!isDragging.value) return;
-  const dx = e.clientX - lastMousePos.value.x;
-  const dy = e.clientY - lastMousePos.value.y;
+  const dx = event.clientX - lastMousePos.value.x;
+  const dy = event.clientY - lastMousePos.value.y;
   position.value = {
     x: position.value.x + dx,
     y: position.value.y + dy
   };
-  lastMousePos.value = { x: e.clientX, y: e.clientY };
+  lastMousePos.value = { x: event.clientX, y: event.clientY };
 };
 
 const stopDrag = () => {
   isDragging.value = false;
 };
 
-const formatSize = (bytes: number) => {
+const formatSize = ({ bytes }: { bytes: number }) => {
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
@@ -193,7 +193,7 @@ const formatSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-const formatDate = (timestamp: number) => {
+const formatDate = ({ timestamp }: { timestamp: number }) => {
   return new Date(timestamp).toLocaleString();
 };
 
@@ -229,9 +229,9 @@ defineExpose({
         <!-- Image/File Display -->
         <div
           class="w-full h-full flex items-center justify-center p-0"
-          @wheel.prevent="handleWheel"
-          @mousedown="startDrag"
-          @mousemove="onDrag"
+          @wheel.prevent="event => handleWheel({ event })"
+          @mousedown="event => startDrag({ event })"
+          @mousemove="event => onDrag({ event })"
           @mouseup="stopDrag"
           @mouseleave="stopDrag"
         >
@@ -330,7 +330,7 @@ defineExpose({
               <div class="flex items-center gap-3 text-[10px] text-white/40 font-bold tracking-widest uppercase">
                 <span data-testid="preview-mimetype">{{ currentObject.mimeType }}</span>
                 <span class="w-1 h-1 rounded-full bg-white/20"></span>
-                <span data-testid="preview-size">{{ formatSize(currentObject.size) }}</span>
+                <span data-testid="preview-size">{{ formatSize({ bytes: currentObject.size }) }}</span>
               </div>
             </div>
           </div>
@@ -370,7 +370,7 @@ defineExpose({
           <div class="px-6 py-2.5 bg-black/40 backdrop-blur-xl rounded-full border border-white/10 flex items-center gap-6">
             <div class="flex items-center gap-2 text-[10px] text-white/40 font-bold uppercase tracking-widest" data-testid="preview-date">
               <CalendarIcon class="w-3.5 h-3.5" />
-              {{ formatDate(currentObject.createdAt) }}
+              {{ formatDate({ timestamp: currentObject.createdAt }) }}
             </div>
             <div class="w-px h-4 bg-white/10"></div>
             <div class="flex items-center gap-2 text-[10px] text-white/40 font-mono" data-testid="preview-id">

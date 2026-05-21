@@ -29,7 +29,7 @@ describe('DTO Backward Compatibility', () => {
     const dto = ChatSchemaDto.parse(v1LegacyData);
 
     // 2. Map to Domain
-    const domain = chatToDomain(dto);
+    const domain = chatToDomain({ dto });
 
     // 3. Verify expectations
     expect(domain.id).toBe(v1LegacyData.id);
@@ -56,7 +56,7 @@ describe('DTO Backward Compatibility', () => {
     };
 
     const dto = ChatSchemaDto.parse(v1_1Data);
-    const domain = chatToDomain(dto);
+    const domain = chatToDomain({ dto });
 
     expect(domain.debugEnabled).toBe(true);
   });
@@ -77,7 +77,7 @@ describe('DTO Backward Compatibility', () => {
     };
 
     const dto = ChatSchemaDto.parse(v1_2Data);
-    const domain = chatToDomain(dto);
+    const domain = chatToDomain({ dto });
 
     expect(domain.originChatId).toBe(v1_2Data.originChatId);
     expect(domain.originMessageId).toBe(v1_2Data.originMessageId);

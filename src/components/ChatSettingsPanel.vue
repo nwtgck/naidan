@@ -75,7 +75,7 @@ onMounted(() => {
   if (currentChat.value) {
     const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
     const type = currentChat.value.endpointType || settings.value.endpointType;
-    if (type === 'transformers_js' || isLocalhost(url)) {
+    if (type === 'transformers_js' || isLocalhost({ url })) {
       fetchModels();
     }
   }
@@ -114,7 +114,7 @@ async function saveChanges() {
   }
 }
 
-function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
+function formatLabel({ value, source }: { value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined }) {
   if (!value) return 'Default';
   switch (source) {
   case 'chat_group':
@@ -134,7 +134,7 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
 
-function isLocalhost(url: string | undefined) {
+function isLocalhost({ url }: { url: string | undefined }) {
   if (!url) return false;
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
@@ -199,7 +199,7 @@ watch([
   () => localSettings.value.endpointType,
 ], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
+  if (type === 'transformers_js' || (url && isLocalhost({ url: url as string }))) {
     fetchModels();
   }
 });
@@ -352,7 +352,7 @@ defineExpose({
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
               >
-                <option value="global">{{ formatLabel(resolvedSettings?.endpointType === 'transformers_js' ? 'Transformers.js' : resolvedSettings?.endpointType, resolvedSettings?.sources.endpointType) }}</option>
+                <option value="global">{{ formatLabel({ value: resolvedSettings?.endpointType === 'transformers_js' ? 'Transformers.js' : resolvedSettings?.endpointType, source: resolvedSettings?.sources.endpointType }) }}</option>
                 <option value="openai">OpenAI Compatible</option>
                 <option value="ollama">Ollama</option>
                 <option value="transformers_js">Transformers.js (Experimental)</option>
@@ -368,7 +368,7 @@ defineExpose({
                 @input="error = null"
                 type="text"
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                :placeholder="formatLabel(resolvedSettings?.endpointUrl, resolvedSettings?.sources.endpointUrl)"
+                :placeholder="formatLabel({ value: resolvedSettings?.endpointUrl, source: resolvedSettings?.sources.endpointUrl })"
                 data-testid="chat-setting-url-input"
               />
               <div v-if="error" class="mt-2">
@@ -428,7 +428,7 @@ defineExpose({
                   @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
                   :models="sortedAvailableModels"
                   :loading="fetchingModels"
-                  :placeholder="formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId)"
+                  :placeholder="formatLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"
                   data-testid="chat-setting-model-select"
@@ -494,7 +494,7 @@ defineExpose({
                   @update:model-value="val => { localSettings.titleModelId = val; saveChanges(); }"
                   :models="sortedAvailableModels"
                   :loading="fetchingModels"
-                  :placeholder="formatLabel(resolvedSettings?.titleModelId, resolvedSettings?.sources.titleModelId)"
+                  :placeholder="formatLabel({ value: resolvedSettings?.titleModelId, source: resolvedSettings?.sources.titleModelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"
                   data-testid="chat-setting-title-model-select"

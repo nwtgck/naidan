@@ -37,7 +37,7 @@ interface RegistryEntry {
 
 // --- Mappers ---
 
-function mapDtoToDomain(dto: WeshRegistryEntryDto): RegistryEntry {
+function mapDtoToDomain({ dto }: { dto: WeshRegistryEntryDto }): RegistryEntry {
   switch (dto.type) {
   case 'symlink':
     return {
@@ -71,7 +71,7 @@ function mapDtoToDomain(dto: WeshRegistryEntryDto): RegistryEntry {
   }
 }
 
-function mapDomainToDto(entry: RegistryEntry): WeshRegistryEntryDto {
+function mapDomainToDto({ entry }: { entry: RegistryEntry }): WeshRegistryEntryDto {
   switch (entry.type) {
   case 'symlink':
     return {
@@ -442,7 +442,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
           const text = await file.text();
           const json = JSON.parse(text);
           const dto = WeshRegistryEntrySchemaDto.parse(json);
-          cache.set(itemPath, mapDtoToDomain(dto));
+          cache.set(itemPath, mapDtoToDomain({ dto }));
         } catch (e) {
           console.warn(`Failed to parse registry entry ${itemPath}:`, e);
         }
@@ -1230,7 +1230,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
     const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
-    const dto = mapDomainToDto(entry);
+    const dto = mapDomainToDto({ entry });
     await writable.write(JSON.stringify(dto));
     await writable.close();
   }

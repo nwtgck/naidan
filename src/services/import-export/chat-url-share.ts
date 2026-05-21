@@ -54,7 +54,7 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
 
   // 4. Attachments
   const binaryObjectIds = new Set<string>();
-  const collectBinaryIds = (nodes: MessageNode[]) => {
+  const collectBinaryIds = ({ nodes }: { nodes: MessageNode[] }) => {
     for (const node of nodes) {
       if (node.role === 'user' && node.attachments) {
         for (const att of node.attachments) {
@@ -62,11 +62,11 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
         }
       }
       if (node.replies?.items) {
-        collectBinaryIds(node.replies.items);
+        collectBinaryIds({ nodes: node.replies.items });
       }
     }
   };
-  collectBinaryIds(chat.root.items);
+  collectBinaryIds({ nodes: chat.root.items });
 
   for (const bId of binaryObjectIds) {
     const blob = await storageService.getFile(bId);

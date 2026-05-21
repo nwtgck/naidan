@@ -88,7 +88,7 @@ function updateParam<K extends keyof LmParameters>(key: K, value: LmParameters[K
   params.value = newParams;
 }
 
-function handleStopInput(value: string) {
+function handleStopInput({ value }: { value: string }) {
   stopSequencesRaw.value = value;
   if (!value.trim()) {
     updateParam('stop', undefined);
@@ -272,7 +272,7 @@ defineExpose({
         </div>
         <textarea
           :value="stopSequencesRaw"
-          @input="e => handleStopInput((e.target as HTMLTextAreaElement).value)"
+          @input="e => handleStopInput({ value: (e.target as HTMLTextAreaElement).value })"
           rows="2"
           class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-mono font-bold outline-none focus:border-blue-500 transition-all shadow-sm resize-none"
           :class="{ 'border-red-500 focus:border-red-500': stopJsonError }"

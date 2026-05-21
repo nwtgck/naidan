@@ -53,7 +53,7 @@ export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilte
 
   if (keywords.length === 0) return [];
 
-  function traverse(items: MessageNode[]) {
+  function traverse({ items }: { items: MessageNode[] }) {
     for (const node of items) {
       // Check current node
       if (node.content && matchesRoleFilter({ role: node.role, roleFilter: effectiveRoleFilter })) {
@@ -79,12 +79,12 @@ export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilte
 
       // Recurse into replies
       if (node.replies && node.replies.items.length > 0) {
-        traverse(node.replies.items);
+        traverse({ items: node.replies.items });
       }
     }
   }
 
-  traverse(root.items);
+  traverse({ items: root.items });
   return matches;
 }
 

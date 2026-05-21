@@ -89,15 +89,15 @@ function resetTextareaHeight() {
   }
 }
 
-function autoResize(e: Event) {
-  const ta = e.target as HTMLTextAreaElement;
+function autoResize({ event }: { event: Event }) {
+  const ta = event.target as HTMLTextAreaElement;
   ta.style.height = 'auto';
   ta.style.height = `${ta.scrollHeight}px`;
 }
 
-function handleKeyDown(e: KeyboardEvent) {
-  if (e.ctrlKey && e.key === 'c') {
-    e.preventDefault();
+function handleKeyDown({ event }: { event: KeyboardEvent }) {
+  if (event.ctrlKey && event.key === 'c') {
+    event.preventDefault();
     if (isRunning.value && props.activeSessionId) {
       emit('cancel', { sessionId: props.activeSessionId });
     } else {
@@ -107,8 +107,8 @@ function handleKeyDown(e: KeyboardEvent) {
     return;
   }
 
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
     if (!isRunning.value && !isDisabled.value && inputDraft.value.trim()) {
       const script = inputDraft.value;
       inputDraft.value = '';
@@ -118,7 +118,7 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 }
 
-function lineClass(kind: WeshTerminalLineKind): string {
+function lineClass({ kind }: { kind: WeshTerminalLineKind }): string {
   switch (kind) {
   case 'command': return 'text-gray-100';
   case 'stdout': return 'text-gray-300';
@@ -132,7 +132,7 @@ function lineClass(kind: WeshTerminalLineKind): string {
   }
 }
 
-function stateDotClass(state: WeshTerminalSessionState): string {
+function stateDotClass({ state }: { state: WeshTerminalSessionState }): string {
   switch (state) {
   case 'initializing': return 'bg-yellow-500 animate-pulse';
   case 'ready': return 'bg-blue-500';
@@ -170,7 +170,7 @@ defineExpose({ focusInput,
       >
         <span
           class="w-1.5 h-1.5 rounded-full shrink-0"
-          :class="stateDotClass(session.state)"
+          :class="stateDotClass({ state: session.state })"
         />
         {{ session.title }}
       </button>
@@ -204,7 +204,7 @@ defineExpose({ focusInput,
         v-for="line in activeSession.lines"
         :key="line.id"
         class="whitespace-pre-wrap break-all"
-        :class="lineClass(line.kind)"
+        :class="lineClass({ kind: line.kind })"
       >
         <span v-if="line.kind === 'command'" class="select-none text-blue-400 mr-2">$</span>{{ line.text }}
       </div>
@@ -223,8 +223,8 @@ defineExpose({ focusInput,
           class="flex-1 bg-transparent outline-none resize-none leading-relaxed caret-gray-100"
           :class="isRunning ? 'opacity-0' : 'text-gray-100 placeholder:text-gray-700'"
           data-testid="terminal-input"
-          @keydown="handleKeyDown"
-          @input="autoResize"
+          @keydown="handleKeyDown({ event: $event })"
+          @input="autoResize({ event: $event })"
         />
       </div>
     </template>

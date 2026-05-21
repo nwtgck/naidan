@@ -1,6 +1,6 @@
 import type { ArgvOptionSpec, StandardArgvParserSpec } from './types';
 
-function getHelpCategoryRank(category: 'common' | 'advanced' | undefined): number {
+function getHelpCategoryRank({ category }: { category: 'common' | 'advanced' | undefined }): number {
   switch (category) {
   case 'common':
     return 0;
@@ -64,8 +64,8 @@ export function formatArgvUsageSummary({
   const options = spec.options
     .filter((option) => option.help !== undefined)
     .sort((left, right) => {
-      const leftCategory = getHelpCategoryRank(left.help?.category);
-      const rightCategory = getHelpCategoryRank(right.help?.category);
+      const leftCategory = getHelpCategoryRank({ category: left.help?.category });
+      const rightCategory = getHelpCategoryRank({ category: right.help?.category });
       return leftCategory - rightCategory;
     })
     .slice(0, maxOptions)
@@ -90,8 +90,8 @@ export function formatArgvOptionHelp({
   const options = spec.options
     .filter((option) => option.help !== undefined)
     .sort((left, right) => {
-      const leftCategory = getHelpCategoryRank(left.help?.category);
-      const rightCategory = getHelpCategoryRank(right.help?.category);
+      const leftCategory = getHelpCategoryRank({ category: left.help?.category });
+      const rightCategory = getHelpCategoryRank({ category: right.help?.category });
       return leftCategory - rightCategory;
     });
 

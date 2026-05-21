@@ -130,7 +130,7 @@ onMounted(() => {
   if (currentChatGroup.value) {
     const url = localSettings.value.endpoint?.url || settings.value.endpointUrl;
     const type = localSettings.value.endpoint?.type || settings.value.endpointType;
-    if (type === 'transformers_js' || isLocalhost(url)) {
+    if (type === 'transformers_js' || isLocalhost({ url })) {
       fetchModels();
     }
   }
@@ -156,7 +156,7 @@ async function saveChanges() {
   }
 }
 
-function isLocalhost(url: string | undefined) {
+function isLocalhost({ url }: { url: string | undefined }) {
   if (!url) return false;
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
@@ -236,13 +236,13 @@ watch([
   () => localSettings.value.endpoint?.type,
 ], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
+  if (type === 'transformers_js' || (url && isLocalhost({ url: url as string }))) {
     fetchModels();
   }
 });
 
 /*
-async function updateSystemPromptContent(content: string) {
+async function updateSystemPromptContent({ content }: { content: string }) {
   if (!content && (!localSettings.value.systemPrompt || localSettings.value.systemPrompt.behavior === 'override')) {
     localSettings.value.systemPrompt = undefined;
   } else if (!localSettings.value.systemPrompt) {

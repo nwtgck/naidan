@@ -10,7 +10,7 @@ export const FILE_TYPE_HINTS: Record<string, FileTypeHint> = {
   '.pptx': { example: 'unzip example.pptx -d /tmp/example' },
 };
 
-function formatExtList(exts: string[]): string {
+function formatExtList({ exts }: { exts: string[] }): string {
   if (exts.length === 1) return exts[0]!;
   if (exts.length === 2) return `${exts[0]} and ${exts[1]}`;
   return `${exts.slice(0, -1).join(', ')}, and ${exts.at(-1)}`;
@@ -32,7 +32,7 @@ export function buildShellDescription({
 
   let fileTypeSection = '';
   if (knownExts.length > 0) {
-    const extList = formatExtList(knownExts);
+    const extList = formatExtList({ exts: knownExts });
     const examples = knownExts.map(ext => `  ${FILE_TYPE_HINTS[ext]!.example}`).join('\n');
     fileTypeSection = `\n\nTo read ${extList} files in the mounts, unzip them to /tmp first:\n${examples}`;
   }

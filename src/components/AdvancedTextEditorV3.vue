@@ -540,9 +540,9 @@ watch(multiEditReplacement, async (newVal) => {
 });
 
 // --- Emacs Keybindings ---
-function handleEmacsKeydown(e: KeyboardEvent) {
+function handleEmacsKeydown({ event }: { event: KeyboardEvent }) {
   // Only handle Ctrl+key (not Cmd on Mac for Emacs bindings)
-  if (!e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (!event.ctrlKey || event.metaKey || event.altKey) return false;
 
   const el = textareaRef.value;
   if (!el) return false;
@@ -551,17 +551,17 @@ function handleEmacsKeydown(e: KeyboardEvent) {
   const text = fullText.value;
   const pos = el.selectionStart;
 
-  switch (e.key) {
+  switch (event.key) {
   case 'a': {
     // Move to beginning of line
-    e.preventDefault();
+    event.preventDefault();
     const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
     el.setSelectionRange(lineStart, lineStart);
     return true;
   }
   case 'e': {
     // Move to end of line
-    e.preventDefault();
+    event.preventDefault();
     let lineEnd = text.indexOf('\n', pos);
     if (lineEnd === -1) lineEnd = text.length;
     el.setSelectionRange(lineEnd, lineEnd);
@@ -569,14 +569,14 @@ function handleEmacsKeydown(e: KeyboardEvent) {
   }
   case 'b': {
     // Move backward one character
-    e.preventDefault();
+    event.preventDefault();
     const newPos = Math.max(0, pos - 1);
     el.setSelectionRange(newPos, newPos);
     return true;
   }
   case 'n': {
     // Move to next line (down)
-    e.preventDefault();
+    event.preventDefault();
     const currentLineStart = text.lastIndexOf('\n', pos - 1) + 1;
     const col = pos - currentLineStart;
     let nextLineStart = text.indexOf('\n', pos);
@@ -590,7 +590,7 @@ function handleEmacsKeydown(e: KeyboardEvent) {
   }
   case 'p': {
     // Move to previous line (up)
-    e.preventDefault();
+    event.preventDefault();
     const curLineStart = text.lastIndexOf('\n', pos - 1) + 1;
     if (curLineStart === 0) return true; // Already on first line
     const col2 = pos - curLineStart;
@@ -602,7 +602,7 @@ function handleEmacsKeydown(e: KeyboardEvent) {
   }
   case 'k': {
     // Kill from cursor to end of line
-    e.preventDefault();
+    event.preventDefault();
     let lineEnd = text.indexOf('\n', pos);
     if (lineEnd === -1) lineEnd = text.length;
     // If cursor is already at end of line, kill the newline itself
@@ -620,7 +620,7 @@ function handleEmacsKeydown(e: KeyboardEvent) {
   }
   case 'h': {
     // Delete character before cursor (backspace)
-    e.preventDefault();
+    event.preventDefault();
     if (pos > 0) {
       const before = text.substring(0, pos - 1);
       const after = text.substring(pos);
@@ -634,7 +634,7 @@ function handleEmacsKeydown(e: KeyboardEvent) {
   }
   case 'w': {
     // Kill word backward
-    e.preventDefault();
+    event.preventDefault();
     let wordStart = pos;
     // Skip whitespace backward
     while (wordStart > 0 && /\s/.test(text[wordStart - 1] || '')) wordStart--;
@@ -651,7 +651,7 @@ function handleEmacsKeydown(e: KeyboardEvent) {
   }
   case 'y': {
     // Yank (paste) last killed text
-    e.preventDefault();
+    event.preventDefault();
     if (killRing) {
       const before = text.substring(0, pos);
       const after = text.substring(pos);
@@ -665,7 +665,7 @@ function handleEmacsKeydown(e: KeyboardEvent) {
   }
   case 't': {
     // Transpose two characters before cursor
-    e.preventDefault();
+    event.preventDefault();
     if (pos >= 2) {
       const chars = text.split('');
       const tmp = chars[pos - 2]!;
@@ -693,8 +693,8 @@ function handleClose() {
   emit('close');
 }
 
-function handleBackdropClick(e: MouseEvent) {
-  if (e.target === e.currentTarget) {
+function handleBackdropClick({ event }: { event: MouseEvent }) {
+  if (event.target === event.currentTarget) {
     handleClose();
   }
 }
@@ -754,17 +754,17 @@ function handleInput() {
 }
 
 // Shortcuts
-function handleKeyDown(e: KeyboardEvent) {
-  const isMod = e.ctrlKey || e.metaKey;
+function handleKeyDown({ event }: { event: KeyboardEvent }) {
+  const isMod = event.ctrlKey || event.metaKey;
 
   // Emacs keybindings (Ctrl only, not Cmd on Mac)
   // Check before other shortcuts. Ctrl+F and Ctrl+D are excluded (handled below as search/multi-edit).
-  if (e.ctrlKey && !e.metaKey && !e.altKey && e.key !== 'f' && e.key !== 'd' && e.key !== 'z') {
-    if (handleEmacsKeydown(e)) return;
+  if (event.ctrlKey && !event.metaKey && !event.altKey && event.key !== 'f' && event.key !== 'd' && event.key !== 'z') {
+    if (handleEmacsKeydown({ event })) return;
   }
 
-  if (isMod && e.key === 'f') {
-    e.preventDefault();
+  if (isMod && event.key === 'f') {
+    event.preventDefault();
     const selection = window.getSelection()?.toString();
     if (selection) {
       findText.value = selection;
@@ -777,16 +777,16 @@ function handleKeyDown(e: KeyboardEvent) {
       if (selection) findInput?.select();
     });
   }
-  if (isMod && e.key === 'd') {
-    e.preventDefault();
+  if (isMod && event.key === 'd') {
+    event.preventDefault();
     void handleCmdD();
   }
-  if (isMod && e.key === 'z') {
-    e.preventDefault();
-    if (e.shiftKey) handleRedo();
+  if (isMod && event.key === 'z') {
+    event.preventDefault();
+    if (event.shiftKey) handleRedo();
     else handleUndo();
   }
-  if (e.key === 'Escape') {
+  if (event.key === 'Escape') {
     if (isMultiEditMode.value) {
       exitMultiEdit();
       return;
@@ -808,8 +808,12 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 }
 
+function handleWindowKeyDown(event: KeyboardEvent) {
+  handleKeyDown({ event });
+}
+
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('keydown', handleWindowKeyDown);
   window.addEventListener('resize', calculateLineHeights);
   void getWorkerClient();
   nextTick(() => {
@@ -820,7 +824,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('keydown', handleWindowKeyDown);
   window.removeEventListener('resize', calculateLineHeights);
   if (historyTimeout) clearTimeout(historyTimeout);
   if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
@@ -852,7 +856,7 @@ defineExpose({
   <!-- Backdrop Container -->
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/5 backdrop-blur-[0.2px] p-4 md:p-8 transition-opacity"
-    @click="handleBackdropClick"
+    @click="handleBackdropClick({ event: $event })"
     data-testid="editor-backdrop"
   >
     <!-- Editor Container -->

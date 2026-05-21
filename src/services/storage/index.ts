@@ -516,7 +516,7 @@ export class StorageService {
                 };
                 findAndRescue(chat.root.items);
                 for (const r of rescued) yield r;
-                yield { type: 'chat', data: chatToDto(chat) };
+                yield { type: 'chat', data: chatToDto({ domain: chat }) };
               } else {
                 yield chunk;
               }

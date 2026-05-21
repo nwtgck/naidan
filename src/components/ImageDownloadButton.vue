@@ -25,18 +25,22 @@ function handleDownload({ withMetadata, event }: { withMetadata: boolean; event:
   isOpen.value = false;
 }
 
-function handleClickOutside(event: MouseEvent) {
+function handleClickOutside({ event }: { event: MouseEvent }) {
   if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
     isOpen.value = false;
   }
 }
 
+function handleDocumentMouseDown(event: MouseEvent) {
+  handleClickOutside({ event });
+}
+
 onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside);
+  document.addEventListener('mousedown', handleDocumentMouseDown);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
+  document.removeEventListener('mousedown', handleDocumentMouseDown);
 });
 
 

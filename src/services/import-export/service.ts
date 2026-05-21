@@ -35,7 +35,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/models/types';
 
 // Helper to format date YYYY-MM-DD
-function formatDate(date: Date): string {
+function formatDate({ date }: { date: Date }): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -45,7 +45,7 @@ function formatDate(date: Date): string {
 /**
  * Truncates a string to a maximum byte length for UTF-8 encoding.
  */
-function truncateByByteLength(str: string, maxBytes: number): string {
+function truncateByByteLength({ str, maxBytes }: { str: string, maxBytes: number }): string {
   if (maxBytes <= 0) return '';
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -80,7 +80,7 @@ export class ImportExportService {
    */
   async exportData(options: ExportOptions): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
     const zip = new JSZip();
-    const dateStr = formatDate(new Date());
+    const dateStr = formatDate({ date: new Date() });
 
     // Linux filename limit is 255 bytes.
     const SUFFIX = `-${dateStr}.zip`;
@@ -96,7 +96,7 @@ export class ImportExportService {
       const sanitized = options.fileNameSegment.replace(/[/?%*:|"<>\x00-\x1F]/g, '_').trim();
       /* eslint-enable no-control-regex */
       if (sanitized) {
-        midSegment = `-${truncateByByteLength(sanitized, AVAILABLE_BYTES)}`;
+        midSegment = `-${truncateByByteLength({ str: sanitized, maxBytes: AVAILABLE_BYTES })}`;
       }
     }
 
@@ -147,7 +147,7 @@ export class ImportExportService {
 
       const groupFolder = root.folder('chat-groups');
       for (const group of structure.chatGroups) {
-        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
+        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
       }
       // chat-metas.json is intentionally omitted when chat is excluded
     } else {
@@ -155,7 +155,7 @@ export class ImportExportService {
 
       const groupFolder = root.folder('chat-groups');
       for (const group of structure.chatGroups) {
-        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
+        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
       }
 
       const metasDto = structure.chatMetas.map(domain => chatMetaToDto({ domain }));
@@ -163,7 +163,7 @@ export class ImportExportService {
     }
 
     const shardIndices = new Map<string, BinaryShardIndexDto>();
-    const getShard = (id: string) => id.slice(-2).toLowerCase();
+    const getShard = ({ id }: { id: string }) => id.slice(-2).toLowerCase();
 
     try {
       for await (const chunk of contentStream) {
@@ -178,7 +178,7 @@ export class ImportExportService {
           if (excludeFlags.binary_object) break;
 
           const binFolder = root.folder('binary-objects') || root;
-          const shard = getShard(chunk.id);
+          const shard = getShard({ id: chunk.id });
           const shardFolder = binFolder.folder(shard);
           if (!shardFolder) throw new Error(`Failed to create shard folder ${shard} in ZIP`);
 
@@ -571,7 +571,7 @@ export class ImportExportService {
 
     const chatMetas = metasDto.map(dto => chatMetaToDomain({ dto }));
     const hierarchy = hierarchyDto;
-    const chatGroups = groupsDto.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
+    const chatGroups = groupsDto.map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       for (const meta of metasDto) {
@@ -709,7 +709,7 @@ export class ImportExportService {
       }
       return chatMetaToDomain({ dto });
     });
-    const chatGroups = importedGroupsDto.map(g => chatGroupToDomain(g, mergedHierarchy, chatMetas));
+    const chatGroups = importedGroupsDto.map(dto => chatGroupToDomain({ dto, hierarchy: mergedHierarchy, chatMetas }));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       // 1. Unified metadata lookup for append remapping
@@ -735,7 +735,7 @@ export class ImportExportService {
             const dto: ChatDto = { ...meta, ...content, messages: undefined };
 
             const messageIdMap = new Map<string, string>();
-            const process = (node: MessageNodeDto) => {
+            const process = ({ node }: { node: MessageNodeDto }) => {
               const oldMsgId = node.id;
               const newMsgId = generateId();
               messageIdMap.set(oldMsgId, newMsgId);
@@ -770,9 +770,9 @@ export class ImportExportService {
                   }
                 });
               }
-              if (node.replies?.items) node.replies.items.forEach(process);
+              if (node.replies?.items) node.replies.items.forEach(node => process({ node }));
             };
-            if (dto.root?.items) dto.root.items.forEach(process);
+            if (dto.root?.items) dto.root.items.forEach(node => process({ node }));
 
             // Remap currentLeafId using the messageIdMap
             if (dto.currentLeafId && messageIdMap.has(dto.currentLeafId)) {

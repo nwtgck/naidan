@@ -32,7 +32,7 @@ const recipeJsonInput = ref('');
 const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
 const recipeAnalysisError = ref<string | null>(null);
 
-function getSortedModels(matchedModelId?: string) {
+function getSortedModels({ matchedModelId }: { matchedModelId?: string }) {
   const models = naturalSort({ values: props.availableModels || [] });
   if (!matchedModelId) return models;
 
@@ -196,7 +196,7 @@ defineExpose({
                 <div class="flex flex-col gap-2">
                   <ModelSelector
                     v-model="item.matchedModelId"
-                    :models="getSortedModels(item.matchedModelId)"
+                    :models="getSortedModels({ matchedModelId: item.matchedModelId })"
                     placeholder="Use Default Model"
                     allow-clear
                     clear-label="Use Default Model"

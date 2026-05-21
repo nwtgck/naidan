@@ -150,7 +150,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
       currentTarget: container.element
     };
 
-    (wrapper.vm as any).handleWheel(event as any);
+    (wrapper.vm as any).handleWheel({ event } as any);
 
     const newZoom = (wrapper.vm as any).zoom;
     const newPos = (wrapper.vm as any).position;

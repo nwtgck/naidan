@@ -64,29 +64,29 @@ const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 const appVersion = __APP_VERSION__;
 
 const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
-const initialFormState = ref(JSON.stringify(pickConnectionFields(form.value)));
+const initialFormState = ref(JSON.stringify(pickConnectionFields({ settings: form.value })));
 const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
 
-function pickConnectionFields(s: Settings) {
+function pickConnectionFields({ settings }: { settings: Settings }) {
   return {
-    endpointType: s.endpointType,
-    endpointUrl: s.endpointUrl,
-    endpointHttpHeaders: JSON.stringify(s.endpointHttpHeaders),
-    defaultModelId: s.defaultModelId,
-    titleModelId: s.titleModelId,
-    autoTitleEnabled: s.autoTitleEnabled,
-    systemPrompt: s.systemPrompt,
-    lmParameters: JSON.stringify(s.lmParameters),
+    endpointType: settings.endpointType,
+    endpointUrl: settings.endpointUrl,
+    endpointHttpHeaders: JSON.stringify(settings.endpointHttpHeaders),
+    defaultModelId: settings.defaultModelId,
+    titleModelId: settings.titleModelId,
+    autoTitleEnabled: settings.autoTitleEnabled,
+    systemPrompt: settings.systemPrompt,
+    lmParameters: JSON.stringify(settings.lmParameters),
   };
 }
 
 const hasUnsavedConnectionChanges = computed(() => {
-  const current = pickConnectionFields(form.value);
+  const current = pickConnectionFields({ settings: form.value });
   const initial = JSON.parse(initialFormState.value || '{}');
   return JSON.stringify(current) !== JSON.stringify(initial);
 });
 
-async function handleImportRecipes(recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[]) {
+async function handleImportRecipes({ recipes }: { recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[] }) {
   try {
     for (const item of recipes) {
       await chatStore.createChatGroup({ name: item.newName, options: {
@@ -232,7 +232,7 @@ watch(() => props.isOpen, async (open) => {
   if (open) {
     setActiveFocusArea({ area: 'settings' });
     form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
-    initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
+    initialFormState.value = JSON.stringify(pickConnectionFields({ settings: form.value }));
 
     await nextTick();
     if (connectionTabRef.value) {
@@ -391,7 +391,7 @@ defineExpose({
             :available-models="availableModels"
             :is-fetching-models="isFetchingModels"
             :has-unsaved-changes="hasUnsavedConnectionChanges"
-            @save="initialFormState = JSON.stringify(pickConnectionFields(form))"
+            @save="initialFormState = JSON.stringify(pickConnectionFields({ settings: form }))"
             @go-to-profiles="activeTab = 'profiles'"
             @go-to-transformers-js="activeTab = 'transformers_js'"
           />
@@ -414,7 +414,7 @@ defineExpose({
               <RecipeImportTab
                 v-if="activeTab === 'recipes'"
                 :available-models="availableModels"
-                @import="handleImportRecipes"
+                @import="handleImportRecipes({ recipes: $event })"
                 @toast="(msg: string, dur?: number) => addToast({ message: msg, duration: dur })"
               />
 

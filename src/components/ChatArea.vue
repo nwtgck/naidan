@@ -98,12 +98,12 @@ const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
 
-function handleDragOver(event: DragEvent) {
+function handleDragOver({ event }: { event: DragEvent }) {
   event.preventDefault();
   isDragging.value = true;
 }
 
-function handleDragLeave(event: DragEvent) {
+function handleDragLeave({ event }: { event: DragEvent }) {
   // Only set to false if we are leaving the main container
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   if (
@@ -116,7 +116,7 @@ function handleDragLeave(event: DragEvent) {
   }
 }
 
-async function handleDrop(event: DragEvent) {
+async function handleDrop({ event }: { event: DragEvent }) {
   event.preventDefault();
   isDragging.value = false;
 
@@ -124,7 +124,7 @@ async function handleDrop(event: DragEvent) {
     // Pass DataTransferItem[] to processDropItems which handles files AND directories.
     // Items must be collected here (synchronously) before any await, as the DataTransfer
     // object is cleared when control returns to the browser event loop.
-    await chatInputRef.value?.processDropItems(Array.from(event.dataTransfer.items));
+    await chatInputRef.value?.processDropItems({ items: Array.from(event.dataTransfer.items) });
   }
 }
 
@@ -687,19 +687,19 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
   return Math.max(0, Math.ceil(userTop - maxScrollTopWithoutReserve));
 }
 
-async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
+async function handleEdit({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) {
   await chatStore.editMessage({ messageId, newContent, lmParameters });
 }
 
-async function handleRegenerate(messageId: string) {
+async function handleRegenerate({ messageId }: { messageId: string }) {
   await chatStore.regenerateMessage({ failedMessageId: messageId });
 }
 
-function handleSwitchVersion(messageId: string) {
+function handleSwitchVersion({ messageId }: { messageId: string }) {
   chatStore.switchVersion({ messageId });
 }
 
-async function handleFork(messageId: string) {
+async function handleFork({ messageId }: { messageId: string }) {
   const newId = await chatStore.forkChat({ messageId });
   if (newId) {
     router.push(`/chat/${newId}`);
@@ -732,7 +732,7 @@ function handleForkLastMessage() {
 
   const lastMsgItem = findLastMessage(chatFlow.value);
   if (lastMsgItem && lastMsgItem.type === 'message') {
-    handleFork(lastMsgItem.node.id);
+    handleFork({ messageId: lastMsgItem.node.id });
   }
 }
 
@@ -807,9 +807,9 @@ watch(
 <template>
   <div
     class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
-    @dragover="handleDragOver"
-    @dragleave="handleDragLeave"
-    @drop="handleDrop"
+    @dragover="handleDragOver({ event: $event })"
+    @dragleave="handleDragLeave({ event: $event })"
+    @drop="handleDrop({ event: $event })"
     @click="setActiveFocusArea({ area: 'chat' })"
   >
     <!-- Drag Overlay -->
@@ -962,10 +962,10 @@ watch(
                       :is-first-in-node="subItem.isFirstInNode"
                       :is-last-in-node="subItem.isLastInNode"
                       :is-first-in-turn="subItem.isFirstInTurn"
-                      @fork="handleFork"
-                      @edit="(id, content, params) => handleEdit(id, content, params)"
-                      @switch-version="handleSwitchVersion"
-                      @regenerate="handleRegenerate"
+                      @fork="messageId => handleFork({ messageId })"
+                      @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
+                      @switch-version="messageId => handleSwitchVersion({ messageId })"
+                      @regenerate="messageId => handleRegenerate({ messageId })"
                       @abort="chatStore.abortChat({ chatId: undefined })"
                     />
                     <ToolCallGroupItem
@@ -997,10 +997,10 @@ watch(
                 :is-last-in-node="flowItem.isLastInNode"
                 :is-first-in-turn="flowItem.isFirstInTurn"
                 :show-generating-indicator="flowIdx === generatingIndicatorIndex"
-                @fork="handleFork"
-                @edit="(id, content, params) => handleEdit(id, content, params)"
-                @switch-version="handleSwitchVersion"
-                @regenerate="handleRegenerate"
+                @fork="messageId => handleFork({ messageId })"
+                @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
+                @switch-version="messageId => handleSwitchVersion({ messageId })"
+                @regenerate="messageId => handleRegenerate({ messageId })"
                 @abort="chatStore.abortChat({ chatId: undefined })"
               />
 
@@ -1029,7 +1029,7 @@ watch(
           <WelcomeScreen
             v-else
             :has-input="(chatInputRef?.input || '').trim().length > 0"
-            @select-suggestion="(text) => chatInputRef?.applySuggestion(text)"
+            @select-suggestion="(text) => chatInputRef?.applySuggestion({ text })"
           />
         </template>
 

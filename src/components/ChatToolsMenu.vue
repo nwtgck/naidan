@@ -94,7 +94,7 @@ const floatingStyle = computed((): CSSProperties => {
   };
 });
 
-function handleClickOutside(event: MouseEvent) {
+function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as Node;
   if (!showMenu.value) return;
 
@@ -120,12 +120,16 @@ function handleClickOutside(event: MouseEvent) {
   showMenu.value = false;
 }
 
+function handleDocumentMouseDown(event: MouseEvent) {
+  handleClickOutside({ event });
+}
+
 onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside);
+  document.addEventListener('mousedown', handleDocumentMouseDown);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
+  document.removeEventListener('mousedown', handleDocumentMouseDown);
 });
 
 // Close on window width resize to prevent floating detached dropdown

@@ -9,7 +9,7 @@ const PendingOwnerCleanupSchema = z.object({
 
 type PendingOwnerCleanup = z.infer<typeof PendingOwnerCleanupSchema>;
 
-function isNotFoundError(error: unknown): boolean {
+function isNotFoundError({ error }: { error: unknown }): boolean {
   return error instanceof Error && error.name === 'NotFoundError';
 }
 
@@ -147,7 +147,7 @@ export class OPFSTmpManager {
       await tmpRoot.removeEntry(ownerScopeId, { recursive: true });
       return true;
     } catch (error) {
-      if (isNotFoundError(error)) {
+      if (isNotFoundError({ error })) {
         return true;
       }
       return false;

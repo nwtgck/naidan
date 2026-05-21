@@ -28,13 +28,13 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       results: undefined
     };
 
-    const domain = messageNodeToDomain(dto) as UserMessageNode;
+    const domain = messageNodeToDomain({ dto }) as UserMessageNode;
     expect(domain.role).toBe('user');
     expect(domain.thinking).toBeUndefined();
     expect(domain.modelId).toBeUndefined();
     expect(domain.lmParameters?.reasoning.effort).toBe('low');
 
-    const backToDto = messageNodeToDto(domain) as Extract<MessageNodeDto, { role: 'user' }>;
+    const backToDto = messageNodeToDto({ domain }) as Extract<MessageNodeDto, { role: 'user' }>;
     expect(backToDto.role).toBe('user');
     expect(backToDto.thinking).toBeUndefined();
     expect(backToDto.lmParameters?.reasoning?.effort).toBe('low');
@@ -63,13 +63,13 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       results: undefined
     };
 
-    const domain = messageNodeToDomain(dto) as AssistantMessageNode;
+    const domain = messageNodeToDomain({ dto }) as AssistantMessageNode;
     expect(domain.role).toBe('assistant');
     expect(domain.thinking).toBe('Thinking...');
     expect(domain.modelId).toBe('gpt-4');
     expect(domain.lmParameters?.reasoning.effort).toBe('high');
 
-    const backToDto = messageNodeToDto(domain) as Extract<MessageNodeDto, { role: 'assistant' }>;
+    const backToDto = messageNodeToDto({ domain }) as Extract<MessageNodeDto, { role: 'assistant' }>;
     expect(backToDto.thinking).toBe('Thinking...');
     expect(backToDto.modelId).toBe('gpt-4');
     expect(backToDto.lmParameters?.reasoning?.effort).toBe('high');
@@ -90,14 +90,14 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
       results: undefined
     };
 
-    const domain = messageNodeToDomain(dto) as SystemMessageNode;
+    const domain = messageNodeToDomain({ dto }) as SystemMessageNode;
     expect(domain.role).toBe('system');
     expect(domain.attachments).toBeUndefined();
     expect(domain.thinking).toBeUndefined();
     expect(domain.modelId).toBeUndefined();
     expect(domain.lmParameters).toBeUndefined();
 
-    const backToDto = messageNodeToDto(domain);
+    const backToDto = messageNodeToDto({ domain });
     expect(backToDto.role).toBe('system');
     expect(backToDto.thinking).toBeUndefined();
   });
@@ -150,7 +150,7 @@ describe('Sidebar assembly', () => {
     ];
     const groups: ChatGroup[] = [];
 
-    const items = buildSidebarItemsFromHierarchy(hierarchy, metas, groups);
+    const items = buildSidebarItemsFromHierarchy({ hierarchy, chatMetas: metas, chatGroups: groups });
     expect(items).toHaveLength(1);
     expect(items[0]?.id).toBe('chat:exists');
   });
@@ -161,7 +161,7 @@ describe('Sidebar assembly', () => {
         { type: 'chat_group', id: 'orphan-group', chat_ids: [] }
       ]
     };
-    const items = buildSidebarItemsFromHierarchy(hierarchy, [], []);
+    const items = buildSidebarItemsFromHierarchy({ hierarchy, chatMetas: [], chatGroups: [] });
     expect(items).toHaveLength(0);
   });
 });
@@ -231,7 +231,7 @@ describe('Legacy Migration (Flat to Tree)', () => {
       updatedAt: 2,
     };
 
-    const domain = chatToDomain(legacyChat);
+    const domain = chatToDomain({ dto: legacyChat });
 
     expect(domain.root.items).toHaveLength(1);
     expect(domain.root.items[0]?.id).toBe(legacyId1);

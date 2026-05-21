@@ -37,17 +37,17 @@ export function* getChatBranchIterator({ chat }: { chat: Chat | Readonly<Chat> }
   const targetId = chat.currentLeafId;
   const path: MessageNode[] = [];
 
-  function findPath(nodes: MessageNode[], target: string): boolean {
+  function findPath({ nodes, target }: { nodes: MessageNode[], target: string }): boolean {
     for (const node of nodes) {
       path.push(node);
       if (toRaw(node).id === target) return true;
-      if (findPath(node.replies.items, target)) return true;
+      if (findPath({ nodes: node.replies.items, target })) return true;
       path.pop();
     }
     return false;
   }
 
-  const found = targetId ? findPath(items, targetId) : false;
+  const found = targetId ? findPath({ nodes: items, target: targetId }) : false;
 
   if (!found) {
     // Fallback: follow the last reply of each node starting from the root
@@ -76,13 +76,13 @@ export function findDeepestLeaf({ node }: { node: MessageNode | Readonly<Message
  */
 export function getAllMessages({ chat }: { chat: Chat | Readonly<Chat> }): MessageNode[] {
   const all: MessageNode[] = [];
-  const collect = (items: MessageNode[]) => {
+  const collect = ({ items }: { items: MessageNode[] }) => {
     for (const item of items) {
       all.push(item);
-      collect(item.replies.items);
+      collect({ items: item.replies.items });
     }
   };
-  collect(chat.root.items);
+  collect({ items: chat.root.items });
   return all;
 }
 

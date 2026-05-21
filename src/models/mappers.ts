@@ -156,9 +156,7 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
  * Resolves nested items using the hierarchy and provided chat metadata.
  */
 export const chatGroupToDomain = (
-  dto: ChatGroupDto,
-  hierarchy: Hierarchy,
-  chatMetas: ChatMeta[]
+  { dto, hierarchy, chatMetas }: { dto: ChatGroupDto, hierarchy: Hierarchy, chatMetas: ChatMeta[] }
 ): ChatGroup => {
   const node = hierarchy.items.find(
     i => i.type === 'chat_group' && i.id === dto.id
@@ -217,7 +215,7 @@ export const chatGroupToDomain = (
   };
 };
 
-export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
+export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto => ({
   id: domain.id,
   name: domain.name,
   isCollapsed: domain.isCollapsed,
@@ -296,7 +294,7 @@ export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto
   }
 };
 
-const attachmentToDomain = (dto: AttachmentDto): Attachment => {
+const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
   if ('binaryObjectId' in dto) {
     // V2
     const base = {
@@ -343,7 +341,7 @@ const attachmentToDomain = (dto: AttachmentDto): Attachment => {
   }
 };
 
-const attachmentToDto = (domain: Attachment): AttachmentDto => {
+const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
   // Always output V2
   return {
     id: domain.id,
@@ -353,13 +351,13 @@ const attachmentToDto = (domain: Attachment): AttachmentDto => {
   };
 };
 
-export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
+export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNode => {
   const common = {
     id: dto.id,
     content: dto.content,
     timestamp: dto.timestamp,
     replies: {
-      items: dto.replies.items.map(messageNodeToDomain),
+      items: dto.replies.items.map(dto => messageNodeToDomain({ dto })),
     },
   };
 
@@ -369,7 +367,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       ...common,
       role: 'user',
       content: dto.content,
-      attachments: dto.attachments?.map(attachmentToDomain),
+      attachments: dto.attachments?.map(dto => attachmentToDomain({ dto })),
       thinking: undefined,
       error: undefined,
       modelId: undefined,
@@ -423,13 +421,13 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
   }
 };
 
-export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
+export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNodeDto => {
   const common = {
     id: domain.id,
     content: domain.content,
     timestamp: domain.timestamp,
     replies: {
-      items: domain.replies.items.map(messageNodeToDto),
+      items: domain.replies.items.map(domain => messageNodeToDto({ domain })),
     },
   };
 
@@ -439,7 +437,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       ...common,
       role: 'user',
       content: domain.content,
-      attachments: domain.attachments?.map(attachmentToDto),
+      attachments: domain.attachments?.map(domain => attachmentToDto({ domain })),
       thinking: undefined,
       modelId: undefined,
       lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
@@ -498,7 +496,7 @@ interface LegacyMessage {
   modelId?: string;
 }
 
-function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
+function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): MessageBranch {
   if (!messages || messages.length === 0) return { items: [] };
   const legacyMsgs = messages as LegacyMessage[];
   const nodes: MessageNode[] = legacyMsgs.map(m => {
@@ -579,17 +577,17 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
   return { items: nodes[0] ? [nodes[0]] : [] };
 }
 
-export const chatToDomain = (dto: ChatDto): Chat => {
+export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
   let root: MessageBranch = { items: [] };
 
   if (dto.root && dto.root.items && dto.root.items.length > 0) {
-    root = { items: (dto.root.items as MessageNodeDto[]).map(messageNodeToDomain) };
+    root = { items: (dto.root.items as MessageNodeDto[]).map(dto => messageNodeToDomain({ dto })) };
   } else if (dto.messages && dto.messages.length > 0) {
     // Priority to legacy flat messages if tree is empty
-    root = migrateFlatMessagesToTree(dto.messages);
+    root = migrateFlatMessagesToTree({ messages: dto.messages });
   } else if (dto.root && !('items' in dto.root)) {
     // Handle edge case where root might be a single node
-    root = { items: [messageNodeToDomain(dto.root as MessageNodeDto)] };
+    root = { items: [messageNodeToDomain({ dto: dto.root as MessageNodeDto })] };
   }
 
   const {
@@ -668,17 +666,17 @@ export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => 
   mounts: domain.mounts?.map(domain => mountToDto({ domain })),
 });
 
-export const chatContentToDto = (domain: ChatContent): ChatContentDto => ({
-  root: { items: domain.root.items.map(messageNodeToDto) },
+export const chatContentToDto = ({ domain }: { domain: ChatContent }): ChatContentDto => ({
+  root: { items: domain.root.items.map(domain => messageNodeToDto({ domain })) },
   currentLeafId: domain.currentLeafId,
 });
 
-export const chatContentToDomain = (dto: ChatContentDto): ChatContent => ({
-  root: { items: dto.root.items.map(messageNodeToDomain) },
+export const chatContentToDomain = ({ dto }: { dto: ChatContentDto }): ChatContent => ({
+  root: { items: dto.root.items.map(dto => messageNodeToDomain({ dto })) },
   currentLeafId: dto.currentLeafId,
 });
 
-export const chatToDto = (domain: Chat): ChatDto => {
+export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
   const {
     id, title, root, currentLeafId, createdAt, updatedAt,
     debugEnabled, endpointType, endpointUrl, endpointHttpHeaders,
@@ -688,7 +686,7 @@ export const chatToDto = (domain: Chat): ChatDto => {
   return {
     id,
     title,
-    root: { items: root.items.map(messageNodeToDto) },
+    root: { items: root.items.map(domain => messageNodeToDto({ domain })) },
     currentLeafId,
     createdAt,
     updatedAt,
@@ -715,9 +713,7 @@ export const chatToDto = (domain: Chat): ChatDto => {
  * Uses Hierarchy as the structural template.
  */
 export const buildSidebarItemsFromHierarchy = (
-  hierarchy: Hierarchy,
-  chatMetas: ChatMeta[],
-  chatGroups: Omit<ChatGroup, 'items'>[]
+  { hierarchy, chatMetas, chatGroups }: { hierarchy: Hierarchy, chatMetas: ChatMeta[], chatGroups: Omit<ChatGroup, 'items'>[] }
 ): SidebarItem[] => {
   const metaMap = new Map(chatMetas.map(m => [m.id, m]));
   const groupMap = new Map(chatGroups.map(g => [g.id, g]));

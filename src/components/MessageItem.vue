@@ -443,7 +443,7 @@ const reasoningEffortTooltip = computed(() => {
 
 const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content || ''));
 
-function formatSize(bytes?: number): string {
+function formatSize({ bytes }: { bytes: number | undefined }): string {
   if (bytes === undefined) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
   let size = bytes;
@@ -560,7 +560,7 @@ defineExpose({
           <template v-else>
             <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500">
               <AlertTriangleIcon class="w-3.5 h-3.5 text-amber-500" />
-              <span>Image missing ({{ att.originalName }}) - {{ formatSize(att.size) }}</span>
+              <span>Image missing ({{ att.originalName }}) - {{ formatSize({ bytes: att.size }) }}</span>
             </div>
           </template>
         </div>

@@ -394,7 +394,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async saveChatContent(id: string, content: ChatContent): Promise<void> {
-    const dto = chatContentToDto(content);
+    const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
     const dir = await this.getDir('chat-contents');
     const fileHandle = await dir.getFileHandle(`${id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
@@ -414,7 +414,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const meta = ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text()));
       const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
 
-      const chat = chatToDomain({ ...meta, ...content, messages: undefined });
+      const chat = chatToDomain({ dto: { ...meta, ...content, messages: undefined } });
 
       // Resolve groupId from hierarchy
       const hierarchy = await this.loadHierarchy();
@@ -456,7 +456,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const contentDir = await this.getDir('chat-contents');
       const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
       const dto = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
-      const content = chatContentToDomain(dto);
+      const content = chatContentToDomain({ dto });
 
       // Hydrate attachments
       await this.hydrateAttachments(content.root.items);
@@ -477,7 +477,7 @@ export class OPFSStorageProvider extends IStorageProvider {
   }
 
   async saveChatGroup(chatGroup: ChatGroup): Promise<void> {
-    const dto = chatGroupToDto(chatGroup);
+    const dto = chatGroupToDto({ domain: chatGroup });
     ChatGroupSchemaDto.parse(dto);
     const dir = await this.getDir('chat-groups');
     const fileHandle = await dir.getFileHandle(`${chatGroup.id}.json`, { create: true }) as FileSystemFileHandleWithWritable;
@@ -499,7 +499,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
       const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
       const h = hierarchy || { items: [] };
-      return chatGroupToDomain(groupDto, h, chatMetas);
+      return chatGroupToDomain({ dto: groupDto, hierarchy: h, chatMetas });
     } catch {
       return null;
     }
@@ -521,9 +521,9 @@ export class OPFSStorageProvider extends IStorageProvider {
 
     const hierarchy = hierarchyToDomain({ dto: rawHierarchy || { items: [] } });
     const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
-    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
+    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
 
-    return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
+    return buildSidebarItemsFromHierarchy({ hierarchy, chatMetas, chatGroups });
   }
 
   // --- Binary Object Storage ---
@@ -716,7 +716,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       this.listChatGroupsRaw(),
     ]);
 
-    const chatGroups = rawGroups.map(g => chatGroupToDomain(g, hierarchy || { items: [] }, []));
+    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy: hierarchy || { items: [] }, chatMetas: [] }));
     const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
 
     const contentStream = async function* (this: OPFSStorageProvider): AsyncGenerator<MigrationChunkDto> {
@@ -724,7 +724,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       for (const meta of rawMetas) {
         const chat = await this.loadChat(meta.id);
         if (chat) {
-          yield { type: 'chat' as const, data: chatToDto(chat) };
+          yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
         }
       }
 
@@ -804,7 +804,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const type = chunk.type;
       switch (type) {
       case 'chat': {
-        const domainChat = chatToDomain(chunk.data);
+        const domainChat = chatToDomain({ dto: chunk.data });
         await this.saveChatContent(domainChat.id, domainChat);
         await this.saveChatMeta(domainChat);
         break;

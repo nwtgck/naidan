@@ -90,7 +90,7 @@ let unsubscribe: (() => void) | null = null;
 onMounted(async () => {
   // Trigger auto-detection immediately if a URL is present from the cookie/draft
   // but the type is still the default.
-  if (selectedType.value === DEFAULT_TYPE && customUrl.value && isLocalhost(customUrl.value)) {
+  if (selectedType.value === DEFAULT_TYPE && customUrl.value && isLocalhost({ url: customUrl.value })) {
     const normalized = getNormalizedUrl();
     if (normalized) {
       const isOllama = await detectOllama({ url: normalized, headers: customHeaders.value });
@@ -195,7 +195,7 @@ function getNormalizedUrl() {
   }
 }
 
-function isLocalhost(url: string | undefined) {
+function isLocalhost({ url }: { url: string | undefined }) {
   if (!url) return false;
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
@@ -205,7 +205,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
   error.value = null;
 
   // Auto-detect Ollama if URL is localhost and type is still default
-  if (_type === DEFAULT_TYPE && url && isLocalhost(url)) {
+  if (_type === DEFAULT_TYPE && url && isLocalhost({ url })) {
     const normalized = getNormalizedUrl();
     if (normalized) {
       const isOllama = await detectOllama({ url: normalized, headers: customHeaders.value });
@@ -271,7 +271,7 @@ async function handleConnect() {
     // We've moved primary auto-detection to the watcher for a better UX,
     // but if we're still in DEFAULT_TYPE when connecting, we do a quick check.
     const normalizedUrl = url || '';
-    if (selectedType.value === DEFAULT_TYPE && isLocalhost(normalizedUrl) && normalizedUrl) {
+    if (selectedType.value === DEFAULT_TYPE && isLocalhost({ url: normalizedUrl }) && normalizedUrl) {
       const isOllama = await detectOllama({ url: normalizedUrl, headers: customHeaders.value });
       if (isOllama) {
         selectedType.value = 'ollama';
