@@ -87,16 +87,19 @@ export function useChatSearch() {
   let searchClient: Awaited<ReturnType<typeof createGlobalSearchWorkerClient>> | undefined
   let searchSessionId: string | undefined
 
-  function createSearchKey({ trimmedQuery, options }: {
+  function createSearchKey({ trimmedQuery, scope, chatId, chatGroupIds, roleFilter }: {
     trimmedQuery: string
-    options: SearchOptions
+    scope: SearchOptions['scope']
+    chatId: SearchOptions['chatId']
+    chatGroupIds: SearchOptions['chatGroupIds']
+    roleFilter: SearchOptions['roleFilter']
   }): string {
     return JSON.stringify({
       trimmedQuery,
-      scope: options.scope,
-      chatId: options.chatId,
-      chatGroupIds: options.chatGroupIds ? [...options.chatGroupIds] : undefined,
-      roleFilter: options.roleFilter,
+      scope,
+      chatId,
+      chatGroupIds: chatGroupIds ? [...chatGroupIds] : undefined,
+      roleFilter,
     })
   }
 
@@ -144,7 +147,10 @@ export function useChatSearch() {
 
     const searchKey = createSearchKey({
       trimmedQuery,
-      options,
+      scope: options.scope,
+      chatId: options.chatId,
+      chatGroupIds: options.chatGroupIds,
+      roleFilter: options.roleFilter,
     })
 
     if (searchKey === lastSearchKey) {
