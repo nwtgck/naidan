@@ -326,12 +326,12 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     // Collapse group
     // @ts-expect-error - internal method
-    wrapper.vm.handleToggleChatGroupCollapse(group);
+    wrapper.vm.handleToggleChatGroupCollapse({ chatGroup: group });
     await nextTick();
 
     // Open group again
     // @ts-expect-error - internal method
-    wrapper.vm.handleToggleChatGroupCollapse(group);
+    wrapper.vm.handleToggleChatGroupCollapse({ chatGroup: group });
     await nextTick();
 
     // Should be back to compact view
