@@ -87,7 +87,7 @@ export class LocalStorageProvider extends IStorageProvider {
   // --- Persistence Implementation ---
 
   async saveChatMeta(meta: ChatMeta): Promise<void> {
-    const dto = chatMetaToDto(meta);
+    const dto = chatMetaToDto({ domain: meta });
     ChatMetaSchemaDto.parse(dto);
     localStorage.setItem(`${KEY_META_PREFIX}${meta.id}`, JSON.stringify(dto));
   }
@@ -166,7 +166,7 @@ export class LocalStorageProvider extends IStorageProvider {
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${id}`);
     if (!rawMeta) return null;
     try {
-      const meta = chatMetaToDomain(ChatMetaSchemaDto.parse(JSON.parse(rawMeta)));
+      const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
       // Resolve groupId from hierarchy
       const hierarchy = await this.loadHierarchy();
       if (hierarchy) {
@@ -236,7 +236,7 @@ export class LocalStorageProvider extends IStorageProvider {
         this.loadHierarchy(),
         this.listChatMetasRaw()
       ]);
-      const chatMetas = allMetas.map(chatMetaToDomain);
+      const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
       const h = hierarchy || { items: [] };
       return chatGroupToDomain(ChatGroupSchemaDto.parse(JSON.parse(raw)), h, chatMetas);
     } catch {
@@ -255,15 +255,15 @@ export class LocalStorageProvider extends IStorageProvider {
       this.listChatGroupsRaw(),
     ]);
 
-    const hierarchy = hierarchyToDomain(rawHierarchy || { items: [] });
-    const chatMetas = rawMetas.map(chatMetaToDomain);
+    const hierarchy = hierarchyToDomain({ dto: rawHierarchy || { items: [] } });
+    const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
     const chatGroups = rawGroups.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
 
     return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
   }
 
   async saveSettings(settings: Settings): Promise<void> {
-    const dto = settingsToDto(settings);
+    const dto = settingsToDto({ domain: settings });
     localStorage.setItem(KEY_SETTINGS, JSON.stringify(SettingsSchemaDto.parse(dto)));
   }
 
@@ -271,7 +271,7 @@ export class LocalStorageProvider extends IStorageProvider {
     const raw = localStorage.getItem(KEY_SETTINGS);
     if (!raw) return null;
     try {
-      return settingsToDomain(SettingsSchemaDto.parse(JSON.parse(raw)));
+      return settingsToDomain({ dto: SettingsSchemaDto.parse(JSON.parse(raw)) });
     } catch {
       return null;
     }
@@ -381,7 +381,7 @@ export class LocalStorageProvider extends IStorageProvider {
       this.listChatGroupsRaw(),
     ]);
 
-    const chatMetas = rawMetas.map(chatMetaToDomain);
+    const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
     const h = hierarchy || { items: [] };
     const chatGroups = rawGroups.map(g => chatGroupToDomain(g, h, chatMetas));
 

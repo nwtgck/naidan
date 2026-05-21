@@ -118,7 +118,7 @@ export class StorageService {
 
   async loadHierarchy(): Promise<Hierarchy> {
     const dto = await this.getProvider().loadHierarchy();
-    return dto ? hierarchyToDomain(dto) : { items: [] };
+    return dto ? hierarchyToDomain({ dto }) : { items: [] };
   }
 
   /**
@@ -130,7 +130,7 @@ export class StorageService {
       await this.synchronizer.withLock(async () => {
         const current = await this.loadHierarchy();
         const updated = await updater(current);
-        await this.getProvider().saveHierarchy(hierarchyToDto(updated));
+        await this.getProvider().saveHierarchy(hierarchyToDto({ domain: updated }));
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('updateHierarchy') });
       this.synchronizer.notify('chat_meta_and_chat_group');
     } catch (e) {

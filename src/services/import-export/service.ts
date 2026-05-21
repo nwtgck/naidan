@@ -113,7 +113,7 @@ export class ImportExportService {
 
     const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('../../models/mappers');
 
-    root.file('settings.json', JSON.stringify(settingsToDto(structure.settings), null, 2));
+    root.file('settings.json', JSON.stringify(settingsToDto({ domain: structure.settings }), null, 2));
 
     const excludeFlags = {
       chat: false,
@@ -143,7 +143,7 @@ export class ImportExportService {
           .filter((item): item is Extract<HierarchyNode, { type: 'chat_group' }> => item.type === 'chat_group')
           .map(item => ({ ...item, chat_ids: [] }))
       };
-      root.file('hierarchy.json', JSON.stringify(hierarchyToDto(filteredHierarchy), null, 2));
+      root.file('hierarchy.json', JSON.stringify(hierarchyToDto({ domain: filteredHierarchy }), null, 2));
 
       const groupFolder = root.folder('chat-groups');
       for (const group of structure.chatGroups) {
@@ -151,14 +151,14 @@ export class ImportExportService {
       }
       // chat-metas.json is intentionally omitted when chat is excluded
     } else {
-      root.file('hierarchy.json', JSON.stringify(hierarchyToDto(structure.hierarchy), null, 2));
+      root.file('hierarchy.json', JSON.stringify(hierarchyToDto({ domain: structure.hierarchy }), null, 2));
 
       const groupFolder = root.folder('chat-groups');
       for (const group of structure.chatGroups) {
         groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
       }
 
-      const metasDto = structure.chatMetas.map(chatMetaToDto);
+      const metasDto = structure.chatMetas.map(domain => chatMetaToDto({ domain }));
       root.file('chat-metas.json', JSON.stringify({ entries: metasDto }, null, 2));
     }
 
@@ -255,7 +255,7 @@ export class ImportExportService {
         const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
         if (result.success) {
           stats.providerProfilesCount = result.data.providerProfiles?.length ?? 0;
-          previewSettings = settingsToDomain(result.data);
+          previewSettings = settingsToDomain({ dto: result.data });
         }
       } catch (e) { /* Ignore */ }
     }
@@ -478,7 +478,7 @@ export class ImportExportService {
 
   private async applySettingsImport(zipSettings: SettingsDto, strategies: ImportConfig['settings']) {
     await this.storage.updateSettings((currentSettings) => {
-      const newSettingsDomain = settingsToDomain(zipSettings);
+      const newSettingsDomain = settingsToDomain({ dto: zipSettings });
       const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
       const applyField = <K extends keyof Settings>(strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K) => {
@@ -569,7 +569,7 @@ export class ImportExportService {
       }
     }
 
-    const chatMetas = metasDto.map(chatMetaToDomain);
+    const chatMetas = metasDto.map(dto => chatMetaToDomain({ dto }));
     const hierarchy = hierarchyDto;
     const chatGroups = groupsDto.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
 
@@ -610,7 +610,7 @@ export class ImportExportService {
 
     return {
       structure: {
-        settings: settingsDto ? settingsToDomain(settingsDto) : {
+        settings: settingsDto ? settingsToDomain({ dto: settingsDto }) : {
           autoTitleEnabled: true,
           providerProfiles: [],
           mounts: [],
@@ -707,7 +707,7 @@ export class ImportExportService {
         // Note: originMessageId remapping is harder as we don't have all messageIdMaps yet.
         // But we can handle it inside contentStream if we process in a way that allows it.
       }
-      return chatMetaToDomain(dto);
+      return chatMetaToDomain({ dto });
     });
     const chatGroups = importedGroupsDto.map(g => chatGroupToDomain(g, mergedHierarchy, chatMetas));
 

@@ -68,7 +68,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   // --- Persistence Implementation ---
 
   async saveChatMeta(meta: ChatMeta): Promise<void> {
-    const dto = chatMetaToDto(meta);
+    const dto = chatMetaToDto({ domain: meta });
     ChatMetaSchemaDto.parse(dto);
     this.chatMetas.set(meta.id, dto);
   }
@@ -144,7 +144,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     const rawMeta = this.chatMetas.get(id);
     if (!rawMeta) return null;
     try {
-      const meta = chatMetaToDomain(ChatMetaSchemaDto.parse(rawMeta));
+      const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(rawMeta) });
       // Resolve groupId from hierarchy
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
       if (group) meta.groupId = group.id;
@@ -207,7 +207,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     const raw = this.chatGroups.get(id);
     if (!raw) return null;
     try {
-      const chatMetas = Array.from(this.chatMetas.values()).map(chatMetaToDomain);
+      const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
       return chatGroupToDomain(ChatGroupSchemaDto.parse(raw), this.hierarchy, chatMetas);
     } catch {
       return null;
@@ -219,15 +219,15 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
-    const hierarchy = hierarchyToDomain(this.hierarchy);
-    const chatMetas = Array.from(this.chatMetas.values()).map(chatMetaToDomain);
+    const hierarchy = hierarchyToDomain({ dto: this.hierarchy });
+    const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
     const chatGroups = Array.from(this.chatGroups.values()).map(g => chatGroupToDomain(g, hierarchy, chatMetas));
 
     return buildSidebarItemsFromHierarchy(hierarchy, chatMetas, chatGroups);
   }
 
   async saveSettings(settings: Settings): Promise<void> {
-    const dto = settingsToDto(settings);
+    const dto = settingsToDto({ domain: settings });
     SettingsSchemaDto.parse(dto);
     this.settings = settings;
   }
@@ -355,7 +355,7 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   async dump(): Promise<StorageSnapshot> {
     const settings = await this.loadSettings();
-    const chatMetas = Array.from(this.chatMetas.values()).map(chatMetaToDomain);
+    const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
     const chatGroups = Array.from(this.chatGroups.values()).map(g => chatGroupToDomain(g, this.hierarchy, []));
 
     const contentStream = async function* (this: MemoryStorageProvider) {

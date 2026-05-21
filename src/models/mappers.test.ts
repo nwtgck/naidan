@@ -105,7 +105,7 @@ describe('MessageNode Mapping (Discriminated Union)', () => {
 
 describe('LmParameters Mapping', () => {
   it('should handle undefined reasoning in DTO by providing default reasoning object in domain', () => {
-    const domain = lmParametersToDomain({
+    const domain = lmParametersToDomain({ dto: {
       temperature: 0.5,
       topP: undefined,
       maxCompletionTokens: undefined,
@@ -113,7 +113,7 @@ describe('LmParameters Mapping', () => {
       frequencyPenalty: undefined,
       stop: undefined,
       reasoning: undefined
-    });
+    } });
     expect(domain.temperature).toBe(0.5);
     expect(domain.reasoning).toBeDefined();
     expect(domain.reasoning.effort).toBeUndefined();
@@ -121,7 +121,7 @@ describe('LmParameters Mapping', () => {
 
   it('should preserve reasoning effort through bidirectional mapping', () => {
     const original = { effort: 'medium' as const };
-    const dto = lmParametersToDto({
+    const dto = lmParametersToDto({ domain: {
       temperature: 1.0,
       topP: undefined,
       maxCompletionTokens: undefined,
@@ -129,10 +129,10 @@ describe('LmParameters Mapping', () => {
       frequencyPenalty: undefined,
       stop: undefined,
       reasoning: original
-    });
+    } });
     expect(dto?.reasoning?.effort).toBe('medium');
 
-    const backToDomain = lmParametersToDomain(dto);
+    const backToDomain = lmParametersToDomain({ dto });
     expect(backToDomain.reasoning.effort).toBe('medium');
   });
 });
@@ -182,7 +182,7 @@ describe('Settings Mapping', () => {
       experimental: undefined,
     };
 
-    const domain = settingsToDomain(dto);
+    const domain = settingsToDomain({ dto });
 
     expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
   });
@@ -207,8 +207,8 @@ describe('Settings Mapping', () => {
       },
     };
 
-    const dto = settingsToDto(domain);
-    const mapped = settingsToDomain(dto);
+    const dto = settingsToDto({ domain });
+    const mapped = settingsToDomain({ dto });
 
     expect(dto.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
     expect(mapped.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');

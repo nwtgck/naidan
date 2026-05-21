@@ -28,7 +28,7 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
     loadChat: (id) => memoryProvider.loadChat(id),
     loadHierarchy: async () => {
       const dto = await memoryProvider.loadHierarchy();
-      return dto ? hierarchyToDomain(dto) : null;
+      return dto ? hierarchyToDomain({ dto }) : null;
     },
     clearAll: () => memoryProvider.clearAll(),
     dumpWithoutLock: () => memoryProvider.dump(),
