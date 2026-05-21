@@ -111,7 +111,7 @@ export function useImageGeneration() {
     chatId: string,
     availableModels: string[]
   }) => {
-    const allImageModels = getImageGenerationModels(availableModels);
+    const allImageModels = getImageGenerationModels({ models: availableModels });
     const overridden = imageModelOverrideMap.value[chatId];
     if (overridden && allImageModels.includes(overridden)) {
       return overridden;
@@ -122,7 +122,7 @@ export function useImageGeneration() {
   const getSortedImageModels = ({ availableModels }: {
     availableModels: string[]
   }) => {
-    return naturalSort(getImageGenerationModels(availableModels));
+    return naturalSort(getImageGenerationModels({ models: availableModels }));
   };
 
   const performBase64Generation = async ({ prompt, model, width, height, steps, seed, images, endpointUrl, endpointHttpHeaders, onProgress, signal }: {

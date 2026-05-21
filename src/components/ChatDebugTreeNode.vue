@@ -152,7 +152,7 @@ const inlineImages = computed(() => {
 
 const cleanContentCompact = computed(() => {
   if (!props.node.content) return '';
-  const stripped = stripNaidanSentinels(props.node.content).trim();
+  const stripped = stripNaidanSentinels({ content: props.node.content }).trim();
   return stripped.slice(0, 50) + (stripped.length > 50 ? '...' : '');
 });
 

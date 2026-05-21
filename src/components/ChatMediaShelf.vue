@@ -111,7 +111,7 @@ const mediaGroups = computed(() => {
 
     if (items.length > 0) {
       if (!sharedPrompt) {
-        sharedPrompt = stripNaidanSentinels(msgContent).trim().slice(0, 100);
+        sharedPrompt = stripNaidanSentinels({ content: msgContent }).trim().slice(0, 100);
       }
 
       items.forEach((item, idx) => {

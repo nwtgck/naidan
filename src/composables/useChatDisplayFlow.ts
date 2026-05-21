@@ -134,7 +134,7 @@ export function useChatDisplayFlow({
           const activeThink = remaining.slice(lastOpen + 7).trim();
           nodeAtoms.push({ type: 'thinking', node, content: activeThink, isCompleted: false, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         } else {
-          const cleanBody = stripNaidanSentinels(remaining).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+          const cleanBody = stripNaidanSentinels({ content: remaining }).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
           if (cleanBody) {
             nodeAtoms.push({ type: 'content', node, content: cleanBody, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
           }

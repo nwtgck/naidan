@@ -1072,12 +1072,12 @@ export function useChat() {
     assistantNode.modelId = resolvedModel;
 
     const parentNode = findParentInBranch(mutableChat.root.items, assistantId);
-    const imageRequest = parentNode ? parseImageRequest(parentNode.content || '') : null;
+    const imageRequest = parentNode ? parseImageRequest({ content: parentNode.content || '' }) : null;
 
     try {
       if (imageRequest) {
         const { width = 512, height = 512, model, count = 1, persistAs, steps, seed } = imageRequest;
-        const prompt = stripNaidanSentinels(parentNode!.content || '').trim();
+        const prompt = stripNaidanSentinels({ content: parentNode!.content || '' }).trim();
 
         const images: { blob: Blob }[] = [];
         if (parentNode?.attachments) {
@@ -1609,7 +1609,7 @@ export function useChat() {
       const persistAs = getPersistAs({ chatId: chat.id });
 
       let finalContent = content;
-      if (isImgMode && !isImageRequest(content)) {
+      if (isImgMode && !isImageRequest({ content })) {
         if (!imageModel) {
           const { useGlobalEvents } = await import('../composables/useGlobalEvents');
           const { addErrorEvent } = useGlobalEvents();
@@ -1758,7 +1758,7 @@ export function useChat() {
         decTask({ chatId: taskId, type: 'title' }); return;
       }
       const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
-      const content = stripNaidanSentinels(history[0]?.content || '');
+      const content = stripNaidanSentinels({ content: history[0]?.content || '' });
       if (!content || typeof content !== 'string') {
         decTask({ chatId: taskId, type: 'title' }); return;
       }
