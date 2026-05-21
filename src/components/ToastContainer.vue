@@ -4,7 +4,7 @@ import { XIcon } from 'lucide-vue-next';
 
 const { toasts, removeToast } = useToast();
 
-async function handleAction(id: string, onAction?: () => void | Promise<void>) {
+async function handleAction({ id, onAction }: { id: string; onAction?: () => void | Promise<void> }) {
   if (onAction) {
     await onAction();
   }
@@ -31,7 +31,7 @@ defineExpose({
 
         <button
           v-if="toast.actionLabel"
-          @click="handleAction(toast.id, toast.onAction)"
+          @click="handleAction({ id: toast.id, onAction: toast.onAction })"
           class="text-indigo-400 hover:text-indigo-300 text-xs font-bold uppercase tracking-wider px-2 py-1"
         >
           {{ toast.actionLabel }}

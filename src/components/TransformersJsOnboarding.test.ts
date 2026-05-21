@@ -230,7 +230,7 @@ describe('Transformers.js Onboarding Integration', () => {
     await flushPromises();
     await nextTick();
 
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith('new-model');
+    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'new-model' });
   });
 
   it('updates selectedModel when TransformersJsManager emits model-loaded', async () => {
@@ -290,12 +290,12 @@ describe('Transformers.js Onboarding Integration', () => {
     const downloadBtn = manager.findAll('button').find(b => b.text().includes('Download Model'));
     await downloadBtn?.trigger('click');
 
-    expect(transformersJsService.downloadModel).toHaveBeenCalledWith('new-download-model');
+    expect(transformersJsService.downloadModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
 
     // Wait for download to finish
     await flushPromises();
 
     // Should have automatically called loadModel (logic is inside TransformersJsManager)
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith('new-download-model');
+    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
   });
 });

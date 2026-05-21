@@ -321,7 +321,7 @@ async function processFiles({ files }: { files: File[] }) {
     };
     attachments.value.push(attachment);
   }
-  nextTick(adjustTextareaHeight);
+  nextTick(() => adjustTextareaHeight({}));
 }
 
 function generateChatMountPath({ baseName }: { baseName: string }): string {
@@ -685,19 +685,19 @@ async function handlePaste({ event }: { event: ClipboardEvent }) {
 
 function removeAttachment({ id }: { id: string }) {
   attachments.value = attachments.value.filter(a => a.id !== id);
-  nextTick(adjustTextareaHeight);
+  nextTick(() => adjustTextareaHeight({}));
 }
 
 function applySuggestion({ text }: { text: string }) {
   input.value = text;
   nextTick(() => {
-    adjustTextareaHeight();
+    adjustTextareaHeight({});
     focusInput();
   });
 }
 
-function adjustTextareaHeight(forceOrEvent?: boolean | Event) {
-  const force = typeof forceOrEvent === 'boolean' ? forceOrEvent : false;
+function adjustTextareaHeight({ force }: { force?: boolean }) {
+  const shouldForce = force === true;
   if (textareaRef.value) {
     const target = textareaRef.value;
 
@@ -731,10 +731,12 @@ function adjustTextareaHeight(forceOrEvent?: boolean | Event) {
     target.style.overflowY = (isMaximized.value ? currentScrollHeight > finalHeight : currentScrollHeight > maxSixLinesHeight) ? 'auto' : 'hidden';
 
     if (!isAnimatingHeight.value) {
-      nextTick(() => emit('scroll-to-bottom', force));
+      nextTick(() => emit('scroll-to-bottom', shouldForce));
     }
   }
 }
+
+const handleWindowResize = (_event: Event) => adjustTextareaHeight({});
 
 function toggleMaximized() {
   if (textareaRef.value) {
@@ -839,7 +841,7 @@ async function handleGenerateImage() {
     }
     clearDraft({ chatId: sendingChatId });
     emit('sent');
-    nextTick(adjustTextareaHeight);
+    nextTick(() => adjustTextareaHeight({}));
   }
 }
 
@@ -885,7 +887,7 @@ async function handleSend() {
     emit('sent');
 
     nextTick(() => { // Ensure textarea is cleared before adjusting height
-      adjustTextareaHeight();
+      adjustTextareaHeight({});
     });
   }
 
@@ -893,12 +895,12 @@ async function handleSend() {
 }
 
 watch(input, () => {
-  adjustTextareaHeight();
+  adjustTextareaHeight({});
 }, { flush: 'post' }); // Ensure DOM is updated before recalculating
 
 watch(isMaximized, () => {
   nextTick(() => {
-    adjustTextareaHeight();
+    adjustTextareaHeight({});
   });
 });
 
@@ -935,7 +937,7 @@ watch(
           throw new Error(`Unhandled visibility: ${_ex}`);
         }
         }
-        adjustTextareaHeight();
+        adjustTextareaHeight({});
       });
     }
   },
@@ -943,7 +945,7 @@ watch(
 );
 
 onMounted(async () => {
-  window.addEventListener('resize', adjustTextareaHeight);
+  window.addEventListener('resize', handleWindowResize);
   if (currentChat.value) {
     fetchModels();
   }
@@ -969,7 +971,7 @@ onMounted(async () => {
   }
 
   nextTick(() => {
-    adjustTextareaHeight(false); // Call adjustTextareaHeight on mount without forcing scroll
+    adjustTextareaHeight({ force: false }); // Call adjustTextareaHeight on mount without forcing scroll
     if (currentChat.value) {
       focusInput();
     }
@@ -977,7 +979,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', adjustTextareaHeight);
+  window.removeEventListener('resize', handleWindowResize);
 
   // Save final state
   saveDraft({ chatId: currentChat.value?.id, draft: {
@@ -1155,7 +1157,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       <textarea
         ref="textareaRef"
         v-model="input"
-        @input="adjustTextareaHeight"
+        @input="adjustTextareaHeight({})"
         @paste="handlePaste({ event: $event })"
         @focus="handleFocus"
         @blur="handleBlur"

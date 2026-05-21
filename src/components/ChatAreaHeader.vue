@@ -70,11 +70,7 @@ function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
   closeFloatingMenus({});
 }
 
-function handleDocumentPointerDownEvent({ event }: { event: PointerEvent }) {
-  handleDocumentPointerDown({ event });
-}
-
-const documentPointerDownListener = (event: PointerEvent) => handleDocumentPointerDownEvent({ event });
+const documentPointerDownListener = (event: PointerEvent) => handleDocumentPointerDown({ event });
 
 function emitMoveToGroup({ groupId }: { groupId: string | null }) {
   emit('move-to-group', groupId);

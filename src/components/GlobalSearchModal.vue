@@ -119,19 +119,21 @@ watch(query, () => {
   updateHighlightState();
 }, { immediate: true });
 
-const handleClickOutsideGroupSelector = (event: MouseEvent) => {
+const handleClickOutsideGroupSelector = ({ event }: { event: MouseEvent }) => {
   const target = event.target as HTMLElement;
   if (showGroupSelector.value && !target.closest('.relative.shrink-0')) {
     showGroupSelector.value = false;
   }
 };
 
+const groupSelectorMouseDownListener = (event: MouseEvent) => handleClickOutsideGroupSelector({ event });
+
 onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutsideGroupSelector);
+  document.addEventListener('mousedown', groupSelectorMouseDownListener);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutsideGroupSelector);
+  document.removeEventListener('mousedown', groupSelectorMouseDownListener);
 });
 
 const selectedGroups = computed(() => {
@@ -239,8 +241,8 @@ const performSearch = ({ val }: { val: string }) => {
   selectedIndex.value = 0;
 };
 
-const handleInput = (e: Event) => {
-  const val = (e.target as HTMLInputElement).value;
+const handleInput = ({ event }: { event: Event }) => {
+  const val = (event.target as HTMLInputElement).value;
   // Performance & Stability Note: Synchronize the query state immediately to prevent
   // the input field from jumping or losing characters during rapid typing.
   query.value = val;
@@ -280,13 +282,13 @@ watch([searchScope, searchRoleFilter, chatGroupIds, chatId], () => {
   }
 }, { deep: true });
 
-const handleKeydown = (e: KeyboardEvent) => {
-  if (isEnterForImeComposition({ event: e })) {
+const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
+  if (isEnterForImeComposition({ event })) {
     return;
   }
 
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
     const pane = activePane.value;
     switch (pane) {
     case 'preview':
@@ -303,8 +305,8 @@ const handleKeydown = (e: KeyboardEvent) => {
       throw new Error(`Unhandled pane: ${_ex}`);
     }
     }
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
     const pane = activePane.value;
     switch (pane) {
     case 'preview':
@@ -321,17 +323,17 @@ const handleKeydown = (e: KeyboardEvent) => {
       throw new Error(`Unhandled pane: ${_ex}`);
     }
     }
-  } else if (e.key === 'ArrowRight') {
+  } else if (event.key === 'ArrowRight') {
     // If we are on a result item, focus the preview pane
     if (activePane.value === 'results' && currentSelectedItem.value) {
-      e.preventDefault();
+      event.preventDefault();
       activePane.value = 'preview';
     }
-  } else if (e.key === 'ArrowLeft') {
+  } else if (event.key === 'ArrowLeft') {
     const pane = activePane.value;
     switch (pane) {
     case 'preview':
-      e.preventDefault();
+      event.preventDefault();
       activePane.value = 'results';
       nextTick(() => {
         searchInput.value?.focus();
@@ -345,15 +347,15 @@ const handleKeydown = (e: KeyboardEvent) => {
       throw new Error(`Unhandled pane: ${_ex}`);
     }
     }
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
     if (activePane.value === 'preview' && groupPreviewRef.value) {
       groupPreviewRef.value.handleEnter();
     } else {
       selectItem({ index: selectedIndex.value });
     }
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
     closeSearch();
   }
 };
@@ -477,8 +479,8 @@ defineExpose({
           <input
             ref="searchInput"
             :value="query"
-            @input="handleInput"
-            @keydown="handleKeydown"
+            @input="handleInput({ event: $event })"
+            @keydown="handleKeydown({ event: $event })"
             type="text"
             class="flex-1 bg-transparent border-none outline-none text-lg text-gray-900 dark:text-gray-100 placeholder-gray-400"
             placeholder="Search chats and messages..."

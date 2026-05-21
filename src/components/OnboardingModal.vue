@@ -136,7 +136,7 @@ watch(effectiveType, async (newType) => {
       const target = sorted[0]?.id;
       if (target) {
         try {
-          await transformersJsService.loadModel(target);
+          await transformersJsService.loadModel({ modelId: target });
           selectedModel.value = target;
         } catch (e) {
           console.warn('Auto-load failed:', e);

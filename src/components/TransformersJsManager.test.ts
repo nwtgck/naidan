@@ -167,7 +167,7 @@ describe('TransformersJsManager.vue', () => {
     const loadBtn = wrapper.find('button.bg-purple-50');
     await loadBtn.trigger('click');
 
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith('hf.co/org/model1');
+    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
   });
 
   it('calls unloadModel when PowerOff button is clicked', async () => {
@@ -200,7 +200,7 @@ describe('TransformersJsManager.vue', () => {
     await deleteBtn.trigger('click');
 
     expect(mockShowConfirm).toHaveBeenCalled();
-    expect(transformersJsService.deleteModel).toHaveBeenCalledWith('hf.co/org/model1');
+    expect(transformersJsService.deleteModel).toHaveBeenCalledWith({ modelId: 'hf.co/org/model1' });
   });
 
   it('shows progress bar during loading', async () => {

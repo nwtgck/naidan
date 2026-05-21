@@ -116,15 +116,17 @@ const selectModelId = ({ id }: { id: string }) => {
   isDropdownOpen.value = false;
 };
 
-const handleClickOutside = (event: MouseEvent) => {
+const handleClickOutside = ({ event }: { event: MouseEvent }) => {
   if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
     isDropdownOpen.value = false;
   }
 };
 
+const handleDocumentMouseDown = (event: MouseEvent) => handleClickOutside({ event });
+
 onMounted(async () => {
   searchQuery.value = '';
-  document.addEventListener('mousedown', handleClickOutside);
+  document.addEventListener('mousedown', handleDocumentMouseDown);
   await refreshLocalModels();
   unsubscribe = transformersJsService.subscribe((s, p, e, c, l, items) => {
     status.value = s;
@@ -145,16 +147,16 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
+  document.removeEventListener('mousedown', handleDocumentMouseDown);
   if (unsubscribe) unsubscribe();
   if (unsubscribeList) unsubscribeList();
 });
 
-const loadModel = async (modelId: string) => {
+const loadModel = async ({ modelId }: { modelId: string }) => {
   if (!modelId || isStandalone) return;
   lastDownloadError.value = null; // Clear previous download error when starting a fresh load
   try {
-    await transformersJsService.loadModel(modelId);
+    await transformersJsService.loadModel({ modelId });
     emit('modelLoaded', modelId);
   } catch (e) {
     // Error is handled via subscription
@@ -201,18 +203,18 @@ const downloadModel = async () => {
   }
 
   try {
-    await transformersJsService.downloadModel(modelId);
+    await transformersJsService.downloadModel({ modelId });
     await refreshLocalModels();
     addToast({ message: `Successfully downloaded: ${modelId}` });
 
     // Auto-load after download
-    await loadModel(modelId);
+    await loadModel({ modelId });
   } catch (e) {
     lastDownloadError.value = e instanceof Error ? e.message : String(e);
   }
 };
 
-const deleteModel = async (modelId: string) => {
+const deleteModel = async ({ modelId }: { modelId: string }) => {
   const confirmed = await showConfirm({
     title: 'Delete Downloaded Model',
     message: `Are you sure you want to delete "${modelId}"? This will remove all associated files from the browser's local storage.`,
@@ -223,7 +225,7 @@ const deleteModel = async (modelId: string) => {
   if (!confirmed) return;
 
   try {
-    await transformersJsService.deleteModel(modelId);
+    await transformersJsService.deleteModel({ modelId });
     addToast({ message: `Deleted model: ${modelId}` });
     await refreshLocalModels();
   } catch (err) {
@@ -232,7 +234,7 @@ const deleteModel = async (modelId: string) => {
   }
 };
 
-const handleImportLocalModel = async (event: Event) => {
+const handleImportLocalModel = async ({ event }: { event: Event }) => {
   const input = event.target as HTMLInputElement;
   if (!input.files || input.files.length === 0) return;
 
@@ -505,7 +507,7 @@ defineExpose({
                 type="file"
                 class="hidden"
                 webkitdirectory
-                @change="handleImportLocalModel"
+                @change="handleImportLocalModel({ event: $event })"
                 :disabled="isImporting || status === 'loading'"
               />
             </label>
@@ -641,14 +643,14 @@ defineExpose({
                     Incomplete
                   </span>
                   <button
-                    @click="loadModel(model.id)"
+                    @click="loadModel({ modelId: model.id })"
                     :disabled="status === 'loading' || activeModelId === model.id"
                     class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
                   >
                     {{ activeModelId === model.id ? 'Active' : (model.isComplete ? 'Load' : 'Resume') }}
                   </button>
                   <button
-                    @click="deleteModel(model.id)"
+                    @click="deleteModel({ modelId: model.id })"
                     class="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                     title="Delete model"
                   >

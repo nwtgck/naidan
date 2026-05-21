@@ -97,28 +97,30 @@ const prev = () => {
   }
 };
 
-const handleKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'ArrowRight') {
-    e.preventDefault();
+const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
     next();
   }
-  if (e.key === 'ArrowLeft') {
-    e.preventDefault();
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
     prev();
   }
-  if (e.key === 'Escape') {
-    e.preventDefault();
+  if (event.key === 'Escape') {
+    event.preventDefault();
     emit('close');
   }
 };
 
+const handleWindowKeydown = (event: KeyboardEvent) => handleKeydown({ event });
+
 onMounted(() => {
-  window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('keydown', handleWindowKeydown);
   showControls();
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('keydown', handleWindowKeydown);
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
   if (controlsTimeout) clearTimeout(controlsTimeout);
 });
