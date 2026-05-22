@@ -165,7 +165,7 @@ async function loadAttachments() {
       break;
     case 'persisted':
       try {
-        const blob = await storageService.getFile(att.binaryObjectId);
+        const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
         if (blob) {
           attachmentUrls.value[att.id] = URL.createObjectURL(blob);
         }

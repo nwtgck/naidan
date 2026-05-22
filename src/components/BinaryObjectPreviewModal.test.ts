@@ -60,7 +60,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
     expect(wrapper.get('[data-testid="preview-filename"]').text()).toContain('image1.png');
     expect(wrapper.get('[data-testid="preview-mimetype"]').text()).toBe('image/png');
     expect(wrapper.get('[data-testid="preview-size"]').text()).toBe('1 KB');
-    expect(storageService.getFile).toHaveBeenCalledWith('1');
+    expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: '1' });
   });
 
   it('navigates to next object with button', async () => {
@@ -75,7 +75,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-testid="preview-filename"]').text()).toContain('image2.jpg');
-    expect(storageService.getFile).toHaveBeenCalledWith('2');
+    expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: '2' });
   });
 
   it('navigates to next object with keyboard', async () => {

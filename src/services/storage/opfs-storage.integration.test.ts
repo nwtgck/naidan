@@ -90,7 +90,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     localStorage.clear();
     storageService = new StorageService();
     // We need to initialize with 'opfs' to use the real OPFSStorageProvider logic
-    await storageService.init('opfs');
+    await storageService.init({ type: 'opfs' });
     importExportService = new ImportExportService(storageService);
   });
 

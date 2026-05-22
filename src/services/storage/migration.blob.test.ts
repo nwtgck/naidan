@@ -99,7 +99,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
 
   it('should rescue memory blobs during switchProvider from Local to OPFS', async () => {
     // Force re-init to ensure we start fresh with LocalStorage
-    await storageService.init('local');
+    await storageService.init({ type: 'local' });
 
     // Setup valid settings to avoid Zod validation errors during switchProvider
     await storageService.updateSettings(() => ({
@@ -150,7 +150,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       curr.items.push({ type: 'chat', id: chat.id });
       return curr;
     });
-    await storageService.switchProvider('opfs');
+    await storageService.switchProvider({ type: 'opfs' });
 
     const loadedChat = await storageService.loadChat('550e8400-e29b-41d4-a716-446655440000');
     expect(loadedChat).toBeDefined();

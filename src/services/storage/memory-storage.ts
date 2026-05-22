@@ -319,7 +319,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     this.binaryObjects.set(bId, { blob, meta });
   }
 
-  async getFile(binaryObjectId: string): Promise<Blob | null> {
+  async getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null> {
     return this.binaryObjects.get(binaryObjectId)?.blob || null;
   }
 
@@ -337,7 +337,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteBinaryObject(binaryObjectId: string): Promise<void> {
+  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void> {
     this.binaryObjects.delete(binaryObjectId);
   }
 

@@ -162,7 +162,7 @@ async function loadThumbnails() {
     for (const att of props.node.attachments) {
       if (att.mimeType.startsWith('image/') && !thumbnailUrls.value[att.binaryObjectId]) {
         try {
-          const blob = await storageService.getFile(att.binaryObjectId);
+          const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
           if (blob) {
             thumbnailUrls.value[att.binaryObjectId] = URL.createObjectURL(blob);
           }
@@ -177,7 +177,7 @@ async function loadThumbnails() {
   for (const img of inlineImages.value) {
     if (!thumbnailUrls.value[img.binaryObjectId]) {
       try {
-        const blob = await storageService.getFile(img.binaryObjectId);
+        const blob = await storageService.getFile({ binaryObjectId: img.binaryObjectId });
         if (blob) {
           thumbnailUrls.value[img.binaryObjectId] = URL.createObjectURL(blob);
         }

@@ -22,7 +22,7 @@ export const ImageDownloadHydrator = {
     // Detect format for metadata support
     let isSupported = false;
     try {
-      const activeBlob = blob || await storageService.getFile(id);
+      const activeBlob = blob || await storageService.getFile({ binaryObjectId: id });
       if (activeBlob) {
         isSupported = await this.detectSupport(activeBlob);
       }
@@ -91,7 +91,7 @@ export const ImageDownloadHydrator = {
   }) {
     try {
       const obj = await storageService.getBinaryObject({ binaryObjectId: id });
-      const blob = await storageService.getFile(id);
+      const blob = await storageService.getFile({ binaryObjectId: id });
       if (!blob) throw new Error('Image blob not found');
 
       let suffix = '.png';

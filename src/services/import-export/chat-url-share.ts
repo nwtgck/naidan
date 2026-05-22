@@ -69,7 +69,7 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
   collectBinaryIds({ nodes: chat.root.items });
 
   for (const bId of binaryObjectIds) {
-    const blob = await storageService.getFile(bId);
+    const blob = await storageService.getFile({ binaryObjectId: bId });
     const meta = await storageService.getBinaryObject({ binaryObjectId: bId });
     if (blob && meta) {
       await memoryProvider.saveFile({

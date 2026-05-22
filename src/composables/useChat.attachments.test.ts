@@ -250,7 +250,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       }
     });
 
-    await storageService.switchProvider('opfs');
+    await storageService.switchProvider({ type: 'opfs' });
 
     // 3. Verify rescue occurred
     expect(storageService.saveFile).toHaveBeenCalledWith(

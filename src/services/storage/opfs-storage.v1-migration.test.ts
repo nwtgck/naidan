@@ -165,7 +165,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     expect(att.binaryObjectId).not.toBe(VALID_UUID_1);
     expect(att.status).toBe('persisted');
 
-    const blob = await provider.getFile(att.binaryObjectId);
+    const blob = await provider.getFile({ binaryObjectId: att.binaryObjectId });
     expect(blob).not.toBeNull();
     expect(await blob!.text()).toBe('DATA');
   });

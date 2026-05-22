@@ -39,7 +39,7 @@ export class StorageService {
     return this.provider;
   }
 
-  async init(type: 'local' | 'opfs' | 'memory') {
+  async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     await this.synchronizer.withLock(async () => {
       const isOPFSSupported = await checkOPFSSupport();
       let targetType: 'local' | 'opfs' | 'memory' = type;
@@ -283,8 +283,8 @@ export class StorageService {
     }
   }
 
-  async getFile(binaryObjectId: string): Promise<Blob | null> {
-    return this.getProvider().getFile(binaryObjectId);
+  async getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null> {
+    return this.getProvider().getFile({ binaryObjectId });
   }
 
   async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null> {
@@ -299,10 +299,10 @@ export class StorageService {
     return this.getProvider().listBinaryObjects();
   }
 
-  async deleteBinaryObject(binaryObjectId: string): Promise<void> {
+  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().deleteBinaryObject(binaryObjectId);
+        await this.getProvider().deleteBinaryObject({ binaryObjectId });
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('deleteBinaryObject') });
       // Notify binary objects changed if we had a specific event,
       // but 'chat_content' or similar might be enough, or just generic.
@@ -436,7 +436,7 @@ export class StorageService {
     });
   }
 
-  async switchProvider(type: 'local' | 'opfs' | 'memory') {
+  async switchProvider({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     try {
       await this.synchronizer.withLock(async () => {
         const activeProvider = this.getProvider();

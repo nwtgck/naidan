@@ -71,7 +71,7 @@ watch(() => props.isOpen, async (open) => {
           const status = att.status;
           switch (status) {
           case 'persisted': {
-            const blob = await storageService.getFile(att.binaryObjectId);
+            const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
             if (blob) {
               attachmentUrls.value[att.id] = URL.createObjectURL(blob);
             }

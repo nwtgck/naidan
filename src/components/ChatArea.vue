@@ -310,7 +310,7 @@ async function exportChat() {
               resultStr = tc.result.content.text;
               break;
             case 'binary_object': {
-              const blob = await storageService.getFile(tc.result.content.id);
+              const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
               resultStr = blob ? await blob.text() : '[Error: Binary object missing]';
               break;
             }
@@ -328,7 +328,7 @@ async function exportChat() {
               resultStr = tc.result.error.message.text;
               break;
             case 'binary_object': {
-              const blob = await storageService.getFile(tc.result.error.message.id);
+              const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
               const detail = blob ? await blob.text() : 'Binary error detail missing';
               resultStr = `Error [${tc.result.error.code}]: ${detail}`;
               break;

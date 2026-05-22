@@ -57,7 +57,7 @@ const loadPreview = async ({ obj }: { obj: BinaryObject }) => {
   }, 200);
 
   try {
-    const blob = await storageService.getFile(obj.id);
+    const blob = await storageService.getFile({ binaryObjectId: obj.id });
     if (blob && currentObject.value?.id === obj.id) {
       const newUrl = URL.createObjectURL(blob);
       const oldUrl = previewUrl.value;

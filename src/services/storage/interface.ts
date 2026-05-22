@@ -137,9 +137,9 @@ export abstract class IStorageProvider {
     name: string;
     mimeType: string | undefined;
   }): Promise<void>;
-  abstract getFile(binaryObjectId: string): Promise<Blob | null>;
+  abstract getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null>;
   abstract getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null>;
   abstract hasAttachments(): Promise<boolean>;
   abstract listBinaryObjects(): AsyncIterable<BinaryObject>;
-  abstract deleteBinaryObject(binaryObjectId: string): Promise<void>;
+  abstract deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void>;
 }

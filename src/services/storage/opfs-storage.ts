@@ -573,7 +573,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.saveShardIndex(shard, index);
   }
 
-  async getFile(binaryObjectId: string): Promise<Blob | null> {
+  async getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null> {
     try {
       const shard = this.getBinaryObjectShardPath(binaryObjectId);
       const dir = await this.getShardDir(shard);
@@ -656,7 +656,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteBinaryObject(binaryObjectId: string): Promise<void> {
+  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void> {
     await this.ensureRoot();
     const shard = this.getBinaryObjectShardPath(binaryObjectId);
     const dir = await this.getShardDir(shard);
@@ -739,7 +739,7 @@ export class OPFSStorageProvider extends IStorageProvider {
             const index = await this.loadShardIndex(shard);
             for (const bId of Object.keys(index.objects)) {
               const meta = index.objects[bId]!;
-              const blob = await this.getFile(bId);
+              const blob = await this.getFile({ binaryObjectId: bId });
               if (blob) {
                 yield {
                   type: 'binary_object' as const,

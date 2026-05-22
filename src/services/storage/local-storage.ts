@@ -341,7 +341,7 @@ export class LocalStorageProvider extends IStorageProvider {
     throw new Error('File persistence is not supported in LocalStorage provider.');
   }
 
-  async getFile(_binaryObjectId: string): Promise<Blob | null> {
+  async getFile({ binaryObjectId: _binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null> {
     return null;
   }
 
@@ -357,7 +357,7 @@ export class LocalStorageProvider extends IStorageProvider {
     // Yields nothing
   }
 
-  async deleteBinaryObject(_binaryObjectId: string): Promise<void> {
+  async deleteBinaryObject({ binaryObjectId: _binaryObjectId }: { binaryObjectId: string }): Promise<void> {
     // No-op
   }
 

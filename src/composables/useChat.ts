@@ -1089,7 +1089,7 @@ export function useChat() {
                 blob = att.blob || null;
                 break;
               case 'persisted':
-                blob = await storageService.getFile(att.binaryObjectId);
+                blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
                 break;
               case 'missing':
                 blob = null;
@@ -1143,7 +1143,7 @@ export function useChat() {
                 toolContent = result.content.text;
                 break;
               case 'binary_object': {
-                const blob = await storageService.getFile(result.content.id);
+                const blob = await storageService.getFile({ binaryObjectId: result.content.id });
                 toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
                 break;
               }
@@ -1161,7 +1161,7 @@ export function useChat() {
                 toolContent = `Error [${result.error.code}]: ${result.error.message.text}`;
                 break;
               case 'binary_object': {
-                const blob = await storageService.getFile(result.error.message.id);
+                const blob = await storageService.getFile({ binaryObjectId: result.error.message.id });
                 const detail = blob ? await blob.text() : 'Binary error detail missing';
                 toolContent = `Error [${result.error.code}]: ${detail}`;
                 break;
@@ -1203,7 +1203,7 @@ export function useChat() {
                 blob = att.blob;
                 break;
               case 'persisted':
-                blob = await storageService.getFile(att.binaryObjectId);
+                blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
                 break;
               case 'missing':
                 blob = null;

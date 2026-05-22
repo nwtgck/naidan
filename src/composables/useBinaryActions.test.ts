@@ -46,7 +46,7 @@ describe('useBinaryActions', () => {
     const result = await deleteBinaryObject({ id: 'bin-1' });
 
     expect(result).toBe(true);
-    expect(storageService.deleteBinaryObject).toHaveBeenCalledWith('bin-1');
+    expect(storageService.deleteBinaryObject).toHaveBeenCalledWith({ binaryObjectId: 'bin-1' });
     expect(mockClosePreview).toHaveBeenCalled();
   });
 
@@ -78,7 +78,7 @@ describe('useBinaryActions', () => {
 
     await downloadBinaryObject({ obj: { id: 'bin-1', name: 'test.png' } });
 
-    expect(storageService.getFile).toHaveBeenCalledWith('bin-1');
+    expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: 'bin-1' });
     expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
     expect(mockAnchor.download).toBe('test.png');
     expect(mockAnchor.click).toHaveBeenCalled();

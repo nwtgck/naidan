@@ -136,7 +136,7 @@ export function useSettings() {
         // Sync local settings ref with determined storage type
         _settings.value.storageType = bootstrapType;
 
-        await storageService.init(bootstrapType);
+        await storageService.init({ type: bootstrapType });
 
         // Handle URL-based data import BEFORE loading existing settings to ensure append mode works correctly
         if (dataZipBase64) {
@@ -237,7 +237,7 @@ export function useSettings() {
 
     // If storage type is changed, handle provider switching/migration
     if (patch.storageType && patch.storageType !== storageService.getCurrentType()) {
-      await storageService.switchProvider(patch.storageType);
+      await storageService.switchProvider({ type: patch.storageType });
     }
 
     // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
@@ -296,7 +296,7 @@ export function useSettings() {
     if (_settings.value.storageType === type) return;
 
     _settings.value.storageType = type;
-    await storageService.switchProvider(type);
+    await storageService.switchProvider({ type });
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), storageType: type }));
   }
 

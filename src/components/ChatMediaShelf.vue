@@ -154,7 +154,7 @@ const loadMediaDetails = async (item: MediaItem) => {
   if (thumbnails.value[item.binaryObjectId]) return;
 
   try {
-    const blob = await storageService.getFile(item.binaryObjectId);
+    const blob = await storageService.getFile({ binaryObjectId: item.binaryObjectId });
     if (blob) {
       thumbnails.value[item.binaryObjectId] = URL.createObjectURL(blob);
       const support = await ImageDownloadHydrator.detectSupport(blob);

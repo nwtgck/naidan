@@ -247,7 +247,7 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
   thumbnailLoading.value.add(obj.id);
   try {
     await thumbnailSemaphore.run({ task: async () => {
-      const blob = await storageService.getFile(obj.id);
+      const blob = await storageService.getFile({ binaryObjectId: obj.id });
       if (blob) {
         // requestIdleCallback (with fallback) to avoid blocking the main thread during scroll
         const scheduleWork = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));

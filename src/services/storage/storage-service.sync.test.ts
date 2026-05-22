@@ -93,7 +93,7 @@ describe('StorageService Synchronization Wrapper', () => {
     mockProvider.init.mockResolvedValue(undefined);
 
     service = new StorageService();
-    await service.init('local');
+    await service.init({ type: 'local' });
   });
 
   it('should wrap deleteChat with lock and notify after success', async () => {
@@ -192,7 +192,7 @@ describe('StorageService Synchronization Wrapper', () => {
   it('should notify migration after switchProvider with custom lock options', async () => {
     mockProvider.dump.mockImplementation(async function* () {});
 
-    await service.switchProvider('opfs');
+    await service.switchProvider({ type: 'opfs' });
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
       notifyLockWaitAfterMs: 5000,

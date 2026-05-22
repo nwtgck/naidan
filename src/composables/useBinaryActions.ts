@@ -19,7 +19,7 @@ export function useBinaryActions() {
 
     if (confirmed) {
       try {
-        await storageService.deleteBinaryObject(id);
+        await storageService.deleteBinaryObject({ binaryObjectId: id });
         closePreview();
         return true;
       } catch (error) {
@@ -30,7 +30,7 @@ export function useBinaryActions() {
   };
 
   const downloadBinaryObject = async ({ obj }: { obj: { id: string; name?: string } }) => {
-    const blob = await storageService.getFile(obj.id);
+    const blob = await storageService.getFile({ binaryObjectId: obj.id });
     if (!blob) return;
 
     const url = URL.createObjectURL(blob);
