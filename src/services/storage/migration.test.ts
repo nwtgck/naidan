@@ -186,7 +186,7 @@ describe('Storage Migration (Round-Trip)', () => {
     expect(chatGroups[0]?.name).toBe(mockChatGroup.name);
 
     // Check Chat
-    const loadedChat = await provider.loadChat(mockChat.id);
+    const loadedChat = await provider.loadChat({ id: mockChat.id });
     expect(loadedChat).toEqual(expect.objectContaining(mockChat));
 
     // Check Hierarchy

@@ -95,7 +95,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     this.chatContents.set(id, dto);
   }
 
-  async loadChat(id: string): Promise<Chat | null> {
+  async loadChat({ id }: { id: string }): Promise<Chat | null> {
     const rawMeta = this.chatMetas.get(id);
     const rawContent = this.chatContents.get(id);
     if (!rawMeta || !rawContent) return null;
@@ -140,7 +140,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatMeta(id: string): Promise<ChatMeta | null> {
+  async loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null> {
     const rawMeta = this.chatMetas.get(id);
     if (!rawMeta) return null;
     try {
@@ -154,7 +154,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatContent(id: string): Promise<ChatContent | null> {
+  async loadChatContent({ id }: { id: string }): Promise<ChatContent | null> {
     const rawContent = this.chatContents.get(id);
     if (!rawContent) return null;
     try {
@@ -192,7 +192,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteChat(id: string): Promise<void> {
+  async deleteChat({ id }: { id: string }): Promise<void> {
     this.chatMetas.delete(id);
     this.chatContents.delete(id);
   }
@@ -203,7 +203,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     this.chatGroups.set(chatGroup.id, dto);
   }
 
-  async loadChatGroup(id: string): Promise<ChatGroup | null> {
+  async loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null> {
     const raw = this.chatGroups.get(id);
     if (!raw) return null;
     try {
@@ -214,7 +214,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteChatGroup(id: string): Promise<void> {
+  async deleteChatGroup({ id }: { id: string }): Promise<void> {
     this.chatGroups.delete(id);
   }
 
@@ -361,7 +361,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     const contentStream = async function* (this: MemoryStorageProvider) {
       // 1. Stream all chats
       for (const id of this.chatMetas.keys()) {
-        const chat = await this.loadChat(id);
+        const chat = await this.loadChat({ id });
         if (chat) yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
       }
 

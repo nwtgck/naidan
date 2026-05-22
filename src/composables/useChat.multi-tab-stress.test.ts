@@ -26,17 +26,17 @@ vi.mock('../services/storage', () => ({
       return () => {};
     }),
     listChats: vi.fn().mockImplementation(() => Promise.resolve([])),
-    loadChat: vi.fn().mockImplementation(async (id) => {
+    loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mocks.mockChatStorage.get(id);
       if (!chat) return null;
       return JSON.parse(JSON.stringify(chat));
     }),
-    loadChatMeta: vi.fn().mockImplementation(async (id) => {
+    loadChatMeta: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mocks.mockChatStorage.get(id);
       if (!chat) return null;
       return JSON.parse(JSON.stringify(chat));
     }),
-    loadChatContent: vi.fn().mockImplementation(async (id) => {
+    loadChatContent: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mocks.mockChatStorage.get(id);
       if (!chat) return null;
       return JSON.parse(JSON.stringify({ root: chat.root, currentLeafId: chat.currentLeafId }));

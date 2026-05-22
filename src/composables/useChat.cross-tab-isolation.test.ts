@@ -98,7 +98,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
             return node;
           });
         }),
-        loadChat: vi.fn().mockImplementation(async (id) => {
+        loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
           const c = getShared().chats.get(id);
           return c ? JSON.parse(JSON.stringify(c)) : null;
         }),
@@ -139,7 +139,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
           s.settings = await updater(JSON.parse(JSON.stringify(s.settings)));
           s.listeners.forEach((l: any) => l({ type: 'settings', timestamp: Date.now() }));
         }),
-        deleteChat: vi.fn().mockImplementation(async (id) => {
+        deleteChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
           const s = getShared();
           s.chats.delete(id);
           s.listeners.forEach((l: any) => l({ type: 'chat_meta_and_chat_group', id, timestamp: Date.now() }));

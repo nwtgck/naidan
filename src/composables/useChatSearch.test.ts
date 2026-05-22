@@ -94,7 +94,7 @@ describe('useChatSearch Composable', () => {
     expect(storageService.loadChatContent).not.toHaveBeenCalled()
 
     await composable.search({ searchQuery: 'hello', options: { scope: 'all' } })
-    expect(storageService.loadChatContent).toHaveBeenCalledWith('chat1')
+    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat1' })
     expect(storageService.getSidebarStructure).toHaveBeenCalledTimes(1)
   })
 
@@ -192,9 +192,9 @@ describe('useChatSearch Composable', () => {
       options: { scope: 'all', chatGroupIds: ['group1'] },
     })
 
-    expect(storageService.loadChatContent).toHaveBeenCalledWith('chat1')
-    expect(storageService.loadChatContent).toHaveBeenCalledWith('chat3')
-    expect(storageService.loadChatContent).not.toHaveBeenCalledWith('chat2')
+    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat1' })
+    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat3' })
+    expect(storageService.loadChatContent).not.toHaveBeenCalledWith({ id: 'chat2' })
   })
 
   it('should filter by specific chatId', async () => {
@@ -210,8 +210,8 @@ describe('useChatSearch Composable', () => {
       options: { scope: 'all', chatId: 'chat2' },
     })
 
-    expect(storageService.loadChatContent).toHaveBeenCalledWith('chat2')
-    expect(storageService.loadChatContent).not.toHaveBeenCalledWith('chat1')
+    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat2' })
+    expect(storageService.loadChatContent).not.toHaveBeenCalledWith({ id: 'chat1' })
   })
 
   it('should set matchType to both if keywords match in both title and content', async () => {

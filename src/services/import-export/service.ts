@@ -62,7 +62,7 @@ export interface IImportExportStorage {
   updateSettings(updater: (current: Settings | null) => Settings | Promise<Settings>): Promise<void>;
   listChats(): Promise<ChatSummary[]>;
   listChatGroups(): Promise<ChatGroup[]>;
-  loadChat(id: string): Promise<Chat | null>;
+  loadChat({ id }: { id: string }): Promise<Chat | null>;
   loadHierarchy(): Promise<Hierarchy | null>;
   clearAll(): Promise<void>;
   dumpWithoutLock(): Promise<StorageSnapshot>;

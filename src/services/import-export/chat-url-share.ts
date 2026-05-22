@@ -9,7 +9,7 @@ import type { MessageNode, Settings } from '@/models/types';
  * This URL can be shared and when opened, the chat will be imported into the recipient's storage.
  */
 export async function generateChatShareURL({ chatId }: { chatId: string }): Promise<string> {
-  const chat = await storageService.loadChat(chatId);
+  const chat = await storageService.loadChat({ id: chatId });
   if (!chat) throw new Error('Chat not found');
 
   // Create an ephemeral memory storage for this export
@@ -25,7 +25,7 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
     },
     listChats: () => memoryProvider.listChats(),
     listChatGroups: () => memoryProvider.listChatGroups(),
-    loadChat: (id) => memoryProvider.loadChat(id),
+    loadChat: ({ id }) => memoryProvider.loadChat({ id }),
     loadHierarchy: async () => {
       const dto = await memoryProvider.loadHierarchy();
       return dto ? hierarchyToDomain({ dto }) : null;

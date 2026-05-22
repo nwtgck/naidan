@@ -152,7 +152,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     });
     await storageService.switchProvider({ type: 'opfs' });
 
-    const loadedChat = await storageService.loadChat('550e8400-e29b-41d4-a716-446655440000');
+    const loadedChat = await storageService.loadChat({ id: '550e8400-e29b-41d4-a716-446655440000' });
     expect(loadedChat).toBeDefined();
     const firstNode = loadedChat!.root.items[0]!;
     expect(firstNode).toBeDefined();

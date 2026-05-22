@@ -169,7 +169,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     } });
 
     // 3. Verify storage is now sharded and hydrated correctly
-    const loadedChat = await storageService.loadChat(chatID);
+    const loadedChat = await storageService.loadChat({ id: chatID });
     expect(loadedChat).not.toBeNull();
     const att = loadedChat!.root.items[0]!.attachments![0]!;
 

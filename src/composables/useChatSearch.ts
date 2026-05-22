@@ -271,7 +271,7 @@ export function useChatSearch() {
         }
 
         try {
-          const content = await storageService.loadChatContent(chat.id);
+          const content = await storageService.loadChatContent({ id: chat.id });
           if (content) {
             const response = await searchClient.searchChatContent({
               request: {

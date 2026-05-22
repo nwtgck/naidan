@@ -9,7 +9,7 @@ const mockSaveChat = vi.fn().mockImplementation((chat) => {
   chats.set(chat.id, JSON.parse(JSON.stringify(chat)));
   return Promise.resolve();
 });
-const mockLoadChat = vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id) ? JSON.parse(JSON.stringify(chats.get(id))) : null));
+const mockLoadChat = vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id) ? JSON.parse(JSON.stringify(chats.get(id))) : null));
 
 vi.mock('../services/storage', () => ({
   storageService: {
@@ -22,7 +22,7 @@ vi.mock('../services/storage', () => ({
         chats.set(id, JSON.parse(JSON.stringify(updated)));
       });
     }),
-    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id))),
+    loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id))),
     updateChatContent: vi.fn().mockImplementation((id, updater) => {
       const curr = chats.get(id) || { root: { items: [] } };
       return Promise.resolve(updater(curr)).then(updated => {
@@ -39,6 +39,7 @@ vi.mock('../services/storage', () => ({
     loadChatGroup: vi.fn().mockResolvedValue(null),
     deleteChat: vi.fn(),
     deleteChatGroup: vi.fn(),
+    getFile: vi.fn(),
     notify: vi.fn(),
   },
 }));
@@ -135,7 +136,7 @@ describe('useChat Registry Lifecycle', () => {
     // Now it should be gone from registry
     mockLoadChat.mockClear();
     await openChat({ id: chatId! });
-    expect(mockLoadChat).toHaveBeenCalledWith(chatId!);
+    expect(mockLoadChat).toHaveBeenCalledWith({ id: chatId! });
     expect(currentChat.value).not.toBe(chat);
   });
 
@@ -162,7 +163,7 @@ describe('useChat Registry Lifecycle', () => {
     await openChat({ id: chatId! });
 
     // THIS IS EXPECTED TO FAIL IF THERE IS A LEAK
-    expect(mockLoadChat).toHaveBeenCalledWith(chatId!);
+    expect(mockLoadChat).toHaveBeenCalledWith({ id: chatId! });
     expect(currentChat.value).not.toBe(chat);
   });
 });

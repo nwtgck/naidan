@@ -132,7 +132,7 @@ describe('useChat Composable Logic', () => {
       return Promise.resolve();
     });
 
-    vi.mocked(storageService.loadChat).mockImplementation((id) => {
+    vi.mocked(storageService.loadChat).mockImplementation(({ id }) => {
       if (currentChat.value?.id === id) return Promise.resolve(currentChat.value as any);
       return Promise.resolve(null);
     });
@@ -1327,7 +1327,7 @@ describe('useChat Composable Logic', () => {
       mockHierarchy.items = [{ type: 'chat_group', id: 'g1', chat_ids: ['c1', 'c2'] }];
 
       // Ensure mock loadChat returns the chat we are about to delete
-      vi.mocked(storageService.loadChat).mockImplementation(async (id) => {
+      vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
         if (id === chat2Id) return {
           ...c2,
           root: { items: [] },

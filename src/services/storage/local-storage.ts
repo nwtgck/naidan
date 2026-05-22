@@ -114,7 +114,7 @@ export class LocalStorageProvider extends IStorageProvider {
     localStorage.setItem(`${KEY_CONTENT_PREFIX}${id}`, JSON.stringify(dto));
   }
 
-  async loadChat(id: string): Promise<Chat | null> {
+  async loadChat({ id }: { id: string }): Promise<Chat | null> {
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${id}`);
     const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${id}`);
     if (!rawMeta || !rawContent) return null;
@@ -162,7 +162,7 @@ export class LocalStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatMeta(id: string): Promise<ChatMeta | null> {
+  async loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null> {
     const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${id}`);
     if (!rawMeta) return null;
     try {
@@ -179,7 +179,7 @@ export class LocalStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatContent(id: string): Promise<ChatContent | null> {
+  async loadChatContent({ id }: { id: string }): Promise<ChatContent | null> {
     const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${id}`);
     if (!rawContent) return null;
     try {
@@ -217,7 +217,7 @@ export class LocalStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteChat(id: string): Promise<void> {
+  async deleteChat({ id }: { id: string }): Promise<void> {
     localStorage.removeItem(`${KEY_META_PREFIX}${id}`);
     localStorage.removeItem(`${KEY_CONTENT_PREFIX}${id}`);
   }
@@ -228,7 +228,7 @@ export class LocalStorageProvider extends IStorageProvider {
     localStorage.setItem(`${KEY_GROUP_PREFIX}${chatGroup.id}`, JSON.stringify(dto));
   }
 
-  async loadChatGroup(id: string): Promise<ChatGroup | null> {
+  async loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null> {
     const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${id}`);
     if (!raw) return null;
     try {
@@ -244,7 +244,7 @@ export class LocalStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteChatGroup(id: string): Promise<void> {
+  async deleteChatGroup({ id }: { id: string }): Promise<void> {
     localStorage.removeItem(`${KEY_GROUP_PREFIX}${id}`);
   }
 
@@ -387,7 +387,7 @@ export class LocalStorageProvider extends IStorageProvider {
 
     const contentStream = async function* (this: LocalStorageProvider) {
       for (const m of rawMetas) {
-        const chat = await this.loadChat(m.id);
+        const chat = await this.loadChat({ id: m.id });
         if (chat) yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
       }
     };

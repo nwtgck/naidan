@@ -403,7 +403,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await writable.close();
   }
 
-  async loadChat(id: string): Promise<Chat | null> {
+  async loadChat({ id }: { id: string }): Promise<Chat | null> {
     try {
       const metaDir = await this.getDir('chat-metas');
       const contentDir = await this.getDir('chat-contents');
@@ -432,7 +432,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatMeta(id: string): Promise<ChatMeta | null> {
+  async loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null> {
     try {
       const metaDir = await this.getDir('chat-metas');
       const metaFile = await (await metaDir.getFileHandle(`${id}.json`)).getFile();
@@ -451,7 +451,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatContent(id: string): Promise<ChatContent | null> {
+  async loadChatContent({ id }: { id: string }): Promise<ChatContent | null> {
     try {
       const contentDir = await this.getDir('chat-contents');
       const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
@@ -467,7 +467,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteChat(id: string): Promise<void> {
+  async deleteChat({ id }: { id: string }): Promise<void> {
     try {
       const metaDir = await this.getDir('chat-metas');
       const contentDir = await this.getDir('chat-contents');
@@ -486,7 +486,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await writable.close();
   }
 
-  async loadChatGroup(id: string): Promise<ChatGroup | null> {
+  async loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null> {
     try {
       const dir = await this.getDir('chat-groups');
       const file = await (await dir.getFileHandle(`${id}.json`)).getFile();
@@ -505,7 +505,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteChatGroup(id: string): Promise<void> {
+  async deleteChatGroup({ id }: { id: string }): Promise<void> {
     try {
       const dir = await this.getDir('chat-groups');
       await dir.removeEntry(`${id}.json`);
@@ -722,7 +722,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     const contentStream = async function* (this: OPFSStorageProvider): AsyncGenerator<MigrationChunkDto> {
       // 1. Stream all chats
       for (const meta of rawMetas) {
-        const chat = await this.loadChat(meta.id);
+        const chat = await this.loadChat({ id: meta.id });
         if (chat) {
           yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
         }

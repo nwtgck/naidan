@@ -51,7 +51,7 @@ describe('generateChatShareURL', () => {
 
     const url = await generateChatShareURL({ chatId: 'chat-1' });
 
-    expect(storageService.loadChat).toHaveBeenCalledWith('chat-1');
+    expect(storageService.loadChat).toHaveBeenCalledWith({ id: 'chat-1' });
     expect(url).toContain('data-zip=');
   });
 

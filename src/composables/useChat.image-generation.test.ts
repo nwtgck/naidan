@@ -29,7 +29,7 @@ vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
-    loadChat: vi.fn().mockImplementation(async (id) => ({ id, root: { items: [] } })),
+    loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => ({ id, root: { items: [] } })),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(),
     updateChatContent: vi.fn().mockImplementation((id, updater) => Promise.resolve(updater({ id, root: { items: [] } }))),

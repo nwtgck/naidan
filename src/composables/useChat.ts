@@ -292,7 +292,7 @@ storageService.subscribeToChanges(async (event) => {
     debouncedSidebarReload({});
 
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
-      const fresh = await storageService.loadChat(event.id);
+      const fresh = await storageService.loadChat({ id: event.id });
       if (fresh && _currentChat.value) {
         applyVolatileAssistantErrorsToChat({ chat: fresh });
         Object.assign(_currentChat.value, fresh);
@@ -335,7 +335,7 @@ storageService.subscribeToChanges(async (event) => {
   case 'chat_content': {
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
       if (!activeGenerations.has(event.id)) {
-        const fresh = await storageService.loadChat(event.id);
+        const fresh = await storageService.loadChat({ id: event.id });
         if (fresh && _currentChat.value) {
           applyVolatileAssistantErrorsToChat({ chat: fresh });
           _currentChat.value.root = fresh.root;
@@ -355,7 +355,7 @@ storageService.subscribeToChanges(async (event) => {
 
     rootItems.value = await storageService.getSidebarStructure();
     if (_currentChat.value) {
-      const fresh = await storageService.loadChat(toRaw(_currentChat.value).id);
+      const fresh = await storageService.loadChat({ id: toRaw(_currentChat.value).id });
       if (fresh) applyVolatileAssistantErrorsToChat({ chat: fresh });
       _currentChat.value = fresh ? reactive(fresh) : null;
     }
@@ -572,7 +572,7 @@ export function useChat() {
       if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
     }
     await storageService.updateChatMeta(id, async (curr) => {
-      const fullChat = curr ? await storageService.loadChat(id) : null;
+      const fullChat = curr ? await storageService.loadChat({ id }) : null;
       const updatedFull = await updater(fullChat);
       if (!updatedFull) return curr!;
       const { root: _r, endpointType, endpointUrl, endpointHttpHeaders, ...meta } = updatedFull;
@@ -717,7 +717,7 @@ export function useChat() {
       }
       return chat;
     }
-    const loaded = await storageService.loadChat(id);
+    const loaded = await storageService.loadChat({ id });
     if (loaded) {
       if (leafId && leafId !== loaded.currentLeafId) {
         const node = findNodeInBranch({ items: loaded.root.items, targetId: leafId });
@@ -771,7 +771,7 @@ export function useChat() {
     const { useToast } = await import('./useToast');
     const { addToast: originalAddToast } = useToast();
     const addToast = injectAddToast || originalAddToast;
-    const chatData = await storageService.loadChat(id);
+    const chatData = await storageService.loadChat({ id });
     if (!chatData) return;
 
     await storageService.updateHierarchy((curr) => {
@@ -805,7 +805,7 @@ export function useChat() {
       activeTaskCounts.delete('process:' + id);
       liveChatRegistry.delete(id);
       chatTmpDirectories.delete(id);
-      await storageService.deleteChat(id);
+      await storageService.deleteChat({ id });
     };
 
     const toastId = addToast({
@@ -863,9 +863,9 @@ export function useChat() {
     chatTmpDirectories.clear();
 
     const all = await storageService.listChats();
-    for (const c of all) await storageService.deleteChat(c.id);
+    for (const c of all) await storageService.deleteChat({ id: c.id });
     const allGroups = await storageService.listChatGroups();
-    for (const g of allGroups) await storageService.deleteChatGroup(g.id);
+    for (const g of allGroups) await storageService.deleteChatGroup({ id: g.id });
 
     await storageService.updateHierarchy((curr) => {
       curr.items = []; return curr;
@@ -1258,7 +1258,7 @@ export function useChat() {
       const chatGroupMounts = mutableChat.groupId
         ? (_currentChatGroup.value?.id === mutableChat.groupId
           ? _currentChatGroup.value.mounts
-          : (await storageService.loadChatGroup(mutableChat.groupId))?.mounts)
+          : (await storageService.loadChatGroup({ id: mutableChat.groupId }))?.mounts)
         : undefined;
       const enabledTools = await getEnabledTools({
         enabledNames: enabledToolNames.value,
@@ -2209,7 +2209,7 @@ export function useChat() {
       await deleteChat({ id: item.chat.id, injectAddToast: () => '' });
     }
     if (_currentChatGroup.value?.id === id) _currentChatGroup.value = null;
-    await storageService.deleteChatGroup(id);
+    await storageService.deleteChatGroup({ id });
     await storageService.updateHierarchy((curr) => {
       curr.items = curr.items.filter(i => {
         switch (i.type) {
