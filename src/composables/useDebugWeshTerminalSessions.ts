@@ -17,7 +17,7 @@ async function buildWorkerMounts(): Promise<WeshMount[]> {
     if (mount.type !== 'volume') continue;
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
     if (!handle) continue;
-    mounts.push({ path: mount.mountPath, handle, readOnly: mount.readOnly });
+    mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
   }
   return mounts;
 }

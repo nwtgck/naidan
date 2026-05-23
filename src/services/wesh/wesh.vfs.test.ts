@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from './index';
 import { WeshVFS } from './vfs';
 import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
@@ -7,6 +7,52 @@ import {
   createTestWriteCaptureHandle,
 } from './utils/test-stream';
 import { readAllFileBytes } from './utils/fs';
+import type { WeshFileHandle, WeshOpenFlags, WeshStat, WeshVirtualMountProvider } from './types';
+
+function createVirtualFileHandle({ text }: { text: string }): WeshFileHandle {
+  const bytes = new TextEncoder().encode(text);
+  let cursor = 0;
+
+  return {
+    async read({ buffer, offset, length, position }) {
+      const bufferOffset = offset ?? 0;
+      const start = position ?? cursor;
+      const maxLength = length ?? (buffer.length - bufferOffset);
+      const end = Math.min(start + maxLength, bytes.length);
+      const slice = bytes.subarray(start, end);
+      buffer.set(slice, bufferOffset);
+      if (position === undefined) {
+        cursor = end;
+      }
+      return { bytesRead: slice.length };
+    },
+    async write() {
+      throw new Error('File is read-only');
+    },
+    async close() {},
+    async stat() {
+      return { size: bytes.length, mode: 0o444, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 };
+    },
+    async truncate() {
+      throw new Error('File is read-only');
+    },
+    async ioctl() {
+      return { ret: 0 };
+    },
+  };
+}
+
+function createDirectoryStat({ size }: { size: number }): WeshStat {
+  return { size, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 };
+}
+
+function createFileStat({ size }: { size: number }): WeshStat {
+  return { size, mode: 0o444, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 };
+}
+
+function createSymlinkStat({ size }: { size: number }): WeshStat {
+  return { size, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 };
+}
 
 describe('wesh vfs mounts', () => {
   let wesh: Wesh;
@@ -510,5 +556,162 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
     for await (const e of vfs.readDir({ path: '/' })) rootEntries.push(e.name);
     expect(rootEntries).toEqual(['data']);
     expect(rootEntries).not.toContain('dev');
+  });
+});
+
+describe('WeshVFS virtual mounts', () => {
+  it('exposes virtual mounts through synthetic parent directories', async () => {
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    const provider: WeshVirtualMountProvider = {
+      async open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }) {
+        void path;
+        void flags;
+        void mode;
+        return createVirtualFileHandle({ text: '' });
+      },
+      async stat({ path }: { path: string }) {
+        return path === '/sys/fs/naidan'
+          ? createDirectoryStat({ size: 0 })
+          : createFileStat({ size: 0 });
+      },
+      async lstat({ path }: { path: string }) {
+        return path === '/sys/fs/naidan'
+          ? createDirectoryStat({ size: 0 })
+          : createFileStat({ size: 0 });
+      },
+      async *readDir({ path }: { path: string }) {
+        if (path === '/sys/fs/naidan') {
+          yield { name: 'version', type: 'file', fullPath: '/sys/fs/naidan/version' };
+        }
+      },
+      async readlink({ path }: { path: string }) {
+        return path;
+      },
+    };
+
+    vfs.mountVirtual({
+      path: '/sys/fs/naidan',
+      readOnly: true,
+      provider,
+    });
+
+    const rootEntries: string[] = [];
+    for await (const entry of vfs.readDir({ path: '/' })) rootEntries.push(entry.name);
+    expect(rootEntries).toEqual(['sys']);
+
+    const sysEntries: string[] = [];
+    for await (const entry of vfs.readDir({ path: '/sys' })) sysEntries.push(entry.name);
+    expect(sysEntries).toEqual(['fs']);
+
+    const fsEntries: string[] = [];
+    for await (const entry of vfs.readDir({ path: '/sys/fs' })) fsEntries.push(entry.name);
+    expect(fsEntries).toEqual(['naidan']);
+  });
+
+  it('delegates file operations to the virtual provider', async () => {
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    const open = vi.fn(async ({ path }: { path: string; flags: WeshOpenFlags; mode?: number }) => {
+      expect(path).toBe('/sys/fs/naidan/version');
+      return createVirtualFileHandle({ text: 'naidan-sysfs-v1\n' });
+    });
+    const stat = vi.fn(async ({ path }: { path: string }) => {
+      if (path === '/sys/fs/naidan/current-chat') {
+        return createSymlinkStat({ size: '/sys/fs/naidan/chats/chat-1'.length });
+      }
+      if (path === '/sys/fs/naidan') {
+        return createDirectoryStat({ size: 0 });
+      }
+      return createFileStat({ size: 'naidan-sysfs-v1\n'.length });
+    });
+    const lstat = vi.fn(async ({ path }: { path: string }) => {
+      if (path === '/sys/fs/naidan/current-chat') {
+        return createSymlinkStat({ size: '/sys/fs/naidan/chats/chat-1'.length });
+      }
+      if (path === '/sys/fs/naidan') {
+        return createDirectoryStat({ size: 0 });
+      }
+      return createFileStat({ size: 'naidan-sysfs-v1\n'.length });
+    });
+    const readlink = vi.fn(async ({ path }: { path: string }) => {
+      expect(path).toBe('/sys/fs/naidan/current-chat');
+      return '/sys/fs/naidan/chats/chat-1';
+    });
+    const provider: WeshVirtualMountProvider = {
+      open,
+      stat,
+      lstat,
+      async *readDir({ path }: { path: string }) {
+        if (path === '/sys/fs/naidan') {
+          yield { name: 'version', type: 'file', fullPath: '/sys/fs/naidan/version' };
+          yield { name: 'current-chat', type: 'symlink', fullPath: '/sys/fs/naidan/current-chat' };
+        }
+      },
+      readlink,
+    };
+
+    vfs.mountVirtual({
+      path: '/sys/fs/naidan',
+      readOnly: true,
+      provider,
+    });
+
+    const handle = await vfs.open({
+      path: '/sys/fs/naidan/version',
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+    });
+    const buffer = new Uint8Array(32);
+    const readResult = await handle.read({ buffer });
+    await handle.close();
+
+    expect(new TextDecoder().decode(buffer.subarray(0, readResult.bytesRead))).toBe('naidan-sysfs-v1\n');
+    expect((await vfs.stat({ path: '/sys/fs/naidan/version' })).type).toBe('file');
+    expect((await vfs.lstat({ path: '/sys/fs/naidan/current-chat' })).type).toBe('symlink');
+    expect(await vfs.readlink({ path: '/sys/fs/naidan/current-chat' })).toBe('/sys/fs/naidan/chats/chat-1');
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(stat).toHaveBeenCalledTimes(1);
+    expect(lstat).toHaveBeenCalledTimes(1);
+    expect(readlink).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats virtual mounts as read-only and non-native', async () => {
+    const vfs = new WeshVFS({ rootHandle: undefined });
+    const provider: WeshVirtualMountProvider = {
+      async open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }) {
+        void path;
+        void flags;
+        void mode;
+        return createVirtualFileHandle({ text: '' });
+      },
+      async stat({ path }: { path: string }) {
+        return path === '/sys/fs/naidan'
+          ? createDirectoryStat({ size: 0 })
+          : createFileStat({ size: 0 });
+      },
+      async lstat({ path }: { path: string }) {
+        return path === '/sys/fs/naidan'
+          ? createDirectoryStat({ size: 0 })
+          : createFileStat({ size: 0 });
+      },
+      async *readDir({ path }: { path: string }) {
+        if (path === '/sys/fs/naidan') {
+          yield { name: 'version', type: 'file', fullPath: '/sys/fs/naidan/version' };
+        }
+      },
+      async readlink({ path }: { path: string }) {
+        return path;
+      },
+    };
+
+    vfs.mountVirtual({
+      path: '/sys/fs/naidan',
+      readOnly: true,
+      provider,
+    });
+
+    expect(await vfs.getNativeHandle({ path: '/sys/fs/naidan' })).toBeNull();
+    expect(vfs.getReadOnlyForPath({ path: '/sys/fs/naidan' })).toBe(true);
+    await expect(vfs.mkdir({ path: '/sys/fs/naidan/chats', recursive: true })).rejects.toThrow('Read-only filesystem');
+    await expect(vfs.mknod({ path: '/sys/fs/naidan/node', type: 'fifo' })).rejects.toThrow('No mount point');
+    await expect(vfs.unlink({ path: '/sys/fs/naidan/version' })).rejects.toThrow('Read-only filesystem');
   });
 });

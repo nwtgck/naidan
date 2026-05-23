@@ -156,6 +156,7 @@ describe('file-explorer.worker.impl', () => {
           kind: 'wesh-mounts',
           rootName: 'Files',
           mounts: [{
+            type: 'directory',
             path: '/home/user/project',
             handle: mountHandle as unknown as FileSystemDirectoryHandle,
             readOnly: false,

@@ -47,13 +47,14 @@ export async function getEnabledTools({
       // Resolve mounts: global → chat group → chat (later entries win on path conflict)
       const allMounts = [...settings.mounts, ...(chatGroupMounts ?? []), ...(chatMounts ?? [])];
       const resolvedMounts: WeshMount[] = [
-        { path: '/tmp', handle: tmpHandle, readOnly: false },
+        { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
       ];
       const volumeHandles = new Map<string, FileSystemDirectoryHandle>();
       for (const m of allMounts) {
         const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
         if (handle) {
           resolvedMounts.push({
+            type: 'directory',
             path: m.mountPath,
             handle,
             readOnly: m.readOnly,

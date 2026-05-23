@@ -20,6 +20,7 @@ describe('useFileExplorerModal', () => {
       title: 'Files',
       rootName: 'Files',
       mounts: [{
+        type: 'directory',
         path: '/home/user/project',
         handle: mountHandle as unknown as FileSystemDirectoryHandle,
         readOnly: false,

@@ -4,8 +4,8 @@ import type { WeshMount } from '@/services/wesh/types';
 
 const noMounts: WeshMount[] = [];
 const mounts: WeshMount[] = [
-  { path: '/tmp', handle: {} as FileSystemDirectoryHandle, readOnly: false },
-  { path: '/home/user/project', handle: {} as FileSystemDirectoryHandle, readOnly: true },
+  { type: 'directory', path: '/tmp', handle: {} as FileSystemDirectoryHandle, readOnly: false },
+  { type: 'directory', path: '/home/user/project', handle: {} as FileSystemDirectoryHandle, readOnly: true },
 ];
 
 describe('buildShellDescription', () => {

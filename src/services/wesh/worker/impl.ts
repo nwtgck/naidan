@@ -77,11 +77,21 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       })
 
       for (const mount of validated.mounts) {
-        await wesh.vfs.mount({
-          path: mount.path,
-          handle: mount.handle,
-          readOnly: mount.readOnly,
-        })
+        switch (mount.type) {
+        case 'directory':
+          await wesh.vfs.mount({
+            path: mount.path,
+            handle: mount.handle,
+            readOnly: mount.readOnly,
+          })
+          break
+        case 'naidan_sysfs':
+          throw new Error('Naidan sysfs mount is not implemented yet')
+        default: {
+          const _ex: never = mount
+          throw new Error(`Unhandled Wesh worker mount type: ${String(_ex)}`)
+        }
+        }
       }
     },
 

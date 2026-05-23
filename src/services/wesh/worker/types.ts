@@ -1,12 +1,35 @@
 import { z } from 'zod'
 import type { EmptyArgs } from '@/models/types'
-import type { WeshMount } from '@/services/wesh/types'
+import {
+  NAIDAN_SYSFS_MOUNT_PATH,
+  type WeshMount,
+} from '@/services/wesh/types'
 
-export const weshWorkerMountSchema = z.object({
+export const weshWorkerDirectoryMountSchema = z.object({
+  type: z.literal('directory'),
   path: z.string().min(1),
   handle: z.custom<FileSystemDirectoryHandle>(),
   readOnly: z.boolean(),
 })
+
+export const weshWorkerNaidanSysfsMountSchema = z.object({
+  type: z.literal('naidan_sysfs'),
+  path: z.literal(NAIDAN_SYSFS_MOUNT_PATH),
+  readOnly: z.literal(true),
+  storageType: z.literal('opfs'),
+  visibility: z.enum([
+    'current_chat_only',
+    'current_chat_with_chat_group',
+    'all_chats',
+  ]),
+  currentChatId: z.string().min(1),
+  currentChatGroupId: z.union([z.string().min(1), z.undefined()]),
+})
+
+export const weshWorkerMountSchema = z.discriminatedUnion('type', [
+  weshWorkerDirectoryMountSchema,
+  weshWorkerNaidanSysfsMountSchema,
+])
 
 export const weshWorkerInitRequestSchema = z.object({
   rootHandle: z.custom<FileSystemDirectoryHandle | 'readonly'>(),
@@ -94,11 +117,31 @@ export interface WeshWorkerClient {
 export function mapWeshMountsToWorkerMounts({ mounts }: {
   mounts: WeshMount[]
 }): WeshWorkerMount[] {
-  return mounts.map(mount => ({
-    path: mount.path,
-    handle: mount.handle,
-    readOnly: mount.readOnly,
-  }))
+  return mounts.map(mount => {
+    switch (mount.type) {
+    case 'directory':
+      return {
+        type: 'directory',
+        path: mount.path,
+        handle: mount.handle,
+        readOnly: mount.readOnly,
+      }
+    case 'naidan_sysfs':
+      return {
+        type: 'naidan_sysfs',
+        path: mount.path,
+        readOnly: true,
+        storageType: mount.storageType,
+        visibility: mount.visibility,
+        currentChatId: mount.currentChatId,
+        currentChatGroupId: mount.currentChatGroupId,
+      }
+    default: {
+      const _ex: never = mount
+      throw new Error(`Unhandled Wesh mount type: ${String(_ex)}`)
+    }
+    }
+  })
 }
 
 export function mapRemoteWeshWorkerExecutionEventToClientEvent({ event }: {

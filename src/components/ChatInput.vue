@@ -31,6 +31,7 @@ import {
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, LmParameters } from '@/models/types';
+import type { WeshMount } from '@/services/wesh/types';
 
 const chatStore = useChat();
 const { setToolEnabled } = useChatTools();
@@ -531,9 +532,10 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
   const mounts = currentChat.value.mounts ?? [];
   if (mounts.length === 0) return;
 
-  const workerMounts = [];
+  const workerMounts: WeshMount[] = [];
   const tmpDirectory = await ensureChatTmpDirectory({ chatId: currentChat.value.id });
   workerMounts.push({
+    type: 'directory',
     path: tmpDirectory.mountPath,
     handle: tmpDirectory.handle,
     readOnly: false,
@@ -542,6 +544,7 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
     workerMounts.push({
+      type: 'directory',
       path: m.mountPath,
       handle,
       readOnly: m.readOnly,
@@ -556,6 +559,7 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
     workerMounts.push({
+      type: 'directory',
       path: m.mountPath,
       handle,
       readOnly: m.readOnly,

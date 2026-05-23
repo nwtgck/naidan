@@ -131,6 +131,16 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
   case 'wesh-mounts': {
     const vfs = new WeshVFS({ rootHandle: undefined })
     for (const mount of root.mounts) {
+      switch (mount.type) {
+      case 'directory':
+        break
+      case 'naidan_sysfs':
+        continue
+      default: {
+        const _exhaustiveCheck: never = mount
+        throw new Error(`Unhandled wesh mount: ${String(_exhaustiveCheck)}`)
+      }
+      }
       await vfs.mount({
         path: mount.path,
         handle: mount.handle,
