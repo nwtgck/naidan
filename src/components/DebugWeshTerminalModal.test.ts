@@ -86,6 +86,7 @@ describe('DebugWeshTerminalModal', () => {
       rootHandle: expect.any(Object),
       mounts: [
         {
+          type: 'directory',
           path: '/data',
           handle: expect.any(Object),
           readOnly: true,

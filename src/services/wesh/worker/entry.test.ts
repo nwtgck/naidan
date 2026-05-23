@@ -56,6 +56,7 @@ describe('wesh.worker', () => {
       request: {
         rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
         mounts: [{
+          type: 'directory',
           path: '/mnt',
           handle: mountedRoot as unknown as FileSystemDirectoryHandle,
           readOnly: true,
@@ -68,6 +69,46 @@ describe('wesh.worker', () => {
     const response = await workerApi.execute({
       request: {
         script: 'cat /mnt/hello.txt',
+      },
+    })
+
+    expect(response.exitCode).toBe(0)
+  })
+
+  it('can read the naidan sysfs version file', async () => {
+    const comlink = await import('comlink')
+    const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
+    const opfsRoot = new MockFileSystemDirectoryHandle('opfs-root')
+    const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true })
+    await storageRoot.getDirectoryHandle('uploaded-files', { create: true })
+    vi.stubGlobal('navigator', {
+      storage: {
+        getDirectory: vi.fn().mockResolvedValue(opfsRoot as unknown as FileSystemDirectoryHandle),
+      },
+    })
+    await import('./entry')
+
+    const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
+    await workerApi.init({
+      request: {
+        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        mounts: [{
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'opfs',
+          visibility: 'current_chat_only',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        }],
+        user: 'user',
+        initialEnv: {},
+      },
+    })
+
+    const response = await workerApi.execute({
+      request: {
+        script: 'cat /sys/fs/naidan/version',
       },
     })
 

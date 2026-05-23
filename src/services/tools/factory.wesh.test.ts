@@ -96,8 +96,8 @@ describe('getEnabledTools shell_execute', () => {
     expect(mockCreateClient).toHaveBeenNthCalledWith(1, {
       rootHandle: 'readonly',
       mounts: [
-        { path: '/tmp', handle: tmpHandleA, readOnly: false },
-        { path: '/mnt/a', handle: volumeHandleA, readOnly: false },
+        { type: 'directory', path: '/tmp', handle: tmpHandleA, readOnly: false },
+        { type: 'directory', path: '/mnt/a', handle: volumeHandleA, readOnly: false },
       ],
       user: 'user',
       initialEnv: {},
@@ -106,8 +106,8 @@ describe('getEnabledTools shell_execute', () => {
     expect(mockCreateClient).toHaveBeenNthCalledWith(2, {
       rootHandle: 'readonly',
       mounts: [
-        { path: '/tmp', handle: tmpHandleB, readOnly: false },
-        { path: '/mnt/b', handle: volumeHandleB, readOnly: true },
+        { type: 'directory', path: '/tmp', handle: tmpHandleB, readOnly: false },
+        { type: 'directory', path: '/mnt/b', handle: volumeHandleB, readOnly: true },
       ],
       user: 'user',
       initialEnv: {},

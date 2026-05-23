@@ -1,6 +1,8 @@
 import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
 import { Wesh } from '@/services/wesh'
+import { NaidanSysfsProvider } from '@/services/wesh/naidan-sysfs/provider'
+import { createOpfsNaidanSysfsStorageReader } from '@/services/wesh/naidan-sysfs/storage-reader'
 import { ReadonlyDirectoryHandle } from '@/services/wesh/readonly-directory-handle'
 import { createTestReadHandleFromText } from '@/services/wesh/utils/test-stream'
 import { createWriteHandleFromStream } from '@/services/wesh/utils/stream'
@@ -85,8 +87,24 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
             readOnly: mount.readOnly,
           })
           break
-        case 'naidan_sysfs':
-          throw new Error('Naidan sysfs mount is not implemented yet')
+        case 'naidan_sysfs': {
+          const reader = await (() => {
+            switch (mount.storageType) {
+            case 'opfs':
+              return createOpfsNaidanSysfsStorageReader({})
+            default: {
+              const _ex: never = mount.storageType
+              throw new Error(`Unsupported naidan sysfs storage type: ${String(_ex)}`)
+            }
+            }
+          })()
+          wesh.vfs.mountVirtual({
+            path: mount.path,
+            readOnly: mount.readOnly,
+            provider: new NaidanSysfsProvider({ reader }),
+          })
+          break
+        }
         default: {
           const _ex: never = mount
           throw new Error(`Unhandled Wesh worker mount type: ${String(_ex)}`)
