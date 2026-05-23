@@ -37,14 +37,14 @@ vi.mock('../composables/useSettings', () => ({
     mounts: [],
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
-    save: vi.fn().mockImplementation(async (patch) => {
+    save: vi.fn().mockImplementation(async ({ patch }) => {
       const currentType = storageService.getCurrentType();
       if (patch.storageType && patch.storageType !== currentType) {
         await storageService.switchProvider(patch.storageType);
       }
     }),
     updateProviderProfiles: vi.fn(),
-    fetchModels: vi.fn(async (overrides) => {
+    fetchModels: vi.fn(async ({ overrides }) => {
       if (overrides) {
         return await mockListModels(overrides.url, overrides.headers);
       }
@@ -198,14 +198,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       settings: ref(JSON.parse(JSON.stringify(mockSettings))),
       availableModels: ref([]),
       isFetchingModels: ref(false),
-      save: mockSave.mockImplementation(async (patch) => {
+      save: mockSave.mockImplementation(async ({ patch }) => {
         const currentType = storageService.getCurrentType();
         if (patch.storageType && patch.storageType !== currentType) {
           await storageService.switchProvider(patch.storageType);
         }
       }),
       updateProviderProfiles: vi.fn(),
-      fetchModels: vi.fn(async (overrides) => {
+      fetchModels: vi.fn(async ({ overrides }) => {
         if (overrides) {
           return await mockListModels(overrides.url, overrides.headers);
         }
@@ -250,7 +250,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: isFetching,
         save: mockSave,
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -717,7 +717,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       isFetchingModels: ref(false),
       save: mockSave,
       updateProviderProfiles: vi.fn(),
-      fetchModels: vi.fn(async (overrides) => {
+      fetchModels: vi.fn(async ({ overrides }) => {
         if (overrides) {
           return await mockListModels(overrides.url, overrides.headers);
         }
@@ -879,7 +879,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -953,7 +953,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -998,7 +998,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -1036,7 +1036,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -1160,7 +1160,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -1228,7 +1228,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       // Access handleImportRecipes via vm
       const vm = wrapper.vm as any;
-      await vm.handleImportRecipes(recipes);
+      await vm.handleImportRecipes({ recipes });
 
       expect(mockCreateChatGroup).toHaveBeenCalledTimes(2);
       expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 1', options: expect.objectContaining({
@@ -1261,7 +1261,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       const vm = wrapper.vm as any;
-      await vm.handleImportRecipes([{ newName: 'Fail', recipe: {} as any }]);
+      await vm.handleImportRecipes({ recipes: [{ newName: 'Fail', recipe: {} as any }] });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: expect.stringContaining('Failed to import recipes: Import failed')
@@ -1277,10 +1277,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
 
       await wrapper.setProps({ isOpen: true });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('settings');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'settings' });
 
       await wrapper.setProps({ isOpen: false });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
 });

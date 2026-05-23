@@ -145,7 +145,7 @@ async function startCopyAndEmit({ name, entries, label, readOnly }: {
   }
 }
 
-async function handleFileSelect(event: Event) {
+async function handleFileSelect({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   if (!target.files || target.files.length === 0) return;
 
@@ -164,7 +164,7 @@ async function handleFileSelect(event: Event) {
   }
 }
 
-async function handleSingleFileSelect(event: Event) {
+async function handleSingleFileSelect({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   if (!target.files || target.files.length === 0) return;
   const file = target.files[0];
@@ -312,13 +312,21 @@ function onDocDragEnter() {
 function onDocDragLeave() {
   dragCounter.value = Math.max(0, dragCounter.value - 1);
 }
-function onDocDragOver(e: DragEvent) {
-  e.preventDefault();
+function onDocDragOver({ event }: { event: DragEvent }) {
+  event.preventDefault();
 }
-function onDocDrop(e: DragEvent) {
-  e.preventDefault();
+function onDocDrop({ event }: { event: DragEvent }) {
+  event.preventDefault();
   dragCounter.value = 0;
-  handleDrop({ event: e });
+  handleDrop({ event });
+}
+
+function handleDocumentDragOver(event: DragEvent) {
+  onDocDragOver({ event });
+}
+
+function handleDocumentDrop(event: DragEvent) {
+  onDocDrop({ event });
 }
 
 onMounted(async () => {
@@ -329,8 +337,8 @@ onMounted(async () => {
   if (props.dragOverlayTarget) {
     document.addEventListener('dragenter', onDocDragEnter);
     document.addEventListener('dragleave', onDocDragLeave);
-    document.addEventListener('dragover', onDocDragOver);
-    document.addEventListener('drop', onDocDrop);
+    document.addEventListener('dragover', handleDocumentDragOver);
+    document.addEventListener('drop', handleDocumentDrop);
   }
 });
 
@@ -338,8 +346,8 @@ onUnmounted(() => {
   if (props.dragOverlayTarget) {
     document.removeEventListener('dragenter', onDocDragEnter);
     document.removeEventListener('dragleave', onDocDragLeave);
-    document.removeEventListener('dragover', onDocDragOver);
-    document.removeEventListener('drop', onDocDrop);
+    document.removeEventListener('dragover', handleDocumentDragOver);
+    document.removeEventListener('drop', handleDocumentDrop);
   }
 });
 
@@ -369,8 +377,8 @@ defineExpose({
       </div>
     </Teleport>
 
-    <input type="file" ref="fileInput" webkitdirectory directory multiple class="hidden" @change="handleFileSelect" />
-    <input type="file" ref="fileInputSingle" class="hidden" @change="handleSingleFileSelect" />
+    <input type="file" ref="fileInput" webkitdirectory directory multiple class="hidden" @change="handleFileSelect({ event: $event })" />
+    <input type="file" ref="fileInputSingle" class="hidden" @change="handleSingleFileSelect({ event: $event })" />
 
     <!-- Upload Progress -->
     <div v-if="isCreating" data-testid="copy-progress" class="rounded-2xl border border-blue-200/70 dark:border-blue-800/50 bg-blue-50/80 dark:bg-blue-950/20 overflow-hidden">

@@ -52,7 +52,7 @@ describe('useChat Error Handling', () => {
     mockChat.mockReset();
     mockListModels.mockResolvedValue(['gpt-4']);
 
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       endpointType: 'openai',
       endpointUrl: 'https://api.openai.com',
       defaultModelId: 'gpt-4',
@@ -61,7 +61,7 @@ describe('useChat Error Handling', () => {
       providerProfiles: [],
       mounts: [],
       heavyContentAlertDismissed: true,
-    });
+    } });
   });
 
   it('should set error state on assistant node when generation fails', async () => {

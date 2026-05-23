@@ -43,13 +43,13 @@ describe('ThemeToggle.vue', () => {
     const buttons = wrapper.findAll('button');
 
     await buttons[0]!.trigger('click');
-    expect(setTheme).toHaveBeenCalledWith('light');
+    expect(setTheme).toHaveBeenCalledWith({ mode: 'light' });
 
     await buttons[1]!.trigger('click');
-    expect(setTheme).toHaveBeenCalledWith('dark');
+    expect(setTheme).toHaveBeenCalledWith({ mode: 'dark' });
 
     await buttons[2]!.trigger('click');
-    expect(setTheme).toHaveBeenCalledWith('system');
+    expect(setTheme).toHaveBeenCalledWith({ mode: 'system' });
   });
 
   it('applies the correct transform style based on themeMode', () => {

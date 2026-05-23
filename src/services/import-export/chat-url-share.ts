@@ -9,7 +9,7 @@ import type { MessageNode, Settings } from '@/models/types';
  * This URL can be shared and when opened, the chat will be imported into the recipient's storage.
  */
 export async function generateChatShareURL({ chatId }: { chatId: string }): Promise<string> {
-  const chat = await storageService.loadChat(chatId);
+  const chat = await storageService.loadChat({ id: chatId });
   if (!chat) throw new Error('Chat not found');
 
   // Create an ephemeral memory storage for this export
@@ -25,10 +25,10 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
     },
     listChats: () => memoryProvider.listChats(),
     listChatGroups: () => memoryProvider.listChatGroups(),
-    loadChat: (id) => memoryProvider.loadChat(id),
+    loadChat: ({ id }) => memoryProvider.loadChat({ id }),
     loadHierarchy: async () => {
       const dto = await memoryProvider.loadHierarchy();
-      return dto ? hierarchyToDomain(dto) : null;
+      return dto ? hierarchyToDomain({ dto }) : null;
     },
     clearAll: () => memoryProvider.clearAll(),
     dumpWithoutLock: () => memoryProvider.dump(),
@@ -54,7 +54,7 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
 
   // 4. Attachments
   const binaryObjectIds = new Set<string>();
-  const collectBinaryIds = (nodes: MessageNode[]) => {
+  const collectBinaryIds = ({ nodes }: { nodes: MessageNode[] }) => {
     for (const node of nodes) {
       if (node.role === 'user' && node.attachments) {
         for (const att of node.attachments) {
@@ -62,14 +62,14 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
         }
       }
       if (node.replies?.items) {
-        collectBinaryIds(node.replies.items);
+        collectBinaryIds({ nodes: node.replies.items });
       }
     }
   };
-  collectBinaryIds(chat.root.items);
+  collectBinaryIds({ nodes: chat.root.items });
 
   for (const bId of binaryObjectIds) {
-    const blob = await storageService.getFile(bId);
+    const blob = await storageService.getFile({ binaryObjectId: bId });
     const meta = await storageService.getBinaryObject({ binaryObjectId: bId });
     if (blob && meta) {
       await memoryProvider.saveFile({

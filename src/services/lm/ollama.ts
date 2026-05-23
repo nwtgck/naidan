@@ -78,7 +78,7 @@ interface OllamaChatRequest {
   }[];
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
+async function blobToBase64({ blob }: { blob: Blob }): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -541,7 +541,7 @@ export class OllamaProvider implements LLMProvider {
     const url = `${endpoint.replace(/\/$/, '')}/api/generate`;
 
     const b64Images = images.length > 0
-      ? await Promise.all(images.map(img => blobToBase64(img.blob)))
+      ? await Promise.all(images.map(img => blobToBase64({ blob: img.blob })))
       : undefined;
 
     const body = {

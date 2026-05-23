@@ -355,11 +355,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
     await wrapper.trigger('click');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-group-settings');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-group-settings' });
 
     mockSetActiveFocusArea.mockClear();
     await wrapper.trigger('focusin');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-group-settings');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-group-settings' });
   });
 
   it('triggers global search when clicking search button', async () => {
@@ -477,12 +477,12 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(mocks.getVolumeDirectoryHandle).toHaveBeenCalledWith({ volumeId: 'vol-1' });
-      expect(mocks.openFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
         kind: 'wesh-mounts',
         rootName: 'Files',
         title: 'Folders',
         initialPath: ['home', 'user', 'work'],
-      }));
+      }) });
     });
 
     it('opens explorer with correct initialPath derived from clicked mount', async () => {
@@ -500,9 +500,9 @@ describe('ChatGroupSettingsPanel.vue', () => {
       await explorerBtns[1]!.trigger('click');
       await flushPromises();
 
-      expect(mocks.openFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mocks.openFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
         initialPath: ['home', 'user', 'beta'],
-      }));
+      }) });
     });
   });
 });

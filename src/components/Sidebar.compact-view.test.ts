@@ -326,12 +326,12 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     // Collapse group
     // @ts-expect-error - internal method
-    wrapper.vm.handleToggleChatGroupCollapse(group);
+    wrapper.vm.handleToggleChatGroupCollapse({ chatGroup: group });
     await nextTick();
 
     // Open group again
     // @ts-expect-error - internal method
-    wrapper.vm.handleToggleChatGroupCollapse(group);
+    wrapper.vm.handleToggleChatGroupCollapse({ chatGroup: group });
     await nextTick();
 
     // Should be back to compact view
@@ -363,7 +363,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     // Set focus area to sidebar
     // @ts-expect-error - internal method
-    wrapper.vm.setActiveFocusArea('sidebar');
+    wrapper.vm.setActiveFocusArea({ area: 'sidebar' });
 
     // Simulate selecting the expand button via lastNavigatedId
     // @ts-expect-error - internal state
@@ -411,7 +411,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     await nextTick();
 
     // @ts-expect-error - internal method
-    wrapper.vm.setActiveFocusArea('sidebar');
+    wrapper.vm.setActiveFocusArea({ area: 'sidebar' });
 
     // Trigger ArrowLeft
     const event = new KeyboardEvent('keydown', { key: 'ArrowLeft' });

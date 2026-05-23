@@ -15,7 +15,7 @@ describe('useFileExplorerModal', () => {
     const { fileExplorerOptions, openFileExplorer } = useFileExplorerModal()
     const mountHandle = new MockFileSystemDirectoryHandle('project')
 
-    openFileExplorer({
+    openFileExplorer({ options: {
       kind: 'wesh-mounts',
       title: 'Files',
       rootName: 'Files',
@@ -25,7 +25,7 @@ describe('useFileExplorerModal', () => {
         readOnly: false,
       }],
       initialPath: ['home', 'user', 'project'],
-    })
+    } })
 
     expect(() => structuredClone(fileExplorerOptions.value)).not.toThrow()
     expect(() => structuredClone(mapFileExplorerModalOptionsToRootDescriptor({

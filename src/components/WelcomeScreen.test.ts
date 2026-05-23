@@ -18,13 +18,13 @@ describe('WelcomeScreen.vue', () => {
   });
 
   it('renders ephemeral storage message when memory storage is active', async () => {
-    TEST_ONLY.__testOnlySetSettings({
+    TEST_ONLY.__testOnlySetSettings({ newSettings: {
       storageType: 'memory',
       endpointType: 'openai',
       autoTitleEnabled: true,
       providerProfiles: [],
       mounts: [],
-    } as Settings);
+    } as Settings });
 
     const wrapper = mount(WelcomeScreen);
     expect(wrapper.text()).toContain('Conversations are stored in-memory.');

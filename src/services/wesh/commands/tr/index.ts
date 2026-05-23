@@ -94,7 +94,7 @@ function createAsciiRange({
   return result;
 }
 
-function isTrCharacterClassName(name: string): boolean {
+function isTrCharacterClassName({ name }: { name: string }): boolean {
   return ASCII_PRINTABLE_CLASS_NAMES.has(name);
 }
 
@@ -161,7 +161,7 @@ function expandCharacterClassIfPresent({
 }: {
   name: string;
 }): string[] | undefined {
-  if (!isTrCharacterClassName(name)) {
+  if (!isTrCharacterClassName({ name })) {
     return undefined;
   }
 

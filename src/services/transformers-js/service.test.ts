@@ -199,7 +199,7 @@ describe('transformersJsService', () => {
       statuses.push(status);
     });
 
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     expect(mockRemote.loadModel).toHaveBeenCalledWith('some-model', expect.any(Function));
     expect(mockRemote.prefetchUrls).toHaveBeenCalledWith(['https://hf.co/m/model.onnx'], expect.any(Function));
@@ -228,7 +228,7 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel('hf.co/onnx-community/gemma-4-E2B-it-ONNX');
+    await transformersJsService.loadModel({ modelId: 'hf.co/onnx-community/gemma-4-E2B-it-ONNX' });
 
     expect(scanModel).toHaveBeenCalledWith({
       tasks: [
@@ -257,7 +257,7 @@ describe('transformersJsService', () => {
 
     const { transformersJsService } = await import('./index');
 
-    await expect(transformersJsService.downloadModel('onnx-community/gemma-4-E2B-it-ONNX'))
+    await expect(transformersJsService.downloadModel({ modelId: 'onnx-community/gemma-4-E2B-it-ONNX' }))
       .rejects
       .toThrow('Pre-download did not discover any model files');
 
@@ -300,7 +300,7 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel('hf.co/some-org/some-model');
+    await transformersJsService.loadModel({ modelId: 'hf.co/some-org/some-model' });
 
     expect(mockRemote.loadModel).toHaveBeenCalledWith('hf.co/some-org/some-model', expect.any(Function));
     expect(scanModel).not.toHaveBeenCalled();
@@ -320,7 +320,7 @@ describe('transformersJsService', () => {
     const { transformersJsService } = await import('./index');
 
     // Start first load
-    const firstLoad = transformersJsService.loadModel('model-1');
+    const firstLoad = transformersJsService.loadModel({ modelId: 'model-1' });
 
     // Wait for the status to become 'loading'
     // In our implementation, it becomes 'loading' after listCachedModels()
@@ -328,7 +328,7 @@ describe('transformersJsService', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
 
     // Attempt second load immediately
-    await expect(transformersJsService.loadModel('model-2')).rejects.toThrow('Another model is currently loading');
+    await expect(transformersJsService.loadModel({ modelId: 'model-2' })).rejects.toThrow('Another model is currently loading');
 
     await firstLoad;
   });
@@ -344,7 +344,7 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     const controller = new AbortController();
     const genPromise = transformersJsService.generateText([], () => {}, () => {}, EMPTY_LM_PARAMETERS, undefined, controller.signal);
@@ -365,7 +365,7 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     const reactiveParams = reactive({
       ...EMPTY_LM_PARAMETERS,
@@ -397,7 +397,7 @@ describe('transformersJsService', () => {
     });
 
     const { transformersJsService } = await import('./index');
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     const reactiveMessages = reactive([{
       role: 'assistant',
@@ -506,7 +506,7 @@ describe('transformersJsService', () => {
 
     const { transformersJsService } = await import('./index');
 
-    await expect(transformersJsService.loadModel('bad-model')).rejects.toThrow('Failed to load');
+    await expect(transformersJsService.loadModel({ modelId: 'bad-model' })).rejects.toThrow('Failed to load');
     expect(transformersJsService.getState().status).toBe('error');
     expect(transformersJsService.getState().error).toBe('Failed to load');
   });

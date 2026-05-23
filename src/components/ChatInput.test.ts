@@ -337,12 +337,12 @@ describe('ChatInput Integration', () => {
     await flushPromises();
 
     expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
-    expect(mockOpenFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
       initialPath: ['home', 'user', 'work'],
       title: 'Files',
-    }));
+    }) });
   });
 
   it('mount explorer includes global settings mounts alongside chat mounts', async () => {
@@ -367,11 +367,11 @@ describe('ChatInput Integration', () => {
     // Called once for chat mount and once for global mount
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-chat' });
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
-    expect(mockOpenFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
       title: 'Files',
-    }));
+    }) });
   });
 
   it('mount badges do not include global settings mounts', async () => {

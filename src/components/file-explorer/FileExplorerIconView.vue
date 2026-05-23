@@ -68,20 +68,20 @@ function onContextMenu({ entry, event }: { entry: FileExplorerEntry; event: Mous
   });
 }
 
-function onBackgroundContextMenu(event: MouseEvent): void {
+function onBackgroundContextMenu({ event }: { event: MouseEvent }): void {
   ctx.applySelection({ action: { type: 'clear' } });
   ctx.showContextMenu({ event, target: { kind: 'background' } });
 }
 
 const isExternalDragOver = ref(false);
 
-function onExternalDragOver(event: DragEvent): void {
+function onExternalDragOver({ event }: { event: DragEvent }): void {
   if (event.dataTransfer?.types.includes('Files')) {
     isExternalDragOver.value = true;
   }
 }
 
-async function onExternalDrop(event: DragEvent): Promise<void> {
+async function onExternalDrop({ event }: { event: DragEvent }): Promise<void> {
   isExternalDragOver.value = false;
   const files = event.dataTransfer?.files;
   if (files && files.length > 0) {
@@ -102,11 +102,11 @@ defineExpose({
     class="flex-1 overflow-y-auto overscroll-contain p-3 transition-colors"
     :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
     data-testid="icon-view"
-    @contextmenu.self="onBackgroundContextMenu"
+    @contextmenu.self="onBackgroundContextMenu({ event: $event })"
     @click.self="ctx.applySelection({ action: { type: 'clear' } })"
-    @dragover.prevent="onExternalDragOver"
+    @dragover.prevent="onExternalDragOver({ event: $event })"
     @dragleave="isExternalDragOver = false"
-    @drop.prevent="onExternalDrop"
+    @drop.prevent="onExternalDrop({ event: $event })"
   >
     <FileExplorerEmptyState
       v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading"

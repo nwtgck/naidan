@@ -80,7 +80,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'opfs');
     const { init } = useSettings();
     await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
-    expect(mocks.init).toHaveBeenCalledWith('opfs');
+    expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
   });
 
   it('should determine, persist and pass opfs to StorageService if bootstrap key is missing (new user)', async () => {
@@ -89,7 +89,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     const { init } = useSettings();
     await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
 
-    expect(mocks.init).toHaveBeenCalledWith('opfs');
+    expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
     expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
   });
 
@@ -116,11 +116,11 @@ describe('useSettings Initialization and Bootstrap', () => {
 
     // Simulate finishing onboarding: save new URL/Type but don't explicitly mention storageType
     // (spread of settings.value should include the detected 'opfs')
-    await save({
+    await save({ patch: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpointUrl: 'http://new-endpoint',
       endpointType: 'ollama'
-    });
+    } });
 
     expect(settings.value.storageType).toBe('opfs');
     expect(mocks.updateSettings).toHaveBeenCalled();
@@ -146,7 +146,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       message: expect.stringContaining('Invalid storage type'),
     }));
     // Should fallback to detection (opfs in this mock environment)
-    expect(mocks.init).toHaveBeenCalledWith('opfs');
+    expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
 
     consoleSpy.mockRestore();
   });
@@ -158,7 +158,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       const { init } = useSettings();
       await init({ storageTypeOverride: 'memory', dataZipBase64: undefined });
 
-      expect(mocks.init).toHaveBeenCalledWith('memory');
+      expect(mocks.init).toHaveBeenCalledWith({ type: 'memory' });
       expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('memory');
     });
 
@@ -168,7 +168,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       const { init } = useSettings();
       await init({ storageTypeOverride: 'memory', dataZipBase64: undefined });
 
-      expect(mocks.init).toHaveBeenCalledWith('local');
+      expect(mocks.init).toHaveBeenCalledWith({ type: 'local' });
       expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('local');
       expect(mockShowConfirm).toHaveBeenCalledWith(expect.objectContaining({
         title: 'Storage Already Initialized',
@@ -181,7 +181,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       const { init } = useSettings();
       await init({ storageTypeOverride: 'local', dataZipBase64: undefined });
 
-      expect(mocks.init).toHaveBeenCalledWith('local');
+      expect(mocks.init).toHaveBeenCalledWith({ type: 'local' });
       expect(mockShowConfirm).not.toHaveBeenCalled();
     });
 
@@ -192,7 +192,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       await init({ storageTypeOverride: 'invalid', dataZipBase64: undefined });
 
       // Should fallback to detection (opfs in this mock environment)
-      expect(mocks.init).toHaveBeenCalledWith('opfs');
+      expect(mocks.init).toHaveBeenCalledWith({ type: 'opfs' });
       expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('opfs');
     });
 
@@ -206,7 +206,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
       await init({ storageTypeOverride: 'memory', dataZipBase64: undefined });
 
-      expect(mocks.init).toHaveBeenCalledWith('memory');
+      expect(mocks.init).toHaveBeenCalledWith({ type: 'memory' });
       expect(localStorage.getItem(STORAGE_BOOTSTRAP_KEY)).toBe('memory');
     });
 
@@ -322,7 +322,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
       mockListModels.mockClear();
 
-      await fetchModels();
+      await fetchModels({});
 
       expect(mockListModels).toHaveBeenCalledWith({});
     });
@@ -339,11 +339,11 @@ describe('useSettings Initialization and Bootstrap', () => {
       await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
       mockListModels.mockClear();
 
-      await fetchModels({
+      await fetchModels({ overrides: {
         url: 'http://override-url',
         type: 'ollama',
         headers: [['X-Test', 'true']],
-      });
+      } });
 
       expect(mockListModels).toHaveBeenCalledWith({});
       expect(mockListModels).toHaveBeenCalledTimes(1);
@@ -372,7 +372,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       // Still false because model is missing
       expect(isOnboardingDismissed.value).toBe(false);
 
-      await updateGlobalModel('test-model');
+      await updateGlobalModel({ modelId: 'test-model' });
 
       // Now true because both are present
       expect(isOnboardingDismissed.value).toBe(true);

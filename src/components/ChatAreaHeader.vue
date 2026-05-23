@@ -70,9 +70,7 @@ function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
   closeFloatingMenus({});
 }
 
-function handleDocumentPointerDownEvent(event: PointerEvent) {
-  handleDocumentPointerDown({ event });
-}
+const documentPointerDownListener = (event: PointerEvent) => handleDocumentPointerDown({ event });
 
 function emitMoveToGroup({ groupId }: { groupId: string | null }) {
   emit('move-to-group', groupId);
@@ -124,11 +122,11 @@ function emitMoreAction({ action }: {
 }
 
 onMounted(() => {
-  document.addEventListener('pointerdown', handleDocumentPointerDownEvent);
+  document.addEventListener('pointerdown', documentPointerDownListener);
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', handleDocumentPointerDownEvent);
+  document.removeEventListener('pointerdown', documentPointerDownListener);
 });
 
 

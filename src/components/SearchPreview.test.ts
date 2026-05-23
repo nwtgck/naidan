@@ -78,7 +78,7 @@ describe('SearchPreview Component', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
     await wrapper.vm.$nextTick();
 
-    expect(storageService.loadChat).toHaveBeenCalledWith('chat1');
+    expect(storageService.loadChat).toHaveBeenCalledWith({ id: 'chat1' });
     expect(wrapper.findAll('.message-item')).toHaveLength(2);
     expect(wrapper.text()).toContain('Msg 1');
     expect(wrapper.text()).toContain('Msg 2');

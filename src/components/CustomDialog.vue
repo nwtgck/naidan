@@ -5,8 +5,8 @@
       data-testid="custom-dialog-overlay"
       class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px] focus:outline-none"
       @keydown.esc="cancel"
-      @click="setActiveFocusArea('dialog')"
-      @focusin="setActiveFocusArea('dialog')"
+      @click="setActiveFocusArea({ area: 'dialog' })"
+      @focusin="setActiveFocusArea({ area: 'dialog' })"
       tabindex="-1"
     >
       <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-100 dark:border-gray-800 modal-content-zoom">

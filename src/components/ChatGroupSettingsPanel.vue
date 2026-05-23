@@ -21,11 +21,11 @@ import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
-const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
+const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 // Lazily load modals that are only shown on-demand
-const RecipeExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeExportModal.vue'));
+const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeExportModal.vue') });
 // Lazily load upsell UI
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
 
 import { ENDPOINT_PRESETS } from '@/models/constants';
 import type { ChatGroup } from '@/models/types';
@@ -48,7 +48,7 @@ const { openFileExplorer } = useFileExplorerModal();
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
 const groupModels = ref<string[]>([]);
-const sortedGroupModels = computed(() => naturalSort(groupModels.value || []));
+const sortedGroupModels = computed(() => naturalSort({ values: groupModels.value || [] }));
 
 const effectiveEndpointType = computed(() => {
   return localSettings.value.endpoint?.type || settings.value.endpointType;
@@ -99,13 +99,13 @@ async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string
   }
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
-  openFileExplorer({
+  openFileExplorer({ options: {
     kind: 'wesh-mounts',
     title: 'Folders',
     rootName: 'Files',
     mounts: workerMounts,
     initialPath,
-  });
+  } });
 }
 
 function handleCreateRecipe() {
@@ -130,7 +130,7 @@ onMounted(() => {
   if (currentChatGroup.value) {
     const url = localSettings.value.endpoint?.url || settings.value.endpointUrl;
     const type = localSettings.value.endpoint?.type || settings.value.endpointType;
-    if (type === 'transformers_js' || isLocalhost(url)) {
+    if (type === 'transformers_js' || isLocalhost({ url })) {
       fetchModels();
     }
   }
@@ -156,12 +156,12 @@ async function saveChanges() {
   }
 }
 
-function isLocalhost(url: string | undefined) {
+function isLocalhost({ url }: { url: string | undefined }) {
   if (!url) return false;
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
-async function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   localSettings.value.endpoint = { type: preset.type, url: preset.url };
   error.value = null;
   await saveChanges();
@@ -192,7 +192,7 @@ async function addHeader() {
   localSettings.value.endpoint.httpHeaders.push(['', '']);
 }
 
-async function removeHeader(index: number) {
+async function removeHeader({ index }: { index: number }) {
   if (localSettings.value.endpoint?.httpHeaders) {
     localSettings.value.endpoint.httpHeaders.splice(index, 1);
     await saveChanges();
@@ -236,13 +236,13 @@ watch([
   () => localSettings.value.endpoint?.type,
 ], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
+  if (type === 'transformers_js' || (url && isLocalhost({ url: url as string }))) {
     fetchModels();
   }
 });
 
 /*
-async function updateSystemPromptContent(content: string) {
+async function updateSystemPromptContent({ content }: { content: string }) {
   if (!content && (!localSettings.value.systemPrompt || localSettings.value.systemPrompt.behavior === 'override')) {
     localSettings.value.systemPrompt = undefined;
   } else if (!localSettings.value.systemPrompt) {
@@ -253,7 +253,7 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inherit', isClear = false) {
+async function updateSystemPromptBehavior({ behavior, isClear = false }: { behavior: 'override' | 'append' | 'inherit'; isClear?: boolean }) {
   switch (behavior) {
   case 'inherit':
     localSettings.value.systemPrompt = undefined;
@@ -310,8 +310,8 @@ defineExpose({
     v-if="currentChatGroup"
     class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative overflow-hidden focus:outline-none"
     tabindex="-1"
-    @click="setActiveFocusArea('chat-group-settings')"
-    @focusin="setActiveFocusArea('chat-group-settings')"
+    @click="setActiveFocusArea({ area: 'chat-group-settings' })"
+    @focusin="setActiveFocusArea({ area: 'chat-group-settings' })"
   >
     <!-- Header -->
     <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
@@ -403,7 +403,7 @@ defineExpose({
                 <button
                   v-for="preset in ENDPOINT_PRESETS"
                   :key="preset.name"
-                  @click="applyPreset(preset)"
+                  @click="applyPreset({ preset })"
                   type="button"
                   class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
                   :class="localSettings.endpoint?.url === preset.url && localSettings.endpoint?.type === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
@@ -494,7 +494,7 @@ defineExpose({
                   placeholder="Value"
                 />
                 <button
-                  @click="removeHeader(index)"
+                  @click="removeHeader({ index })"
                   class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                 >
                   <Trash2Icon class="w-3.5 h-3.5" />
@@ -648,28 +648,28 @@ defineExpose({
 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                   <button
-                    @click="updateSystemPromptBehavior('inherit')"
+                    @click="updateSystemPromptBehavior({ behavior: 'inherit' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Inherit
                   </button>
                   <button
-                    @click="updateSystemPromptBehavior('override', true)"
+                    @click="updateSystemPromptBehavior({ behavior: 'override', isClear: true })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Clear
                   </button>
                   <button
-                    @click="updateSystemPromptBehavior('override')"
+                    @click="updateSystemPromptBehavior({ behavior: 'override' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Override
                   </button>
                   <button
-                    @click="updateSystemPromptBehavior('append')"
+                    @click="updateSystemPromptBehavior({ behavior: 'append' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >

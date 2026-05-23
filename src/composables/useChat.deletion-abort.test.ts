@@ -92,7 +92,7 @@ describe('useChat Delete Undo Logic', () => {
 
     // VERIFY: Now cleanup is executed
     expect(mockAbort).toHaveBeenCalled();
-    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith(chatId);
+    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith({ id: chatId });
     expect(activeGenerations.has(chatId)).toBe(false);
   });
 

@@ -49,11 +49,11 @@ const isTreeMapCollapsed = ref(false);
 
 const activeIds = computed(() => new Set(props.activeMessages.map(m => m.id)));
 
-function handleSelectNode(node: Readonly<MessageNode>) {
+function handleSelectNode({ node }: { node: Readonly<MessageNode> }) {
   selectedNode.value = node;
 }
 
-function handleOpenMessage(messageId: string) {
+function handleOpenMessage({ messageId }: { messageId: string }) {
   const query = { ...(router.currentRoute.value.query ?? {}) };
   delete query.leaf;
   router.push({ query: { ...query, 'message-id': messageId } });
@@ -67,21 +67,21 @@ const selectedPath = computed(() => {
   const targetId = selectedNode.value.id;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const findPath = (items: ReadonlyArray<any>, currentPath: MessageNode[]): boolean => {
+  const findPath = ({ items, currentPath }: { items: ReadonlyArray<any>; currentPath: MessageNode[] }): boolean => {
     for (const item of items) {
       if (item.id === targetId) {
         path.push(...currentPath, item as MessageNode);
         return true;
       }
       if (item.replies?.items?.length) {
-        if (findPath(item.replies.items, [...currentPath, item as MessageNode])) return true;
+        if (findPath({ items: item.replies.items, currentPath: [...currentPath, item as MessageNode] })) return true;
       }
     }
     return false;
   };
 
   if (props.chat?.root?.items) {
-    findPath(props.chat.root.items, []);
+    findPath({ items: props.chat.root.items, currentPath: [] });
   }
   return path;
 });
@@ -90,7 +90,7 @@ const selectedPath = computed(() => {
 const previewObjects = ref<BinaryObject[]>([]);
 const previewInitialId = ref<string | null>(null);
 
-async function handlePreviewAttachment(binaryObjectId: string) {
+async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: string }) {
   const allImageIds = new Set<string>();
 
   // Determine which nodes to scan based on the current mode
@@ -172,7 +172,7 @@ function handleClose() {
 }
 
 // Simple highlighter for the raw JSON view
-const highlightJson = (json: string) => {
+const highlightJson = ({ json }: { json: string }) => {
   // 1. First, encode everything as plain text by escaping HTML special chars
   const escaped = json
     .replace(/&/g, '&amp;')
@@ -214,7 +214,7 @@ const rawJsonOutput = computed(() => {
     return '';
   case 'raw': {
     const json = JSON.stringify(props.chat, null, 2);
-    return highlightJson(json);
+    return highlightJson({ json });
   }
   default: {
     const _ex: never = m;
@@ -311,7 +311,7 @@ defineExpose({
               :is-content-collapsed="isContentCollapsed"
               :is-last="true"
               mode="active"
-              @preview-attachment="handlePreviewAttachment"
+              @preview-attachment="handlePreviewAttachment({ binaryObjectId: $event })"
             />
           </div>
 
@@ -342,8 +342,8 @@ defineExpose({
                   :is-last="index === chat.root.items.length - 1"
                   :is-root="chat.root.items.length <= 1"
                   mode="compact"
-                  @preview-attachment="handlePreviewAttachment"
-                  @select-node="handleSelectNode"
+                  @preview-attachment="handlePreviewAttachment({ binaryObjectId: $event })"
+                  @select-node="handleSelectNode({ node: $event })"
                 />
               </div>
               <div v-else class="h-full flex flex-col items-center pt-12 text-gray-300">
@@ -357,7 +357,7 @@ defineExpose({
                 <div v-if="selectedPath.length > 1" class="mb-8 border-b border-gray-100 dark:border-white/5 pb-4 flex justify-between items-end">
                   <span class="text-[9px] font-black uppercase tracking-widest text-gray-400">Context Path</span>
                   <button
-                    @click="handleOpenMessage(selectedNode!.id)"
+                    @click="handleOpenMessage({ messageId: selectedNode!.id })"
                     class="flex items-center gap-2 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
                   >
                     <CornerUpRightIcon class="w-3 h-3" />
@@ -373,7 +373,7 @@ defineExpose({
                   :is-content-collapsed="isContentCollapsed"
                   :is-root="true"
                   mode="active"
-                  @preview-attachment="handlePreviewAttachment"
+                  @preview-attachment="handlePreviewAttachment({ binaryObjectId: $event })"
                 />
               </div>
               <div v-else class="h-full flex flex-col items-center justify-center text-gray-400 opacity-30">

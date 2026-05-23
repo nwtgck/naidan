@@ -164,7 +164,7 @@ function applyVolatileAssistantErrorsToChat({ chat }: { chat: Chat }) {
   if (!errors || errors.size === 0) return;
 
   for (const [messageId, error] of errors.entries()) {
-    const node = findNodeInBranch(chat.root.items, messageId);
+    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
     if (!node || node.role !== 'assistant') continue;
     node.error = error;
   }
@@ -292,7 +292,7 @@ storageService.subscribeToChanges(async (event) => {
     debouncedSidebarReload({});
 
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
-      const fresh = await storageService.loadChat(event.id);
+      const fresh = await storageService.loadChat({ id: event.id });
       if (fresh && _currentChat.value) {
         applyVolatileAssistantErrorsToChat({ chat: fresh });
         Object.assign(_currentChat.value, fresh);
@@ -335,7 +335,7 @@ storageService.subscribeToChanges(async (event) => {
   case 'chat_content': {
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
       if (!activeGenerations.has(event.id)) {
-        const fresh = await storageService.loadChat(event.id);
+        const fresh = await storageService.loadChat({ id: event.id });
         if (fresh && _currentChat.value) {
           applyVolatileAssistantErrorsToChat({ chat: fresh });
           _currentChat.value.root = fresh.root;
@@ -355,7 +355,7 @@ storageService.subscribeToChanges(async (event) => {
 
     rootItems.value = await storageService.getSidebarStructure();
     if (_currentChat.value) {
-      const fresh = await storageService.loadChat(toRaw(_currentChat.value).id);
+      const fresh = await storageService.loadChat({ id: toRaw(_currentChat.value).id });
       if (fresh) applyVolatileAssistantErrorsToChat({ chat: fresh });
       _currentChat.value = fresh ? reactive(fresh) : null;
     }
@@ -426,14 +426,14 @@ export function useChat() {
 
   const resolvedSettings = computed(() => {
     if (!_currentChat.value) return null;
-    return resolveChatSettings(toRaw(_currentChat.value), chatGroups.value, settings.value);
+    return resolveChatSettings({ chat: toRaw(_currentChat.value), groups: chatGroups.value, globalSettings: settings.value });
   });
 
   const inheritedSettings = computed(() => {
     if (!_currentChat.value) return null;
     const chat = toRaw(_currentChat.value);
     const virtualChat: Chat = { ...chat, modelId: undefined, endpointType: undefined, endpointUrl: undefined, endpointHttpHeaders: undefined, systemPrompt: undefined, lmParameters: undefined, };
-    return resolveChatSettings(virtualChat, chatGroups.value, settings.value);
+    return resolveChatSettings({ chat: virtualChat, groups: chatGroups.value, globalSettings: settings.value });
   });
 
   const activeMessages = computed(() => {
@@ -443,7 +443,7 @@ export function useChat() {
 
   const allMessages = computed(() => {
     if (!_currentChat.value) return [];
-    return getAllMessages(_currentChat.value);
+    return getAllMessages({ chat: _currentChat.value });
   });
 
   const getLiveChat = ({ chat }: { chat: Chat | Readonly<Chat> }): Chat => {
@@ -572,7 +572,7 @@ export function useChat() {
       if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
     }
     await storageService.updateChatMeta(id, async (curr) => {
-      const fullChat = curr ? await storageService.loadChat(id) : null;
+      const fullChat = curr ? await storageService.loadChat({ id }) : null;
       const updatedFull = await updater(fullChat);
       if (!updatedFull) return curr!;
       const { root: _r, endpointType, endpointUrl, endpointHttpHeaders, ...meta } = updatedFull;
@@ -704,7 +704,7 @@ export function useChat() {
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
       if (leafId && leafId !== chat.currentLeafId) {
-        const node = findNodeInBranch(chat.root.items, leafId);
+        const node = findNodeInBranch({ items: chat.root.items, targetId: leafId });
         if (node) {
           chat.currentLeafId = leafId;
           storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
@@ -717,10 +717,10 @@ export function useChat() {
       }
       return chat;
     }
-    const loaded = await storageService.loadChat(id);
+    const loaded = await storageService.loadChat({ id });
     if (loaded) {
       if (leafId && leafId !== loaded.currentLeafId) {
-        const node = findNodeInBranch(loaded.root.items, leafId);
+        const node = findNodeInBranch({ items: loaded.root.items, targetId: leafId });
         if (node) {
           loaded.currentLeafId = leafId;
           storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
@@ -748,10 +748,10 @@ export function useChat() {
     if (!chat) return null;
 
     const mutableChat = getLiveChat({ chat });
-    const node = findNodeInBranch(mutableChat.root.items, messageId);
+    const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
     if (!node) return chat;
 
-    mutableChat.currentLeafId = findDeepestLeaf(node).id;
+    mutableChat.currentLeafId = findDeepestLeaf({ node }).id;
     if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
     return chat;
   };
@@ -771,7 +771,7 @@ export function useChat() {
     const { useToast } = await import('./useToast');
     const { addToast: originalAddToast } = useToast();
     const addToast = injectAddToast || originalAddToast;
-    const chatData = await storageService.loadChat(id);
+    const chatData = await storageService.loadChat({ id });
     if (!chatData) return;
 
     await storageService.updateHierarchy((curr) => {
@@ -805,7 +805,7 @@ export function useChat() {
       activeTaskCounts.delete('process:' + id);
       liveChatRegistry.delete(id);
       chatTmpDirectories.delete(id);
-      await storageService.deleteChat(id);
+      await storageService.deleteChat({ id });
     };
 
     const toastId = addToast({
@@ -863,9 +863,9 @@ export function useChat() {
     chatTmpDirectories.clear();
 
     const all = await storageService.listChats();
-    for (const c of all) await storageService.deleteChat(c.id);
+    for (const c of all) await storageService.deleteChat({ id: c.id });
     const allGroups = await storageService.listChatGroups();
-    for (const g of allGroups) await storageService.deleteChatGroup(g.id);
+    for (const g of allGroups) await storageService.deleteChatGroup({ id: g.id });
 
     await storageService.updateHierarchy((curr) => {
       curr.items = []; return curr;
@@ -1004,7 +1004,7 @@ export function useChat() {
   }) => {
     const target = getLiveChat({ chat: { id: chatId } as Chat });
     if (!target) return;
-    const resolved = resolveChatSettings(target, chatGroups.value, settings.value);
+    const resolved = resolveChatSettings({ chat: target, groups: chatGroups.value, globalSettings: settings.value });
 
     await _handleImageGeneration({
       chatId,
@@ -1038,7 +1038,7 @@ export function useChat() {
 
   const generateResponse = async ({ chat, assistantId, lmParameters }: { chat: Chat | Readonly<Chat>, assistantId: string, lmParameters?: LmParameters }) => {
     const mutableChat = getLiveChat({ chat });
-    const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
+    const assistantNode = findNodeInBranch({ items: mutableChat.root.items, targetId: assistantId });
     if (!assistantNode) throw new Error('Assistant node not found');
     switch (assistantNode.role) {
     case 'assistant':
@@ -1061,7 +1061,7 @@ export function useChat() {
     storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'started', timestamp: Date.now() });
     registerLiveInstance({ chat: mutableChat });
 
-    const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
+    const resolved = resolveChatSettings({ chat: mutableChat, groups: chatGroups.value, globalSettings: settings.value });
     const type = resolved.endpointType;
     const url = resolved.endpointUrl;
     const resolvedModel = assistantNode.modelId || resolved.modelId;
@@ -1071,13 +1071,13 @@ export function useChat() {
     assistantNode.lmParameters = finalLmParameters;
     assistantNode.modelId = resolvedModel;
 
-    const parentNode = findParentInBranch(mutableChat.root.items, assistantId);
-    const imageRequest = parentNode ? parseImageRequest(parentNode.content || '') : null;
+    const parentNode = findParentInBranch({ items: mutableChat.root.items, childId: assistantId });
+    const imageRequest = parentNode ? parseImageRequest({ content: parentNode.content || '' }) : null;
 
     try {
       if (imageRequest) {
         const { width = 512, height = 512, model, count = 1, persistAs, steps, seed } = imageRequest;
-        const prompt = stripNaidanSentinels(parentNode!.content || '').trim();
+        const prompt = stripNaidanSentinels({ content: parentNode!.content || '' }).trim();
 
         const images: { blob: Blob }[] = [];
         if (parentNode?.attachments) {
@@ -1089,7 +1089,7 @@ export function useChat() {
                 blob = att.blob || null;
                 break;
               case 'persisted':
-                blob = await storageService.getFile(att.binaryObjectId);
+                blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
                 break;
               case 'missing':
                 blob = null;
@@ -1143,7 +1143,7 @@ export function useChat() {
                 toolContent = result.content.text;
                 break;
               case 'binary_object': {
-                const blob = await storageService.getFile(result.content.id);
+                const blob = await storageService.getFile({ binaryObjectId: result.content.id });
                 toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
                 break;
               }
@@ -1161,7 +1161,7 @@ export function useChat() {
                 toolContent = `Error [${result.error.code}]: ${result.error.message.text}`;
                 break;
               case 'binary_object': {
-                const blob = await storageService.getFile(result.error.message.id);
+                const blob = await storageService.getFile({ binaryObjectId: result.error.message.id });
                 const detail = blob ? await blob.text() : 'Binary error detail missing';
                 toolContent = `Error [${result.error.code}]: ${detail}`;
                 break;
@@ -1203,7 +1203,7 @@ export function useChat() {
                 blob = att.blob;
                 break;
               case 'persisted':
-                blob = await storageService.getFile(att.binaryObjectId);
+                blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
                 break;
               case 'missing':
                 blob = null;
@@ -1214,7 +1214,7 @@ export function useChat() {
               }
               }
               if (blob && att.mimeType.startsWith('image/')) {
-                const b64 = await fileToDataUrl(blob);
+                const b64 = await fileToDataUrl({ blob });
                 contentParts.push({ type: 'image_url', image_url: { url: b64 } });
               }
             }
@@ -1258,7 +1258,7 @@ export function useChat() {
       const chatGroupMounts = mutableChat.groupId
         ? (_currentChatGroup.value?.id === mutableChat.groupId
           ? _currentChatGroup.value.mounts
-          : (await storageService.loadChatGroup(mutableChat.groupId))?.mounts)
+          : (await storageService.loadChatGroup({ id: mutableChat.groupId }))?.mounts)
         : undefined;
       const enabledTools = await getEnabledTools({
         enabledNames: enabledToolNames.value,
@@ -1387,7 +1387,7 @@ export function useChat() {
                           result: | { status: 'success'; content: string } | { status: 'error'; code: import('../services/tools/types').ToolExecutionErrorCode; message: string };
                         }) => {
           // Find the tool node containing this toolCallId
-            const allMessages = getAllMessages(mutableChat);
+            const allMessages = getAllMessages({ chat: mutableChat });
             const toolNode = allMessages.find(n => n.role === 'tool' && n.results.some(er => er.toolCallId === params.id)) as import('../models/types').ToolMessageNode | undefined;
 
             if (toolNode) {
@@ -1466,7 +1466,7 @@ export function useChat() {
       }
 
       await updateChatContent({ id: mutableChat.id, updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }) });
-      processThinking(assistantNode);
+      processThinking({ node: assistantNode });
       mutableChat.updatedAt = Date.now();
 
       if (mutableChat.title === null && resolved.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
@@ -1479,7 +1479,7 @@ export function useChat() {
       if (lastOpen > -1 && lastClose < lastOpen) {
         assistantNode.content += '</think>';
       }
-      processThinking(assistantNode);
+      processThinking({ node: assistantNode });
 
       if ((e as Error).name === 'AbortError' || (e as Error).message === 'Generation aborted') {
         assistantNode.content += '\n\n[Generation Aborted]';
@@ -1544,7 +1544,7 @@ export function useChat() {
     try {
       const { settings: globalSettings, setHeavyContentAlertDismissed, setOnboardingDraft, setIsOnboardingDismissed } = useSettings();
       const { showConfirm } = useConfirm();
-      const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
       const type = resolved.endpointType;
       const url = resolved.endpointUrl;
       let resolvedModel = chat.modelId || resolved.modelId;
@@ -1560,8 +1560,8 @@ export function useChat() {
 
       if ((!url && type !== 'transformers_js') || !resolvedModel) {
         const models = await fetchAvailableModels({ chatId: chat.id, customEndpoint: undefined });
-        setOnboardingDraft({ url, type, models, selectedModel: models[0] || '', });
-        setIsOnboardingDismissed(false);
+        setOnboardingDraft({ draft: { url, type, models, selectedModel: models[0] || '', } });
+        setIsOnboardingDismissed({ dismissed: false });
         return false;
       }
 
@@ -1574,7 +1574,7 @@ export function useChat() {
           confirmButtonText: 'Continue anyway', cancelButtonText: 'Cancel',
         });
         if (!confirmed) return false;
-        setHeavyContentAlertDismissed(true);
+        setHeavyContentAlertDismissed({ dismissed: true });
       }
 
       for (const att of attachments) {
@@ -1609,7 +1609,7 @@ export function useChat() {
       const persistAs = getPersistAs({ chatId: chat.id });
 
       let finalContent = content;
-      if (isImgMode && !isImageRequest(content)) {
+      if (isImgMode && !isImageRequest({ content })) {
         if (!imageModel) {
           const { useGlobalEvents } = await import('../composables/useGlobalEvents');
           const { addErrorEvent } = useGlobalEvents();
@@ -1667,7 +1667,7 @@ export function useChat() {
       if (parentId === null) chat.root.items.push(userMsg);
       else {
         const pId = parentId || chat.currentLeafId;
-        const parentNode = pId ? findNodeInBranch(chat.root.items, pId) : null;
+        const parentNode = pId ? findNodeInBranch({ items: chat.root.items, targetId: pId }) : null;
         if (parentNode) parentNode.replies.items.push(userMsg);
         else chat.root.items.push(userMsg);
       }
@@ -1703,9 +1703,9 @@ export function useChat() {
     incTask({ chatId: chat.id, type: 'process' });
     registerLiveInstance({ chat });
     try {
-      const failedNode = findNodeInBranch(chat.root.items, failedMessageId);
+      const failedNode = findNodeInBranch({ items: chat.root.items, targetId: failedMessageId });
       if (!failedNode || failedNode.role !== 'assistant') return;
-      const parent = findParentInBranch(chat.root.items, failedMessageId);
+      const parent = findParentInBranch({ items: chat.root.items, childId: failedMessageId });
       if (!parent || parent.role !== 'user') return;
       const newAssistantMsg: AssistantMessageNode = {
         id: generateId(),
@@ -1753,12 +1753,12 @@ export function useChat() {
     incTask({ chatId: taskId, type: 'title' });
     registerLiveInstance({ chat: mutableChat });
     try {
-      const resolved = resolveChatSettings(mutableChat, chatGroups.value, settings.value);
+      const resolved = resolveChatSettings({ chat: mutableChat, groups: chatGroups.value, globalSettings: settings.value });
       if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
         decTask({ chatId: taskId, type: 'title' }); return;
       }
       const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
-      const content = stripNaidanSentinels(history[0]?.content || '');
+      const content = stripNaidanSentinels({ content: history[0]?.content || '' });
       if (!content || typeof content !== 'string') {
         decTask({ chatId: taskId, type: 'title' }); return;
       }
@@ -1805,7 +1805,7 @@ export function useChat() {
           }
         })()
       });
-      const systemPrompt = getTitleSystemPrompt(lang);
+      const systemPrompt = getTitleSystemPrompt({ language: lang });
       const promptMsgs: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
@@ -1824,7 +1824,7 @@ export function useChat() {
         signal: combinedSignal
       });
 
-      const finalTitle = cleanGeneratedTitle(generatedTitle);
+      const finalTitle = cleanGeneratedTitle({ title: generatedTitle });
       if (finalTitle) {
         // If the user manually renamed it while we were generating, don't overwrite.
         // We only apply the title if it hasn't changed since we started.
@@ -1981,7 +1981,7 @@ export function useChat() {
     }
 
     const chat = getLiveChat({ chat: _currentChat.value });
-    const node = findNodeInBranch(chat.root.items, messageId); if (!node) return;
+    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId }); if (!node) return;
     switch (node.role) {
     case 'assistant': {
       const correctedNode: AssistantMessageNode = {
@@ -1998,7 +1998,7 @@ export function useChat() {
         toolCalls: undefined,
         results: undefined,
       };
-      const parent = findParentInBranch(chat.root.items, messageId);
+      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
       if (parent) parent.replies.items.push(correctedNode);
       else chat.root.items.push(correctedNode);
       chat.currentLeafId = correctedNode.id;
@@ -2007,12 +2007,12 @@ export function useChat() {
       break;
     }
     case 'user': {
-      const parent = findParentInBranch(chat.root.items, messageId);
+      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
       await sendMessage({ content: newContent, parentId: parent ? parent.id : null, attachments: node.attachments, chatTarget: chat, lmParameters: lmParameters });
       break;
     }
     case 'system': {
-      const parent = findParentInBranch(chat.root.items, messageId);
+      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
       await sendMessage({ content: newContent, parentId: parent ? parent.id : null, attachments: undefined, chatTarget: chat, lmParameters: lmParameters });
       break;
     }
@@ -2028,9 +2028,9 @@ export function useChat() {
   const switchVersion = async ({ messageId }: { messageId: string }) => {
     if (!_currentChat.value) return;
     const chat = getLiveChat({ chat: _currentChat.value });
-    const node = findNodeInBranch(chat.root.items, messageId);
+    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
     if (node) {
-      chat.currentLeafId = findDeepestLeaf(node).id;
+      chat.currentLeafId = findDeepestLeaf({ node }).id;
       if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
       await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
     }
@@ -2040,7 +2040,7 @@ export function useChat() {
     const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
     if (!target) return [];
     const mutableChat = getLiveChat({ chat: target });
-    const parent = findParentInBranch(mutableChat.root.items, messageId);
+    const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
     return parent ? parent.replies.items : mutableChat.root.items;
   };
 
@@ -2111,7 +2111,7 @@ export function useChat() {
       }
     }
 
-    const newNodes = createBranchFromMessages(messages);
+    const newNodes = createBranchFromMessages({ messages });
 
     if (newNodes.length > 0) {
       if (!chat.root) chat.root = { items: [] };
@@ -2140,7 +2140,7 @@ export function useChat() {
     chat: Chat,
     signal: AbortSignal | undefined
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
-    const resolved = resolveChatSettings(chat, chatGroups.value, settings.value);
+    const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
     return await _performGeneration({
       prompt,
       model,
@@ -2209,7 +2209,7 @@ export function useChat() {
       await deleteChat({ id: item.chat.id, injectAddToast: () => '' });
     }
     if (_currentChatGroup.value?.id === id) _currentChatGroup.value = null;
-    await storageService.deleteChatGroup(id);
+    await storageService.deleteChatGroup({ id });
     await storageService.updateHierarchy((curr) => {
       curr.items = curr.items.filter(i => {
         switch (i.type) {

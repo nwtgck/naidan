@@ -30,7 +30,7 @@ export class Semaphore {
   /**
    * Helper to wrap a function with semaphore acquisition and release.
    */
-  async run<T>(task: () => Promise<T>): Promise<T> {
+  async run<T>({ task }: { task: () => Promise<T> }): Promise<T> {
     await this.acquire();
     try {
       return await task();

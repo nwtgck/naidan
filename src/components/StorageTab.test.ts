@@ -160,7 +160,7 @@ describe('StorageTab.vue Tests', () => {
 
     vi.mocked(storageService.getCurrentType).mockReturnValue('local');
 
-    mockSave.mockImplementation(async (patch) => {
+    mockSave.mockImplementation(async ({ patch }) => {
       const currentType = storageService.getCurrentType();
       if (patch.storageType && patch.storageType !== currentType) {
         await storageService.switchProvider(patch.storageType);

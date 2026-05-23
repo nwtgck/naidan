@@ -95,12 +95,12 @@ describe('Sidebar DND Improvements', () => {
     const nestedTarget = document.createElement('div');
     nestedTarget.classList.add('nested-draggable');
 
-    const result = (wrapper.vm as any).checkMove({
+    const result = (wrapper.vm as any).checkMove({ evt: {
       draggedContext: {
         element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
       },
       to: nestedTarget,
-    });
+    } });
 
     expect(result).toBe(true);
   });
@@ -111,12 +111,12 @@ describe('Sidebar DND Improvements', () => {
     const nestedTarget = document.createElement('div');
     nestedTarget.classList.add('nested-draggable');
 
-    const result = (wrapper.vm as any).checkMove({
+    const result = (wrapper.vm as any).checkMove({ evt: {
       draggedContext: {
         element: { type: 'chat_group', id: 'g2', chatGroup: { id: 'g2', name: 'Group 2', items: [], isCollapsed: false, updatedAt: 0 } },
       },
       to: nestedTarget,
-    });
+    } });
 
     expect(result).toBe(false);
   });
@@ -152,7 +152,7 @@ describe('Sidebar DND Improvements', () => {
     // Simulate "Show more" expansion (internal state expandedGroupIds)
     // We can't easily trigger the function from outside without export or component access,
     // but we can verify the binding.
-    (wrapper.vm as any).toggleGroupCompactExpansion('g1');
+    (wrapper.vm as any).toggleGroupCompactExpansion({ groupId: 'g1' });
     await nextTick();
     expect(showMoreWrapper.attributes('style')).toContain('max-height: 2000px');
   });

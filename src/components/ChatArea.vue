@@ -23,25 +23,25 @@ import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectPreviewModal.vue'));
+const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 // Lazily load the outline overlay, prefetch on mounted.
-const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted(() => import('./ConversationOutlineOverlay.vue'));
+const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ConversationOutlineOverlay.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted(() => import('./ChatSettingsPanel.vue'));
+const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatTitleDialog = defineAsyncComponentAndLoadOnMounted(() => import('./ChatTitleDialog.vue'));
+const ChatTitleDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatTitleDialog.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted(() => import('./HistoryManipulationModal.vue'));
+const HistoryManipulationModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./HistoryManipulationModal.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted(() => import('./ChatDebugInspector.vue'));
+const ChatDebugInspector = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatDebugInspector.vue') });
 // Lazily load the media shelf, prefetch on mounted.
-const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted(() => import('./ChatMediaShelf.vue'));
+const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatMediaShelf.vue') });
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
-const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted(() => import('./ChatWeshTerminalModal.vue'));
+const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatWeshTerminalModal.vue') });
 import {
   FolderInputIcon
 } from 'lucide-vue-next';
@@ -57,7 +57,7 @@ import { storageService } from '@/services/storage';
 
 const chatStore = useChat();
 const { addToast } = useToast();
-const { state: previewState, closePreview } = useImagePreview(true);
+const { state: previewState, closePreview } = useImagePreview({ scoped: true });
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
   mediaShelfVisibility,
@@ -98,12 +98,12 @@ const inputVisibility = ref<ChatInputVisibility>('active');
 const isAnimatingHeight = ref(false);
 const isDragging = ref(false);
 
-function handleDragOver(event: DragEvent) {
+function handleDragOver({ event }: { event: DragEvent }) {
   event.preventDefault();
   isDragging.value = true;
 }
 
-function handleDragLeave(event: DragEvent) {
+function handleDragLeave({ event }: { event: DragEvent }) {
   // Only set to false if we are leaving the main container
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   if (
@@ -116,7 +116,7 @@ function handleDragLeave(event: DragEvent) {
   }
 }
 
-async function handleDrop(event: DragEvent) {
+async function handleDrop({ event }: { event: DragEvent }) {
   event.preventDefault();
   isDragging.value = false;
 
@@ -124,7 +124,7 @@ async function handleDrop(event: DragEvent) {
     // Pass DataTransferItem[] to processDropItems which handles files AND directories.
     // Items must be collected here (synchronously) before any await, as the DataTransfer
     // object is cleared when control returns to the browser event loop.
-    await chatInputRef.value?.processDropItems(Array.from(event.dataTransfer.items));
+    await chatInputRef.value?.processDropItems({ items: Array.from(event.dataTransfer.items) });
   }
 }
 
@@ -310,7 +310,7 @@ async function exportChat() {
               resultStr = tc.result.content.text;
               break;
             case 'binary_object': {
-              const blob = await storageService.getFile(tc.result.content.id);
+              const blob = await storageService.getFile({ binaryObjectId: tc.result.content.id });
               resultStr = blob ? await blob.text() : '[Error: Binary object missing]';
               break;
             }
@@ -328,7 +328,7 @@ async function exportChat() {
               resultStr = tc.result.error.message.text;
               break;
             case 'binary_object': {
-              const blob = await storageService.getFile(tc.result.error.message.id);
+              const blob = await storageService.getFile({ binaryObjectId: tc.result.error.message.id });
               const detail = blob ? await blob.text() : 'Binary error detail missing';
               resultStr = `Error [${tc.result.error.code}]: ${detail}`;
               break;
@@ -610,13 +610,13 @@ async function updateActiveTitleModel({ modelId }: { modelId: string | undefined
     return;
   case 'chat_group':
     if (!currentChat.value?.groupId) {
-      await saveSettings({ titleModelId: modelId });
+      await saveSettings({ patch: { titleModelId: modelId } });
       return;
     }
     await updateChatGroupMetadata({ id: currentChat.value.groupId, updates: { titleModelId: modelId } });
     return;
   case 'global':
-    await saveSettings({ titleModelId: modelId });
+    await saveSettings({ patch: { titleModelId: modelId } });
     return;
   default: {
     const _ex: never = source;
@@ -687,19 +687,19 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
   return Math.max(0, Math.ceil(userTop - maxScrollTopWithoutReserve));
 }
 
-async function handleEdit(messageId: string, newContent: string, lmParameters?: LmParameters) {
+async function handleEdit({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) {
   await chatStore.editMessage({ messageId, newContent, lmParameters });
 }
 
-async function handleRegenerate(messageId: string) {
+async function handleRegenerate({ messageId }: { messageId: string }) {
   await chatStore.regenerateMessage({ failedMessageId: messageId });
 }
 
-function handleSwitchVersion(messageId: string) {
+function handleSwitchVersion({ messageId }: { messageId: string }) {
   chatStore.switchVersion({ messageId });
 }
 
-async function handleFork(messageId: string) {
+async function handleFork({ messageId }: { messageId: string }) {
   const newId = await chatStore.forkChat({ messageId });
   if (newId) {
     router.push(`/chat/${newId}`);
@@ -732,7 +732,7 @@ function handleForkLastMessage() {
 
   const lastMsgItem = findLastMessage(chatFlow.value);
   if (lastMsgItem && lastMsgItem.type === 'message') {
-    handleFork(lastMsgItem.node.id);
+    handleFork({ messageId: lastMsgItem.node.id });
   }
 }
 
@@ -807,10 +807,10 @@ watch(
 <template>
   <div
     class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
-    @dragover="handleDragOver"
-    @dragleave="handleDragLeave"
-    @drop="handleDrop"
-    @click="setActiveFocusArea('chat')"
+    @dragover="handleDragOver({ event: $event })"
+    @dragleave="handleDragLeave({ event: $event })"
+    @drop="handleDrop({ event: $event })"
+    @click="setActiveFocusArea({ area: 'chat' })"
   >
     <!-- Drag Overlay -->
     <div
@@ -962,10 +962,10 @@ watch(
                       :is-first-in-node="subItem.isFirstInNode"
                       :is-last-in-node="subItem.isLastInNode"
                       :is-first-in-turn="subItem.isFirstInTurn"
-                      @fork="handleFork"
-                      @edit="(id, content, params) => handleEdit(id, content, params)"
-                      @switch-version="handleSwitchVersion"
-                      @regenerate="handleRegenerate"
+                      @fork="messageId => handleFork({ messageId })"
+                      @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
+                      @switch-version="messageId => handleSwitchVersion({ messageId })"
+                      @regenerate="messageId => handleRegenerate({ messageId })"
                       @abort="chatStore.abortChat({ chatId: undefined })"
                     />
                     <ToolCallGroupItem
@@ -997,10 +997,10 @@ watch(
                 :is-last-in-node="flowItem.isLastInNode"
                 :is-first-in-turn="flowItem.isFirstInTurn"
                 :show-generating-indicator="flowIdx === generatingIndicatorIndex"
-                @fork="handleFork"
-                @edit="(id, content, params) => handleEdit(id, content, params)"
-                @switch-version="handleSwitchVersion"
-                @regenerate="handleRegenerate"
+                @fork="messageId => handleFork({ messageId })"
+                @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
+                @switch-version="messageId => handleSwitchVersion({ messageId })"
+                @regenerate="messageId => handleRegenerate({ messageId })"
                 @abort="chatStore.abortChat({ chatId: undefined })"
               />
 
@@ -1029,7 +1029,7 @@ watch(
           <WelcomeScreen
             v-else
             :has-input="(chatInputRef?.input || '').trim().length > 0"
-            @select-suggestion="(text) => chatInputRef?.applySuggestion(text)"
+            @select-suggestion="(text) => chatInputRef?.applySuggestion({ text })"
           />
         </template>
 
@@ -1081,8 +1081,8 @@ watch(
       :objects="previewState.objects"
       :initial-id="previewState.initialId"
       @close="closePreview"
-      @delete="(obj) => deleteBinaryObject(obj.id)"
-      @download="(obj) => downloadBinaryObject(obj)"
+      @delete="(obj) => deleteBinaryObject({ id: obj.id })"
+      @download="(obj) => downloadBinaryObject({ obj })"
     />
   </div>
 </template>

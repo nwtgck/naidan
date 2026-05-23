@@ -116,7 +116,7 @@ export function useSampleChat() {
       timestamp: now,
       replies: { items: [] },
     };
-    processThinking(m2);
+    processThinking({ node: m2 });
 
     const m3: MessageNode = {
       id: generateId(),

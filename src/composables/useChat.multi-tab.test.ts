@@ -22,12 +22,12 @@ vi.mock('../services/storage', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockChatStorage.values()))),
-    loadChat: vi.fn().mockImplementation(async (id) => {
+    loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
       const chat = mocks.mockChatStorage.get(id);
       if (!chat) return null;
       return JSON.parse(JSON.stringify(chat));
     }),
-    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
+    loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
     updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
       const current = mocks.mockChatStorage.get(id) || null;
       const updatedMeta = await updater(current ? JSON.parse(JSON.stringify(current)) : null);
@@ -56,7 +56,7 @@ vi.mock('../services/storage', () => ({
       mocks.mockHierarchy = await updater(mocks.mockHierarchy);
       return Promise.resolve();
     }),
-    deleteChat: vi.fn().mockImplementation((id) => {
+    deleteChat: vi.fn().mockImplementation(({ id }: { id: string }) => {
       mocks.mockChatStorage.delete(id);
       return Promise.resolve();
     }),

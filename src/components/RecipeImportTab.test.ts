@@ -106,14 +106,14 @@ describe('RecipeImportTab.vue', () => {
     const vm = wrapper.vm as any;
 
     // Test sorting with a matched model
-    const sorted = vm.getSortedModels('model-2');
+    const sorted = vm.getSortedModels({ matchedModelId: 'model-2' });
     expect(sorted[0]).toBe('model-2');
     expect(sorted).toHaveLength(3);
     expect(sorted).toContain('model-1');
     expect(sorted).toContain('model-3');
 
     // Test sorting with no match
-    const original = vm.getSortedModels(undefined);
+    const original = vm.getSortedModels({ matchedModelId: undefined });
     expect(original).toEqual(['model-1', 'model-2', 'model-3']);
   });
 });

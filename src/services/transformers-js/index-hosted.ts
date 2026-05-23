@@ -251,7 +251,7 @@ initWorker();
 /**
  * Checks if an error message indicates a fatal state that requires a worker restart.
  */
-function isFatalError(msg: string): boolean {
+function isFatalError({ msg }: { msg: string }): boolean {
   const m = msg.toLowerCase();
   return m.includes('aborted()') ||
          m.includes('[webgpu] kernel') ||
@@ -575,7 +575,7 @@ export const transformersJsService = {
     notifyModelListChange();
   },
 
-  async deleteModel(modelId: string) {
+  async deleteModel({ modelId }: { modelId: string }) {
     const root = await navigator.storage.getDirectory();
     const modelsDir = await root.getDirectoryHandle('models', { create: true });
 
@@ -625,7 +625,7 @@ export const transformersJsService = {
     notifyModelListChange();
   },
 
-  async loadModel(modelId: string) {
+  async loadModel({ modelId }: { modelId: string }) {
     if (activeModelId === modelId && loadingStatus === 'ready') return;
 
     switch (loadingStatus) {
@@ -733,7 +733,7 @@ export const transformersJsService = {
       const errorMsg = e instanceof Error ? e.message : String(e);
 
       // If the error is fatal, the worker is likely dead/poisoned and needs to be restarted
-      if (isFatalError(errorMsg)) {
+      if (isFatalError({ msg: errorMsg })) {
         console.warn(`[transformersJsService] Fatal error detected. Re-initializing worker...`);
         initWorker();
       }
@@ -747,7 +747,7 @@ export const transformersJsService = {
     }
   },
 
-  async downloadModel(modelId: string) {
+  async downloadModel({ modelId }: { modelId: string }) {
     switch (loadingStatus) {
     case 'loading':
       throw new Error('Another operation is in progress');
@@ -807,7 +807,7 @@ export const transformersJsService = {
       console.error('[transformersJsService] Failed to download model:', modelId, e);
       const errorMsg = e instanceof Error ? e.message : String(e);
 
-      if (isFatalError(errorMsg)) {
+      if (isFatalError({ msg: errorMsg })) {
         console.warn('[transformersJsService] Fatal error detected during download. Re-initializing worker...');
         initWorker();
       }
@@ -900,7 +900,7 @@ export const transformersJsService = {
       });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      if (isFatalError(errorMsg)) {
+      if (isFatalError({ msg: errorMsg })) {
         console.warn(`[transformersJsService] Fatal error detected during generation. Re-initializing worker...`);
         initWorker();
         activeModelId = undefined;

@@ -23,7 +23,7 @@ function flattenSidebarForSearch({ sidebarItems }: {
   const chatGroups: SearchChatGroup[] = []
   const chats: SearchChatSource[] = []
 
-  const flattenItems = (items: SidebarItem[]) => {
+  const flattenItems = ({ items }: { items: SidebarItem[] }) => {
     for (const item of items) {
       switch (item.type) {
       case 'chat_group':
@@ -72,7 +72,7 @@ function flattenSidebarForSearch({ sidebarItems }: {
     }
   }
 
-  flattenItems(sidebarItems)
+  flattenItems({ items: sidebarItems })
 
   return { chatGroups, chats }
 }
@@ -87,16 +87,19 @@ export function useChatSearch() {
   let searchClient: Awaited<ReturnType<typeof createGlobalSearchWorkerClient>> | undefined
   let searchSessionId: string | undefined
 
-  function createSearchKey({ trimmedQuery, options }: {
+  function createSearchKey({ trimmedQuery, scope, chatId, chatGroupIds, roleFilter }: {
     trimmedQuery: string
-    options: SearchOptions
+    scope: SearchOptions['scope']
+    chatId: SearchOptions['chatId']
+    chatGroupIds: SearchOptions['chatGroupIds']
+    roleFilter: SearchOptions['roleFilter']
   }): string {
     return JSON.stringify({
       trimmedQuery,
-      scope: options.scope,
-      chatId: options.chatId,
-      chatGroupIds: options.chatGroupIds ? [...options.chatGroupIds] : undefined,
-      roleFilter: options.roleFilter,
+      scope,
+      chatId,
+      chatGroupIds: chatGroupIds ? [...chatGroupIds] : undefined,
+      roleFilter,
     })
   }
 
@@ -144,7 +147,10 @@ export function useChatSearch() {
 
     const searchKey = createSearchKey({
       trimmedQuery,
-      options,
+      scope: options.scope,
+      chatId: options.chatId,
+      chatGroupIds: options.chatGroupIds,
+      roleFilter: options.roleFilter,
     })
 
     if (searchKey === lastSearchKey) {
@@ -265,7 +271,7 @@ export function useChatSearch() {
         }
 
         try {
-          const content = await storageService.loadChatContent(chat.id);
+          const content = await storageService.loadChatContent({ id: chat.id });
           if (content) {
             const response = await searchClient.searchChatContent({
               request: {

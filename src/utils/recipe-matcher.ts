@@ -10,8 +10,7 @@ export interface MatchResult {
  * Returns the first matching model ID and any error encountered.
  */
 export function matchRecipeModels(
-  recipeModels: RecipeModel[],
-  availableModelIds: readonly string[]
+  { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] }
 ): MatchResult {
   for (const recipeModel of recipeModels) {
     switch (recipeModel.type) {
@@ -44,8 +43,7 @@ export interface MultiMatchResult {
  * Checks all recipe patterns and returns all matching model IDs and errors.
  */
 export function getAllMatchingModels(
-  recipeModels: RecipeModel[],
-  availableModelIds: readonly string[]
+  { recipeModels, availableModelIds }: { recipeModels: RecipeModel[], availableModelIds: readonly string[] }
 ): MultiMatchResult {
   const matches = new Set<string>();
   const errors: string[] = [];
@@ -81,31 +79,31 @@ export function getAllMatchingModels(
  * Generates sensible default regex patterns for a given model ID.
  * Returns an array of patterns from most specific to most general.
  */
-export function generateDefaultModelPatterns(modelId: string): string[] {
+export function generateDefaultModelPatterns({ modelId }: { modelId: string }): string[] {
   if (!modelId) return [];
 
   const patterns: string[] = [];
 
   // Helper to escape regex special chars
-  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escape = ({ s }: { s: string }) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   // 1. Exact match (wrapped in anchors)
-  patterns.push(`^${escape(modelId)}$`);
+  patterns.push(`^${escape({ s: modelId })}$`);
 
   // 2. Base name (strip author/repo path)
   let current = modelId;
   if (current.includes('/')) {
     current = current.split('/').pop() || current;
-    patterns.push(`^${escape(current)}$`);
+    patterns.push(`^${escape({ s: current })}$`);
   }
 
   // 3. Strip common Ollama/version tags (e.g., :latest, :8b, :4b)
   if (current.includes(':')) {
     const withoutTag = current.replace(/:[a-zA-Z0-9._-]+$/i, '');
     if (withoutTag !== current) {
-      patterns.push(`^${escape(withoutTag)}$`);
-      patterns.push(`^${escape(withoutTag)}:.*`); // Match same model with any tag
-      patterns.push(`^${escape(withoutTag)}.*`);   // More flexible prefix match
+      patterns.push(`^${escape({ s: withoutTag })}$`);
+      patterns.push(`^${escape({ s: withoutTag })}:.*`); // Match same model with any tag
+      patterns.push(`^${escape({ s: withoutTag })}.*`);   // More flexible prefix match
       current = withoutTag;
     }
   }
@@ -125,13 +123,13 @@ export function generateDefaultModelPatterns(modelId: string): string[] {
   }
 
   if (stripped !== current) {
-    patterns.push(`^${escape(stripped)}$`);
-    patterns.push(`^${escape(stripped)}[.-].*`); // Match with separator like '-' or '.'
-    patterns.push(`^${escape(stripped)}.*`);
+    patterns.push(`^${escape({ s: stripped })}$`);
+    patterns.push(`^${escape({ s: stripped })}[.-].*`); // Match with separator like '-' or '.'
+    patterns.push(`^${escape({ s: stripped })}.*`);
   }
 
   // Final fallback: anchored prefix match
-  const lastPattern = `^${escape(stripped)}.*`;
+  const lastPattern = `^${escape({ s: stripped })}.*`;
   if (!patterns.includes(lastPattern)) {
     patterns.push(lastPattern);
   }

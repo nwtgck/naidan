@@ -36,7 +36,7 @@ watch(() => params.value.stop, (newVal) => {
   }
 }, { immediate: true });
 
-function updateParam<K extends keyof LmParameters>(key: K, value: LmParameters[K]) {
+function updateParam<K extends keyof LmParameters>({ key, value }: { key: K; value: LmParameters[K] }) {
   const newParams: LmParameters = { ...params.value };
   if (value === undefined || value === null || (value as unknown) === '' || (typeof value === 'number' && isNaN(value))) {
     switch (key) {
@@ -88,17 +88,17 @@ function updateParam<K extends keyof LmParameters>(key: K, value: LmParameters[K
   params.value = newParams;
 }
 
-function handleStopInput(value: string) {
+function handleStopInput({ value }: { value: string }) {
   stopSequencesRaw.value = value;
   if (!value.trim()) {
-    updateParam('stop', undefined);
+    updateParam({ key: 'stop', value: undefined });
     stopJsonError.value = null;
     return;
   }
   try {
     const parsed = JSON.parse(value);
     if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
-      updateParam('stop', parsed.length > 0 ? parsed : undefined);
+      updateParam({ key: 'stop', value: parsed.length > 0 ? parsed : undefined });
       stopJsonError.value = null;
     } else {
       stopJsonError.value = 'Must be an array of strings';
@@ -172,17 +172,17 @@ defineExpose({
             <input
               type="number" step="0.1" min="0" max="2"
               :value="params.temperature"
-              @input="e => updateParam('temperature', (e.target as HTMLInputElement).valueAsNumber)"
+              @input="e => updateParam({ key: 'temperature', value: (e.target as HTMLInputElement).valueAsNumber })"
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('temperature')" @click="updateParam('temperature', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
+            <button v-if="isOverridden('temperature')" @click="updateParam({ key: 'temperature', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
           type="range" min="0" max="2" step="0.01"
           :value="params.temperature ?? 1"
-          @input="e => updateParam('temperature', parseFloat((e.target as HTMLInputElement).value))"
+          @input="e => updateParam({ key: 'temperature', value: parseFloat((e.target as HTMLInputElement).value) })"
           class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
         />
       </div>
@@ -198,17 +198,17 @@ defineExpose({
             <input
               type="number" step="0.01" min="0" max="1"
               :value="params.topP"
-              @input="e => updateParam('topP', (e.target as HTMLInputElement).valueAsNumber)"
+              @input="e => updateParam({ key: 'topP', value: (e.target as HTMLInputElement).valueAsNumber })"
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('topP')" @click="updateParam('topP', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
+            <button v-if="isOverridden('topP')" @click="updateParam({ key: 'topP', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
           type="range" min="0" max="1" step="0.01"
           :value="params.topP ?? 1"
-          @input="e => updateParam('topP', parseFloat((e.target as HTMLInputElement).value))"
+          @input="e => updateParam({ key: 'topP', value: parseFloat((e.target as HTMLInputElement).value) })"
           class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
         />
       </div>
@@ -224,11 +224,11 @@ defineExpose({
             <input
               type="number" min="1"
               :value="params.maxCompletionTokens"
-              @input="e => updateParam('maxCompletionTokens', (e.target as HTMLInputElement).valueAsNumber)"
+              @input="e => updateParam({ key: 'maxCompletionTokens', value: (e.target as HTMLInputElement).valueAsNumber })"
               placeholder="Default"
               class="w-24 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('maxCompletionTokens')" @click="updateParam('maxCompletionTokens', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
+            <button v-if="isOverridden('maxCompletionTokens')" @click="updateParam({ key: 'maxCompletionTokens', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
       </div>
@@ -244,17 +244,17 @@ defineExpose({
             <input
               type="number" step="0.1" min="-2" max="2"
               :value="params.presencePenalty"
-              @input="e => updateParam('presencePenalty', (e.target as HTMLInputElement).valueAsNumber)"
+              @input="e => updateParam({ key: 'presencePenalty', value: (e.target as HTMLInputElement).valueAsNumber })"
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('presencePenalty')" @click="updateParam('presencePenalty', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
+            <button v-if="isOverridden('presencePenalty')" @click="updateParam({ key: 'presencePenalty', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
           type="range" min="-2" max="2" step="0.01"
           :value="params.presencePenalty ?? 0"
-          @input="e => updateParam('presencePenalty', parseFloat((e.target as HTMLInputElement).value))"
+          @input="e => updateParam({ key: 'presencePenalty', value: parseFloat((e.target as HTMLInputElement).value) })"
           class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
         />
       </div>
@@ -266,13 +266,13 @@ defineExpose({
             Stop Sequences (JSON Array)
             <span v-if="isOverridden('stop')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
-          <button v-if="isOverridden('stop')" @click="updateParam('stop', undefined)" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 flex items-center gap-1 text-[10px] font-bold">
+          <button v-if="isOverridden('stop')" @click="updateParam({ key: 'stop', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 flex items-center gap-1 text-[10px] font-bold">
             <XIcon class="w-3 h-3"/> Reset to Default
           </button>
         </div>
         <textarea
           :value="stopSequencesRaw"
-          @input="e => handleStopInput((e.target as HTMLTextAreaElement).value)"
+          @input="e => handleStopInput({ value: (e.target as HTMLTextAreaElement).value })"
           rows="2"
           class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2 text-xs font-mono font-bold outline-none focus:border-blue-500 transition-all shadow-sm resize-none"
           :class="{ 'border-red-500 focus:border-red-500': stopJsonError }"

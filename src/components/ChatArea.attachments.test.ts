@@ -247,7 +247,7 @@ describe('ChatArea - Attachment UI', () => {
     await wrapper.vm.$nextTick();
 
     // Call removeAttachment
-    (chatInput.vm as any).removeAttachment('att-1');
+    (chatInput.vm as any).removeAttachment({ id: 'att-1' });
     await wrapper.vm.$nextTick();
 
     expect((chatInput.vm as any).attachments.length).toBe(0);

@@ -90,7 +90,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     localStorage.clear();
     storageService = new StorageService();
     // We need to initialize with 'opfs' to use the real OPFSStorageProvider logic
-    await storageService.init('opfs');
+    await storageService.init({ type: 'opfs' });
     importExportService = new ImportExportService(storageService);
   });
 
@@ -163,13 +163,13 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     const zipBlob = await zip.generateAsync({ type: 'blob' });
 
     // 2. Import into empty storage
-    await importExportService.executeImport(zipBlob, {
+    await importExportService.executeImport({ zipFile: zipBlob, config: {
       data: { mode: 'replace' },
       settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
-    });
+    } });
 
     // 3. Verify storage is now sharded and hydrated correctly
-    const loadedChat = await storageService.loadChat(chatID);
+    const loadedChat = await storageService.loadChat({ id: chatID });
     expect(loadedChat).not.toBeNull();
     const att = loadedChat!.root.items[0]!.attachments![0]!;
 

@@ -31,7 +31,7 @@ async function loadContext() {
 
   isLoading.value = true;
   try {
-    const fullChat = await storageService.loadChat(chatId);
+    const fullChat = await storageService.loadChat({ id: chatId });
     if (fullChat) {
       // If we have a match, use its leaf. Otherwise use the chat's current leaf.
       const targetLeafId = props.match?.targetLeafId || fullChat.currentLeafId;

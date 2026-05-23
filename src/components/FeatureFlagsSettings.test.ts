@@ -82,8 +82,10 @@ describe('FeatureFlagsSettings.vue', () => {
     await wrapper.find('[data-testid="feature-sidebar-send-reorder-toggle"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({
-      experimental: {
-        sidebarSendMessageReorder: 'move_sent_chat',
+      patch: {
+        experimental: {
+          sidebarSendMessageReorder: 'move_sent_chat',
+        },
       },
     });
   });

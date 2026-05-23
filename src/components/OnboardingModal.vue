@@ -18,8 +18,8 @@ import Logo from './Logo.vue';
 import ModelSelector from './ModelSelector.vue';
 
 // Lazily load onboarding guides and managers, but prefetch them when idle.
-const ServerSetupGuide = defineAsyncComponentAndLoadOnMounted(() => import('./ServerSetupGuide.vue'));
-const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsManager.vue'));
+const ServerSetupGuide = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ServerSetupGuide.vue') });
+const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsManager.vue') });
 import { transformersJsService } from '@/services/transformers-js';
 import { PlayIcon, ArrowLeftIcon, CheckCircle2Icon, ActivityIcon, SettingsIcon, XIcon, PlusIcon, Trash2Icon, FlaskConicalIcon } from 'lucide-vue-next';
 import { naturalSort } from '@/utils/string';
@@ -64,9 +64,9 @@ const show = computed(() => initialized.value && !isOnboardingDismissed.value);
 
 watch(show, (val) => {
   if (val) {
-    setActiveFocusArea('onboarding');
+    setActiveFocusArea({ area: 'onboarding' });
   } else {
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
   }
 }, { immediate: true });
 
@@ -90,7 +90,7 @@ let unsubscribe: (() => void) | null = null;
 onMounted(async () => {
   // Trigger auto-detection immediately if a URL is present from the cookie/draft
   // but the type is still the default.
-  if (selectedType.value === DEFAULT_TYPE && customUrl.value && isLocalhost(customUrl.value)) {
+  if (selectedType.value === DEFAULT_TYPE && customUrl.value && isLocalhost({ url: customUrl.value })) {
     const normalized = getNormalizedUrl();
     if (normalized) {
       const isOllama = await detectOllama({ url: normalized, headers: customHeaders.value });
@@ -136,7 +136,7 @@ watch(effectiveType, async (newType) => {
       const target = sorted[0]?.id;
       if (target) {
         try {
-          await transformersJsService.loadModel(target);
+          await transformersJsService.loadModel({ modelId: target });
           selectedModel.value = target;
         } catch (e) {
           console.warn('Auto-load failed:', e);
@@ -160,7 +160,7 @@ const customHeaders = ref<[string, string][]>(onboardingDraft.value?.headers ? J
 const isTesting = ref(false);
 const error = ref<string | null>(null);
 const availableModels = ref<string[]>(onboardingDraft.value?.models ? JSON.parse(JSON.stringify(onboardingDraft.value.models)) : []);
-const sortedModels = computed(() => naturalSort(availableModels.value));
+const sortedModels = computed(() => naturalSort({ values: availableModels.value }));
 const selectedModel = ref(onboardingDraft.value?.selectedModel || '');
 let abortController: AbortController | null = null;
 
@@ -168,11 +168,11 @@ function addHeader() {
   customHeaders.value.push(['', '']);
 }
 
-function removeHeader(index: number) {
+function removeHeader({ index }: { index: number }) {
   customHeaders.value.splice(index, 1);
 }
 
-function handleModelLoaded(modelId: string) {
+function handleModelLoaded({ modelId }: { modelId: string }) {
   if (isTransformersJs.value) {
     selectedModel.value = modelId;
   }
@@ -195,7 +195,7 @@ function getNormalizedUrl() {
   }
 }
 
-function isLocalhost(url: string | undefined) {
+function isLocalhost({ url }: { url: string | undefined }) {
   if (!url) return false;
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
@@ -205,7 +205,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
   error.value = null;
 
   // Auto-detect Ollama if URL is localhost and type is still default
-  if (_type === DEFAULT_TYPE && url && isLocalhost(url)) {
+  if (_type === DEFAULT_TYPE && url && isLocalhost({ url })) {
     const normalized = getNormalizedUrl();
     if (normalized) {
       const isOllama = await detectOllama({ url: normalized, headers: customHeaders.value });
@@ -239,7 +239,7 @@ watch([selectedType, customUrl], async ([_type, url]) => {
     handleConnect();
   }
 });
-function selectPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+function selectPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   selectedType.value = preset.type;
   customUrl.value = preset.url;
   // Reset models if user changes preset/url
@@ -271,7 +271,7 @@ async function handleConnect() {
     // We've moved primary auto-detection to the watcher for a better UX,
     // but if we're still in DEFAULT_TYPE when connecting, we do a quick check.
     const normalizedUrl = url || '';
-    if (selectedType.value === DEFAULT_TYPE && isLocalhost(normalizedUrl) && normalizedUrl) {
+    if (selectedType.value === DEFAULT_TYPE && isLocalhost({ url: normalizedUrl }) && normalizedUrl) {
       const isOllama = await detectOllama({ url: normalizedUrl, headers: customHeaders.value });
       if (isOllama) {
         selectedType.value = 'ollama';
@@ -317,14 +317,14 @@ async function handleConnect() {
 }
 
 async function handleClose() {
-  setOnboardingDraft({
+  setOnboardingDraft({ draft: {
     url: customUrl.value,
     type: effectiveType.value,
     headers: customHeaders.value,
     models: availableModels.value,
     selectedModel: selectedModel.value,
-  });
-  setIsOnboardingDismissed(true);
+  } });
+  setIsOnboardingDismissed({ dismissed: true });
 }
 
 async function handleFinish() {
@@ -338,7 +338,7 @@ async function handleFinish() {
 
   try {
     const baseSettings = JSON.parse(JSON.stringify(settings.value)) as SettingsType;
-    await save({
+    await save({ patch: {
       ...baseSettings,
       endpointType: type,
       endpointUrl: url || undefined,
@@ -359,10 +359,10 @@ async function handleFinish() {
         }
         }
       })(),
-    });
+    } });
 
-    setOnboardingDraft(null);
-    setIsOnboardingDismissed(true);
+    setOnboardingDraft({ draft: null });
+    setIsOnboardingDismissed({ dismissed: true });
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to save settings.';
   }
@@ -447,7 +447,7 @@ defineExpose({
                   </div>
                 </div>
 
-                <TransformersJsManager @model-loaded="handleModelLoaded" />
+                <TransformersJsManager @model-loaded="modelId => handleModelLoaded({ modelId })" />
 
                 <div class="flex flex-col sm:flex-row items-center gap-4 pt-6 border-t border-gray-100 dark:border-gray-800">
                   <button
@@ -477,7 +477,7 @@ defineExpose({
                   <button
                     v-for="preset in ENDPOINT_PRESETS"
                     :key="preset.name"
-                    @click="selectPreset(preset)"
+                    @click="selectPreset({ preset })"
                     class="px-2.5 py-1.5 md:px-3 md:py-1.5 text-[10px] md:text-[11px] font-bold border rounded-lg transition-all duration-200"
                     :class="customUrl === preset.url ? 'bg-blue-600 border-blue-600 text-white shadow-sm' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600'"
                   >
@@ -554,7 +554,7 @@ defineExpose({
                         placeholder="Value"
                       />
                       <button
-                        @click="removeHeader(index)"
+                        @click="removeHeader({ index })"
                         class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                       >
                         <Trash2Icon class="w-3.5 h-3.5" />

@@ -41,7 +41,7 @@ const resolveBinary = async () => {
   if (binaryId && !binaryContent.value && !isLoadingBinary.value) {
     isLoadingBinary.value = true;
     try {
-      const blob = await storageService.getFile(binaryId);
+      const blob = await storageService.getFile({ binaryObjectId: binaryId });
       if (blob) {
         binaryContent.value = await blob.text();
       }

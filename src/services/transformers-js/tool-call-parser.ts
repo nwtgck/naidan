@@ -7,7 +7,7 @@ const TOOL_CALL_CLOSE = '</tool_call>';
  * Returns the length of the longest suffix of `text` that is a prefix of `pattern`.
  * Used to hold back text that might be the beginning of a tag boundary.
  */
-function longestSuffixMatchingPrefix(text: string, pattern: string): number {
+function longestSuffixMatchingPrefix({ text, pattern }: { text: string, pattern: string }): number {
   const maxLen = Math.min(pattern.length - 1, text.length);
   for (let len = maxLen; len > 0; len--) {
     if (pattern.startsWith(text.slice(text.length - len))) return len;
@@ -71,7 +71,7 @@ export class ToolCallStreamParser {
         const startIdx = this.pending.indexOf(TOOL_CALL_OPEN);
         if (startIdx === -1) {
           // No opening tag — stream everything except a potential partial tag at the tail
-          const holdBack = longestSuffixMatchingPrefix(this.pending, TOOL_CALL_OPEN);
+          const holdBack = longestSuffixMatchingPrefix({ text: this.pending, pattern: TOOL_CALL_OPEN });
           const safe = this.pending.length - holdBack;
           if (safe > 0) this.onText(this.pending.slice(0, safe));
           this.pending = this.pending.slice(safe);
@@ -86,7 +86,7 @@ export class ToolCallStreamParser {
         const endIdx = this.pending.indexOf(TOOL_CALL_CLOSE);
         if (endIdx === -1) {
           // No closing tag yet — hold back potential partial close tag at the tail
-          const holdBack = longestSuffixMatchingPrefix(this.pending, TOOL_CALL_CLOSE);
+          const holdBack = longestSuffixMatchingPrefix({ text: this.pending, pattern: TOOL_CALL_CLOSE });
           this.buffer += this.pending.slice(0, this.pending.length - holdBack);
           this.pending = this.pending.slice(this.pending.length - holdBack);
           break;

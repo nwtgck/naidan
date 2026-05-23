@@ -12,7 +12,7 @@ export const MESSAGE_CONTEXTUAL_PREVIEW_KEY: InjectionKey<ContextualPreviewHandl
 
 const PREVIEW_KEY: InjectionKey<{
   state: Ref<PreviewState | null>;
-  openPreview: (payload: PreviewState) => void;
+  openPreview: ({ objects, initialId }: PreviewState) => void;
   closePreview: () => void;
 }> = Symbol('ImagePreview');
 
@@ -21,13 +21,13 @@ const PREVIEW_KEY: InjectionKey<{
  *
  * Can be used either as a singleton or as a scoped instance via provide/inject.
  */
-export function useImagePreview(scoped = false) {
+export function useImagePreview({ scoped = false }: { scoped?: boolean } = {}) {
   if (scoped) {
     const state = ref<PreviewState | null>(null);
     const api = {
       state,
-      openPreview: (payload: PreviewState) => {
-        state.value = payload;
+      openPreview: ({ objects, initialId }: PreviewState) => {
+        state.value = { objects, initialId };
       },
       closePreview: () => {
         state.value = null;
@@ -44,8 +44,8 @@ export function useImagePreview(scoped = false) {
   const state = ref<PreviewState | null>(null);
   return {
     state,
-    openPreview: (payload: PreviewState) => {
-      state.value = payload;
+    openPreview: ({ objects, initialId }: PreviewState) => {
+      state.value = { objects, initialId };
     },
     closePreview: () => {
       state.value = null;

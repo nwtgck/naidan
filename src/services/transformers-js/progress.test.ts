@@ -68,7 +68,7 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     });
 
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     // Even though both files are 100% done, overall progress should be capped because no "heavy" file was seen
     expect(lastProgress).toBeLessThanOrEqual(5);
@@ -100,7 +100,7 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     });
 
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     // model.onnx is 50% done (50MB), but total recognized is < 100MB and time is < 3s
     // So discovery phase cap (15%) applies.
@@ -143,7 +143,7 @@ describe('transformersJsService progress logic', () => {
       lastProgress = progress;
     });
 
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     // Now Phase 3 applies. totalSize is 100MiB, but effectiveTotalSize has 200MiB floor.
     // (100MiB + 1) / 200MiB = ~50%
@@ -187,7 +187,7 @@ describe('transformersJsService progress logic', () => {
       progressHistory.push(progress);
     });
 
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     // Check that history never decreases
     for (let i = 1; i < progressHistory.length; i++) {
@@ -221,7 +221,7 @@ describe('transformersJsService progress logic', () => {
       }
     });
 
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
 
     expect(lastProgress).toBe(99);
     expect(transformersJsService.getState().status).toBe('ready');

@@ -21,7 +21,7 @@ describe('HarmonyStreamParser', () => {
       '<|return|>',
     ];
 
-    const deltas = parser.pushMany(tokens);
+    const deltas = parser.pushMany({ tokens });
     const result = parser.getResult();
 
     expect(result.done).toBe(true);
@@ -59,7 +59,7 @@ describe('HarmonyStreamParser', () => {
       '<|call|>',
     ];
 
-    parser.pushMany(tokens);
+    parser.pushMany({ tokens });
 
     expect(parser.messages).toEqual([
       expect.objectContaining({
@@ -87,7 +87,7 @@ describe('HarmonyStreamParser', () => {
       '<|call|>',
     ];
 
-    parser.pushMany(tokens);
+    parser.pushMany({ tokens });
 
     expect(parser.messages).toEqual([
       expect.objectContaining({
@@ -111,7 +111,7 @@ describe('HarmonyStreamParser', () => {
       '<|return|>',
     ];
 
-    parser.pushMany(tokens);
+    parser.pushMany({ tokens });
 
     expect(parser.messages).toEqual([
       {
@@ -136,7 +136,7 @@ describe('HarmonyStreamParser', () => {
       '<|end|>',
     ];
 
-    parser.pushMany(tokens);
+    parser.pushMany({ tokens });
 
     expect(parser.messages).toEqual([
       {
@@ -160,13 +160,13 @@ describe('HarmonyStreamParser', () => {
       'Hello   ',
     ];
 
-    parser.pushMany(tokens);
+    parser.pushMany({ tokens });
     expect(parser.messages[0]).toEqual(expect.objectContaining({
       content: 'Hello   ',
       endReason: 'pending',
     }));
 
-    parser.push('<|return|>');
+    parser.push({ token: '<|return|>' });
     expect(parser.messages[0]).toEqual(expect.objectContaining({
       content: 'Hello',
       endReason: 'return',
@@ -191,7 +191,7 @@ describe('HarmonyStreamParser', () => {
       'should be ignored',
     ];
 
-    parser.pushMany(tokens);
+    parser.pushMany({ tokens });
 
     expect(parser.messages).toEqual([
       {

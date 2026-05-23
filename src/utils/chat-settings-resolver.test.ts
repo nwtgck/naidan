@@ -24,7 +24,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         ...baseChat,
         systemPrompt: { behavior: 'override', content: null }
       };
-      const result = resolveChatSettings(chat, [], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.systemPromptMessages).toEqual([]);
     });
 
@@ -33,7 +33,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         ...baseChat,
         systemPrompt: { behavior: 'override', content: '' }
       };
-      const result = resolveChatSettings(chat, [], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.systemPromptMessages).toEqual([]);
     });
 
@@ -42,7 +42,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         ...baseChat,
         systemPrompt: { behavior: 'override', content: 'Chat Prompt' }
       };
-      const result = resolveChatSettings(chat, [], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.systemPromptMessages).toEqual(['Chat Prompt']);
     });
   });
@@ -53,7 +53,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         ...baseChat,
         systemPrompt: { behavior: 'append', content: '' }
       };
-      const result = resolveChatSettings(chat, [], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [], globalSettings });
       // Global remains, but nothing added
       expect(result.systemPromptMessages).toEqual(['Global Prompt']);
     });
@@ -63,7 +63,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         ...baseChat,
         systemPrompt: { behavior: 'append', content: 'Extra' }
       };
-      const result = resolveChatSettings(chat, [], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.systemPromptMessages).toEqual(['Global Prompt', 'Extra']);
     });
   });
@@ -84,7 +84,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         groupId: 'group-1',
         systemPrompt: { behavior: 'override', content: null }
       };
-      const result = resolveChatSettings(chat, [group], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.systemPromptMessages).toEqual([]);
     });
 
@@ -94,7 +94,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         groupId: 'group-1',
         systemPrompt: { behavior: 'append', content: 'Chat Append' }
       };
-      const result = resolveChatSettings(chat, [group], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       // Group overrides Global, then Chat appends to Group
       expect(result.systemPromptMessages).toEqual(['Group Prompt', 'Chat Append']);
     });
@@ -109,7 +109,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         groupId: 'group-1',
         systemPrompt: { behavior: 'append', content: 'Chat Append' }
       };
-      const result = resolveChatSettings(chat, [clearGroup], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [clearGroup], globalSettings });
       // Global is cleared by Group, result contains only Chat's contribution
       expect(result.systemPromptMessages).toEqual(['Chat Append']);
     });
@@ -124,7 +124,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         groupId: 'group-1',
         systemPrompt: { behavior: 'append', content: 'Chat Append' }
       };
-      const result = resolveChatSettings(chat, [emptyGroup], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [emptyGroup], globalSettings });
       expect(result.systemPromptMessages).toEqual(['Chat Append']);
     });
   });
@@ -137,7 +137,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     };
 
     it('should resolve global title settings when not overridden', () => {
-      const result = resolveChatSettings(baseChat, [], globalSettings);
+      const result = resolveChatSettings({ chat: baseChat, groups: [], globalSettings });
       expect(result.autoTitleEnabled).toBe(true);
       expect(result.titleModelId).toBe('global-title-model');
       expect(result.sources.autoTitleEnabled).toBe('global');
@@ -155,7 +155,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         titleModelId: 'group-title-model',
       };
       const chat: Chat = { ...baseChat, groupId: 'group-1' };
-      const result = resolveChatSettings(chat, [group], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.autoTitleEnabled).toBe(false);
       expect(result.titleModelId).toBe('group-title-model');
       expect(result.sources.autoTitleEnabled).toBe('chat_group');
@@ -168,7 +168,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         autoTitleEnabled: false,
         titleModelId: 'chat-title-model',
       };
-      const result = resolveChatSettings(chat, [], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.autoTitleEnabled).toBe(false);
       expect(result.titleModelId).toBe('chat-title-model');
       expect(result.sources.autoTitleEnabled).toBe('chat');
@@ -218,7 +218,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
 
     it('should inherit reasoning effort from group when not specified in chat', () => {
       const chat: Chat = { ...baseChat, groupId: 'group-1' };
-      const result = resolveChatSettings(chat, [group], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.lmParameters.reasoning.effort).toBe('high');
     });
 
@@ -232,7 +232,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
           reasoning: { effort: undefined } // Inherit from parent
         }
       };
-      const result = resolveChatSettings(chat, [group], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       // BUG: Currently this fails because reasoning object in chat overwrites group's reasoning
       expect(result.lmParameters.reasoning.effort).toBe('high');
       expect(result.lmParameters.temperature).toBe(0.5);
@@ -247,7 +247,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
           reasoning: { effort: 'low' }
         }
       };
-      const result = resolveChatSettings(chat, [group], globalSettings);
+      const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.lmParameters.reasoning.effort).toBe('low');
     });
   });

@@ -59,7 +59,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     vi.clearAllMocks();
 
     // Reset Settings
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       endpointType: 'openai',
       endpointUrl: 'http://localhost:1234/v1',
       defaultModelId: 'gpt-4',
@@ -67,7 +67,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
-    });
+    } });
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);
     mockOllamaModels.mockResolvedValue(['llama3', 'mistral']);
@@ -95,7 +95,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOpenAIChat.mock.calls[0]![0].model).toBe('gpt-4');
 
     // 2. Ollama (gpt-4-showcase -> resolves to llama3)
-    __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), endpointType: 'ollama' });
+    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), endpointType: 'ollama' } });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('llama3');
@@ -109,11 +109,11 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
   });
 
   it('should fallback to first available model if defaultModelId is also missing', async () => {
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpointType: 'ollama',
       defaultModelId: 'missing-default',
-    });
+    } });
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);
 
     __testOnlySetCurrentChat({ chat: reactive({

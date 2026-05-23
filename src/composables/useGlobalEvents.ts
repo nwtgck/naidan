@@ -25,26 +25,29 @@ export interface GlobalEvent {
 const events = ref<GlobalEvent[]>([]);
 
 export function useGlobalEvents() {
-  const addEvent = (params: { type: EventType; source: string; message: string; details?: ErrorDetailValue }) => {
+  const addEvent = ({ type, source, message, details }: { type: EventType; source: string; message: string; details?: ErrorDetailValue }) => {
     events.value.push({
       id: generateId(),
       timestamp: Date.now(),
-      ...params,
+      type,
+      source,
+      message,
+      details,
     });
   };
 
   /**
    * Specialized helper for errors.
    */
-  const addErrorEvent = (params: { source: string; message: string; details?: ErrorDetailValue }) => {
-    addEvent({ type: 'error', ...params });
+  const addErrorEvent = ({ source, message, details }: { source: string; message: string; details?: ErrorDetailValue }) => {
+    addEvent({ type: 'error', source, message, details });
   };
 
   /**
    * Specialized helper for info logs.
    */
-  const addInfoEvent = (params: { source: string; message: string; details?: ErrorDetailValue }) => {
-    addEvent({ type: 'info', ...params });
+  const addInfoEvent = ({ source, message, details }: { source: string; message: string; details?: ErrorDetailValue }) => {
+    addEvent({ type: 'info', source, message, details });
   };
 
   const clearEvents = () => {

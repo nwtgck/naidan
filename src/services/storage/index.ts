@@ -39,7 +39,7 @@ export class StorageService {
     return this.provider;
   }
 
-  async init(type: 'local' | 'opfs' | 'memory') {
+  async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     await this.synchronizer.withLock(async () => {
       const isOPFSSupported = await checkOPFSSupport();
       let targetType: 'local' | 'opfs' | 'memory' = type;
@@ -118,7 +118,7 @@ export class StorageService {
 
   async loadHierarchy(): Promise<Hierarchy> {
     const dto = await this.getProvider().loadHierarchy();
-    return dto ? hierarchyToDomain(dto) : { items: [] };
+    return dto ? hierarchyToDomain({ dto }) : { items: [] };
   }
 
   /**
@@ -130,7 +130,7 @@ export class StorageService {
       await this.synchronizer.withLock(async () => {
         const current = await this.loadHierarchy();
         const updated = await updater(current);
-        await this.getProvider().saveHierarchy(hierarchyToDto(updated));
+        await this.getProvider().saveHierarchy(hierarchyToDto({ domain: updated }));
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('updateHierarchy') });
       this.synchronizer.notify('chat_meta_and_chat_group');
     } catch (e) {
@@ -144,7 +144,7 @@ export class StorageService {
   async updateChatMeta(id: string, updater: (current: ChatMeta | null) => ChatMeta | Promise<ChatMeta>): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        const current = await this.loadChatMeta(id);
+        const current = await this.loadChatMeta({ id });
         const updated = await updater(current);
         await this.getProvider().saveChatMeta(updated);
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('updateChatMeta') });
@@ -155,18 +155,18 @@ export class StorageService {
     }
   }
 
-  async loadChatMeta(id: string): Promise<ChatMeta | null> {
-    return this.getProvider().loadChatMeta(id);
+  async loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null> {
+    return this.getProvider().loadChatMeta({ id });
   }
 
-  async loadChatContent(id: string): Promise<ChatContent | null> {
-    return this.getProvider().loadChatContent(id);
+  async loadChatContent({ id }: { id: string }): Promise<ChatContent | null> {
+    return this.getProvider().loadChatContent({ id });
   }
 
   async updateChatContent(id: string, updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        const current = await this.loadChatContent(id);
+        const current = await this.loadChatContent({ id });
         const updated = await updater(current);
         await this.getProvider().saveChatContent(id, updated);
       }, { lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${id}`, ...this.getLockOptions('updateChatContent') });
@@ -177,14 +177,14 @@ export class StorageService {
     }
   }
 
-  async loadChat(id: string): Promise<Chat | null> {
-    return this.getProvider().loadChat(id);
+  async loadChat({ id }: { id: string }): Promise<Chat | null> {
+    return this.getProvider().loadChat({ id });
   }
 
-  async deleteChat(id: string): Promise<void> {
+  async deleteChat({ id }: { id: string }): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().deleteChat(id);
+        await this.getProvider().deleteChat({ id });
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('deleteChat') });
       this.synchronizer.notify('chat_meta_and_chat_group', id);
     } catch (e) {
@@ -196,7 +196,7 @@ export class StorageService {
   async updateChatGroup(id: string, updater: (current: ChatGroup | null) => ChatGroup | Promise<ChatGroup>): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        const current = await this.loadChatGroup(id);
+        const current = await this.loadChatGroup({ id });
         const updated = await updater(current);
         await this.getProvider().saveChatGroup(updated);
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('updateChatGroup') });
@@ -207,14 +207,14 @@ export class StorageService {
     }
   }
 
-  async loadChatGroup(id: string): Promise<ChatGroup | null> {
-    return this.getProvider().loadChatGroup(id);
+  async loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null> {
+    return this.getProvider().loadChatGroup({ id });
   }
 
-  async deleteChatGroup(id: string): Promise<void> {
+  async deleteChatGroup({ id }: { id: string }): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().deleteChatGroup(id);
+        await this.getProvider().deleteChatGroup({ id });
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('deleteChatGroup') });
       this.synchronizer.notify('chat_meta_and_chat_group', id);
     } catch (e) {
@@ -283,8 +283,8 @@ export class StorageService {
     }
   }
 
-  async getFile(binaryObjectId: string): Promise<Blob | null> {
-    return this.getProvider().getFile(binaryObjectId);
+  async getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null> {
+    return this.getProvider().getFile({ binaryObjectId });
   }
 
   async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null> {
@@ -299,10 +299,10 @@ export class StorageService {
     return this.getProvider().listBinaryObjects();
   }
 
-  async deleteBinaryObject(binaryObjectId: string): Promise<void> {
+  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void> {
     try {
       await this.synchronizer.withLock(async () => {
-        await this.getProvider().deleteBinaryObject(binaryObjectId);
+        await this.getProvider().deleteBinaryObject({ binaryObjectId });
       }, { lockKey: LOCK_METADATA, ...this.getLockOptions('deleteBinaryObject') });
       // Notify binary objects changed if we had a specific event,
       // but 'chat_content' or similar might be enough, or just generic.
@@ -436,7 +436,7 @@ export class StorageService {
     });
   }
 
-  async switchProvider(type: 'local' | 'opfs' | 'memory') {
+  async switchProvider({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     try {
       await this.synchronizer.withLock(async () => {
         const activeProvider = this.getProvider();
@@ -474,7 +474,7 @@ export class StorageService {
             switch (chunkType) {
             case 'chat':
               if (newProvider.canPersistBinary) {
-                const chat = await oldProvider.loadChat(chunk.data.id);
+                const chat = await oldProvider.loadChat({ id: chunk.data.id });
                 if (!chat) {
                   yield chunk; continue;
                 }
@@ -516,7 +516,7 @@ export class StorageService {
                 };
                 findAndRescue(chat.root.items);
                 for (const r of rescued) yield r;
-                yield { type: 'chat', data: chatToDto(chat) };
+                yield { type: 'chat', data: chatToDto({ domain: chat }) };
               } else {
                 yield chunk;
               }

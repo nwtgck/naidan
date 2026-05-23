@@ -152,7 +152,7 @@ function toggleDropdown() {
   }
 }
 
-function selectModel(model: string | undefined) {
+function selectModel({ model }: { model: string | undefined }) {
   emit('update:modelValue', model);
   isOpen.value = false;
 }
@@ -175,34 +175,34 @@ function scrollToHighlighted() {
   });
 }
 
-function handleKeydown(e: KeyboardEvent) {
+function handleKeydown({ event }: { event: KeyboardEvent }) {
   if (!isOpen.value) {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
-      e.preventDefault();
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') {
+      event.preventDefault();
       toggleDropdown();
     }
     return;
   }
 
-  switch (e.key) {
+  switch (event.key) {
   case 'ArrowDown':
-    e.preventDefault();
+    event.preventDefault();
     highlightedIndex.value = (highlightedIndex.value + 1) % combinedOptions.value.length;
     scrollToHighlighted();
     break;
   case 'ArrowUp':
-    e.preventDefault();
+    event.preventDefault();
     highlightedIndex.value = (highlightedIndex.value - 1 + combinedOptions.value.length) % combinedOptions.value.length;
     scrollToHighlighted();
     break;
   case 'Enter':
-    e.preventDefault();
+    event.preventDefault();
     if (highlightedIndex.value >= 0 && highlightedIndex.value < combinedOptions.value.length) {
-      selectModel(combinedOptions.value[highlightedIndex.value]);
+      selectModel({ model: combinedOptions.value[highlightedIndex.value] });
     }
     break;
   case 'Escape':
-    e.preventDefault();
+    event.preventDefault();
     isOpen.value = false;
     break;
   case 'Tab':
@@ -211,18 +211,18 @@ function handleKeydown(e: KeyboardEvent) {
   }
 }
 
-async function handleRefresh(e: Event) {
-  e.stopPropagation();
+async function handleRefresh({ event }: { event: Event }) {
+  event.stopPropagation();
   // Check if parent has a listener for 'refresh' (onRefresh)
   const hasRefreshListener = !!(instance?.vnode.props?.onRefresh || attrs.onRefresh);
   if (hasRefreshListener) {
     emit('refresh');
   } else {
-    await internalFetch();
+    await internalFetch({});
   }
 }
 
-function handleClickOutside(event: MouseEvent) {
+function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as Node;
   const isInsideTrigger = containerRef.value?.contains(target);
   const isInsideDropdown = dropdownRef.value?.contains(target);
@@ -232,12 +232,16 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
+function handleDocumentMouseDown(event: MouseEvent) {
+  handleClickOutside({ event });
+}
+
 onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside);
+  document.addEventListener('mousedown', handleDocumentMouseDown);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
+  document.removeEventListener('mousedown', handleDocumentMouseDown);
 });
 
 // Reset highlighted index when filtering
@@ -262,7 +266,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative w-full" ref="containerRef" @keydown="handleKeydown">
+  <div class="relative w-full" ref="containerRef" @keydown="handleKeydown({ event: $event })">
     <!-- Trigger -->
     <button
       type="button"
@@ -301,7 +305,7 @@ defineExpose({
         :style="floatingStyle"
         class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in duration-200"
         :class="dropdownPosition === 'bottom' ? 'slide-in-from-top-2' : 'slide-in-from-bottom-2'"
-        @keydown="handleKeydown"
+        @keydown="handleKeydown({ event: $event })"
       >
         <!-- Search and Actions -->
         <div class="p-2 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 bg-gray-50/50 dark:bg-gray-900/50">
@@ -324,7 +328,7 @@ defineExpose({
             </button>
           </div>
           <button
-            @click="handleRefresh"
+            @click="handleRefresh({ event: $event })"
             class="p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors shadow-sm disabled:opacity-50"
             :disabled="isFetchingModels"
             title="Refresh model list"
@@ -338,7 +342,7 @@ defineExpose({
           <!-- Inherited / Default option -->
           <button
             v-if="allowClear"
-            @click="selectModel(undefined)"
+            @click="selectModel({ model: undefined })"
             class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors border-b border-gray-50 dark:border-gray-700/50 mb-1"
             :class="[
               !modelValue
@@ -365,7 +369,7 @@ defineExpose({
           <button
             v-for="(model, index) in filteredModels"
             :key="model"
-            @click="selectModel(model)"
+            @click="selectModel({ model })"
             class="w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors"
             :class="[
               model === modelValue

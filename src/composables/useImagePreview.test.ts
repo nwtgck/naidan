@@ -35,7 +35,7 @@ describe('useImagePreview', () => {
 
     const TestComponent = defineComponent({
       setup(_, { slots }) {
-        instance1 = useImagePreview(true); // Provide
+        instance1 = useImagePreview({ scoped: true }); // Provide
         return () => slots.default?.();
       }
     });
@@ -64,14 +64,14 @@ describe('useImagePreview', () => {
 
     const Comp1 = defineComponent({
       setup() {
-        scope1 = useImagePreview(true);
+        scope1 = useImagePreview({ scoped: true });
         return () => null;
       }
     });
 
     const Comp2 = defineComponent({
       setup() {
-        scope2 = useImagePreview(true);
+        scope2 = useImagePreview({ scoped: true });
         return () => null;
       }
     });

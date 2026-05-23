@@ -24,9 +24,9 @@ vi.mock('../services/storage', () => ({
       return () => {};
     }),
     listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockChatStorage.values()).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId })))),
-    loadChat: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
+    loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
     saveChat: vi.fn(),
-    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
+    loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
     updateChatMeta: vi.fn().mockImplementation(async  (id, updater) => {
       const current = mocks.mockChatStorage.get(id) || null;
       const updated = await updater(current);
@@ -47,7 +47,7 @@ vi.mock('../services/storage', () => ({
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(mocks.mockHierarchy)),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mocks.mockRootItems])),
-    deleteChat: vi.fn().mockImplementation((id) => {
+    deleteChat: vi.fn().mockImplementation(({ id }: { id: string }) => {
       mocks.mockChatStorage.delete(id);
       return Promise.resolve();
     }),
@@ -59,7 +59,7 @@ vi.mock('../services/storage', () => ({
     }),
     listChatGroups: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockGroupStorage.values()))),
     loadChatGroup: vi.fn().mockResolvedValue(null),
-    deleteChatGroup: vi.fn().mockImplementation((id) => {
+    deleteChatGroup: vi.fn().mockImplementation(({ id }: { id: string }) => {
       mocks.mockGroupStorage.delete(id);
       return Promise.resolve();
     }),

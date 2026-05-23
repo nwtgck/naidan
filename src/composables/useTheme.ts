@@ -10,7 +10,7 @@ const themeMode = useStorage<ThemeMode>(`${STORAGE_KEY_PREFIX}theme_mode`, 'syst
 export function useTheme() {
   const preferredDark = usePreferredDark();
 
-  function applyTheme(mode: ThemeMode) {
+  function applyTheme({ mode }: { mode: ThemeMode }) {
     const isDark = (() => {
       switch (mode) {
       case 'system':
@@ -37,16 +37,16 @@ export function useTheme() {
   }
 
   onMounted(() => {
-    applyTheme(themeMode.value);
+    applyTheme({ mode: themeMode.value });
   });
 
   watch([themeMode, preferredDark], () => {
-    applyTheme(themeMode.value);
+    applyTheme({ mode: themeMode.value });
   }, { immediate: true });
 
   return {
     themeMode,
-    setTheme: (mode: ThemeMode) => {
+    setTheme: ({ mode }: { mode: ThemeMode }) => {
       themeMode.value = mode;
     },
     TEST_ONLY: {

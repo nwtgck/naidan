@@ -146,7 +146,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
 
     await provider.saveChatContent(mockChat.id, mockChat);
     await provider.saveChatMeta(mockChat);
-    const loaded = await provider.loadChat(chatId);
+    const loaded = await provider.loadChat({ id: chatId });
 
     expect(loaded).not.toBeNull();
     expect(loaded?.id).toBe(chatId);
@@ -175,7 +175,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
     expect(metaDir.entries.has(`${chatId}.json`)).toBe(true);
     expect(contentsDir.entries.has(`${chatId}.json`)).toBe(true);
 
-    await provider.deleteChat(chatId);
+    await provider.deleteChat({ id: chatId });
 
     // Verify metadata removed
     expect(metaDir.entries.has(`${chatId}.json`)).toBe(false);

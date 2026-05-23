@@ -72,7 +72,7 @@ export async function generateGptOss({
     skip_prompt: true,
     skip_special_tokens: false,
     callback_function: (output: string) => {
-      const delta = parser.push(output);
+      const delta = parser.push({ token: output });
       if (!delta) return;
 
       switch (delta.type) {

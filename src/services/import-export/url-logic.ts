@@ -67,8 +67,8 @@ export class URLImportExportLogic {
     }
     const blob = new Blob([bytes] as unknown as BlobPart[], { type: 'application/zip' });
 
-    await this.service.verify(blob, APPEND_ONLY_CONFIG);
-    await this.service.executeImport(blob, APPEND_ONLY_CONFIG);
+    await this.service.verify({ zipFile: blob, config: APPEND_ONLY_CONFIG });
+    await this.service.executeImport({ zipFile: blob, config: APPEND_ONLY_CONFIG });
 
     // Explicitly help GC by clearing references to large data
     bytes = null;

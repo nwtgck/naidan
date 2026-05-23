@@ -35,7 +35,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/models/types';
 
 // Helper to format date YYYY-MM-DD
-function formatDate(date: Date): string {
+function formatDate({ date }: { date: Date }): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -45,7 +45,7 @@ function formatDate(date: Date): string {
 /**
  * Truncates a string to a maximum byte length for UTF-8 encoding.
  */
-function truncateByByteLength(str: string, maxBytes: number): string {
+function truncateByByteLength({ str, maxBytes }: { str: string, maxBytes: number }): string {
   if (maxBytes <= 0) return '';
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -62,7 +62,7 @@ export interface IImportExportStorage {
   updateSettings(updater: (current: Settings | null) => Settings | Promise<Settings>): Promise<void>;
   listChats(): Promise<ChatSummary[]>;
   listChatGroups(): Promise<ChatGroup[]>;
-  loadChat(id: string): Promise<Chat | null>;
+  loadChat({ id }: { id: string }): Promise<Chat | null>;
   loadHierarchy(): Promise<Hierarchy | null>;
   clearAll(): Promise<void>;
   dumpWithoutLock(): Promise<StorageSnapshot>;
@@ -80,7 +80,7 @@ export class ImportExportService {
    */
   async exportData(options: ExportOptions): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
     const zip = new JSZip();
-    const dateStr = formatDate(new Date());
+    const dateStr = formatDate({ date: new Date() });
 
     // Linux filename limit is 255 bytes.
     const SUFFIX = `-${dateStr}.zip`;
@@ -96,7 +96,7 @@ export class ImportExportService {
       const sanitized = options.fileNameSegment.replace(/[/?%*:|"<>\x00-\x1F]/g, '_').trim();
       /* eslint-enable no-control-regex */
       if (sanitized) {
-        midSegment = `-${truncateByByteLength(sanitized, AVAILABLE_BYTES)}`;
+        midSegment = `-${truncateByByteLength({ str: sanitized, maxBytes: AVAILABLE_BYTES })}`;
       }
     }
 
@@ -113,7 +113,7 @@ export class ImportExportService {
 
     const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('../../models/mappers');
 
-    root.file('settings.json', JSON.stringify(settingsToDto(structure.settings), null, 2));
+    root.file('settings.json', JSON.stringify(settingsToDto({ domain: structure.settings }), null, 2));
 
     const excludeFlags = {
       chat: false,
@@ -143,27 +143,27 @@ export class ImportExportService {
           .filter((item): item is Extract<HierarchyNode, { type: 'chat_group' }> => item.type === 'chat_group')
           .map(item => ({ ...item, chat_ids: [] }))
       };
-      root.file('hierarchy.json', JSON.stringify(hierarchyToDto(filteredHierarchy), null, 2));
+      root.file('hierarchy.json', JSON.stringify(hierarchyToDto({ domain: filteredHierarchy }), null, 2));
 
       const groupFolder = root.folder('chat-groups');
       for (const group of structure.chatGroups) {
-        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
+        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
       }
       // chat-metas.json is intentionally omitted when chat is excluded
     } else {
-      root.file('hierarchy.json', JSON.stringify(hierarchyToDto(structure.hierarchy), null, 2));
+      root.file('hierarchy.json', JSON.stringify(hierarchyToDto({ domain: structure.hierarchy }), null, 2));
 
       const groupFolder = root.folder('chat-groups');
       for (const group of structure.chatGroups) {
-        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto(group), null, 2));
+        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
       }
 
-      const metasDto = structure.chatMetas.map(chatMetaToDto);
+      const metasDto = structure.chatMetas.map(domain => chatMetaToDto({ domain }));
       root.file('chat-metas.json', JSON.stringify({ entries: metasDto }, null, 2));
     }
 
     const shardIndices = new Map<string, BinaryShardIndexDto>();
-    const getShard = (id: string) => id.slice(-2).toLowerCase();
+    const getShard = ({ id }: { id: string }) => id.slice(-2).toLowerCase();
 
     try {
       for await (const chunk of contentStream) {
@@ -178,7 +178,7 @@ export class ImportExportService {
           if (excludeFlags.binary_object) break;
 
           const binFolder = root.folder('binary-objects') || root;
-          const shard = getShard(chunk.id);
+          const shard = getShard({ id: chunk.id });
           const shardFolder = binFolder.folder(shard);
           if (!shardFolder) throw new Error(`Failed to create shard folder ${shard} in ZIP`);
 
@@ -255,7 +255,7 @@ export class ImportExportService {
         const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
         if (result.success) {
           stats.providerProfilesCount = result.data.providerProfiles?.length ?? 0;
-          previewSettings = settingsToDomain(result.data);
+          previewSettings = settingsToDomain({ dto: result.data });
         }
       } catch (e) { /* Ignore */ }
     }
@@ -353,10 +353,10 @@ export class ImportExportService {
           }
         });
       } catch (e) {
-        this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
+        this.assembleLegacyHierarchy({ chatsMap, chatGroupsMap, items });
       }
     } else {
-      this.assembleLegacyHierarchy(chatsMap, chatGroupsMap, items);
+      this.assembleLegacyHierarchy({ chatsMap, chatGroupsMap, items });
     }
 
     const manifestFile = zip.file(rootPath + 'export-manifest.json');
@@ -373,11 +373,15 @@ export class ImportExportService {
     return { appVersion, exportedAt, items, stats, previewSettings };
   }
 
-  private assembleLegacyHierarchy(
+  private assembleLegacyHierarchy({
+    chatsMap,
+    chatGroupsMap,
+    items
+  }: {
     chatsMap: Map<string, PreviewChat & { _groupId?: string | null }>,
     chatGroupsMap: Map<string, PreviewChatGroup>,
     items: ImportPreviewItem[]
-  ) {
+  }) {
     let order = 0;
     for (const chat of chatsMap.values()) {
       if (chat._groupId && chatGroupsMap.has(chat._groupId)) {
@@ -397,7 +401,7 @@ export class ImportExportService {
   /**
    * Verify that the ZIP content is valid by dry-running the restoration snapshots.
    */
-  async verify(zipFile: Blob, config: ImportConfig): Promise<void> {
+  async verify({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
     const zip = await this.loadZip(zipFile);
     const rootPath = this.findRootPath(zip);
 
@@ -405,10 +409,10 @@ export class ImportExportService {
     const mode = config.data.mode;
     switch (mode) {
     case 'replace':
-      snapshot = await this.createRestoreSnapshot(zip, rootPath);
+      snapshot = await this.createRestoreSnapshot({ zip, rootPath });
       break;
     case 'append':
-      snapshot = await this.createAppendSnapshot(zip, rootPath, config);
+      snapshot = await this.createAppendSnapshot({ zip, rootPath, config });
       break;
     default: {
       const _ex: never = mode;
@@ -422,7 +426,7 @@ export class ImportExportService {
   /**
    * Execute Import.
    */
-  async executeImport(zipFile: Blob, config: ImportConfig): Promise<void> {
+  async executeImport({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
     const zip = await this.loadZip(zipFile);
     const rootPath = this.findRootPath(zip);
     const settingsFile = zip.file(rootPath + 'settings.json');
@@ -434,10 +438,10 @@ export class ImportExportService {
       if (settingsFile) {
         try {
           const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
-          if (result.success) await this.applySettingsImport(result.data, config.settings);
+          if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
         } catch (e) { /* Ignore */ }
       }
-      const replaceSnapshot = await this.createRestoreSnapshot(zip, rootPath);
+      const replaceSnapshot = await this.createRestoreSnapshot({ zip, rootPath });
       await this.storage.restore(replaceSnapshot);
       break;
     }
@@ -445,10 +449,10 @@ export class ImportExportService {
       if (settingsFile) {
         try {
           const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
-          if (result.success) await this.applySettingsImport(result.data, config.settings);
+          if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
         } catch (e) { /* Ignore */ }
       }
-      const appendSnapshot = await this.createAppendSnapshot(zip, rootPath, config);
+      const appendSnapshot = await this.createAppendSnapshot({ zip, rootPath, config });
       await this.storage.restore(appendSnapshot);
       break;
     }
@@ -476,24 +480,24 @@ export class ImportExportService {
     return lastSlash !== -1 ? manifestPath.substring(0, lastSlash + 1) : '';
   }
 
-  private async applySettingsImport(zipSettings: SettingsDto, strategies: ImportConfig['settings']) {
+  private async applySettingsImport({ zipSettings, strategies }: { zipSettings: SettingsDto; strategies: ImportConfig['settings'] }) {
     await this.storage.updateSettings((currentSettings) => {
-      const newSettingsDomain = settingsToDomain(zipSettings);
+      const newSettingsDomain = settingsToDomain({ dto: zipSettings });
       const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
-      const applyField = <K extends keyof Settings>(strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K) => {
+      const applyField = <K extends keyof Settings>({ strategy, newValue, targetKey }: { strategy: ImportFieldStrategy; newValue: Settings[K]; targetKey: K }) => {
         if (strategy === 'replace' && newValue !== undefined) {
           finalSettings[targetKey] = newValue;
         }
       };
 
-      applyField(strategies.endpoint, newSettingsDomain.endpointType, 'endpointType');
-      applyField(strategies.endpoint, newSettingsDomain.endpointUrl, 'endpointUrl');
-      applyField(strategies.endpoint, newSettingsDomain.endpointHttpHeaders, 'endpointHttpHeaders');
-      applyField(strategies.model, newSettingsDomain.defaultModelId, 'defaultModelId');
-      applyField(strategies.titleModel, newSettingsDomain.titleModelId, 'titleModelId');
-      applyField(strategies.systemPrompt, newSettingsDomain.systemPrompt, 'systemPrompt');
-      applyField(strategies.lmParameters, newSettingsDomain.lmParameters, 'lmParameters');
+      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointType, targetKey: 'endpointType' });
+      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointUrl, targetKey: 'endpointUrl' });
+      applyField({ strategy: strategies.endpoint, newValue: newSettingsDomain.endpointHttpHeaders, targetKey: 'endpointHttpHeaders' });
+      applyField({ strategy: strategies.model, newValue: newSettingsDomain.defaultModelId, targetKey: 'defaultModelId' });
+      applyField({ strategy: strategies.titleModel, newValue: newSettingsDomain.titleModelId, targetKey: 'titleModelId' });
+      applyField({ strategy: strategies.systemPrompt, newValue: newSettingsDomain.systemPrompt, targetKey: 'systemPrompt' });
+      applyField({ strategy: strategies.lmParameters, newValue: newSettingsDomain.lmParameters, targetKey: 'lmParameters' });
 
       // Always merge UI flags if present in the import
       if (newSettingsDomain.heavyContentAlertDismissed !== undefined) {
@@ -523,7 +527,7 @@ export class ImportExportService {
     });
   }
 
-  private async createRestoreSnapshot(zip: JSZip, rootPath: string): Promise<StorageSnapshot> {
+  private async createRestoreSnapshot({ zip, rootPath }: { zip: JSZip; rootPath: string }): Promise<StorageSnapshot> {
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
     const hierarchyDto: HierarchyDto = hierarchyFile
       ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')))
@@ -569,9 +573,9 @@ export class ImportExportService {
       }
     }
 
-    const chatMetas = metasDto.map(chatMetaToDomain);
+    const chatMetas = metasDto.map(dto => chatMetaToDomain({ dto }));
     const hierarchy = hierarchyDto;
-    const chatGroups = groupsDto.map(g => chatGroupToDomain(g, hierarchy, chatMetas));
+    const chatGroups = groupsDto.map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       for (const meta of metasDto) {
@@ -610,7 +614,7 @@ export class ImportExportService {
 
     return {
       structure: {
-        settings: settingsDto ? settingsToDomain(settingsDto) : {
+        settings: settingsDto ? settingsToDomain({ dto: settingsDto }) : {
           autoTitleEnabled: true,
           providerProfiles: [],
           mounts: [],
@@ -626,7 +630,7 @@ export class ImportExportService {
     };
   }
 
-  private async createAppendSnapshot(zip: JSZip, rootPath: string, config: ImportConfig): Promise<StorageSnapshot> {
+  private async createAppendSnapshot({ zip, rootPath, config }: { zip: JSZip; rootPath: string; config: ImportConfig }): Promise<StorageSnapshot> {
     const groupIdMap = new Map<string, string>();
     const chatIdMap = new Map<string, string>();
 
@@ -707,9 +711,9 @@ export class ImportExportService {
         // Note: originMessageId remapping is harder as we don't have all messageIdMaps yet.
         // But we can handle it inside contentStream if we process in a way that allows it.
       }
-      return chatMetaToDomain(dto);
+      return chatMetaToDomain({ dto });
     });
-    const chatGroups = importedGroupsDto.map(g => chatGroupToDomain(g, mergedHierarchy, chatMetas));
+    const chatGroups = importedGroupsDto.map(dto => chatGroupToDomain({ dto, hierarchy: mergedHierarchy, chatMetas }));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       // 1. Unified metadata lookup for append remapping
@@ -735,7 +739,7 @@ export class ImportExportService {
             const dto: ChatDto = { ...meta, ...content, messages: undefined };
 
             const messageIdMap = new Map<string, string>();
-            const process = (node: MessageNodeDto) => {
+            const process = ({ node }: { node: MessageNodeDto }) => {
               const oldMsgId = node.id;
               const newMsgId = generateId();
               messageIdMap.set(oldMsgId, newMsgId);
@@ -770,9 +774,9 @@ export class ImportExportService {
                   }
                 });
               }
-              if (node.replies?.items) node.replies.items.forEach(process);
+              if (node.replies?.items) node.replies.items.forEach(node => process({ node }));
             };
-            if (dto.root?.items) dto.root.items.forEach(process);
+            if (dto.root?.items) dto.root.items.forEach(node => process({ node }));
 
             // Remap currentLeafId using the messageIdMap
             if (dto.currentLeafId && messageIdMap.has(dto.currentLeafId)) {

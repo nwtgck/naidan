@@ -16,7 +16,7 @@ const emit = defineEmits<{
   'open-explorer': [{ volumeId: string }];
 }>();
 
-function displayPath(mountPath: string): string {
+function displayPath({ mountPath }: { mountPath: string }): string {
   if (!props.pathTrimPrefix) return mountPath;
   const trimmed = mountPath.startsWith(props.pathTrimPrefix)
     ? mountPath.slice(props.pathTrimPrefix.length)
@@ -44,15 +44,15 @@ defineExpose({
       <button
         v-if="showExplorer"
         class="max-w-[120px] truncate mx-1 hover:underline focus:outline-none"
-        :title="`Browse ${displayPath(mount.mountPath)}`"
+        :title="`Browse ${displayPath({ mountPath: mount.mountPath })}`"
         data-testid="mount-open-explorer"
         @click="emit('open-explorer', { volumeId: mount.volumeId })"
-      >{{ displayPath(mount.mountPath) }}</button>
+      >{{ displayPath({ mountPath: mount.mountPath }) }}</button>
       <span
         v-else
         class="max-w-[140px] truncate mx-1"
         data-testid="mount-path-label"
-      >{{ displayPath(mount.mountPath) }}</span>
+      >{{ displayPath({ mountPath: mount.mountPath }) }}</span>
       <button
         @click="emit('toggle-read-only', { volumeId: mount.volumeId, readOnly: !mount.readOnly })"
         :title="mount.readOnly ? 'Read-only — click to allow write' : 'Read & write — click to restrict'"

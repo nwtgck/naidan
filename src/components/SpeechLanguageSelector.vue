@@ -27,7 +27,7 @@ const languages: { label: string; value: SpeechLanguage }[] = [
   { label: 'Русский', value: 'ru-RU' },
 ];
 
-function setLanguage(lang: SpeechLanguage) {
+function setLanguage({ lang }: { lang: SpeechLanguage }) {
   webSpeechService.setPreferredLang({ lang });
   showMenu.value = false;
 }
@@ -65,7 +65,7 @@ function getDisplayLabel() {
   }
 }
 
-function getFullLabel(langObj: { label: string; value: SpeechLanguage }) {
+function getFullLabel({ langObj }: { langObj: { label: string; value: SpeechLanguage } }) {
   const val = langObj.value;
   switch (val) {
   case 'auto':
@@ -132,8 +132,8 @@ defineExpose({
             class="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
             :class="selectedLang === l.value ? 'text-blue-600 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
           >
-            <button @click.stop="setLanguage(l.value)" class="flex-1 text-left">
-              {{ getFullLabel(l) }}
+            <button @click.stop="setLanguage({ lang: l.value })" class="flex-1 text-left">
+              {{ getFullLabel({ langObj: l }) }}
             </button>
 
             <div class="flex items-center gap-2">

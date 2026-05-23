@@ -37,13 +37,13 @@ const isDragging = ref(false);
 
 const localSystemPrompt = ref<SystemPrompt | undefined>(undefined);
 
-function setFileInputRef(el: unknown, index: number) {
+function setFileInputRef({ el, index }: { el: unknown; index: number }) {
   fileInputs.value[index] = el as HTMLInputElement | null;
 }
 
 watch(() => props.isOpen, async (open) => {
   if (open && currentChat.value) {
-    setActiveFocusArea('dialog');
+    setActiveFocusArea({ area: 'dialog' });
 
     // Clear old URLs
     Object.values(attachmentUrls.value).forEach(URL.revokeObjectURL);
@@ -71,7 +71,7 @@ watch(() => props.isOpen, async (open) => {
           const status = att.status;
           switch (status) {
           case 'persisted': {
-            const blob = await storageService.getFile(att.binaryObjectId);
+            const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
             if (blob) {
               attachmentUrls.value[att.id] = URL.createObjectURL(blob);
             }
@@ -91,7 +91,7 @@ watch(() => props.isOpen, async (open) => {
       }
     }
   } else {
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
   }
 });
 
@@ -99,7 +99,7 @@ onUnmounted(() => {
   Object.values(attachmentUrls.value).forEach(URL.revokeObjectURL);
 });
 
-function predictNextRole(index: number): 'user' | 'assistant' {
+function predictNextRole({ index }: { index: number }): 'user' | 'assistant' {
   if (editableMessages.value.length === 0) return 'user';
 
   if (index >= 0 && index < editableMessages.value.length) {
@@ -131,8 +131,8 @@ function predictNextRole(index: number): 'user' | 'assistant' {
   return 'user';
 }
 
-function addMessage(index: number) {
-  const role = predictNextRole(index);
+function addMessage({ index }: { index: number }) {
+  const role = predictNextRole({ index });
   editableMessages.value.splice(index + 1, 0, {
     localId: generateId(),
     role,
@@ -140,11 +140,11 @@ function addMessage(index: number) {
   });
 }
 
-function removeMessage(index: number) {
+function removeMessage({ index }: { index: number }) {
   editableMessages.value.splice(index, 1);
 }
 
-function duplicateMessage(index: number) {
+function duplicateMessage({ index }: { index: number }) {
   const msg = editableMessages.value[index];
   if (!msg) return;
 
@@ -155,11 +155,11 @@ function duplicateMessage(index: number) {
   });
 }
 
-function triggerFileInput(index: number) {
+function triggerFileInput({ index }: { index: number }) {
   fileInputs.value[index]?.click();
 }
 
-async function handleFileSelect(event: Event, index: number) {
+async function handleFileSelect({ event, index }: { event: Event; index: number }) {
   const target = event.target as HTMLInputElement;
   if (!target.files || !editableMessages.value[index]) return;
 
@@ -186,7 +186,7 @@ async function handleFileSelect(event: Event, index: number) {
   target.value = '';
 }
 
-async function handlePaste(event: ClipboardEvent, index: number) {
+async function handlePaste({ event, index }: { event: ClipboardEvent; index: number }) {
   const items = event.clipboardData?.items;
   if (!items || !editableMessages.value[index]) return;
 
@@ -221,7 +221,7 @@ async function handlePaste(event: ClipboardEvent, index: number) {
   }
 }
 
-function removeAttachment(msgIndex: number, attId: string) {
+function removeAttachment({ msgIndex, attId }: { msgIndex: number; attId: string }) {
   const msg = editableMessages.value[msgIndex];
   if (msg && msg.attachments) {
     msg.attachments = msg.attachments.filter(a => a.id !== attId);
@@ -275,7 +275,7 @@ function handleCancel() {
   emit('close');
 }
 
-function capitalize(s: string) {
+function capitalize({ s }: { s: string }) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -337,7 +337,7 @@ defineExpose({
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="systemPromptBehavior === b ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
-                    {{ capitalize(b) }}
+                    {{ capitalize({ s: b }) }}
                   </button>
                 </div>
               </div>
@@ -381,7 +381,7 @@ defineExpose({
                 <HammerIcon class="w-8 h-8 text-orange-500 opacity-40" />
               </div>
               <p class="text-xs font-bold uppercase tracking-widest opacity-60">Forge empty history</p>
-              <button @click="addMessage(-1)" class="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-bold text-[11px] uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95">
+              <button @click="addMessage({ index: -1 })" class="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all font-bold text-[11px] uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95">
                 <PlusIcon class="w-4 h-4" />
                 Add First Message
               </button>
@@ -424,7 +424,7 @@ defineExpose({
                         <UserIcon v-if="msg.role === 'user'" class="w-5 h-5" />
                         <BotIcon v-else class="w-5 h-5" />
                       </button>
-                      <div class="text-[9px] font-bold text-gray-400 tracking-tight" data-testid="role-label">{{ capitalize(msg.role) }}</div>
+                      <div class="text-[9px] font-bold text-gray-400 tracking-tight" data-testid="role-label">{{ capitalize({ s: msg.role }) }}</div>
                     </div>
 
                     <!-- Message Card -->
@@ -441,7 +441,7 @@ defineExpose({
                             <ImageIcon class="w-8 h-8 text-gray-400" />
                           </div>
                           <button
-                            @click="removeAttachment(index, att.id)"
+                            @click="removeAttachment({ msgIndex: index, attId: att.id })"
                             class="absolute -top-2 -right-2 p-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-lg opacity-0 group-hover/att:opacity-100 transition-opacity"
                           >
                             <XIcon class="w-3.5 h-3.5" />
@@ -451,7 +451,7 @@ defineExpose({
 
                       <textarea
                         v-model="msg.content"
-                        @paste="handlePaste($event, index)"
+                        @paste="handlePaste({ event: $event, index })"
                         class="w-full bg-transparent p-4 text-[14px] text-gray-800 dark:text-gray-100 focus:outline-none resize-none min-h-[100px] font-medium leading-relaxed"
                         placeholder="Type message content..."
                       ></textarea>
@@ -465,12 +465,12 @@ defineExpose({
 
                         <div class="flex items-center gap-2">
                           <input
-                            :ref="el => setFileInputRef(el, index)"
+                            :ref="el => setFileInputRef({ el, index })"
                             type="file" accept="image/*" multiple class="hidden"
-                            @change="handleFileSelect($event, index)"
+                            @change="handleFileSelect({ event: $event, index })"
                           />
                           <button
-                            @click="triggerFileInput(index)"
+                            @click="triggerFileInput({ index })"
                             class="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-gray-800 transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-700 shadow-sm"
                             title="Attach media"
                           >
@@ -482,13 +482,13 @@ defineExpose({
 
                     <!-- Side Action Column -->
                     <div class="flex flex-col gap-2 pt-3">
-                      <button @click="removeMessage(index)" class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Remove Message">
+                      <button @click="removeMessage({ index })" class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Remove Message">
                         <Trash2Icon class="w-4.5 h-4.5" />
                       </button>
-                      <button @click="duplicateMessage(index)" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Copy Message">
+                      <button @click="duplicateMessage({ index })" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Copy Message">
                         <CopyIcon class="w-4.5 h-4.5" />
                       </button>
-                      <button @click="addMessage(index)" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Add Message After">
+                      <button @click="addMessage({ index })" class="p-2.5 text-gray-400 hover:text-blue-500 hover:bg-white dark:hover:bg-gray-800 rounded-xl transition-all border border-transparent hover:border-gray-100 dark:hover:border-gray-800 shadow-sm" title="Add Message After">
                         <PlusIcon class="w-4.5 h-4.5" />
                       </button>
                     </div>
@@ -502,7 +502,7 @@ defineExpose({
 
             <div v-if="editableMessages.length > 0" class="flex justify-center pt-4 pb-8">
               <button
-                @click="addMessage(editableMessages.length - 1)"
+                @click="addMessage({ index: editableMessages.length - 1 })"
                 class="flex items-center gap-2 px-6 py-2.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-200 dark:hover:border-blue-900/50 hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-all shadow-sm font-bold text-xs uppercase tracking-widest active:scale-95"
               >
                 <PlusIcon class="w-4 h-4" />

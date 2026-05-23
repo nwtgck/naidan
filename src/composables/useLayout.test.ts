@@ -26,8 +26,8 @@ describe('useLayout editor mode preference', () => {
     const layout = useLayout();
     const initialVersion = layout.activeFocusAreaVersion.value;
 
-    layout.setActiveFocusArea('chat');
-    layout.setActiveFocusArea('chat');
+    layout.setActiveFocusArea({ area: 'chat' });
+    layout.setActiveFocusArea({ area: 'chat' });
 
     expect(layout.activeFocusArea.value).toBe('chat');
     expect(layout.activeFocusAreaVersion.value).toBe(initialVersion + 2);

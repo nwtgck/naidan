@@ -566,7 +566,7 @@ describe('MessageItem Attachment Rendering', () => {
 
     const img = wrapper.find('img');
     expect(img.exists()).toBe(true);
-    expect(storageService.getFile).toHaveBeenCalledWith('binary-id-123');
+    expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: 'binary-id-123' });
   });
 
   it('renders a fallback for missing attachments', async () => {

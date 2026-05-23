@@ -19,14 +19,14 @@ const addToast = (toast: Omit<Toast, 'id'>) => {
 
   if (toast.duration !== 0) {
     setTimeout(() => {
-      removeToast(id, 'timeout');
+      removeToast({ id, reason: 'timeout' });
     }, toast.duration || 20000);
   }
 
   return id;
 };
 
-const removeToast = (id: string, reason: 'timeout' | 'dismiss' | 'action' = 'dismiss') => {
+const removeToast = ({ id, reason = 'dismiss' }: { id: string, reason?: 'timeout' | 'dismiss' | 'action' }) => {
   const toast = toasts.value.find(t => t.id === id);
   if (toast?.onClose) {
     toast.onClose(reason);

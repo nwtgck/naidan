@@ -60,7 +60,7 @@ describe('useChat Settings Resolution Policy', () => {
     vi.mocked(storageService.getSidebarStructure).mockImplementation(() => Promise.resolve(chatStore.rootItems.value));
 
     // Default Global Settings
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       endpointType: 'openai',
       endpointUrl: 'http://global-openai',
       defaultModelId: 'global-gpt',
@@ -68,7 +68,7 @@ describe('useChat Settings Resolution Policy', () => {
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
-    });
+    } });
 
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'other-gpt', 'pinned-model', 'model-a', 'model-b']);
     mockOllamaModels.mockResolvedValue(['llama-global', 'llama-other']);
@@ -81,11 +81,11 @@ describe('useChat Settings Resolution Policy', () => {
 
   it('Scenario: Global setting change should be reflected in existing chat for subsequent messages', async () => {
     // 1. Setup with Setting A
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpointUrl: 'http://endpoint-a',
       defaultModelId: 'global-gpt',
-    });
+    } });
 
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
@@ -97,11 +97,11 @@ describe('useChat Settings Resolution Policy', () => {
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'global-gpt', onChunk: expect.any(Function) }));
 
     // 2. Change to Setting B
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpointUrl: 'http://endpoint-b',
       defaultModelId: 'model-b',
-    });
+    } });
 
     // Send second message in SAME chat - should now use Global B
     await sendMessage({ content: 'Message 2' });
@@ -123,7 +123,7 @@ describe('useChat Settings Resolution Policy', () => {
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'pinned-model', onChunk: expect.any(Function) }));
 
     // Change global model - should NOT affect pinned chat
-    __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'new-global-gpt' });
+    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'new-global-gpt' } });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'pinned-model', onChunk: expect.any(Function) }));
@@ -144,7 +144,7 @@ describe('useChat Settings Resolution Policy', () => {
     expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'llama-global', onChunk: expect.any(Function) }));
 
     // Change global model to something available in Ollama
-    __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'llama-other' });
+    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'llama-other' } });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOllamaChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'llama-other', onChunk: expect.any(Function) }));
@@ -155,7 +155,7 @@ describe('useChat Settings Resolution Policy', () => {
     const id = chat!.id;
     await openChat({ id });
 
-    __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'non-existent' });
+    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'non-existent' } });
     mockOpenAIModels.mockResolvedValue(['first-available', 'second']);
 
     await sendMessage({ content: 'M1' });
@@ -164,7 +164,7 @@ describe('useChat Settings Resolution Policy', () => {
 
   it('Policy: Resolve headers hierarchically (Chat > Global)', async () => {
     // 1. Global only
-    __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), endpointHttpHeaders: [['X-Global', '1']] });
+    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), endpointHttpHeaders: [['X-Global', '1']] } });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
     await openChat({ id });

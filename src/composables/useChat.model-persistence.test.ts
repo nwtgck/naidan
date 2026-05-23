@@ -73,7 +73,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
 
-    vi.mocked(storageService.loadChat).mockImplementation((id) => {
+    vi.mocked(storageService.loadChat).mockImplementation(({ id }) => {
       if (id === 'c1') return Promise.resolve({ id: 'c1', title: 'C1', modelId: 'm1', root: { items: [] } } as any);
       return Promise.resolve(null);
     });

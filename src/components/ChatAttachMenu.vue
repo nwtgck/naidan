@@ -26,14 +26,14 @@ onClickOutside(menuRef, () => {
   isFolderCopyInfoOpen.value = false;
 });
 
-function handleFileInputChange(event: Event) {
+function handleFileInputChange({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const files = Array.from(target.files ?? []);
   target.value = '';
   if (files.length > 0) emit('files-selected', files);
 }
 
-function handleFolderInputChange(event: Event) {
+function handleFolderInputChange({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const files = Array.from(target.files ?? []);
   target.value = '';
@@ -56,8 +56,8 @@ defineExpose({
 
 <template>
   <div class="relative" ref="menuRef">
-    <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileInputChange" data-testid="attach-file-input" />
-    <input ref="folderInputRef" type="file" webkitdirectory class="hidden" @change="handleFolderInputChange" data-testid="attach-folder-input" />
+    <input ref="fileInputRef" type="file" multiple class="hidden" @change="handleFileInputChange({ event: $event })" data-testid="attach-file-input" />
+    <input ref="folderInputRef" type="file" webkitdirectory class="hidden" @change="handleFolderInputChange({ event: $event })" data-testid="attach-folder-input" />
 
     <button
       @click="isOpen = !isOpen"

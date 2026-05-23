@@ -101,7 +101,7 @@ defineExpose({
     </div>
 
     <!-- Speech Controls -->
-    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content || '')" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
+    <SpeechControl v-if="!isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" show-full-controls />
 
     <button
       v-if="!isUser"

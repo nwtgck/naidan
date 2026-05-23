@@ -46,7 +46,7 @@ transformersJsService.subscribeModelList(async () => {
   switch (type) {
   case 'transformers_js': {
     const { fetchModels } = useSettings();
-    await fetchModels();
+    await fetchModels({});
     break;
   }
   case 'openai':
@@ -136,7 +136,7 @@ export function useSettings() {
         // Sync local settings ref with determined storage type
         _settings.value.storageType = bootstrapType;
 
-        await storageService.init(bootstrapType);
+        await storageService.init({ type: bootstrapType });
 
         // Handle URL-based data import BEFORE loading existing settings to ensure append mode works correctly
         if (dataZipBase64) {
@@ -166,7 +166,7 @@ export function useSettings() {
           _settings.value = s;
           if (s.endpointUrl || s.endpointType === 'transformers_js') {
             // Initial fetch of models if we have an endpoint
-            fetchModels();
+            fetchModels({});
           }
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
@@ -182,7 +182,7 @@ export function useSettings() {
     return initPromise;
   }
 
-  async function fetchModels(overrides?: { url: string; type: EndpointType; headers?: [string, string][] }): Promise<string[]> {
+  async function fetchModels({ overrides }: { overrides?: { url: string; type: EndpointType; headers?: [string, string][] } }): Promise<string[]> {
     const url = overrides?.url ?? _settings.value.endpointUrl;
     const type = overrides?.type ?? _settings.value.endpointType;
     const headers = overrides?.headers ?? _settings.value.endpointHttpHeaders;
@@ -228,7 +228,7 @@ export function useSettings() {
     }
   }
 
-  async function save(patch: Partial<Settings>) {
+  async function save({ patch }: { patch: Partial<Settings> }) {
     const oldUrl = _settings.value.endpointUrl;
     const oldType = _settings.value.endpointType;
 
@@ -237,7 +237,7 @@ export function useSettings() {
 
     // If storage type is changed, handle provider switching/migration
     if (patch.storageType && patch.storageType !== storageService.getCurrentType()) {
-      await storageService.switchProvider(patch.storageType);
+      await storageService.switchProvider({ type: patch.storageType });
     }
 
     // Persist as a patch to ensure we don't overwrite concurrent changes to other fields
@@ -250,65 +250,65 @@ export function useSettings() {
     const urlChanged = patch.endpointUrl !== undefined && patch.endpointUrl !== oldUrl;
     const typeChanged = patch.endpointType !== undefined && patch.endpointType !== oldType;
     if (urlChanged || typeChanged) {
-      await fetchModels();
+      await fetchModels({});
     }
   }
 
   // --- Explicit Actions ---
 
-  async function updateProviderProfiles(profiles: ProviderProfile[]) {
+  async function updateProviderProfiles({ profiles }: { profiles: ProviderProfile[] }) {
     const patch = { providerProfiles: [...profiles] };
     _settings.value.providerProfiles = patch.providerProfiles;
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), ...patch } as Settings));
   }
 
-  async function updateGlobalModel(modelId: string) {
+  async function updateGlobalModel({ modelId }: { modelId: string }) {
     _settings.value.defaultModelId = modelId;
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), defaultModelId: modelId }));
   }
 
-  async function updateGlobalEndpoint(options: { type: EndpointType, url: string, headers?: [string, string][] }) {
+  async function updateGlobalEndpoint({ type, url, headers }: { type: EndpointType, url: string, headers?: [string, string][] }) {
     const oldUrl = _settings.value.endpointUrl;
     const oldType = _settings.value.endpointType;
 
-    _settings.value.endpointType = options.type;
-    _settings.value.endpointUrl = options.url;
-    _settings.value.endpointHttpHeaders = options.headers;
+    _settings.value.endpointType = type;
+    _settings.value.endpointUrl = url;
+    _settings.value.endpointHttpHeaders = headers;
 
     await storageService.updateSettings((curr) => ({
       ...(curr || _settings.value),
-      endpointType: options.type,
-      endpointUrl: options.url,
-      endpointHttpHeaders: options.headers
+      endpointType: type,
+      endpointUrl: url,
+      endpointHttpHeaders: headers
     }));
 
-    if (options.url !== oldUrl || options.type !== oldType) {
-      await fetchModels();
+    if (url !== oldUrl || type !== oldType) {
+      await fetchModels({});
     }
   }
 
-  async function updateSystemPrompt(prompt: string) {
+  async function updateSystemPrompt({ prompt }: { prompt: string }) {
     _settings.value.systemPrompt = prompt;
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), systemPrompt: prompt }));
   }
 
-  async function updateStorageType(type: StorageType) {
+  async function updateStorageType({ type }: { type: StorageType }) {
     if (_settings.value.storageType === type) return;
 
     _settings.value.storageType = type;
-    await storageService.switchProvider(type);
+    await storageService.switchProvider({ type });
     await storageService.updateSettings((curr) => ({ ...(curr || _settings.value), storageType: type }));
   }
 
-  function setIsOnboardingDismissed(dismissed: boolean) {
+  function setIsOnboardingDismissed({ dismissed }: { dismissed: boolean }) {
     _isOnboardingDismissed.value = dismissed;
   }
 
-  function setOnboardingDraft(draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null) {
+  function setOnboardingDraft({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) {
     _onboardingDraft.value = draft;
   }
 
-  function setHeavyContentAlertDismissed(dismissed: boolean) {
+  function setHeavyContentAlertDismissed({ dismissed }: { dismissed: boolean }) {
     _settings.value.heavyContentAlertDismissed = dismissed;
     storageService.updateSettings((curr) => ({ ...(curr || _settings.value), heavyContentAlertDismissed: dismissed }));
   }
@@ -317,11 +317,11 @@ export function useSettings() {
     _searchPreviewMode.value = mode;
   }
 
-  function setSearchContextSize(size: number) {
+  function setSearchContextSize({ size }: { size: number }) {
     _searchContextSize.value = size;
   }
 
-  function __testOnlySetSettings(newSettings: Settings) {
+  function __testOnlySetSettings({ newSettings }: { newSettings: Settings }) {
     _settings.value = JSON.parse(JSON.stringify(newSettings));
   }
 

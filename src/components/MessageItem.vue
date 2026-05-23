@@ -20,10 +20,10 @@ import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '@/services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
-const ReasoningSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ReasoningSettings.vue'));
-const MessageDiffModal = defineAsyncComponentAndLoadOnMounted(() => import('./MessageDiffModal.vue'));
-const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted(() => import('./AdvancedTextEditorV3.vue'));
+const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageGenerationSettings.vue') });
+const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ReasoningSettings.vue') });
+const MessageDiffModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./MessageDiffModal.vue') });
+const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AdvancedTextEditorV3.vue') });
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
 import { useChat } from '@/composables/useChat';
 import { useReasoning } from '@/composables/useReasoning';
@@ -84,7 +84,7 @@ const showDiffModal = ref(false);
 const transformersStatus = ref(transformersJsService.getState().status);
 let transformersUnsubscribe: (() => void) | null = null;
 
-const isImageRequestMsg = computed(() => isImageRequest(props.message.content || ''));
+const isImageRequestMsg = computed(() => isImageRequest({ content: props.message.content || '' }));
 const showImageSettings = ref(false);
 const editImageMode = ref(false);
 const editImageParams = ref({
@@ -165,7 +165,7 @@ async function loadAttachments() {
       break;
     case 'persisted':
       try {
-        const blob = await storageService.getFile(att.binaryObjectId);
+        const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
         if (blob) {
           attachmentUrls.value[att.id] = URL.createObjectURL(blob);
         }
@@ -206,7 +206,7 @@ const sendShortcutText = isMac ? 'Cmd + Enter' : 'Ctrl + Enter';
 // Focus and move cursor to end when editing starts
 watch(isEditing, (editing) => {
   if (editing) {
-    editContent.value = stripNaidanSentinels(props.message.content || '').trimEnd();
+    editContent.value = stripNaidanSentinels({ content: props.message.content || '' }).trimEnd();
 
     // Initialize reasoning effort from message if available, otherwise from current chat
     if (props.message.role === 'user' && props.message.lmParameters?.reasoning) {
@@ -218,7 +218,7 @@ watch(isEditing, (editing) => {
     // Initialize image generation settings if it's an image request
     if (isImageRequestMsg.value) {
       editImageMode.value = true;
-      const parsed = parseImageRequest(props.message.content || '');
+      const parsed = parseImageRequest({ content: props.message.content || '' });
       if (parsed) {
         editImageParams.value = {
           width: parsed.width ?? 512,
@@ -287,7 +287,7 @@ function handleSaveEdit() {
 }
 
 function handleCancelEdit() {
-  editContent.value = stripNaidanSentinels(props.message.content || '').trimEnd();
+  editContent.value = stripNaidanSentinels({ content: props.message.content || '' }).trimEnd();
   isEditing.value = false;
 }
 
@@ -321,7 +321,7 @@ const displayContent = computed(() => {
   case 'content': {
     if (props.partContent !== undefined) return props.partContent;
     let content = props.message.content || '';
-    content = stripNaidanSentinels(content);
+    content = stripNaidanSentinels({ content });
     const cleanContent = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
     if (cleanContent.length > 0) return cleanContent;
     return '';
@@ -337,7 +337,7 @@ const displayContent = computed(() => {
   }
 });
 
-const isImageResponse = computed(() => isImageGenerationProcessed(props.message.content || ''));
+const isImageResponse = computed(() => isImageGenerationProcessed({ content: props.message.content || '' }));
 
 
 const speechText = computed(() => {
@@ -443,7 +443,7 @@ const reasoningEffortTooltip = computed(() => {
 
 const hasThinking = computed(() => !!props.message.thinking || /<think>/i.test(props.message.content || ''));
 
-function formatSize(bytes?: number): string {
+function formatSize({ bytes }: { bytes: number | undefined }): string {
   if (bytes === undefined) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
   let size = bytes;
@@ -501,7 +501,7 @@ defineExpose({
             <span>{{ reasoningEffortLabel }}</span>
           </div>
           <div class="flex items-center gap-1 group/msg-header-tools">
-            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending(message.content || '')" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
+            <SpeechControl v-if="!isImageResponse && !isImageGenerationPending({ content: message.content || '' })" :message-id="message.id" :content="speechText" :is-generating="isGenerating" />
 
             <!-- Header Extensions Slot (Seamless transition) -->
             <div v-if="showExtensions" class="flex items-center gap-1 mx-1 animate-in slide-in-from-left-1 fade-in duration-200">
@@ -521,7 +521,7 @@ defineExpose({
 
             <!-- Generic More Button (Absolute Right Anchor for Header) -->
             <button
-              v-if="!isImageResponse && !isImageGenerationPending(message.content || '')"
+              v-if="!isImageResponse && !isImageGenerationPending({ content: message.content || '' })"
               @click="showExtensions = !showExtensions"
               class="p-1 rounded-lg transition-colors"
               :class="showExtensions ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
@@ -560,7 +560,7 @@ defineExpose({
           <template v-else>
             <div class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 text-xs text-gray-500">
               <AlertTriangleIcon class="w-3.5 h-3.5 text-amber-500" />
-              <span>Image missing ({{ att.originalName }}) - {{ formatSize(att.size) }}</span>
+              <span>Image missing ({{ att.originalName }}) - {{ formatSize({ bytes: att.size }) }}</span>
             </div>
           </template>
         </div>
@@ -672,15 +672,15 @@ defineExpose({
         <!-- AI Image Synthesis Loader (Componentized) -->
         <!-- Only shown in content mode or first part if pending -->
         <ImageConjuringLoader
-          v-if="mode === 'content' && isImageGenerationPending(message.content || '') && message.role === 'assistant' && !message.error"
-          v-bind="getImageGenerationProgress(message.content || '')"
+          v-if="mode === 'content' && isImageGenerationPending({ content: message.content || '' }) && message.role === 'assistant' && !message.error"
+          v-bind="getImageGenerationProgress({ content: message.content || '' })"
           :current-step="isGenerating && chatId ? imageProgressMap[chatId]?.currentStep : undefined"
           :total-steps="isGenerating && chatId ? imageProgressMap[chatId]?.totalSteps : undefined"
         />
 
         <!-- Loading State (Initial Wait for regular text) -->
         <AssistantWaitingIndicator
-          v-else-if="mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending(message.content)"
+          v-else-if="mode === 'waiting' && !displayContent && !hasThinking && message.role === 'assistant' && !message.error && !isImageGenerationPending({ content: message.content })"
           :is-nested="isNested"
           data-testid="loading-indicator"
         />

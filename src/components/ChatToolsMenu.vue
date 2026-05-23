@@ -6,9 +6,9 @@ import { useElementBounding, useWindowSize } from '@vueuse/core';
 import { useChatTools } from '@/composables/useChatTools';
 
 // Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
-const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ImageGenerationSettings.vue'));
-const ReasoningSettings = defineAsyncComponentAndLoadOnMounted(() => import('./ReasoningSettings.vue'));
-const LmToolsSettings = defineAsyncComponentAndLoadOnMounted(() => import('./LmToolsSettings.vue'));
+const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageGenerationSettings.vue') });
+const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ReasoningSettings.vue') });
+const LmToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmToolsSettings.vue') });
 
 const props = withDefaults(defineProps<{
   canGenerateImage: boolean;
@@ -94,7 +94,7 @@ const floatingStyle = computed((): CSSProperties => {
   };
 });
 
-function handleClickOutside(event: MouseEvent) {
+function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as Node;
   if (!showMenu.value) return;
 
@@ -120,12 +120,16 @@ function handleClickOutside(event: MouseEvent) {
   showMenu.value = false;
 }
 
+function handleDocumentMouseDown(event: MouseEvent) {
+  handleClickOutside({ event });
+}
+
 onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside);
+  document.addEventListener('mousedown', handleDocumentMouseDown);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
+  document.removeEventListener('mousedown', handleDocumentMouseDown);
 });
 
 // Close on window width resize to prevent floating detached dropdown

@@ -24,7 +24,7 @@ const { addToast } = useToast();
 const editingProviderProfileId = ref<string | null>(null);
 const editingProviderProfileName = ref('');
 
-async function handleDeleteProviderProfile(id: string) {
+async function handleDeleteProviderProfile({ id }: { id: string }) {
   const index = props.profiles.findIndex(p => p.id === id);
   if (index === -1) return;
 
@@ -34,7 +34,7 @@ async function handleDeleteProviderProfile(id: string) {
   const newProfiles = [...props.profiles];
   newProfiles.splice(index, 1);
   emit('update:profiles', newProfiles);
-  await updateProviderProfiles(JSON.parse(JSON.stringify(newProfiles)));
+  await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(newProfiles)) });
 
   addToast({
     message: `Profile "${deletedProfile.name}" deleted`,
@@ -43,13 +43,13 @@ async function handleDeleteProviderProfile(id: string) {
       const restoredProfiles = [...newProfiles];
       restoredProfiles.splice(index, 0, deletedProfile);
       emit('update:profiles', restoredProfiles);
-      await updateProviderProfiles(JSON.parse(JSON.stringify(restoredProfiles)));
+      await updateProviderProfiles({ profiles: JSON.parse(JSON.stringify(restoredProfiles)) });
     },
     duration: 5000,
   });
 }
 
-function startRename(providerProfile: ProviderProfile) {
+function startRename({ providerProfile }: { providerProfile: ProviderProfile }) {
   editingProviderProfileId.value = providerProfile.id;
   editingProviderProfileName.value = providerProfile.name;
 }
@@ -63,7 +63,7 @@ async function saveRename() {
     if (profile) {
       profile.name = editingProviderProfileName.value.trim();
       emit('update:profiles', newProfiles);
-      await updateProviderProfiles(newProfiles);
+      await updateProviderProfiles({ profiles: newProfiles });
     }
   }
   editingProviderProfileId.value = null;
@@ -121,7 +121,7 @@ defineExpose({
             </div>
             <div v-else class="flex items-center gap-4">
               <h3 class="text-base font-bold text-gray-800 dark:text-white truncate">{{ providerProfile.name }}</h3>
-              <span class="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-900/30" data-testid="provider-type-badge">{{ capitalize(providerProfile.endpointType) }}</span>
+              <span class="text-[10px] px-2.5 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg font-bold uppercase tracking-wider border border-blue-100 dark:border-blue-900/30" data-testid="provider-type-badge">{{ capitalize({ value: providerProfile.endpointType }) }}</span>
             </div>
             <div class="text-xs font-medium text-gray-400 mt-1.5 truncate">{{ providerProfile.endpointUrl }}</div>
             <div class="text-[11px] font-bold text-gray-500 mt-2 flex items-center gap-3">
@@ -132,7 +132,7 @@ defineExpose({
 
           <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200">
             <button
-              @click="startRename(providerProfile)"
+              @click="startRename({ providerProfile })"
               class="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors"
               title="Rename Profile"
               data-testid="provider-profile-rename-button"
@@ -140,7 +140,7 @@ defineExpose({
               <PencilIcon class="w-4 h-4" />
             </button>
             <button
-              @click="handleDeleteProviderProfile(providerProfile.id)"
+              @click="handleDeleteProviderProfile({ id: providerProfile.id })"
               class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"
               title="Delete Profile"
               data-testid="provider-profile-delete-button"

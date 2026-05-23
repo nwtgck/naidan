@@ -32,8 +32,8 @@ const recipeJsonInput = ref('');
 const analyzedRecipes = ref<AnalyzedRecipe[]>([]);
 const recipeAnalysisError = ref<string | null>(null);
 
-function getSortedModels(matchedModelId?: string) {
-  const models = naturalSort(props.availableModels || []);
+function getSortedModels({ matchedModelId }: { matchedModelId?: string }) {
+  const models = naturalSort({ values: props.availableModels || [] });
   if (!matchedModelId) return models;
 
   const index = models.indexOf(matchedModelId);
@@ -53,7 +53,7 @@ function handleAnalyzeRecipes() {
   }
 
   recipeAnalysisError.value = null;
-  const parseResults = parseConcatenatedJson(trimmed);
+  const parseResults = parseConcatenatedJson({ input: trimmed });
   const newAnalyzed: AnalyzedRecipe[] = [];
 
   for (const result of parseResults) {
@@ -69,7 +69,7 @@ function handleAnalyzeRecipes() {
     }
 
     const recipe = validation.data;
-    const match = matchRecipeModels(recipe.models, props.availableModels);
+    const match = matchRecipeModels({ recipeModels: recipe.models, availableModelIds: props.availableModels });
 
     newAnalyzed.push({
       id: generateId(),
@@ -196,7 +196,7 @@ defineExpose({
                 <div class="flex flex-col gap-2">
                   <ModelSelector
                     v-model="item.matchedModelId"
-                    :models="getSortedModels(item.matchedModelId)"
+                    :models="getSortedModels({ matchedModelId: item.matchedModelId })"
                     placeholder="Use Default Model"
                     allow-clear
                     clear-label="Use Default Model"

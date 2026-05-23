@@ -33,7 +33,7 @@ function load() {
 }
 
 function loadAll() {
-  setAllowAllExternalImages(true);
+  setAllowAllExternalImages({ allow: true });
 }
 
 defineExpose({
