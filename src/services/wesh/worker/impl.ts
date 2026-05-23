@@ -101,7 +101,12 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
           wesh.vfs.mountVirtual({
             path: mount.path,
             readOnly: mount.readOnly,
-            provider: new NaidanSysfsProvider({ reader }),
+            provider: new NaidanSysfsProvider({
+              reader,
+              visibility: mount.visibility,
+              currentChatId: mount.currentChatId,
+              currentChatGroupId: mount.currentChatGroupId,
+            }),
           })
           break
         }

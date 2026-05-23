@@ -1,5 +1,5 @@
 import type { EmptyArgs, Chat, ChatContent, ChatGroup, ChatMeta, Hierarchy, SidebarItem } from '@/models/types'
-import type { WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
+import type { NaidanSysfsVisibility, WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 
 export interface NaidanSysfsStorageReader {
   loadHierarchy(_args: EmptyArgs): Promise<Hierarchy>;
@@ -14,6 +14,9 @@ export interface NaidanSysfsStorageReader {
 
 export interface NaidanSysfsContext {
   reader: NaidanSysfsStorageReader;
+  visibility: NaidanSysfsVisibility;
+  currentChatId: string;
+  currentChatGroupId: string | undefined;
 }
 
 export interface NaidanSysfsDirectoryEntry {

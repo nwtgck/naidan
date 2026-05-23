@@ -1,7 +1,8 @@
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from '@/services/wesh/naidan-sysfs/constants'
-import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry } from '@/services/wesh/naidan-sysfs/types'
+import { createChatsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chats'
+import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
 
 function createDirectoryStat({ size }: { size: number }): WeshStat {
   return { size, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
@@ -37,6 +38,24 @@ function createVersionFileEntry(_args: Record<never, never>): NaidanSysfsFileEnt
   }
 }
 
+function createCurrentChatSymlinkEntry({
+  chatId,
+}: {
+  chatId: string;
+}): NaidanSysfsSymlinkEntry {
+  return {
+    kind: 'symlink',
+    async stat({ path }: { path: string }) {
+      void path
+      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
+    },
+    async readlink({ path }: { path: string }) {
+      void path
+      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}`
+    },
+  }
+}
+
 export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
@@ -57,6 +76,16 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
         type: 'file',
         fullPath: `${path}/version`,
       }
+      yield {
+        name: 'current-chat',
+        type: 'symlink',
+        fullPath: `${path}/current-chat`,
+      }
+      yield {
+        name: 'chats',
+        type: 'directory',
+        fullPath: `${path}/chats`,
+      }
     },
     async getChild({
       name,
@@ -68,10 +97,13 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
-      void context
       switch (name) {
       case 'version':
         return createVersionFileEntry({})
+      case 'current-chat':
+        return createCurrentChatSymlinkEntry({ chatId: context.currentChatId })
+      case 'chats':
+        return createChatsDirectoryEntry({})
       default:
         return undefined
       }
