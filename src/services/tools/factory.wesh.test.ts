@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockCreateClient = vi.fn()
-const mockCheckOPFSSupport = vi.fn()
 const mockGetVolumeDirectoryHandle = vi.fn()
 const mockAbortOngoingScans = vi.fn()
 const mockGetVolumeExtensions = vi.fn()
@@ -10,10 +9,6 @@ const mockStartVolumeExtensionScan = vi.fn()
 
 vi.mock('@/services/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mockCreateClient,
-}))
-
-vi.mock('@/services/storage/opfs-detection', () => ({
-  checkOPFSSupport: mockCheckOPFSSupport,
 }))
 
 vi.mock('@/services/storage', () => ({
@@ -34,7 +29,6 @@ function setupStandardMocks({
 }: {
   volumeHandle: FileSystemDirectoryHandle
 }) {
-  mockCheckOPFSSupport.mockResolvedValue(true)
   mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle)
   mockCreateClient.mockResolvedValue({
     startExecution: vi.fn(),
@@ -61,7 +55,6 @@ describe('getEnabledTools shell_execute', () => {
     const volumeHandleA = { kind: 'directory', name: 'vol-a' } as FileSystemDirectoryHandle
     const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle
 
-    mockCheckOPFSSupport.mockResolvedValue(true)
     mockGetVolumeDirectoryHandle
       .mockResolvedValueOnce(volumeHandleA)
       .mockResolvedValueOnce(volumeHandleB)
@@ -182,24 +175,37 @@ Mounted directories:
     }))
   })
 
-  it('does not create the shell tool when OPFS is unavailable', async () => {
-    mockCheckOPFSSupport.mockResolvedValue(false)
-
+  it('creates the shell tool for local storage without /tmp', async () => {
+    const volumeHandle = { kind: 'directory', name: 'vol-local-only' } as FileSystemDirectoryHandle
+    setupStandardMocks({ volumeHandle })
     const { getEnabledTools } = await import('./factory')
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: undefined,
-      chatId: undefined,
-      chatGroupId: undefined,
-      naidanSysfsVisibility: 'none',
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
       settings: {
-        storageType: 'opfs',
-        mounts: [],
+        storageType: 'local',
+        mounts: [{ type: 'volume', volumeId: 'vol-local-only', mountPath: '/mnt/local-only', readOnly: true }],
       } as never,
     })
 
-    expect(tools).toEqual([])
-    expect(mockCreateClient).not.toHaveBeenCalled()
+    expect(tools).toHaveLength(1)
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      mounts: [
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'local',
+          visibility: 'current_chat_only',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        },
+        { type: 'directory', path: '/mnt/local-only', handle: volumeHandle, readOnly: true },
+      ],
+    }))
   })
 
   it('does not add a naidan sysfs mount when selection is none', async () => {
@@ -226,6 +232,41 @@ Mounted directories:
       mounts: [
         { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
         { type: 'directory', path: '/mnt/none', handle: volumeHandle, readOnly: true },
+      ],
+    }))
+  })
+
+  it('creates a local-storage naidan sysfs mount when selected', async () => {
+    const volumeHandle = { kind: 'directory', name: 'vol-local' } as FileSystemDirectoryHandle
+
+    setupStandardMocks({ volumeHandle })
+
+    const { getEnabledTools } = await import('./factory')
+
+    await getEnabledTools({
+      enabledNames: ['shell_execute'],
+      tmpHandle: undefined,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
+      settings: {
+        storageType: 'local',
+        mounts: [{ type: 'volume', volumeId: 'vol-local', mountPath: '/mnt/local', readOnly: true }],
+      } as never,
+    })
+
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      mounts: [
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'local',
+          visibility: 'current_chat_with_chat_group',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        },
+        { type: 'directory', path: '/mnt/local', handle: volumeHandle, readOnly: true },
       ],
     }))
   })

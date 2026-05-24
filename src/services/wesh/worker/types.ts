@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { EmptyArgs } from '@/models/types'
+import type { NaidanSysfsRemoteReader } from '@/services/wesh/naidan-sysfs/types'
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
   type WeshMount,
@@ -16,7 +17,7 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
   type: z.literal('naidan_sysfs'),
   path: z.literal(NAIDAN_SYSFS_MOUNT_PATH),
   readOnly: z.literal(true),
-  storageType: z.literal('opfs'),
+  storageType: z.enum(['local', 'opfs', 'memory']),
   visibility: z.enum([
     'current_chat_only',
     'current_chat_with_chat_group',
@@ -87,7 +88,15 @@ export type WeshWorkerExecutionEvent =
   | { type: 'error'; message: string }
 
 export interface IWeshWorker {
-  init({ request }: { request: WeshWorkerInitRequest }): Promise<void>
+  /**
+   * Comlink proxy values must stay as top-level arguments here.
+   * Nesting a proxied object inside a named-args object can trigger
+   * "Function object could not be cloned." in real browsers.
+   */
+  init(
+    request: WeshWorkerInitRequest,
+    naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
+  ): Promise<void>
   startExecution(
     request: WeshWorkerExecuteRequest,
     onEvent?: (event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>

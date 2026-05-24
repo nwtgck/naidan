@@ -28,21 +28,37 @@ describe('createNaidanSysfsMount', () => {
     })).toBeUndefined()
   })
 
-  it('throws for local storage', () => {
-    expect(() => createNaidanSysfsMount({
+  it('returns a naidan sysfs mount for local storage', () => {
+    expect(createNaidanSysfsMount({
       storageType: 'local',
       visibility: 'all_chats',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
-    })).toThrow('/sys/fs/naidan requires opfs storage, received: local')
+    })).toEqual({
+      type: 'naidan_sysfs',
+      path: '/sys/fs/naidan',
+      readOnly: true,
+      storageType: 'local',
+      visibility: 'all_chats',
+      currentChatId: 'chat-1',
+      currentChatGroupId: undefined,
+    })
   })
 
-  it('throws for memory storage', () => {
-    expect(() => createNaidanSysfsMount({
+  it('returns a naidan sysfs mount for memory storage', () => {
+    expect(createNaidanSysfsMount({
       storageType: 'memory',
       visibility: 'all_chats',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
-    })).toThrow('/sys/fs/naidan requires opfs storage, received: memory')
+    })).toEqual({
+      type: 'naidan_sysfs',
+      path: '/sys/fs/naidan',
+      readOnly: true,
+      storageType: 'memory',
+      visibility: 'all_chats',
+      currentChatId: 'chat-1',
+      currentChatGroupId: undefined,
+    })
   })
 })

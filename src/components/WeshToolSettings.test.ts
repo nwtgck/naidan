@@ -3,20 +3,6 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import WeshToolSettings from './WeshToolSettings.vue';
 
-vi.mock('@vueuse/core', async () => {
-  const actual = await vi.importActual<typeof import('@vueuse/core')>('@vueuse/core');
-  return {
-    ...actual,
-    computedAsync: (fn: () => Promise<boolean>, initial: boolean) => {
-      const state = ref(initial);
-      fn().then((value) => {
-        state.value = value;
-      });
-      return state;
-    },
-  };
-});
-
 const mockIsFeatureEnabled = vi.fn();
 vi.mock('@/composables/useFeatureFlags', () => ({
   useFeatureFlags: () => ({
@@ -30,6 +16,10 @@ const mockToggleTool = vi.fn();
 const mockGetNaidanSysfsMountSelection = vi.fn();
 const mockSetNaidanSysfsMountSelection = vi.fn();
 const mockCurrentChat = ref<{ id: string } | null>({ id: 'chat-1' });
+const mockSettings = ref({
+  storageType: 'opfs' as 'opfs' | 'local' | 'memory',
+  mounts: [],
+});
 
 vi.mock('@/composables/useChatTools', () => ({
   useChatTools: () => ({
@@ -52,8 +42,10 @@ vi.mock('@/composables/useChat', () => ({
   }),
 }));
 
-vi.mock('@/services/storage/opfs-detection', () => ({
-  checkOPFSSupport: vi.fn().mockResolvedValue(true),
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: mockSettings,
+  }),
 }));
 
 vi.mock('lucide-vue-next', () => ({
@@ -69,6 +61,10 @@ describe('WeshToolSettings.vue', () => {
     mockGetNaidanSysfsMountSelection.mockReset();
     mockSetNaidanSysfsMountSelection.mockReset();
     mockCurrentChat.value = { id: 'chat-1' };
+    mockSettings.value = {
+      storageType: 'opfs',
+      mounts: [],
+    };
 
     mockIsFeatureEnabled.mockReturnValue(true);
     mockIsToolEnabled.mockImplementation(({ name }: { name: string }) => name === 'shell_execute');
@@ -96,6 +92,18 @@ describe('WeshToolSettings.vue', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="naidan-sysfs-settings"]').exists()).toBe(true);
+  });
+
+  it('shows a read-only note for local storage', async () => {
+    mockSettings.value = {
+      storageType: 'local',
+      mounts: [],
+    };
+
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="wesh-storage-mode-note"]').text()).toBe('Local and memory storage expose Wesh as read-only, without /tmp.');
   });
 
   it('defaults sysfs selection to current_chat_only when enabling shell in browser', async () => {

@@ -2,7 +2,10 @@ import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
 import { Wesh } from '@/services/wesh'
 import { NaidanSysfsProvider } from '@/services/wesh/naidan-sysfs/provider'
-import { createOpfsNaidanSysfsStorageReader } from '@/services/wesh/naidan-sysfs/storage-reader'
+import {
+  createOpfsNaidanSysfsStorageReader,
+  createRemoteNaidanSysfsStorageReader,
+} from '@/services/wesh/naidan-sysfs/storage-reader'
 import { ReadonlyDirectoryHandle } from '@/services/wesh/readonly-directory-handle'
 import { createTestReadHandleFromText } from '@/services/wesh/utils/test-stream'
 import { createWriteHandleFromStream } from '@/services/wesh/utils/stream'
@@ -65,8 +68,18 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
   }>()
 
   return {
-    async init({ request }) {
-      const validated = weshWorkerInitRequestSchema.parse(request)
+    async init(requestOrOptions, naidanSysfsRemoteReader) {
+      const normalizedRequest = (() => {
+        if (
+          typeof requestOrOptions === 'object'
+          && requestOrOptions !== null
+          && 'request' in requestOrOptions
+        ) {
+          return requestOrOptions.request
+        }
+        return requestOrOptions
+      })()
+      const validated = weshWorkerInitRequestSchema.parse(normalizedRequest)
       const rootHandle = validated.rootHandle === 'readonly'
         ? new ReadonlyDirectoryHandle()
         : validated.rootHandle
@@ -92,6 +105,14 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
             switch (mount.storageType) {
             case 'opfs':
               return createOpfsNaidanSysfsStorageReader({})
+            case 'local':
+            case 'memory':
+              if (naidanSysfsRemoteReader === undefined) {
+                throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`)
+              }
+              return createRemoteNaidanSysfsStorageReader({
+                remoteReader: naidanSysfsRemoteReader,
+              })
             default: {
               const _ex: never = mount.storageType
               throw new Error(`Unsupported naidan sysfs storage type: ${String(_ex)}`)

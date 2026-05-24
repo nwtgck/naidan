@@ -4,6 +4,45 @@ import packageJson from '../../../../package.json'
 export const NAIDAN_SYSFS_VERSION_TEXT = `${packageJson.version}\n`
 
 export const NAIDAN_SYSFS_ROOT_PATH = NAIDAN_SYSFS_MOUNT_PATH
+
+// High-level sysfs layout reference.
+// Keep this aligned with the sysfs naidan design prompt and implementation plan.
+//
+// /sys/fs/naidan/
+//   version
+//   current-chat -> /sys/fs/naidan/chats/<chat-id>
+//   current-chat-group -> /sys/fs/naidan/chat-groups/<chat-group-id>
+//   chats/
+//     <chat-id>/
+//       metadata.md
+//       metadata.json
+//       content-md/
+//         <index>-<role>-<message-id>.md
+//       content-json/
+//         <index>-<role>-<message-id>.json
+//       branches/
+//         current-md -> /sys/fs/naidan/chats/<chat-id>/branches/leaves-md/<leaf-id>
+//         current-json -> /sys/fs/naidan/chats/<chat-id>/branches/leaves-json/<leaf-id>
+//         tree-md/
+//         tree-json/
+//         leaves-md/
+//           <leaf-id>/
+//             metadata.md
+//             content
+//         leaves-json/
+//           <leaf-id>/
+//             metadata.json
+//             content
+//   chat-groups/
+//     <chat-group-id>/
+//       metadata.md
+//       metadata.json
+//       chats/
+//         <index>-chat-<chat-id> -> /sys/fs/naidan/chats/<chat-id>
+//   hierarchy/
+//     <index>-chat-group-<chat-group-id> -> /sys/fs/naidan/chat-groups/<chat-group-id>
+//     <index>-chat-<chat-id> -> /sys/fs/naidan/chats/<chat-id>
+
 export const NAIDAN_SYSFS_VERSION_FILE_NAME = 'version'
 export const NAIDAN_SYSFS_CURRENT_CHAT_SYMLINK_NAME = 'current-chat'
 export const NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME = 'current-chat-group'
