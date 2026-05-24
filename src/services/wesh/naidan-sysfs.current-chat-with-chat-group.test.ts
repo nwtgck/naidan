@@ -80,6 +80,14 @@ version
     expect(currentBranchLink.stdout.text).toBe('/sys/fs/naidan/chats/chat-1/branches/leaves-md/Xa4aX1Y2z3A4b5C6d7E8\n')
   })
 
+  it('follows intermediate symlinks when traversing current-chat paths', async () => {
+    const metadataThroughCurrentChat = await executeInWesh({
+      wesh,
+      script: 'cat /sys/fs/naidan/current-chat/metadata.md',
+    })
+    expect(metadataThroughCurrentChat.stdout.text).toBe(renderChatMetadataMarkdown({ metadata: mainChatMetadata }))
+  })
+
   it('allows reading sibling chats in the same chat group', async () => {
     const siblingList = await executeInWesh({ wesh, script: 'ls -1 /sys/fs/naidan/chats' })
     expect(siblingList.stdout.text).toBe(`\

@@ -47,6 +47,8 @@ import {
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { hasChatOverrides } from '@/utils/chat-settings-resolver';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
@@ -57,6 +59,7 @@ import { storageService } from '@/services/storage';
 
 const chatStore = useChat();
 const { addToast } = useToast();
+const { openFileExplorer } = useFileExplorerModal();
 const { state: previewState, closePreview } = useImagePreview({ scoped: true });
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
@@ -394,6 +397,26 @@ async function shareAsURL() {
       duration: 5000
     });
   }
+}
+
+async function openChatFileExplorer(_args: Record<string, never>) {
+  if (!currentChat.value) return;
+
+  const mounts = await buildWorkerMountsForChat({
+    chatMounts: currentChat.value.mounts ?? [],
+    chatGroupMounts: currentChatGroup.value?.mounts,
+    chatId: currentChat.value.id,
+    chatGroupId: currentChat.value.groupId ?? undefined,
+    naidanSysfsVisibility: 'current_chat_with_chat_group',
+  });
+
+  openFileExplorer({ options: {
+    kind: 'wesh-mounts',
+    title: 'Files',
+    rootName: 'Files',
+    mounts,
+    initialPath: undefined,
+  } });
 }
 
 function handlePrint() {
@@ -848,6 +871,7 @@ watch(
       @export-chat="exportChat"
       @toggle-media-shelf="toggleMediaShelf"
       @share-url="shareAsURL"
+      @open-file-explorer="openChatFileExplorer({})"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
       @toggle-debug="() => chatStore.toggleDebug({})"
     />

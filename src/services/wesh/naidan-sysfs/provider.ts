@@ -122,7 +122,11 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
     let entry: NaidanSysfsEntry = this.rootEntry
     let currentPath: string = NAIDAN_SYSFS_ROOT_PATH
 
-    for (const name of segments) {
+    for (let index = 0; index < segments.length; index += 1) {
+      const name = segments[index]
+      if (name === undefined) {
+        continue
+      }
       switch (entry.kind) {
       case 'directory': {
         const child = await entry.getChild({
@@ -137,8 +141,16 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
         entry = child
         break
       }
+      case 'symlink': {
+        const targetPath = await entry.readlink({ path: currentPath })
+        const remainingSegments = segments.slice(index)
+        const remainingPath = remainingSegments.join('/')
+        return this.resolveEntry({
+          path: remainingPath.length === 0 ? targetPath : `${targetPath}/${remainingPath}`,
+          followFinalSymlink,
+        })
+      }
       case 'file':
-      case 'symlink':
       case 'restricted-directory':
         throw new Error(`Not a directory: ${currentPath}`)
       default: {

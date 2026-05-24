@@ -49,6 +49,7 @@ const emit = defineEmits<{
   (e: 'export-chat'): void;
   (e: 'toggle-media-shelf'): void;
   (e: 'share-url'): void;
+  (e: 'open-file-explorer'): void;
   (e: 'toggle-wesh-terminal'): void;
   (e: 'toggle-debug'): void;
 }>();
@@ -85,6 +86,7 @@ function emitMoreAction({ action }: {
     | 'export-chat'
     | 'toggle-media-shelf'
     | 'share-url'
+    | 'open-file-explorer'
     | 'toggle-wesh-terminal'
     | 'toggle-debug'
 }) {
@@ -106,6 +108,9 @@ function emitMoreAction({ action }: {
     break;
   case 'share-url':
     emit('share-url');
+    break;
+  case 'open-file-explorer':
+    emit('open-file-explorer');
     break;
   case 'toggle-wesh-terminal':
     emit('toggle-wesh-terminal');
@@ -361,6 +366,14 @@ defineExpose({
           >
             <LinkIcon class="w-4 h-4" />
             <span>Export as URL</span>
+          </button>
+          <button
+            @click="emitMoreAction({ action: 'open-file-explorer' })"
+            class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
+            data-testid="open-chat-file-explorer-button"
+          >
+            <FolderIcon class="w-4 h-4" />
+            <span>File Explorer</span>
           </button>
           <button
             @click="emitMoreAction({ action: 'toggle-wesh-terminal' })"
