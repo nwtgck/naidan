@@ -31,7 +31,7 @@ function createMessageFileName({ index, node, format }: {
     }
     }
   })()
-  return `${index + 1}-${node.role}.${extension}`
+  return `${index + 1}-${node.role}-${node.id}.${extension}`
 }
 
 async function* loadBranchNodes({

@@ -37,13 +37,13 @@ version
 
     const contentList = await executeInWesh({ wesh, script: 'ls -1 /sys/fs/naidan/chats/chat-1/content-md' })
     expect(contentList.stdout.text).toBe(`\
-1-user.md
-2-assistant.md
-3-user.md
-4-assistant.md
+1-user-user-root.md
+2-assistant-assistant-root.md
+3-user-user-branch-a.md
+4-assistant-assistant-branch-a2.md
 `)
 
-    const contentFile = await executeInWesh({ wesh, script: 'cat /sys/fs/naidan/chats/chat-1/content-md/1-user.md' })
+    const contentFile = await executeInWesh({ wesh, script: 'cat /sys/fs/naidan/chats/chat-1/content-md/1-user-user-root.md' })
     expect(contentFile.stdout.text).toBe(renderMessageMarkdown({ node: mainChatContent.root.items[0]! }))
 
     const treeList = await executeInWesh({ wesh, script: 'ls -1 /sys/fs/naidan/chats/chat-1/branches/tree-md' })
