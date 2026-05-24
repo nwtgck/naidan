@@ -6,7 +6,7 @@ function createDirectoryStat(_args: Record<never, never>): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-async function listVisibleChatIds({ context }: { context: NaidanSysfsContext }): Promise<string[]> {
+export async function listVisibleChatIds({ context }: { context: NaidanSysfsContext }): Promise<string[]> {
   switch (context.visibility) {
   case 'current_chat_only':
     return [context.currentChatId]

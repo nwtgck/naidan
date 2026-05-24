@@ -3,6 +3,7 @@ import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from '@/services/wesh/naidan-sysfs/constants'
 import { createChatGroupsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
 import { createChatsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chats'
+import { createHierarchyDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/hierarchy'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
 
 function createDirectoryStat({ size }: { size: number }): WeshStat {
@@ -105,6 +106,11 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
         type: 'directory',
         fullPath: `${path}/chats`,
       }
+      yield {
+        name: 'hierarchy',
+        type: 'directory',
+        fullPath: `${path}/hierarchy`,
+      }
       if (context.currentChatGroupId !== undefined) {
         yield {
           name: 'current-chat-group',
@@ -135,6 +141,8 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
         return createCurrentChatSymlinkEntry({ chatId: context.currentChatId })
       case 'chats':
         return createChatsDirectoryEntry({})
+      case 'hierarchy':
+        return createHierarchyDirectoryEntry({})
       case 'current-chat-group':
         return context.currentChatGroupId === undefined
           ? undefined
