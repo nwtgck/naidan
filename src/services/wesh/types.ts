@@ -233,6 +233,10 @@ export type NaidanSysfsVisibility =
   | 'current_chat_with_chat_group'
   | 'all_chats';
 
+export type NaidanSysfsMountSelection =
+  | NaidanSysfsVisibility
+  | 'none';
+
 export const NAIDAN_SYSFS_MOUNT_PATH = '/sys/fs/naidan' as const;
 
 export interface WeshDirectoryMount {

@@ -191,7 +191,7 @@ Mounted directories:
       tmpHandle: undefined,
       chatId: undefined,
       chatGroupId: undefined,
-      naidanSysfsVisibility: undefined,
+      naidanSysfsVisibility: 'none',
       settings: {
         storageType: 'opfs',
         mounts: [],
@@ -200,6 +200,34 @@ Mounted directories:
 
     expect(tools).toEqual([])
     expect(mockCreateClient).not.toHaveBeenCalled()
+  })
+
+  it('does not add a naidan sysfs mount when selection is none', async () => {
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-none' } as FileSystemDirectoryHandle
+    const volumeHandle = { kind: 'directory', name: 'vol-none' } as FileSystemDirectoryHandle
+
+    setupStandardMocks({ volumeHandle })
+
+    const { getEnabledTools } = await import('./factory')
+
+    await getEnabledTools({
+      enabledNames: ['shell_execute'],
+      tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'none',
+      settings: {
+        storageType: 'opfs',
+        mounts: [{ type: 'volume', volumeId: 'vol-none', mountPath: '/mnt/none', readOnly: true }],
+      } as never,
+    })
+
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      mounts: [
+        { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
+        { type: 'directory', path: '/mnt/none', handle: volumeHandle, readOnly: true },
+      ],
+    }))
   })
 
   it('starts a background scan for volumes not yet scanned', async () => {

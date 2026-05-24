@@ -3,7 +3,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useChat } from '@/composables/useChat';
 import { createWeshTerminalSessions } from '@/composables/useWeshTerminalSessions';
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
-import type { NaidanSysfsVisibility, WeshMount } from '@/services/wesh/types';
+import type { NaidanSysfsMountSelection, WeshMount } from '@/services/wesh/types';
 import type { Mount } from '@/models/types';
 
 const store = createWeshTerminalSessions({
@@ -24,7 +24,7 @@ async function buildWorkerMountsForChat({
   chatGroupMounts: readonly Mount[] | undefined;
   chatId: string | undefined;
   chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsVisibility | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
 }): Promise<WeshMount[]> {
   const { settings } = useSettings();
   const result: WeshMount[] = [];
@@ -36,14 +36,16 @@ async function buildWorkerMountsForChat({
     result.push({ type: 'directory', path: '/tmp', handle: tmp.handle, readOnly: false });
   }
 
-  const naidanSysfsMount = createNaidanSysfsMount({
-    storageType: settings.value.storageType,
-    visibility: naidanSysfsVisibility,
-    currentChatId: chatId,
-    currentChatGroupId: chatGroupId,
-  });
-  if (naidanSysfsMount !== undefined) {
-    result.push(naidanSysfsMount)
+  if (naidanSysfsVisibility !== 'none') {
+    const naidanSysfsMount = createNaidanSysfsMount({
+      storageType: settings.value.storageType,
+      visibility: naidanSysfsVisibility,
+      currentChatId: chatId,
+      currentChatGroupId: chatGroupId,
+    });
+    if (naidanSysfsMount !== undefined) {
+      result.push(naidanSysfsMount)
+    }
   }
 
   // Global settings mounts.
@@ -90,7 +92,7 @@ type SessionArgs = {
   chatGroupMounts: readonly Mount[] | undefined;
   chatId: string | undefined;
   chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsVisibility | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
 };
 
 export function useChatWeshTerminalSessions() {

@@ -8,11 +8,11 @@ export function createNaidanSysfsMount({
   currentChatGroupId,
 }: {
   storageType: StorageType;
-  visibility: NaidanSysfsVisibility | undefined;
+  visibility: NaidanSysfsVisibility;
   currentChatId: string | undefined;
   currentChatGroupId: string | undefined;
 }): WeshMount | undefined {
-  if (visibility === undefined || currentChatId === undefined) {
+  if (currentChatId === undefined) {
     return undefined
   }
 
@@ -29,7 +29,7 @@ export function createNaidanSysfsMount({
     }
   case 'local':
   case 'memory':
-    return undefined
+    throw new Error(`/sys/fs/naidan requires opfs storage, received: ${storageType}`)
   default: {
     const _ex: never = storageType
     throw new Error(`Unhandled storage type: ${String(_ex)}`)

@@ -5,7 +5,7 @@ import WeshTerminalPane from './WeshTerminalPane.vue';
 import { useChatWeshTerminalSessions } from '@/composables/useChatWeshTerminalSessions';
 import { useConfirm } from '@/composables/useConfirm';
 import type { Mount } from '@/models/types';
-import type { NaidanSysfsVisibility } from '@/services/wesh/types';
+import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -13,7 +13,7 @@ const props = defineProps<{
   chatGroupMounts: readonly Mount[] | undefined;
   chatId: string | undefined;
   chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsVisibility | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
 }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 

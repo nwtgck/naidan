@@ -126,7 +126,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('does not call ensureChatTmpDirectory when chatId is undefined', async () => {
     mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: undefined },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
     });
     await flushPromises();
 
@@ -135,7 +135,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('shows session tab and new session button when open with no chat mounts', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: undefined },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
     });
     await flushPromises();
 
@@ -146,7 +146,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('asks for confirmation before closing a session', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: undefined },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
     });
     await flushPromises();
 

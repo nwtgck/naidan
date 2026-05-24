@@ -5,7 +5,7 @@ import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
-import type { NaidanSysfsVisibility, WeshMount } from '@/services/wesh/types';
+import type { NaidanSysfsMountSelection, WeshMount } from '@/services/wesh/types';
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
 import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
 import { buildShellDescription } from './shell-description';
@@ -30,7 +30,7 @@ export async function getEnabledTools({
   chatMounts?: Mount[];
   chatId: string | undefined;
   chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsVisibility | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
@@ -56,14 +56,16 @@ export async function getEnabledTools({
       const resolvedMounts: WeshMount[] = [
         { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
       ];
-      const naidanSysfsMount = createNaidanSysfsMount({
-        storageType: settings.storageType,
-        visibility: naidanSysfsVisibility,
-        currentChatId: chatId,
-        currentChatGroupId: chatGroupId,
-      });
-      if (naidanSysfsMount !== undefined) {
-        resolvedMounts.push(naidanSysfsMount)
+      if (naidanSysfsVisibility !== 'none') {
+        const naidanSysfsMount = createNaidanSysfsMount({
+          storageType: settings.storageType,
+          visibility: naidanSysfsVisibility,
+          currentChatId: chatId,
+          currentChatGroupId: chatGroupId,
+        });
+        if (naidanSysfsMount !== undefined) {
+          resolvedMounts.push(naidanSysfsMount)
+        }
       }
       const volumeHandles = new Map<string, FileSystemDirectoryHandle>();
       for (const m of allMounts) {
