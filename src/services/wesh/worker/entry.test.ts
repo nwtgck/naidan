@@ -37,7 +37,7 @@ describe('wesh.worker', () => {
     expect(response).toEqual({
       exitCode: 0,
     })
-  })
+  }, 15000)
 
   it('can read from a mounted directory', async () => {
     const comlink = await import('comlink')

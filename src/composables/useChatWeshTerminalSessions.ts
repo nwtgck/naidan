@@ -36,7 +36,12 @@ async function buildWorkerMountsForChat({
     result.push({ type: 'directory', path: '/tmp', handle: tmp.handle, readOnly: false });
   }
 
-  if (naidanSysfsVisibility !== 'none') {
+  switch (naidanSysfsVisibility) {
+  case 'none':
+    break
+  case 'current_chat_only':
+  case 'current_chat_with_chat_group':
+  case 'all_chats': {
     const naidanSysfsMount = createNaidanSysfsMount({
       storageType: settings.value.storageType,
       visibility: naidanSysfsVisibility,
@@ -46,6 +51,12 @@ async function buildWorkerMountsForChat({
     if (naidanSysfsMount !== undefined) {
       result.push(naidanSysfsMount)
     }
+    break
+  }
+  default: {
+    const _ex: never = naidanSysfsVisibility
+    throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`)
+  }
   }
 
   // Global settings mounts.
