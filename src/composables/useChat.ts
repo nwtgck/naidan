@@ -1250,7 +1250,7 @@ export function useChat() {
 
       let lastSave = 0;
       let isSaving = false;
-      const { enabledToolNames } = useChatTools();
+      const { enabledToolNames, getNaidanSysfsMountSelection } = useChatTools();
       const shellExecuteEnabled = enabledToolNames.value.includes('shell_execute');
       const chatTmpDirectory = shellExecuteEnabled
         ? await ensureChatTmpDirectory({ chatId: mutableChat.id })
@@ -1267,7 +1267,7 @@ export function useChat() {
         chatMounts: mutableChat.mounts,
         chatId: mutableChat.id,
         chatGroupId: mutableChat.groupId ?? undefined,
-        naidanSysfsVisibility: 'current_chat_with_chat_group',
+        naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: mutableChat.id }),
         tmpHandle: chatTmpDirectory?.handle,
       });
 

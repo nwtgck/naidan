@@ -88,6 +88,7 @@ vi.mock('../services/tools/registry', () => ({
 vi.mock('./useChatTools', () => ({
   useChatTools: () => ({
     enabledToolNames: { value: ['calculator'] },
+    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
   }),
 }));
 

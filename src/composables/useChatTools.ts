@@ -1,9 +1,11 @@
 import { ref, computed } from 'vue';
 import type { ToolCallRecord } from '@/services/tools/types';
+import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
 
 const _toolEnabledByChat = ref<Map<string, Set<string>>>(new Map());
 const _messageToolCalls = ref<Map<string, ToolCallRecord[]>>(new Map());
 const _currentChatId = ref<string | null>(null);
+const _naidanSysfsMountSelectionByChat = ref<Map<string, NaidanSysfsMountSelection>>(new Map());
 
 export function useChatTools() {
   const isToolEnabled = ({ name }: { name: string }) => {
@@ -38,6 +40,21 @@ export function useChatTools() {
     if (_currentChatId.value === null) return [];
     return Array.from(_toolEnabledByChat.value.get(_currentChatId.value) ?? []);
   });
+
+  const getNaidanSysfsMountSelection = ({ chatId }: { chatId: string | undefined }): NaidanSysfsMountSelection => {
+    const resolvedChatId = chatId ?? _currentChatId.value ?? undefined;
+    if (resolvedChatId === undefined) {
+      return 'none';
+    }
+    return _naidanSysfsMountSelectionByChat.value.get(resolvedChatId) ?? 'none';
+  };
+
+  const setNaidanSysfsMountSelection = ({ selection }: { selection: NaidanSysfsMountSelection }) => {
+    if (_currentChatId.value === null) return;
+    const next = new Map(_naidanSysfsMountSelectionByChat.value);
+    next.set(_currentChatId.value, selection);
+    _naidanSysfsMountSelectionByChat.value = next;
+  };
 
   const getToolCallsForMessage = ({ messageId }: { messageId: string }) => {
     return _messageToolCalls.value.get(messageId) || [];
@@ -83,6 +100,8 @@ export function useChatTools() {
     toggleTool,
     setCurrentChatId,
     enabledToolNames,
+    getNaidanSysfsMountSelection,
+    setNaidanSysfsMountSelection,
     getToolCallsForMessage,
     addToolCall,
     updateToolCall,
@@ -91,6 +110,7 @@ export function useChatTools() {
       _messageToolCalls,
       _toolEnabledByChat,
       _currentChatId,
+      _naidanSysfsMountSelectionByChat,
     },
   };
 }

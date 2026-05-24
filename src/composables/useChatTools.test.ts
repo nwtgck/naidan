@@ -6,6 +6,7 @@ describe('useChatTools', () => {
     const { setCurrentChatId, TEST_ONLY } = useChatTools();
     setCurrentChatId({ chatId: null });
     TEST_ONLY._toolEnabledByChat.value = new Map();
+    TEST_ONLY._naidanSysfsMountSelectionByChat.value = new Map();
   });
 
   describe('isToolEnabled', () => {
@@ -113,6 +114,35 @@ describe('useChatTools', () => {
 
       setCurrentChatId({ chatId: 'chat-2' });
       expect(enabledToolNames.value).toEqual([]);
+    });
+  });
+
+  describe('naidan sysfs mount selection', () => {
+    it('defaults to none when a chat has no explicit selection', () => {
+      const { getNaidanSysfsMountSelection } = useChatTools();
+      expect(getNaidanSysfsMountSelection({ chatId: 'chat-1' })).toBe('none');
+    });
+
+    it('stores selection per current chat in memory', () => {
+      const { setCurrentChatId, setNaidanSysfsMountSelection, getNaidanSysfsMountSelection } = useChatTools();
+
+      setCurrentChatId({ chatId: 'chat-1' });
+      setNaidanSysfsMountSelection({ selection: 'current_chat_only' });
+
+      setCurrentChatId({ chatId: 'chat-2' });
+      setNaidanSysfsMountSelection({ selection: 'all_chats' });
+
+      expect(getNaidanSysfsMountSelection({ chatId: 'chat-1' })).toBe('current_chat_only');
+      expect(getNaidanSysfsMountSelection({ chatId: 'chat-2' })).toBe('all_chats');
+    });
+
+    it('uses the current chat when chatId is omitted', () => {
+      const { setCurrentChatId, setNaidanSysfsMountSelection, getNaidanSysfsMountSelection } = useChatTools();
+
+      setCurrentChatId({ chatId: 'chat-1' });
+      setNaidanSysfsMountSelection({ selection: 'current_chat_with_chat_group' });
+
+      expect(getNaidanSysfsMountSelection({ chatId: undefined })).toBe('current_chat_with_chat_group');
     });
   });
 });

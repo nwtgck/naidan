@@ -1,0 +1,116 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
+import { ref } from 'vue';
+import WeshToolSettings from './WeshToolSettings.vue';
+
+vi.mock('@vueuse/core', async () => {
+  const actual = await vi.importActual<typeof import('@vueuse/core')>('@vueuse/core');
+  return {
+    ...actual,
+    computedAsync: (fn: () => Promise<boolean>, initial: boolean) => {
+      const state = ref(initial);
+      fn().then((value) => {
+        state.value = value;
+      });
+      return state;
+    },
+  };
+});
+
+const mockIsFeatureEnabled = vi.fn();
+vi.mock('@/composables/useFeatureFlags', () => ({
+  useFeatureFlags: () => ({
+    isFeatureEnabled: mockIsFeatureEnabled,
+  }),
+}));
+
+const mockIsToolEnabled = vi.fn();
+const mockSetToolEnabled = vi.fn();
+const mockToggleTool = vi.fn();
+const mockGetNaidanSysfsMountSelection = vi.fn();
+const mockSetNaidanSysfsMountSelection = vi.fn();
+
+vi.mock('@/composables/useChatTools', () => ({
+  useChatTools: () => ({
+    isToolEnabled: mockIsToolEnabled,
+    setToolEnabled: mockSetToolEnabled,
+    toggleTool: mockToggleTool,
+    getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
+    setNaidanSysfsMountSelection: mockSetNaidanSysfsMountSelection,
+  }),
+}));
+
+vi.mock('@/services/storage/opfs-detection', () => ({
+  checkOPFSSupport: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock('lucide-vue-next', () => ({
+  TerminalIcon: { template: '<span>Terminal</span>' },
+}));
+
+describe('WeshToolSettings.vue', () => {
+  beforeEach(() => {
+    mockIsFeatureEnabled.mockReset();
+    mockIsToolEnabled.mockReset();
+    mockSetToolEnabled.mockReset();
+    mockToggleTool.mockReset();
+    mockGetNaidanSysfsMountSelection.mockReset();
+    mockSetNaidanSysfsMountSelection.mockReset();
+
+    mockIsFeatureEnabled.mockReturnValue(true);
+    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) => name === 'shell_execute');
+    mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+  });
+
+  it('shows the shell toggle when the feature flag is enabled', async () => {
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(true);
+  });
+
+  it('hides the shell toggle when the feature flag is disabled', async () => {
+    mockIsFeatureEnabled.mockImplementation(({ feature }: { feature: string }) => feature !== 'wesh_tool');
+
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(false);
+  });
+
+  it('shows sysfs settings when shell in browser is enabled', async () => {
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="naidan-sysfs-settings"]').exists()).toBe(true);
+  });
+
+  it('defaults sysfs mount enabling to current_chat_only', async () => {
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="naidan-sysfs-toggle"]').trigger('click');
+
+    expect(mockSetNaidanSysfsMountSelection).toHaveBeenCalledWith({ selection: 'current_chat_only' });
+  });
+
+  it('shows the visibility select when sysfs is already mounted', async () => {
+    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="naidan-sysfs-visibility-select"]').exists()).toBe(true);
+  });
+
+  it('updates the visibility selection', async () => {
+    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="naidan-sysfs-visibility-select"]').setValue('all_chats');
+
+    expect(mockSetNaidanSysfsMountSelection).toHaveBeenCalledWith({ selection: 'all_chats' });
+  });
+});

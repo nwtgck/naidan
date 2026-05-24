@@ -29,6 +29,8 @@ vi.mock('@/composables/useChatTools', () => ({
     isToolEnabled: () => false,
     setToolEnabled: vi.fn(),
     toggleTool: vi.fn(),
+    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
+    setNaidanSysfsMountSelection: vi.fn(),
   }),
 }));
 
@@ -52,7 +54,7 @@ describe('LmToolsSettings.vue', () => {
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="tool-shell-toggle"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(false);
   });
 
   it('shows shell in browser when the feature flag is enabled', async () => {
@@ -61,6 +63,6 @@ describe('LmToolsSettings.vue', () => {
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="tool-shell-toggle"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(true);
   });
 });
