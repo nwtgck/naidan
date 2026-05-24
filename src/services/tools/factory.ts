@@ -6,6 +6,7 @@ import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/wo
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import type { WeshMount } from '@/services/wesh/types';
+import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
 import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
 import { buildShellDescription } from './shell-description';
 
@@ -18,12 +19,16 @@ export async function getEnabledTools({
   settings,
   chatGroupMounts,
   chatMounts,
+  chatId,
+  chatGroupId,
   tmpHandle,
 }: {
   enabledNames: string[];
   settings: Settings;
   chatGroupMounts?: Mount[];
   chatMounts?: Mount[];
+  chatId: string | undefined;
+  chatGroupId: string | undefined;
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
@@ -49,6 +54,15 @@ export async function getEnabledTools({
       const resolvedMounts: WeshMount[] = [
         { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
       ];
+      const naidanSysfsMount = createNaidanSysfsMount({
+        storageType: settings.storageType,
+        visibility: 'current_chat_with_chat_group',
+        currentChatId: chatId,
+        currentChatGroupId: chatGroupId,
+      });
+      if (naidanSysfsMount !== undefined) {
+        resolvedMounts.push(naidanSysfsMount)
+      }
       const volumeHandles = new Map<string, FileSystemDirectoryHandle>();
       for (const m of allMounts) {
         const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });

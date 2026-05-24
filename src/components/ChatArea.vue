@@ -886,6 +886,7 @@ watch(
       :chat-mounts="currentChat?.mounts"
       :chat-group-mounts="currentChatGroup?.mounts"
       :chat-id="currentChat?.id"
+      :chat-group-id="currentChat?.groupId ?? undefined"
       @close="toggleChatWeshTerminal()"
     />
 

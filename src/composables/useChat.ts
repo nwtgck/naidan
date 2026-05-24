@@ -1265,6 +1265,8 @@ export function useChat() {
         settings: settings.value as unknown as Settings,
         chatGroupMounts,
         chatMounts: mutableChat.mounts,
+        chatId: mutableChat.id,
+        chatGroupId: mutableChat.groupId ?? undefined,
         tmpHandle: chatTmpDirectory?.handle,
       });
 

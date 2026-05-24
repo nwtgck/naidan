@@ -81,14 +81,20 @@ describe('getEnabledTools shell_execute', () => {
     const [toolA] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleA,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'a', mountPath: '/mnt/a', readOnly: false }],
       } as never,
     })
     const [toolB] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleB,
+      chatId: 'chat-2',
+      chatGroupId: undefined,
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'b', mountPath: '/mnt/b', readOnly: true }],
       } as never,
     })
@@ -97,6 +103,15 @@ describe('getEnabledTools shell_execute', () => {
       rootHandle: 'readonly',
       mounts: [
         { type: 'directory', path: '/tmp', handle: tmpHandleA, readOnly: false },
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'opfs',
+          visibility: 'current_chat_with_chat_group',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        },
         { type: 'directory', path: '/mnt/a', handle: volumeHandleA, readOnly: false },
       ],
       user: 'user',
@@ -107,6 +122,15 @@ describe('getEnabledTools shell_execute', () => {
       rootHandle: 'readonly',
       mounts: [
         { type: 'directory', path: '/tmp', handle: tmpHandleB, readOnly: false },
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'opfs',
+          visibility: 'current_chat_with_chat_group',
+          currentChatId: 'chat-2',
+          currentChatGroupId: undefined,
+        },
         { type: 'directory', path: '/mnt/b', handle: volumeHandleB, readOnly: true },
       ],
       user: 'user',
@@ -120,12 +144,14 @@ Execute shell scripts to perform file operations, system exploration, and data p
 
 Mounted directories:
 - /tmp (read-write)
+- /sys/fs/naidan (read-only)
 - /mnt/a (read-write)`)
     expect(toolB?.description).toEqual(`\
 Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). Run \`help\` to see available utilities.
 
 Mounted directories:
 - /tmp (read-write)
+- /sys/fs/naidan (read-only)
 - /mnt/b (read-only)`)
   }, 15000)
 
@@ -140,7 +166,10 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: undefined,
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'x', mountPath: '/home/user/myproject', readOnly: false }],
       } as never,
     })
@@ -157,7 +186,10 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: undefined,
+      chatId: undefined,
+      chatGroupId: undefined,
       settings: {
+        storageType: 'opfs',
         mounts: [],
       } as never,
     })
@@ -178,7 +210,10 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: undefined,
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-s', mountPath: '/mnt/s', readOnly: true }],
       } as never,
     })
@@ -201,7 +236,10 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: undefined,
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-r', mountPath: '/mnt/r', readOnly: true }],
       } as never,
     })
@@ -221,7 +259,10 @@ Mounted directories:
     const [tool] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: undefined,
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-d', mountPath: '/mnt/d', readOnly: true }],
       } as never,
     })
