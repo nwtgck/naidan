@@ -1,5 +1,12 @@
 import type { ChatMeta } from '@/models/types'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
+import {
+  NAIDAN_SYSFS_BRANCHES_DIRECTORY_NAME,
+  NAIDAN_SYSFS_CONTENT_JSON_DIRECTORY_NAME,
+  NAIDAN_SYSFS_CONTENT_MARKDOWN_DIRECTORY_NAME,
+  NAIDAN_SYSFS_METADATA_JSON_FILE_NAME,
+  NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME,
+} from '@/services/wesh/naidan-sysfs/constants'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
 import { createChatBranchesDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-branches'
 import { createChatContentDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-content'
@@ -99,11 +106,11 @@ export function createChatDirectoryEntry({
       return createDirectoryStat({})
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
-      yield { name: 'metadata.md', type: 'file', fullPath: `${path}/metadata.md` }
-      yield { name: 'metadata.json', type: 'file', fullPath: `${path}/metadata.json` }
-      yield { name: 'content-md', type: 'directory', fullPath: `${path}/content-md` }
-      yield { name: 'content-json', type: 'directory', fullPath: `${path}/content-json` }
-      yield { name: 'branches', type: 'directory', fullPath: `${path}/branches` }
+      yield { name: NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME}` }
+      yield { name: NAIDAN_SYSFS_METADATA_JSON_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_JSON_FILE_NAME}` }
+      yield { name: NAIDAN_SYSFS_CONTENT_MARKDOWN_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_CONTENT_MARKDOWN_DIRECTORY_NAME}` }
+      yield { name: NAIDAN_SYSFS_CONTENT_JSON_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_CONTENT_JSON_DIRECTORY_NAME}` }
+      yield { name: NAIDAN_SYSFS_BRANCHES_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_BRANCHES_DIRECTORY_NAME}` }
     },
     async getChild({
       name,
@@ -115,15 +122,15 @@ export function createChatDirectoryEntry({
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
       switch (name) {
-      case 'metadata.md':
+      case NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME:
         return createMetadataFileEntry({ context, chatId, format: 'markdown' })
-      case 'metadata.json':
+      case NAIDAN_SYSFS_METADATA_JSON_FILE_NAME:
         return createMetadataFileEntry({ context, chatId, format: 'json' })
-      case 'content-md':
+      case NAIDAN_SYSFS_CONTENT_MARKDOWN_DIRECTORY_NAME:
         return createChatContentDirectoryEntry({ context, chatId, format: 'markdown' })
-      case 'content-json':
+      case NAIDAN_SYSFS_CONTENT_JSON_DIRECTORY_NAME:
         return createChatContentDirectoryEntry({ context, chatId, format: 'json' })
-      case 'branches':
+      case NAIDAN_SYSFS_BRANCHES_DIRECTORY_NAME:
         return createChatBranchesDirectoryEntry({ context, chatId })
       default:
         return undefined

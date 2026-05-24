@@ -1,4 +1,13 @@
 import type { Chat, MessageNode } from '@/models/types'
+import {
+  NAIDAN_SYSFS_BRANCH_CURRENT_JSON_SYMLINK_NAME,
+  NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME,
+  NAIDAN_SYSFS_BRANCH_LEAVES_JSON_DIRECTORY_NAME,
+  NAIDAN_SYSFS_BRANCH_LEAVES_MARKDOWN_DIRECTORY_NAME,
+  NAIDAN_SYSFS_BRANCH_TREE_JSON_DIRECTORY_NAME,
+  NAIDAN_SYSFS_BRANCH_TREE_MARKDOWN_DIRECTORY_NAME,
+  NAIDAN_SYSFS_ROOT_PATH,
+} from '@/services/wesh/naidan-sysfs/constants'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
 import { getCurrentBranchNodes, iterateLeafBranches, loadSysfsChat, type NaidanSysfsLeafBranch } from '@/services/wesh/naidan-sysfs/chat-tree-projection'
 import { renderLeafMetadataJson } from '@/services/wesh/naidan-sysfs/render/leaf-metadata-json'
@@ -6,7 +15,6 @@ import { renderLeafMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/
 import { renderMessageJson } from '@/services/wesh/naidan-sysfs/render/message-json'
 import { renderMessageMarkdown } from '@/services/wesh/naidan-sysfs/render/message-markdown'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
-import { NAIDAN_SYSFS_ROOT_PATH } from '@/services/wesh/naidan-sysfs/constants'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 
 type NaidanSysfsBranchFormat = 'markdown' | 'json'
@@ -475,12 +483,12 @@ export function createChatBranchesDirectoryEntry({
       return createDirectoryStat({})
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
-      yield { name: 'current-md', type: 'symlink', fullPath: `${path}/current-md` }
-      yield { name: 'current-json', type: 'symlink', fullPath: `${path}/current-json` }
-      yield { name: 'tree-md', type: 'directory', fullPath: `${path}/tree-md` }
-      yield { name: 'tree-json', type: 'directory', fullPath: `${path}/tree-json` }
-      yield { name: 'leaves-md', type: 'directory', fullPath: `${path}/leaves-md` }
-      yield { name: 'leaves-json', type: 'directory', fullPath: `${path}/leaves-json` }
+      yield { name: NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME, type: 'symlink', fullPath: `${path}/${NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME}` }
+      yield { name: NAIDAN_SYSFS_BRANCH_CURRENT_JSON_SYMLINK_NAME, type: 'symlink', fullPath: `${path}/${NAIDAN_SYSFS_BRANCH_CURRENT_JSON_SYMLINK_NAME}` }
+      yield { name: NAIDAN_SYSFS_BRANCH_TREE_MARKDOWN_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_BRANCH_TREE_MARKDOWN_DIRECTORY_NAME}` }
+      yield { name: NAIDAN_SYSFS_BRANCH_TREE_JSON_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_BRANCH_TREE_JSON_DIRECTORY_NAME}` }
+      yield { name: NAIDAN_SYSFS_BRANCH_LEAVES_MARKDOWN_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_BRANCH_LEAVES_MARKDOWN_DIRECTORY_NAME}` }
+      yield { name: NAIDAN_SYSFS_BRANCH_LEAVES_JSON_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_BRANCH_LEAVES_JSON_DIRECTORY_NAME}` }
     },
     async getChild({
       name,
@@ -491,21 +499,21 @@ export function createChatBranchesDirectoryEntry({
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       switch (name) {
-      case 'current-md':
+      case NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME:
         return createCurrentBranchSymlinkEntry({ context, chatId, format: 'markdown' })
-      case 'current-json':
+      case NAIDAN_SYSFS_BRANCH_CURRENT_JSON_SYMLINK_NAME:
         return createCurrentBranchSymlinkEntry({ context, chatId, format: 'json' })
-      case 'tree-md': {
+      case NAIDAN_SYSFS_BRANCH_TREE_MARKDOWN_DIRECTORY_NAME: {
         const chat = await loadSysfsChat({ context, chatId, path: `${parentPath}/${name}` })
         return createTreeDirectoryEntry({ chatId, format: 'markdown', nodes: chat.root.items, sequenceStart: 1 })
       }
-      case 'tree-json': {
+      case NAIDAN_SYSFS_BRANCH_TREE_JSON_DIRECTORY_NAME: {
         const chat = await loadSysfsChat({ context, chatId, path: `${parentPath}/${name}` })
         return createTreeDirectoryEntry({ chatId, format: 'json', nodes: chat.root.items, sequenceStart: 1 })
       }
-      case 'leaves-md':
+      case NAIDAN_SYSFS_BRANCH_LEAVES_MARKDOWN_DIRECTORY_NAME:
         return createLeavesDirectoryEntry({ context, chatId, format: 'markdown' })
-      case 'leaves-json':
+      case NAIDAN_SYSFS_BRANCH_LEAVES_JSON_DIRECTORY_NAME:
         return createLeavesDirectoryEntry({ context, chatId, format: 'json' })
       default:
         return undefined

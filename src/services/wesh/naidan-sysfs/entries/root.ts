@@ -1,6 +1,15 @@
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
-import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from '@/services/wesh/naidan-sysfs/constants'
+import {
+  NAIDAN_SYSFS_CHAT_GROUPS_DIRECTORY_NAME,
+  NAIDAN_SYSFS_CHATS_DIRECTORY_NAME,
+  NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME,
+  NAIDAN_SYSFS_CURRENT_CHAT_SYMLINK_NAME,
+  NAIDAN_SYSFS_HIERARCHY_DIRECTORY_NAME,
+  NAIDAN_SYSFS_ROOT_PATH,
+  NAIDAN_SYSFS_VERSION_FILE_NAME,
+  NAIDAN_SYSFS_VERSION_TEXT,
+} from '@/services/wesh/naidan-sysfs/constants'
 import { createChatGroupsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
 import { listVisibleChatGroupIds } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
 import { createChatsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chats'
@@ -19,7 +28,7 @@ function createVersionFileEntry(_args: Record<never, never>): NaidanSysfsFileEnt
   return {
     kind: 'file',
     async stat({ path }: { path: string }) {
-      return createFileStat({ size: path === `${NAIDAN_SYSFS_ROOT_PATH}/version` ? NAIDAN_SYSFS_VERSION_TEXT.length : 0 })
+      return createFileStat({ size: path === `${NAIDAN_SYSFS_ROOT_PATH}/${NAIDAN_SYSFS_VERSION_FILE_NAME}` ? NAIDAN_SYSFS_VERSION_TEXT.length : 0 })
     },
     async open({ flags }: { path: string; flags: WeshOpenFlags }) {
       switch (flags.access) {
@@ -93,37 +102,37 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
     }): AsyncIterable<WeshDirEntry> {
       const visibleChatGroupIds = await listVisibleChatGroupIds({ context })
       yield {
-        name: 'version',
+        name: NAIDAN_SYSFS_VERSION_FILE_NAME,
         type: 'file',
-        fullPath: `${path}/version`,
+        fullPath: `${path}/${NAIDAN_SYSFS_VERSION_FILE_NAME}`,
       }
       yield {
-        name: 'current-chat',
+        name: NAIDAN_SYSFS_CURRENT_CHAT_SYMLINK_NAME,
         type: 'symlink',
-        fullPath: `${path}/current-chat`,
+        fullPath: `${path}/${NAIDAN_SYSFS_CURRENT_CHAT_SYMLINK_NAME}`,
       }
       yield {
-        name: 'chats',
+        name: NAIDAN_SYSFS_CHATS_DIRECTORY_NAME,
         type: 'directory',
-        fullPath: `${path}/chats`,
+        fullPath: `${path}/${NAIDAN_SYSFS_CHATS_DIRECTORY_NAME}`,
       }
       yield {
-        name: 'hierarchy',
+        name: NAIDAN_SYSFS_HIERARCHY_DIRECTORY_NAME,
         type: 'directory',
-        fullPath: `${path}/hierarchy`,
+        fullPath: `${path}/${NAIDAN_SYSFS_HIERARCHY_DIRECTORY_NAME}`,
       }
       if (context.currentChatGroupId !== undefined) {
         yield {
-          name: 'current-chat-group',
+          name: NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME,
           type: 'symlink',
-          fullPath: `${path}/current-chat-group`,
+          fullPath: `${path}/${NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME}`,
         }
       }
       if (visibleChatGroupIds.length > 0) {
         yield {
-          name: 'chat-groups',
+          name: NAIDAN_SYSFS_CHAT_GROUPS_DIRECTORY_NAME,
           type: 'directory',
-          fullPath: `${path}/chat-groups`,
+          fullPath: `${path}/${NAIDAN_SYSFS_CHAT_GROUPS_DIRECTORY_NAME}`,
         }
       }
     },
@@ -138,19 +147,19 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
       switch (name) {
-      case 'version':
+      case NAIDAN_SYSFS_VERSION_FILE_NAME:
         return createVersionFileEntry({})
-      case 'current-chat':
+      case NAIDAN_SYSFS_CURRENT_CHAT_SYMLINK_NAME:
         return createCurrentChatSymlinkEntry({ chatId: context.currentChatId })
-      case 'chats':
+      case NAIDAN_SYSFS_CHATS_DIRECTORY_NAME:
         return createChatsDirectoryEntry({})
-      case 'hierarchy':
+      case NAIDAN_SYSFS_HIERARCHY_DIRECTORY_NAME:
         return createHierarchyDirectoryEntry({})
-      case 'current-chat-group':
+      case NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME:
         return context.currentChatGroupId === undefined
           ? undefined
           : createCurrentChatGroupSymlinkEntry({ chatGroupId: context.currentChatGroupId })
-      case 'chat-groups':
+      case NAIDAN_SYSFS_CHAT_GROUPS_DIRECTORY_NAME:
         return createChatGroupsDirectoryEntry({})
       default:
         return undefined

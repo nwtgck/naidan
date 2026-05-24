@@ -1,5 +1,10 @@
 import type { ChatGroup } from '@/models/types'
-import { NAIDAN_SYSFS_ROOT_PATH } from '@/services/wesh/naidan-sysfs/constants'
+import {
+  NAIDAN_SYSFS_CHATS_DIRECTORY_NAME,
+  NAIDAN_SYSFS_METADATA_JSON_FILE_NAME,
+  NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME,
+  NAIDAN_SYSFS_ROOT_PATH,
+} from '@/services/wesh/naidan-sysfs/constants'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
 import { renderChatGroupMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/chat-group-metadata-markdown'
 import { renderChatGroupMetadataJson } from '@/services/wesh/naidan-sysfs/render/chat-group-metadata-json'
@@ -179,9 +184,9 @@ export function createChatGroupDirectoryEntry({
       return createDirectoryStat({})
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
-      yield { name: 'metadata.md', type: 'file', fullPath: `${path}/metadata.md` }
-      yield { name: 'metadata.json', type: 'file', fullPath: `${path}/metadata.json` }
-      yield { name: 'chats', type: 'directory', fullPath: `${path}/chats` }
+      yield { name: NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME}` }
+      yield { name: NAIDAN_SYSFS_METADATA_JSON_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_JSON_FILE_NAME}` }
+      yield { name: NAIDAN_SYSFS_CHATS_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_CHATS_DIRECTORY_NAME}` }
     },
     async getChild({
       name,
@@ -193,11 +198,11 @@ export function createChatGroupDirectoryEntry({
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
       switch (name) {
-      case 'metadata.md':
+      case NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME:
         return createChatGroupMetadataFileEntry({ chatGroup, format: 'markdown' })
-      case 'metadata.json':
+      case NAIDAN_SYSFS_METADATA_JSON_FILE_NAME:
         return createChatGroupMetadataFileEntry({ chatGroup, format: 'json' })
-      case 'chats':
+      case NAIDAN_SYSFS_CHATS_DIRECTORY_NAME:
         return createChatGroupChatsDirectoryEntry({ context, chatGroup })
       default:
         return undefined
