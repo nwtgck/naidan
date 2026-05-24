@@ -1,5 +1,6 @@
 import type { Attachment, MessageNode } from '@/models/types'
 import type { ToolExecutionResult } from '@/services/tools/types'
+import { truncateNaidanSysfsTextForMarkdown } from './truncate'
 
 function renderAttachments({ attachments }: { attachments: Attachment[] | undefined }): string[] {
   if (attachments === undefined || attachments.length === 0) {
@@ -26,7 +27,7 @@ function renderResults({ results }: { results: ToolExecutionResult[] | undefined
       case 'success':
         switch (result.content.type) {
         case 'text':
-          return `- ${result.toolCallId}: success ${result.content.text.length > 4000 ? `${result.content.text.slice(0, 4000)} [truncated]` : result.content.text}`
+          return `- ${result.toolCallId}: success ${truncateNaidanSysfsTextForMarkdown({ text: result.content.text })}`
         case 'binary_object':
           return `- ${result.toolCallId}: success [binary object ${result.content.id}]`
         default: {
@@ -37,7 +38,7 @@ function renderResults({ results }: { results: ToolExecutionResult[] | undefined
       case 'error':
         switch (result.error.message.type) {
         case 'text':
-          return `- ${result.toolCallId}: error ${result.error.message.text.length > 4000 ? `${result.error.message.text.slice(0, 4000)} [truncated]` : result.error.message.text}`
+          return `- ${result.toolCallId}: error ${truncateNaidanSysfsTextForMarkdown({ text: result.error.message.text })}`
         case 'binary_object':
           return `- ${result.toolCallId}: error [binary object ${result.error.message.id}]`
         default: {

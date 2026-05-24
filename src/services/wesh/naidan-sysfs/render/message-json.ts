@@ -1,5 +1,6 @@
 import type { Attachment, MessageNode, ToolCall } from '@/models/types'
 import type { ToolExecutionResult } from '@/services/tools/types'
+import { truncateNaidanSysfsTextForJson } from './truncate'
 
 function renderAttachments({ attachments }: { attachments: Attachment[] | undefined }) {
   return attachments?.map(attachment => ({
@@ -37,9 +38,7 @@ function renderToolResults({ results }: { results: ToolExecutionResult[] | undef
           ...result,
           content: {
             type: 'text' as const,
-            text: result.content.text.length > 4000
-              ? `${result.content.text.slice(0, 4000)}\n[truncated]`
-              : result.content.text,
+            text: truncateNaidanSysfsTextForJson({ text: result.content.text }),
           },
         }
       case 'binary_object':
@@ -58,9 +57,7 @@ function renderToolResults({ results }: { results: ToolExecutionResult[] | undef
             ...result.error,
             message: {
               type: 'text' as const,
-              text: result.error.message.text.length > 4000
-                ? `${result.error.message.text.slice(0, 4000)}\n[truncated]`
-                : result.error.message.text,
+              text: truncateNaidanSysfsTextForJson({ text: result.error.message.text }),
             },
           },
         }
