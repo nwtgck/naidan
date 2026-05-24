@@ -6,6 +6,29 @@ function createDirectoryStat(_args: Record<never, never>): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
+async function listVisibleChatIds({ context }: { context: NaidanSysfsContext }): Promise<string[]> {
+  switch (context.visibility) {
+  case 'current_chat_only':
+    return [context.currentChatId]
+  case 'current_chat_with_chat_group': {
+    if (context.currentChatGroupId === undefined) {
+      return [context.currentChatId]
+    }
+    const chatGroup = await context.reader.loadChatGroup({ chatGroupId: context.currentChatGroupId })
+    if (chatGroup === undefined) {
+      return [context.currentChatId]
+    }
+    return chatGroup.items.map(item => item.chat.id)
+  }
+  case 'all_chats':
+    return (await context.reader.listChats({})).map(chat => chat.id)
+  default: {
+    const _ex: never = context.visibility
+    throw new Error(`Unhandled visibility: ${String(_ex)}`)
+  }
+  }
+}
+
 export function createChatsDirectoryEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
@@ -20,10 +43,12 @@ export function createChatsDirectoryEntry(_args: Record<never, never>): NaidanSy
       path: string;
       context: NaidanSysfsContext;
     }): AsyncIterable<WeshDirEntry> {
-      yield {
-        name: context.currentChatId,
-        type: 'directory',
-        fullPath: `${path}/${context.currentChatId}`,
+      for (const chatId of await listVisibleChatIds({ context })) {
+        yield {
+          name: chatId,
+          type: 'directory',
+          fullPath: `${path}/${chatId}`,
+        }
       }
     },
     async getChild({
@@ -36,7 +61,8 @@ export function createChatsDirectoryEntry(_args: Record<never, never>): NaidanSy
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
-      if (name !== context.currentChatId) {
+      const visibleIds = await listVisibleChatIds({ context })
+      if (!visibleIds.includes(name)) {
         return undefined
       }
       return createChatDirectoryEntry({ context, chatId: name })

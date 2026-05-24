@@ -1,6 +1,7 @@
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from '@/services/wesh/naidan-sysfs/constants'
+import { createChatGroupsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
 import { createChatsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chats'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
 
@@ -56,6 +57,24 @@ function createCurrentChatSymlinkEntry({
   }
 }
 
+function createCurrentChatGroupSymlinkEntry({
+  chatGroupId,
+}: {
+  chatGroupId: string;
+}): NaidanSysfsSymlinkEntry {
+  return {
+    kind: 'symlink',
+    async stat({ path }: { path: string }) {
+      void path
+      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/${chatGroupId}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
+    },
+    async readlink({ path }: { path: string }) {
+      void path
+      return `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/${chatGroupId}`
+    },
+  }
+}
+
 export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
@@ -86,6 +105,18 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
         type: 'directory',
         fullPath: `${path}/chats`,
       }
+      if (context.currentChatGroupId !== undefined) {
+        yield {
+          name: 'current-chat-group',
+          type: 'symlink',
+          fullPath: `${path}/current-chat-group`,
+        }
+        yield {
+          name: 'chat-groups',
+          type: 'directory',
+          fullPath: `${path}/chat-groups`,
+        }
+      }
     },
     async getChild({
       name,
@@ -104,6 +135,12 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
         return createCurrentChatSymlinkEntry({ chatId: context.currentChatId })
       case 'chats':
         return createChatsDirectoryEntry({})
+      case 'current-chat-group':
+        return context.currentChatGroupId === undefined
+          ? undefined
+          : createCurrentChatGroupSymlinkEntry({ chatGroupId: context.currentChatGroupId })
+      case 'chat-groups':
+        return createChatGroupsDirectoryEntry({})
       default:
         return undefined
       }

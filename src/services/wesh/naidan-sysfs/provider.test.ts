@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ChatContent, ChatMeta } from '@/models/types'
+import type { ChatContent, ChatGroup, ChatMeta } from '@/models/types'
 import type { NaidanSysfsStorageReader } from './types'
 import { NaidanSysfsProvider } from './provider'
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from './constants'
@@ -7,9 +7,11 @@ import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from './constants'
 function createReaderStub({
   metadata,
   content,
+  chatGroup,
 }: {
   metadata?: ChatMeta;
   content?: ChatContent;
+  chatGroup?: ChatGroup;
 }): NaidanSysfsStorageReader {
   return {
     async loadHierarchy(_args: Record<never, never>) {
@@ -19,10 +21,10 @@ function createReaderStub({
       return []
     },
     async listChats(_args: Record<never, never>) {
-      return []
+      return chatGroup?.items.map(item => item.chat) ?? []
     },
     async listChatGroups(_args: Record<never, never>) {
-      return []
+      return chatGroup === undefined ? [] : [chatGroup]
     },
     async loadChatMeta({ chatId }: { chatId: string }) {
       if (chatId !== metadata?.id) {
@@ -41,8 +43,10 @@ function createReaderStub({
       return undefined
     },
     async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
-      void chatGroupId
-      return undefined
+      if (chatGroupId !== chatGroup?.id) {
+        return undefined
+      }
+      return chatGroup
     },
   }
 }
@@ -141,13 +145,35 @@ const sampleContent: ChatContent = {
   },
 }
 
+const sampleChatGroup: ChatGroup = {
+  id: 'chat-group-1',
+  name: 'Primary Group',
+  isCollapsed: false,
+  updatedAt: 300,
+  endpoint: {
+    type: 'openai',
+    url: 'https://example.invalid/v1',
+    httpHeaders: [['Authorization', 'group-secret-token']],
+  },
+  modelId: 'gpt-5',
+  autoTitleEnabled: true,
+  titleModelId: 'gpt-5-mini',
+  systemPrompt: { behavior: 'append', content: 'Group prompt.' },
+  lmParameters: undefined,
+  mounts: [{ type: 'volume', volumeId: 'vol-2', mountPath: '/shared', readOnly: true }],
+  items: [
+    { id: 'chat-1', type: 'chat', chat: { id: 'chat-1', title: 'Main Chat', updatedAt: 200, groupId: 'chat-group-1' } },
+    { id: 'chat-2', type: 'chat', chat: { id: 'chat-2', title: 'Sibling Chat', updatedAt: 250, groupId: 'chat-group-1' } },
+  ],
+}
+
 describe('NaidanSysfsProvider', () => {
   it('lists version at the sysfs root', async () => {
     const provider = new NaidanSysfsProvider({
-      reader: createReaderStub({}),
+      reader: createReaderStub({ chatGroup: sampleChatGroup }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     const entries = []
@@ -159,15 +185,17 @@ describe('NaidanSysfsProvider', () => {
       { name: 'version', type: 'file', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/version` },
       { name: 'current-chat', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat` },
       { name: 'chats', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chats` },
+      { name: 'current-chat-group', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat-group` },
+      { name: 'chat-groups', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups` },
     ])
   })
 
   it('opens version as a generated text file', async () => {
     const provider = new NaidanSysfsProvider({
-      reader: createReaderStub({}),
+      reader: createReaderStub({ chatGroup: sampleChatGroup }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     const handle = await provider.open({
@@ -183,10 +211,10 @@ describe('NaidanSysfsProvider', () => {
 
   it('rejects write opens for generated files', async () => {
     const provider = new NaidanSysfsProvider({
-      reader: createReaderStub({}),
+      reader: createReaderStub({ chatGroup: sampleChatGroup }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     await expect(provider.open({
@@ -197,13 +225,13 @@ describe('NaidanSysfsProvider', () => {
   })
 
   it('does not touch the storage reader for version access', async () => {
-    const reader = createReaderStub({})
+    const reader = createReaderStub({ chatGroup: sampleChatGroup })
     const loadHierarchy = vi.spyOn(reader, 'loadHierarchy')
     const provider = new NaidanSysfsProvider({
       reader,
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     await provider.stat({ path: `${NAIDAN_SYSFS_ROOT_PATH}/version` })
@@ -212,7 +240,7 @@ describe('NaidanSysfsProvider', () => {
       entries.push(entry)
     }
 
-    expect(entries).toHaveLength(3)
+    expect(entries).toHaveLength(5)
     expect(loadHierarchy).not.toHaveBeenCalled()
   })
 
@@ -221,7 +249,7 @@ describe('NaidanSysfsProvider', () => {
       reader: createReaderStub({ metadata: sampleMetadata }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1`)
@@ -241,7 +269,7 @@ describe('NaidanSysfsProvider', () => {
       reader: createReaderStub({ metadata: sampleMetadata }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     const handle = await provider.open({
@@ -264,7 +292,7 @@ describe('NaidanSysfsProvider', () => {
       reader: createReaderStub({ metadata: sampleMetadata }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     const handle = await provider.open({
@@ -287,7 +315,7 @@ describe('NaidanSysfsProvider', () => {
       reader: createReaderStub({ metadata: sampleMetadata, content: sampleContent }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     const markdownEntries = []
@@ -317,7 +345,7 @@ describe('NaidanSysfsProvider', () => {
       reader: createReaderStub({ metadata: sampleMetadata, content: sampleContent }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     const handle = await provider.open({
@@ -349,7 +377,7 @@ describe('NaidanSysfsProvider', () => {
       reader: createReaderStub({ metadata: sampleMetadata, content: sampleContent }),
       visibility: 'current_chat_only',
       currentChatId: 'chat-1',
-      currentChatGroupId: undefined,
+      currentChatGroupId: 'chat-group-1',
     })
 
     const handle = await provider.open({
@@ -363,5 +391,80 @@ describe('NaidanSysfsProvider', () => {
 
     expect(text).toContain('"shell_execute"')
     expect(text).toContain('"Assistant reply"')
+  })
+
+  it('resolves current-chat-group and exposes a restricted chats directory in current_chat_only', async () => {
+    const provider = new NaidanSysfsProvider({
+      reader: createReaderStub({ metadata: sampleMetadata, chatGroup: sampleChatGroup }),
+      visibility: 'current_chat_only',
+      currentChatId: 'chat-1',
+      currentChatGroupId: 'chat-group-1',
+    })
+
+    expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat-group` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1`)
+
+    const entries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1` })) {
+      entries.push(entry)
+    }
+
+    expect(entries).toEqual([
+      { name: 'metadata.md', type: 'file', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/metadata.md` },
+      { name: 'metadata.json', type: 'file', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/metadata.json` },
+      { name: 'chats', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats` },
+    ])
+
+    await expect(async () => {
+      for await (const _entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats` })) {
+        // no-op
+      }
+    }).rejects.toThrow('Permission denied')
+  })
+
+  it('lists sibling chat symlinks for current_chat_with_chat_group', async () => {
+    const provider = new NaidanSysfsProvider({
+      reader: createReaderStub({ metadata: sampleMetadata, chatGroup: sampleChatGroup }),
+      visibility: 'current_chat_with_chat_group',
+      currentChatId: 'chat-1',
+      currentChatGroupId: 'chat-group-1',
+    })
+
+    const chatEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats` })) {
+      chatEntries.push(entry)
+    }
+    expect(chatEntries.map(entry => entry.name)).toEqual(['chat-1', 'chat-2'])
+
+    const groupChatEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats` })) {
+      groupChatEntries.push(entry)
+    }
+    expect(groupChatEntries).toEqual([
+      { name: 'chat-1', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/chat-1` },
+      { name: 'chat-2', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/chat-2` },
+    ])
+    expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/chat-2` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-2`)
+  })
+
+  it('renders chat-group metadata with masked header values', async () => {
+    const provider = new NaidanSysfsProvider({
+      reader: createReaderStub({ metadata: sampleMetadata, chatGroup: sampleChatGroup }),
+      visibility: 'current_chat_only',
+      currentChatId: 'chat-1',
+      currentChatGroupId: 'chat-group-1',
+    })
+
+    const handle = await provider.open({
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/metadata.json`,
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+      mode: undefined,
+    })
+    const buffer = new Uint8Array(4096)
+    const result = await handle.read({ buffer })
+    const text = new TextDecoder().decode(buffer.subarray(0, result.bytesRead))
+
+    expect(text).toContain('"chat-group-1"')
+    expect(text).toContain('[masked]')
+    expect(text).not.toContain('group-secret-token')
   })
 })
