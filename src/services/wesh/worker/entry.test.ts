@@ -115,6 +115,30 @@ describe('wesh.worker', () => {
     expect(response.exitCode).toBe(0)
   })
 
+  it('does not expose naidan sysfs when no naidan sysfs mount is provided', async () => {
+    const comlink = await import('comlink')
+    const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
+    await import('./entry')
+
+    const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
+    await workerApi.init({
+      request: {
+        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        mounts: [],
+        user: 'user',
+        initialEnv: {},
+      },
+    })
+
+    const response = await workerApi.execute({
+      request: {
+        script: 'ls /sys/fs/naidan',
+      },
+    })
+
+    expect(response.exitCode).toBe(1)
+  })
+
   it('interrupts a foreground process group', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
