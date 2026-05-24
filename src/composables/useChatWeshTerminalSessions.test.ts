@@ -96,6 +96,24 @@ describe('useChatWeshTerminalSessions', () => {
       });
     });
 
+    it('keeps /tmp but omits naidan sysfs when selection is none', async () => {
+      const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
+      const { TEST_ONLY } = useChatWeshTerminalSessions();
+
+      const result = await TEST_ONLY.buildWorkerMountsForChat({
+        chatMounts: [],
+        chatGroupMounts: undefined,
+        chatId: 'chat-1',
+        chatGroupId: 'chat-group-1',
+        naidanSysfsVisibility: 'none',
+      });
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toMatchObject({ path: '/tmp', handle: tmpHandle, readOnly: false });
+      expect(result[1]).toMatchObject({ path: '/home/user/global', readOnly: true });
+      expect(result.some(m => m.type === 'naidan_sysfs')).toBe(false);
+    });
+
     it('includes both global and chat mounts when paths differ', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { TEST_ONLY } = useChatWeshTerminalSessions();
