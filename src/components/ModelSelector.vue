@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, useAttrs, nextTick, getCurrentInstance, watch, type CSSProperties } from 'vue';
+import { ref, computed, useAttrs, nextTick, getCurrentInstance, watch, type CSSProperties } from 'vue';
 import { SearchIcon, RefreshCwIcon, CheckIcon, ChevronDownIcon, Loader2Icon, XIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
 
 const props = defineProps<{
@@ -232,17 +233,7 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
   }
 }
 
-function handleDocumentMouseDown(event: MouseEvent) {
-  handleClickOutside({ event });
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleDocumentMouseDown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleDocumentMouseDown);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 // Reset highlighted index when filtering
 watch(searchQuery, () => {

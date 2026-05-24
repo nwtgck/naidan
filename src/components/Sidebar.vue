@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
+import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
@@ -25,6 +25,7 @@ const ChatGroupActions = defineAsyncComponentAndLoadOnMounted({ loader: () => im
 import { useLayout } from '@/composables/useLayout';
 import { useConfirm } from '@/composables/useConfirm';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
 import { scrollIntoViewSafe } from '@/utils/dom';
 
@@ -309,11 +310,10 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
     activeActionGroupId.value = null;
   }
 }
-const handleDocumentMouseDown = (event: MouseEvent) => handleClickOutside({ event });
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 onMounted(() => {
   syncLocalItems();
-  document.addEventListener('mousedown', handleDocumentMouseDown);
   if (currentChat.value?.id) {
     void scheduleSidebarItemScroll({
       itemType: 'chat',
@@ -328,10 +328,6 @@ onMounted(() => {
     id: currentChatGroup.value?.id,
     onlyWhenOutOfView: true
   });
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleDocumentMouseDown);
 });
 
 function captureSidebarItemRects() {

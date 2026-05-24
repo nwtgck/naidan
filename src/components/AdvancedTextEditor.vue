@@ -19,6 +19,7 @@ import {
   WrapTextIcon,
   BarChart2Icon,
 } from 'lucide-vue-next';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
   initialValue: string;
@@ -580,9 +581,10 @@ function handleWindowKeyDown(event: KeyboardEvent) {
   handleKeyDown({ event });
 }
 
+useEventTargetListener(window, 'keydown', handleWindowKeyDown);
+useEventTargetListener(window, 'resize', calculateLineHeights);
+
 onMounted(() => {
-  window.addEventListener('keydown', handleWindowKeyDown);
-  window.addEventListener('resize', calculateLineHeights);
   nextTick(() => {
     textareaRef.value?.focus();
     syncScroll();
@@ -591,8 +593,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleWindowKeyDown);
-  window.removeEventListener('resize', calculateLineHeights);
   if (historyTimeout) clearTimeout(historyTimeout);
   if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
   if (ghostElement && ghostElement.parentNode) {

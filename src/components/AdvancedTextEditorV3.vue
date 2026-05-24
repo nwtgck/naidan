@@ -25,6 +25,7 @@ import type {
   AdvancedTextEditorV3Match,
   AdvancedTextEditorV3WorkerClient,
 } from '@/services/advanced-text-editor-v3/worker/types';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
   initialValue: string;
@@ -812,9 +813,10 @@ function handleWindowKeyDown(event: KeyboardEvent) {
   handleKeyDown({ event });
 }
 
+useEventTargetListener(window, 'keydown', handleWindowKeyDown);
+useEventTargetListener(window, 'resize', calculateLineHeights);
+
 onMounted(() => {
-  window.addEventListener('keydown', handleWindowKeyDown);
-  window.addEventListener('resize', calculateLineHeights);
   void getWorkerClient();
   nextTick(() => {
     textareaRef.value?.focus();
@@ -824,8 +826,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleWindowKeyDown);
-  window.removeEventListener('resize', calculateLineHeights);
   if (historyTimeout) clearTimeout(historyTimeout);
   if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
   if (ghostElement && ghostElement.parentNode) {

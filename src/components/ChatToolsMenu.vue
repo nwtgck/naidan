@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch, type CSSProperties } from 'vue';
+import { ref, computed, watch, type CSSProperties } from 'vue';
 import { Settings2Icon } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
 import { useChatTools } from '@/composables/useChatTools';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 // Lazily load image generation settings as it's only visible when the tools menu is opened, but prefetch it when idle.
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageGenerationSettings.vue') });
@@ -120,17 +121,7 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
   showMenu.value = false;
 }
 
-function handleDocumentMouseDown(event: MouseEvent) {
-  handleClickOutside({ event });
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleDocumentMouseDown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleDocumentMouseDown);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 // Close on window width resize to prevent floating detached dropdown
 watch(windowWidth, () => {

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
 import { useOPFSExplorer } from '@/composables/useOPFSExplorer';
 import { useLayout } from '@/composables/useLayout';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {
   TerminalIcon, Trash2Icon, AlertCircleIcon, XIcon, SkullIcon,
   InfoIcon, AlertTriangleIcon, BugIcon, MoreVerticalIcon, HardDriveIcon,
@@ -81,17 +82,7 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
   }
 }
 
-function handleDocumentMouseDown(event: MouseEvent) {
-  handleClickOutside({ event });
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleDocumentMouseDown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleDocumentMouseDown);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 
 defineExpose({

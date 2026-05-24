@@ -18,6 +18,7 @@ import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection'
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -923,7 +924,6 @@ watch(
 );
 
 onMounted(async () => {
-  window.addEventListener('resize', handleWindowResize);
   if (currentChat.value) {
     fetchModels();
   }
@@ -956,9 +956,9 @@ onMounted(async () => {
   });
 });
 
-onUnmounted(() => {
-  window.removeEventListener('resize', handleWindowResize);
+useEventTargetListener(window, 'resize', handleWindowResize);
 
+onUnmounted(() => {
   // Save final state
   saveDraft({ chatId: currentChat.value?.id, draft: {
     input: input.value,

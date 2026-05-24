@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import { InfoIcon, CopyIcon, CheckIcon } from 'lucide-vue-next';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
   /** The generation prompt */
@@ -49,17 +50,7 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
   }
 }
 
-function handleDocumentMouseDown(event: MouseEvent) {
-  handleClickOutside({ event });
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleDocumentMouseDown);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleDocumentMouseDown);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 defineExpose({
   TEST_ONLY: {

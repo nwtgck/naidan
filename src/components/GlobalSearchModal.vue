@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { SearchIcon, XIcon, Loader2Icon, MessageSquareIcon, CornerDownRightIcon, ClockIcon, GitBranchIcon, FolderIcon, FilterIcon, CheckIcon, EyeIcon } from 'lucide-vue-next';
 import he from 'he';
@@ -11,6 +11,7 @@ import { useLayout } from '@/composables/useLayout';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
 const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupSearchPreview.vue') });
@@ -126,15 +127,7 @@ const handleClickOutsideGroupSelector = ({ event }: { event: MouseEvent }) => {
   }
 };
 
-const groupSelectorMouseDownListener = (event: MouseEvent) => handleClickOutsideGroupSelector({ event });
-
-onMounted(() => {
-  document.addEventListener('mousedown', groupSelectorMouseDownListener);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', groupSelectorMouseDownListener);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutsideGroupSelector({ event }));
 
 const selectedGroups = computed(() => {
   return chatGroups.value.filter(g => chatGroupIds.value.includes(g.id));

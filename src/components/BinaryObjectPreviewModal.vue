@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { BinaryObject } from '@/models/types';
 import { storageService } from '@/services/storage';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {
   XIcon, DownloadIcon, Trash2Icon, ChevronLeftIcon, ChevronRightIcon,
   ZoomInIcon, ZoomOutIcon,
@@ -112,15 +113,13 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
   }
 };
 
-const handleWindowKeydown = (event: KeyboardEvent) => handleKeydown({ event });
+useEventTargetListener(window, 'keydown', (event) => handleKeydown({ event }));
 
 onMounted(() => {
-  window.addEventListener('keydown', handleWindowKeydown);
   showControls();
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleWindowKeydown);
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value);
   if (controlsTimeout) clearTimeout(controlsTimeout);
 });

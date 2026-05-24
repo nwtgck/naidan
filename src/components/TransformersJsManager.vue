@@ -7,6 +7,7 @@ import {
 } from 'lucide-vue-next';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 
@@ -122,11 +123,10 @@ const handleClickOutside = ({ event }: { event: MouseEvent }) => {
   }
 };
 
-const handleDocumentMouseDown = (event: MouseEvent) => handleClickOutside({ event });
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 onMounted(async () => {
   searchQuery.value = '';
-  document.addEventListener('mousedown', handleDocumentMouseDown);
   await refreshLocalModels();
   unsubscribe = transformersJsService.subscribe((s, p, e, c, l, items) => {
     status.value = s;
@@ -147,7 +147,6 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', handleDocumentMouseDown);
   if (unsubscribe) unsubscribe();
   if (unsubscribeList) unsubscribeList();
 });
