@@ -93,6 +93,15 @@ const sampleMetadata: ChatMeta = {
   mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/data', readOnly: true }],
 }
 
+const sampleIndividualChatMetadata: ChatMeta = {
+  ...sampleMetadata,
+  id: 'chat-3',
+  title: 'Individual Chat',
+  groupId: null,
+  currentLeafId: 'Ra2iS1T2u3V4w5X6y7Z8',
+  updatedAt: 300,
+}
+
 const sampleContent: ChatContent = {
   currentLeafId: 'Wt3lL1M2n3P4q5R6s7T8',
   root: {
@@ -324,6 +333,28 @@ describe('NaidanSysfsProvider', () => {
       { name: 'chats', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chats` },
       { name: 'hierarchy', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy` },
       { name: 'current-chat-group', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat-group` },
+      { name: 'chat-groups', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups` },
+    ])
+  })
+
+  it('lists chat-groups without current-chat-group for all_chats when the current chat is not in a chat group', async () => {
+    const provider = new NaidanSysfsProvider({
+      reader: createReaderStub({ metadata: sampleIndividualChatMetadata, chatGroup: sampleChatGroup }),
+      visibility: 'all_chats',
+      currentChatId: 'chat-3',
+      currentChatGroupId: undefined,
+    })
+
+    const entries = []
+    for await (const entry of provider.readDir({ path: NAIDAN_SYSFS_ROOT_PATH })) {
+      entries.push(entry)
+    }
+
+    expect(entries).toEqual([
+      { name: 'version', type: 'file', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/version` },
+      { name: 'current-chat', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat` },
+      { name: 'chats', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chats` },
+      { name: 'hierarchy', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy` },
       { name: 'chat-groups', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups` },
     ])
   })
