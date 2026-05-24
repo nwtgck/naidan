@@ -18,6 +18,25 @@ function createReaderStub({
       return { items: [] }
     },
     async getSidebarStructure(_args: Record<never, never>) {
+      if (chatGroup !== undefined) {
+        return [{
+          id: `chat_group:${chatGroup.id}`,
+          type: 'chat_group' as const,
+          chatGroup,
+        }]
+      }
+      if (metadata !== undefined) {
+        return [{
+          id: `chat:${metadata.id}`,
+          type: 'chat' as const,
+          chat: {
+            id: metadata.id,
+            title: metadata.title,
+            updatedAt: metadata.updatedAt,
+            groupId: metadata.groupId ?? null,
+          },
+        }]
+      }
       return []
     },
     async listChats(_args: Record<never, never>) {
@@ -639,10 +658,10 @@ describe('NaidanSysfsProvider', () => {
       groupChatEntries.push(entry)
     }
     expect(groupChatEntries).toEqual([
-      { name: 'chat-1', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/chat-1` },
-      { name: 'chat-2', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/chat-2` },
+      { name: '1-chat-chat-1', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/1-chat-chat-1` },
+      { name: '2-chat-chat-2', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/2-chat-chat-2` },
     ])
-    expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/chat-2` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-2`)
+    expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1/chats/2-chat-chat-2` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-2`)
   })
 
   it('renders chat-group metadata with masked header values', async () => {
@@ -680,27 +699,8 @@ describe('NaidanSysfsProvider', () => {
       hierarchyEntries.push(entry)
     }
     expect(hierarchyEntries).toEqual([
-      { name: 'chats', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chats` },
-      { name: 'chat-groups', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chat-groups` },
+      { name: '1-chat-group-chat-group-1', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/1-chat-group-chat-group-1` },
     ])
-
-    const chatEntries = []
-    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chats` })) {
-      chatEntries.push(entry)
-    }
-    expect(chatEntries).toEqual([
-      { name: 'chat-1', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chats/chat-1` },
-      { name: 'chat-2', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chats/chat-2` },
-    ])
-
-    const chatGroupEntries = []
-    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chat-groups` })) {
-      chatGroupEntries.push(entry)
-    }
-    expect(chatGroupEntries).toEqual([
-      { name: 'chat-group-1', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chat-groups/chat-group-1` },
-    ])
-    expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chats/chat-2` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-2`)
-    expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/chat-groups/chat-group-1` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1`)
+    expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy/1-chat-group-chat-group-1` })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/chat-group-1`)
   })
 })

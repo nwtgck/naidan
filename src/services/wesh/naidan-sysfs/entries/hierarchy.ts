@@ -1,6 +1,5 @@
+import type { SidebarItem } from '@/models/types'
 import { NAIDAN_SYSFS_ROOT_PATH } from '@/services/wesh/naidan-sysfs/constants'
-import { listVisibleChatIds } from '@/services/wesh/naidan-sysfs/entries/chats'
-import { listVisibleChatGroupIds } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 
@@ -36,83 +35,46 @@ function createChatGroupSymlinkEntry({ chatGroupId }: { chatGroupId: string }): 
   }
 }
 
-function createHierarchyChatGroupsDirectory(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
-  return {
-    kind: 'directory',
-    async stat({ path }: { path: string }) {
-      void path
-      return createDirectoryStat({})
-    },
-    async *readDir({
-      path,
-      context,
-    }: {
-      path: string;
-      context: NaidanSysfsContext;
-    }): AsyncIterable<WeshDirEntry> {
-      for (const chatGroupId of await listVisibleChatGroupIds({ context })) {
-        yield {
-          name: chatGroupId,
-          type: 'symlink',
-          fullPath: `${path}/${chatGroupId}`,
-        }
-      }
-    },
-    async getChild({
-      name,
-      parentPath,
-      context,
-    }: {
-      name: string;
-      parentPath: string;
-      context: NaidanSysfsContext;
-    }): Promise<NaidanSysfsEntry | undefined> {
-      void parentPath
-      if (!(await listVisibleChatGroupIds({ context })).includes(name)) {
-        return undefined
-      }
-      return createChatGroupSymlinkEntry({ chatGroupId: name })
-    },
-  }
+function createHierarchyChatSymlinkName({
+  index,
+  chatId,
+}: {
+  index: number;
+  chatId: string;
+}): string {
+  return `${index}-chat-${chatId}`
 }
 
-function createHierarchyChatsDirectory(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
-  return {
-    kind: 'directory',
-    async stat({ path }: { path: string }) {
-      void path
-      return createDirectoryStat({})
-    },
-    async *readDir({
-      path,
-      context,
-    }: {
-      path: string;
-      context: NaidanSysfsContext;
-    }): AsyncIterable<WeshDirEntry> {
-      for (const chatId of await listVisibleChatIds({ context })) {
-        yield {
-          name: chatId,
-          type: 'symlink',
-          fullPath: `${path}/${chatId}`,
-        }
-      }
-    },
-    async getChild({
-      name,
-      parentPath,
-      context,
-    }: {
-      name: string;
-      parentPath: string;
-      context: NaidanSysfsContext;
-    }): Promise<NaidanSysfsEntry | undefined> {
-      void parentPath
-      if (!(await listVisibleChatIds({ context })).includes(name)) {
-        return undefined
-      }
-      return createChatSymlinkEntry({ chatId: name })
-    },
+function createHierarchyChatGroupSymlinkName({
+  index,
+  chatGroupId,
+}: {
+  index: number;
+  chatGroupId: string;
+}): string {
+  return `${index}-chat-group-${chatGroupId}`
+}
+
+async function listVisibleHierarchyItems({ context }: { context: NaidanSysfsContext }): Promise<SidebarItem[]> {
+  const items = await context.reader.getSidebarStructure({})
+
+  switch (context.visibility) {
+  case 'current_chat_only':
+    if (context.currentChatGroupId !== undefined) {
+      return items.filter(item => item.type === 'chat_group' && item.chatGroup.id === context.currentChatGroupId)
+    }
+    return items.filter(item => item.type === 'chat' && item.chat.id === context.currentChatId)
+  case 'current_chat_with_chat_group':
+    if (context.currentChatGroupId !== undefined) {
+      return items.filter(item => item.type === 'chat_group' && item.chatGroup.id === context.currentChatGroupId)
+    }
+    return items.filter(item => item.type === 'chat' && item.chat.id === context.currentChatId)
+  case 'all_chats':
+    return items
+  default: {
+    const _ex: never = context.visibility
+    throw new Error(`Unhandled visibility: ${String(_ex)}`)
+  }
   }
 }
 
@@ -123,27 +85,67 @@ export function createHierarchyDirectoryEntry(_args: Record<never, never>): Naid
       void path
       return createDirectoryStat({})
     },
-    async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
-      yield { name: 'chats', type: 'directory', fullPath: `${path}/chats` }
-      yield { name: 'chat-groups', type: 'directory', fullPath: `${path}/chat-groups` }
+    async *readDir({
+      path,
+      context,
+    }: {
+      path: string;
+      context: NaidanSysfsContext;
+    }): AsyncIterable<WeshDirEntry> {
+      const items = await listVisibleHierarchyItems({ context })
+      for (const [index, item] of items.entries()) {
+        const name = (() => {
+          switch (item.type) {
+          case 'chat':
+            return createHierarchyChatSymlinkName({ index: index + 1, chatId: item.chat.id })
+          case 'chat_group':
+            return createHierarchyChatGroupSymlinkName({ index: index + 1, chatGroupId: item.chatGroup.id })
+          default: {
+            const _ex: never = item
+            throw new Error(`Unhandled hierarchy item type: ${String(_ex)}`)
+          }
+          }
+        })()
+        yield { name, type: 'symlink', fullPath: `${path}/${name}` }
+      }
     },
     async getChild({
       name,
       parentPath,
+      context,
     }: {
       name: string;
       parentPath: string;
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
-      switch (name) {
-      case 'chats':
-        return createHierarchyChatsDirectory({})
-      case 'chat-groups':
-        return createHierarchyChatGroupsDirectory({})
-      default:
-        return undefined
+      const items = await listVisibleHierarchyItems({ context })
+      for (const [index, item] of items.entries()) {
+        switch (item.type) {
+        case 'chat': {
+          const expectedName = createHierarchyChatSymlinkName({ index: index + 1, chatId: item.chat.id })
+          if (expectedName === name) {
+            return createChatSymlinkEntry({ chatId: item.chat.id })
+          }
+          break
+        }
+        case 'chat_group': {
+          const expectedName = createHierarchyChatGroupSymlinkName({
+            index: index + 1,
+            chatGroupId: item.chatGroup.id,
+          })
+          if (expectedName === name) {
+            return createChatGroupSymlinkEntry({ chatGroupId: item.chatGroup.id })
+          }
+          break
+        }
+        default: {
+          const _ex: never = item
+          throw new Error(`Unhandled hierarchy item type: ${String(_ex)}`)
+        }
+        }
       }
+      return undefined
     },
   }
 }

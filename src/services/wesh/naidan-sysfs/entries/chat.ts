@@ -38,7 +38,7 @@ function createMetadataFileEntry({
 }: {
   context: NaidanSysfsContext;
   chatId: string;
-  format: 'md' | 'json';
+  format: 'markdown' | 'json';
 }): NaidanSysfsFileEntry {
   return {
     kind: 'file',
@@ -70,7 +70,7 @@ function createMetadataFileEntry({
         readText: async () => {
           const metadata = await loadMetadata({ context, chatId, path })
           switch (format) {
-          case 'md':
+          case 'markdown':
             return renderChatMetadataMarkdown({ metadata })
           case 'json':
             return `${renderChatMetadataJson({ metadata })}\n`
@@ -116,11 +116,11 @@ export function createChatDirectoryEntry({
       void parentPath
       switch (name) {
       case 'metadata.md':
-        return createMetadataFileEntry({ context, chatId, format: 'md' })
+        return createMetadataFileEntry({ context, chatId, format: 'markdown' })
       case 'metadata.json':
         return createMetadataFileEntry({ context, chatId, format: 'json' })
       case 'content-md':
-        return createChatContentDirectoryEntry({ context, chatId, format: 'md' })
+        return createChatContentDirectoryEntry({ context, chatId, format: 'markdown' })
       case 'content-json':
         return createChatContentDirectoryEntry({ context, chatId, format: 'json' })
       case 'branches':

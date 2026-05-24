@@ -43,40 +43,36 @@ export function getCurrentBranchNodes({ chat }: { chat: Chat }): MessageNode[] {
   return [...getChatBranchIterator({ chat })]
 }
 
-export function collectLeafBranches({ chat }: { chat: Chat }): NaidanSysfsLeafBranch[] {
-  const leaves: NaidanSysfsLeafBranch[] = []
-
-  const visit = ({
+export function* iterateLeafBranches({ chat }: { chat: Chat }): Generator<NaidanSysfsLeafBranch> {
+  function* visit({
     nodes,
     ancestors,
   }: {
     nodes: MessageNode[];
     ancestors: MessageNode[];
-  }): void => {
+  }): Generator<NaidanSysfsLeafBranch> {
     for (const node of nodes) {
       const nextAncestors = [...ancestors, node]
       if (node.replies.items.length === 0) {
-        leaves.push({
+        yield {
           leafId: node.id,
           nodes: nextAncestors,
-        })
+        }
         continue
       }
-      visit({
+      yield* visit({
         nodes: node.replies.items,
         ancestors: nextAncestors,
       })
     }
   }
 
-  visit({
+  yield* visit({
     nodes: chat.root.items,
     ancestors: [],
   })
-
-  return leaves
 }
 
 export function createLeafBranchMap({ chat }: { chat: Chat }): Map<string, NaidanSysfsLeafBranch> {
-  return new Map(collectLeafBranches({ chat }).map(branch => [branch.leafId, branch]))
+  return new Map(Array.from(iterateLeafBranches({ chat }), branch => [branch.leafId, branch]))
 }

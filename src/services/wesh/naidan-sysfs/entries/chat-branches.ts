@@ -1,6 +1,6 @@
 import type { Chat, MessageNode } from '@/models/types'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
-import { createLeafBranchMap, getCurrentBranchNodes, loadSysfsChat, type NaidanSysfsLeafBranch } from '@/services/wesh/naidan-sysfs/chat-tree-projection'
+import { getCurrentBranchNodes, iterateLeafBranches, loadSysfsChat, type NaidanSysfsLeafBranch } from '@/services/wesh/naidan-sysfs/chat-tree-projection'
 import { renderLeafMetadataJson } from '@/services/wesh/naidan-sysfs/render/leaf-metadata-json'
 import { renderLeafMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/leaf-metadata-markdown'
 import { renderMessageJson } from '@/services/wesh/naidan-sysfs/render/message-json'
@@ -9,7 +9,20 @@ import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, N
 import { NAIDAN_SYSFS_ROOT_PATH } from '@/services/wesh/naidan-sysfs/constants'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 
-type NaidanSysfsBranchFormat = 'md' | 'json'
+type NaidanSysfsBranchFormat = 'markdown' | 'json'
+
+function createFormatExtension({ format }: { format: NaidanSysfsBranchFormat }): 'md' | 'json' {
+  switch (format) {
+  case 'markdown':
+    return 'md'
+  case 'json':
+    return 'json'
+  default: {
+    const _ex: never = format
+    throw new Error(`Unhandled branch format: ${String(_ex)}`)
+  }
+  }
+}
 
 function createDirectoryStat(_args: Record<never, never>): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
@@ -46,7 +59,7 @@ function createMessageFileName({
   node: MessageNode;
   format: NaidanSysfsBranchFormat;
 }): string {
-  return `${index}-${node.role}-${node.id}.${format}`
+  return `${index}-${node.role}-${node.id}.${createFormatExtension({ format })}`
 }
 
 function createBranchDirectoryName({
@@ -68,7 +81,7 @@ function createLeafSymlinkTarget({
   format: NaidanSysfsBranchFormat;
   leafId: string;
 }): string {
-  return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}/branches/leaves-${format}/${leafId}`
+  return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}/branches/leaves-${createFormatExtension({ format })}/${leafId}`
 }
 
 function createGeneratedFileEntry({
@@ -153,7 +166,7 @@ function createMessageContent({
   format: NaidanSysfsBranchFormat;
 }): string {
   switch (format) {
-  case 'md':
+  case 'markdown':
     return renderMessageMarkdown({ node })
   case 'json':
     return `${renderMessageJson({ node })}\n`
@@ -179,7 +192,7 @@ function createLeafMetadataEntry({
     estimatedSize: 2048,
     readText: async () => {
       switch (format) {
-      case 'md':
+      case 'markdown':
         return renderLeafMetadataMarkdown({ chat, leafId, nodes })
       case 'json':
         return `${renderLeafMetadataJson({ chat, leafId, nodes })}\n`
@@ -250,7 +263,8 @@ function createLeafDirectoryEntry({
       return createDirectoryStat({})
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
-      yield { name: `metadata.${format}`, type: 'file', fullPath: `${path}/metadata.${format}` }
+      const extension = createFormatExtension({ format })
+      yield { name: `metadata.${extension}`, type: 'file', fullPath: `${path}/metadata.${extension}` }
       yield { name: 'content', type: 'directory', fullPath: `${path}/content` }
     },
     async getChild({
@@ -262,7 +276,7 @@ function createLeafDirectoryEntry({
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
-      if (name === `metadata.${format}`) {
+      if (name === `metadata.${createFormatExtension({ format })}`) {
         return createLeafMetadataEntry({
           chat,
           leafId: leafBranch.leafId,
@@ -303,7 +317,7 @@ function createLeavesDirectoryEntry({
       context: NaidanSysfsContext;
     }): AsyncIterable<WeshDirEntry> {
       const chat = await loadSysfsChat({ context, chatId, path })
-      for (const { leafId } of createLeafBranchMap({ chat }).values()) {
+      for (const { leafId } of iterateLeafBranches({ chat })) {
         yield { name: leafId, type: 'directory', fullPath: `${path}/${leafId}` }
       }
     },
@@ -316,11 +330,12 @@ function createLeavesDirectoryEntry({
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       const chat = await loadSysfsChat({ context, chatId, path: parentPath })
-      const leafBranch = createLeafBranchMap({ chat }).get(name)
-      if (leafBranch === undefined) {
-        return undefined
+      for (const leafBranch of iterateLeafBranches({ chat })) {
+        if (leafBranch.leafId === name) {
+          return createLeafDirectoryEntry({ chat, leafBranch, format })
+        }
       }
-      return createLeafDirectoryEntry({ chat, leafBranch, format })
+      return undefined
     },
   }
 }
@@ -477,19 +492,19 @@ export function createChatBranchesDirectoryEntry({
     }): Promise<NaidanSysfsEntry | undefined> {
       switch (name) {
       case 'current-md':
-        return createCurrentBranchSymlinkEntry({ context, chatId, format: 'md' })
+        return createCurrentBranchSymlinkEntry({ context, chatId, format: 'markdown' })
       case 'current-json':
         return createCurrentBranchSymlinkEntry({ context, chatId, format: 'json' })
       case 'tree-md': {
         const chat = await loadSysfsChat({ context, chatId, path: `${parentPath}/${name}` })
-        return createTreeDirectoryEntry({ chatId, format: 'md', nodes: chat.root.items, sequenceStart: 1 })
+        return createTreeDirectoryEntry({ chatId, format: 'markdown', nodes: chat.root.items, sequenceStart: 1 })
       }
       case 'tree-json': {
         const chat = await loadSysfsChat({ context, chatId, path: `${parentPath}/${name}` })
         return createTreeDirectoryEntry({ chatId, format: 'json', nodes: chat.root.items, sequenceStart: 1 })
       }
       case 'leaves-md':
-        return createLeavesDirectoryEntry({ context, chatId, format: 'md' })
+        return createLeavesDirectoryEntry({ context, chatId, format: 'markdown' })
       case 'leaves-json':
         return createLeavesDirectoryEntry({ context, chatId, format: 'json' })
       default:

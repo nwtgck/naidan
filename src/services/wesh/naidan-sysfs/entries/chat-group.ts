@@ -23,7 +23,7 @@ function createChatGroupMetadataFileEntry({
   format,
 }: {
   chatGroup: ChatGroup;
-  format: 'md' | 'json';
+  format: 'markdown' | 'json';
 }): NaidanSysfsFileEntry {
   return {
     kind: 'file',
@@ -48,7 +48,7 @@ function createChatGroupMetadataFileEntry({
         estimatedSize: 2048,
         readText: async () => {
           switch (format) {
-          case 'md':
+          case 'markdown':
             return renderChatGroupMetadataMarkdown({ chatGroup })
           case 'json':
             return `${renderChatGroupMetadataJson({ chatGroup })}\n`
@@ -91,6 +91,16 @@ function createChatGroupChatSymlinkEntry({ chatId }: { chatId: string }): Naidan
   }
 }
 
+function createChatGroupChatSymlinkName({
+  index,
+  chatId,
+}: {
+  index: number;
+  chatId: string;
+}): string {
+  return `${index}-chat-${chatId}`
+}
+
 function createChatGroupChatsDirectoryEntry({
   context,
   chatGroup,
@@ -115,11 +125,15 @@ function createChatGroupChatsDirectoryEntry({
         path: string;
         context: NaidanSysfsContext;
       }): AsyncIterable<WeshDirEntry> {
-        for (const item of chatGroup.items) {
+        for (const [index, item] of chatGroup.items.entries()) {
+          const name = createChatGroupChatSymlinkName({
+            index: index + 1,
+            chatId: item.chat.id,
+          })
           yield {
-            name: item.chat.id,
+            name,
             type: 'symlink',
-            fullPath: `${path}/${item.chat.id}`,
+            fullPath: `${path}/${name}`,
           }
         }
       },
@@ -132,10 +146,16 @@ function createChatGroupChatsDirectoryEntry({
         context: NaidanSysfsContext;
       }): Promise<NaidanSysfsEntry | undefined> {
         void parentPath
-        if (!chatGroup.items.some(item => item.chat.id === name)) {
-          return undefined
+        for (const [index, item] of chatGroup.items.entries()) {
+          const expectedName = createChatGroupChatSymlinkName({
+            index: index + 1,
+            chatId: item.chat.id,
+          })
+          if (expectedName === name) {
+            return createChatGroupChatSymlinkEntry({ chatId: item.chat.id })
+          }
         }
-        return createChatGroupChatSymlinkEntry({ chatId: name })
+        return undefined
       },
     }
   default: {
@@ -174,7 +194,7 @@ export function createChatGroupDirectoryEntry({
       void parentPath
       switch (name) {
       case 'metadata.md':
-        return createChatGroupMetadataFileEntry({ chatGroup, format: 'md' })
+        return createChatGroupMetadataFileEntry({ chatGroup, format: 'markdown' })
       case 'metadata.json':
         return createChatGroupMetadataFileEntry({ chatGroup, format: 'json' })
       case 'chats':

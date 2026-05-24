@@ -17,12 +17,24 @@ function createFileStat({ size }: { size: number }): WeshStat {
 function createMessageFileName({ index, node, format }: {
   index: number;
   node: MessageNode;
-  format: 'md' | 'json';
+  format: 'markdown' | 'json';
 }): string {
-  return `${String(index + 1).padStart(4, '0')}-${node.role}.${format}`
+  const extension = (() => {
+    switch (format) {
+    case 'markdown':
+      return 'md'
+    case 'json':
+      return 'json'
+    default: {
+      const _ex: never = format
+      throw new Error(`Unhandled content format: ${String(_ex)}`)
+    }
+    }
+  })()
+  return `${String(index + 1).padStart(4, '0')}-${node.role}.${extension}`
 }
 
-async function loadBranchNodes({
+async function* loadBranchNodes({
   context,
   chatId,
   path,
@@ -30,7 +42,7 @@ async function loadBranchNodes({
   context: NaidanSysfsContext;
   chatId: string;
   path: string;
-}): Promise<MessageNode[]> {
+}): AsyncGenerator<MessageNode> {
   const metadata = await context.reader.loadChatMeta({ chatId })
   const content = await context.reader.loadChatContent({ chatId })
   if (metadata === undefined || content === undefined) {
@@ -43,7 +55,7 @@ async function loadBranchNodes({
     currentLeafId: content.currentLeafId ?? metadata.currentLeafId,
   }
 
-  return [...getChatBranchIterator({ chat })]
+  yield* getChatBranchIterator({ chat })
 }
 
 function createMessageFileEntry({
@@ -51,7 +63,7 @@ function createMessageFileEntry({
   format,
 }: {
   node: MessageNode;
-  format: 'md' | 'json';
+  format: 'markdown' | 'json';
 }): NaidanSysfsFileEntry {
   return {
     kind: 'file',
@@ -81,7 +93,7 @@ function createMessageFileEntry({
         estimatedSize: 4096,
         readText: async () => {
           switch (format) {
-          case 'md':
+          case 'markdown':
             return renderMessageMarkdown({ node })
           case 'json':
             return `${renderMessageJson({ node })}\n`
@@ -103,7 +115,7 @@ export function createChatContentDirectoryEntry({
 }: {
   context: NaidanSysfsContext;
   chatId: string;
-  format: 'md' | 'json';
+  format: 'markdown' | 'json';
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
@@ -117,10 +129,11 @@ export function createChatContentDirectoryEntry({
       path: string;
       context: NaidanSysfsContext;
     }): AsyncIterable<WeshDirEntry> {
-      const nodes = await loadBranchNodes({ context, chatId, path })
-      for (const [index, node] of nodes.entries()) {
+      let index = 0
+      for await (const node of loadBranchNodes({ context, chatId, path })) {
         const name = createMessageFileName({ index, node, format })
         yield { name, type: 'file', fullPath: `${path}/${name}` }
+        index += 1
       }
     },
     async getChild({
@@ -131,11 +144,12 @@ export function createChatContentDirectoryEntry({
       parentPath: string;
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
-      const nodes = await loadBranchNodes({ context, chatId, path: parentPath })
-      for (const [index, node] of nodes.entries()) {
+      let index = 0
+      for await (const node of loadBranchNodes({ context, chatId, path: parentPath })) {
         if (createMessageFileName({ index, node, format }) === name) {
           return createMessageFileEntry({ node, format })
         }
+        index += 1
       }
       return undefined
     },
