@@ -207,8 +207,8 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
       initialCwd: undefined,
     })
 
-    expect(init).toHaveBeenCalledWith({
-      request: expect.objectContaining({
+    expect(init).toHaveBeenCalledWith(
+      expect.objectContaining({
         mounts: [{
           type: 'naidan_sysfs',
           path: '/sys/fs/naidan',
@@ -218,11 +218,12 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
           currentChatId: 'chat-1',
           currentChatGroupId: 'chat-group-1',
         }],
-        naidanSysfsRemoteReader: expect.objectContaining({
-          storageType: 'local',
-        }),
       }),
-    })
+      expect.objectContaining({
+        storageType: 'local',
+      }),
+    )
+    expect(init.mock.calls[0]?.[0]).not.toHaveProperty('naidanSysfsRemoteReader')
 
     await client.dispose({})
     expect(release).toHaveBeenCalledTimes(1)

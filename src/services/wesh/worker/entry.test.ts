@@ -201,8 +201,8 @@ describe('wesh.worker', () => {
     const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) })
     expectedMetadata.groupId = 'chat-group-1'
 
-    await workerApi.init({
-      request: {
+    await workerApi.init(
+      {
         rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
         mounts: [{
           type: 'naidan_sysfs',
@@ -215,52 +215,52 @@ describe('wesh.worker', () => {
         }],
         user: 'user',
         initialEnv: {},
-        naidanSysfsRemoteReader: {
-          storageType: 'local',
-          async getSidebarStructure() {
-            return [{
-              id: 'chat-group:chat-group-1',
-              type: 'chat_group',
-              chatGroup,
-            }]
-          },
-          async listChats() {
-            return [{
-              id: 'chat-1',
-              title: 'Local Chat',
-              updatedAt: 200,
+      },
+      {
+        storageType: 'local',
+        async getSidebarStructure() {
+          return [{
+            id: 'chat-group:chat-group-1',
+            type: 'chat_group',
+            chatGroup,
+          }]
+        },
+        async listChats() {
+          return [{
+            id: 'chat-1',
+            title: 'Local Chat',
+            updatedAt: 200,
+            groupId: 'chat-group-1',
+          }]
+        },
+        async listChatGroups() {
+          return [chatGroup]
+        },
+        async loadChatMeta({ chatId }: { chatId: string }) {
+          return chatId === 'chat-1'
+            ? {
+              dto: chatMetaToDto({ domain: chatMeta }),
               groupId: 'chat-group-1',
-            }]
-          },
-          async listChatGroups() {
-            return [chatGroup]
-          },
-          async loadChatMeta({ chatId }: { chatId: string }) {
-            return chatId === 'chat-1'
-              ? {
-                dto: chatMetaToDto({ domain: chatMeta }),
-                groupId: 'chat-group-1',
-              }
-              : undefined
-          },
-          async loadChatContent({ chatId }: { chatId: string }) {
-            return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined
-          },
-          async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
-            return chatGroupId === 'chat-group-1'
-              ? {
-                dto: chatGroupToDto({ domain: chatGroup }),
-                items: chatGroup.items.map(item => ({
-                  id: item.id,
-                  type: 'chat',
-                  chat: item.chat,
-                })),
-              }
-              : undefined
-          },
+            }
+            : undefined
+        },
+        async loadChatContent({ chatId }: { chatId: string }) {
+          return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined
+        },
+        async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
+          return chatGroupId === 'chat-group-1'
+            ? {
+              dto: chatGroupToDto({ domain: chatGroup }),
+              items: chatGroup.items.map(item => ({
+                id: item.id,
+                type: 'chat',
+                chat: item.chat,
+              })),
+            }
+            : undefined
         },
       },
-    })
+    )
 
     const stdoutChunks: string[] = []
     const response = await workerApi.startExecution(

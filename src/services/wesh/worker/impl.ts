@@ -68,8 +68,18 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
   }>()
 
   return {
-    async init({ request }) {
-      const validated = weshWorkerInitRequestSchema.parse(request)
+    async init(requestOrOptions, naidanSysfsRemoteReader) {
+      const normalizedRequest = (() => {
+        if (
+          typeof requestOrOptions === 'object'
+          && requestOrOptions !== null
+          && 'request' in requestOrOptions
+        ) {
+          return requestOrOptions.request
+        }
+        return requestOrOptions
+      })()
+      const validated = weshWorkerInitRequestSchema.parse(normalizedRequest)
       const rootHandle = validated.rootHandle === 'readonly'
         ? new ReadonlyDirectoryHandle()
         : validated.rootHandle
@@ -97,11 +107,11 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
               return createOpfsNaidanSysfsStorageReader({})
             case 'local':
             case 'memory':
-              if (validated.naidanSysfsRemoteReader === undefined) {
+              if (naidanSysfsRemoteReader === undefined) {
                 throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`)
               }
               return createRemoteNaidanSysfsStorageReader({
-                remoteReader: validated.naidanSysfsRemoteReader,
+                remoteReader: naidanSysfsRemoteReader,
               })
             default: {
               const _ex: never = mount.storageType

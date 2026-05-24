@@ -36,9 +36,6 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     user,
     initialEnv,
     initialCwd,
-    naidanSysfsRemoteReader: naidanSysfsRemoteReader
-      ? Comlink.proxy(naidanSysfsRemoteReader)
-      : undefined,
   })
 
   const createRuntime = async () => {
@@ -50,7 +47,14 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       },
     )
     const remote = Comlink.wrap<IWeshWorker>(worker)
-    await remote.init({ request: initRequest })
+    // Keep the proxied reader as a separate top-level argument.
+    // Putting it inside the init request object can fail structured clone in browsers.
+    await remote.init(
+      initRequest,
+      naidanSysfsRemoteReader
+        ? Comlink.proxy(naidanSysfsRemoteReader)
+        : undefined,
+    )
     return { worker, remote }
   }
 

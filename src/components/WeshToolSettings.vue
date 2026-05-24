@@ -1,31 +1,25 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { computedAsync } from '@vueuse/core';
 import { TerminalIcon } from 'lucide-vue-next';
 import { useChat } from '@/composables/useChat';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
-import { checkOPFSSupport } from '@/services/storage/opfs-detection';
+import { useSettings } from '@/composables/useSettings';
 import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
+import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 
 const { currentChat } = useChat();
-const { isToolEnabled, setToolEnabled, toggleTool } = useChatTools();
+const { settings } = useSettings();
+const { isToolEnabled, toggleTool } = useChatTools();
 const { getNaidanSysfsMountSelection, setNaidanSysfsMountSelection } = useChatWeshPreferences();
 const { isFeatureEnabled } = useFeatureFlags();
-const isShellToolSupported = computedAsync(
-  async () => checkOPFSSupport(),
-  true,
-);
 const isWeshToolFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'wesh_tool' }));
 const naidanSysfsMountSelection = computed(() => getNaidanSysfsMountSelection({ chatId: currentChat.value?.id }));
 const isNaidanSysfsMounted = computed(() => naidanSysfsMountSelection.value !== 'none');
+const hasWritableTmp = computed(() => shouldIncludeWritableTmpMount({ storageType: settings.value.storageType }));
 
 function handleShellToolToggle(_args: Record<never, never>) {
-  if (!isShellToolSupported.value) {
-    setToolEnabled({ name: 'shell_execute', enabled: false });
-    return;
-  }
   const enablingShellExecute = !isToolEnabled({ name: 'shell_execute' });
   toggleTool({ name: 'shell_execute' });
   if (enablingShellExecute && naidanSysfsMountSelection.value === 'none') {
@@ -72,11 +66,9 @@ defineExpose({
   <template v-if="isWeshToolFeatureEnabled">
     <button
       @click="handleShellToolToggle({})"
-      :disabled="!isShellToolSupported"
       class="w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 text-left group"
       :class="[
         isToolEnabled({ name: 'shell_execute' }) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'text-gray-600 dark:text-gray-300',
-        !isShellToolSupported ? 'opacity-50 cursor-not-allowed' : '',
       ]"
       data-testid="tool-wesh-toggle"
     >
@@ -88,7 +80,7 @@ defineExpose({
             Internal identifiers should stay standardized on "wesh".
             Debug-specific UI may intentionally expose "Wesh" directly instead.
           -->
-          Shell in browser{{ isShellToolSupported ? '' : ' (OPFS required)' }}
+          Shell in browser
         </span>
       </div>
       <div
@@ -107,6 +99,9 @@ defineExpose({
       class="mt-2 rounded-lg border border-gray-200/80 dark:border-gray-700/80 px-2 py-2"
       data-testid="naidan-sysfs-settings"
     >
+      <p class="mb-2 text-[11px] text-gray-500 dark:text-gray-400" data-testid="wesh-storage-mode-note">
+        {{ hasWritableTmp ? 'Writable /tmp is available with OPFS storage.' : 'Local and memory storage expose Wesh as read-only, without /tmp.' }}
+      </p>
       <button
         @click="handleNaidanSysfsToggle({})"
         class="w-full flex items-center justify-between rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-800"

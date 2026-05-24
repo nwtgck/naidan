@@ -4,7 +4,7 @@ import { CalculatorTool } from './calculator';
 import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import { storageService } from '@/services/storage';
-import { checkOPFSSupport } from '@/services/storage/opfs-detection';
+import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import type { NaidanSysfsMountSelection, WeshMount } from '@/services/wesh/types';
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
 import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
@@ -42,20 +42,17 @@ export async function getEnabledTools({
       break;
 
     case 'shell_execute': {
-      const opfsSupported = await checkOPFSSupport();
-      if (!opfsSupported) {
-        break;
-      }
-
-      if (!tmpHandle) {
+      const shouldMountTmp = shouldIncludeWritableTmpMount({ storageType: settings.storageType });
+      if (shouldMountTmp && !tmpHandle) {
         break;
       }
 
       // Resolve mounts: global → chat group → chat (later entries win on path conflict)
       const allMounts = [...settings.mounts, ...(chatGroupMounts ?? []), ...(chatMounts ?? [])];
-      const resolvedMounts: WeshMount[] = [
-        { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
-      ];
+      const resolvedMounts: WeshMount[] = [];
+      if (shouldMountTmp) {
+        resolvedMounts.push({ type: 'directory', path: '/tmp', handle: tmpHandle!, readOnly: false });
+      }
       switch (naidanSysfsVisibility) {
       case 'none':
         break

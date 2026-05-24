@@ -78,7 +78,7 @@ describe('useChatWeshTerminalSessions', () => {
       expect(mocks.ensureChatTmpDirectory).not.toHaveBeenCalled();
     });
 
-    it('includes /tmp as first mount when chatId is provided', async () => {
+    it('includes /tmp as first mount when chatId is provided for opfs', async () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { TEST_ONLY } = useChatWeshTerminalSessions();
 
@@ -117,7 +117,8 @@ describe('useChatWeshTerminalSessions', () => {
         naidanSysfsVisibility: 'current_chat_only',
       })
 
-      expect(result[1]).toMatchObject({
+      expect(mocks.ensureChatTmpDirectory).not.toHaveBeenCalled()
+      expect(result[0]).toMatchObject({
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',
         storageType: 'local',
@@ -127,7 +128,9 @@ describe('useChatWeshTerminalSessions', () => {
       })
     });
 
-    it('keeps /tmp but omits naidan sysfs when selection is none', async () => {
+    it('omits /tmp and naidan sysfs when selection is none for local storage', async () => {
+      mocks.settingsValue.storageType = 'local'
+
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { TEST_ONLY } = useChatWeshTerminalSessions();
 
@@ -139,9 +142,9 @@ describe('useChatWeshTerminalSessions', () => {
         naidanSysfsVisibility: 'none',
       });
 
-      expect(result).toHaveLength(2);
-      expect(result[0]).toMatchObject({ path: '/tmp', handle: tmpHandle, readOnly: false });
-      expect(result[1]).toMatchObject({ path: '/home/user/global', readOnly: true });
+      expect(result).toHaveLength(1);
+      expect(mocks.ensureChatTmpDirectory).not.toHaveBeenCalled();
+      expect(result[0]).toMatchObject({ path: '/home/user/global', readOnly: true });
       expect(result.some(m => m.type === 'naidan_sysfs')).toBe(false);
     });
 

@@ -38,7 +38,6 @@ export const weshWorkerInitRequestSchema = z.object({
   user: z.string().min(1),
   initialEnv: z.record(z.string(), z.string()),
   initialCwd: z.union([z.string().min(1), z.undefined()]),
-  naidanSysfsRemoteReader: z.custom<NaidanSysfsRemoteReader>().optional(),
 })
 
 export const weshWorkerExecuteRequestSchema = z.object({
@@ -89,7 +88,15 @@ export type WeshWorkerExecutionEvent =
   | { type: 'error'; message: string }
 
 export interface IWeshWorker {
-  init({ request }: { request: WeshWorkerInitRequest }): Promise<void>
+  /**
+   * Comlink proxy values must stay as top-level arguments here.
+   * Nesting a proxied object inside a named-args object can trigger
+   * "Function object could not be cloned." in real browsers.
+   */
+  init(
+    request: WeshWorkerInitRequest,
+    naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
+  ): Promise<void>
   startExecution(
     request: WeshWorkerExecuteRequest,
     onEvent?: (event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>
