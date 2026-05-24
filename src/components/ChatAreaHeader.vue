@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { ref } from 'vue';
 import {
   XIcon, GitForkIcon,
   ArrowUpIcon, Settings2Icon, DownloadIcon, MoreVerticalIcon, BugIcon, PencilIcon,
@@ -7,6 +7,7 @@ import {
   PrinterIcon, LinkIcon, TerminalIcon, ListIcon
 } from 'lucide-vue-next';
 import type { MediaShelfVisibility } from '@/composables/useLayout';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 
 type HeaderChat = {
@@ -71,7 +72,7 @@ function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
   closeFloatingMenus({});
 }
 
-const documentPointerDownListener = (event: PointerEvent) => handleDocumentPointerDown({ event });
+useEventTargetListener(document, 'pointerdown', (event) => handleDocumentPointerDown({ event }));
 
 function emitMoveToGroup({ groupId }: { groupId: string | null }) {
   emit('move-to-group', groupId);
@@ -125,15 +126,6 @@ function emitMoreAction({ action }: {
   }
   showMoreMenu.value = false;
 }
-
-onMounted(() => {
-  document.addEventListener('pointerdown', documentPointerDownListener);
-});
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', documentPointerDownListener);
-});
-
 
 defineExpose({
   TEST_ONLY: {
