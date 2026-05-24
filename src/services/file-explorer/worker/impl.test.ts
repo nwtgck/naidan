@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { chatContentToDto, chatGroupToDto, chatMetaToDomain, chatMetaToDto } from '@/models/mappers'
 import { createFileExplorerWorker } from './impl'
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem'
 import { OPFSStorageProvider } from '@/services/storage/opfs-storage'
@@ -363,5 +364,151 @@ describe('file-explorer.worker.impl', () => {
       expect(metadataPreview.rawText).toBe(renderChatMetadataMarkdown({ metadata: storedChatMeta! }))
       expect(metadataPreview.displayText).toBe(renderChatMetadataMarkdown({ metadata: storedChatMeta! }))
     }
+  })
+
+  it('reads naidan sysfs metadata through a local remote reader', async () => {
+    const chatMeta: ChatMeta = {
+      id: 'chat-1',
+      title: 'Local Chat',
+      groupId: 'chat-group-1',
+      currentLeafId: 'a1chatMetadataAbCdEf',
+      createdAt: 100,
+      updatedAt: 200,
+      debugEnabled: false,
+      endpoint: {
+        type: 'openai',
+        url: 'https://example.invalid/v1',
+        httpHeaders: [['Authorization', 'secret-token']],
+      },
+      modelId: 'gpt-5',
+      autoTitleEnabled: true,
+      titleModelId: 'gpt-5-mini',
+      originChatId: undefined,
+      originMessageId: undefined,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      mounts: [],
+    }
+    const chatContent: ChatContent = {
+      currentLeafId: 'a1chatMetadataAbCdEf',
+      root: { items: [] },
+    }
+    const chatGroup: ChatGroup = {
+      id: 'chat-group-1',
+      name: 'Local Group',
+      isCollapsed: false,
+      updatedAt: 200,
+      mounts: [],
+      endpoint: undefined,
+      modelId: undefined,
+      autoTitleEnabled: undefined,
+      titleModelId: undefined,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      items: [{
+        id: 'chat:chat-1',
+        type: 'chat',
+        chat: {
+          id: 'chat-1',
+          title: 'Local Chat',
+          updatedAt: 200,
+          groupId: 'chat-group-1',
+        },
+      }],
+    }
+    const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) })
+    expectedMetadata.groupId = 'chat-group-1'
+
+    const { sessionId } = await worker.prepareSession({
+      request: {
+        root: {
+          kind: 'wesh-mounts',
+          rootName: 'Files',
+          mounts: [{
+            type: 'naidan_sysfs',
+            path: '/sys/fs/naidan',
+            readOnly: true,
+            storageType: 'local',
+            visibility: 'current_chat_only',
+            currentChatId: 'chat-1',
+            currentChatGroupId: 'chat-group-1',
+          }],
+          naidanSysfsRemoteReader: {
+            storageType: 'local',
+            async getSidebarStructure() {
+              return [{
+                id: 'chat-group:chat-group-1',
+                type: 'chat_group',
+                chatGroup: {
+                  dto: chatGroupToDto({ domain: chatGroup }),
+                  items: chatGroup.items.map(item => ({
+                    id: item.id,
+                    type: 'chat',
+                    chat: item.chat,
+                  })),
+                },
+              }]
+            },
+            async listChats() {
+              return [{
+                id: 'chat-1',
+                title: 'Local Chat',
+                updatedAt: 200,
+                groupId: 'chat-group-1',
+              }]
+            },
+            async listChatGroups() {
+              return [{
+                dto: chatGroupToDto({ domain: chatGroup }),
+                items: chatGroup.items.map(item => ({
+                  id: item.id,
+                  type: 'chat',
+                  chat: item.chat,
+                })),
+              }]
+            },
+            async loadChatMeta({ chatId }: { chatId: string }) {
+              return chatId === 'chat-1'
+                ? {
+                  dto: chatMetaToDto({ domain: chatMeta }),
+                  groupId: 'chat-group-1',
+                }
+                : undefined
+            },
+            async loadChatContent({ chatId }: { chatId: string }) {
+              return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined
+            },
+            async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
+              return chatGroupId === 'chat-group-1'
+                ? {
+                  dto: chatGroupToDto({ domain: chatGroup }),
+                  items: chatGroup.items.map(item => ({
+                    id: item.id,
+                    type: 'chat',
+                    chat: item.chat,
+                  })),
+                }
+                : undefined
+            },
+          },
+        },
+      },
+    })
+
+    const metadataPreview = await worker.readPreview({
+      request: {
+        sessionId,
+        path: '/sys/fs/naidan/chats/chat-1/metadata.md',
+        mode: 'bounded',
+      },
+    })
+
+    expect(metadataPreview).toEqual({
+      kind: 'text',
+      rawText: renderChatMetadataMarkdown({ metadata: expectedMetadata }),
+      displayText: renderChatMetadataMarkdown({ metadata: expectedMetadata }),
+      languageHint: 'markdown',
+      oversized: false,
+    })
   })
 })

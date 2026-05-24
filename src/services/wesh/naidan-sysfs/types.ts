@@ -1,15 +1,50 @@
-import type { EmptyArgs, Chat, ChatContent, ChatGroup, ChatMeta, Hierarchy, SidebarItem } from '@/models/types'
+import type { EmptyArgs, Chat, ChatContent, ChatGroup, ChatMeta, ChatSummary, Hierarchy, SidebarItem } from '@/models/types'
+import type { ChatContentDto, ChatGroupDto, ChatMetaDto } from '@/models/dto'
 import type { NaidanSysfsVisibility, WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 
 export interface NaidanSysfsStorageReader {
   loadHierarchy(_args: EmptyArgs): Promise<Hierarchy>;
   getSidebarStructure(_args: EmptyArgs): Promise<SidebarItem[]>;
-  listChats(_args: EmptyArgs): Promise<Array<Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId'>>>;
+  listChats(_args: EmptyArgs): Promise<ChatSummary[]>;
   listChatGroups(_args: EmptyArgs): Promise<ChatGroup[]>;
   loadChatMeta({ chatId }: { chatId: string }): Promise<ChatMeta | undefined>;
   loadChatContent({ chatId }: { chatId: string }): Promise<ChatContent | undefined>;
   loadChat({ chatId }: { chatId: string }): Promise<Chat | undefined>;
   loadChatGroup({ chatGroupId }: { chatGroupId: string }): Promise<ChatGroup | undefined>;
+}
+
+export interface NaidanSysfsRemoteChatMetaPayload {
+  dto: ChatMetaDto;
+  groupId: string | null | undefined;
+}
+
+export interface NaidanSysfsRemoteChatSidebarItem {
+  id: string;
+  type: 'chat';
+  chat: ChatSummary;
+}
+
+export interface NaidanSysfsRemoteChatGroupPayload {
+  dto: ChatGroupDto;
+  items: NaidanSysfsRemoteChatSidebarItem[];
+}
+
+export type NaidanSysfsRemoteSidebarItem =
+  | NaidanSysfsRemoteChatSidebarItem
+  | {
+    id: string;
+    type: 'chat_group';
+    chatGroup: NaidanSysfsRemoteChatGroupPayload;
+  }
+
+export interface NaidanSysfsRemoteReader {
+  readonly storageType: 'local' | 'memory';
+  getSidebarStructure(_args: EmptyArgs): Promise<NaidanSysfsRemoteSidebarItem[]>;
+  listChats(_args: EmptyArgs): Promise<ChatSummary[]>;
+  listChatGroups(_args: EmptyArgs): Promise<NaidanSysfsRemoteChatGroupPayload[]>;
+  loadChatMeta({ chatId }: { chatId: string }): Promise<NaidanSysfsRemoteChatMetaPayload | undefined>;
+  loadChatContent({ chatId }: { chatId: string }): Promise<ChatContentDto | undefined>;
+  loadChatGroup({ chatGroupId }: { chatGroupId: string }): Promise<NaidanSysfsRemoteChatGroupPayload | undefined>;
 }
 
 export interface NaidanSysfsContext {

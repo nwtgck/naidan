@@ -6,16 +6,17 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   getDirectory: vi.fn(),
   ensureChatTmpDirectory: vi.fn(),
+  settingsValue: {
+    storageType: 'opfs',
+    mounts: [
+      { type: 'volume', volumeId: 'global-vol-1', mountPath: '/home/user/global', readOnly: true },
+    ],
+  },
 }));
 
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
-    settings: ref({
-      storageType: 'opfs',
-      mounts: [
-        { type: 'volume', volumeId: 'global-vol-1', mountPath: '/home/user/global', readOnly: true },
-      ],
-    }),
+    settings: ref(mocks.settingsValue),
   }),
 }));
 
@@ -40,6 +41,10 @@ describe('useChatWeshTerminalSessions', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.settingsValue.storageType = 'opfs';
+    mocks.settingsValue.mounts = [
+      { type: 'volume', volumeId: 'global-vol-1', mountPath: '/home/user/global', readOnly: true },
+    ];
     mocks.getVolumeDirectoryHandle.mockResolvedValue({ kind: 'directory', name: 'dir' } as FileSystemDirectoryHandle);
     mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
     mocks.createClient.mockResolvedValue({
@@ -90,10 +95,36 @@ describe('useChatWeshTerminalSessions', () => {
       expect(result[1]).toMatchObject({
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',
+        storageType: 'opfs',
         visibility: 'current_chat_only',
         currentChatId: 'chat-1',
         currentChatGroupId: 'chat-group-1',
       });
+    });
+
+    it('uses local storage type for naidan sysfs mounts when configured', async () => {
+      mocks.settingsValue.storageType = 'local'
+      mocks.settingsValue.mounts = []
+
+      const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions')
+      const { TEST_ONLY } = useChatWeshTerminalSessions()
+
+      const result = await TEST_ONLY.buildWorkerMountsForChat({
+        chatMounts: [],
+        chatGroupMounts: undefined,
+        chatId: 'chat-1',
+        chatGroupId: 'chat-group-1',
+        naidanSysfsVisibility: 'current_chat_only',
+      })
+
+      expect(result[1]).toMatchObject({
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        storageType: 'local',
+        visibility: 'current_chat_only',
+        currentChatId: 'chat-1',
+        currentChatGroupId: 'chat-group-1',
+      })
     });
 
     it('keeps /tmp but omits naidan sysfs when selection is none', async () => {

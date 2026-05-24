@@ -5,6 +5,7 @@ vi.mock('comlink', () => {
   const releaseProxy = Symbol('releaseProxy')
   return {
     wrap: vi.fn(),
+    proxy: <T>(value: T) => value,
     releaseProxy,
   }
 })
@@ -161,5 +162,70 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
 
     expect(release1).toHaveBeenCalledTimes(1)
     expect(terminate1).toHaveBeenCalledTimes(1)
+  })
+
+  it('passes a naidan sysfs remote reader during initialization for local storage mounts', async () => {
+    const terminate = vi.fn()
+    const worker = { terminate } as unknown as Worker
+    class WorkerMock {
+      constructor() {
+        return worker
+      }
+    }
+    vi.stubGlobal('Worker', WorkerMock)
+
+    const release = vi.fn()
+    const init = vi.fn().mockResolvedValue(undefined)
+    const remote = {
+      init,
+      startExecution: vi.fn(),
+      awaitExecution: vi.fn(),
+      interruptExecution: vi.fn(),
+      disposeExecution: vi.fn(),
+      execute: vi.fn(),
+      interrupt: vi.fn(),
+      dispose: vi.fn(),
+      [Comlink.releaseProxy]: release,
+    } as unknown as Comlink.Remote<import('./types').IWeshWorker>
+    vi.mocked(Comlink.wrap).mockReturnValue(remote)
+
+    const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
+    const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
+    const client = await createFileProtocolCompatibleWeshWorkerClient({
+      rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+      mounts: [{
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        readOnly: true,
+        storageType: 'local',
+        visibility: 'current_chat_only',
+        currentChatId: 'chat-1',
+        currentChatGroupId: 'chat-group-1',
+      }],
+      user: 'user',
+      initialEnv: {},
+      initialCwd: undefined,
+    })
+
+    expect(init).toHaveBeenCalledWith({
+      request: expect.objectContaining({
+        mounts: [{
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'local',
+          visibility: 'current_chat_only',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        }],
+        naidanSysfsRemoteReader: expect.objectContaining({
+          storageType: 'local',
+        }),
+      }),
+    })
+
+    await client.dispose({})
+    expect(release).toHaveBeenCalledTimes(1)
+    expect(terminate).toHaveBeenCalledTimes(1)
   })
 })

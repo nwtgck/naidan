@@ -1,7 +1,10 @@
 import type { EmptyArgs } from '@/models/types'
 import { WeshVFS } from '@/services/wesh/vfs'
 import { NaidanSysfsProvider } from '@/services/wesh/naidan-sysfs/provider'
-import { createOpfsNaidanSysfsStorageReader } from '@/services/wesh/naidan-sysfs/storage-reader'
+import {
+  createOpfsNaidanSysfsStorageReader,
+  createRemoteNaidanSysfsStorageReader,
+} from '@/services/wesh/naidan-sysfs/storage-reader'
 import { EXTENSION_LANGUAGE_MAP, MEDIA_PREVIEW_SIZE_LIMIT, TEXT_PREVIEW_SIZE_LIMIT } from '@/components/file-explorer/constants'
 import { getFileExtension, getMimeCategory } from '@/components/file-explorer/utils'
 import {
@@ -154,6 +157,14 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
           switch (mount.storageType) {
           case 'opfs':
             return createOpfsNaidanSysfsStorageReader({})
+          case 'local':
+          case 'memory':
+            if (root.naidanSysfsRemoteReader === undefined) {
+              throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`)
+            }
+            return createRemoteNaidanSysfsStorageReader({
+              remoteReader: root.naidanSysfsRemoteReader,
+            })
           default: {
             const _exhaustiveCheck: never = mount.storageType
             throw new Error(`Unhandled naidan sysfs storage type: ${String(_exhaustiveCheck)}`)

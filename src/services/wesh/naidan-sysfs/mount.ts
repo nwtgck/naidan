@@ -17,19 +17,18 @@ export function createNaidanSysfsMount({
   }
 
   switch (storageType) {
+  case 'local':
   case 'opfs':
+  case 'memory':
     return {
       type: 'naidan_sysfs',
       path: NAIDAN_SYSFS_MOUNT_PATH,
       readOnly: true,
-      storageType: 'opfs',
+      storageType,
       visibility,
       currentChatId,
       currentChatGroupId,
     }
-  case 'local':
-  case 'memory':
-    throw new Error(`/sys/fs/naidan requires opfs storage, received: ${storageType}`)
   default: {
     const _ex: never = storageType
     throw new Error(`Unhandled storage type: ${String(_ex)}`)

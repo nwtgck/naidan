@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { EmptyArgs } from '@/models/types'
+import type { NaidanSysfsRemoteReader } from '@/services/wesh/naidan-sysfs/types'
 import { weshWorkerMountSchema } from '@/services/wesh/worker/types'
 
 const fileExplorerPathSchema = z.string().min(1)
@@ -19,6 +20,7 @@ export const fileExplorerRootDescriptorSchema = z.discriminatedUnion('kind', [
     kind: z.literal('wesh-mounts'),
     rootName: z.string().min(1),
     mounts: z.array(weshWorkerMountSchema),
+    naidanSysfsRemoteReader: z.custom<NaidanSysfsRemoteReader>().optional(),
   }),
 ])
 

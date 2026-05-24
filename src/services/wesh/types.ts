@@ -250,7 +250,7 @@ export interface WeshNaidanSysfsMount {
   type: 'naidan_sysfs';
   path: typeof NAIDAN_SYSFS_MOUNT_PATH;
   readOnly: true;
-  storageType: 'opfs';
+  storageType: 'local' | 'opfs' | 'memory';
   visibility: NaidanSysfsVisibility;
   currentChatId: string;
   currentChatGroupId: string | undefined;

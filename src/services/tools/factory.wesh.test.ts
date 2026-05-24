@@ -230,6 +230,43 @@ Mounted directories:
     }))
   })
 
+  it('creates a local-storage naidan sysfs mount when selected', async () => {
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-local' } as FileSystemDirectoryHandle
+    const volumeHandle = { kind: 'directory', name: 'vol-local' } as FileSystemDirectoryHandle
+
+    setupStandardMocks({ volumeHandle })
+
+    const { getEnabledTools } = await import('./factory')
+
+    await getEnabledTools({
+      enabledNames: ['shell_execute'],
+      tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
+      settings: {
+        storageType: 'local',
+        mounts: [{ type: 'volume', volumeId: 'vol-local', mountPath: '/mnt/local', readOnly: true }],
+      } as never,
+    })
+
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      mounts: [
+        { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'local',
+          visibility: 'current_chat_with_chat_group',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        },
+        { type: 'directory', path: '/mnt/local', handle: volumeHandle, readOnly: true },
+      ],
+    }))
+  })
+
   it('starts a background scan for volumes not yet scanned', async () => {
     const tmpHandle = { kind: 'directory', name: 'chat-1-id-s' } as FileSystemDirectoryHandle
     const volumeHandle = { kind: 'directory', name: 'vol-s' } as FileSystemDirectoryHandle

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { EmptyArgs } from '@/models/types'
+import type { NaidanSysfsRemoteReader } from '@/services/wesh/naidan-sysfs/types'
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
   type WeshMount,
@@ -16,7 +17,7 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
   type: z.literal('naidan_sysfs'),
   path: z.literal(NAIDAN_SYSFS_MOUNT_PATH),
   readOnly: z.literal(true),
-  storageType: z.literal('opfs'),
+  storageType: z.enum(['local', 'opfs', 'memory']),
   visibility: z.enum([
     'current_chat_only',
     'current_chat_with_chat_group',
@@ -37,6 +38,7 @@ export const weshWorkerInitRequestSchema = z.object({
   user: z.string().min(1),
   initialEnv: z.record(z.string(), z.string()),
   initialCwd: z.union([z.string().min(1), z.undefined()]),
+  naidanSysfsRemoteReader: z.custom<NaidanSysfsRemoteReader>().optional(),
 })
 
 export const weshWorkerExecuteRequestSchema = z.object({
