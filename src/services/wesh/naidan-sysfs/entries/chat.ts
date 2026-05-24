@@ -1,6 +1,7 @@
 import type { ChatMeta } from '@/models/types'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
+import { createChatBranchesDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-branches'
 import { createChatContentDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-content'
 import { renderChatMetadataJson } from '@/services/wesh/naidan-sysfs/render/metadata-json'
 import { renderChatMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/metadata-markdown'
@@ -102,6 +103,7 @@ export function createChatDirectoryEntry({
       yield { name: 'metadata.json', type: 'file', fullPath: `${path}/metadata.json` }
       yield { name: 'content-md', type: 'directory', fullPath: `${path}/content-md` }
       yield { name: 'content-json', type: 'directory', fullPath: `${path}/content-json` }
+      yield { name: 'branches', type: 'directory', fullPath: `${path}/branches` }
     },
     async getChild({
       name,
@@ -121,6 +123,8 @@ export function createChatDirectoryEntry({
         return createChatContentDirectoryEntry({ context, chatId, format: 'md' })
       case 'content-json':
         return createChatContentDirectoryEntry({ context, chatId, format: 'json' })
+      case 'branches':
+        return createChatBranchesDirectoryEntry({ context, chatId })
       default:
         return undefined
       }

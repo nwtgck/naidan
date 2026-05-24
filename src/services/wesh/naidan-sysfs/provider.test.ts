@@ -145,6 +145,124 @@ const sampleContent: ChatContent = {
   },
 }
 
+const branchingContent: ChatContent = {
+  currentLeafId: 'assistant-branch-a2',
+  root: {
+    items: [
+      {
+        id: 'user-root',
+        role: 'user',
+        content: 'Root user',
+        timestamp: 2000,
+        attachments: [],
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: undefined,
+        toolCalls: undefined,
+        results: undefined,
+        replies: {
+          items: [
+            {
+              id: 'assistant-root',
+              role: 'assistant',
+              content: 'Root assistant',
+              timestamp: 2001,
+              attachments: undefined,
+              thinking: undefined,
+              error: undefined,
+              modelId: 'gpt-5',
+              lmParameters: undefined,
+              toolCalls: undefined,
+              results: undefined,
+              replies: {
+                items: [
+                  {
+                    id: 'user-branch-a',
+                    role: 'user',
+                    content: 'Branch A user',
+                    timestamp: 2002,
+                    attachments: [],
+                    thinking: undefined,
+                    error: undefined,
+                    modelId: undefined,
+                    lmParameters: undefined,
+                    toolCalls: undefined,
+                    results: undefined,
+                    replies: {
+                      items: [
+                        {
+                          id: 'assistant-branch-a1',
+                          role: 'assistant',
+                          content: 'Branch A first leaf',
+                          timestamp: 2003,
+                          attachments: undefined,
+                          thinking: undefined,
+                          error: undefined,
+                          modelId: 'gpt-5',
+                          lmParameters: undefined,
+                          toolCalls: undefined,
+                          results: undefined,
+                          replies: { items: [] },
+                        },
+                        {
+                          id: 'assistant-branch-a2',
+                          role: 'assistant',
+                          content: 'Branch A current leaf',
+                          timestamp: 2004,
+                          attachments: undefined,
+                          thinking: undefined,
+                          error: undefined,
+                          modelId: 'gpt-5',
+                          lmParameters: undefined,
+                          toolCalls: undefined,
+                          results: undefined,
+                          replies: { items: [] },
+                        },
+                      ],
+                    },
+                  },
+                  {
+                    id: 'user-branch-b',
+                    role: 'user',
+                    content: 'Branch B user',
+                    timestamp: 2005,
+                    attachments: [],
+                    thinking: undefined,
+                    error: undefined,
+                    modelId: undefined,
+                    lmParameters: undefined,
+                    toolCalls: undefined,
+                    results: undefined,
+                    replies: {
+                      items: [
+                        {
+                          id: 'assistant-branch-b1',
+                          role: 'assistant',
+                          content: 'Branch B leaf',
+                          timestamp: 2006,
+                          attachments: undefined,
+                          thinking: undefined,
+                          error: undefined,
+                          modelId: 'gpt-5',
+                          lmParameters: undefined,
+                          toolCalls: undefined,
+                          results: undefined,
+                          replies: { items: [] },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ],
+  },
+}
+
 const sampleChatGroup: ChatGroup = {
   id: 'chat-group-1',
   name: 'Primary Group',
@@ -392,6 +510,86 @@ describe('NaidanSysfsProvider', () => {
 
     expect(text).toContain('"shell_execute"')
     expect(text).toContain('"Assistant reply"')
+  })
+
+  it('exposes branch tree and leaf views for a branching chat', async () => {
+    const provider = new NaidanSysfsProvider({
+      reader: createReaderStub({ metadata: sampleMetadata, content: branchingContent }),
+      visibility: 'current_chat_only',
+      currentChatId: 'chat-1',
+      currentChatGroupId: 'chat-group-1',
+    })
+
+    const branchEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches` })) {
+      branchEntries.push(entry)
+    }
+    expect(branchEntries.map(entry => entry.name)).toEqual([
+      'current-md',
+      'current-json',
+      'tree-md',
+      'tree-json',
+      'leaves-md',
+      'leaves-json',
+    ])
+
+    expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/current-md` }))
+      .toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/assistant-branch-a2`)
+
+    const treeEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/tree-md` })) {
+      treeEntries.push(entry)
+    }
+    expect(treeEntries.map(entry => entry.name)).toEqual([
+      '1-user-user-root.md',
+      '2-assistant-assistant-root.md',
+      '3-branch-1',
+      '3-branch-2',
+    ])
+
+    const branchAEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/tree-md/3-branch-1` })) {
+      branchAEntries.push(entry)
+    }
+    expect(branchAEntries.map(entry => entry.name)).toEqual([
+      '3-user-user-branch-a.md',
+      '4-branch-1',
+      '4-branch-2',
+    ])
+
+    expect(await provider.readlink({
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/tree-md/3-branch-1/4-branch-2/branch`,
+    })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/assistant-branch-a2`)
+
+    const leavesEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md` })) {
+      leavesEntries.push(entry)
+    }
+    expect(leavesEntries.map(entry => entry.name)).toEqual([
+      'assistant-branch-a1',
+      'assistant-branch-a2',
+      'assistant-branch-b1',
+    ])
+
+    const leafEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/assistant-branch-a2` })) {
+      leafEntries.push(entry)
+    }
+    expect(leafEntries.map(entry => entry.name)).toEqual([
+      'metadata.md',
+      'content',
+    ])
+
+    const metadataHandle = await provider.open({
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-json/assistant-branch-a2/metadata.json`,
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+      mode: undefined,
+    })
+    const metadataBuffer = new Uint8Array(4096)
+    const metadataResult = await metadataHandle.read({ buffer: metadataBuffer })
+    const metadataText = new TextDecoder().decode(metadataBuffer.subarray(0, metadataResult.bytesRead))
+    expect(metadataText).toContain('"leafId": "assistant-branch-a2"')
+    expect(metadataText).toContain('"isCurrentLeaf": true')
   })
 
   it('resolves current-chat-group and exposes a restricted chats directory in current_chat_only', async () => {
