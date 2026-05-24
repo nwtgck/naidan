@@ -22,10 +22,12 @@ const {
   mockEnsureChatTmpDirectory,
   mockOpenFileExplorer,
   mockGetVolumeDirectoryHandle,
+  mockGetNaidanSysfsMountSelection,
 } = vi.hoisted(() => ({
   mockEnsureChatTmpDirectory: vi.fn(),
   mockOpenFileExplorer: vi.fn(),
   mockGetVolumeDirectoryHandle: vi.fn(),
+  mockGetNaidanSysfsMountSelection: vi.fn(),
 }));
 
 // Mock dependencies
@@ -232,6 +234,13 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
+vi.mock('../composables/useChatTools', () => ({
+  useChatTools: () => ({
+    enabledToolNames: ref([]),
+    getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
+  }),
+}));
+
 // Mock navigator.clipboard
 Object.defineProperty(navigator, 'clipboard', {
   value: {
@@ -286,6 +295,7 @@ function resetMocks() {
     mountPath: '/tmp',
     handle: mockTmpHandle,
   });
+  mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_with_chat_group');
   mockOpenFileExplorer.mockReset();
   mockGetVolumeDirectoryHandle.mockImplementation(({ volumeId }: { volumeId: string }) => {
     return Promise.resolve({ kind: 'directory', name: volumeId } as FileSystemDirectoryHandle);
@@ -834,6 +844,50 @@ describe('ChatArea UI States', () => {
       { type: 'directory', path: '/home/user/group', handle: chatGroupHandle, readOnly: true },
       { type: 'directory', path: '/home/user/chat', handle: chatHandle, readOnly: false },
     ]);
+  });
+
+  it('should omit naidan sysfs from header file explorer when the shared selection is none', async () => {
+    mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      title: 'Test Chat',
+      groupId: 'group-1',
+      root: { items: [] },
+      debugEnabled: false,
+      lmParameters: EMPTY_LM_PARAMETERS,
+      mounts: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="open-chat-file-explorer-button"]').trigger('click');
+    await flushPromises();
+
+    const [{ options }] = mockOpenFileExplorer.mock.calls[0] as [{ options: { mounts: WeshMount[] } }];
+    expect(options.mounts.some(mount => mount.type === 'naidan_sysfs')).toBe(false);
+  });
+
+  it('should pass the shared naidan sysfs selection to the header wesh terminal', async () => {
+    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+    wrapper = mount(ChatArea, {
+      global: {
+        plugins: [router],
+        stubs: {
+          ChatWeshTerminalModal: {
+            name: 'ChatWeshTerminalModal',
+            props: ['naidanSysfsVisibility'],
+            template: '<div data-testid="stub-chat-wesh-terminal" :data-visibility="naidanSysfsVisibility"></div>',
+          },
+        },
+      },
+    });
+
+    expect(wrapper.find('[data-testid="stub-chat-wesh-terminal"]').attributes('data-visibility')).toBe('current_chat_only');
   });
 
   it('should hide the chat inspector when debug mode is disabled', async () => {

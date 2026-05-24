@@ -49,6 +49,7 @@ import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
+import { useChatTools } from '@/composables/useChatTools';
 import { hasChatOverrides } from '@/utils/chat-settings-resolver';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
@@ -60,6 +61,7 @@ import { storageService } from '@/services/storage';
 const chatStore = useChat();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
+const { getNaidanSysfsMountSelection } = useChatTools();
 const { state: previewState, closePreview } = useImagePreview({ scoped: true });
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
@@ -92,6 +94,10 @@ const {
 
 const availableImageModels = computed(() => {
   return getSortedImageModels({ availableModels: availableModels.value });
+});
+
+const chatAreaNaidanSysfsVisibility = computed(() => {
+  return getNaidanSysfsMountSelection({ chatId: currentChat.value?.id });
 });
 
 const { setActiveFocusArea } = useLayout();
@@ -407,7 +413,7 @@ async function openChatFileExplorer(_args: Record<string, never>) {
     chatGroupMounts: currentChatGroup.value?.mounts,
     chatId: currentChat.value.id,
     chatGroupId: currentChat.value.groupId ?? undefined,
-    naidanSysfsVisibility: 'current_chat_with_chat_group',
+    naidanSysfsVisibility: chatAreaNaidanSysfsVisibility.value,
   });
 
   openFileExplorer({ options: {
@@ -911,7 +917,7 @@ watch(
       :chat-group-mounts="currentChatGroup?.mounts"
       :chat-id="currentChat?.id"
       :chat-group-id="currentChat?.groupId ?? undefined"
-      :naidan-sysfs-visibility="'current_chat_with_chat_group'"
+      :naidan-sysfs-visibility="chatAreaNaidanSysfsVisibility"
       @close="toggleChatWeshTerminal()"
     />
 
