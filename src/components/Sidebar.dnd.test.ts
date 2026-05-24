@@ -23,7 +23,7 @@ vi.mock('vuedraggable', () => ({
     props: [
       'modelValue', 'itemKey', 'ghostClass', 'swapThreshold', 'invertSwap',
       'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass',
-      'tag', 'animation', 'delay', 'delayOnTouchOnly', 'componentData'
+      'tag', 'animation', 'delay', 'delayOnTouchOnly', 'componentData', 'move'
     ],
   }
 }));
@@ -95,12 +95,14 @@ describe('Sidebar DND Improvements', () => {
     const nestedTarget = document.createElement('div');
     nestedTarget.classList.add('nested-draggable');
 
-    const result = (wrapper.vm as any).checkMove({ evt: {
-      draggedContext: {
-        element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
+    const result = (wrapper.vm as any).checkMove({
+      evt: {
+        draggedContext: {
+          element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
+        },
+        to: nestedTarget,
       },
-      to: nestedTarget,
-    } });
+    });
 
     expect(result).toBe(true);
   });
@@ -111,14 +113,34 @@ describe('Sidebar DND Improvements', () => {
     const nestedTarget = document.createElement('div');
     nestedTarget.classList.add('nested-draggable');
 
-    const result = (wrapper.vm as any).checkMove({ evt: {
-      draggedContext: {
-        element: { type: 'chat_group', id: 'g2', chatGroup: { id: 'g2', name: 'Group 2', items: [], isCollapsed: false, updatedAt: 0 } },
+    const result = (wrapper.vm as any).checkMove({
+      evt: {
+        draggedContext: {
+          element: { type: 'chat_group', id: 'g2', chatGroup: { id: 'g2', name: 'Group 2', items: [], isCollapsed: false, updatedAt: 0 } },
+        },
+        to: nestedTarget,
       },
-      to: nestedTarget,
-    } });
+    });
 
     expect(result).toBe(false);
+  });
+
+  it('uses the draggable move callback with the raw Sortable event shape', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const nestedTarget = document.createElement('div');
+    nestedTarget.classList.add('nested-draggable');
+
+    const draggable = wrapper.findComponent({ name: 'draggable' });
+    const move = draggable.props('move') as (evt: unknown) => boolean;
+    const result = move({
+      draggedContext: {
+        element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
+      },
+      to: nestedTarget,
+    });
+
+    expect(result).toBe(true);
   });
 
   it('implements group expansion using CSS Grid for stability', async () => {

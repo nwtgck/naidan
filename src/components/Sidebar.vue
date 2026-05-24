@@ -917,7 +917,7 @@ defineExpose({
           handle=".handle"
           tag="div"
           :group="{ name: 'sidebar' }"
-          :move="checkMove"
+          :move="(evt: { draggedContext: { element: SidebarItem }; to: HTMLElement }) => checkMove({ evt })"
           :animation="0"
           :delay="200"
           :delay-on-touch-only="true"
