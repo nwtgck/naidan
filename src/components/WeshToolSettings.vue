@@ -22,7 +22,11 @@ function handleShellToolToggle(_args: Record<never, never>) {
     setToolEnabled({ name: 'shell_execute', enabled: false });
     return;
   }
+  const enablingShellExecute = !isToolEnabled({ name: 'shell_execute' });
   toggleTool({ name: 'shell_execute' });
+  if (enablingShellExecute && naidanSysfsMountSelection.value === 'none') {
+    setNaidanSysfsMountSelection({ selection: 'current_chat_only' });
+  }
 }
 
 function handleNaidanSysfsToggle(_args: Record<never, never>) {

@@ -85,6 +85,18 @@ describe('WeshToolSettings.vue', () => {
     expect(wrapper.find('[data-testid="naidan-sysfs-settings"]').exists()).toBe(true);
   });
 
+  it('defaults sysfs selection to current_chat_only when enabling shell in browser', async () => {
+    mockIsToolEnabled.mockReturnValue(false);
+
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="tool-wesh-toggle"]').trigger('click');
+
+    expect(mockToggleTool).toHaveBeenCalledWith({ name: 'shell_execute' });
+    expect(mockSetNaidanSysfsMountSelection).toHaveBeenCalledWith({ selection: 'current_chat_only' });
+  });
+
   it('defaults sysfs mount enabling to current_chat_only', async () => {
     const wrapper = mount(WeshToolSettings);
     await flushPromises();
@@ -112,5 +124,18 @@ describe('WeshToolSettings.vue', () => {
     await wrapper.find('[data-testid="naidan-sysfs-visibility-select"]').setValue('all_chats');
 
     expect(mockSetNaidanSysfsMountSelection).toHaveBeenCalledWith({ selection: 'all_chats' });
+  });
+
+  it('preserves an existing sysfs selection when enabling shell in browser', async () => {
+    mockIsToolEnabled.mockReturnValue(false);
+    mockGetNaidanSysfsMountSelection.mockReturnValue('all_chats');
+
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="tool-wesh-toggle"]').trigger('click');
+
+    expect(mockToggleTool).toHaveBeenCalledWith({ name: 'shell_execute' });
+    expect(mockSetNaidanSysfsMountSelection).not.toHaveBeenCalledWith({ selection: 'current_chat_only' });
   });
 });
