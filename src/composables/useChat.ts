@@ -28,9 +28,11 @@ import {
 } from '@/utils/image-generation';
 
 import { useChatTools } from './useChatTools';
+import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
+import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 
 const rootItems = ref<SidebarItem[]>([]);
 const _currentChat = ref<Chat | null>(null);
@@ -1251,8 +1253,9 @@ export function useChat() {
       let lastSave = 0;
       let isSaving = false;
       const { enabledToolNames } = useChatTools();
+      const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
       const shellExecuteEnabled = enabledToolNames.value.includes('shell_execute');
-      const chatTmpDirectory = shellExecuteEnabled
+      const chatTmpDirectory = shellExecuteEnabled && shouldIncludeWritableTmpMount({ storageType: settings.value.storageType })
         ? await ensureChatTmpDirectory({ chatId: mutableChat.id })
         : undefined;
       const chatGroupMounts = mutableChat.groupId
@@ -1265,6 +1268,9 @@ export function useChat() {
         settings: settings.value as unknown as Settings,
         chatGroupMounts,
         chatMounts: mutableChat.mounts,
+        chatId: mutableChat.id,
+        chatGroupId: mutableChat.groupId ?? undefined,
+        naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: mutableChat.id }),
         tmpHandle: chatTmpDirectory?.handle,
       });
 

@@ -3,21 +3,11 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import LmToolsSettings from './LmToolsSettings.vue';
 
-vi.mock('@vueuse/core', async () => {
-  const actual = await vi.importActual<typeof import('@vueuse/core')>('@vueuse/core');
-  return {
-    ...actual,
-    computedAsync: (fn: () => Promise<boolean>, initial: boolean) => {
-      const state = ref(initial);
-      fn().then((value) => {
-        state.value = value;
-      });
-      return state;
-    },
-  };
-});
-
 const mockIsFeatureEnabled = vi.fn();
+const mockSettings = ref({
+  storageType: 'opfs' as const,
+  mounts: [],
+});
 vi.mock('@/composables/useFeatureFlags', () => ({
   useFeatureFlags: () => ({
     isFeatureEnabled: mockIsFeatureEnabled,
@@ -32,8 +22,23 @@ vi.mock('@/composables/useChatTools', () => ({
   }),
 }));
 
-vi.mock('@/services/storage/opfs-detection', () => ({
-  checkOPFSSupport: vi.fn().mockResolvedValue(true),
+vi.mock('@/composables/useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
+    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
+    setNaidanSysfsMountSelection: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useChat', () => ({
+  useChat: () => ({
+    currentChat: ref({ id: 'chat-1' }),
+  }),
+}));
+
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: mockSettings,
+  }),
 }));
 
 vi.mock('lucide-vue-next', () => ({
@@ -44,6 +49,10 @@ vi.mock('lucide-vue-next', () => ({
 describe('LmToolsSettings.vue', () => {
   beforeEach(() => {
     mockIsFeatureEnabled.mockReset();
+    mockSettings.value = {
+      storageType: 'opfs',
+      mounts: [],
+    };
   });
 
   it('hides shell in browser when the feature flag is disabled', async () => {
@@ -52,7 +61,7 @@ describe('LmToolsSettings.vue', () => {
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="tool-shell-toggle"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(false);
   });
 
   it('shows shell in browser when the feature flag is enabled', async () => {
@@ -61,6 +70,6 @@ describe('LmToolsSettings.vue', () => {
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="tool-shell-toggle"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(true);
   });
 });

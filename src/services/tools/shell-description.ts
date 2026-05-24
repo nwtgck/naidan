@@ -29,9 +29,10 @@ export function buildShellDescription({
       : '';
 
   const knownExts = [...detectedExtensions].filter(ext => ext in FILE_TYPE_HINTS);
+  const hasWritableTmp = mounts.some(m => m.path === '/tmp' && m.readOnly === false);
 
   let fileTypeSection = '';
-  if (knownExts.length > 0) {
+  if (knownExts.length > 0 && hasWritableTmp) {
     const extList = formatExtList({ exts: knownExts });
     const examples = knownExts.map(ext => `  ${FILE_TYPE_HINTS[ext]!.example}`).join('\n');
     fileTypeSection = `\n\nTo read ${extList} files in the mounts, unzip them to /tmp first:\n${examples}`;

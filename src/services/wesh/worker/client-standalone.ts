@@ -1,6 +1,7 @@
 import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
 import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
+import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
   weshWorkerExecutionSummarySchema,
@@ -28,6 +29,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   initialEnv: Record<string, string>
   initialCwd?: string | undefined
 }): Promise<WeshWorkerClient> {
+  const naidanSysfsRemoteReader = createNaidanSysfsRemoteReaderForMounts({ mounts })
   const initRequest = weshWorkerInitRequestSchema.parse({
     rootHandle,
     mounts: mapWeshMountsToWorkerMounts({ mounts }),
@@ -40,7 +42,14 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     const worker = await createFileProtocolCompatibleStandaloneWorkerHub({})
     const remote = Comlink.wrap<IWorkerHub>(worker)
     const wesh = await remote.wesh
-    await wesh.init({ request: initRequest })
+    // Keep the proxied reader as a separate top-level argument.
+    // Putting it inside the init request object can fail structured clone in browsers.
+    await wesh.init(
+      initRequest,
+      naidanSysfsRemoteReader
+        ? Comlink.proxy(naidanSysfsRemoteReader)
+        : undefined,
+    )
     return { worker, remote, wesh }
   }
 

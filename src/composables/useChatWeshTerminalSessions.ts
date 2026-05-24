@@ -2,7 +2,9 @@ import { storageService } from '@/services/storage';
 import { useSettings } from '@/composables/useSettings';
 import { useChat } from '@/composables/useChat';
 import { createWeshTerminalSessions } from '@/composables/useWeshTerminalSessions';
-import type { WeshMount } from '@/services/wesh/types';
+import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
+import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
+import type { NaidanSysfsMountSelection, WeshMount } from '@/services/wesh/types';
 import type { Mount } from '@/models/types';
 
 const store = createWeshTerminalSessions({
@@ -12,23 +14,50 @@ const store = createWeshTerminalSessions({
   initialCwd: '/home/user',
 });
 
-async function buildWorkerMountsForChat({
+export async function buildWorkerMountsForChat({
   chatMounts,
   chatGroupMounts,
   chatId,
+  chatGroupId,
+  naidanSysfsVisibility,
 }: {
   chatMounts: readonly Mount[];
   chatGroupMounts: readonly Mount[] | undefined;
   chatId: string | undefined;
+  chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
 }): Promise<WeshMount[]> {
   const { settings } = useSettings();
   const result: WeshMount[] = [];
 
-  // /tmp first (same order as shell_execute tool), only when chatId is known.
-  if (chatId) {
+  // /tmp first (same order as shell_execute tool), only for OPFS-backed chats.
+  if (chatId && shouldIncludeWritableTmpMount({ storageType: settings.value.storageType })) {
     const { ensureChatTmpDirectory } = useChat();
     const tmp = await ensureChatTmpDirectory({ chatId });
-    result.push({ path: '/tmp', handle: tmp.handle, readOnly: false });
+    result.push({ type: 'directory', path: '/tmp', handle: tmp.handle, readOnly: false });
+  }
+
+  switch (naidanSysfsVisibility) {
+  case 'none':
+    break
+  case 'current_chat_only':
+  case 'current_chat_with_chat_group':
+  case 'all_chats': {
+    const naidanSysfsMount = createNaidanSysfsMount({
+      storageType: settings.value.storageType,
+      visibility: naidanSysfsVisibility,
+      currentChatId: chatId,
+      currentChatGroupId: chatGroupId,
+    });
+    if (naidanSysfsMount !== undefined) {
+      result.push(naidanSysfsMount)
+    }
+    break
+  }
+  default: {
+    const _ex: never = naidanSysfsVisibility
+    throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`)
+  }
   }
 
   // Global settings mounts.
@@ -36,7 +65,7 @@ async function buildWorkerMountsForChat({
     if (mount.type !== 'volume') continue;
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
     if (!handle) continue;
-    result.push({ path: mount.mountPath, handle, readOnly: mount.readOnly });
+    result.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
   }
 
   // Chat group mounts override any global mount sharing the same path.
@@ -45,7 +74,7 @@ async function buildWorkerMountsForChat({
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
     if (!handle) continue;
     const existing = result.findIndex(m => m.path === mount.mountPath);
-    const entry: WeshMount = { path: mount.mountPath, handle, readOnly: mount.readOnly };
+    const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly };
     if (existing >= 0) {
       result[existing] = entry;
     } else {
@@ -59,7 +88,7 @@ async function buildWorkerMountsForChat({
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
     if (!handle) continue;
     const existing = result.findIndex(m => m.path === mount.mountPath);
-    const entry: WeshMount = { path: mount.mountPath, handle, readOnly: mount.readOnly };
+    const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly };
     if (existing >= 0) {
       result[existing] = entry;
     } else {
@@ -70,17 +99,23 @@ async function buildWorkerMountsForChat({
   return result;
 }
 
-type SessionArgs = { chatMounts: readonly Mount[]; chatGroupMounts: readonly Mount[] | undefined; chatId: string | undefined };
+type SessionArgs = {
+  chatMounts: readonly Mount[];
+  chatGroupMounts: readonly Mount[] | undefined;
+  chatId: string | undefined;
+  chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
+};
 
 export function useChatWeshTerminalSessions() {
   return {
     ...store,
-    createChatWorkerSession: ({ chatMounts, chatGroupMounts, chatId }: SessionArgs) =>
-      store.createSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId }) }),
-    ensureActiveSession: ({ chatMounts, chatGroupMounts, chatId }: SessionArgs) =>
-      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId }) }),
-    reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId }: SessionArgs) =>
-      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId }) }),
+    createChatWorkerSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
+      store.createSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
+    ensureActiveSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
+      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
+    reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
+      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
     TEST_ONLY: {
       buildWorkerMountsForChat,
     },

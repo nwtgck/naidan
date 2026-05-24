@@ -3,7 +3,6 @@ import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'v
 import { useChat } from '@/composables/useChat';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { useLayout } from '@/composables/useLayout';
-import { useSettings } from '@/composables/useSettings';
 import { generateId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
@@ -11,6 +10,8 @@ import ChatToolsMenu from './ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
 import { useReasoning } from '@/composables/useReasoning';
 import { useChatTools } from '@/composables/useChatTools';
+import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/services/storage';
 import { startVolumeExtensionScan } from '@/services/tools/volume-extension-cache';
 import { checkFileSystemAccessSupport } from '@/services/storage/opfs-detection';
@@ -34,12 +35,14 @@ import type { Attachment, LmParameters } from '@/models/types';
 
 const chatStore = useChat();
 const { setToolEnabled } = useChatTools();
+const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
 const reasoningStore = useReasoning();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
 const {
   currentChat,
+  currentChatGroup,
   availableModels,
   inheritedSettings,
   fetchingModels,
@@ -60,7 +63,6 @@ const {
   addMountToChat,
   removeMountFromChat,
   updateChatMount,
-  ensureChatTmpDirectory,
 } = chatStore;
 const { showConfirm } = useConfirm();
 
@@ -531,36 +533,13 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
   const mounts = currentChat.value.mounts ?? [];
   if (mounts.length === 0) return;
 
-  const workerMounts = [];
-  const tmpDirectory = await ensureChatTmpDirectory({ chatId: currentChat.value.id });
-  workerMounts.push({
-    path: tmpDirectory.mountPath,
-    handle: tmpDirectory.handle,
-    readOnly: false,
+  const workerMounts = await buildWorkerMountsForChat({
+    chatMounts: mounts,
+    chatGroupMounts: currentChatGroup.value?.mounts,
+    chatId: currentChat.value.id,
+    chatGroupId: currentChat.value.groupId ?? undefined,
+    naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: currentChat.value.id }),
   });
-  for (const m of mounts) {
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
-    if (!handle) continue;
-    workerMounts.push({
-      path: m.mountPath,
-      handle,
-      readOnly: m.readOnly,
-    });
-  }
-
-  // Also mount global settings mounts that are not already covered by a chat mount at the same path.
-  const { settings } = useSettings();
-  for (const m of settings.value.mounts) {
-    if (m.type !== 'volume') continue;
-    if (mounts.some(cm => cm.mountPath === m.mountPath)) continue;
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
-    if (!handle) continue;
-    workerMounts.push({
-      path: m.mountPath,
-      handle,
-      readOnly: m.readOnly,
-    });
-  }
 
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);

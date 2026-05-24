@@ -172,6 +172,15 @@ export interface WeshDirEntry {
 
 export interface WeshIVirtualFileSystem {
   mount(options: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
+  mountVirtual({
+    path,
+    readOnly,
+    provider,
+  }: {
+    path: string;
+    readOnly: boolean;
+    provider: WeshVirtualMountProvider;
+  }): void;
   unmount(options: { path: string }): Promise<void>;
 
   /**
@@ -219,10 +228,50 @@ export interface WeshIVirtualFileSystem {
   getReadOnlyForPath(options: { path: string }): boolean;
 }
 
-export interface WeshMount {
+export type NaidanSysfsVisibility =
+  | 'current_chat_only'
+  | 'current_chat_with_chat_group'
+  | 'all_chats';
+
+export type NaidanSysfsMountSelection =
+  | NaidanSysfsVisibility
+  | 'none';
+
+export const NAIDAN_SYSFS_MOUNT_PATH = '/sys/fs/naidan' as const;
+
+export interface WeshDirectoryMount {
+  type: 'directory';
   path: string;
   handle: FileSystemDirectoryHandle;
   readOnly: boolean;
+}
+
+export interface WeshNaidanSysfsMount {
+  type: 'naidan_sysfs';
+  path: typeof NAIDAN_SYSFS_MOUNT_PATH;
+  readOnly: true;
+  storageType: 'local' | 'opfs' | 'memory';
+  visibility: NaidanSysfsVisibility;
+  currentChatId: string;
+  currentChatGroupId: string | undefined;
+}
+
+export type WeshMount = WeshDirectoryMount | WeshNaidanSysfsMount;
+
+export interface WeshVirtualMountProvider {
+  open({
+    path,
+    flags,
+    mode,
+  }: {
+    path: string;
+    flags: WeshOpenFlags;
+    mode?: number;
+  }): Promise<WeshFileHandle>;
+  stat({ path }: { path: string }): Promise<WeshStat>;
+  lstat({ path }: { path: string }): Promise<WeshStat>;
+  readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry>;
+  readlink({ path }: { path: string }): Promise<string>;
 }
 
 export const WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED = Symbol('WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED');

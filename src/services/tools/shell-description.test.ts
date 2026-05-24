@@ -4,8 +4,11 @@ import type { WeshMount } from '@/services/wesh/types';
 
 const noMounts: WeshMount[] = [];
 const mounts: WeshMount[] = [
-  { path: '/tmp', handle: {} as FileSystemDirectoryHandle, readOnly: false },
-  { path: '/home/user/project', handle: {} as FileSystemDirectoryHandle, readOnly: true },
+  { type: 'directory', path: '/tmp', handle: {} as FileSystemDirectoryHandle, readOnly: false },
+  { type: 'directory', path: '/home/user/project', handle: {} as FileSystemDirectoryHandle, readOnly: true },
+];
+const readOnlyMounts: WeshMount[] = [
+  { type: 'directory', path: '/home/user/project', handle: {} as FileSystemDirectoryHandle, readOnly: true },
 ];
 
 describe('buildShellDescription', () => {
@@ -63,5 +66,15 @@ describe('buildShellDescription', () => {
     expect(result).toContain('To read .docx files in the mounts');
     expect(result).not.toContain('.csv');
     expect(result).not.toContain('.unknown');
+  });
+
+  it('omits unzip hints when no writable /tmp mount is available', () => {
+    const result = buildShellDescription({
+      mounts: readOnlyMounts,
+      detectedExtensions: new Set(['.docx']),
+    });
+
+    expect(result).not.toContain('unzip');
+    expect(result).not.toContain('/tmp/example');
   });
 });

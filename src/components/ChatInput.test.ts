@@ -58,8 +58,9 @@ vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', templa
 const mockOpenFileExplorer = vi.fn();
 const mockEnsureChatTmpDirectory = vi.fn();
 const mockGetChatTmpDirectory = vi.fn();
+const mockGetNaidanSysfsMountSelection = vi.fn();
 
-const mockSettings = ref<any>({ mounts: [] });
+const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: mockSettings,
@@ -70,6 +71,11 @@ vi.mock('../composables/useSettings', () => ({
 vi.mock('../composables/useChatTools', () => ({
   useChatTools: () => ({
     setToolEnabled: vi.fn(),
+  }),
+}));
+vi.mock('../composables/useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
+    getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
   }),
 }));
 vi.mock('../composables/useToast', () => ({
@@ -102,6 +108,7 @@ vi.mock('../services/storage/opfs-detection', () => ({
 
 // Mock composables
 const mockCurrentChat = ref<any>({ id: 'chat-1', modelId: 'model-1' });
+const mockCurrentChatGroup = ref<any>(null);
 const mockSendMessage = vi.fn();
 const mockUpdateChatSettings = vi.fn();
 
@@ -130,6 +137,7 @@ vi.mock('../composables/useReasoning', () => ({
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
     availableModels: ref([]),
     inheritedSettings: ref(null),
     fetchingModels: ref(false),
@@ -175,6 +183,7 @@ const mockSetPreferredEditorMode = vi.fn();
 
 const mockChatStore = {
   currentChat: mockCurrentChat,
+  currentChatGroup: mockCurrentChatGroup,
   availableModels: ref([]),
   inheritedSettings: ref(null),
   fetchingModels: ref(false),
@@ -247,9 +256,11 @@ describe('ChatInput Integration', () => {
     vi.clearAllMocks();
     mockRouter.currentRoute.value = { query: {} };
     mockCurrentChat.value = { id: 'chat-1', modelId: 'model-1' };
-    mockSettings.value = { mounts: [] };
+    mockCurrentChatGroup.value = null;
+    mockSettings.value = { storageType: 'opfs', mounts: [] };
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
+    mockGetNaidanSysfsMountSelection.mockReturnValue('none');
   });
 
   const getWrapper = () => mount(ChatInput, {
@@ -320,11 +331,15 @@ describe('ChatInput Integration', () => {
     expect(wrapper.find('[data-testid="image-editor"]').exists()).toBe(true);
   });
 
-  it('mount explorer includes tmp while opening from a volume badge', async () => {
+  it('mount explorer includes tmp while opening from a volume badge for opfs', async () => {
     mockCurrentChat.value = {
       id: 'chat-1',
       modelId: 'model-1',
       mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true }],
+    };
+    mockSettings.value = {
+      storageType: 'opfs',
+      mounts: [],
     };
 
     const { storageService } = await import('../services/storage');
@@ -345,6 +360,34 @@ describe('ChatInput Integration', () => {
     }) });
   });
 
+  it('mount explorer omits tmp for local storage', async () => {
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true }],
+    };
+    mockSettings.value = {
+      storageType: 'local',
+      mounts: [],
+    };
+
+    const { storageService } = await import('../services/storage');
+    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
+
+    const wrapper = getWrapper();
+    await nextTick();
+
+    await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
+    await flushPromises();
+
+    expect(mockEnsureChatTmpDirectory).not.toHaveBeenCalled();
+    expect(mockOpenFileExplorer).toHaveBeenCalledTimes(1);
+    const [{ options }] = mockOpenFileExplorer.mock.calls[0] as [{ options: {
+      mounts: Array<{ path: string }>;
+    } }];
+    expect(options.mounts.some(({ path }) => path === '/tmp')).toBe(false);
+  });
+
   it('mount explorer includes global settings mounts alongside chat mounts', async () => {
     mockCurrentChat.value = {
       id: 'chat-1',
@@ -352,6 +395,7 @@ describe('ChatInput Integration', () => {
       mounts: [{ type: 'volume', volumeId: 'vol-chat', mountPath: '/home/user/chat-vol', readOnly: false }],
     };
     mockSettings.value = {
+      storageType: 'opfs',
       mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
     };
 
@@ -372,6 +416,45 @@ describe('ChatInput Integration', () => {
       rootName: 'Files',
       title: 'Files',
     }) });
+  });
+
+  it('mount explorer reuses shared naidan sysfs mount selection', async () => {
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      groupId: 'group-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-chat', mountPath: '/home/user/chat-vol', readOnly: false }],
+    };
+    mockCurrentChatGroup.value = {
+      id: 'group-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-group', mountPath: '/home/user/group-vol', readOnly: true }],
+    };
+    mockSettings.value = {
+      storageType: 'opfs',
+      mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
+    };
+    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+
+    const { storageService } = await import('../services/storage');
+    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
+
+    const wrapper = getWrapper();
+    await nextTick();
+
+    await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
+    await flushPromises();
+
+    expect(mockOpenFileExplorer).toHaveBeenCalledTimes(1);
+    const [{ options }] = mockOpenFileExplorer.mock.calls[0] as [{ options: {
+      mounts: Array<{ type: string; path: string; visibility?: string }>;
+    } }];
+    expect(options.mounts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        visibility: 'current_chat_only',
+      }),
+    ]));
   });
 
   it('mount badges do not include global settings mounts', async () => {

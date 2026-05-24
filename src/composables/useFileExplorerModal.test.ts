@@ -20,9 +20,18 @@ describe('useFileExplorerModal', () => {
       title: 'Files',
       rootName: 'Files',
       mounts: [{
+        type: 'directory',
         path: '/home/user/project',
         handle: mountHandle as unknown as FileSystemDirectoryHandle,
         readOnly: false,
+      }, {
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        readOnly: true,
+        storageType: 'opfs',
+        visibility: 'current_chat_with_chat_group',
+        currentChatId: 'chat-1',
+        currentChatGroupId: 'chat-group-1',
       }],
       initialPath: ['home', 'user', 'project'],
     } })

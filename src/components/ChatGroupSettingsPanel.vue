@@ -32,6 +32,7 @@ import type { ChatGroup } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { naturalSort } from '@/utils/string';
 import { hasGroupOverrides } from '@/utils/chat-settings-resolver';
+import type { WeshMount } from '@/services/wesh/types';
 
 const chatStore = useChat();
 const {
@@ -87,11 +88,12 @@ async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volu
 async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {
   const mounts = chatGroupMounts.value;
   if (mounts.length === 0) return;
-  const workerMounts = [];
+  const workerMounts: WeshMount[] = [];
   for (const m of mounts) {
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
     workerMounts.push({
+      type: 'directory',
       path: m.mountPath,
       handle,
       readOnly: m.readOnly,

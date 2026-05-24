@@ -136,6 +136,18 @@ describe('ChatAreaHeader', () => {
     expect(wrapper.emitted('print')).toEqual([[]]);
   });
 
+  it('emits open-file-explorer from the more actions menu', async () => {
+    const wrapper = mountHeader({
+      chat: makeChat(),
+      groups: [makeGroup()],
+    });
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="open-chat-file-explorer-button"]').trigger('click');
+
+    expect(wrapper.emitted('open-file-explorer')).toEqual([[]]);
+  });
+
   it('keeps the more menu open on mouseleave and closes it on outside click', async () => {
     const wrapper = mountHeader({
       chat: makeChat(),

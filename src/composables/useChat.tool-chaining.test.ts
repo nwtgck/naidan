@@ -91,6 +91,12 @@ vi.mock('./useChatTools', () => ({
   }),
 }));
 
+vi.mock('./useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
+    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
+  }),
+}));
+
 
 describe('useChat Tool Chaining', () => {
   const chatStore = useChat();
