@@ -32,6 +32,19 @@ vi.mock('@/composables/useChatTools', () => ({
   }),
 }));
 
+vi.mock('@/composables/useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
+    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
+    setNaidanSysfsMountSelection: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useChat', () => ({
+  useChat: () => ({
+    currentChat: ref({ id: 'chat-1' }),
+  }),
+}));
+
 vi.mock('@/services/storage/opfs-detection', () => ({
   checkOPFSSupport: vi.fn().mockResolvedValue(true),
 }));
@@ -52,7 +65,7 @@ describe('LmToolsSettings.vue', () => {
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="tool-shell-toggle"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(false);
   });
 
   it('shows shell in browser when the feature flag is enabled', async () => {
@@ -61,6 +74,6 @@ describe('LmToolsSettings.vue', () => {
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="tool-shell-toggle"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(true);
   });
 });

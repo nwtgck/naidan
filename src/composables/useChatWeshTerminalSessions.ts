@@ -13,7 +13,7 @@ const store = createWeshTerminalSessions({
   initialCwd: '/home/user',
 });
 
-async function buildWorkerMountsForChat({
+export async function buildWorkerMountsForChat({
   chatMounts,
   chatGroupMounts,
   chatId,

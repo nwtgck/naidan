@@ -18,7 +18,10 @@ export async function listVisibleChatIds({ context }: { context: NaidanSysfsCont
     if (chatGroup === undefined) {
       return [context.currentChatId]
     }
-    return chatGroup.items.map(item => item.chat.id)
+    return Array.from(new Set([
+      context.currentChatId,
+      ...chatGroup.items.map(item => item.chat.id),
+    ]))
   }
   case 'all_chats':
     return (await context.reader.listChats({})).map(chat => chat.id)
