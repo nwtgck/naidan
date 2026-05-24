@@ -49,7 +49,7 @@ import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
-import { useChatTools } from '@/composables/useChatTools';
+import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { hasChatOverrides } from '@/utils/chat-settings-resolver';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 import { scrollIntoViewSafe } from '@/utils/dom';
@@ -61,7 +61,7 @@ import { storageService } from '@/services/storage';
 const chatStore = useChat();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
-const { getNaidanSysfsMountSelection } = useChatTools();
+const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
 const { state: previewState, closePreview } = useImagePreview({ scoped: true });
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {

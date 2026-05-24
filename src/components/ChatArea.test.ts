@@ -234,9 +234,8 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-vi.mock('../composables/useChatTools', () => ({
-  useChatTools: () => ({
-    enabledToolNames: ref([]),
+vi.mock('../composables/useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
     getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
   }),
 }));

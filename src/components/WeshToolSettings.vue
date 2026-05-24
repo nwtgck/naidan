@@ -2,19 +2,23 @@
 import { computed } from 'vue';
 import { computedAsync } from '@vueuse/core';
 import { TerminalIcon } from 'lucide-vue-next';
+import { useChat } from '@/composables/useChat';
 import { useChatTools } from '@/composables/useChatTools';
+import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
 
-const { isToolEnabled, setToolEnabled, toggleTool, getNaidanSysfsMountSelection, setNaidanSysfsMountSelection } = useChatTools();
+const { currentChat } = useChat();
+const { isToolEnabled, setToolEnabled, toggleTool } = useChatTools();
+const { getNaidanSysfsMountSelection, setNaidanSysfsMountSelection } = useChatWeshPreferences();
 const { isFeatureEnabled } = useFeatureFlags();
 const isShellToolSupported = computedAsync(
   async () => checkOPFSSupport(),
   true,
 );
 const isWeshToolFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'wesh_tool' }));
-const naidanSysfsMountSelection = computed(() => getNaidanSysfsMountSelection({ chatId: undefined }));
+const naidanSysfsMountSelection = computed(() => getNaidanSysfsMountSelection({ chatId: currentChat.value?.id }));
 const isNaidanSysfsMounted = computed(() => naidanSysfsMountSelection.value !== 'none');
 
 function handleShellToolToggle(_args: Record<never, never>) {
@@ -25,12 +29,13 @@ function handleShellToolToggle(_args: Record<never, never>) {
   const enablingShellExecute = !isToolEnabled({ name: 'shell_execute' });
   toggleTool({ name: 'shell_execute' });
   if (enablingShellExecute && naidanSysfsMountSelection.value === 'none') {
-    setNaidanSysfsMountSelection({ selection: 'current_chat_only' });
+    setNaidanSysfsMountSelection({ chatId: currentChat.value?.id, selection: 'current_chat_only' });
   }
 }
 
 function handleNaidanSysfsToggle(_args: Record<never, never>) {
   setNaidanSysfsMountSelection({
+    chatId: currentChat.value?.id,
     selection: isNaidanSysfsMounted.value ? 'none' : 'current_chat_only',
   });
 }
@@ -46,7 +51,7 @@ function handleNaidanSysfsSelectionChange({ event }: { event: Event }) {
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
   case 'all_chats':
-    setNaidanSysfsMountSelection({ selection });
+    setNaidanSysfsMountSelection({ chatId: currentChat.value?.id, selection });
     break;
   default: {
     const _ex: never = selection;

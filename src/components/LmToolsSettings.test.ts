@@ -29,8 +29,19 @@ vi.mock('@/composables/useChatTools', () => ({
     isToolEnabled: () => false,
     setToolEnabled: vi.fn(),
     toggleTool: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
     getNaidanSysfsMountSelection: vi.fn(() => 'none'),
     setNaidanSysfsMountSelection: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useChat', () => ({
+  useChat: () => ({
+    currentChat: ref({ id: 'chat-1' }),
   }),
 }));
 

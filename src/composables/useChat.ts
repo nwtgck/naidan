@@ -28,6 +28,7 @@ import {
 } from '@/utils/image-generation';
 
 import { useChatTools } from './useChatTools';
+import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
@@ -1250,7 +1251,8 @@ export function useChat() {
 
       let lastSave = 0;
       let isSaving = false;
-      const { enabledToolNames, getNaidanSysfsMountSelection } = useChatTools();
+      const { enabledToolNames } = useChatTools();
+      const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
       const shellExecuteEnabled = enabledToolNames.value.includes('shell_execute');
       const chatTmpDirectory = shellExecuteEnabled
         ? await ensureChatTmpDirectory({ chatId: mutableChat.id })
