@@ -331,6 +331,22 @@ export async function createMountedNaidanSysfsWesh({
 }: {
   visibility: NaidanSysfsVisibility;
 }): Promise<Wesh> {
+  return createMountedNaidanSysfsWeshWithCurrentChat({
+    visibility,
+    currentChatId: 'chat-1',
+    currentChatGroupId: 'chat-group-1',
+  })
+}
+
+export async function createMountedNaidanSysfsWeshWithCurrentChat({
+  visibility,
+  currentChatId,
+  currentChatGroupId,
+}: {
+  visibility: NaidanSysfsVisibility;
+  currentChatId: string;
+  currentChatGroupId: string | undefined;
+}): Promise<Wesh> {
   const rootHandle = new MockFileSystemDirectoryHandle('root')
   const wesh = new Wesh({
     rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
@@ -363,8 +379,8 @@ export async function createMountedNaidanSysfsWesh({
         },
       }),
       visibility,
-      currentChatId: 'chat-1',
-      currentChatGroupId: 'chat-group-1',
+      currentChatId,
+      currentChatGroupId,
     }),
   })
 

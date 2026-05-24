@@ -2,6 +2,7 @@ import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/type
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from '@/services/wesh/naidan-sysfs/constants'
 import { createChatGroupsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
+import { listVisibleChatGroupIds } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
 import { createChatsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chats'
 import { createHierarchyDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/hierarchy'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
@@ -90,7 +91,7 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
       path: string;
       context: NaidanSysfsContext;
     }): AsyncIterable<WeshDirEntry> {
-      void context
+      const visibleChatGroupIds = await listVisibleChatGroupIds({ context })
       yield {
         name: 'version',
         type: 'file',
@@ -117,6 +118,8 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
           type: 'symlink',
           fullPath: `${path}/current-chat-group`,
         }
+      }
+      if (visibleChatGroupIds.length > 0) {
         yield {
           name: 'chat-groups',
           type: 'directory',

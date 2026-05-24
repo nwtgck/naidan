@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { renderChatMetadataMarkdown } from './naidan-sysfs/render/metadata-markdown'
-import { createMountedNaidanSysfsWesh, executeInWesh, individualChatMetadata, siblingChatMetadata } from './naidan-sysfs.test-helpers'
+import { createMountedNaidanSysfsWesh, createMountedNaidanSysfsWeshWithCurrentChat, executeInWesh, individualChatMetadata, siblingChatMetadata } from './naidan-sysfs.test-helpers'
 import type { Wesh } from './index'
 
 describe('naidan sysfs all_chats', () => {
@@ -61,5 +61,34 @@ chat-group-1
     expect(individualChat.stdout.text).toBe(renderChatMetadataMarkdown({ metadata: individualChatMetadata }))
     expect(individualChat.stderr.text).toBe('')
     expect(individualChat.result.exitCode).toBe(0)
+  })
+
+  it('omits current-chat-group when the current chat is not in a chat group', async () => {
+    const individualWesh = await createMountedNaidanSysfsWeshWithCurrentChat({
+      visibility: 'all_chats',
+      currentChatId: 'chat-3',
+      currentChatGroupId: undefined,
+    })
+
+    const rootEntries = await executeInWesh({ wesh: individualWesh, script: 'ls -1 /sys/fs/naidan' })
+    expect(rootEntries.stdout.text).toBe(`\
+chat-groups
+chats
+current-chat
+hierarchy
+version
+`)
+    expect(rootEntries.stderr.text).toBe('')
+    expect(rootEntries.result.exitCode).toBe(0)
+
+    const currentChatLink = await executeInWesh({ wesh: individualWesh, script: 'readlink /sys/fs/naidan/current-chat' })
+    expect(currentChatLink.stdout.text).toBe('/sys/fs/naidan/chats/chat-3\n')
+    expect(currentChatLink.stderr.text).toBe('')
+    expect(currentChatLink.result.exitCode).toBe(0)
+
+    const currentChatGroupLink = await executeInWesh({ wesh: individualWesh, script: 'readlink /sys/fs/naidan/current-chat-group' })
+    expect(currentChatGroupLink.stdout.text).toBe('')
+    expect(currentChatGroupLink.stderr.text).toBe('readlink: /sys/fs/naidan/current-chat-group: Path not found: /sys/fs/naidan/current-chat-group\n')
+    expect(currentChatGroupLink.result.exitCode).toBe(1)
   })
 })
