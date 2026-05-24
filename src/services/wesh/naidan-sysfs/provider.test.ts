@@ -467,14 +467,14 @@ describe('NaidanSysfsProvider', () => {
     }
 
     expect(markdownEntries.map(entry => entry.name)).toEqual([
-      '0001-user.md',
-      '0002-assistant.md',
-      '0003-tool.md',
+      '1-user.md',
+      '2-assistant.md',
+      '3-tool.md',
     ])
     expect(jsonEntries.map(entry => entry.name)).toEqual([
-      '0001-user.json',
-      '0002-assistant.json',
-      '0003-tool.json',
+      '1-user.json',
+      '2-assistant.json',
+      '3-tool.json',
     ])
   })
 
@@ -487,7 +487,7 @@ describe('NaidanSysfsProvider', () => {
     })
 
     const handle = await provider.open({
-      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md/0001-user.md`,
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md/1-user.md`,
       flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
       mode: undefined,
     })
@@ -499,7 +499,7 @@ describe('NaidanSysfsProvider', () => {
     expect(text).toContain('binary hidden')
 
     const toolHandle = await provider.open({
-      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md/0003-tool.md`,
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md/3-tool.md`,
       flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
       mode: undefined,
     })
@@ -519,7 +519,7 @@ describe('NaidanSysfsProvider', () => {
     })
 
     const handle = await provider.open({
-      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-json/0002-assistant.json`,
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-json/2-assistant.json`,
       flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
       mode: undefined,
     })
