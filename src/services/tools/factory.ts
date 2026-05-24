@@ -5,7 +5,7 @@ import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
-import type { WeshMount } from '@/services/wesh/types';
+import type { NaidanSysfsVisibility, WeshMount } from '@/services/wesh/types';
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
 import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
 import { buildShellDescription } from './shell-description';
@@ -21,6 +21,7 @@ export async function getEnabledTools({
   chatMounts,
   chatId,
   chatGroupId,
+  naidanSysfsVisibility,
   tmpHandle,
 }: {
   enabledNames: string[];
@@ -29,6 +30,7 @@ export async function getEnabledTools({
   chatMounts?: Mount[];
   chatId: string | undefined;
   chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsVisibility | undefined;
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
@@ -56,7 +58,7 @@ export async function getEnabledTools({
       ];
       const naidanSysfsMount = createNaidanSysfsMount({
         storageType: settings.storageType,
-        visibility: 'current_chat_with_chat_group',
+        visibility: naidanSysfsVisibility,
         currentChatId: chatId,
         currentChatGroupId: chatGroupId,
       });

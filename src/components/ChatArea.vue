@@ -887,6 +887,7 @@ watch(
       :chat-group-mounts="currentChatGroup?.mounts"
       :chat-id="currentChat?.id"
       :chat-group-id="currentChat?.groupId ?? undefined"
+      :naidan-sysfs-visibility="'current_chat_with_chat_group'"
       @close="toggleChatWeshTerminal()"
     />
 

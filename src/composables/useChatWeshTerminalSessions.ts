@@ -3,7 +3,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useChat } from '@/composables/useChat';
 import { createWeshTerminalSessions } from '@/composables/useWeshTerminalSessions';
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
-import type { WeshMount } from '@/services/wesh/types';
+import type { NaidanSysfsVisibility, WeshMount } from '@/services/wesh/types';
 import type { Mount } from '@/models/types';
 
 const store = createWeshTerminalSessions({
@@ -18,11 +18,13 @@ async function buildWorkerMountsForChat({
   chatGroupMounts,
   chatId,
   chatGroupId,
+  naidanSysfsVisibility,
 }: {
   chatMounts: readonly Mount[];
   chatGroupMounts: readonly Mount[] | undefined;
   chatId: string | undefined;
   chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsVisibility | undefined;
 }): Promise<WeshMount[]> {
   const { settings } = useSettings();
   const result: WeshMount[] = [];
@@ -36,7 +38,7 @@ async function buildWorkerMountsForChat({
 
   const naidanSysfsMount = createNaidanSysfsMount({
     storageType: settings.value.storageType,
-    visibility: 'current_chat_with_chat_group',
+    visibility: naidanSysfsVisibility,
     currentChatId: chatId,
     currentChatGroupId: chatGroupId,
   });
@@ -88,17 +90,18 @@ type SessionArgs = {
   chatGroupMounts: readonly Mount[] | undefined;
   chatId: string | undefined;
   chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsVisibility | undefined;
 };
 
 export function useChatWeshTerminalSessions() {
   return {
     ...store,
-    createChatWorkerSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId }: SessionArgs) =>
-      store.createSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId }) }),
-    ensureActiveSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId }: SessionArgs) =>
-      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId }) }),
-    reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId, chatGroupId }: SessionArgs) =>
-      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId }) }),
+    createChatWorkerSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
+      store.createSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
+    ensureActiveSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
+      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
+    reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
+      store.ensureSession({ buildMounts: () => buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
     TEST_ONLY: {
       buildWorkerMountsForChat,
     },

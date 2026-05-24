@@ -66,7 +66,7 @@ describe('useChatWeshTerminalSessions', () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { TEST_ONLY } = useChatWeshTerminalSessions();
 
-      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: undefined });
 
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({ path: '/home/user/global', readOnly: true });
@@ -77,11 +77,23 @@ describe('useChatWeshTerminalSessions', () => {
       const { useChatWeshTerminalSessions } = await import('./useChatWeshTerminalSessions');
       const { TEST_ONLY } = useChatWeshTerminalSessions();
 
-      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts: undefined, chatId: 'chat-1', chatGroupId: 'chat-group-1' });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({
+        chatMounts: [],
+        chatGroupMounts: undefined,
+        chatId: 'chat-1',
+        chatGroupId: 'chat-group-1',
+        naidanSysfsVisibility: 'current_chat_only',
+      });
 
       expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
       expect(result[0]).toMatchObject({ path: '/tmp', handle: tmpHandle, readOnly: false });
-      expect(result[1]).toMatchObject({ type: 'naidan_sysfs', path: '/sys/fs/naidan', currentChatId: 'chat-1', currentChatGroupId: 'chat-group-1' });
+      expect(result[1]).toMatchObject({
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        visibility: 'current_chat_only',
+        currentChatId: 'chat-1',
+        currentChatGroupId: 'chat-group-1',
+      });
     });
 
     it('includes both global and chat mounts when paths differ', async () => {
@@ -92,7 +104,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'chat-vol-1', mountPath: '/home/user/chat', readOnly: false },
       ];
 
-      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: undefined });
 
       expect(result).toHaveLength(2);
       expect(result.some(m => m.path === '/home/user/global')).toBe(true);
@@ -108,7 +120,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'chat-vol-override', mountPath: '/home/user/global', readOnly: false },
       ];
 
-      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: undefined });
 
       // Only one mount at that path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
@@ -127,7 +139,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'chat-vol-1', mountPath: '/home/user/chat', readOnly: false },
       ];
 
-      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined, chatGroupId: 'group-1' });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined, chatGroupId: 'group-1', naidanSysfsVisibility: undefined });
 
       expect(result).toHaveLength(3);
       expect(result.some(m => m.path === '/home/user/global')).toBe(true);
@@ -143,7 +155,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'group-vol-override', mountPath: '/home/user/global', readOnly: false },
       ];
 
-      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined, chatGroupId: 'group-1' });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined, chatGroupId: 'group-1', naidanSysfsVisibility: undefined });
 
       expect(result.filter(m => m.path === '/home/user/global')).toHaveLength(1);
       expect(result.find(m => m.path === '/home/user/global')).toMatchObject({ readOnly: false });
@@ -161,7 +173,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'chat-vol-override', mountPath: '/home/user/shared', readOnly: false },
       ];
 
-      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined, chatGroupId: 'group-1' });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts, chatGroupMounts, chatId: undefined, chatGroupId: 'group-1', naidanSysfsVisibility: undefined });
 
       // Only one mount at the shared path, and it should be the chat one (readOnly: false)
       expect(result.filter(m => m.path === '/home/user/shared')).toHaveLength(1);
@@ -177,7 +189,7 @@ describe('useChatWeshTerminalSessions', () => {
         { type: 'volume' as const, volumeId: 'group-vol-1', mountPath: '/home/user/group-only', readOnly: false },
       ];
 
-      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined, chatGroupId: 'group-1' });
+      const result = await TEST_ONLY.buildWorkerMountsForChat({ chatMounts: [], chatGroupMounts, chatId: undefined, chatGroupId: 'group-1', naidanSysfsVisibility: undefined });
 
       expect(result).toHaveLength(2); // global + group
       expect(result.some(m => m.path === '/home/user/global')).toBe(true);

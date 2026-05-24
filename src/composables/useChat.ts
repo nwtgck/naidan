@@ -1267,6 +1267,7 @@ export function useChat() {
         chatMounts: mutableChat.mounts,
         chatId: mutableChat.id,
         chatGroupId: mutableChat.groupId ?? undefined,
+        naidanSysfsVisibility: 'current_chat_with_chat_group',
         tmpHandle: chatTmpDirectory?.handle,
       });
 

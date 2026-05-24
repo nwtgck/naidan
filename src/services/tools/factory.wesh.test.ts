@@ -83,6 +83,7 @@ describe('getEnabledTools shell_execute', () => {
       tmpHandle: tmpHandleA,
       chatId: 'chat-1',
       chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'a', mountPath: '/mnt/a', readOnly: false }],
@@ -93,6 +94,7 @@ describe('getEnabledTools shell_execute', () => {
       tmpHandle: tmpHandleB,
       chatId: 'chat-2',
       chatGroupId: undefined,
+      naidanSysfsVisibility: 'all_chats',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'b', mountPath: '/mnt/b', readOnly: true }],
@@ -108,7 +110,7 @@ describe('getEnabledTools shell_execute', () => {
           path: '/sys/fs/naidan',
           readOnly: true,
           storageType: 'opfs',
-          visibility: 'current_chat_with_chat_group',
+          visibility: 'current_chat_only',
           currentChatId: 'chat-1',
           currentChatGroupId: 'chat-group-1',
         },
@@ -127,7 +129,7 @@ describe('getEnabledTools shell_execute', () => {
           path: '/sys/fs/naidan',
           readOnly: true,
           storageType: 'opfs',
-          visibility: 'current_chat_with_chat_group',
+          visibility: 'all_chats',
           currentChatId: 'chat-2',
           currentChatGroupId: undefined,
         },
@@ -168,6 +170,7 @@ Mounted directories:
       tmpHandle,
       chatId: 'chat-1',
       chatGroupId: undefined,
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'x', mountPath: '/home/user/myproject', readOnly: false }],
@@ -188,6 +191,7 @@ Mounted directories:
       tmpHandle: undefined,
       chatId: undefined,
       chatGroupId: undefined,
+      naidanSysfsVisibility: undefined,
       settings: {
         storageType: 'opfs',
         mounts: [],
@@ -212,6 +216,7 @@ Mounted directories:
       tmpHandle,
       chatId: 'chat-1',
       chatGroupId: undefined,
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-s', mountPath: '/mnt/s', readOnly: true }],
@@ -238,6 +243,7 @@ Mounted directories:
       tmpHandle,
       chatId: 'chat-1',
       chatGroupId: undefined,
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-r', mountPath: '/mnt/r', readOnly: true }],
@@ -261,6 +267,7 @@ Mounted directories:
       tmpHandle,
       chatId: 'chat-1',
       chatGroupId: undefined,
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-d', mountPath: '/mnt/d', readOnly: true }],
