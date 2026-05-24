@@ -37,31 +37,31 @@ version
 
     const contentList = await executeInWesh({ wesh, script: 'ls -1 /sys/fs/naidan/chats/chat-1/content-md' })
     expect(contentList.stdout.text).toBe(`\
-1-user-msg_user_root_a1B2c3D4e5.md
-2-assistant-msg_assistant_root_f6G7h8J9k0.md
-3-user-msg_user_branch_a_l1M2n3P4q5.md
-4-assistant-msg_assistant_branch_a2_x1Y2z3A4b5.md
+1-user-Ku1rA1B2c3D4e5F6g7H8.md
+2-assistant-La2rF6G7h8J9k0L1m2N3.md
+3-user-Mu3aL1M2n3P4q5R6s7T8.md
+4-assistant-Xa4aX1Y2z3A4b5C6d7E8.md
 `)
 
-    const contentFile = await executeInWesh({ wesh, script: 'cat /sys/fs/naidan/chats/chat-1/content-md/1-user-msg_user_root_a1B2c3D4e5.md' })
+    const contentFile = await executeInWesh({ wesh, script: 'cat /sys/fs/naidan/chats/chat-1/content-md/1-user-Ku1rA1B2c3D4e5F6g7H8.md' })
     expect(contentFile.stdout.text).toBe(renderMessageMarkdown({ node: mainChatContent.root.items[0]! }))
 
     const treeList = await executeInWesh({ wesh, script: 'ls -1 /sys/fs/naidan/chats/chat-1/branches/tree-md' })
     expect(treeList.stdout.text).toBe(`\
-1-user-msg_user_root_a1B2c3D4e5.md
-2-assistant-msg_assistant_root_f6G7h8J9k0.md
+1-user-Ku1rA1B2c3D4e5F6g7H8.md
+2-assistant-La2rF6G7h8J9k0L1m2N3.md
 3-branch-1
 3-branch-2
 `)
 
-    const leafMetadata = await executeInWesh({ wesh, script: 'cat /sys/fs/naidan/chats/chat-1/branches/leaves-md/msg_assistant_branch_a2_x1Y2z3A4b5/metadata.md' })
+    const leafMetadata = await executeInWesh({ wesh, script: 'cat /sys/fs/naidan/chats/chat-1/branches/leaves-md/Xa4aX1Y2z3A4b5C6d7E8/metadata.md' })
     expect(leafMetadata.stdout.text).toBe(renderLeafMetadataMarkdown({
       chat: {
         ...mainChatMetadata,
         root: mainChatContent.root,
         currentLeafId: mainChatContent.currentLeafId,
       },
-      leafId: 'msg_assistant_branch_a2_x1Y2z3A4b5',
+      leafId: 'Xa4aX1Y2z3A4b5C6d7E8',
       nodes: [
         mainChatContent.root.items[0]!,
         mainChatContent.root.items[0]!.replies.items[0]!,
@@ -77,7 +77,7 @@ version
     expect(currentChatGroupLink.stdout.text).toBe('/sys/fs/naidan/chat-groups/chat-group-1\n')
 
     const currentBranchLink = await executeInWesh({ wesh, script: 'readlink /sys/fs/naidan/chats/chat-1/branches/current-md' })
-    expect(currentBranchLink.stdout.text).toBe('/sys/fs/naidan/chats/chat-1/branches/leaves-md/msg_assistant_branch_a2_x1Y2z3A4b5\n')
+    expect(currentBranchLink.stdout.text).toBe('/sys/fs/naidan/chats/chat-1/branches/leaves-md/Xa4aX1Y2z3A4b5C6d7E8\n')
   })
 
   it('allows reading sibling chats in the same chat group', async () => {

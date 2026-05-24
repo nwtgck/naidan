@@ -94,11 +94,11 @@ const sampleMetadata: ChatMeta = {
 }
 
 const sampleContent: ChatContent = {
-  currentLeafId: 'msg_tool_linear_l1M2n3P4q5',
+  currentLeafId: 'Wt3lL1M2n3P4q5R6s7T8',
   root: {
     items: [
       {
-        id: 'msg_user_linear_a1B2c3D4e5',
+        id: 'Yu1lA1B2c3D4e5F6g7H8',
         role: 'user',
         content: 'Hello from the user',
         timestamp: 1000,
@@ -115,7 +115,7 @@ const sampleContent: ChatContent = {
         replies: {
           items: [
             {
-              id: 'msg_assistant_linear_f6G7h8J9k0',
+              id: 'Za2lF6G7h8J9k0L1m2N3',
               role: 'assistant',
               content: 'Assistant reply',
               timestamp: 1001,
@@ -134,7 +134,7 @@ const sampleContent: ChatContent = {
               replies: {
                 items: [
                   {
-                    id: 'msg_tool_linear_l1M2n3P4q5',
+                    id: 'Wt3lL1M2n3P4q5R6s7T8',
                     role: 'tool',
                     content: undefined,
                     attachments: undefined,
@@ -165,11 +165,11 @@ const sampleContent: ChatContent = {
 }
 
 const branchingContent: ChatContent = {
-  currentLeafId: 'msg_assistant_branch_a2_x1Y2z3A4b5',
+  currentLeafId: 'Xa4aX1Y2z3A4b5C6d7E8',
   root: {
     items: [
       {
-        id: 'msg_user_root_a1B2c3D4e5',
+        id: 'Ku1rA1B2c3D4e5F6g7H8',
         role: 'user',
         content: 'Root user',
         timestamp: 2000,
@@ -183,7 +183,7 @@ const branchingContent: ChatContent = {
         replies: {
           items: [
             {
-              id: 'msg_assistant_root_f6G7h8J9k0',
+              id: 'La2rF6G7h8J9k0L1m2N3',
               role: 'assistant',
               content: 'Root assistant',
               timestamp: 2001,
@@ -197,7 +197,7 @@ const branchingContent: ChatContent = {
               replies: {
                 items: [
                   {
-                    id: 'msg_user_branch_a_l1M2n3P4q5',
+                    id: 'Mu3aL1M2n3P4q5R6s7T8',
                     role: 'user',
                     content: 'Branch A user',
                     timestamp: 2002,
@@ -211,7 +211,7 @@ const branchingContent: ChatContent = {
                     replies: {
                       items: [
                         {
-                          id: 'msg_assistant_branch_a1_r6S7t8V9w0',
+                          id: 'Na4bR6S7t8V9w0X1y2Z3',
                           role: 'assistant',
                           content: 'Branch A first leaf',
                           timestamp: 2003,
@@ -225,7 +225,7 @@ const branchingContent: ChatContent = {
                           replies: { items: [] },
                         },
                         {
-                          id: 'msg_assistant_branch_a2_x1Y2z3A4b5',
+                          id: 'Xa4aX1Y2z3A4b5C6d7E8',
                           role: 'assistant',
                           content: 'Branch A current leaf',
                           timestamp: 2004,
@@ -242,7 +242,7 @@ const branchingContent: ChatContent = {
                     },
                   },
                   {
-                    id: 'msg_user_branch_b_c6D7e8F9g0',
+                    id: 'Pu3bC6D7e8F9g0H1i2J3',
                     role: 'user',
                     content: 'Branch B user',
                     timestamp: 2005,
@@ -256,7 +256,7 @@ const branchingContent: ChatContent = {
                     replies: {
                       items: [
                         {
-                          id: 'msg_assistant_branch_b1_h1J2k3L4m5',
+                          id: 'Sa4cH1J2k3L4m5N6p7Q8',
                           role: 'assistant',
                           content: 'Branch B leaf',
                           timestamp: 2006,
@@ -467,14 +467,14 @@ describe('NaidanSysfsProvider', () => {
     }
 
     expect(markdownEntries.map(entry => entry.name)).toEqual([
-      '1-user-msg_user_linear_a1B2c3D4e5.md',
-      '2-assistant-msg_assistant_linear_f6G7h8J9k0.md',
-      '3-tool-msg_tool_linear_l1M2n3P4q5.md',
+      '1-user-Yu1lA1B2c3D4e5F6g7H8.md',
+      '2-assistant-Za2lF6G7h8J9k0L1m2N3.md',
+      '3-tool-Wt3lL1M2n3P4q5R6s7T8.md',
     ])
     expect(jsonEntries.map(entry => entry.name)).toEqual([
-      '1-user-msg_user_linear_a1B2c3D4e5.json',
-      '2-assistant-msg_assistant_linear_f6G7h8J9k0.json',
-      '3-tool-msg_tool_linear_l1M2n3P4q5.json',
+      '1-user-Yu1lA1B2c3D4e5F6g7H8.json',
+      '2-assistant-Za2lF6G7h8J9k0L1m2N3.json',
+      '3-tool-Wt3lL1M2n3P4q5R6s7T8.json',
     ])
   })
 
@@ -487,7 +487,7 @@ describe('NaidanSysfsProvider', () => {
     })
 
     const handle = await provider.open({
-      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md/1-user-msg_user_linear_a1B2c3D4e5.md`,
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md/1-user-Yu1lA1B2c3D4e5F6g7H8.md`,
       flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
       mode: undefined,
     })
@@ -499,7 +499,7 @@ describe('NaidanSysfsProvider', () => {
     expect(text).toContain('binary hidden')
 
     const toolHandle = await provider.open({
-      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md/3-tool-msg_tool_linear_l1M2n3P4q5.md`,
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md/3-tool-Wt3lL1M2n3P4q5R6s7T8.md`,
       flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
       mode: undefined,
     })
@@ -519,7 +519,7 @@ describe('NaidanSysfsProvider', () => {
     })
 
     const handle = await provider.open({
-      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-json/2-assistant-msg_assistant_linear_f6G7h8J9k0.json`,
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-json/2-assistant-Za2lF6G7h8J9k0L1m2N3.json`,
       flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
       mode: undefined,
     })
@@ -553,15 +553,15 @@ describe('NaidanSysfsProvider', () => {
     ])
 
     expect(await provider.readlink({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/current-md` }))
-      .toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/msg_assistant_branch_a2_x1Y2z3A4b5`)
+      .toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/Xa4aX1Y2z3A4b5C6d7E8`)
 
     const treeEntries = []
     for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/tree-md` })) {
       treeEntries.push(entry)
     }
     expect(treeEntries.map(entry => entry.name)).toEqual([
-      '1-user-msg_user_root_a1B2c3D4e5.md',
-      '2-assistant-msg_assistant_root_f6G7h8J9k0.md',
+      '1-user-Ku1rA1B2c3D4e5F6g7H8.md',
+      '2-assistant-La2rF6G7h8J9k0L1m2N3.md',
       '3-branch-1',
       '3-branch-2',
     ])
@@ -571,27 +571,27 @@ describe('NaidanSysfsProvider', () => {
       branchAEntries.push(entry)
     }
     expect(branchAEntries.map(entry => entry.name)).toEqual([
-      '3-user-msg_user_branch_a_l1M2n3P4q5.md',
+      '3-user-Mu3aL1M2n3P4q5R6s7T8.md',
       '4-branch-1',
       '4-branch-2',
     ])
 
     expect(await provider.readlink({
       path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/tree-md/3-branch-1/4-branch-2/branch`,
-    })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/msg_assistant_branch_a2_x1Y2z3A4b5`)
+    })).toBe(`${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/Xa4aX1Y2z3A4b5C6d7E8`)
 
     const leavesEntries = []
     for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md` })) {
       leavesEntries.push(entry)
     }
     expect(leavesEntries.map(entry => entry.name)).toEqual([
-      'msg_assistant_branch_a1_r6S7t8V9w0',
-      'msg_assistant_branch_a2_x1Y2z3A4b5',
-      'msg_assistant_branch_b1_h1J2k3L4m5',
+      'Na4bR6S7t8V9w0X1y2Z3',
+      'Xa4aX1Y2z3A4b5C6d7E8',
+      'Sa4cH1J2k3L4m5N6p7Q8',
     ])
 
     const leafEntries = []
-    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/msg_assistant_branch_a2_x1Y2z3A4b5` })) {
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-md/Xa4aX1Y2z3A4b5C6d7E8` })) {
       leafEntries.push(entry)
     }
     expect(leafEntries.map(entry => entry.name)).toEqual([
@@ -600,14 +600,14 @@ describe('NaidanSysfsProvider', () => {
     ])
 
     const metadataHandle = await provider.open({
-      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-json/msg_assistant_branch_a2_x1Y2z3A4b5/metadata.json`,
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/branches/leaves-json/Xa4aX1Y2z3A4b5C6d7E8/metadata.json`,
       flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
       mode: undefined,
     })
     const metadataBuffer = new Uint8Array(4096)
     const metadataResult = await metadataHandle.read({ buffer: metadataBuffer })
     const metadataText = new TextDecoder().decode(metadataBuffer.subarray(0, metadataResult.bytesRead))
-    expect(metadataText).toContain('"leafId": "msg_assistant_branch_a2_x1Y2z3A4b5"')
+    expect(metadataText).toContain('"leafId": "Xa4aX1Y2z3A4b5C6d7E8"')
     expect(metadataText).toContain('"isCurrentLeaf": true')
   })
 

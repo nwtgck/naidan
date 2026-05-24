@@ -61,7 +61,7 @@ export const mainChatMetadata: ChatMeta = {
   id: 'chat-1',
   title: 'Main Chat',
   groupId: 'chat-group-1',
-  currentLeafId: 'msg_assistant_branch_a2_x1Y2z3A4b5',
+  currentLeafId: 'Xa4aX1Y2z3A4b5C6d7E8',
   createdAt: 100,
   updatedAt: 200,
   debugEnabled: true,
@@ -84,7 +84,7 @@ export const siblingChatMetadata: ChatMeta = {
   ...mainChatMetadata,
   id: 'chat-2',
   title: 'Sibling Chat',
-  currentLeafId: 'msg_assistant_sibling_n6O7p8Q9r0',
+  currentLeafId: 'Qa2sN6O7p8Q9r0S1t2U3',
   updatedAt: 250,
 }
 
@@ -93,16 +93,16 @@ export const individualChatMetadata: ChatMeta = {
   id: 'chat-3',
   title: 'Individual Chat',
   groupId: null,
-  currentLeafId: 'msg_assistant_individual_s1T2u3V4w5',
+  currentLeafId: 'Ra2iS1T2u3V4w5X6y7Z8',
   updatedAt: 300,
 }
 
 export const mainChatContent: ChatContent = {
-  currentLeafId: 'msg_assistant_branch_a2_x1Y2z3A4b5',
+  currentLeafId: 'Xa4aX1Y2z3A4b5C6d7E8',
   root: {
     items: [
       {
-        id: 'msg_user_root_a1B2c3D4e5',
+        id: 'Ku1rA1B2c3D4e5F6g7H8',
         role: 'user',
         content: 'Root user',
         timestamp: 2000,
@@ -116,7 +116,7 @@ export const mainChatContent: ChatContent = {
         replies: {
           items: [
             {
-              id: 'msg_assistant_root_f6G7h8J9k0',
+              id: 'La2rF6G7h8J9k0L1m2N3',
               role: 'assistant',
               content: 'Root assistant',
               timestamp: 2001,
@@ -130,7 +130,7 @@ export const mainChatContent: ChatContent = {
               replies: {
                 items: [
                   {
-                    id: 'msg_user_branch_a_l1M2n3P4q5',
+                    id: 'Mu3aL1M2n3P4q5R6s7T8',
                     role: 'user',
                     content: 'Branch A user',
                     timestamp: 2002,
@@ -144,7 +144,7 @@ export const mainChatContent: ChatContent = {
                     replies: {
                       items: [
                         {
-                          id: 'msg_assistant_branch_a1_r6S7t8V9w0',
+                          id: 'Na4bR6S7t8V9w0X1y2Z3',
                           role: 'assistant',
                           content: 'Branch A first leaf',
                           timestamp: 2003,
@@ -158,7 +158,7 @@ export const mainChatContent: ChatContent = {
                           replies: { items: [] },
                         },
                         {
-                          id: 'msg_assistant_branch_a2_x1Y2z3A4b5',
+                          id: 'Xa4aX1Y2z3A4b5C6d7E8',
                           role: 'assistant',
                           content: 'Branch A current leaf',
                           timestamp: 2004,
@@ -175,7 +175,7 @@ export const mainChatContent: ChatContent = {
                     },
                   },
                   {
-                    id: 'msg_user_branch_b_c6D7e8F9g0',
+                    id: 'Pu3bC6D7e8F9g0H1i2J3',
                     role: 'user',
                     content: 'Branch B user',
                     timestamp: 2005,
@@ -189,7 +189,7 @@ export const mainChatContent: ChatContent = {
                     replies: {
                       items: [
                         {
-                          id: 'msg_assistant_branch_b1_h1J2k3L4m5',
+                          id: 'Sa4cH1J2k3L4m5N6p7Q8',
                           role: 'assistant',
                           content: 'Branch B leaf',
                           timestamp: 2006,
@@ -269,17 +269,17 @@ function createLinearContent({
 }
 
 export const siblingChatContent = createLinearContent({
-  leafId: 'msg_assistant_sibling_n6O7p8Q9r0',
-  userId: 'msg_user_sibling_m1N2o3P4q5',
-  assistantId: 'msg_assistant_sibling_n6O7p8Q9r0',
+  leafId: 'Qa2sN6O7p8Q9r0S1t2U3',
+  userId: 'Tu1sM1N2o3P4q5R6s7T8',
+  assistantId: 'Qa2sN6O7p8Q9r0S1t2U3',
   userText: 'Sibling user',
   assistantText: 'Sibling assistant',
 })
 
 export const individualChatContent = createLinearContent({
-  leafId: 'msg_assistant_individual_s1T2u3V4w5',
-  userId: 'msg_user_individual_r6S7t8U9v0',
-  assistantId: 'msg_assistant_individual_s1T2u3V4w5',
+  leafId: 'Ra2iS1T2u3V4w5X6y7Z8',
+  userId: 'Vu1iR6S7t8U9v0W1x2Y3',
+  assistantId: 'Ra2iS1T2u3V4w5X6y7Z8',
   userText: 'Individual user',
   assistantText: 'Individual assistant',
 })
