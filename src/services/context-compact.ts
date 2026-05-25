@@ -511,7 +511,7 @@ export function toContextCompactDisplayProgress({
       isRunning: true,
     };
   case 'receiving_compact': {
-    const percent = Math.min(85, 30 + Math.floor(Math.log2(progress.outputChars + 1) * 7));
+    const percent = Math.min(85, 30 + Math.floor(Math.sqrt(progress.outputChars) * 0.6));
     return {
       percent,
       title: 'Compacting context',

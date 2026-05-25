@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { SquareIcon, SparklesIcon, ChevronDownIcon, ChevronUpIcon, CheckCircle2Icon, XCircleIcon } from 'lucide-vue-next';
 import type { ContextCompactProgress } from '@/services/context-compact';
 import { toContextCompactDisplayProgress } from '@/services/context-compact';
@@ -18,6 +18,79 @@ const display = computed(() => {
     nowMs: Date.now(),
   });
 });
+
+const visibleDisplay = ref(display.value);
+const shouldRender = ref(display.value.isRunning);
+const animatedPercent = ref(0);
+const hideTimerId = ref<number | undefined>(undefined);
+const animationFrameId = ref<number | undefined>(undefined);
+
+function clearHideTimer(_args: Record<string, never>) {
+  if (hideTimerId.value !== undefined) {
+    window.clearTimeout(hideTimerId.value);
+    hideTimerId.value = undefined;
+  }
+}
+
+function clearPercentAnimationFrame(_args: Record<string, never>) {
+  if (animationFrameId.value !== undefined) {
+    window.cancelAnimationFrame(animationFrameId.value);
+    animationFrameId.value = undefined;
+  }
+}
+
+function animatePercentTo({
+  percent,
+}: {
+  percent: number;
+}) {
+  clearPercentAnimationFrame({});
+  animationFrameId.value = window.requestAnimationFrame(() => {
+    animatedPercent.value = percent;
+    animationFrameId.value = undefined;
+  });
+}
+
+watch(display, async (nextDisplay) => {
+  clearHideTimer({});
+  visibleDisplay.value = nextDisplay;
+
+  if (nextDisplay.isRunning) {
+    shouldRender.value = true;
+    await nextTick();
+    animatePercentTo({ percent: nextDisplay.percent });
+    return;
+  }
+
+  switch (props.progress.phase) {
+  case 'complete':
+  case 'failed':
+  case 'aborted':
+    shouldRender.value = true;
+    await nextTick();
+    animatePercentTo({ percent: nextDisplay.percent });
+    hideTimerId.value = window.setTimeout(() => {
+      shouldRender.value = false;
+      hideTimerId.value = undefined;
+    }, 300);
+    return;
+  case 'idle':
+    shouldRender.value = false;
+    animatedPercent.value = 0;
+    return;
+  case 'preparing':
+  case 'building_request':
+  case 'requesting_model':
+  case 'receiving_compact':
+  case 'applying_branch':
+    shouldRender.value = true;
+    return;
+  default: {
+    const _ex: never = props.progress;
+    throw new Error(`Unhandled compact progress visibility phase: ${_ex}`);
+  }
+  }
+}, { immediate: true });
 
 const requestPreview = computed(() => {
   switch (props.progress.phase) {
@@ -117,9 +190,17 @@ watch(requestPreview, async () => {
   scrollRequestToBottom({});
 });
 
+onBeforeUnmount(() => {
+  clearHideTimer({});
+  clearPercentAnimationFrame({});
+});
+
 defineExpose({
   TEST_ONLY: {
     display,
+    visibleDisplay,
+    shouldRender,
+    animatedPercent,
     requestPreview,
     outputPreview,
     shouldAutoScrollOutput,
@@ -141,7 +222,7 @@ defineExpose({
     leave-to-class="transform -translate-y-4 opacity-0"
   >
     <div
-      v-if="display.isRunning"
+      v-if="shouldRender"
       class="border-b border-indigo-100/50 dark:border-indigo-900/40 bg-white/70 dark:bg-gray-950/60 backdrop-blur-md px-4 sm:px-6 py-3 shadow-sm"
       :class="{
         'border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/10': progress.phase === 'complete',
@@ -171,7 +252,7 @@ defineExpose({
                 'from-indigo-600 via-violet-500 to-indigo-600 dark:from-indigo-400 dark:via-violet-300 dark:to-indigo-400': progress.phase !== 'complete' && progress.phase !== 'failed' && progress.phase !== 'aborted'
               }"
             >
-              {{ display.title }}
+              {{ visibleDisplay.title }}
             </span>
             <span
               class="shrink-0 text-[10px] font-black tabular-nums transition-colors duration-500"
@@ -182,7 +263,7 @@ defineExpose({
                 'text-indigo-500/80 dark:text-indigo-400/80': progress.phase !== 'complete' && progress.phase !== 'failed' && progress.phase !== 'aborted'
               }"
             >
-              {{ display.percent }}%
+              {{ animatedPercent }}%
             </span>
           </div>
 
@@ -195,7 +276,7 @@ defineExpose({
                 'bg-emerald-500/20 dark:bg-emerald-400/10': progress.phase === 'complete',
                 'bg-indigo-500/10 dark:bg-indigo-400/5': progress.phase !== 'complete'
               }"
-              :style="{ width: `${display.percent}%` }"
+              :style="{ width: `${animatedPercent}%` }"
             />
 
             <div
@@ -213,7 +294,7 @@ defineExpose({
                   'bg-amber-500': progress.phase === 'aborted',
                   'bg-gradient-to-r from-blue-500 via-violet-500 to-cyan-500': progress.phase !== 'complete' && progress.phase !== 'failed' && progress.phase !== 'aborted'
                 }"
-                :style="{ width: `${display.percent}%` }"
+                :style="{ width: `${animatedPercent}%` }"
                 data-testid="context-compact-progress-bar"
               />
             </div>
@@ -229,7 +310,7 @@ defineExpose({
               'text-indigo-700/70 dark:text-indigo-200/60': progress.phase !== 'complete' && progress.phase !== 'failed' && progress.phase !== 'aborted'
             }"
           >
-            {{ display.detail }}
+            {{ visibleDisplay.detail }}
           </p>
 
           <!-- Previews Area -->

@@ -207,4 +207,36 @@ Question`,
     expect(display.percent).toBeLessThan(100);
     expect(display.isRunning).toBe(true);
   });
+
+  it('does not jump near 85 percent immediately after output starts', () => {
+    const display = toContextCompactDisplayProgress({
+      progress: {
+        phase: 'receiving_compact',
+        compactedMessageCount: 4,
+        suffixMessageCount: 6,
+        outputChars: 256,
+        requestPreview: undefined,
+        outputPreview: '# Compact Context',
+      },
+      nowMs: Date.now(),
+    });
+
+    expect(display.percent).toBe(39);
+  });
+
+  it('still caps receiving progress at 85 for very long output', () => {
+    const display = toContextCompactDisplayProgress({
+      progress: {
+        phase: 'receiving_compact',
+        compactedMessageCount: 4,
+        suffixMessageCount: 6,
+        outputChars: 100000,
+        requestPreview: undefined,
+        outputPreview: '# Compact Context',
+      },
+      nowMs: Date.now(),
+    });
+
+    expect(display.percent).toBe(85);
+  });
 });

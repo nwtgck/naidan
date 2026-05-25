@@ -96,7 +96,7 @@ describe('useChat Composable Logic', () => {
   const {
     activeMessages, sendMessage, currentChat, rootItems, TEST_ONLY
   } = chatStore;
-  const { __testOnlySetCurrentChat } = TEST_ONLY;
+  const { __testOnlySetCurrentChat, __testOnlySetContextCompactProgress } = TEST_ONLY;
 
   const { errorCount, clearEvents } = useGlobalEvents();
 
@@ -244,6 +244,40 @@ describe('useChat Composable Logic', () => {
     expect(result.title).toBe('Fork of Original');
     expect(result.currentLeafId).toBe('m1');
     expect(storageService.updateHierarchy).toHaveBeenCalled();
+  });
+
+  it('should clear completed compact progress after a short delay', async () => {
+    vi.useFakeTimers();
+    try {
+      __testOnlySetContextCompactProgress({
+        chatId: 'chat-compact',
+        progress: {
+          phase: 'complete',
+          requestPreview: undefined,
+          outputPreview: '# Compact Context',
+        },
+      });
+
+      expect(chatStore.getContextCompactProgress({ chatId: 'chat-compact' })).toEqual({
+        phase: 'complete',
+        requestPreview: undefined,
+        outputPreview: '# Compact Context',
+      });
+
+      await vi.advanceTimersByTimeAsync(399);
+      expect(chatStore.getContextCompactProgress({ chatId: 'chat-compact' })).toEqual({
+        phase: 'complete',
+        requestPreview: undefined,
+        outputPreview: '# Compact Context',
+      });
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(chatStore.getContextCompactProgress({ chatId: 'chat-compact' })).toEqual({
+        phase: 'idle',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('should insert forked chat at the correct position (g1, g2, c_new, c1) matching createNewChat', async () => {

@@ -447,7 +447,40 @@ Question`,
     expect(wrapper.find('[data-testid="context-compact-progress-overlay"]').classes()).toContain('absolute');
   });
 
-  it('shows the neural sync effect only for the compact completion transition in the active chat', async () => {
+  it('shows the neural sync effect only after a successful compact action', async () => {
+    vi.useFakeTimers();
+    try {
+      mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => ({
+        id: `message-${index + 1}`,
+        role: index % 2 === 0 ? 'user' : 'assistant',
+        content: `Message ${index + 1}`,
+        timestamp: index + 1,
+        replies: { items: [] },
+      })) as MessageNode[];
+      wrapper = mount(ChatArea, {
+        global: { plugins: [router] },
+      });
+
+      await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+      await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
+      await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', {
+        keepCount: 6,
+        instruction: 'Edited compact prompt',
+      });
+      await flushPromises();
+
+      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1200);
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not show the neural sync effect when compact progress becomes complete without a local compact action', async () => {
     vi.useFakeTimers();
     try {
       wrapper = mount(ChatArea, {
@@ -461,30 +494,41 @@ Question`,
       };
       await nextTick();
 
+      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the neural sync effect when switching to another chat', async () => {
+    vi.useFakeTimers();
+    try {
+      mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => ({
+        id: `message-${index + 1}`,
+        role: index % 2 === 0 ? 'user' : 'assistant',
+        content: `Message ${index + 1}`,
+        timestamp: index + 1,
+        replies: { items: [] },
+      })) as MessageNode[];
+
+      wrapper = mount(ChatArea, {
+        global: { plugins: [router] },
+      });
+
+      await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+      await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
+      await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', {
+        keepCount: 6,
+        instruction: 'Edited compact prompt',
+      });
+      await flushPromises();
+
       expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(true);
 
-      await vi.advanceTimersByTimeAsync(1200);
-      await nextTick();
-
-      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
-
       mockCurrentChat.value = {
         ...(mockCurrentChat.value as Chat),
-        id: '2',
-        title: 'Second Chat',
-      };
-      mockContextCompactProgress.value = { phase: 'idle' };
-      await nextTick();
-
-      mockCurrentChat.value = {
-        ...(mockCurrentChat.value as Chat),
-        id: '1',
-        title: 'Test Chat',
-      };
-      mockContextCompactProgress.value = {
-        phase: 'complete',
-        requestPreview: undefined,
-        outputPreview: '# Compact Context',
+        id: 'chat-2',
+        title: 'Chat 2',
       };
       await nextTick();
 

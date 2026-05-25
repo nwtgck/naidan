@@ -119,50 +119,22 @@ function clearNeuralSyncEffectTimer(_args: Record<never, never>) {
   }
 }
 
-watch(() => ({
-  chatId: currentChat.value?.id,
-  phase: contextCompactProgress.value.phase,
-}), ({ chatId, phase }, previousState) => {
-  const previousChatId = previousState?.chatId;
-  const previousPhase = previousState?.phase;
-
-  if (
-    phase === 'complete'
-    && previousPhase !== 'complete'
-    && previousChatId === chatId
-    && chatId !== undefined
-  ) {
-    clearNeuralSyncEffectTimer({});
-    showNeuralSyncEffect.value = true;
-    hideNeuralSyncEffectTimer.value = window.setTimeout(() => {
-      showNeuralSyncEffect.value = false;
-      hideNeuralSyncEffectTimer.value = undefined;
-    }, 1200);
-    return;
-  }
-
-  switch (phase) {
-  case 'idle':
-  case 'preparing':
-  case 'building_request':
-  case 'requesting_model':
-  case 'receiving_compact':
-  case 'applying_branch':
-  case 'failed':
-  case 'aborted':
+function playNeuralSyncEffect(_args: Record<never, never>) {
+  clearNeuralSyncEffectTimer({});
+  showNeuralSyncEffect.value = true;
+  hideNeuralSyncEffectTimer.value = window.setTimeout(() => {
     showNeuralSyncEffect.value = false;
-    return;
-  case 'complete':
-    return;
-  default: {
-    const _ex: never = phase;
-    throw new Error(`Unhandled compact progress phase: ${_ex}`);
-  }
-  }
-});
+    hideNeuralSyncEffectTimer.value = undefined;
+  }, 1200);
+}
 
 onBeforeUnmount(() => {
   clearNeuralSyncEffectTimer({});
+});
+
+watch(() => currentChat.value?.id, () => {
+  clearNeuralSyncEffectTimer({});
+  showNeuralSyncEffect.value = false;
 });
 
 const availableImageModels = computed(() => {
@@ -832,10 +804,13 @@ async function handleConfirmCompact({
   instruction: string;
 }) {
   showCompactSettings.value = false;
-  await compactCurrentBranch({
+  const didCompact = await compactCurrentBranch({
     keepRecentMessages: keepCount,
     instructionOverride: instruction,
   });
+  if (didCompact) {
+    playNeuralSyncEffect({});
+  }
 }
 
 function handleAbortContextCompact(_args: Record<never, never>) {

@@ -55,6 +55,7 @@ const activeTitleGenerations = reactive(new Map<string, AbortController>());
 const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
 const compactProgressByChat = reactive(new Map<string, ContextCompactProgress>());
+const compactProgressResetTimers = reactive(new Map<string, number>());
 const activeContextCompactions = reactive(new Map<string, AbortController>());
 const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
 const volatileToolOutputs = reactive(new Map<string, string>());
@@ -143,7 +144,39 @@ function setContextCompactProgress({
   chatId: string;
   progress: ContextCompactProgress;
 }) {
+  const existingTimer = compactProgressResetTimers.get(chatId);
+  if (existingTimer !== undefined) {
+    window.clearTimeout(existingTimer);
+    compactProgressResetTimers.delete(chatId);
+  }
+
   compactProgressByChat.set(chatId, progress);
+
+  switch (progress.phase) {
+  case 'complete':
+  case 'failed':
+  case 'aborted': {
+    const timerId = window.setTimeout(() => {
+      if (compactProgressByChat.get(chatId)?.phase === progress.phase) {
+        compactProgressByChat.delete(chatId);
+      }
+      compactProgressResetTimers.delete(chatId);
+    }, 400);
+    compactProgressResetTimers.set(chatId, timerId);
+    return;
+  }
+  case 'idle':
+  case 'preparing':
+  case 'building_request':
+  case 'requesting_model':
+  case 'receiving_compact':
+  case 'applying_branch':
+    return;
+  default: {
+    const _ex: never = progress;
+    throw new Error(`Unhandled context compact progress: ${_ex}`);
+  }
+  }
 }
 
 function getContextCompactProgress({
@@ -2921,6 +2954,18 @@ export function useChat() {
   const __testOnlySetCurrentChatGroup = ({ group }: { group: ChatGroup | null }) => {
     _currentChatGroup.value = group;
   };
+  const __testOnlySetContextCompactProgress = ({
+    chatId,
+    progress,
+  }: {
+    chatId: string;
+    progress: ContextCompactProgress;
+  }) => {
+    setContextCompactProgress({
+      chatId,
+      progress,
+    });
+  };
   const clearLiveChatRegistry = (_params: Record<string, never>) => {
     liveChatRegistry.clear();
   };
@@ -2962,6 +3007,7 @@ export function useChat() {
       volatileToolOutputs,
       __testOnlySetCurrentChat,
       __testOnlySetCurrentChatGroup,
+      __testOnlySetContextCompactProgress,
     }
   };
 }
