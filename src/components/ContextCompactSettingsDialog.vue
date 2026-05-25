@@ -1,24 +1,36 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { XIcon, BrainIcon, ChevronRightIcon } from 'lucide-vue-next';
+import { XIcon, BrainIcon, ChevronRightIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
   isOpen: boolean;
   totalMessages: number;
   initialKeepCount: number;
+  initialInstruction: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'confirm', keepCount: number): void;
+  (e: 'confirm', value: { keepCount: number; instruction: string }): void;
 }>();
 
 const keepCount = ref(props.initialKeepCount);
+const instructionDraft = ref(props.initialInstruction);
+const showInstructionEditor = ref(false);
 const maxKeepCount = computed(() => Math.max(0, props.totalMessages - 1));
+const instructionPreview = computed(() => {
+  const compact = instructionDraft.value.replace(/\s+/g, ' ').trim();
+  if (compact.length <= 140) {
+    return compact;
+  }
+  return `${compact.slice(0, 140)}...`;
+});
 
 watch(() => props.isOpen, (open) => {
   if (open) {
     keepCount.value = Math.min(props.initialKeepCount, maxKeepCount.value);
+    instructionDraft.value = props.initialInstruction;
+    showInstructionEditor.value = false;
   }
 });
 
@@ -30,7 +42,10 @@ function handleConfirm() {
   if (compactCount.value === 0) {
     return;
   }
-  emit('confirm', keepCount.value);
+  emit('confirm', {
+    keepCount: keepCount.value,
+    instruction: instructionDraft.value,
+  });
 }
 
 
@@ -55,9 +70,9 @@ defineExpose({
       class="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-[2px] px-4"
       @click.self="emit('close')"
     >
-      <div class="w-full max-w-md bg-white/90 dark:bg-gray-950/90 border border-indigo-100/50 dark:border-indigo-900/40 rounded-3xl shadow-2xl overflow-hidden backdrop-blur-xl ring-1 ring-white/20 dark:ring-indigo-500/10">
+      <div class="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-indigo-100/50 bg-white/90 shadow-2xl ring-1 ring-white/20 backdrop-blur-xl dark:border-indigo-900/40 dark:bg-gray-950/90 dark:ring-indigo-500/10">
         <!-- Header -->
-        <div class="px-6 py-5 border-b border-indigo-50/50 dark:border-indigo-900/30 flex items-center justify-between">
+        <div class="px-6 py-5 border-b border-indigo-50/50 dark:border-indigo-900/30 flex items-center justify-between shrink-0">
           <div class="flex items-center gap-3">
             <div class="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50">
               <BrainIcon class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
@@ -76,7 +91,7 @@ defineExpose({
         </div>
 
         <!-- Content -->
-        <div class="p-6 space-y-8">
+        <div class="flex-1 overflow-y-auto p-6 space-y-8">
           <!-- Visualization -->
           <div class="relative h-20 flex items-end gap-1 px-2">
             <div
@@ -146,10 +161,39 @@ defineExpose({
               Compacting will condense the first <strong class="text-indigo-600 dark:text-indigo-300">{{ compactCount }} messages</strong> into a single summary. This reduces token usage while preserving the core context.
             </p>
           </div>
+
+          <div class="rounded-2xl border border-indigo-100/50 dark:border-indigo-900/40 bg-white/60 dark:bg-indigo-950/20 overflow-hidden">
+            <button
+              class="w-full flex items-start justify-between gap-3 px-4 py-3 text-left"
+              data-testid="context-compact-instruction-toggle"
+              @click="showInstructionEditor = !showInstructionEditor"
+            >
+              <div class="min-w-0">
+                <div class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-indigo-500/60">Compact Prompt</div>
+                <p class="mt-1 text-[11px] leading-relaxed text-indigo-900/70 dark:text-indigo-100/70 line-clamp-3">
+                  {{ instructionPreview }}
+                </p>
+              </div>
+              <component :is="showInstructionEditor ? ChevronUpIcon : ChevronDownIcon" class="mt-0.5 w-4 h-4 shrink-0 text-indigo-500/70 dark:text-indigo-300/60" />
+            </button>
+
+            <div v-if="showInstructionEditor" class="border-t border-indigo-100/50 dark:border-indigo-900/40 px-4 py-3 space-y-2">
+              <label class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-indigo-500/60" for="context-compact-instruction">
+                Editable Prompt
+              </label>
+              <textarea
+                id="context-compact-instruction"
+                v-model="instructionDraft"
+                class="h-48 max-h-[40vh] w-full resize-y rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-white/80 dark:bg-gray-950/60 px-3 py-2 text-[11px] leading-relaxed text-gray-800 dark:text-indigo-100 shadow-inner focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                data-testid="context-compact-instruction-editor"
+                spellcheck="false"
+              />
+            </div>
+          </div>
         </div>
 
         <!-- Footer -->
-        <div class="px-6 py-5 bg-gray-50/50 dark:bg-indigo-950/20 border-t border-indigo-50/50 dark:border-indigo-900/30 flex justify-end gap-3">
+        <div class="px-6 py-5 bg-gray-50/50 dark:bg-indigo-950/20 border-t border-indigo-50/50 dark:border-indigo-900/30 flex justify-end gap-3 shrink-0">
           <button
             class="px-5 py-2.5 text-xs font-bold text-gray-500 hover:text-gray-700 dark:text-indigo-400 dark:hover:text-indigo-200 transition-colors"
             @click="emit('close')"

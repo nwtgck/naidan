@@ -59,6 +59,7 @@ import { scrollIntoViewSafe } from '@/utils/dom';
 import { generateChatShareURL } from '@/services/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
+import { createCompactInstruction, type ContextCompactPromptMode } from '@/services/context-compact';
 
 
 const chatStore = useChat();
@@ -95,7 +96,10 @@ const {
   isWaitingResponse,
 } = chatStore;
 
-const compactCurrentBranch = chatStore.compactCurrentBranch ?? (async (_args: { keepRecentMessages: number }) => false);
+const compactCurrentBranch = chatStore.compactCurrentBranch ?? (async (_args: {
+  keepRecentMessages: number;
+  instructionOverride: string | undefined;
+}) => false);
 const abortContextCompact = chatStore.abortContextCompact ?? ((_args: { chatId: string | undefined }) => {});
 const contextCompactProgress = computed<ContextCompactProgress>(() => {
   const maybeProgress = chatStore.contextCompactProgress as ContextCompactProgress | { value: ContextCompactProgress } | undefined;
@@ -167,6 +171,33 @@ const availableImageModels = computed(() => {
 
 const chatAreaNaidanSysfsVisibility = computed(() => {
   return getNaidanSysfsMountSelection({ chatId: currentChat.value?.id });
+});
+
+const contextCompactPromptMode = computed<ContextCompactPromptMode>(() => {
+  const mountSelection = chatAreaNaidanSysfsVisibility.value;
+  switch (mountSelection) {
+  case 'none':
+    return 'without_message_ids';
+  case 'current_chat_only':
+  case 'current_chat_with_chat_group':
+  case 'all_chats':
+    return 'with_message_ids';
+  default: {
+    const _ex: never = mountSelection;
+    throw new Error(`Unhandled naidan sysfs visibility: ${_ex}`);
+  }
+  }
+});
+
+const initialContextCompactInstruction = computed(() => {
+  const userLanguageHint = typeof navigator === 'undefined'
+    ? undefined
+    : navigator.language;
+
+  return createCompactInstruction({
+    promptMode: contextCompactPromptMode.value,
+    userLanguageHint,
+  });
 });
 
 const { setActiveFocusArea } = useLayout();
@@ -798,9 +829,18 @@ async function handleCompactContext(_args: Record<never, never>) {
   showCompactSettings.value = true;
 }
 
-async function handleConfirmCompact({ keepCount }: { keepCount: number }) {
+async function handleConfirmCompact({
+  keepCount,
+  instruction,
+}: {
+  keepCount: number;
+  instruction: string;
+}) {
   showCompactSettings.value = false;
-  await compactCurrentBranch({ keepRecentMessages: keepCount });
+  await compactCurrentBranch({
+    keepRecentMessages: keepCount,
+    instructionOverride: instruction,
+  });
 }
 
 function handleAbortContextCompact(_args: Record<never, never>) {
@@ -999,8 +1039,9 @@ watch(
       :is-open="showCompactSettings"
       :total-messages="activeMessages.length"
       :initial-keep-count="6"
+      :initial-instruction="initialContextCompactInstruction"
       @close="showCompactSettings = false"
-      @confirm="keepCount => handleConfirmCompact({ keepCount })"
+      @confirm="({ keepCount, instruction }) => handleConfirmCompact({ keepCount, instruction })"
     />
 
     <!-- Chat Wesh Terminal Modal -->

@@ -2154,8 +2154,10 @@ export function useChat() {
 
   const compactCurrentBranch = async ({
     keepRecentMessages,
+    instructionOverride,
   }: {
     keepRecentMessages: number;
+    instructionOverride: string | undefined;
   }): Promise<boolean> => {
     if (!_currentChat.value) {
       return false;
@@ -2251,6 +2253,7 @@ export function useChat() {
         prefix: prefixMessages,
         promptMode,
         userLanguageHint: getCompactUserLanguageHint({}),
+        instructionContent: instructionOverride,
       });
       const requestPreview = createCompactRequestPreview({
         messages: requestMessages,

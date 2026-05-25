@@ -418,9 +418,15 @@ describe('ChatArea UI States', () => {
 
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
-    await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', 6);
+    await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', {
+      keepCount: 6,
+      instruction: 'Edited compact prompt',
+    });
 
-    expect(mockCompactCurrentBranch).toHaveBeenCalledWith({ keepRecentMessages: 6 });
+    expect(mockCompactCurrentBranch).toHaveBeenCalledWith({
+      keepRecentMessages: 6,
+      instructionOverride: 'Edited compact prompt',
+    });
   });
 
   it('renders the compact progress strip while compacting', () => {

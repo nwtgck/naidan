@@ -137,6 +137,7 @@ Question` },
       ],
       promptMode: 'with_message_ids',
       userLanguageHint: 'ja-JP',
+      instructionContent: undefined,
     });
 
     expect(requestMessages).toEqual([
@@ -150,6 +151,22 @@ Question` },
           promptMode: 'with_message_ids',
           userLanguageHint: 'ja-JP',
         }),
+      },
+    ]);
+  });
+
+  it('uses an overridden compact instruction when provided', () => {
+    const requestMessages = buildCompactRequestMessages({
+      prefix: [],
+      promptMode: 'without_message_ids',
+      userLanguageHint: 'en-US',
+      instructionContent: 'Custom compact prompt',
+    });
+
+    expect(requestMessages).toEqual([
+      {
+        role: 'user',
+        content: 'Custom compact prompt',
       },
     ]);
   });

@@ -193,16 +193,18 @@ export function buildCompactRequestMessages({
   prefix,
   promptMode,
   userLanguageHint,
+  instructionContent,
 }: {
   prefix: readonly ChatMessage[];
   promptMode: ContextCompactPromptMode;
   userLanguageHint: string | undefined;
+  instructionContent: string | undefined;
 }): ChatMessage[] {
   return [
     ...prefix,
     {
       role: 'user',
-      content: createCompactInstruction({
+      content: instructionContent ?? createCompactInstruction({
         promptMode,
         userLanguageHint,
       }),
