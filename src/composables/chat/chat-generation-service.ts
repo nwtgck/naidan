@@ -14,11 +14,21 @@ import type {
   MessageNode,
   MultimodalContent,
   ToolMessageNode,
+  UserMessageNode,
 } from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { LLMProvider } from '@/services/lm/types';
 import type { Tool } from '@/services/tools/types';
 import { fileToDataUrl, findNodeInBranch, findParentInBranch, getAllMessages, getChatBranchIterator, processThinking } from '@/utils/chat-tree';
-import { parseImageRequest, stripNaidanSentinels } from '@/utils/image-generation';
+import {
+  SENTINEL_IMAGE_PENDING,
+  createImageRequestMarker,
+  createImageResponseMarker,
+  isImageRequest,
+  parseImageRequest,
+  stripNaidanSentinels,
+  type ImageRequestParams,
+} from '@/utils/image-generation';
 
 type ResolvedGenerationSettings = {
   endpointType: EndpointType;
@@ -35,22 +45,57 @@ type PersistedToolContent =
   | { type: 'binary_object'; id: string };
 
 export type ChatGenerationService = {
+  sendMessage({
+    content,
+    parentId,
+    attachments,
+    chatTarget,
+    lmParameters,
+  }: {
+    content: string;
+    parentId?: string | null;
+    attachments?: Attachment[];
+    chatTarget?: Chat | Readonly<Chat>;
+    lmParameters?: LmParameters;
+  }): Promise<boolean>;
+
   generateResponse({
     chat,
     assistantId,
     lmParameters,
+    onReady,
   }: {
     chat: Chat | Readonly<Chat>;
     assistantId: string;
     lmParameters?: LmParameters;
+    onReady?: (_args: Record<never, never>) => void;
   }): Promise<void>;
 };
 
 export function createChatGenerationService({
+  getCurrentChat,
   getLiveChat,
   registerLiveInstance,
+  isProcessing,
+  startProcessing,
+  finishProcessing,
   triggerCurrentChat,
   resolveSettings,
+  fetchAvailableModels,
+  canPersistBinary,
+  persistAttachment,
+  confirmTemporaryAttachments,
+  dismissHeavyContentAlert,
+  showOnboardingDraft,
+  isImageMode,
+  getSelectedImageModel,
+  getResolution,
+  getCount,
+  getSteps,
+  getSeed,
+  getPersistAs,
+  getAvailableModels,
+  reportMissingImageModel,
   setActiveGeneration,
   deleteActiveGeneration,
   hasActiveGeneration,
@@ -59,6 +104,7 @@ export function createChatGenerationService({
   persistToolContent,
   updateChatContent,
   updateChatMeta,
+  reloadAfterGenerationMetaUpdate,
   setVolatileAssistantError,
   clearVolatileAssistantError,
   setVolatileToolOutput,
@@ -69,11 +115,49 @@ export function createChatGenerationService({
   requestPersistence,
   showGenerationFailedToast,
   generateChatTitle,
+  reorderSidebarChatAfterSend,
 }: {
+  getCurrentChat: () => Readonly<Chat> | null;
   getLiveChat: ({ chat }: { chat: Chat | Readonly<Chat> }) => Chat;
   registerLiveInstance: ({ chat }: { chat: Chat }) => void;
+  isProcessing: ({ chatId }: { chatId: string }) => boolean;
+  startProcessing: ({ chatId }: { chatId: string }) => void;
+  finishProcessing: ({ chatId }: { chatId: string }) => void;
   triggerCurrentChat: ({ chatId }: { chatId: string }) => void;
   resolveSettings: ({ chat }: { chat: Chat }) => ResolvedGenerationSettings;
+  fetchAvailableModels: ({
+    chatId,
+  }: {
+    chatId: string;
+  }) => Promise<string[]>;
+  canPersistBinary: () => boolean;
+  persistAttachment: ({ attachment }: { attachment: Attachment }) => Promise<Attachment>;
+  confirmTemporaryAttachments: (_args: Record<never, never>) => Promise<boolean>;
+  dismissHeavyContentAlert: (_args: Record<never, never>) => void;
+  showOnboardingDraft: ({
+    url,
+    type,
+    models,
+  }: {
+    url: string | undefined;
+    type: EndpointType;
+    models: string[];
+  }) => void;
+  isImageMode: ({ chatId }: { chatId: string }) => boolean;
+  getSelectedImageModel: ({
+    chatId,
+    availableModels,
+  }: {
+    chatId: string;
+    availableModels: string[];
+  }) => string | undefined;
+  getResolution: ({ chatId }: { chatId: string }) => { width: number; height: number };
+  getCount: ({ chatId }: { chatId: string }) => number;
+  getSteps: ({ chatId }: { chatId: string }) => number | undefined;
+  getSeed: ({ chatId }: { chatId: string }) => number | 'browser_random' | undefined;
+  getPersistAs: ({ chatId }: { chatId: string }) => ImageRequestParams['persistAs'];
+  getAvailableModels: () => string[];
+  reportMissingImageModel: (_args: Record<never, never>) => Promise<void>;
   setActiveGeneration: ({
     chatId,
     generation,
@@ -134,6 +218,7 @@ export function createChatGenerationService({
     id: string;
     updater: (current: Chat | null) => Chat | Promise<Chat>;
   }) => Promise<void>;
+  reloadAfterGenerationMetaUpdate: (_args: Record<never, never>) => Promise<void>;
   setVolatileAssistantError: ({
     chatId,
     messageId,
@@ -184,16 +269,205 @@ export function createChatGenerationService({
     signal: AbortSignal | undefined;
     titleModelIdOverride: string | undefined;
   }) => Promise<string | undefined>;
+  reorderSidebarChatAfterSend: ({ chatId }: { chatId: string }) => Promise<void>;
 }): ChatGenerationService {
+  async function sendMessage({
+    content,
+    parentId = undefined,
+    attachments = [],
+    chatTarget = undefined,
+    lmParameters = undefined,
+  }: {
+    content: string;
+    parentId?: string | null;
+    attachments?: Attachment[];
+    chatTarget?: Chat | Readonly<Chat>;
+    lmParameters?: LmParameters;
+  }) {
+    const target = chatTarget || getCurrentChat();
+    if (!target) return false;
+    if (isProcessing({ chatId: target.id })) return false;
+
+    const chat = getLiveChat({ chat: target });
+    startProcessing({ chatId: chat.id });
+    registerLiveInstance({ chat });
+
+    try {
+      const resolved = resolveSettings({ chat });
+      const type = resolved.endpointType;
+      const url = resolved.endpointUrl;
+      let resolvedModel = chat.modelId || resolved.modelId;
+
+      if (url || type === 'transformers_js') {
+        const models = await fetchAvailableModels({ chatId: chat.id });
+        if (models.length > 0) {
+          const preferredModel = chat.modelId || resolved.modelId;
+          if (preferredModel && models.includes(preferredModel)) {
+            resolvedModel = preferredModel;
+          } else if (preferredModel) {
+            resolvedModel = models[0] || '';
+          }
+        }
+      }
+
+      if ((!url && type !== 'transformers_js') || !resolvedModel) {
+        const models = await fetchAvailableModels({ chatId: chat.id });
+        showOnboardingDraft({
+          url,
+          type,
+          models,
+        });
+        return false;
+      }
+
+      const processedAttachments: Attachment[] = [];
+      if (attachments.length > 0 && !canPersistBinary()) {
+        const confirmed = await confirmTemporaryAttachments({});
+        if (!confirmed) return false;
+        dismissHeavyContentAlert({});
+      }
+
+      for (const attachment of attachments) {
+        processedAttachments.push(await persistAttachment({ attachment }));
+      }
+
+      const imageModeEnabled = isImageMode({ chatId: chat.id });
+      const imageModel = imageModeEnabled
+        ? getSelectedImageModel({ chatId: chat.id, availableModels: getAvailableModels() })
+        : undefined;
+      const resolution = getResolution({ chatId: chat.id });
+      const count = getCount({ chatId: chat.id });
+      const steps = getSteps({ chatId: chat.id });
+      const seed = getSeed({ chatId: chat.id });
+      const persistAs = getPersistAs({ chatId: chat.id });
+
+      let finalContent = content;
+      if (imageModeEnabled && !isImageRequest({ content })) {
+        if (!imageModel) {
+          await reportMissingImageModel({});
+          return false;
+        }
+        finalContent = createImageRequestMarker({
+          ...resolution,
+          model: imageModel,
+          count,
+          steps,
+          seed: seed === 'browser_random' ? 'browser_random' : seed,
+          persistAs,
+        }) + content;
+      }
+
+      const userMessage: UserMessageNode = {
+        id: generateId(),
+        role: 'user',
+        content: finalContent,
+        attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
+        timestamp: Date.now(),
+        replies: { items: [] },
+        thinking: undefined,
+        error: undefined,
+        modelId: undefined,
+        lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
+        toolCalls: undefined,
+        results: undefined,
+      };
+
+      const assistantMessage: AssistantMessageNode = {
+        id: generateId(),
+        role: 'assistant',
+        content: imageModeEnabled
+          ? createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING
+          : '',
+        timestamp: Date.now(),
+        modelId: imageModel || resolvedModel,
+        replies: { items: [] },
+        attachments: undefined,
+        thinking: undefined,
+        error: undefined,
+        lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
+        toolCalls: undefined,
+        results: undefined,
+      };
+      userMessage.replies.items.push(assistantMessage);
+
+      if (!chat.root) {
+        chat.root = { items: [] };
+      }
+
+      if (parentId === null) {
+        chat.root.items.push(userMessage);
+      } else {
+        const candidateParentId = parentId || chat.currentLeafId;
+        const parentNode = candidateParentId
+          ? findNodeInBranch({ items: chat.root.items, targetId: candidateParentId })
+          : null;
+        if (parentNode) {
+          parentNode.replies.items.push(userMessage);
+        } else {
+          chat.root.items.push(userMessage);
+        }
+      }
+
+      chat.currentLeafId = assistantMessage.id;
+      triggerCurrentChat({ chatId: chat.id });
+      await updateChatContent({
+        id: chat.id,
+        updater: (current) => ({
+          ...(current || {}),
+          root: chat.root,
+          currentLeafId: chat.currentLeafId,
+        }),
+      });
+      await updateChatMeta({
+        id: chat.id,
+        updater: (current) => {
+          if (!current) return chat;
+          return { ...current, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
+        },
+      });
+      await reorderSidebarChatAfterSend({ chatId: chat.id });
+      let markGenerationReady: (() => void) | undefined;
+      const generationReady = new Promise<void>(resolve => {
+        markGenerationReady = resolve;
+      });
+      generateResponse({
+        chat,
+        assistantId: assistantMessage.id,
+        lmParameters,
+        onReady: (_args) => {
+          markGenerationReady?.();
+          markGenerationReady = undefined;
+        },
+      }).catch(error => {
+        markGenerationReady?.();
+        markGenerationReady = undefined;
+        console.error('Background generation failed:', error);
+      });
+      await generationReady;
+      return true;
+    } finally {
+      finishProcessing({ chatId: chat.id });
+    }
+  }
+
   async function generateResponse({
     chat,
     assistantId,
     lmParameters,
+    onReady = undefined,
   }: {
     chat: Chat | Readonly<Chat>;
     assistantId: string;
     lmParameters?: LmParameters;
+    onReady?: (_args: Record<never, never>) => void;
   }) {
+    let didSignalReady = false;
+    const signalReady = () => {
+      if (didSignalReady) return;
+      didSignalReady = true;
+      onReady?.({});
+    };
+
     const mutableChat = getLiveChat({ chat });
     const assistantNode = findNodeInBranch({ items: mutableChat.root.items, targetId: assistantId });
     if (!assistantNode) throw new Error('Assistant node not found');
@@ -247,6 +521,7 @@ export function createChatGenerationService({
           }
         }
 
+        signalReady();
         await handleImageGeneration({
           chatId: mutableChat.id,
           assistantId,
@@ -287,6 +562,7 @@ export function createChatGenerationService({
       };
 
       try {
+        signalReady();
         await provider.chat({
           messages: finalMessages,
           model: resolvedModel,
@@ -427,10 +703,11 @@ export function createChatGenerationService({
               try {
                 await updateChatContent({
                   id: mutableChat.id,
-                  updater: (current) => {
-                    if (!current) throw new Error('Chat content not found');
-                    return { ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId };
-                  },
+                  updater: (current) => ({
+                    ...(current || {}),
+                    root: mutableChat.root,
+                    currentLeafId: mutableChat.currentLeafId,
+                  }),
                 });
                 lastSave = Date.now();
               } finally {
@@ -449,7 +726,11 @@ export function createChatGenerationService({
 
       await updateChatContent({
         id: mutableChat.id,
-        updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+        updater: (current) => ({
+          ...(current || {}),
+          root: mutableChat.root,
+          currentLeafId: mutableChat.currentLeafId,
+        }),
       });
       processThinking({ node: assistantNode });
       mutableChat.updatedAt = Date.now();
@@ -462,6 +743,7 @@ export function createChatGenerationService({
         });
       }
     } catch (error) {
+      signalReady();
       const lastOpen = assistantNode.content.lastIndexOf('<think>');
       const lastClose = assistantNode.content.lastIndexOf('</think>');
       if (lastOpen > -1 && lastClose < lastOpen) {
@@ -474,7 +756,11 @@ export function createChatGenerationService({
         triggerCurrentChat({ chatId: mutableChat.id });
         await updateChatContent({
           id: mutableChat.id,
-          updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+          updater: (current) => ({
+            ...(current || {}),
+            root: mutableChat.root,
+            currentLeafId: mutableChat.currentLeafId,
+          }),
         });
       } else {
         assistantNode.error = (error as Error).message;
@@ -491,11 +777,16 @@ export function createChatGenerationService({
         triggerCurrentChat({ chatId: mutableChat.id });
         await updateChatContent({
           id: mutableChat.id,
-          updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+          updater: (current) => ({
+            ...(current || {}),
+            root: mutableChat.root,
+            currentLeafId: mutableChat.currentLeafId,
+          }),
         });
         await showGenerationFailedToast({ chat: mutableChat });
       }
     } finally {
+      signalReady();
       if (hasActiveGeneration({ chatId: mutableChat.id })) {
         deleteActiveGeneration({ chatId: mutableChat.id });
         notifyGenerationStatus({ chatId: mutableChat.id, status: 'stopped' });
@@ -505,6 +796,8 @@ export function createChatGenerationService({
             if (!current) return mutableChat;
             return { ...current, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
           },
+        }).then(async () => {
+          await reloadAfterGenerationMetaUpdate({});
         }).catch(() => {});
 
         const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
@@ -517,6 +810,7 @@ export function createChatGenerationService({
   }
 
   return {
+    sendMessage,
     generateResponse,
   };
 }

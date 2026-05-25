@@ -1,9 +1,8 @@
 import { generateId } from '@/utils/id';
 import { ref, computed, reactive, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
-import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, Attachment, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
+import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { UNKNOWN_STEPS } from '@/services/lm/types';
 import { OpenAIProvider } from '@/services/lm/openai';
 import { OllamaProvider } from '@/services/lm/ollama';
 import { TransformersJsProvider } from '@/services/transformers-js/provider';
@@ -15,13 +14,6 @@ import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
 import { findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranchIterator, createBranchFromMessages, getAllMessages, type HistoryItem } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
-import {
-  SENTINEL_IMAGE_PENDING,
-  isImageRequest,
-  createImageRequestMarker,
-  createImageResponseMarker,
-  type ImageRequestParams
-} from '@/utils/image-generation';
 
 import { useChatTools } from './useChatTools';
 import { useChatWeshPreferences } from './useChatWeshPreferences';
@@ -878,8 +870,16 @@ export function useChat() {
   const abortTitleGeneration = chatTitleService.abortTitleGeneration;
   const { enabledToolNames } = useChatTools();
   const chatGenerationService = createChatGenerationService({
+    getCurrentChat: () => _currentChat.value,
     getLiveChat,
     registerLiveInstance,
+    isProcessing,
+    startProcessing: ({ chatId }) => {
+      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
+    },
+    finishProcessing: ({ chatId }) => {
+      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
+    },
     triggerCurrentChat: ({ chatId }) => {
       if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
         triggerRef(_currentChat);
@@ -896,6 +896,60 @@ export function useChat() {
         systemPromptMessages: resolved.systemPromptMessages,
         autoTitleEnabled: resolved.autoTitleEnabled,
       };
+    },
+    fetchAvailableModels: ({ chatId }) => fetchAvailableModels({ chatId, customEndpoint: undefined }),
+    canPersistBinary: () => storageService.canPersistBinary,
+    persistAttachment: async ({ attachment }) => {
+      switch (attachment.status) {
+      case 'memory':
+        if (storageService.canPersistBinary) {
+          try {
+            await storageService.saveFile(attachment.blob, attachment.binaryObjectId, attachment.originalName);
+            return { ...attachment, status: 'persisted' };
+          } catch {
+            return attachment;
+          }
+        }
+        return attachment;
+      case 'persisted':
+      case 'missing':
+        return attachment;
+      default: {
+        const _ex: never = attachment;
+        throw new Error(`Unhandled attachment status: ${_ex}`);
+      }
+      }
+    },
+    confirmTemporaryAttachments: async (_args) => {
+      if (settings.value.heavyContentAlertDismissed !== false) {
+        return true;
+      }
+      return await useConfirm().showConfirm({
+        title: 'Attachments cannot be saved',
+        message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
+        confirmButtonText: 'Continue anyway',
+        cancelButtonText: 'Cancel',
+      });
+    },
+    dismissHeavyContentAlert: (_args) => {
+      useSettings().setHeavyContentAlertDismissed?.({ dismissed: true });
+    },
+    showOnboardingDraft: ({ url, type, models }) => {
+      useSettings().setOnboardingDraft?.({ draft: { url: url || '', type, models, selectedModel: models[0] || '' } });
+      useSettings().setIsOnboardingDismissed?.({ dismissed: false });
+    },
+    isImageMode,
+    getSelectedImageModel,
+    getResolution,
+    getCount,
+    getSteps,
+    getSeed,
+    getPersistAs,
+    getAvailableModels: () => availableModels.value,
+    reportMissingImageModel: async (_args) => {
+      const { useGlobalEvents } = await import('../composables/useGlobalEvents');
+      const { addErrorEvent } = useGlobalEvents();
+      addErrorEvent({ source: 'useChat:sendMessage', message: 'No image generation model found (starting with x/z-image-turbo:).' });
     },
     setActiveGeneration: ({ chatId, generation }) => {
       chatRuntimeStore.setActiveGeneration({ chatId, generation });
@@ -917,9 +971,10 @@ export function useChat() {
       return { type: 'text', text };
     },
     updateChatContent,
-    updateChatMeta: ({ id, updater }) => updateChatMeta({ id, updater }).then(async () => {
+    updateChatMeta,
+    reloadAfterGenerationMetaUpdate: async (_args) => {
       await loadData({});
-    }),
+    },
     setVolatileAssistantError,
     clearVolatileAssistantError,
     setVolatileToolOutput: ({ toolCallId, output }) => {
@@ -983,175 +1038,10 @@ export function useChat() {
       signal,
       titleModelIdOverride,
     }),
+    reorderSidebarChatAfterSend: ({ chatId }) => reorderSidebarChatAfterSend({ chatId }),
   });
   const generateResponse = chatGenerationService.generateResponse;
-
-  const sendMessage = async ({ content, parentId, attachments = [], chatTarget, lmParameters }: { content: string, parentId?: string | null, attachments?: Attachment[], chatTarget?: Chat | Readonly<Chat>, lmParameters?: LmParameters }): Promise<boolean> => {
-    const target = chatTarget || _currentChat.value;
-    if (!target) return false;
-    const rawTarget = toRaw(target);
-    if (isProcessing({ chatId: rawTarget.id })) return false;
-
-    const chat = getLiveChat({ chat: target });
-    chatRuntimeStore.startTask({
-      key: {
-        kind: 'process',
-        chatId: chat.id,
-      },
-    });
-    registerLiveInstance({ chat });
-
-    try {
-      const { settings: globalSettings, setHeavyContentAlertDismissed, setOnboardingDraft, setIsOnboardingDismissed } = useSettings();
-      const { showConfirm } = useConfirm();
-      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
-      const type = resolved.endpointType;
-      const url = resolved.endpointUrl;
-      let resolvedModel = chat.modelId || resolved.modelId;
-
-      if (url || type === 'transformers_js') {
-        const models = await fetchAvailableModels({ chatId: chat.id, customEndpoint: undefined });
-        if (models.length > 0) {
-          const preferredModel = chat.modelId || resolved.modelId;
-          if (preferredModel && models.includes(preferredModel)) resolvedModel = preferredModel;
-          else if (preferredModel) resolvedModel = models[0] || '';
-        }
-      }
-
-      if ((!url && type !== 'transformers_js') || !resolvedModel) {
-        const models = await fetchAvailableModels({ chatId: chat.id, customEndpoint: undefined });
-        setOnboardingDraft({ draft: { url, type, models, selectedModel: models[0] || '', } });
-        setIsOnboardingDismissed({ dismissed: false });
-        return false;
-      }
-
-      const processedAttachments: Attachment[] = [];
-      const canPersist = storageService.canPersistBinary;
-      if (attachments.length > 0 && !canPersist && globalSettings.value.heavyContentAlertDismissed === false) {
-        const confirmed = await showConfirm({
-          title: 'Attachments cannot be saved',
-          message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
-          confirmButtonText: 'Continue anyway', cancelButtonText: 'Cancel',
-        });
-        if (!confirmed) return false;
-        setHeavyContentAlertDismissed({ dismissed: true });
-      }
-
-      for (const att of attachments) {
-        switch (att.status) {
-        case 'memory':
-          if (canPersist) {
-            try {
-              await storageService.saveFile(att.blob, att.binaryObjectId, att.originalName);
-              processedAttachments.push({ ...att, status: 'persisted' });
-            } catch (e) {
-              processedAttachments.push(att);
-            }
-          } else processedAttachments.push(att);
-          break;
-        case 'persisted':
-        case 'missing':
-          processedAttachments.push(att);
-          break;
-        default: {
-          const _ex: never = att;
-          throw new Error(`Unhandled attachment status: ${_ex}`);
-        }
-        }
-      }
-
-      const isImgMode = isImageMode({ chatId: chat.id });
-      const imageModel = isImgMode ? getSelectedImageModel({ chatId: chat.id, availableModels: availableModels.value }) : undefined;
-      const res = getResolution({ chatId: chat.id });
-      const count = getCount({ chatId: chat.id });
-      const steps = getSteps({ chatId: chat.id });
-      const seed = getSeed({ chatId: chat.id });
-      const persistAs = getPersistAs({ chatId: chat.id });
-
-      let finalContent = content;
-      if (isImgMode && !isImageRequest({ content })) {
-        if (!imageModel) {
-          const { useGlobalEvents } = await import('../composables/useGlobalEvents');
-          const { addErrorEvent } = useGlobalEvents();
-          addErrorEvent({ source: 'useChat:sendMessage', message: 'No image generation model found (starting with x/z-image-turbo:).' });
-          return false;
-        }
-        finalContent = createImageRequestMarker({
-          ...res,
-          model: imageModel,
-          count,
-          steps,
-          seed: seed === 'browser_random' ? 'browser_random' : seed,
-          persistAs
-        }) + content;
-
-      }
-
-      const userMsg: UserMessageNode = {
-        id: generateId(),
-        role: 'user',
-        content: finalContent,
-        attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
-        timestamp: Date.now(),
-        replies: { items: [] },
-        thinking: undefined,
-        error: undefined,
-        modelId: undefined,
-        lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
-        toolCalls: undefined,
-        results: undefined,
-      };
-
-      const assistantContent = isImgMode
-        ? createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING
-        : '';
-
-      const assistantMsg: AssistantMessageNode = {
-        id: generateId(),
-        role: 'assistant',
-        content: assistantContent,
-        timestamp: Date.now(),
-        modelId: imageModel || resolvedModel,
-        replies: { items: [] },
-        attachments: undefined,
-        thinking: undefined,
-        error: undefined,
-        lmParameters: lmParameters || EMPTY_LM_PARAMETERS,
-        toolCalls: undefined,
-        results: undefined,
-      };
-      userMsg.replies.items.push(assistantMsg);
-
-      if (!chat.root) chat.root = { items: [] };
-
-      if (parentId === null) chat.root.items.push(userMsg);
-      else {
-        const pId = parentId || chat.currentLeafId;
-        const parentNode = pId ? findNodeInBranch({ items: chat.root.items, targetId: pId }) : null;
-        if (parentNode) parentNode.replies.items.push(userMsg);
-        else chat.root.items.push(userMsg);
-      }
-
-      chat.currentLeafId = assistantMsg.id;
-      if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-      await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
-      await updateChatMeta({ id: chat.id, updater: (curr) => {
-        if (!curr) return chat;
-        return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
-      } });
-      await reorderSidebarChatAfterSend({ chatId: chat.id });
-      generateResponse({ chat: chat, assistantId: assistantMsg.id, lmParameters: lmParameters }).catch(e => console.error('Background generation failed:', e));
-      await Promise.resolve();
-      return true;
-    } finally {
-      chatRuntimeStore.finishTask({
-        key: {
-          kind: 'process',
-          chatId: chat.id,
-        },
-      });
-    }
-  };
+  const sendMessage = chatGenerationService.sendMessage;
 
   const regenerateMessage = async ({ failedMessageId }: { failedMessageId: string }) => {
     if (!_currentChat.value) return;
@@ -1199,7 +1089,24 @@ export function useChat() {
         if (!curr) return chat;
         return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
       } });
-      generateResponse({ chat: chat, assistantId: newAssistantMsg.id, lmParameters: failedNode.lmParameters }).catch(e => console.error('Background generation failed:', e));
+      let markGenerationReady: (() => void) | undefined;
+      const generationReady = new Promise<void>(resolve => {
+        markGenerationReady = resolve;
+      });
+      generateResponse({
+        chat,
+        assistantId: newAssistantMsg.id,
+        lmParameters: failedNode.lmParameters,
+        onReady: (_args) => {
+          markGenerationReady?.();
+          markGenerationReady = undefined;
+        },
+      }).catch(e => {
+        markGenerationReady?.();
+        markGenerationReady = undefined;
+        console.error('Background generation failed:', e);
+      });
+      await generationReady;
     } finally {
       chatRuntimeStore.finishTask({
         key: {
