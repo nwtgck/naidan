@@ -383,7 +383,7 @@ describe('ChatArea UI States', () => {
     expect(wrapper.find('[data-testid="chat-group-badge"]').exists()).toBe(false);
   });
 
-  it('triggers compact context from the header more actions menu', async () => {
+  it('opens compact context settings from the header more actions menu', async () => {
     mockActiveMessages.value = Array.from({ length: 7 }, (_, index) => ({
       id: `message-${index + 1}`,
       role: index % 2 === 0 ? 'user' : 'assistant',
@@ -398,6 +398,27 @@ describe('ChatArea UI States', () => {
 
     await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
     await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
+
+    expect(wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).exists()).toBe(true);
+    expect(mockCompactCurrentBranch).not.toHaveBeenCalled();
+  });
+
+  it('runs compact context after confirming the settings dialog', async () => {
+    mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => ({
+      id: `message-${index + 1}`,
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: `Message ${index + 1}`,
+      timestamp: index + 1,
+      replies: { items: [] },
+    })) as MessageNode[];
+
+    wrapper = mount(ChatArea, {
+      global: { plugins: [router] },
+    });
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
+    await wrapper.findComponent({ name: 'ContextCompactSettingsDialog' }).vm.$emit('confirm', 6);
 
     expect(mockCompactCurrentBranch).toHaveBeenCalledWith({ keepRecentMessages: 6 });
   });
@@ -417,6 +438,53 @@ Question`,
     });
 
     expect(wrapper.find('[data-testid="context-compact-progress-strip"]').exists()).toBe(true);
+  });
+
+  it('shows the neural sync effect only for the compact completion transition in the active chat', async () => {
+    vi.useFakeTimers();
+    try {
+      wrapper = mount(ChatArea, {
+        global: { plugins: [router] },
+      });
+
+      mockContextCompactProgress.value = {
+        phase: 'complete',
+        requestPreview: undefined,
+        outputPreview: '# Compact Context',
+      };
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(1200);
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
+
+      mockCurrentChat.value = {
+        ...(mockCurrentChat.value as Chat),
+        id: '2',
+        title: 'Second Chat',
+      };
+      mockContextCompactProgress.value = { phase: 'idle' };
+      await nextTick();
+
+      mockCurrentChat.value = {
+        ...(mockCurrentChat.value as Chat),
+        id: '1',
+        title: 'Test Chat',
+      };
+      mockContextCompactProgress.value = {
+        phase: 'complete',
+        requestPreview: undefined,
+        outputPreview: '# Compact Context',
+      };
+      await nextTick();
+
+      expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('should show the abort button and hide the send button during streaming', async () => {

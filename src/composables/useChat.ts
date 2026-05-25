@@ -2216,9 +2216,21 @@ export function useChat() {
         return false;
       }
 
-      const promptMode: ContextCompactPromptMode = getNaidanSysfsMountSelection({ chatId: mutableChat.id }) === 'none'
-        ? 'without_message_ids'
-        : 'with_message_ids';
+      const promptMode: ContextCompactPromptMode = (() => {
+        const mountSelection = getNaidanSysfsMountSelection({ chatId: mutableChat.id });
+        switch (mountSelection) {
+        case 'none':
+          return 'without_message_ids';
+        case 'current_chat_only':
+        case 'current_chat_with_chat_group':
+        case 'all_chats':
+          return 'with_message_ids';
+        default: {
+          const _ex: never = mountSelection;
+          throw new Error(`Unhandled naidan sysfs mount selection: ${_ex}`);
+        }
+        }
+      })();
 
       setContextCompactProgress({
         chatId: mutableChat.id,

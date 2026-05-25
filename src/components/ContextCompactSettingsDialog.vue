@@ -14,10 +14,11 @@ const emit = defineEmits<{
 }>();
 
 const keepCount = ref(props.initialKeepCount);
+const maxKeepCount = computed(() => Math.max(0, props.totalMessages - 1));
 
 watch(() => props.isOpen, (open) => {
   if (open) {
-    keepCount.value = Math.min(props.initialKeepCount, props.totalMessages);
+    keepCount.value = Math.min(props.initialKeepCount, maxKeepCount.value);
   }
 });
 
@@ -26,8 +27,18 @@ const compactCount = computed(() => Math.max(0, props.totalMessages - keepCount.
 const percentageToKeep = computed(() => props.totalMessages > 0 ? (keepCount.value / props.totalMessages) * 100 : 0);
 
 function handleConfirm() {
+  if (compactCount.value === 0) {
+    return;
+  }
   emit('confirm', keepCount.value);
 }
+
+
+defineExpose({
+  TEST_ONLY: {
+    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+  }
+});
 </script>
 
 <template>
@@ -68,8 +79,8 @@ function handleConfirm() {
         <div class="p-6 space-y-8">
           <!-- Visualization -->
           <div class="relative h-20 flex items-end gap-1 px-2">
-            <div 
-              v-for="i in 20" 
+            <div
+              v-for="i in 20"
               :key="i"
               class="flex-1 rounded-t-sm transition-all duration-500"
               :class="[
@@ -97,7 +108,7 @@ function handleConfirm() {
               v-model.number="keepCount"
               type="range"
               min="0"
-              :max="totalMessages"
+              :max="maxKeepCount"
               step="1"
               class="w-full h-1.5 bg-indigo-100 dark:bg-indigo-950 rounded-lg appearance-none cursor-pointer accent-indigo-600 dark:accent-indigo-400 focus:outline-none"
             />
@@ -122,8 +133,8 @@ function handleConfirm() {
                   ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-500/20'
                   : 'bg-white dark:bg-indigo-950/20 border-indigo-100 dark:border-indigo-900/40 text-indigo-600/60 dark:text-indigo-400/60 hover:border-indigo-300 dark:hover:border-indigo-700'
               ]"
-              :disabled="preset.value > totalMessages"
-              @click="keepCount = Math.min(preset.value, totalMessages)"
+              :disabled="preset.value > maxKeepCount"
+              @click="keepCount = Math.min(preset.value, maxKeepCount)"
             >
               {{ preset.label }}
             </button>
@@ -147,6 +158,8 @@ function handleConfirm() {
           </button>
           <button
             class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-500/20 transition-all active:scale-95 flex items-center gap-2"
+            :disabled="compactCount === 0"
+            :class="{ 'opacity-50 cursor-not-allowed active:scale-100': compactCount === 0 }"
             @click="handleConfirm"
           >
             Compact Now

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { Loader2Icon, SquareIcon, SparklesIcon, ChevronDownIcon, ChevronUpIcon, CheckCircle2Icon, XCircleIcon } from 'lucide-vue-next';
+import { SquareIcon, SparklesIcon, ChevronDownIcon, ChevronUpIcon, CheckCircle2Icon, XCircleIcon } from 'lucide-vue-next';
 import type { ContextCompactProgress } from '@/services/context-compact';
 import { toContextCompactDisplayProgress } from '@/services/context-compact';
 
@@ -162,7 +162,7 @@ defineExpose({
         <div class="min-w-0 flex-1 space-y-2">
           <!-- Header: Title & Percentage -->
           <div class="flex items-center justify-between gap-3">
-            <span 
+            <span
               class="truncate text-[10px] font-black uppercase tracking-[0.2em] animate-text-scan bg-gradient-to-r bg-[length:200%_auto] bg-clip-text text-transparent"
               :class="{
                 'from-emerald-600 via-teal-500 to-emerald-600 dark:from-emerald-400 dark:via-teal-300 dark:to-emerald-400': progress.phase === 'complete',
@@ -173,7 +173,7 @@ defineExpose({
             >
               {{ display.title }}
             </span>
-            <span 
+            <span
               class="shrink-0 text-[10px] font-black tabular-nums transition-colors duration-500"
               :class="{
                 'text-emerald-500 dark:text-emerald-400': progress.phase === 'complete',
@@ -189,7 +189,7 @@ defineExpose({
           <!-- Progress Bar Container -->
           <div class="relative">
             <!-- Glow background -->
-            <div 
+            <div
               class="absolute inset-0 rounded-full blur-[2px] transition-all duration-500 ease-out"
               :class="{
                 'bg-emerald-500/20 dark:bg-emerald-400/10': progress.phase === 'complete',
@@ -197,8 +197,8 @@ defineExpose({
               }"
               :style="{ width: `${display.percent}%` }"
             />
-            
-            <div 
+
+            <div
               class="h-1.5 overflow-hidden rounded-full transition-colors duration-500 ring-1 ring-inset"
               :class="[
                 progress.phase === 'complete' ? 'bg-emerald-100/50 dark:bg-emerald-950/40 ring-emerald-500/10' : 'bg-indigo-100 dark:bg-gray-800 ring-indigo-500/10 dark:ring-indigo-400/10'
@@ -220,7 +220,7 @@ defineExpose({
           </div>
 
           <!-- Detail Text -->
-          <p 
+          <p
             class="truncate text-[11px] font-medium transition-colors duration-500"
             :class="{
               'text-emerald-700/80 dark:text-emerald-300/70': progress.phase === 'complete',
@@ -236,15 +236,15 @@ defineExpose({
           <div v-if="requestPreview || outputPreview" class="pt-1 space-y-2">
             <!-- Request Toggle (Hidden by default) -->
             <div v-if="requestPreview" data-testid="context-compact-request-preview">
-              <button 
+              <button
                 class="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-indigo-500/70 hover:text-indigo-600 dark:text-indigo-400/60 dark:hover:text-indigo-300 transition-colors"
                 data-testid="context-compact-request-toggle"
                 @click="showRequestPreview = !showRequestPreview"
               >
                 <component :is="showRequestPreview ? ChevronUpIcon : ChevronDownIcon" class="w-3 h-3" />
-                {{ showRequestPreview ? 'Show Request' : 'Show Request' }}
+                {{ showRequestPreview ? 'Hide Request' : 'Show Request' }}
               </button>
-              
+
               <div v-if="showRequestPreview" class="mt-1.5 rounded-lg border border-indigo-100/50 bg-indigo-50/30 dark:border-indigo-900/40 dark:bg-gray-900/40 overflow-hidden">
                 <pre
                   ref="requestPreviewRef"

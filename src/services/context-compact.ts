@@ -242,9 +242,18 @@ function cloneResults({
       return {
         toolCallId: result.toolCallId,
         status: 'success',
-        content: result.content.type === 'text'
-          ? { type: 'text', text: result.content.text }
-          : { type: 'binary_object', id: result.content.id },
+        content: (() => {
+          switch (result.content.type) {
+          case 'text':
+            return { type: 'text', text: result.content.text } as const;
+          case 'binary_object':
+            return { type: 'binary_object', id: result.content.id } as const;
+          default: {
+            const _ex: never = result.content;
+            throw new Error(`Unhandled tool success content: ${_ex}`);
+          }
+          }
+        })(),
       };
     case 'error':
       return {
@@ -252,9 +261,18 @@ function cloneResults({
         status: 'error',
         error: {
           code: result.error.code,
-          message: result.error.message.type === 'text'
-            ? { type: 'text', text: result.error.message.text }
-            : { type: 'binary_object', id: result.error.message.id },
+          message: (() => {
+            switch (result.error.message.type) {
+            case 'text':
+              return { type: 'text', text: result.error.message.text } as const;
+            case 'binary_object':
+              return { type: 'binary_object', id: result.error.message.id } as const;
+            default: {
+              const _ex: never = result.error.message;
+              throw new Error(`Unhandled tool error message: ${_ex}`);
+            }
+            }
+          })(),
         },
       };
     default: {

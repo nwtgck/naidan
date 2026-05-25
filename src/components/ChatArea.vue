@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, computed, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
@@ -106,13 +106,59 @@ const contextCompactProgress = computed<ContextCompactProgress>(() => {
 });
 
 const showNeuralSyncEffect = ref(false);
-watch(() => contextCompactProgress.value.phase, (newPhase) => {
-  if (newPhase === 'complete') {
-    showNeuralSyncEffect.value = true;
-    setTimeout(() => {
-      showNeuralSyncEffect.value = false;
-    }, 1200);
+const hideNeuralSyncEffectTimer = ref<number | undefined>(undefined);
+
+function clearNeuralSyncEffectTimer(_args: Record<never, never>) {
+  if (hideNeuralSyncEffectTimer.value !== undefined) {
+    window.clearTimeout(hideNeuralSyncEffectTimer.value);
+    hideNeuralSyncEffectTimer.value = undefined;
   }
+}
+
+watch(() => ({
+  chatId: currentChat.value?.id,
+  phase: contextCompactProgress.value.phase,
+}), ({ chatId, phase }, previousState) => {
+  const previousChatId = previousState?.chatId;
+  const previousPhase = previousState?.phase;
+
+  if (
+    phase === 'complete'
+    && previousPhase !== 'complete'
+    && previousChatId === chatId
+    && chatId !== undefined
+  ) {
+    clearNeuralSyncEffectTimer({});
+    showNeuralSyncEffect.value = true;
+    hideNeuralSyncEffectTimer.value = window.setTimeout(() => {
+      showNeuralSyncEffect.value = false;
+      hideNeuralSyncEffectTimer.value = undefined;
+    }, 1200);
+    return;
+  }
+
+  switch (phase) {
+  case 'idle':
+  case 'preparing':
+  case 'building_request':
+  case 'requesting_model':
+  case 'receiving_compact':
+  case 'applying_branch':
+  case 'failed':
+  case 'aborted':
+    showNeuralSyncEffect.value = false;
+    return;
+  case 'complete':
+    return;
+  default: {
+    const _ex: never = phase;
+    throw new Error(`Unhandled compact progress phase: ${_ex}`);
+  }
+  }
+});
+
+onBeforeUnmount(() => {
+  clearNeuralSyncEffectTimer({});
 });
 
 const availableImageModels = computed(() => {
@@ -979,6 +1025,7 @@ watch(
       <div
         v-if="showNeuralSyncEffect"
         class="absolute inset-0 z-50 pointer-events-none overflow-hidden"
+        data-testid="context-compact-neural-sync-effect"
       >
         <div class="neural-scan-line"></div>
         <div class="neural-flash-overlay"></div>
