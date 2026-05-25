@@ -1,6 +1,6 @@
 import { generateId } from '@/utils/id';
 import { ref, computed, reactive, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
-import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, EndpointType, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
+import type { Chat, MessageNode, AssistantMessageNode, ChatGroup, SidebarItem, ChatSummary, EndpointType, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { OpenAIProvider } from '@/services/lm/openai';
@@ -13,7 +13,7 @@ import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
 import { useToast } from './useToast';
-import { findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranchIterator, createBranchFromMessages, getAllMessages, type HistoryItem } from '@/utils/chat-tree';
+import { findNodeInBranch, findParentInBranch, getChatBranchIterator, getAllMessages, type HistoryItem } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 
 import { useChatTools } from './useChatTools';
@@ -26,6 +26,7 @@ import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
 import { createChatGenerationService } from './chat/chat-generation-service';
 import { createChatHierarchyService } from './chat/chat-hierarchy-service';
+import { createChatHistoryService } from './chat/chat-history-service';
 import { createChatImageService } from './chat/chat-image-service';
 import { type AddToastOptions, createChatLifecycleService } from './chat/chat-lifecycle-service';
 import { createChatMountService } from './chat/chat-mount-service';
@@ -1003,180 +1004,33 @@ export function useChat() {
     return result.status === 'compacted';
   };
 
-  const forkChat = async ({ messageId, chatId }: { messageId: string, chatId?: string }): Promise<string | null> => {
-    const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
-    if (!target) return null;
-    const mutableChat = getLiveChat({ chat: target });
-    const path = Array.from(getChatBranchIterator({ chat: mutableChat }));
-    const idx = path.findIndex(m => m.id === messageId);
-    if (idx === -1) return null;
-    const forkPath = path.slice(0, idx + 1);
-    const clonedNodes: MessageNode[] = forkPath.map(n => {
-      const common = { id: n.id, content: n.content, timestamp: n.timestamp, replies: { items: [] } };
-      switch (n.role) {
-      case 'user':
-        return {
-          ...common,
-          role: 'user',
-          attachments: n.attachments,
-          thinking: undefined,
-          error: undefined,
-          modelId: undefined,
-          lmParameters: n.lmParameters || { reasoning: { effort: undefined } },
-          toolCalls: undefined,
-          results: undefined,
-        } as UserMessageNode;
-      case 'assistant':
-        return {
-          ...common,
-          role: 'assistant',
-          attachments: undefined,
-          thinking: n.thinking,
-          error: n.error,
-          modelId: n.modelId,
-          lmParameters: n.lmParameters || { reasoning: { effort: undefined } },
-          toolCalls: n.toolCalls,
-          results: undefined,
-        } as AssistantMessageNode;
-      case 'system':
-        return {
-          ...common,
-          role: 'system',
-          attachments: undefined,
-          thinking: undefined,
-          error: undefined,
-          modelId: undefined,
-          lmParameters: undefined,
-          toolCalls: undefined,
-          results: undefined,
-        } as SystemMessageNode;
-      case 'tool':
-        return {
-          ...common,
-          role: 'tool',
-          content: undefined,
-          attachments: undefined,
-          thinking: undefined,
-          error: undefined,
-          modelId: undefined,
-          lmParameters: undefined,
-          toolCalls: undefined,
-          results: n.results,
-        } as import('../models/types').ToolMessageNode;
-      default: {
-        const _ex: never = n;
-        throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
+  const chatHistoryService = createChatHistoryService({
+    currentChatRef: _currentChat,
+    liveChatRegistry,
+    getLiveChat,
+    registerLiveInstance,
+    updateChatContent,
+    updateChatMeta,
+    updateHierarchy: updater => storageService.updateHierarchy(updater),
+    loadData,
+    openChat: ({ id }) => openChat({ id }),
+    canPersistBinary: () => storageService.canPersistBinary,
+    saveFile: ({ blob, binaryObjectId, originalName }) => storageService.saveFile(blob, binaryObjectId, originalName),
+    isProcessing,
+    abortChat,
+    sendMessage: async ({ content, parentId, attachments, chatTarget, lmParameters }) => {
+      await sendMessage({ content, parentId, attachments, chatTarget, lmParameters });
+    },
+    triggerCurrentChat: ({ chatId }) => {
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+        triggerRef(_currentChat);
       }
-      }
-    });
-    for (let i = 0; i < clonedNodes.length - 1; i++) clonedNodes[i]!.replies.items.push(clonedNodes[i+1]!);
-    const newChatId = generateId();
-    try {
-      const newChatObj: Chat = reactive({
-        ...toRaw(mutableChat),
-        id: newChatId, title: `Fork of ${mutableChat.title || 'New Chat'}`,
-        root: { items: [clonedNodes[0]!] }, currentLeafId: clonedNodes[clonedNodes.length - 1]?.id,
-        originChatId: mutableChat.id, originMessageId: messageId,
-        createdAt: Date.now(), updatedAt: Date.now(),
-        modelId: mutableChat.modelId,
-      });
-      registerLiveInstance({ chat: newChatObj });
-      await updateChatContent({ id: newChatId, updater: () => ({ root: newChatObj.root, currentLeafId: newChatObj.currentLeafId }) });
-      await updateChatMeta({ id: newChatId, updater: () => newChatObj });
-      await storageService.updateHierarchy((curr) => {
-        const node: HierarchyNode = { type: 'chat', id: newChatId };
-        const chatGroupId = mutableChat.groupId;
-        if (chatGroupId) {
-          const group = curr.items.find(i => i.type === 'chat_group' && i.id === chatGroupId) as HierarchyChatGroupNode;
-          if (group) {
-            group.chat_ids.unshift(newChatId); return curr;
-          }
-        }
-        const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
-        const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
-        curr.items.splice(insertIdx, 0, node);
-        return curr;
-      });
-      await loadData({});
-      await openChat({ id: newChatObj.id });
-      return newChatObj.id;
-    } finally { /* No explicit unregister here */ }
-  };
-
-  const editMessage = async ({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) => {
-    if (!_currentChat.value) return;
-    const chatId = toRaw(_currentChat.value).id;
-    if (isProcessing({ chatId })) {
-      abortChat({ chatId });
-      // Wait for the task to actually stop and decTask to be called
-      while (isProcessing({ chatId })) {
-        await new Promise(r => setTimeout(r, 10));
-      }
-    }
-
-    const chat = getLiveChat({ chat: _currentChat.value });
-    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId }); if (!node) return;
-    switch (node.role) {
-    case 'assistant': {
-      const correctedNode: AssistantMessageNode = {
-        id: generateId(),
-        role: 'assistant',
-        content: newContent,
-        attachments: undefined,
-        timestamp: Date.now(),
-        modelId: node.modelId,
-        replies: { items: [] },
-        thinking: undefined,
-        error: undefined,
-        lmParameters: node.lmParameters || EMPTY_LM_PARAMETERS,
-        toolCalls: undefined,
-        results: undefined,
-      };
-      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
-      if (parent) parent.replies.items.push(correctedNode);
-      else chat.root.items.push(correctedNode);
-      chat.currentLeafId = correctedNode.id;
-      await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
-      if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-      break;
-    }
-    case 'user': {
-      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
-      await sendMessage({ content: newContent, parentId: parent ? parent.id : null, attachments: node.attachments, chatTarget: chat, lmParameters: lmParameters });
-      break;
-    }
-    case 'system': {
-      const parent = findParentInBranch({ items: chat.root.items, childId: messageId });
-      await sendMessage({ content: newContent, parentId: parent ? parent.id : null, attachments: undefined, chatTarget: chat, lmParameters: lmParameters });
-      break;
-    }
-    case 'tool':
-      break;
-    default: {
-      const _ex: never = node;
-      throw new Error(`Unhandled role: ${(_ex as { role: string }).role}`);
-    }
-    }
-  };
-
-  const switchVersion = async ({ messageId }: { messageId: string }) => {
-    if (!_currentChat.value) return;
-    const chat = getLiveChat({ chat: _currentChat.value });
-    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
-    if (node) {
-      chat.currentLeafId = findDeepestLeaf({ node }).id;
-      if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-      await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
-    }
-  };
-
-  const getSiblings = ({ messageId, chatId }: { messageId: string, chatId?: string }) => {
-    const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
-    if (!target) return [];
-    const mutableChat = getLiveChat({ chat: target });
-    const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
-    return parent ? parent.replies.items : mutableChat.root.items;
-  };
+    },
+  });
+  const forkChat = chatHistoryService.forkChat;
+  const editMessage = chatHistoryService.editMessage;
+  const switchVersion = chatHistoryService.switchVersion;
+  const getSiblings = chatHistoryService.getSiblings;
 
   const toggleDebug = chatMetadataService.toggleDebug;
 
@@ -1187,61 +1041,7 @@ export function useChat() {
 
   const updateReasoningEffort = chatMetadataService.updateReasoningEffort;
 
-  const commitFullHistoryManipulation = async ({ chatId, messages, systemPrompt }: { chatId: string, messages: HistoryItem[], systemPrompt: SystemPrompt | undefined }) => {
-    const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
-    if (!target) return;
-    const chat = getLiveChat({ chat: target });
-
-    // Update system prompt (can be undefined to reset to inheritance)
-    chat.systemPrompt = systemPrompt;
-
-    // Persist any new 'memory' attachments
-    const canPersist = storageService.canPersistBinary;
-    for (const msg of messages) {
-      if (msg.attachments) {
-        for (let i = 0; i < msg.attachments.length; i++) {
-          const att = msg.attachments[i]!;
-          const status = att.status;
-          switch (status) {
-          case 'memory':
-            if (canPersist) {
-              try {
-                await storageService.saveFile(att.blob, att.binaryObjectId, att.originalName);
-                msg.attachments[i] = { ...att, status: 'persisted' };
-              } catch (e) {
-                console.error('Failed to persist attachment during manipulation:', e);
-              }
-            }
-            break;
-          case 'persisted':
-          case 'missing':
-            break;
-          default: {
-            const _ex: never = status;
-            throw new Error(`Unhandled attachment status: ${_ex}`);
-          }
-          }
-        }
-      }
-    }
-
-    const newNodes = createBranchFromMessages({ messages });
-
-    if (newNodes.length > 0) {
-      if (!chat.root) chat.root = { items: [] };
-      chat.root.items.push(newNodes[0]!);
-      chat.currentLeafId = newNodes[newNodes.length - 1]!.id;
-    }
-
-    chat.updatedAt = Date.now();
-    if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-
-    await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
-    await updateChatMeta({ id: chat.id, updater: (curr) => {
-      if (!curr) return chat;
-      return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
-    } });
-  };
+  const commitFullHistoryManipulation = chatHistoryService.commitFullHistoryManipulation;
 
   const generateImage = chatImageService.generateImage;
   const sendImageRequest = chatImageService.sendImageRequest;
