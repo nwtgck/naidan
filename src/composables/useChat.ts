@@ -12,6 +12,7 @@ import { useConfirm } from './useConfirm';
 import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
+import { useToast } from './useToast';
 import { findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranchIterator, createBranchFromMessages, getAllMessages, type HistoryItem } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 
@@ -26,6 +27,7 @@ import { createContextCompactService } from './chat/context-compact-service';
 import { createChatGenerationService } from './chat/chat-generation-service';
 import { createChatHierarchyService } from './chat/chat-hierarchy-service';
 import { createChatImageService } from './chat/chat-image-service';
+import { type AddToastOptions, createChatLifecycleService } from './chat/chat-lifecycle-service';
 import { createChatMetadataService } from './chat/chat-metadata-service';
 import { createChatTitleService } from './chat/chat-title-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
@@ -33,6 +35,8 @@ import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import {
   type ContextCompactProgress,
 } from '@/services/context-compact';
+
+export type { AddToastOptions } from './chat/chat-lifecycle-service';
 
 const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
 const volatileToolOutputs = reactive(new Map<string, string>());
@@ -240,8 +244,6 @@ transformersJsService.subscribeModelList(async () => {
     }
   }
 });
-
-export interface AddToastOptions { message: string; actionLabel?: string; onAction?: () => void | Promise<void>; duration?: number; }
 
 // Facade for broad existing callers. Prefer adding new state and feature logic to
 // dedicated chat stores/services instead of growing this module further.
@@ -486,50 +488,6 @@ export function useChat() {
     }
   };
 
-  const createNewChat = async ({ groupId, modelId, systemPrompt }: {
-    groupId: string | undefined;
-    modelId: string | undefined;
-    systemPrompt: SystemPrompt | undefined;
-  }): Promise<Chat | null> => {
-    if (creatingChat.value) return null;
-    _currentChatGroup.value = null;
-    creatingChat.value = true;
-    const chatId = generateId();
-    try {
-      const chatObj: Chat = reactive({
-        id: chatId, title: null, groupId: groupId ?? null, root: { items: [] },
-        createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
-        modelId: modelId ?? undefined,
-        systemPrompt,
-      });
-
-      registerLiveInstance({ chat: chatObj });
-      await updateChatContent({ id: chatId, updater: () => ({ root: chatObj.root, currentLeafId: chatObj.currentLeafId }) });
-      await updateChatMeta({ id: chatId, updater: () => chatObj });
-
-      await storageService.updateHierarchy((curr) => {
-        if (groupId) {
-          const group = curr.items.find(i => i.type === 'chat_group' && i.id === groupId) as HierarchyChatGroupNode;
-          if (group) {
-            group.chat_ids.unshift(chatId); return curr;
-          }
-        }
-        const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
-        const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
-        curr.items.splice(insertIdx, 0, { type: 'chat', id: chatId });
-        return curr;
-      });
-
-      const { setCurrentChatId } = useChatTools();
-      setCurrentChatId({ chatId: chatId });
-      _currentChat.value = chatObj;
-      await loadData({});
-      return chatObj;
-    } finally {
-      creatingChat.value = false;
-    }
-  };
-
   function hasMountsForChat({ chat }: { chat: Pick<Chat, 'mounts' | 'groupId'> }): boolean {
     if (settings.value.mounts && settings.value.mounts.length > 0) return true;
     if (chat.mounts && chat.mounts.length > 0) return true;
@@ -576,111 +534,57 @@ export function useChat() {
     chatDataStore.openChatGroup({ id });
   };
 
-  const deleteChat = async ({ id, injectAddToast }: { id: string, injectAddToast?: (toast: AddToastOptions) => string }) => {
-    const { useToast } = await import('./useToast');
-    const { addToast: originalAddToast } = useToast();
-    const addToast = injectAddToast || originalAddToast;
-    const chatData = await storageService.loadChat({ id });
-    if (!chatData) return;
-
-    await storageService.updateHierarchy((curr) => {
-      curr.items = curr.items.filter(i => {
-        switch (i.type) {
-        case 'chat':
-          if (i.id === id) return false;
-          break;
-        case 'chat_group':
-          i.chat_ids = i.chat_ids.filter(cid => cid !== id);
-          break;
-        default: {
-          const _ex: never = i;
-          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-        }
-        }
-        return true;
-      });
-      return curr;
-    });
-
-    if (_currentChat.value && toRaw(_currentChat.value).id === id) _currentChat.value = null;
-    await loadData({});
-
-    const cleanup = async (_params: Record<string, never>) => {
-      if (chatRuntimeStore.activeGenerations.has(id)) {
-        chatRuntimeStore.getActiveGeneration({ chatId: id })?.controller.abort();
-        chatRuntimeStore.deleteActiveGeneration({ chatId: id });
+  const { setCurrentChatId } = useChatTools();
+  const chatLifecycleService = createChatLifecycleService({
+    creatingChat,
+    currentChatRef: _currentChat,
+    currentChatGroupRef: _currentChatGroup,
+    registerLiveInstance,
+    updateChatContent,
+    updateChatMeta,
+    updateHierarchy: updater => storageService.updateHierarchy(updater),
+    loadData,
+    loadChat: ({ id }) => storageService.loadChat({ id }),
+    deleteChatFromStorage: ({ id }) => storageService.deleteChat({ id }),
+    listChats: (_args) => storageService.listChats(),
+    listChatGroups: (_args) => storageService.listChatGroups(),
+    deleteChatGroupFromStorage: ({ id }) => storageService.deleteChatGroup({ id }),
+    setCurrentChatId,
+    addToast: (toast) => useToast().addToast(toast),
+    openChat: ({ id }) => openChat({ id }),
+    hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
+    abortActiveGeneration: ({ chatId }) => {
+      chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
+      chatRuntimeStore.deleteActiveGeneration({ chatId });
+    },
+    clearTasksForChat: ({ chatId }) => {
+      chatRuntimeStore.clearTasksForChat({ chatId });
+    },
+    clearActiveGenerations: (_args) => {
+      for (const [, item] of chatRuntimeStore.activeGenerations.entries()) {
+        item.controller.abort();
       }
-      chatRuntimeStore.clearTasksForChat({ chatId: id });
-      liveChatRegistry.delete(id);
-      chatTmpDirectories.delete(id);
-      await storageService.deleteChat({ id });
-    };
-
-    const toastId = addToast({
-      message: `Chat "${chatData.title || 'Untitled'}" deleted`,
-      actionLabel: 'Undo',
-      onAction: async () => {
-        const originalGroupId = chatData.groupId;
-        await storageService.updateHierarchy((curr) => {
-          if (originalGroupId) {
-            const group = curr.items.find(i => {
-              switch (i.type) {
-              case 'chat_group': return i.id === originalGroupId;
-              case 'chat': return false;
-              default: {
-                const _ex: never = i;
-                throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-              }
-              }
-            }) as HierarchyChatGroupNode;
-            if (group) {
-              group.chat_ids.push(chatData.id); return curr;
-            }
-          }
-          curr.items.push({ type: 'chat', id: chatData.id });
-          return curr;
-        });
-        await loadData({});
-        await openChat({ id: chatData.id });
-      },
-      onClose: async (reason) => {
-        switch (reason) {
-        case 'action':
-          return;
-        case 'timeout':
-        case 'dismiss':
-          await cleanup({});
-          break;
-        default: {
-          const _ex: never = reason;
-          throw new Error(`Unhandled close reason: ${_ex}`);
-        }
-        }
-      }    });
-
-    if (!toastId) {
-      await cleanup({});
-    }
-  };
-
-  const deleteAllChats = async (_params: Record<string, never>) => {
-    for (const [, item] of chatRuntimeStore.activeGenerations.entries()) item.controller.abort();
-    chatRuntimeStore.clearActiveGenerations({});
-    chatRuntimeStore.clearActiveTaskCounts({});
-    liveChatRegistry.clear();
-    chatTmpDirectories.clear();
-
-    const all = await storageService.listChats();
-    for (const c of all) await storageService.deleteChat({ id: c.id });
-    const allGroups = await storageService.listChatGroups();
-    for (const g of allGroups) await storageService.deleteChatGroup({ id: g.id });
-
-    await storageService.updateHierarchy((curr) => {
-      curr.items = []; return curr;
-    });
-    _currentChat.value = null;
-    await loadData({});
-  };
+      chatRuntimeStore.clearActiveGenerations({});
+    },
+    clearActiveTaskCounts: (_args) => {
+      chatRuntimeStore.clearActiveTaskCounts({});
+    },
+    clearLiveChatRegistry: (_args) => {
+      liveChatRegistry.clear();
+    },
+    clearChatTmpDirectories: (_args) => {
+      chatTmpDirectories.clear();
+    },
+    deleteLiveChat: ({ chatId }) => {
+      liveChatRegistry.delete(chatId);
+    },
+    deleteChatTmpDirectory: ({ chatId }) => {
+      chatTmpDirectories.delete(chatId);
+    },
+  });
+  const createNewChat = chatLifecycleService.createNewChat;
+  const deleteChat = chatLifecycleService.deleteChat;
+  const deleteAllChats = chatLifecycleService.deleteAllChats;
 
   const chatMetadataService = createChatMetadataService({
     getChatTarget: ({ id }) => {
