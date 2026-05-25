@@ -241,6 +241,8 @@ transformersJsService.subscribeModelList(async () => {
 
 export interface AddToastOptions { message: string; actionLabel?: string; onAction?: () => void | Promise<void>; duration?: number; }
 
+// Facade for broad existing callers. Prefer adding new state and feature logic to
+// dedicated chat stores/services instead of growing this module further.
 export function useChat() {
   const { settings } = useSettings();
   const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
