@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onBeforeUnmount } from 'vue';
+import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
+import { useChatAreaSession } from '@/composables/chat/chat-area-session';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -109,33 +110,20 @@ const contextCompactProgress = computed<ContextCompactProgress>(() => {
   return maybeProgress ?? { phase: 'idle' };
 });
 
-const showNeuralSyncEffect = ref(false);
-const hideNeuralSyncEffectTimer = ref<number | undefined>(undefined);
-
-function clearNeuralSyncEffectTimer(_args: Record<never, never>) {
-  if (hideNeuralSyncEffectTimer.value !== undefined) {
-    window.clearTimeout(hideNeuralSyncEffectTimer.value);
-    hideNeuralSyncEffectTimer.value = undefined;
-  }
-}
-
-function playNeuralSyncEffect(_args: Record<never, never>) {
-  clearNeuralSyncEffectTimer({});
-  showNeuralSyncEffect.value = true;
-  hideNeuralSyncEffectTimer.value = window.setTimeout(() => {
-    showNeuralSyncEffect.value = false;
-    hideNeuralSyncEffectTimer.value = undefined;
-  }, 1200);
-}
-
-onBeforeUnmount(() => {
-  clearNeuralSyncEffectTimer({});
+const chatAreaSession = useChatAreaSession({
+  chatId: computed(() => currentChat.value?.id),
+  leafId: computed(() => currentChat.value?.currentLeafId),
 });
-
-watch(() => currentChat.value?.id, () => {
-  clearNeuralSyncEffectTimer({});
-  showNeuralSyncEffect.value = false;
-});
+const {
+  showCompactSettings,
+  showNeuralSyncEffect,
+  outlineVisibility,
+  initialOutlineMessageId,
+  openCompactSettings,
+  closeCompactSettings,
+  closeOutline,
+  playNeuralSyncEffect,
+} = chatAreaSession;
 
 const availableImageModels = computed(() => {
   return getSortedImageModels({ availableModels: availableModels.value });
@@ -236,11 +224,8 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
 const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
-const showCompactSettings = ref(false);
 const showTitleDialog = ref(false);
 const generatedTitleHistory = ref<string[]>([]);
-const outlineVisibility = ref<'hidden' | 'visible'>('hidden');
-const initialOutlineMessageId = ref<string | undefined>(undefined);
 
 function getCurrentViewportMessageId(_args: Record<string, never>) {
   const scrollContainer = container.value;
@@ -269,24 +254,9 @@ function getCurrentViewportMessageId(_args: Record<string, never>) {
 }
 
 function toggleOutline(_args: Record<string, never>) {
-  const currentVisibility = outlineVisibility.value;
-  switch (currentVisibility) {
-  case 'visible':
-    outlineVisibility.value = 'hidden';
-    return;
-  case 'hidden':
-    initialOutlineMessageId.value = getCurrentViewportMessageId({});
-    outlineVisibility.value = 'visible';
-    return;
-  default: {
-    const _ex: never = currentVisibility;
-    throw new Error(`Unhandled outline visibility: ${_ex}`);
-  }
-  }
-}
-
-function closeOutline(_args: Record<string, never>) {
-  outlineVisibility.value = 'hidden';
+  chatAreaSession.toggleOutline({
+    getCurrentViewportMessageId: () => getCurrentViewportMessageId({}),
+  });
 }
 
 function jumpToOutlineMessage({ messageId }: { messageId: string }) {
@@ -793,7 +763,7 @@ async function handleRegenerate({ messageId }: { messageId: string }) {
 }
 
 async function handleCompactContext(_args: Record<never, never>) {
-  showCompactSettings.value = true;
+  openCompactSettings({});
 }
 
 async function handleConfirmCompact({
@@ -803,7 +773,7 @@ async function handleConfirmCompact({
   keepCount: number;
   instruction: string;
 }) {
-  showCompactSettings.value = false;
+  closeCompactSettings({});
   const didCompact = await compactCurrentBranch({
     keepRecentMessages: keepCount,
     instructionOverride: instruction,
@@ -1010,7 +980,7 @@ watch(
       :total-messages="activeMessages.length"
       :initial-keep-count="6"
       :initial-instruction="initialContextCompactInstruction"
-      @close="showCompactSettings = false"
+      @close="closeCompactSettings({})"
       @confirm="({ keepCount, instruction }) => handleConfirmCompact({ keepCount, instruction })"
     />
 
