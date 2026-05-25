@@ -32,18 +32,11 @@ import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
+import { createContextCompactService } from './chat/context-compact-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import {
-  buildCompactRequestMessages,
-  createCompactBranchFromResponse,
-  createCompactConversationMessageContent,
-  createCompactToolMessageContent,
-  createCompactMultimodalContent,
-  getHeaderCompactBoundary,
-  splitCompactPath,
   type ContextCompactProgress,
-  type ContextCompactPromptMode,
 } from '@/services/context-compact';
 
 const rootItems = ref<SidebarItem[]>([]);
@@ -1911,223 +1904,54 @@ export function useChat() {
     }
   };
 
-  async function createProviderForChat({
-    endpointType,
-    endpointUrl,
-    endpointHttpHeaders,
-  }: {
-    endpointType: EndpointType;
-    endpointUrl: string | undefined;
-    endpointHttpHeaders: [string, string][] | undefined;
-  }): Promise<LLMProvider> {
-    switch (endpointType) {
-    case 'openai':
-      if (!endpointUrl) {
-        throw new Error('OpenAI compact provider requires an endpoint URL.');
-      }
-      return new OpenAIProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-    case 'ollama':
-      if (!endpointUrl) {
-        throw new Error('Ollama compact provider requires an endpoint URL.');
-      }
-      return new OllamaProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-    case 'transformers_js':
-      return new TransformersJsProvider();
-    default: {
-      const _ex: never = endpointType;
-      throw new Error(`Unsupported endpoint type: ${_ex}`);
-    }
-    }
-  }
-
-  async function createCompactChatMessagesFromPrefix({
-    prefix,
-    promptMode,
-  }: {
-    prefix: readonly MessageNode[];
-    promptMode: ContextCompactPromptMode;
-  }): Promise<ChatMessage[]> {
-    const result: ChatMessage[] = [];
-
-    for (const node of prefix) {
-      switch (node.role) {
-      case 'tool': {
-        for (const toolResult of node.results) {
-          let toolContent = '';
-          const resultStatus = toolResult.status;
-          switch (resultStatus) {
-          case 'success': {
-            const contentType = toolResult.content.type;
-            switch (contentType) {
-            case 'text':
-              toolContent = toolResult.content.text;
-              break;
-            case 'binary_object': {
-              const blob = await storageService.getFile({ binaryObjectId: toolResult.content.id });
-              toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
-              break;
-            }
-            default: {
-              const _ex: never = contentType;
-              throw new Error(`Unhandled tool success content type: ${_ex}`);
-            }
-            }
-            break;
-          }
-          case 'error': {
-            const messageType = toolResult.error.message.type;
-            switch (messageType) {
-            case 'text':
-              toolContent = `Error [${toolResult.error.code}]: ${toolResult.error.message.text}`;
-              break;
-            case 'binary_object': {
-              const blob = await storageService.getFile({ binaryObjectId: toolResult.error.message.id });
-              const detail = blob ? await blob.text() : 'Binary error detail missing';
-              toolContent = `Error [${toolResult.error.code}]: ${detail}`;
-              break;
-            }
-            default: {
-              const _ex: never = messageType;
-              throw new Error(`Unhandled tool error content type: ${_ex}`);
-            }
-            }
-            break;
-          }
-          case 'executing':
-            toolContent = '[Error: Tool still executing]';
-            break;
-          default: {
-            const _ex: never = resultStatus;
-            throw new Error(`Unhandled tool result status: ${_ex}`);
-          }
-          }
-
-          result.push({
-            role: 'tool',
-            tool_call_id: toolResult.toolCallId,
-            content: createCompactToolMessageContent({
-              messageId: node.id,
-              content: toolContent,
-              promptMode,
-            }),
-          });
-        }
-        break;
-      }
-      case 'user': {
-        const baseContent = createCompactConversationMessageContent({
-          node,
-          promptMode,
-        });
-        if (!node.attachments || node.attachments.length === 0) {
-          result.push({ role: 'user', content: baseContent });
-          break;
-        }
-
-        const images: string[] = [];
-        for (const attachment of node.attachments) {
-          let blob: Blob | null = null;
-          switch (attachment.status) {
-          case 'memory':
-            blob = attachment.blob;
-            break;
-          case 'persisted':
-            blob = await storageService.getFile({ binaryObjectId: attachment.binaryObjectId });
-            break;
-          case 'missing':
-            blob = null;
-            break;
-          default: {
-            const _ex: never = attachment;
-            throw new Error(`Unhandled attachment status while compacting: ${_ex}`);
-          }
-          }
-
-          if (blob && attachment.mimeType.startsWith('image/')) {
-            images.push(await fileToDataUrl({ blob }));
-          }
-        }
-
-        result.push({
-          role: 'user',
-          content: createCompactMultimodalContent({
-            text: baseContent,
-            images,
-          }),
-        });
-        break;
-      }
-      case 'assistant':
-        result.push({
-          role: 'assistant',
-          content: createCompactConversationMessageContent({
-            node,
-            promptMode,
-          }),
-          tool_calls: node.toolCalls,
-        });
-        break;
-      case 'system':
-        result.push({
-          role: 'system',
-          content: createCompactConversationMessageContent({
-            node,
-            promptMode,
-          }),
-        });
-        break;
+  const { addErrorEvent } = useGlobalEvents();
+  const contextCompactService = createContextCompactService({
+    getCurrentChat: () => (_currentChat.value ? getLiveChat({ chat: _currentChat.value }) : null),
+    getLiveChat,
+    isProcessing,
+    registerLiveInstance,
+    resolveSettings: ({ chat }) => {
+      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
+      return {
+        endpointType: resolved.endpointType,
+        endpointUrl: resolved.endpointUrl,
+        endpointHttpHeaders: resolved.endpointHttpHeaders,
+        modelId: resolved.modelId,
+        lmParameters: resolved.lmParameters,
+      };
+    },
+    getPromptMode: ({ chatId }) => {
+      const mountSelection = getNaidanSysfsMountSelection({ chatId });
+      switch (mountSelection) {
+      case 'none':
+        return 'without_message_ids';
+      case 'current_chat_only':
+      case 'current_chat_with_chat_group':
+      case 'all_chats':
+        return 'with_message_ids';
       default: {
-        const _ex: never = node;
-        throw new Error(`Unhandled compact prefix node role: ${_ex}`);
+        const _ex: never = mountSelection;
+        throw new Error(`Unhandled naidan sysfs mount selection: ${_ex}`);
       }
       }
-    }
-
-    return result;
-  }
-
-  function createCompactRequestPreview({
-    messages,
-  }: {
-    messages: readonly ChatMessage[];
-  }): string {
-    return messages.map((message) => {
-      const content = (() => {
-        if (typeof message.content === 'string') {
-          return message.content;
-        }
-
-        return message.content.map((part) => {
-          const partType = part.type;
-          switch (partType) {
-          case 'text':
-            return part.text;
-          case 'image_url':
-            return '[image attachment]';
-          default: {
-            const _ex: never = partType;
-            throw new Error(`Unhandled compact preview part: ${_ex}`);
-          }
-          }
-        }).join('\n');
-      })();
-
-      return `[${message.role}]\n${content}`;
-    }).join('\n\n');
-  }
-
-  const abortContextCompact = ({
-    chatId,
-  }: {
-    chatId: string | undefined;
-  }) => {
-    if (chatId === undefined) {
-      return;
-    }
-
-    contextCompactRuntime.getActiveContextCompaction({ chatId })?.abort();
-  };
-
+    },
+    runtime: contextCompactRuntime,
+    updateChatContent,
+    updateChatMeta,
+    triggerCurrentChat: ({ chatId }) => {
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+        triggerRef(_currentChat);
+      }
+    },
+    addErrorEvent,
+    startProcessing: ({ chatId }) => {
+      incTask({ chatId, type: 'process' });
+    },
+    finishProcessing: ({ chatId }) => {
+      decTask({ chatId, type: 'process' });
+    },
+  });
+  const abortContextCompact = contextCompactService.abortContextCompact;
   const compactCurrentBranch = async ({
     keepRecentMessages,
     instructionOverride,
@@ -2135,239 +1959,11 @@ export function useChat() {
     keepRecentMessages: number;
     instructionOverride: string | undefined;
   }): Promise<boolean> => {
-    if (!_currentChat.value) {
-      return false;
-    }
-
-    const mutableChat = getLiveChat({ chat: _currentChat.value });
-    if (isProcessing({ chatId: mutableChat.id })) {
-      return false;
-    }
-
-    const path = Array.from(getChatBranchIterator({ chat: mutableChat }));
-    const boundaryMessageId = getHeaderCompactBoundary({
-      path,
+    const result = await contextCompactService.compactCurrentBranch({
       keepRecentMessages,
+      instructionOverride,
     });
-    if (boundaryMessageId === undefined) {
-      return false;
-    }
-
-    const split = splitCompactPath({
-      path,
-      boundaryMessageId,
-    });
-    if (split === undefined || split.prefix.length === 0) {
-      return false;
-    }
-
-    const controller = new AbortController();
-    contextCompactRuntime.setActiveContextCompaction({
-      chatId: mutableChat.id,
-      controller,
-    });
-    incTask({ chatId: mutableChat.id, type: 'process' });
-    registerLiveInstance({ chat: mutableChat });
-    setContextCompactProgress({
-      chatId: mutableChat.id,
-      progress: {
-        phase: 'preparing',
-        compactedMessageCount: split.prefix.length,
-        suffixMessageCount: split.suffix.length,
-      },
-    });
-
-    try {
-      const resolved = resolveChatSettings({ chat: mutableChat, groups: chatGroups.value, globalSettings: settings.value });
-      const resolvedModel = mutableChat.modelId || resolved.modelId;
-
-      if (!resolvedModel || (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js')) {
-        const { addErrorEvent } = useGlobalEvents();
-        addErrorEvent({
-          source: 'useChat:compactCurrentBranch',
-          message: 'Compact Context requires a configured model and endpoint.',
-        });
-        setContextCompactProgress({
-          chatId: mutableChat.id,
-          progress: {
-            phase: 'failed',
-            message: 'Compact Context requires a configured model and endpoint.',
-          },
-        });
-        return false;
-      }
-
-      const promptMode: ContextCompactPromptMode = (() => {
-        const mountSelection = getNaidanSysfsMountSelection({ chatId: mutableChat.id });
-        switch (mountSelection) {
-        case 'none':
-          return 'without_message_ids';
-        case 'current_chat_only':
-        case 'current_chat_with_chat_group':
-        case 'all_chats':
-          return 'with_message_ids';
-        default: {
-          const _ex: never = mountSelection;
-          throw new Error(`Unhandled naidan sysfs mount selection: ${_ex}`);
-        }
-        }
-      })();
-
-      setContextCompactProgress({
-        chatId: mutableChat.id,
-        progress: {
-          phase: 'building_request',
-          compactedMessageCount: split.prefix.length,
-          suffixMessageCount: split.suffix.length,
-          requestPreview: undefined,
-        },
-      });
-
-      const prefixMessages = await createCompactChatMessagesFromPrefix({
-        prefix: split.prefix,
-        promptMode,
-      });
-
-      const requestMessages = buildCompactRequestMessages({
-        prefix: prefixMessages,
-        promptMode,
-        instructionContent: instructionOverride,
-      });
-      const requestPreview = createCompactRequestPreview({
-        messages: requestMessages,
-      });
-
-      const provider = await createProviderForChat({
-        endpointType: resolved.endpointType,
-        endpointUrl: resolved.endpointUrl,
-        endpointHttpHeaders: resolved.endpointHttpHeaders,
-      });
-
-      let compactContent = '';
-      setContextCompactProgress({
-        chatId: mutableChat.id,
-        progress: {
-          phase: 'requesting_model',
-          compactedMessageCount: split.prefix.length,
-          suffixMessageCount: split.suffix.length,
-          requestPreview,
-        },
-      });
-
-      await provider.chat({
-        messages: requestMessages,
-        model: resolvedModel,
-        onChunk: (chunk) => {
-          compactContent += chunk;
-          setContextCompactProgress({
-            chatId: mutableChat.id,
-            progress: {
-              phase: 'receiving_compact',
-              compactedMessageCount: split.prefix.length,
-              suffixMessageCount: split.suffix.length,
-              outputChars: compactContent.length,
-              requestPreview,
-              outputPreview: compactContent,
-            },
-          });
-        },
-        parameters: resolved.lmParameters,
-        signal: controller.signal,
-      });
-
-      const finalCompactContent = compactContent.trim();
-      if (finalCompactContent.length === 0) {
-        setContextCompactProgress({
-          chatId: mutableChat.id,
-          progress: {
-            phase: 'failed',
-            message: 'Compact Context response was empty.',
-          },
-        });
-        return false;
-      }
-
-      setContextCompactProgress({
-        chatId: mutableChat.id,
-        progress: {
-          phase: 'applying_branch',
-          outputChars: finalCompactContent.length,
-          requestPreview,
-          outputPreview: finalCompactContent,
-        },
-      });
-
-      const branchResult = createCompactBranchFromResponse({
-        compactContent: finalCompactContent,
-        suffix: split.suffix,
-        compactModelId: resolvedModel,
-        createMessageId: () => generateId(),
-        now: () => Date.now(),
-      });
-
-      mutableChat.root.items.push(branchResult.compactNode);
-      mutableChat.currentLeafId = branchResult.currentLeafId;
-      mutableChat.updatedAt = Date.now();
-
-      await updateChatContent({
-        id: mutableChat.id,
-        updater: (current) => ({
-          ...current,
-          root: mutableChat.root,
-          currentLeafId: mutableChat.currentLeafId,
-        }),
-      });
-      await updateChatMeta({
-        id: mutableChat.id,
-        updater: (curr) => {
-          if (!curr) {
-            return mutableChat;
-          }
-          return {
-            ...curr,
-            updatedAt: mutableChat.updatedAt,
-            currentLeafId: mutableChat.currentLeafId,
-          };
-        },
-      });
-
-      if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) {
-        triggerRef(_currentChat);
-      }
-
-      setContextCompactProgress({
-        chatId: mutableChat.id,
-        progress: {
-          phase: 'complete',
-          requestPreview,
-          outputPreview: finalCompactContent,
-        },
-      });
-      return true;
-    } catch (error) {
-      if (error instanceof Error && (error.name === 'AbortError' || error.message === 'Generation aborted')) {
-        setContextCompactProgress({
-          chatId: mutableChat.id,
-          progress: { phase: 'aborted' },
-        });
-        return false;
-      }
-
-      setContextCompactProgress({
-        chatId: mutableChat.id,
-        progress: {
-          phase: 'failed',
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      throw error;
-    } finally {
-      contextCompactRuntime.clearActiveContextCompaction({
-        chatId: mutableChat.id,
-        controller,
-      });
-      decTask({ chatId: mutableChat.id, type: 'process' });
-    }
+    return result.status === 'compacted';
   };
 
   const forkChat = async ({ messageId, chatId }: { messageId: string, chatId?: string }): Promise<string | null> => {
