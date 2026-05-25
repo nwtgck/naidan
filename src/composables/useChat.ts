@@ -25,6 +25,7 @@ import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
 import { createChatGenerationService } from './chat/chat-generation-service';
 import { createChatImageService } from './chat/chat-image-service';
+import { createChatMetadataService } from './chat/chat-metadata-service';
 import { createChatTitleService } from './chat/chat-title-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
@@ -680,92 +681,28 @@ export function useChat() {
     await loadData({});
   };
 
-  const renameChat = async ({ id, newTitle }: { id: string, newTitle: string }) => {
-    const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
-    if (liveChat) {
-      liveChat.title = newTitle;
-      liveChat.updatedAt = Date.now();
-      if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
-    }
-
-    await updateChatMeta({ id, updater: (curr) => {
-      if (!curr) throw new Error('Chat not found');
-      return { ...curr, title: newTitle, updatedAt: Date.now() };
-    } });
-    await loadData({});
-  };
-
-  const updateChatModel = async ({ id, modelId }: { id: string, modelId: string }) => {
-    const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
-    if (liveChat) {
-      liveChat.modelId = modelId;
-      liveChat.updatedAt = Date.now();
-      if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
-    }
-    await updateChatMeta({ id, updater: (curr) => {
-      if (!curr) throw new Error('Chat not found');
-      return { ...curr, modelId, updatedAt: Date.now() };
-    } });
-  };
-
-  const updateChatGroupOverride = async ({ id, groupId }: { id: string, groupId: string | null }) => {
-    const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
-    if (liveChat) {
-      liveChat.groupId = groupId;
-      liveChat.updatedAt = Date.now();
-      if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
-    }
-    await updateChatMeta({ id, updater: (curr) => {
-      if (!curr) throw new Error('Chat not found');
-      return { ...curr, groupId, updatedAt: Date.now() };
-    } });
-    await loadData({});
-  };
-
-  const updateChatSettings = async ({ id, updates }: { id: string, updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>> }) => {
-    const liveChat = liveChatRegistry.get(id) || (_currentChat.value && toRaw(_currentChat.value).id === id ? _currentChat.value : null);
-    if (liveChat) {
-      Object.assign(liveChat, updates);
-      liveChat.updatedAt = Date.now();
-      if (_currentChat.value && toRaw(_currentChat.value).id === id) triggerRef(_currentChat);
-    }
-    await updateChatMeta({ id, updater: (curr) => {
-      if (!curr) throw new Error('Chat not found');
-      // WORKAROUND: Chat stores endpoint as flat fields (endpointType / endpointUrl /
-      // endpointHttpHeaders) but the storage layer reads the nested `endpoint` object from
-      // ChatMeta. Spreading either `updates` or `curr` flat fields directly would silently
-      // drop the endpoint on save, causing settings to revert on the next page reload.
-      // Convert all flat fields to a nested `endpoint` object here.
-      // Remove this block once the TODO in types.ts:169 is resolved (unify Chat to use
-      // the nested endpoint object like ChatMeta does).
-
-      // Type guard: prevent flat endpoint fields from leaking into the saved ChatMeta.
-      // This is a temporary measure until Chat and ChatMeta share the same endpoint shape.
-      type _NoFlatEndpoint = Omit<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders'> & {
-        endpointType?: never;
-        endpointUrl?: never;
-        endpointHttpHeaders?: never;
-      };
-
-      // Strip flat endpoint fields from both curr and updates, then merge them with
-      // updates taking priority, and re-express the result as a nested endpoint object.
-      const { endpointType: currEndpointType, endpointUrl: currEndpointUrl, endpointHttpHeaders: currEndpointHttpHeaders, ...currRest } = curr;
-      const { endpointType, endpointUrl, endpointHttpHeaders, ...rest } = updates;
-      const resolvedEndpointType = endpointType !== undefined ? endpointType : currEndpointType;
-
-      const metaUpdates: Partial<_NoFlatEndpoint> = {
-        ...rest,
-        ...(resolvedEndpointType !== undefined && {
-          endpoint: {
-            type: resolvedEndpointType,
-            url: endpointUrl !== undefined ? endpointUrl : currEndpointUrl,
-            httpHeaders: endpointHttpHeaders !== undefined ? endpointHttpHeaders : currEndpointHttpHeaders,
-          },
-        }),
-      };
-      return { ...currRest, ...metaUpdates, updatedAt: Date.now() };
-    } });
-  };
+  const chatMetadataService = createChatMetadataService({
+    getChatTarget: ({ id }) => {
+      const liveChat = liveChatRegistry.get(id);
+      if (liveChat) return liveChat;
+      if (_currentChat.value && toRaw(_currentChat.value).id === id) {
+        return _currentChat.value;
+      }
+      return null;
+    },
+    getCurrentChat: () => (_currentChat.value ? getLiveChat({ chat: _currentChat.value }) : null),
+    triggerCurrentChat: ({ chatId }) => {
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+        triggerRef(_currentChat);
+      }
+    },
+    updateChatMeta,
+    loadData,
+  });
+  const renameChat = chatMetadataService.renameChat;
+  const updateChatModel = chatMetadataService.updateChatModel;
+  const updateChatGroupOverride = chatMetadataService.updateChatGroupOverride;
+  const updateChatSettings = chatMetadataService.updateChatSettings;
 
   const {
     isImageMode,
@@ -1371,34 +1308,14 @@ export function useChat() {
     return parent ? parent.replies.items : mutableChat.root.items;
   };
 
-  const toggleDebug = async (_params: Record<string, never>) => {
-    if (!_currentChat.value) return;
-    const chat = getLiveChat({ chat: _currentChat.value });
-    const newVal = !chat.debugEnabled;
-    chat.debugEnabled = newVal;
-    if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-    await updateChatMeta({ id: chat.id, updater: (curr) => {
-      if (!curr) throw new Error('Chat not found');
-      return { ...curr, debugEnabled: newVal, updatedAt: Date.now() };
-    } });
-  };
+  const toggleDebug = chatMetadataService.toggleDebug;
 
   const getReasoningEffort = ({ chatId }: { chatId: string }) => {
     const chat = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
     return chat?.lmParameters?.reasoning?.effort;
   };
 
-  const updateReasoningEffort = async ({ chatId, effort }: { chatId: string, effort: Reasoning['effort'] }) => {
-    const chat = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
-    if (!chat) return;
-
-    const lmParameters = {
-      ...(chat.lmParameters || EMPTY_LM_PARAMETERS),
-      reasoning: { effort }
-    };
-
-    await updateChatSettings({ id: chatId, updates: { lmParameters } });
-  };
+  const updateReasoningEffort = chatMetadataService.updateReasoningEffort;
 
   const commitFullHistoryManipulation = async ({ chatId, messages, systemPrompt }: { chatId: string, messages: HistoryItem[], systemPrompt: SystemPrompt | undefined }) => {
     const target = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
