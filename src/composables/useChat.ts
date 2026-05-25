@@ -31,6 +31,7 @@ import { createChatImageService } from './chat/chat-image-service';
 import { type AddToastOptions, createChatLifecycleService } from './chat/chat-lifecycle-service';
 import { createChatMountService } from './chat/chat-mount-service';
 import { createChatMetadataService } from './chat/chat-metadata-service';
+import { createChatOpenService } from './chat/chat-open-service';
 import { createChatTitleService } from './chat/chat-title-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
@@ -464,43 +465,21 @@ export function useChat() {
     return false;
   }
 
-  const openChat = async ({ id, leafId }: { id: string, leafId?: string }): Promise<Chat | null> => {
-    const { setToolEnabled, setCurrentChatId } = useChatTools();
-    setCurrentChatId({ chatId: id });
-    const chat = await chatDataStore.openChat({
-      id,
-      leafId,
-    });
-    if (!chat) {
-      setCurrentChatId({ chatId: null });
-      return null;
-    }
+  const { setToolEnabled, setCurrentChatId } = useChatTools();
+  const chatOpenService = createChatOpenService({
+    setCurrentChatId,
+    setToolEnabled,
+    hasMountsForChat,
+    openChatInStore: ({ id, leafId }) => chatDataStore.openChat({ id, leafId }),
+    openChatAtMessageInStore: ({ chatId, messageId }) => chatDataStore.openChatAtMessage({ chatId, messageId }),
+    openChatGroupInStore: ({ id }) => {
+      chatDataStore.openChatGroup({ id });
+    },
+  });
+  const openChat = chatOpenService.openChat;
+  const openChatAtMessage = chatOpenService.openChatAtMessage;
+  const openChatGroup = chatOpenService.openChatGroup;
 
-    if (hasMountsForChat({ chat })) {
-      setToolEnabled({ name: 'shell_execute', enabled: true });
-    }
-    return chat;
-  };
-
-  const openChatAtMessage = async ({ chatId, messageId }: { chatId: string, messageId: string }): Promise<Chat | null> => {
-    const { setToolEnabled, setCurrentChatId } = useChatTools();
-    setCurrentChatId({ chatId });
-    const chat = await chatDataStore.openChatAtMessage({ chatId, messageId });
-    if (!chat) {
-      setCurrentChatId({ chatId: null });
-      return null;
-    }
-    if (hasMountsForChat({ chat })) {
-      setToolEnabled({ name: 'shell_execute', enabled: true });
-    }
-    return chat;
-  };
-
-  const openChatGroup = ({ id }: { id: string | null }) => {
-    chatDataStore.openChatGroup({ id });
-  };
-
-  const { setCurrentChatId } = useChatTools();
   const chatLifecycleService = createChatLifecycleService({
     creatingChat,
     currentChatRef: _currentChat,
