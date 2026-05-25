@@ -1,6 +1,6 @@
 import { generateId } from '@/utils/id';
 import { ref, computed, reactive, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
-import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, EndpointType, Hierarchy, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
+import type { Chat, MessageNode, UserMessageNode, AssistantMessageNode, SystemMessageNode, ChatGroup, SidebarItem, ChatSummary, EndpointType, HierarchyNode, HierarchyChatGroupNode, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { OpenAIProvider } from '@/services/lm/openai';
@@ -24,6 +24,7 @@ import { createChatRuntimeStore } from './chat/chat-runtime-store';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
 import { createChatGenerationService } from './chat/chat-generation-service';
+import { createChatHierarchyService } from './chat/chat-hierarchy-service';
 import { createChatImageService } from './chat/chat-image-service';
 import { createChatMetadataService } from './chat/chat-metadata-service';
 import { createChatTitleService } from './chat/chat-title-service';
@@ -1376,234 +1377,28 @@ export function useChat() {
   const generateImage = chatImageService.generateImage;
   const sendImageRequest = chatImageService.sendImageRequest;
 
-  const createChatGroup = async ({ name, options }: { name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>> }) => {
-    const id = generateId();
-    const newGroup: ChatGroup = {
-      id,
-      name,
-      updatedAt: Date.now(),
-      isCollapsed: false,
-      items: [],
-      ...options
-    };
-    await storageService.updateChatGroup(id, () => newGroup);
-    await storageService.updateHierarchy((curr) => {
-      curr.items.unshift({ type: 'chat_group', id, chat_ids: [] }); return curr;
-    });
-    await loadData({});
-    return id;
-  };
-
-  const deleteChatGroup = async ({ id }: { id: string }) => {
-    const group = chatGroups.value.find(g => g.id === id);
-    if (!group) return;
-    const items = [...group.items];
-    for (const item of items) {
-      await deleteChat({ id: item.chat.id, injectAddToast: () => '' });
-    }
-    if (_currentChatGroup.value?.id === id) _currentChatGroup.value = null;
-    await storageService.deleteChatGroup({ id });
-    await storageService.updateHierarchy((curr) => {
-      curr.items = curr.items.filter(i => {
-        switch (i.type) {
-        case 'chat_group':
-          return i.id !== id;
-        case 'chat':
-          return true;
-        default: {
-          const _ex: never = i;
-          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-        }
-        }
-      });
-      return curr;
-    });
-    await loadData({});
-  };
-
-  const setChatGroupCollapsed = async ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) => {
-    // 1. Update the item in the sidebar list immediately
-    const item = rootItems.value.find(i => i.type === 'chat_group' && i.chatGroup.id === groupId);
-    if (item && item.type === 'chat_group') {
-      item.chatGroup.isCollapsed = isCollapsed;
-      triggerRef(rootItems);
-    }
-
-    // 2. Update the dedicated "current group" ref
-    if (_currentChatGroup.value?.id === groupId) {
-      _currentChatGroup.value.isCollapsed = isCollapsed;
-    }
-
-    // 3. Persist to storage
-    await storageService.updateChatGroup(groupId, (chatGroup) => {
-      if (!chatGroup) throw new Error('Chat group not found');
-      chatGroup.isCollapsed = isCollapsed;
-      return chatGroup;
-    });
-  };
-
-  const duplicateChatGroup = async ({ groupId }: { groupId: string }) => {
-    const originalGroup = chatGroups.value.find(g => g.id === groupId);
-    if (!originalGroup) return;
-
-    const newId = generateId();
-    const newName = `Copy of ${originalGroup.name}`;
-    const newGroup: ChatGroup = {
-      ...toRaw(originalGroup),
-      id: newId,
-      name: newName,
-      items: [], // Do not duplicate chats
-      updatedAt: Date.now(),
-      isCollapsed: false,
-    };
-
-    await storageService.updateChatGroup(newId, () => newGroup);
-    await storageService.updateHierarchy((curr) => {
-      const originalIndex = curr.items.findIndex(i => i.type === 'chat_group' && i.id === groupId);
-      const newNode: HierarchyNode = { type: 'chat_group', id: newId, chat_ids: [] };
-      if (originalIndex !== -1) {
-        curr.items.splice(originalIndex + 1, 0, newNode);
-      } else {
-        curr.items.unshift(newNode);
-      }
-      return curr;
-    });
-    await loadData({});
-    return newId;
-  };
-
-  const renameChatGroup = async ({ groupId, newName }: { groupId: string, newName: string }) => {
-    if (_currentChatGroup.value?.id === groupId) {
-      _currentChatGroup.value.name = newName; _currentChatGroup.value.updatedAt = Date.now();
-    }
-    await storageService.updateChatGroup(groupId, (chatGroup) => {
-      if (!chatGroup) throw new Error('Chat group not found');
-      chatGroup.name = newName; chatGroup.updatedAt = Date.now(); return chatGroup;
-    });
-    await loadData({});
-  };
-
-  const updateChatGroupMetadata = async ({ id, updates }: { id: string, updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>> }) => {
-    if (_currentChatGroup.value?.id === id) {
-      Object.assign(_currentChatGroup.value, updates); _currentChatGroup.value.updatedAt = Date.now();
-    }
-    await storageService.updateChatGroup(id, (curr) => {
-      if (!curr) throw new Error('Chat group not found');
-      return { ...curr, ...updates, updatedAt: Date.now() };
-    });
-    await loadData({});
-  };
-
-  const persistSidebarStructure = async ({ topLevelItems }: { topLevelItems: SidebarItem[] }) => {
-    chatDataStore.replaceSidebarItems({ items: topLevelItems });
-    const newHierarchy: Hierarchy = {
-      items: topLevelItems.map(item => {
-        switch (item.type) {
-        case 'chat':
-          return { type: 'chat', id: item.chat.id };
-        case 'chat_group':
-          return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
-        default: {
-          const _ex: never = item;
-          return _ex;
-        }
-        }
-      })
-    };
-    await storageService.updateHierarchy(() => newHierarchy);
-  };
-
-  const reorderSidebarChatAfterSend = async ({ chatId }: { chatId: string }) => {
-    const reorderSetting = settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled';
-    switch (reorderSetting) {
-    case 'disabled':
-      return;
-    case 'move_sent_chat':
-      break;
-    default: {
-      const _ex: never = reorderSetting;
-      throw new Error(`Unhandled sidebar send reorder setting: ${_ex}`);
-    }
-    }
-
-    await storageService.updateHierarchy((curr) => {
-      let chatNode: HierarchyNode | undefined;
-      let sourceGroup: HierarchyChatGroupNode | undefined;
-
-      curr.items = curr.items.filter(i => {
-        switch (i.type) {
-        case 'chat':
-          if (i.id === chatId) {
-            chatNode = i;
-            return false;
-          }
-          return true;
-        case 'chat_group': {
-          const chatIndex = i.chat_ids.indexOf(chatId);
-          if (chatIndex !== -1) {
-            sourceGroup = i;
-            i.chat_ids.splice(chatIndex, 1);
-          }
-          return true;
-        }
-        default: {
-          const _ex: never = i;
-          throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-        }
-        }
-      });
-
-      if (sourceGroup) {
-        sourceGroup.chat_ids.unshift(chatId);
-        return curr;
-      }
-
-      const node = chatNode ?? { type: 'chat', id: chatId };
-      const firstTopLevelChatIndex = curr.items.findIndex(i => i.type === 'chat');
-      const insertIndex = firstTopLevelChatIndex === -1 ? curr.items.length : firstTopLevelChatIndex;
-      curr.items.splice(insertIndex, 0, node);
-      return curr;
-    });
-
-    await loadData({});
-  };
-
-  const moveChatToGroup = async ({ chatId, targetGroupId }: { chatId: string, targetGroupId: string | null }) => {
-    await storageService.updateHierarchy((curr) => {
-      const node: HierarchyNode = { type: 'chat', id: chatId };
-      curr.items = curr.items.filter(i => {
-        switch (i.type) {
-        case 'chat':
-          return i.id !== chatId;
-        case 'chat_group':
-          i.chat_ids = i.chat_ids.filter(id => id !== chatId);
-          return true;
-        default: {
-          const _ex: never = i;
-          return _ex || true;
-        }
-        }
-      });
-      if (targetGroupId) {
-        const g = curr.items.find(i => i.type === 'chat_group' && i.id === targetGroupId) as HierarchyChatGroupNode;
-        if (g) g.chat_ids.unshift(chatId);
-        else {
-          const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
-          const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
-          curr.items.splice(insertIdx, 0, node);
-        }
-      } else {
-        const firstChatIdx = curr.items.findIndex(i => i.type === 'chat');
-        const insertIdx = firstChatIdx !== -1 ? firstChatIdx : curr.items.length;
-        curr.items.splice(insertIdx, 0, node);
-      }
-      return curr;
-    });
-    if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-      _currentChat.value.groupId = targetGroupId; triggerRef(_currentChat);
-    }
-    await loadData({});
-  };
+  const chatHierarchyService = createChatHierarchyService({
+    rootItems,
+    currentChatRef: _currentChat,
+    currentChatGroupRef: _currentChatGroup,
+    getChatGroups: () => chatGroups.value,
+    getSidebarSendMessageReorder: () => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled',
+    replaceSidebarItems: chatDataStore.replaceSidebarItems,
+    updateChatGroup: ({ id, updater }) => storageService.updateChatGroup(id, updater),
+    deleteChatGroupFromStorage: ({ id }) => storageService.deleteChatGroup({ id }),
+    updateHierarchy: updater => storageService.updateHierarchy(updater),
+    loadData,
+    deleteChat,
+  });
+  const createChatGroup = chatHierarchyService.createChatGroup;
+  const deleteChatGroup = chatHierarchyService.deleteChatGroup;
+  const setChatGroupCollapsed = chatHierarchyService.setChatGroupCollapsed;
+  const duplicateChatGroup = chatHierarchyService.duplicateChatGroup;
+  const renameChatGroup = chatHierarchyService.renameChatGroup;
+  const updateChatGroupMetadata = chatHierarchyService.updateChatGroupMetadata;
+  const persistSidebarStructure = chatHierarchyService.persistSidebarStructure;
+  const reorderSidebarChatAfterSend = chatHierarchyService.reorderSidebarChatAfterSend;
+  const moveChatToGroup = chatHierarchyService.moveChatToGroup;
 
   const __testOnlySetCurrentChat = ({ chat }: { chat: Chat | null }) => {
     _currentChat.value = chat;
