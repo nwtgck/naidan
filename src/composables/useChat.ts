@@ -1915,26 +1915,6 @@ export function useChat() {
     }
   };
 
-  function getCompactUserLanguageHint(_args: Record<string, never>): string | undefined {
-    const navigatorType = typeof navigator;
-    switch (navigatorType) {
-    case 'undefined':
-      return undefined;
-    case 'object':
-    case 'boolean':
-    case 'string':
-    case 'number':
-    case 'function':
-    case 'symbol':
-    case 'bigint':
-      return navigator.language;
-    default: {
-      const _ex: never = navigatorType;
-      return _ex;
-    }
-    }
-  }
-
   async function createProviderForChat({
     endpointType,
     endpointUrl,
@@ -2252,7 +2232,6 @@ export function useChat() {
       const requestMessages = buildCompactRequestMessages({
         prefix: prefixMessages,
         promptMode,
-        userLanguageHint: getCompactUserLanguageHint({}),
         instructionContent: instructionOverride,
       });
       const requestPreview = createCompactRequestPreview({

@@ -190,13 +190,8 @@ const contextCompactPromptMode = computed<ContextCompactPromptMode>(() => {
 });
 
 const initialContextCompactInstruction = computed(() => {
-  const userLanguageHint = typeof navigator === 'undefined'
-    ? undefined
-    : navigator.language;
-
   return createCompactInstruction({
     promptMode: contextCompactPromptMode.value,
-    userLanguageHint,
   });
 });
 

@@ -115,10 +115,8 @@ export function splitCompactPath({
 
 export function createCompactInstruction({
   promptMode,
-  userLanguageHint,
 }: {
   promptMode: ContextCompactPromptMode;
-  userLanguageHint: string | undefined;
 }): string {
   const lookupPointerInstruction = (() => {
     switch (promptMode) {
@@ -136,9 +134,7 @@ export function createCompactInstruction({
     }
   })();
 
-  const userLanguageInstruction = userLanguageHint
-    ? `Write the Compact Context in the user's primary conversation language. The user's language hint is: ${userLanguageHint}.`
-    : 'Write the Compact Context in the user\'s primary conversation language.';
+  const userLanguageInstruction = 'Write the Compact Context in the user\'s primary conversation language.';
 
   return `\
 Convert the conversation above into a Compact Context.
@@ -192,12 +188,10 @@ export function createCompactConversationMessageContent({
 export function buildCompactRequestMessages({
   prefix,
   promptMode,
-  userLanguageHint,
   instructionContent,
 }: {
   prefix: readonly ChatMessage[];
   promptMode: ContextCompactPromptMode;
-  userLanguageHint: string | undefined;
   instructionContent: string | undefined;
 }): ChatMessage[] {
   return [
@@ -206,7 +200,6 @@ export function buildCompactRequestMessages({
       role: 'user',
       content: instructionContent ?? createCompactInstruction({
         promptMode,
-        userLanguageHint,
       }),
     },
   ];
