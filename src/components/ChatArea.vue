@@ -19,6 +19,7 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import ChatAreaHeader from './ChatAreaHeader.vue';
+import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
@@ -29,6 +30,7 @@ const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
+import type { ContextCompactProgress } from '@/services/context-compact';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -91,6 +93,16 @@ const {
   isThinkingActive,
   isWaitingResponse,
 } = chatStore;
+
+const compactCurrentBranch = chatStore.compactCurrentBranch ?? (async (_args: { keepRecentMessages: number }) => false);
+const abortContextCompact = chatStore.abortContextCompact ?? ((_args: { chatId: string | undefined }) => {});
+const contextCompactProgress = computed<ContextCompactProgress>(() => {
+  const maybeProgress = chatStore.contextCompactProgress as ContextCompactProgress | { value: ContextCompactProgress } | undefined;
+  if (maybeProgress && typeof maybeProgress === 'object' && 'value' in maybeProgress) {
+    return maybeProgress.value;
+  }
+  return maybeProgress ?? { phase: 'idle' };
+});
 
 const availableImageModels = computed(() => {
   return getSortedImageModels({ availableModels: availableModels.value });
@@ -724,6 +736,14 @@ async function handleRegenerate({ messageId }: { messageId: string }) {
   await chatStore.regenerateMessage({ failedMessageId: messageId });
 }
 
+async function handleCompactContext(_args: Record<never, never>) {
+  await compactCurrentBranch({ keepRecentMessages: 6 });
+}
+
+function handleAbortContextCompact(_args: Record<never, never>) {
+  abortContextCompact({ chatId: currentChat.value?.id });
+}
+
 function handleSwitchVersion({ messageId }: { messageId: string }) {
   chatStore.switchVersion({ messageId });
 }
@@ -874,12 +894,18 @@ watch(
       @print="handlePrint"
       @search-chat="() => { if (currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); }"
       @open-history="showHistoryModal = true"
+      @compact-context="handleCompactContext({})"
       @export-chat="exportChat"
       @toggle-media-shelf="toggleMediaShelf"
       @share-url="shareAsURL"
       @open-file-explorer="openChatFileExplorer({})"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
       @toggle-debug="() => chatStore.toggleDebug({})"
+    />
+
+    <ContextCompactProgressStrip
+      :progress="contextCompactProgress"
+      @abort="handleAbortContextCompact({})"
     />
 
     <!-- Chat Settings Panel -->
