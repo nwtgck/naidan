@@ -16,7 +16,6 @@ import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
 import { fileToDataUrl, findDeepestLeaf, findNodeInBranch, findParentInBranch, getChatBranchIterator, processThinking, createBranchFromMessages, getAllMessages, type HistoryItem } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
-import { detectLanguage, getTitleSystemPrompt, cleanGeneratedTitle } from '@/utils/title-generator';
 import {
   SENTINEL_IMAGE_PENDING,
   isImageRequest,
@@ -35,6 +34,8 @@ import { createChatDataStore } from './chat/chat-data-store';
 import { createChatRuntimeStore } from './chat/chat-runtime-store';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
+import { createChatImageService } from './chat/chat-image-service';
+import { createChatTitleService } from './chat/chat-title-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import {
@@ -801,53 +802,36 @@ export function useChat() {
     imageModelOverrideMap
   } = useImageGeneration();
 
-  const handleImageGeneration = async ({ chatId, assistantId, prompt, width, height, count, steps, seed, persistAs, images, model, signal }: {
-    chatId: string;
-    assistantId: string;
-    prompt: string;
-    width: number;
-    height: number;
-    count: number;
-    steps: number | undefined;
-    seed: number | 'browser_random' | undefined;
-    persistAs: ImageRequestParams['persistAs'] | undefined;
-    images: { blob: Blob }[];
-    model: string | undefined;
-    signal: AbortSignal | undefined;
-  }) => {
-    const target = getLiveChat({ chat: { id: chatId } as Chat });
-    if (!target) return;
-    const resolved = resolveChatSettings({ chat: target, groups: chatGroups.value, globalSettings: settings.value });
-
-    await _handleImageGeneration({
-      chatId,
-      assistantId,
-      prompt,
-      width,
-      height,
-      count,
-      steps,
-      seed,
-      persistAs,
-      images,
-      model,
-      availableModels: availableModels.value,
-      endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
-      storageType: settings.value.storageType,
-      signal,
-      getLiveChat: ({ chat }) => getLiveChat({ chat }),
-      updateChatContent: ({ chatId, updater }) => updateChatContent({ id: chatId, updater: (curr) => {
-        if (!curr) throw new Error('Chat content not found');
-        return updater(curr);
-      } }),
-      triggerChatRef: ({ chatId }) => {
-        if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
-      },
-      incTask: ({ chatId, type }) => chatRuntimeStore.startTask({ key: { kind: type, chatId } }),
-      decTask: ({ chatId, type }) => chatRuntimeStore.finishTask({ key: { kind: type, chatId } })
-    });
-  };
+  const chatImageService = createChatImageService({
+    getCurrentChat: () => (_currentChat.value ? getLiveChat({ chat: _currentChat.value }) : null),
+    getLiveChat: ({ chat }) => getLiveChat({ chat }),
+    getAvailableModels: () => availableModels.value,
+    getStorageType: () => settings.value.storageType,
+    resolveSettings: ({ chat }) => {
+      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
+      return {
+        endpointUrl: resolved.endpointUrl,
+        endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+      };
+    },
+    performGeneration: _performGeneration,
+    handleImageGenerationImpl: _handleImageGeneration,
+    sendImageRequestImpl: _sendImageRequest,
+    updateChatContent,
+    triggerCurrentChat: ({ chatId }) => {
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+        triggerRef(_currentChat);
+      }
+    },
+    startProcessing: ({ chatId }) => {
+      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
+    },
+    finishProcessing: ({ chatId }) => {
+      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
+    },
+    sendMessage: ({ content, parentId, attachments }) => sendMessage({ content, parentId, attachments }),
+  });
+  const handleImageGeneration = chatImageService.handleImageGeneration;
 
   const generateResponse = async ({ chat, assistantId, lmParameters }: { chat: Chat | Readonly<Chat>, assistantId: string, lmParameters?: LmParameters }) => {
     const mutableChat = getLiveChat({ chat });
@@ -1574,138 +1558,52 @@ export function useChat() {
     }
   };
 
-  const generateChatTitle = async ({ chatId, signal, titleModelIdOverride }: { chatId: string | undefined, signal: AbortSignal | undefined, titleModelIdOverride: string | undefined }): Promise<string | undefined> => {
-    const target = chatId ? liveChatRegistry.get(chatId) : _currentChat.value;
-    if (!target) return;
-    const mutableChat = getLiveChat({ chat: target });
-    const taskId = mutableChat.id;
-    const titleAtStart = mutableChat.title;
-
-    // Abort existing title generation for this chat if any
-    if (chatRuntimeStore.activeTitleGenerations.has(taskId)) {
-      chatRuntimeStore.getActiveTitleGeneration({ chatId: taskId })?.abort();
-    }
-
-    const controller = new AbortController();
-    chatRuntimeStore.setActiveTitleGeneration({
-      chatId: taskId,
-      controller,
-    });
-
-    chatRuntimeStore.startTask({
-      key: {
-        kind: 'title',
-        chatId: taskId,
-      },
-    });
-    registerLiveInstance({ chat: mutableChat });
-    try {
-      const resolved = resolveChatSettings({ chat: mutableChat, groups: chatGroups.value, globalSettings: settings.value });
-      if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
-        chatRuntimeStore.finishTask({ key: { kind: 'title', chatId: taskId } }); return;
+  const chatTitleService = createChatTitleService({
+    getCurrentChatId: () => (_currentChat.value ? toRaw(_currentChat.value).id : null),
+    getChatTarget: ({ chatId }) => (chatId ? liveChatRegistry.get(chatId) || null : _currentChat.value),
+    getLiveChat: ({ chat }) => getLiveChat({ chat }),
+    registerLiveInstance,
+    resolveSettings: ({ chat }) => {
+      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
+      return {
+        endpointType: resolved.endpointType,
+        endpointUrl: resolved.endpointUrl,
+        endpointHttpHeaders: resolved.endpointHttpHeaders,
+        modelId: resolved.modelId,
+        titleModelId: resolved.titleModelId,
+        lmParameters: resolved.lmParameters,
+      };
+    },
+    updateChatMeta,
+    loadData,
+    triggerCurrentChat: ({ chatId }) => {
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+        triggerRef(_currentChat);
       }
-      const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
-      const content = stripNaidanSentinels({ content: history[0]?.content || '' });
-      if (!content || typeof content !== 'string') {
-        chatRuntimeStore.finishTask({ key: { kind: 'title', chatId: taskId } }); return;
-      }
-
-      let generatedTitle = '';
-      const endpointType = resolved.endpointType;
-      let titleProvider: LLMProvider;
-      switch (endpointType) {
-      case 'openai':
-        titleProvider = new OpenAIProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
-        break;
-      case 'ollama':
-        titleProvider = new OllamaProvider({ endpoint: resolved.endpointUrl, headers: resolved.endpointHttpHeaders });
-        break;
-      case 'transformers_js':
-        titleProvider = new TransformersJsProvider();
-        break;
+    },
+    runtimeStore: chatRuntimeStore,
+    getFallbackLanguage: (_args) => {
+      const typeOfNavigator = typeof navigator;
+      switch (typeOfNavigator) {
+      case 'undefined':
+        return 'en';
+      case 'object':
+      case 'boolean':
+      case 'string':
+      case 'number':
+      case 'function':
+      case 'symbol':
+      case 'bigint':
+        return navigator.language;
       default: {
-        const _ex: never = endpointType;
-        throw new Error(`Unsupported endpoint type for title generation: ${_ex}`);
+        const _ex: never = typeOfNavigator;
+        return _ex;
       }
       }
-      const titleGenModel = titleModelIdOverride || resolved.titleModelId || resolved.modelId;
-      if (!titleGenModel) return;
-
-      const lang = detectLanguage({
-        content,
-        fallbackLanguage: (() => {
-          const t = typeof navigator;
-          switch (t) {
-          case 'undefined': return 'en';
-          case 'object':
-          case 'boolean':
-          case 'string':
-          case 'number':
-          case 'function':
-          case 'symbol':
-          case 'bigint':
-            return navigator.language;
-          default: {
-            const _ex: never = t;
-            return _ex;
-          }
-          }
-        })()
-      });
-      const systemPrompt = getTitleSystemPrompt({ language: lang });
-      const promptMsgs: ChatMessage[] = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Message content to summarize: "${content.slice(0, 1000)}"` },
-      ];
-
-      // Combine signals if both exist
-      const combinedSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
-
-      await titleProvider.chat({
-        messages: promptMsgs,
-        model: titleGenModel,
-        onChunk: (chunk: string) => {
-          generatedTitle += chunk;
-        },
-        parameters: undefined,
-        signal: combinedSignal
-      });
-
-      const finalTitle = cleanGeneratedTitle({ title: generatedTitle });
-      if (finalTitle) {
-        // If the user manually renamed it while we were generating, don't overwrite.
-        // We only apply the title if it hasn't changed since we started.
-        if (mutableChat.title === titleAtStart) {
-          await updateChatMeta({ id: mutableChat.id, updater: (curr) => {
-            if (!curr) return mutableChat;
-            return { ...curr, title: finalTitle, updatedAt: Date.now() };
-          } });
-          await loadData({});
-          if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
-        }
-        return finalTitle;
-      }
-      return undefined;
-    } finally {
-      chatRuntimeStore.finishTask({
-        key: {
-          kind: 'title',
-          chatId: taskId,
-        },
-      });
-      if (chatRuntimeStore.getActiveTitleGeneration({ chatId: taskId }) === controller) {
-        chatRuntimeStore.deleteActiveTitleGeneration({ chatId: taskId });
-      }
-    }
-  };
-
-  const abortTitleGeneration = ({ chatId }: { chatId: string | undefined }) => {
-    const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
-    if (id && chatRuntimeStore.activeTitleGenerations.has(id)) {
-      chatRuntimeStore.getActiveTitleGeneration({ chatId: id })?.abort();
-      chatRuntimeStore.deleteActiveTitleGeneration({ chatId: id });
-    }
-  };
+    },
+  });
+  const generateChatTitle = chatTitleService.generateChatTitle;
+  const abortTitleGeneration = chatTitleService.abortTitleGeneration;
 
   const abortChat = ({ chatId }: { chatId: string | undefined }) => {
     const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
@@ -2044,59 +1942,8 @@ export function useChat() {
     } });
   };
 
-  const generateImage = async ({ prompt, model, width, height, steps, seed, images, chat, signal }: {
-    prompt: string,
-    model: string,
-    width: number,
-    height: number,
-    steps: number | undefined,
-    seed: number | undefined,
-    images: { blob: Blob }[],
-    chat: Chat,
-    signal: AbortSignal | undefined
-  }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
-    const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
-    return await _performGeneration({
-      prompt,
-      model,
-      width,
-      height,
-      steps,
-      seed,
-      images,
-      endpointUrl: resolved.endpointUrl,
-      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
-      onProgress: () => {},
-      signal
-    });
-  };
-
-  const sendImageRequest = async ({ prompt, width, height, count, steps, seed, persistAs, attachments }: {
-    prompt: string;
-    width: number;
-    height: number;
-    count: number;
-    steps: number | undefined;
-    seed: number | 'browser_random' | undefined;
-    persistAs: ImageRequestParams['persistAs'];
-    attachments: Attachment[];
-  }): Promise<boolean> => {
-    const target = _currentChat.value;
-    if (!target) return false;
-    return await _sendImageRequest({
-      prompt,
-      width,
-      height,
-      count,
-      steps,
-      seed,
-      persistAs,
-      chatId: toRaw(target).id,
-      attachments,
-      availableModels: availableModels.value,
-      sendMessage: ({ content, parentId, attachments: atts }) => sendMessage({ content: content, parentId: parentId || null, attachments: atts })
-    });
-  };
+  const generateImage = chatImageService.generateImage;
+  const sendImageRequest = chatImageService.sendImageRequest;
 
   const createChatGroup = async ({ name, options }: { name: string, options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>> }) => {
     const id = generateId();
