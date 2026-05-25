@@ -20,6 +20,7 @@ import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import ChatAreaHeader from './ChatAreaHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
+import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
@@ -104,6 +105,16 @@ const contextCompactProgress = computed<ContextCompactProgress>(() => {
   return maybeProgress ?? { phase: 'idle' };
 });
 
+const showNeuralSyncEffect = ref(false);
+watch(() => contextCompactProgress.value.phase, (newPhase) => {
+  if (newPhase === 'complete') {
+    showNeuralSyncEffect.value = true;
+    setTimeout(() => {
+      showNeuralSyncEffect.value = false;
+    }, 1200);
+  }
+});
+
 const availableImageModels = computed(() => {
   return getSortedImageModels({ availableModels: availableModels.value });
 });
@@ -181,6 +192,7 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
 const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
+const showCompactSettings = ref(false);
 const showTitleDialog = ref(false);
 const generatedTitleHistory = ref<string[]>([]);
 const outlineVisibility = ref<'hidden' | 'visible'>('hidden');
@@ -737,7 +749,12 @@ async function handleRegenerate({ messageId }: { messageId: string }) {
 }
 
 async function handleCompactContext(_args: Record<never, never>) {
-  await compactCurrentBranch({ keepRecentMessages: 6 });
+  showCompactSettings.value = true;
+}
+
+async function handleConfirmCompact({ keepCount }: { keepCount: number }) {
+  showCompactSettings.value = false;
+  await compactCurrentBranch({ keepRecentMessages: keepCount });
 }
 
 function handleAbortContextCompact(_args: Record<never, never>) {
@@ -936,6 +953,15 @@ watch(
       @close="showHistoryModal = false"
     />
 
+    <!-- Context Compact Settings Dialog -->
+    <ContextCompactSettingsDialog
+      :is-open="showCompactSettings"
+      :total-messages="activeMessages.length"
+      :initial-keep-count="6"
+      @close="showCompactSettings = false"
+      @confirm="keepCount => handleConfirmCompact({ keepCount })"
+    />
+
     <!-- Chat Wesh Terminal Modal -->
     <ChatWeshTerminalModal
       :is-open="isChatWeshTerminalOpen"
@@ -949,6 +975,15 @@ watch(
 
     <!-- Messages Layer -->
     <div class="flex-1 relative overflow-hidden">
+      <!-- Neural Sync Effect Overlay -->
+      <div
+        v-if="showNeuralSyncEffect"
+        class="absolute inset-0 z-50 pointer-events-none overflow-hidden"
+      >
+        <div class="neural-scan-line"></div>
+        <div class="neural-flash-overlay"></div>
+      </div>
+
       <ConversationOutlineOverlay
         :visibility="outlineVisibility"
         :flow-items="chatFlow"
@@ -1146,6 +1181,36 @@ watch(
 </template>
 
 <style scoped>
+/* Neural Sync Effect Animations */
+@keyframes neural-scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+@keyframes neural-flash {
+  0% { opacity: 0; }
+  20% { opacity: 0.15; background-color: #6366f1; } /* indigo-500 */
+  100% { opacity: 0; }
+}
+
+.neural-scan-line {
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 120px;
+  background: linear-gradient(to bottom, transparent, #6366f1, transparent);
+  box-shadow: 0 0 50px rgba(99, 102, 241, 0.4);
+  animation: neural-scan 1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  z-index: 60;
+}
+
+.neural-flash-overlay {
+  position: absolute;
+  inset: 0;
+  animation: neural-flash 1s ease-out forwards;
+  z-index: 55;
+}
+
 /* Dropdown Transition */
 .dropdown-enter-active,
 .dropdown-leave-active {

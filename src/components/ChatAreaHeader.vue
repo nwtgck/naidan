@@ -327,7 +327,6 @@ defineExpose({
             <span>Super Edit</span>
           </button>
           <ContextCompactMenuItem
-            :disabled="activeMessageCount <= 6"
             @compact="emitMoreAction({ action: 'compact_context' })"
           />
           <button

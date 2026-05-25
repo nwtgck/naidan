@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { Minimize2Icon } from 'lucide-vue-next';
 
-defineProps<{
-  disabled: boolean;
-}>();
-
 defineEmits<{
   (e: 'compact'): void;
 }>();
@@ -16,12 +12,7 @@ defineExpose({
 
 <template>
   <button
-    class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-    :class="disabled
-      ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
-      : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400'
-    "
-    :disabled="disabled"
+    class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
     data-testid="compact-context-button"
     @click="$emit('compact')"
   >

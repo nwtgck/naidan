@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
-import { Loader2Icon, SquareIcon, SparklesIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
+import { Loader2Icon, SquareIcon, SparklesIcon, ChevronDownIcon, ChevronUpIcon, CheckCircle2Icon, XCircleIcon } from 'lucide-vue-next';
 import type { ContextCompactProgress } from '@/services/context-compact';
 import { toContextCompactDisplayProgress } from '@/services/context-compact';
 
@@ -143,21 +143,45 @@ defineExpose({
     <div
       v-if="display.isRunning"
       class="border-b border-indigo-100/50 dark:border-indigo-900/40 bg-white/70 dark:bg-gray-950/60 backdrop-blur-md px-4 sm:px-6 py-3 shadow-sm"
+      :class="{
+        'border-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/10': progress.phase === 'complete',
+        'border-rose-500/20 bg-rose-50/10 dark:bg-rose-950/10': progress.phase === 'failed',
+        'border-amber-500/20 bg-amber-50/10 dark:bg-amber-950/10': progress.phase === 'aborted'
+      }"
       data-testid="context-compact-progress-strip"
     >
       <div class="flex items-start gap-4">
         <!-- Status Icon with Glow -->
         <div class="relative shrink-0 pt-1">
-          <SparklesIcon class="w-4 h-4 text-indigo-500 dark:text-indigo-400 animate-pulse-glow" />
+          <CheckCircle2Icon v-if="progress.phase === 'complete'" class="w-4 h-4 text-emerald-500 dark:text-emerald-400 animate-in zoom-in duration-300" />
+          <XCircleIcon v-else-if="progress.phase === 'failed'" class="w-4 h-4 text-rose-500 dark:text-rose-400" />
+          <XCircleIcon v-else-if="progress.phase === 'aborted'" class="w-4 h-4 text-amber-500 dark:text-amber-400" />
+          <SparklesIcon v-else class="w-4 h-4 text-indigo-500 dark:text-indigo-400 animate-pulse-glow" />
         </div>
 
         <div class="min-w-0 flex-1 space-y-2">
           <!-- Header: Title & Percentage -->
           <div class="flex items-center justify-between gap-3">
-            <span class="truncate text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600 dark:text-indigo-300 animate-text-scan bg-gradient-to-r from-indigo-600 via-violet-500 to-indigo-600 bg-[length:200%_auto] bg-clip-text text-transparent">
+            <span 
+              class="truncate text-[10px] font-black uppercase tracking-[0.2em] animate-text-scan bg-gradient-to-r bg-[length:200%_auto] bg-clip-text text-transparent"
+              :class="{
+                'from-emerald-600 via-teal-500 to-emerald-600 dark:from-emerald-400 dark:via-teal-300 dark:to-emerald-400': progress.phase === 'complete',
+                'from-rose-600 via-pink-500 to-rose-600 dark:from-rose-400 dark:via-pink-300 dark:to-rose-400': progress.phase === 'failed',
+                'from-amber-600 via-yellow-500 to-amber-600 dark:from-amber-400 dark:via-yellow-300 dark:to-amber-400': progress.phase === 'aborted',
+                'from-indigo-600 via-violet-500 to-indigo-600 dark:from-indigo-400 dark:via-violet-300 dark:to-indigo-400': progress.phase !== 'complete' && progress.phase !== 'failed' && progress.phase !== 'aborted'
+              }"
+            >
               {{ display.title }}
             </span>
-            <span class="shrink-0 text-[10px] font-black tabular-nums text-indigo-500/80 dark:text-indigo-400/80">
+            <span 
+              class="shrink-0 text-[10px] font-black tabular-nums transition-colors duration-500"
+              :class="{
+                'text-emerald-500 dark:text-emerald-400': progress.phase === 'complete',
+                'text-rose-500 dark:text-rose-400': progress.phase === 'failed',
+                'text-amber-500 dark:text-amber-400': progress.phase === 'aborted',
+                'text-indigo-500/80 dark:text-indigo-400/80': progress.phase !== 'complete' && progress.phase !== 'failed' && progress.phase !== 'aborted'
+              }"
+            >
               {{ display.percent }}%
             </span>
           </div>
@@ -166,14 +190,29 @@ defineExpose({
           <div class="relative">
             <!-- Glow background -->
             <div 
-              class="absolute inset-0 rounded-full bg-indigo-500/10 dark:bg-indigo-400/5 blur-[2px] transition-[width] duration-300 ease-out"
+              class="absolute inset-0 rounded-full blur-[2px] transition-all duration-500 ease-out"
+              :class="{
+                'bg-emerald-500/20 dark:bg-emerald-400/10': progress.phase === 'complete',
+                'bg-indigo-500/10 dark:bg-indigo-400/5': progress.phase !== 'complete'
+              }"
               :style="{ width: `${display.percent}%` }"
             />
             
-            <div class="h-1.5 overflow-hidden rounded-full bg-indigo-100 dark:bg-gray-800 ring-1 ring-inset ring-indigo-500/10 dark:ring-indigo-400/10">
+            <div 
+              class="h-1.5 overflow-hidden rounded-full transition-colors duration-500 ring-1 ring-inset"
+              :class="[
+                progress.phase === 'complete' ? 'bg-emerald-100/50 dark:bg-emerald-950/40 ring-emerald-500/10' : 'bg-indigo-100 dark:bg-gray-800 ring-indigo-500/10 dark:ring-indigo-400/10'
+              ]"
+            >
               <!-- Animated Gradient Bar -->
               <div
-                class="h-full rounded-full bg-gradient-to-r from-blue-500 via-violet-500 to-cyan-500 transition-[width] duration-500 ease-out animate-shimmer bg-[length:200%_auto]"
+                class="h-full rounded-full transition-all duration-500 ease-out animate-shimmer bg-[length:200%_auto]"
+                :class="{
+                  'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]': progress.phase === 'complete',
+                  'bg-rose-500': progress.phase === 'failed',
+                  'bg-amber-500': progress.phase === 'aborted',
+                  'bg-gradient-to-r from-blue-500 via-violet-500 to-cyan-500': progress.phase !== 'complete' && progress.phase !== 'failed' && progress.phase !== 'aborted'
+                }"
                 :style="{ width: `${display.percent}%` }"
                 data-testid="context-compact-progress-bar"
               />
@@ -181,7 +220,15 @@ defineExpose({
           </div>
 
           <!-- Detail Text -->
-          <p class="truncate text-[11px] font-medium text-indigo-700/70 dark:text-indigo-200/60">
+          <p 
+            class="truncate text-[11px] font-medium transition-colors duration-500"
+            :class="{
+              'text-emerald-700/80 dark:text-emerald-300/70': progress.phase === 'complete',
+              'text-rose-700/80 dark:text-rose-300/70': progress.phase === 'failed',
+              'text-amber-700/80 dark:text-amber-300/70': progress.phase === 'aborted',
+              'text-indigo-700/70 dark:text-indigo-200/60': progress.phase !== 'complete' && progress.phase !== 'failed' && progress.phase !== 'aborted'
+            }"
+          >
             {{ display.detail }}
           </p>
 
