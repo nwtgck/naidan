@@ -28,6 +28,7 @@ import { createChatGenerationService } from './chat/chat-generation-service';
 import { createChatHierarchyService } from './chat/chat-hierarchy-service';
 import { createChatImageService } from './chat/chat-image-service';
 import { type AddToastOptions, createChatLifecycleService } from './chat/chat-lifecycle-service';
+import { createChatMountService } from './chat/chat-mount-service';
 import { createChatMetadataService } from './chat/chat-metadata-service';
 import { createChatTitleService } from './chat/chat-title-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
@@ -433,60 +434,24 @@ export function useChat() {
     }
   };
 
-  const addMountToChat = async ({ chatId, mount }: { chatId: string; mount: import('@/models/types').Mount }) => {
-    await storageService.addMountToChat({ chatId, mount });
-    await ensureChatTmpDirectory({ chatId });
-    const existing = liveChatRegistry.get(chatId);
-    if (existing) {
-      existing.mounts = [...(existing.mounts ?? []), mount];
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
-    }
-  };
-
-  const removeMountFromChat = async ({ chatId, volumeId }: { chatId: string; volumeId: string }) => {
-    await storageService.removeMountFromChat({ chatId, volumeId });
-    const existing = liveChatRegistry.get(chatId);
-    if (existing) {
-      existing.mounts = (existing.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId));
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
-    }
-  };
-
-  const updateChatMount = async ({ chatId, volumeId, readOnly }: { chatId: string; volumeId: string; readOnly: boolean }) => {
-    await storageService.updateChatMount({ chatId, volumeId, readOnly });
-    const existing = liveChatRegistry.get(chatId);
-    if (existing) {
-      existing.mounts = (existing.mounts ?? []).map(m =>
-        m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m
-      );
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
-    }
-  };
-
-  const addMountToChatGroup = async ({ groupId, mount }: { groupId: string; mount: import('@/models/types').Mount }) => {
-    await storageService.addMountToChatGroup({ groupId, mount });
-    if (_currentChatGroup.value?.id === groupId) {
-      _currentChatGroup.value.mounts = [...(_currentChatGroup.value.mounts ?? []), mount];
-    }
-  };
-
-  const removeMountFromChatGroup = async ({ groupId, volumeId }: { groupId: string; volumeId: string }) => {
-    await storageService.removeMountFromChatGroup({ groupId, volumeId });
-    if (_currentChatGroup.value?.id === groupId) {
-      _currentChatGroup.value.mounts = (_currentChatGroup.value.mounts ?? []).filter(
-        m => !(m.type === 'volume' && m.volumeId === volumeId)
-      );
-    }
-  };
-
-  const updateChatGroupMount = async ({ groupId, volumeId, mountPath, readOnly }: { groupId: string; volumeId: string; mountPath: string; readOnly: boolean }) => {
-    await storageService.updateChatGroupMount({ groupId, volumeId, mountPath, readOnly });
-    if (_currentChatGroup.value?.id === groupId) {
-      _currentChatGroup.value.mounts = (_currentChatGroup.value.mounts ?? []).map(m =>
-        m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m
-      );
-    }
-  };
+  const chatMountService = createChatMountService({
+    currentChatRef: _currentChat,
+    currentChatGroupRef: _currentChatGroup,
+    liveChatRegistry,
+    ensureChatTmpDirectory,
+    addMountToChatInStorage: ({ chatId, mount }) => storageService.addMountToChat({ chatId, mount }),
+    removeMountFromChatInStorage: ({ chatId, volumeId }) => storageService.removeMountFromChat({ chatId, volumeId }),
+    updateChatMountInStorage: ({ chatId, volumeId, readOnly }) => storageService.updateChatMount({ chatId, volumeId, readOnly }),
+    addMountToChatGroupInStorage: ({ groupId, mount }) => storageService.addMountToChatGroup({ groupId, mount }),
+    removeMountFromChatGroupInStorage: ({ groupId, volumeId }) => storageService.removeMountFromChatGroup({ groupId, volumeId }),
+    updateChatGroupMountInStorage: ({ groupId, volumeId, mountPath, readOnly }) => storageService.updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }),
+  });
+  const addMountToChat = chatMountService.addMountToChat;
+  const removeMountFromChat = chatMountService.removeMountFromChat;
+  const updateChatMount = chatMountService.updateChatMount;
+  const addMountToChatGroup = chatMountService.addMountToChatGroup;
+  const removeMountFromChatGroup = chatMountService.removeMountFromChatGroup;
+  const updateChatGroupMount = chatMountService.updateChatGroupMount;
 
   function hasMountsForChat({ chat }: { chat: Pick<Chat, 'mounts' | 'groupId'> }): boolean {
     if (settings.value.mounts && settings.value.mounts.length > 0) return true;
