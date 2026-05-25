@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from 'vue';
+import { ref, watch, nextTick, computed, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
@@ -19,6 +19,8 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import ChatAreaHeader from './ChatAreaHeader.vue';
+import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
+import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 
@@ -29,6 +31,7 @@ const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
+import type { ContextCompactProgress } from '@/services/context-compact';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -56,6 +59,7 @@ import { scrollIntoViewSafe } from '@/utils/dom';
 import { generateChatShareURL } from '@/services/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
+import { createCompactInstruction, type ContextCompactPromptMode } from '@/services/context-compact';
 
 
 const chatStore = useChat();
@@ -92,12 +96,75 @@ const {
   isWaitingResponse,
 } = chatStore;
 
+const compactCurrentBranch = chatStore.compactCurrentBranch ?? (async (_args: {
+  keepRecentMessages: number;
+  instructionOverride: string | undefined;
+}) => false);
+const abortContextCompact = chatStore.abortContextCompact ?? ((_args: { chatId: string | undefined }) => {});
+const contextCompactProgress = computed<ContextCompactProgress>(() => {
+  const maybeProgress = chatStore.contextCompactProgress as ContextCompactProgress | { value: ContextCompactProgress } | undefined;
+  if (maybeProgress && typeof maybeProgress === 'object' && 'value' in maybeProgress) {
+    return maybeProgress.value;
+  }
+  return maybeProgress ?? { phase: 'idle' };
+});
+
+const showNeuralSyncEffect = ref(false);
+const hideNeuralSyncEffectTimer = ref<number | undefined>(undefined);
+
+function clearNeuralSyncEffectTimer(_args: Record<never, never>) {
+  if (hideNeuralSyncEffectTimer.value !== undefined) {
+    window.clearTimeout(hideNeuralSyncEffectTimer.value);
+    hideNeuralSyncEffectTimer.value = undefined;
+  }
+}
+
+function playNeuralSyncEffect(_args: Record<never, never>) {
+  clearNeuralSyncEffectTimer({});
+  showNeuralSyncEffect.value = true;
+  hideNeuralSyncEffectTimer.value = window.setTimeout(() => {
+    showNeuralSyncEffect.value = false;
+    hideNeuralSyncEffectTimer.value = undefined;
+  }, 1200);
+}
+
+onBeforeUnmount(() => {
+  clearNeuralSyncEffectTimer({});
+});
+
+watch(() => currentChat.value?.id, () => {
+  clearNeuralSyncEffectTimer({});
+  showNeuralSyncEffect.value = false;
+});
+
 const availableImageModels = computed(() => {
   return getSortedImageModels({ availableModels: availableModels.value });
 });
 
 const chatAreaNaidanSysfsVisibility = computed(() => {
   return getNaidanSysfsMountSelection({ chatId: currentChat.value?.id });
+});
+
+const contextCompactPromptMode = computed<ContextCompactPromptMode>(() => {
+  const mountSelection = chatAreaNaidanSysfsVisibility.value;
+  switch (mountSelection) {
+  case 'none':
+    return 'without_message_ids';
+  case 'current_chat_only':
+  case 'current_chat_with_chat_group':
+  case 'all_chats':
+    return 'with_message_ids';
+  default: {
+    const _ex: never = mountSelection;
+    throw new Error(`Unhandled naidan sysfs visibility: ${_ex}`);
+  }
+  }
+});
+
+const initialContextCompactInstruction = computed(() => {
+  return createCompactInstruction({
+    promptMode: contextCompactPromptMode.value,
+  });
 });
 
 const { setActiveFocusArea } = useLayout();
@@ -169,6 +236,7 @@ const chatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
 
 const showChatSettings = ref(false);
 const showHistoryModal = ref(false);
+const showCompactSettings = ref(false);
 const showTitleDialog = ref(false);
 const generatedTitleHistory = ref<string[]>([]);
 const outlineVisibility = ref<'hidden' | 'visible'>('hidden');
@@ -724,6 +792,31 @@ async function handleRegenerate({ messageId }: { messageId: string }) {
   await chatStore.regenerateMessage({ failedMessageId: messageId });
 }
 
+async function handleCompactContext(_args: Record<never, never>) {
+  showCompactSettings.value = true;
+}
+
+async function handleConfirmCompact({
+  keepCount,
+  instruction,
+}: {
+  keepCount: number;
+  instruction: string;
+}) {
+  showCompactSettings.value = false;
+  const didCompact = await compactCurrentBranch({
+    keepRecentMessages: keepCount,
+    instructionOverride: instruction,
+  });
+  if (didCompact) {
+    playNeuralSyncEffect({});
+  }
+}
+
+function handleAbortContextCompact(_args: Record<never, never>) {
+  abortContextCompact({ chatId: currentChat.value?.id });
+}
+
 function handleSwitchVersion({ messageId }: { messageId: string }) {
   chatStore.switchVersion({ messageId });
 }
@@ -874,6 +967,7 @@ watch(
       @print="handlePrint"
       @search-chat="() => { if (currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); }"
       @open-history="showHistoryModal = true"
+      @compact-context="handleCompactContext({})"
       @export-chat="exportChat"
       @toggle-media-shelf="toggleMediaShelf"
       @share-url="shareAsURL"
@@ -910,6 +1004,16 @@ watch(
       @close="showHistoryModal = false"
     />
 
+    <!-- Context Compact Settings Dialog -->
+    <ContextCompactSettingsDialog
+      :is-open="showCompactSettings"
+      :total-messages="activeMessages.length"
+      :initial-keep-count="6"
+      :initial-instruction="initialContextCompactInstruction"
+      @close="showCompactSettings = false"
+      @confirm="({ keepCount, instruction }) => handleConfirmCompact({ keepCount, instruction })"
+    />
+
     <!-- Chat Wesh Terminal Modal -->
     <ChatWeshTerminalModal
       :is-open="isChatWeshTerminalOpen"
@@ -923,6 +1027,28 @@ watch(
 
     <!-- Messages Layer -->
     <div class="flex-1 relative overflow-hidden">
+      <div
+        class="absolute inset-x-0 top-0 z-40 pointer-events-none"
+        data-testid="context-compact-progress-overlay"
+      >
+        <div class="pointer-events-auto">
+          <ContextCompactProgressStrip
+            :progress="contextCompactProgress"
+            @abort="handleAbortContextCompact({})"
+          />
+        </div>
+      </div>
+
+      <!-- Neural Sync Effect Overlay -->
+      <div
+        v-if="showNeuralSyncEffect"
+        class="absolute inset-0 z-50 pointer-events-none overflow-hidden"
+        data-testid="context-compact-neural-sync-effect"
+      >
+        <div class="neural-scan-line"></div>
+        <div class="neural-flash-overlay"></div>
+      </div>
+
       <ConversationOutlineOverlay
         :visibility="outlineVisibility"
         :flow-items="chatFlow"
@@ -1120,6 +1246,36 @@ watch(
 </template>
 
 <style scoped>
+/* Neural Sync Effect Animations */
+@keyframes neural-scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+@keyframes neural-flash {
+  0% { opacity: 0; }
+  20% { opacity: 0.15; background-color: #6366f1; } /* indigo-500 */
+  100% { opacity: 0; }
+}
+
+.neural-scan-line {
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 120px;
+  background: linear-gradient(to bottom, transparent, #6366f1, transparent);
+  box-shadow: 0 0 50px rgba(99, 102, 241, 0.4);
+  animation: neural-scan 1s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  z-index: 60;
+}
+
+.neural-flash-overlay {
+  position: absolute;
+  inset: 0;
+  animation: neural-flash 1s ease-out forwards;
+  z-index: 55;
+}
+
 /* Dropdown Transition */
 .dropdown-enter-active,
 .dropdown-leave-active {

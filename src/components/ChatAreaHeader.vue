@@ -9,6 +9,8 @@ import {
 import type { MediaShelfVisibility } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
+import type { ChatAreaHeaderMoreAction } from '@/services/context-compact';
 
 type HeaderChat = {
   readonly id: string;
@@ -47,6 +49,7 @@ const emit = defineEmits<{
   (e: 'print'): void;
   (e: 'search-chat'): void;
   (e: 'open-history'): void;
+  (e: 'compact-context'): void;
   (e: 'export-chat'): void;
   (e: 'toggle-media-shelf'): void;
   (e: 'share-url'): void;
@@ -80,43 +83,37 @@ function emitMoveToGroup({ groupId }: { groupId: string | null }) {
 }
 
 function emitMoreAction({ action }: {
-  action:
-    | 'print'
-    | 'search-chat'
-    | 'open-history'
-    | 'export-chat'
-    | 'toggle-media-shelf'
-    | 'share-url'
-    | 'open-file-explorer'
-    | 'toggle-wesh-terminal'
-    | 'toggle-debug'
+  action: ChatAreaHeaderMoreAction;
 }) {
   switch (action) {
   case 'print':
     emit('print');
     break;
-  case 'search-chat':
+  case 'search_chat':
     emit('search-chat');
     break;
-  case 'open-history':
+  case 'open_history':
     emit('open-history');
     break;
-  case 'export-chat':
+  case 'compact_context':
+    emit('compact-context');
+    break;
+  case 'export_chat':
     emit('export-chat');
     break;
-  case 'toggle-media-shelf':
+  case 'toggle_media_shelf':
     emit('toggle-media-shelf');
     break;
-  case 'share-url':
+  case 'share_url':
     emit('share-url');
     break;
-  case 'open-file-explorer':
+  case 'open_file_explorer':
     emit('open-file-explorer');
     break;
-  case 'toggle-wesh-terminal':
+  case 'toggle_wesh_terminal':
     emit('toggle-wesh-terminal');
     break;
-  case 'toggle-debug':
+  case 'toggle_debug':
     emit('toggle-debug');
     break;
   default: {
@@ -313,7 +310,7 @@ defineExpose({
             <span>Print</span>
           </button>
           <button
-            @click="emitMoreAction({ action: 'search-chat' })"
+            @click="emitMoreAction({ action: 'search_chat' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-indigo-600 dark:hover:text-indigo-400"
             data-testid="search-in-chat-button"
           >
@@ -321,7 +318,7 @@ defineExpose({
             <span>Search in Chat</span>
           </button>
           <button
-            @click="emitMoreAction({ action: 'open-history' })"
+            @click="emitMoreAction({ action: 'open_history' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-orange-500 dark:hover:text-orange-400"
             title="Super Edit (Full History Manipulation)"
             data-testid="super-edit-button"
@@ -329,8 +326,11 @@ defineExpose({
             <HammerIcon class="w-4 h-4" />
             <span>Super Edit</span>
           </button>
+          <ContextCompactMenuItem
+            @compact="emitMoreAction({ action: 'compact_context' })"
+          />
           <button
-            @click="emitMoreAction({ action: 'export-chat' })"
+            @click="emitMoreAction({ action: 'export_chat' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
             title="Export as Markdown"
             data-testid="export-markdown-button"
@@ -339,7 +339,7 @@ defineExpose({
             <span>Export Markdown</span>
           </button>
           <button
-            @click="emitMoreAction({ action: 'toggle-media-shelf' })"
+            @click="emitMoreAction({ action: 'toggle_media_shelf' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
             :class="mediaShelfVisibility === 'visible'
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
@@ -351,7 +351,7 @@ defineExpose({
             <span>Media Gallery</span>
           </button>
           <button
-            @click="emitMoreAction({ action: 'share-url' })"
+            @click="emitMoreAction({ action: 'share_url' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
             title="Copy a shareable URL containing this chat"
             data-testid="export-url-button"
@@ -360,7 +360,7 @@ defineExpose({
             <span>Export as URL</span>
           </button>
           <button
-            @click="emitMoreAction({ action: 'open-file-explorer' })"
+            @click="emitMoreAction({ action: 'open_file_explorer' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600 dark:hover:text-blue-400"
             data-testid="open-chat-file-explorer-button"
           >
@@ -368,7 +368,7 @@ defineExpose({
             <span>File Explorer</span>
           </button>
           <button
-            @click="emitMoreAction({ action: 'toggle-wesh-terminal' })"
+            @click="emitMoreAction({ action: 'toggle_wesh_terminal' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
             :class="isChatWeshTerminalOpen
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
@@ -380,7 +380,7 @@ defineExpose({
             <span>Wesh Terminal</span>
           </button>
           <button
-            @click="emitMoreAction({ action: 'toggle-debug' })"
+            @click="emitMoreAction({ action: 'toggle_debug' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
             :class="currentChat?.debugEnabled
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'

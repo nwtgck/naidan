@@ -32,9 +32,11 @@ function makeGroup(overrides: Partial<ChatGroup> = {}): ChatGroup {
 function mountHeader({
   chat,
   groups,
+  activeMessageCount = 2,
 }: {
   chat: Chat | null;
   groups: readonly ChatGroup[];
+  activeMessageCount?: number;
 }) {
   const currentGroup = chat?.groupId
     ? groups.find(group => group.id === chat.groupId)
@@ -45,7 +47,7 @@ function mountHeader({
       currentChat: chat,
       chatGroups: groups,
       currentChatGroupBadge: currentGroup,
-      activeMessageCount: 2,
+      activeMessageCount,
       modelLabel: 'gpt-test (Group)',
       hasOverrides: true,
       showChatSettings: false,
@@ -146,6 +148,19 @@ describe('ChatAreaHeader', () => {
     await wrapper.find('[data-testid="open-chat-file-explorer-button"]').trigger('click');
 
     expect(wrapper.emitted('open-file-explorer')).toEqual([[]]);
+  });
+
+  it('emits compact-context from the more actions menu', async () => {
+    const wrapper = mountHeader({
+      chat: makeChat(),
+      groups: [makeGroup()],
+      activeMessageCount: 7,
+    });
+
+    await wrapper.find('[data-testid="more-actions-button"]').trigger('click');
+    await wrapper.find('[data-testid="compact-context-button"]').trigger('click');
+
+    expect(wrapper.emitted('compact-context')).toEqual([[]]);
   });
 
   it('keeps the more menu open on mouseleave and closes it on outside click', async () => {
