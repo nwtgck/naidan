@@ -31,6 +31,7 @@ import { useChatTools } from './useChatTools';
 import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
+import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import {
@@ -54,15 +55,13 @@ const activeGenerations = reactive(new Map<string, { controller: AbortController
 const activeTitleGenerations = reactive(new Map<string, AbortController>());
 const externalGenerations = reactive(new Set<string>());
 const activeTaskCounts = reactive(new Map<string, number>());
-const compactProgressByChat = reactive(new Map<string, ContextCompactProgress>());
-const compactProgressResetTimers = reactive(new Map<string, number>());
-const activeContextCompactions = reactive(new Map<string, AbortController>());
 const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
 const volatileToolOutputs = reactive(new Map<string, string>());
 const chatTmpDirectories = reactive(new Map<string, {
   handle: FileSystemDirectoryHandle;
   mountPath: '/tmp';
 }>());
+const contextCompactRuntime = createContextCompactRuntime({});
 
 const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
 const isGeneratingTitle = ({ chatId }: { chatId: string }) => (activeTaskCounts.get('title:' + chatId) || 0) > 0;
@@ -144,39 +143,7 @@ function setContextCompactProgress({
   chatId: string;
   progress: ContextCompactProgress;
 }) {
-  const existingTimer = compactProgressResetTimers.get(chatId);
-  if (existingTimer !== undefined) {
-    window.clearTimeout(existingTimer);
-    compactProgressResetTimers.delete(chatId);
-  }
-
-  compactProgressByChat.set(chatId, progress);
-
-  switch (progress.phase) {
-  case 'complete':
-  case 'failed':
-  case 'aborted': {
-    const timerId = window.setTimeout(() => {
-      if (compactProgressByChat.get(chatId)?.phase === progress.phase) {
-        compactProgressByChat.delete(chatId);
-      }
-      compactProgressResetTimers.delete(chatId);
-    }, 400);
-    compactProgressResetTimers.set(chatId, timerId);
-    return;
-  }
-  case 'idle':
-  case 'preparing':
-  case 'building_request':
-  case 'requesting_model':
-  case 'receiving_compact':
-  case 'applying_branch':
-    return;
-  default: {
-    const _ex: never = progress;
-    throw new Error(`Unhandled context compact progress: ${_ex}`);
-  }
-  }
+  contextCompactRuntime.setProgress({ chatId, progress });
 }
 
 function getContextCompactProgress({
@@ -184,11 +151,7 @@ function getContextCompactProgress({
 }: {
   chatId: string | undefined;
 }): ContextCompactProgress {
-  if (chatId === undefined) {
-    return { phase: 'idle' };
-  }
-
-  return compactProgressByChat.get(chatId) ?? { phase: 'idle' };
+  return contextCompactRuntime.getProgress({ chatId });
 }
 
 
@@ -2162,7 +2125,7 @@ export function useChat() {
       return;
     }
 
-    activeContextCompactions.get(chatId)?.abort();
+    contextCompactRuntime.getActiveContextCompaction({ chatId })?.abort();
   };
 
   const compactCurrentBranch = async ({
@@ -2199,7 +2162,10 @@ export function useChat() {
     }
 
     const controller = new AbortController();
-    activeContextCompactions.set(mutableChat.id, controller);
+    contextCompactRuntime.setActiveContextCompaction({
+      chatId: mutableChat.id,
+      controller,
+    });
     incTask({ chatId: mutableChat.id, type: 'process' });
     registerLiveInstance({ chat: mutableChat });
     setContextCompactProgress({
@@ -2396,9 +2362,10 @@ export function useChat() {
       });
       throw error;
     } finally {
-      if (activeContextCompactions.get(mutableChat.id) === controller) {
-        activeContextCompactions.delete(mutableChat.id);
-      }
+      contextCompactRuntime.clearActiveContextCompaction({
+        chatId: mutableChat.id,
+        controller,
+      });
       decTask({ chatId: mutableChat.id, type: 'process' });
     }
   };
@@ -2999,8 +2966,8 @@ export function useChat() {
       liveChatRegistry,
       activeGenerations,
       activeTaskCounts,
-      compactProgressByChat,
-      activeContextCompactions,
+      compactProgressByChat: contextCompactRuntime.TEST_ONLY.compactProgressByChat,
+      activeContextCompactions: contextCompactRuntime.activeContextCompactions,
       chatTmpDirectories,
       clearLiveChatRegistry,
       clearActiveTaskCounts,
