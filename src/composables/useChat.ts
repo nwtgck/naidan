@@ -31,6 +31,7 @@ import { useChatTools } from './useChatTools';
 import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
+import { createChatRuntimeStore } from './chat/chat-runtime-store';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
@@ -44,20 +45,17 @@ const _currentChat = ref<Chat | null>(null);
 const _currentChatGroup = ref<ChatGroup | null>(null);
 
 const liveChatRegistry = reactive(new Map<string, Chat>());
-const activeGenerations = reactive(new Map<string, { controller: AbortController, chat: Chat }>)
-const activeTitleGenerations = reactive(new Map<string, AbortController>());
-const externalGenerations = reactive(new Set<string>());
-const activeTaskCounts = reactive(new Map<string, number>());
 const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
 const volatileToolOutputs = reactive(new Map<string, string>());
 const chatTmpDirectories = reactive(new Map<string, {
   handle: FileSystemDirectoryHandle;
   mountPath: '/tmp';
 }>());
+const chatRuntimeStore = createChatRuntimeStore({});
 const contextCompactRuntime = createContextCompactRuntime({});
 
-const streaming = computed(() => activeGenerations.size > 0 || externalGenerations.size > 0);
-const isGeneratingTitle = ({ chatId }: { chatId: string }) => (activeTaskCounts.get('title:' + chatId) || 0) > 0;
+const streaming = computed(() => chatRuntimeStore.activeGenerations.size > 0 || chatRuntimeStore.externalGenerations.size > 0);
+const isGeneratingTitle = ({ chatId }: { chatId: string }) => chatRuntimeStore.isGeneratingTitle({ chatId });
 const generatingTitle = computed(() => {
   if (!_currentChat.value) return false;
   return isGeneratingTitle({ chatId: toRaw(_currentChat.value).id });
@@ -66,9 +64,14 @@ const contextCompactProgress = computed<ContextCompactProgress>(() => {
   return getContextCompactProgress({ chatId: _currentChat.value ? toRaw(_currentChat.value).id : undefined });
 });
 const fetchingModels = computed(() => {
-  if ((activeTaskCounts.get('fetch:global') || 0) > 0) return true;
+  if (chatRuntimeStore.getTaskCount({ key: { kind: 'fetch', chatId: undefined } }) > 0) return true;
   if (!_currentChat.value) return false;
-  return (activeTaskCounts.get('fetch:' + toRaw(_currentChat.value).id) || 0) > 0;
+  return chatRuntimeStore.getTaskCount({
+    key: {
+      kind: 'fetch',
+      chatId: toRaw(_currentChat.value).id,
+    },
+  }) > 0;
 });
 
 const creatingChat = ref(false);
@@ -96,37 +99,18 @@ if ((() => {
   }
 })()) {
   window.addEventListener('beforeunload', () => {
-    for (const item of activeGenerations.values()) {
+    for (const item of chatRuntimeStore.activeGenerations.values()) {
       item.controller.abort();
     }
   });
 }
 
-// --- Registry Helpers ---
-
-function incTask({ chatId, type }: { chatId: string, type: 'title' | 'fetch' | 'process' }) {
-  const key = `${type}:${chatId}`;
-  activeTaskCounts.set(key, (activeTaskCounts.get(key) || 0) + 1);
-}
-
-function decTask({ chatId, type }: { chatId: string, type: 'title' | 'fetch' | 'process' }) {
-  const key = `${type}:${chatId}`;
-  const val = (activeTaskCounts.get(key) || 0) - 1;
-  if (val <= 0) activeTaskCounts.delete(key);
-  else activeTaskCounts.set(key, val);
-}
-
 function isTaskRunning({ chatId }: { chatId: string }) {
-  if (activeGenerations.has(chatId) || externalGenerations.has(chatId)) return true;
-  for (const [key, count] of activeTaskCounts.entries()) {
-    if (count > 0 && key.endsWith(':' + chatId)) return true;
-  }
-  return false;
+  return chatRuntimeStore.isTaskRunning({ chatId });
 }
 
 function isProcessing({ chatId }: { chatId: string }) {
-  if (activeGenerations.has(chatId) || externalGenerations.has(chatId)) return true;
-  return (activeTaskCounts.get('process:' + chatId) || 0) > 0;
+  return chatRuntimeStore.isProcessing({ chatId });
 }
 
 function setContextCompactProgress({
@@ -327,7 +311,7 @@ storageService.subscribeToChanges(async (event) => {
         applyVolatileAssistantErrorsToChat({ chat: fresh });
         Object.assign(_currentChat.value, fresh);
         triggerRef(_currentChat);
-      } else if (!activeGenerations.has(event.id)) {
+      } else if (!chatRuntimeStore.activeGenerations.has(event.id)) {
         _currentChat.value = null;
       }
     }
@@ -341,15 +325,15 @@ storageService.subscribeToChanges(async (event) => {
   case 'chat_content_generation': {
     switch (event.status) {
     case 'started':
-      if (!activeGenerations.has(event.id)) {
-        externalGenerations.add(event.id);
+      if (!chatRuntimeStore.activeGenerations.has(event.id)) {
+        chatRuntimeStore.setExternalGeneration({ chatId: event.id });
       }
       break;
     case 'stopped':
-      externalGenerations.delete(event.id);
+      chatRuntimeStore.deleteExternalGeneration({ chatId: event.id });
       break;
     case 'abort_request': {
-      const local = activeGenerations.get(event.id);
+      const local = chatRuntimeStore.getActiveGeneration({ chatId: event.id });
       if (local) {
         local.controller.abort();
       }
@@ -364,7 +348,7 @@ storageService.subscribeToChanges(async (event) => {
   }
   case 'chat_content': {
     if (event.id && _currentChat.value && toRaw(_currentChat.value).id === event.id) {
-      if (!activeGenerations.has(event.id)) {
+      if (!chatRuntimeStore.activeGenerations.has(event.id)) {
         const fresh = await storageService.loadChat({ id: event.id });
         if (fresh && _currentChat.value) {
           applyVolatileAssistantErrorsToChat({ chat: fresh });
@@ -377,9 +361,9 @@ storageService.subscribeToChanges(async (event) => {
     break;
   }
   case 'migration': {
-    for (const item of activeGenerations.values()) item.controller.abort();
-    activeGenerations.clear();
-    activeTaskCounts.clear();
+    for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
+    chatRuntimeStore.clearActiveGenerations({});
+    chatRuntimeStore.clearActiveTaskCounts({});
     liveChatRegistry.clear();
     chatTmpDirectories.clear();
 
@@ -501,8 +485,21 @@ export function useChat() {
 
   const fetchAvailableModels = async ({ chatId, customEndpoint }: { chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] } }) => {
     const mutableChat = chatId ? liveChatRegistry.get(chatId) : undefined;
-    if (mutableChat) incTask({ chatId: mutableChat.id, type: 'fetch' });
-    else if (!customEndpoint) activeTaskCounts.set('fetch:global', (activeTaskCounts.get('fetch:global') || 0) + 1);
+    if (mutableChat) {
+      chatRuntimeStore.startTask({
+        key: {
+          kind: 'fetch',
+          chatId: mutableChat.id,
+        },
+      });
+    } else if (!customEndpoint) {
+      chatRuntimeStore.startTask({
+        key: {
+          kind: 'fetch',
+          chatId: undefined,
+        },
+      });
+    }
 
     let type: EndpointType;
     let url: string;
@@ -529,10 +526,19 @@ export function useChat() {
 
     if (!url && type !== 'transformers_js') {
       if (mutableChat) {
-        decTask({ chatId: mutableChat.id, type: 'fetch' });
+        chatRuntimeStore.finishTask({
+          key: {
+            kind: 'fetch',
+            chatId: mutableChat.id,
+          },
+        });
       } else if (!customEndpoint) {
-        const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
-        if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
+        chatRuntimeStore.finishTask({
+          key: {
+            kind: 'fetch',
+            chatId: undefined,
+          },
+        });
       }
       return [];
     }
@@ -576,10 +582,19 @@ export function useChat() {
       return [];
     } finally {
       if (mutableChat) {
-        decTask({ chatId: mutableChat.id, type: 'fetch' });
+        chatRuntimeStore.finishTask({
+          key: {
+            kind: 'fetch',
+            chatId: mutableChat.id,
+          },
+        });
       } else if (!customEndpoint) {
-        const val = (activeTaskCounts.get('fetch:global') || 0) - 1;
-        if (val <= 0) activeTaskCounts.delete('fetch:global'); else activeTaskCounts.set('fetch:global', val);
+        chatRuntimeStore.finishTask({
+          key: {
+            kind: 'fetch',
+            chatId: undefined,
+          },
+        });
       }
     }
   };
@@ -828,12 +843,11 @@ export function useChat() {
     await loadData({});
 
     const cleanup = async (_params: Record<string, never>) => {
-      if (activeGenerations.has(id)) {
-        activeGenerations.get(id)?.controller.abort(); activeGenerations.delete(id);
+      if (chatRuntimeStore.activeGenerations.has(id)) {
+        chatRuntimeStore.getActiveGeneration({ chatId: id })?.controller.abort();
+        chatRuntimeStore.deleteActiveGeneration({ chatId: id });
       }
-      activeTaskCounts.delete('title:' + id);
-      activeTaskCounts.delete('fetch:' + id);
-      activeTaskCounts.delete('process:' + id);
+      chatRuntimeStore.clearTasksForChat({ chatId: id });
       liveChatRegistry.delete(id);
       chatTmpDirectories.delete(id);
       await storageService.deleteChat({ id });
@@ -887,9 +901,9 @@ export function useChat() {
   };
 
   const deleteAllChats = async (_params: Record<string, never>) => {
-    for (const [, item] of activeGenerations.entries()) item.controller.abort();
-    activeGenerations.clear();
-    activeTaskCounts.clear();
+    for (const [, item] of chatRuntimeStore.activeGenerations.entries()) item.controller.abort();
+    chatRuntimeStore.clearActiveGenerations({});
+    chatRuntimeStore.clearActiveTaskCounts({});
     liveChatRegistry.clear();
     chatTmpDirectories.clear();
 
@@ -1062,8 +1076,8 @@ export function useChat() {
       triggerChatRef: ({ chatId }) => {
         if (_currentChat.value && toRaw(_currentChat.value).id === chatId) triggerRef(_currentChat);
       },
-      incTask: ({ chatId, type }) => incTask({ chatId, type }),
-      decTask: ({ chatId, type }) => decTask({ chatId, type })
+      incTask: ({ chatId, type }) => chatRuntimeStore.startTask({ key: { kind: type, chatId } }),
+      decTask: ({ chatId, type }) => chatRuntimeStore.finishTask({ key: { kind: type, chatId } })
     });
   };
 
@@ -1088,7 +1102,10 @@ export function useChat() {
     if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
 
     const controller = new AbortController();
-    activeGenerations.set(mutableChat.id, { controller, chat: mutableChat });
+    chatRuntimeStore.setActiveGeneration({
+      chatId: mutableChat.id,
+      generation: { controller, chat: mutableChat },
+    });
     storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'started', timestamp: Date.now() });
     registerLiveInstance({ chat: mutableChat });
 
@@ -1503,7 +1520,7 @@ export function useChat() {
       processThinking({ node: assistantNode });
       mutableChat.updatedAt = Date.now();
 
-      if (mutableChat.title === null && resolved.autoTitleEnabled && (activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
+      if (mutableChat.title === null && resolved.autoTitleEnabled && (chatRuntimeStore.activeGenerations.has(mutableChat.id) || (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id))) {
         await generateChatTitle({ chatId: mutableChat.id, signal: controller.signal, titleModelIdOverride: undefined });
       }
     } catch (e) {
@@ -1544,8 +1561,8 @@ export function useChat() {
         }
       }
     } finally {
-      if (activeGenerations.has(mutableChat.id)) {
-        activeGenerations.delete(mutableChat.id);
+      if (chatRuntimeStore.activeGenerations.has(mutableChat.id)) {
+        chatRuntimeStore.deleteActiveGeneration({ chatId: mutableChat.id });
         storageService.notify({ type: 'chat_content_generation', id: mutableChat.id, status: 'stopped', timestamp: Date.now() });
 
         // Update meta one last time in the background
@@ -1572,7 +1589,12 @@ export function useChat() {
     if (isProcessing({ chatId: rawTarget.id })) return false;
 
     const chat = getLiveChat({ chat: target });
-    incTask({ chatId: chat.id, type: 'process' });
+    chatRuntimeStore.startTask({
+      key: {
+        kind: 'process',
+        chatId: chat.id,
+      },
+    });
     registerLiveInstance({ chat });
 
     try {
@@ -1718,7 +1740,12 @@ export function useChat() {
       await Promise.resolve();
       return true;
     } finally {
-      decTask({ chatId: chat.id, type: 'process' });
+      chatRuntimeStore.finishTask({
+        key: {
+          kind: 'process',
+          chatId: chat.id,
+        },
+      });
     }
   };
 
@@ -1734,7 +1761,12 @@ export function useChat() {
     }
 
     const chat = getLiveChat({ chat: _currentChat.value });
-    incTask({ chatId: chat.id, type: 'process' });
+    chatRuntimeStore.startTask({
+      key: {
+        kind: 'process',
+        chatId: chat.id,
+      },
+    });
     registerLiveInstance({ chat });
     try {
       const failedNode = findNodeInBranch({ items: chat.root.items, targetId: failedMessageId });
@@ -1765,7 +1797,12 @@ export function useChat() {
       } });
       generateResponse({ chat: chat, assistantId: newAssistantMsg.id, lmParameters: failedNode.lmParameters }).catch(e => console.error('Background generation failed:', e));
     } finally {
-      decTask({ chatId: chat.id, type: 'process' });
+      chatRuntimeStore.finishTask({
+        key: {
+          kind: 'process',
+          chatId: chat.id,
+        },
+      });
     }
   };
 
@@ -1777,24 +1814,32 @@ export function useChat() {
     const titleAtStart = mutableChat.title;
 
     // Abort existing title generation for this chat if any
-    if (activeTitleGenerations.has(taskId)) {
-      activeTitleGenerations.get(taskId)?.abort();
+    if (chatRuntimeStore.activeTitleGenerations.has(taskId)) {
+      chatRuntimeStore.getActiveTitleGeneration({ chatId: taskId })?.abort();
     }
 
     const controller = new AbortController();
-    activeTitleGenerations.set(taskId, controller);
+    chatRuntimeStore.setActiveTitleGeneration({
+      chatId: taskId,
+      controller,
+    });
 
-    incTask({ chatId: taskId, type: 'title' });
+    chatRuntimeStore.startTask({
+      key: {
+        kind: 'title',
+        chatId: taskId,
+      },
+    });
     registerLiveInstance({ chat: mutableChat });
     try {
       const resolved = resolveChatSettings({ chat: mutableChat, groups: chatGroups.value, globalSettings: settings.value });
       if (!resolved.endpointUrl && resolved.endpointType !== 'transformers_js') {
-        decTask({ chatId: taskId, type: 'title' }); return;
+        chatRuntimeStore.finishTask({ key: { kind: 'title', chatId: taskId } }); return;
       }
       const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
       const content = stripNaidanSentinels({ content: history[0]?.content || '' });
       if (!content || typeof content !== 'string') {
-        decTask({ chatId: taskId, type: 'title' }); return;
+        chatRuntimeStore.finishTask({ key: { kind: 'title', chatId: taskId } }); return;
       }
 
       let generatedTitle = '';
@@ -1874,18 +1919,23 @@ export function useChat() {
       }
       return undefined;
     } finally {
-      decTask({ chatId: taskId, type: 'title' });
-      if (activeTitleGenerations.get(taskId) === controller) {
-        activeTitleGenerations.delete(taskId);
+      chatRuntimeStore.finishTask({
+        key: {
+          kind: 'title',
+          chatId: taskId,
+        },
+      });
+      if (chatRuntimeStore.getActiveTitleGeneration({ chatId: taskId }) === controller) {
+        chatRuntimeStore.deleteActiveTitleGeneration({ chatId: taskId });
       }
     }
   };
 
   const abortTitleGeneration = ({ chatId }: { chatId: string | undefined }) => {
     const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
-    if (id && activeTitleGenerations.has(id)) {
-      activeTitleGenerations.get(id)?.abort();
-      activeTitleGenerations.delete(id);
+    if (id && chatRuntimeStore.activeTitleGenerations.has(id)) {
+      chatRuntimeStore.getActiveTitleGeneration({ chatId: id })?.abort();
+      chatRuntimeStore.deleteActiveTitleGeneration({ chatId: id });
     }
   };
 
@@ -1893,10 +1943,10 @@ export function useChat() {
     const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
     if (id) {
       abortContextCompact({ chatId: id });
-      if (activeGenerations.has(id)) {
-        activeGenerations.get(id)?.controller.abort();
+      if (chatRuntimeStore.activeGenerations.has(id)) {
+        chatRuntimeStore.getActiveGeneration({ chatId: id })?.controller.abort();
         storageService.notify({ type: 'chat_content_generation', id, status: 'abort_request', timestamp: Date.now() });
-      } else if (externalGenerations.has(id)) {
+      } else if (chatRuntimeStore.hasExternalGeneration({ chatId: id })) {
         storageService.notify({ type: 'chat_content_generation', id, status: 'abort_request', timestamp: Date.now() });
       }
       // Also abort title generation for this chat
@@ -1945,10 +1995,10 @@ export function useChat() {
     },
     addErrorEvent,
     startProcessing: ({ chatId }) => {
-      incTask({ chatId, type: 'process' });
+      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
     },
     finishProcessing: ({ chatId }) => {
-      decTask({ chatId, type: 'process' });
+      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
     },
   });
   const abortContextCompact = contextCompactService.abortContextCompact;
@@ -2534,7 +2584,7 @@ export function useChat() {
   };
 
   const clearActiveTaskCounts = (_params: Record<string, never>) => {
-    activeTaskCounts.clear();
+    chatRuntimeStore.clearActiveTaskCounts({});
   };
 
   const getVolatileToolOutput = ({ toolCallId }: { toolCallId: string }) => {
@@ -2560,8 +2610,8 @@ export function useChat() {
     chatFlow, isThinkingActive, isWaitingResponse, contextCompactProgress,
     TEST_ONLY: {
       liveChatRegistry,
-      activeGenerations,
-      activeTaskCounts,
+      activeGenerations: chatRuntimeStore.activeGenerations,
+      activeTaskCounts: chatRuntimeStore.TEST_ONLY.activeTaskCounts,
       compactProgressByChat: contextCompactRuntime.TEST_ONLY.compactProgressByChat,
       activeContextCompactions: contextCompactRuntime.activeContextCompactions,
       chatTmpDirectories,
