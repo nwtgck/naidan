@@ -438,6 +438,7 @@ Question`,
     });
 
     expect(wrapper.find('[data-testid="context-compact-progress-strip"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="context-compact-progress-overlay"]').classes()).toContain('absolute');
   });
 
   it('shows the neural sync effect only for the compact completion transition in the active chat', async () => {

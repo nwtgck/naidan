@@ -966,11 +966,6 @@ watch(
       @toggle-debug="() => chatStore.toggleDebug({})"
     />
 
-    <ContextCompactProgressStrip
-      :progress="contextCompactProgress"
-      @abort="handleAbortContextCompact({})"
-    />
-
     <!-- Chat Settings Panel -->
     <ChatSettingsPanel
       :show="showChatSettings"
@@ -1021,6 +1016,18 @@ watch(
 
     <!-- Messages Layer -->
     <div class="flex-1 relative overflow-hidden">
+      <div
+        class="absolute inset-x-0 top-0 z-40 pointer-events-none"
+        data-testid="context-compact-progress-overlay"
+      >
+        <div class="pointer-events-auto">
+          <ContextCompactProgressStrip
+            :progress="contextCompactProgress"
+            @abort="handleAbortContextCompact({})"
+          />
+        </div>
+      </div>
+
       <!-- Neural Sync Effect Overlay -->
       <div
         v-if="showNeuralSyncEffect"
