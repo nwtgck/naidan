@@ -1,6 +1,6 @@
 import { generateId } from '@/utils/id';
 import { ref, computed, reactive, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
-import type { Chat, ChatGroup, SidebarItem, ChatSummary, Settings } from '@/models/types';
+import type { Chat, ChatGroup, Settings } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from './useSettings';
@@ -9,7 +9,7 @@ import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
 import { useToast } from './useToast';
-import { findNodeInBranch, getChatBranchIterator, getAllMessages } from '@/utils/chat-tree';
+import { findNodeInBranch } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 
 import { useChatTools } from './useChatTools';
@@ -17,6 +17,7 @@ import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { createChatDataStore } from './chat/chat-data-store';
+import { createChatDerivedState } from './chat/chat-derived-state';
 import { createChatRuntimeStore } from './chat/chat-runtime-store';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
@@ -252,71 +253,20 @@ export function useChat() {
   const { settings } = useSettings();
   const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
 
+  const chatDerivedState = createChatDerivedState({
+    currentChatRef: _currentChat,
+    rootItems,
+    getSettings: () => settings.value as Settings,
+  });
   const currentChat = computed(() => _currentChat.value ? readonly(_currentChat.value) : null);
   const currentChatGroup = computed(() => _currentChatGroup.value ? readonly(_currentChatGroup.value) : null);
-  const sidebarItems = computed(() => rootItems.value);
-
-  const chats = computed(() => {
-    const all: ChatSummary[] = [];
-    const collect = ({ items }: { items: SidebarItem[] }) => {
-      items.forEach(item => {
-        switch (item.type) {
-        case 'chat':
-          all.push(item.chat);
-          break;
-        case 'chat_group':
-          collect({ items: item.chatGroup.items });
-          break;
-        default: {
-          const _ex: never = item;
-          return _ex;
-        }
-        }
-      });
-    };
-    collect({ items: rootItems.value });
-    return all;
-  });
-
-  const chatGroups = computed(() => {
-    const all: ChatGroup[] = [];
-    rootItems.value.forEach(item => {
-      switch (item.type) {
-      case 'chat_group':
-        all.push(item.chatGroup);
-        break;
-      case 'chat':
-        break;
-      default: {
-        const _ex: never = item;
-        return _ex;
-      }
-      }
-    });
-    return all;
-  });
-
-  const resolvedSettings = computed(() => {
-    if (!_currentChat.value) return null;
-    return resolveChatSettings({ chat: toRaw(_currentChat.value), groups: chatGroups.value, globalSettings: settings.value });
-  });
-
-  const inheritedSettings = computed(() => {
-    if (!_currentChat.value) return null;
-    const chat = toRaw(_currentChat.value);
-    const virtualChat: Chat = { ...chat, modelId: undefined, endpointType: undefined, endpointUrl: undefined, endpointHttpHeaders: undefined, systemPrompt: undefined, lmParameters: undefined, };
-    return resolveChatSettings({ chat: virtualChat, groups: chatGroups.value, globalSettings: settings.value });
-  });
-
-  const activeMessages = computed(() => {
-    if (!_currentChat.value) return [];
-    return Array.from(getChatBranchIterator({ chat: _currentChat.value }));
-  });
-
-  const allMessages = computed(() => {
-    if (!_currentChat.value) return [];
-    return getAllMessages({ chat: _currentChat.value });
-  });
+  const sidebarItems = chatDerivedState.sidebarItems;
+  const chats = chatDerivedState.chats;
+  const chatGroups = chatDerivedState.chatGroups;
+  const resolvedSettings = chatDerivedState.resolvedSettings;
+  const inheritedSettings = chatDerivedState.inheritedSettings;
+  const activeMessages = chatDerivedState.activeMessages;
+  const allMessages = chatDerivedState.allMessages;
 
   const chatMountService = createChatMountService({
     currentChatRef: _currentChat,
@@ -337,15 +287,7 @@ export function useChat() {
   const removeMountFromChatGroup = chatMountService.removeMountFromChatGroup;
   const updateChatGroupMount = chatMountService.updateChatGroupMount;
 
-  function hasMountsForChat({ chat }: { chat: Pick<Chat, 'mounts' | 'groupId'> }): boolean {
-    if (settings.value.mounts && settings.value.mounts.length > 0) return true;
-    if (chat.mounts && chat.mounts.length > 0) return true;
-    if (chat.groupId) {
-      const group = chatGroups.value.find(g => g.id === chat.groupId);
-      if (group?.mounts && group.mounts.length > 0) return true;
-    }
-    return false;
-  }
+  const hasMountsForChat = chatDerivedState.hasMountsForChat;
 
   const { setToolEnabled, setCurrentChatId } = useChatTools();
   const chatOpenService = createChatOpenService({
