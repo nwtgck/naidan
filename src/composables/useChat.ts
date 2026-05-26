@@ -1,5 +1,5 @@
 import { generateId } from '@/utils/id';
-import { ref, computed, reactive, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
+import { ref, computed, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
 import type { Chat, ChatGroup, Settings } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { transformersJsService } from '@/services/transformers-js';
@@ -19,6 +19,7 @@ import { createChatDataStore } from './chat/chat-data-store';
 import { createChatControlService } from './chat/chat-control-service';
 import { createChatDerivedState } from './chat/chat-derived-state';
 import { createChatRuntimeStore } from './chat/chat-runtime-store';
+import { createChatTmpDirectoryService } from './chat/chat-tmp-directory-service';
 import { createChatVolatileState } from './chat/chat-volatile-state';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
@@ -41,13 +42,12 @@ import {
 
 export type { AddToastOptions } from './chat/chat-lifecycle-service';
 
-const chatTmpDirectories = reactive(new Map<string, {
-  handle: FileSystemDirectoryHandle;
-  mountPath: '/tmp';
-}>());
 const chatRuntimeStore = createChatRuntimeStore({});
 const contextCompactRuntime = createContextCompactRuntime({});
 const chatVolatileState = createChatVolatileState({});
+const chatTmpDirectoryService = createChatTmpDirectoryService({
+  createTmpMountDirectory: ({ chatId }) => getOPFSTmpManager().createTmpDirectory({ prefix: chatId }),
+});
 
 const streaming = computed(() => chatRuntimeStore.activeGenerations.size > 0 || chatRuntimeStore.externalGenerations.size > 0);
 const isGeneratingTitle = ({ chatId }: { chatId: string }) => chatRuntimeStore.isGeneratingTitle({ chatId });
@@ -126,37 +126,8 @@ function getContextCompactProgress({
   return contextCompactRuntime.getProgress({ chatId });
 }
 
-async function ensureChatTmpDirectory({
-  chatId,
-}: {
-  chatId: string;
-}): Promise<{
-  handle: FileSystemDirectoryHandle;
-  mountPath: '/tmp';
-}> {
-  const existing = chatTmpDirectories.get(chatId);
-  if (existing) {
-    return existing;
-  }
-
-  const created = {
-    handle: await getOPFSTmpManager().createTmpDirectory({ prefix: chatId }),
-    mountPath: '/tmp' as const,
-  };
-  chatTmpDirectories.set(chatId, created);
-  return created;
-}
-
-function getChatTmpDirectory({
-  chatId,
-}: {
-  chatId: string;
-}): {
-  handle: FileSystemDirectoryHandle;
-  mountPath: '/tmp';
-} | undefined {
-  return chatTmpDirectories.get(chatId);
-}
+const ensureChatTmpDirectory = chatTmpDirectoryService.ensureChatTmpDirectory;
+const getChatTmpDirectory = chatTmpDirectoryService.getChatTmpDirectory;
 
 const chatDataStore = createChatDataStore({
   applyVolatileAssistantErrorsToChat: chatVolatileState.applyVolatileAssistantErrorsToChat,
@@ -175,7 +146,7 @@ const chatDataStore = createChatDataStore({
     for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
     chatRuntimeStore.clearActiveGenerations({});
     chatRuntimeStore.clearActiveTaskCounts({});
-    chatTmpDirectories.clear();
+    chatTmpDirectoryService.clearChatTmpDirectories({});
   },
 });
 const rootItems = chatDataStore.rootItems;
@@ -303,13 +274,13 @@ export function useChat() {
       liveChatRegistry.clear();
     },
     clearChatTmpDirectories: (_args) => {
-      chatTmpDirectories.clear();
+      chatTmpDirectoryService.clearChatTmpDirectories({});
     },
     deleteLiveChat: ({ chatId }) => {
       liveChatRegistry.delete(chatId);
     },
     deleteChatTmpDirectory: ({ chatId }) => {
-      chatTmpDirectories.delete(chatId);
+      chatTmpDirectoryService.deleteChatTmpDirectory({ chatId });
     },
   });
   const createNewChat = chatLifecycleService.createNewChat;
@@ -826,7 +797,7 @@ export function useChat() {
       activeTaskCounts: chatRuntimeStore.TEST_ONLY.activeTaskCounts,
       compactProgressByChat: contextCompactRuntime.TEST_ONLY.compactProgressByChat,
       activeContextCompactions: contextCompactRuntime.activeContextCompactions,
-      chatTmpDirectories,
+      chatTmpDirectories: chatTmpDirectoryService.TEST_ONLY.chatTmpDirectories,
       clearLiveChatRegistry,
       clearActiveTaskCounts,
       volatileToolOutputs: chatVolatileState.TEST_ONLY.volatileToolOutputs,
