@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
-import { nextTick } from 'vue';
+import { computed, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
 
@@ -76,6 +76,32 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     notify: vi.fn(),
   },
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: () => ({
+    currentChat: computed(() => {
+      const { currentChat } = useChat();
+      return currentChat.value;
+    }),
+    currentChatGroup: computed(() => null),
+    activeMessages: computed(() => {
+      const { activeMessages } = useChat();
+      return activeMessages.value;
+    }),
+    allMessages: computed(() => {
+      const { allMessages } = useChat();
+      return allMessages.value;
+    }),
+    resolvedSettings: computed(() => {
+      const { resolvedSettings } = useChat();
+      return resolvedSettings?.value ?? null;
+    }),
+    inheritedSettings: computed(() => {
+      const { inheritedSettings } = useChat();
+      return inheritedSettings?.value ?? null;
+    }),
+  }),
 }));
 
 describe('ChatArea Streaming DOM Test', () => {

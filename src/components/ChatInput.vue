@@ -8,12 +8,13 @@ import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
-import { useReasoning } from '@/composables/useReasoning';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
 import { useChatMedia } from '@/composables/chat/chat-scoped/useChatMedia';
 import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
+import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
+import { useChatReasoning } from '@/composables/chat/chat-scoped/useChatReasoning';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/services/storage';
 import { startVolumeExtensionScan } from '@/services/tools/volume-extension-cache';
@@ -42,12 +43,8 @@ const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
-const reasoningStore = useReasoning();
 const { getDraft, saveDraft, clearDraft } = useChatDraft();
 const {
-  currentChat,
-  currentChatGroup,
-  inheritedSettings,
   fetchingModels,
 } = chatStore;
 const { showConfirm } = useConfirm();
@@ -77,6 +74,9 @@ const isHovered = ref(false);
 
 const isCurrentChatStreaming = computed(() => props.isStreaming);
 const currentChatId = computed(() => currentChat.value?.id);
+const chatReadModel = useChatReadModel({
+  chatId: currentChatId,
+});
 const chatGeneration = useChatGeneration({
   chatId: currentChatId,
 });
@@ -86,6 +86,12 @@ const chatMedia = useChatMedia({
 const chatMounts = useChatMounts({
   chatId: currentChatId,
 });
+const chatReasoning = useChatReasoning({
+  chatId: currentChatId,
+});
+const currentChat = chatReadModel.currentChat;
+const currentChatGroup = chatReadModel.currentChatGroup;
+const inheritedSettings = chatReadModel.inheritedSettings;
 const canGenerateImage = computed(() => props.canGenerateImage);
 const hasImageModel = computed(() => props.hasImageModel);
 const availableImageModels = computed(() => props.availableImageModels);
@@ -148,13 +154,11 @@ function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
 }
 
 const selectedReasoningEffort = computed(() => {
-  return currentChat.value ? reasoningStore.getReasoningEffort({ chatId: currentChat.value.id }) : undefined;
+  return chatReasoning.effort.value;
 });
 
 function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
-  if (currentChat.value) {
-    reasoningStore.updateReasoningEffort({ chatId: currentChat.value.id, effort });
-  }
+  chatReasoning.updateEffort({ effort });
 }
 
 const selectedImageModel = computed(() => {
@@ -834,7 +838,7 @@ async function handleSend() {
   }
 
   // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
-  const lmParameters = toRaw(chatStore.resolvedSettings?.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
+  const lmParameters = toRaw(chatReadModel.resolvedSettings.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
 
   const success = await chatGeneration.sendMessage({
     content: text,

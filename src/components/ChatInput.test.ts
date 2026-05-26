@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: {
@@ -248,6 +248,29 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
     sendMessage: mockSendMessageForChat,
     regenerateMessage: mockRegenerateMessageForChat,
     abort: () => mockAbortChat({ chatId: mockCurrentChat.value?.id }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: () => ({
+    currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
+    activeMessages: ref([]),
+    allMessages: ref([]),
+    resolvedSettings: ref(null),
+    inheritedSettings: ref(null),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
+  useChatReasoning: () => ({
+    effort: computed(() => mockCurrentChat.value?.lmParameters?.reasoning?.effort),
+    updateEffort: ({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+      mockReasoningStore.updateReasoningEffort({
+        chatId: mockCurrentChat.value?.id,
+        effort,
+      });
+    },
   }),
 }));
 
