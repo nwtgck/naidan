@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
-import { ref, nextTick, reactive, toRef } from 'vue';
+import { computed, nextTick, reactive, toRef } from 'vue';
 import type { ChatGroup } from '@/models/types';
+import { useChatGroupSettingsPanel } from '@/composables/chat/chat-scoped/useChatGroupSettingsPanel';
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -38,16 +39,8 @@ const mockUpdateChatGroupMetadata = vi.fn().mockImplementation(({ id, updates })
 });
 const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-a', 'model-b']);
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    currentChatGroup: ref(mockGroup),
-    fetchingModels: ref(false),
-    updateChatGroupMetadata: mockUpdateChatGroupMetadata,
-    fetchAvailableModels: mockFetchAvailableModels,
-    addMountToChatGroup: mocks.addMountToChatGroup,
-    removeMountFromChatGroup: mocks.removeMountFromChatGroup,
-    updateChatGroupMount: mocks.updateChatGroupMount,
-  }),
+vi.mock('../composables/chat/chat-scoped/useChatGroupSettingsPanel', () => ({
+  useChatGroupSettingsPanel: vi.fn(),
 }));
 
 vi.mock('../services/storage', () => ({
@@ -101,6 +94,24 @@ vi.mock('../composables/useGlobalSearch', () => ({
 describe('ChatGroupSettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useChatGroupSettingsPanel).mockReturnValue({
+      currentChatGroup: computed(() => mockGroup),
+      fetchingModels: computed(() => false),
+      updateMetadata: vi.fn().mockImplementation(async ({ groupId, updates }) => {
+        await mockUpdateChatGroupMetadata({ id: groupId, updates });
+      }),
+      fetchModels: mockFetchAvailableModels,
+      addMount: vi.fn().mockImplementation(async ({ groupId, mount }) => {
+        await mocks.addMountToChatGroup({ groupId, mount });
+      }),
+      removeMount: vi.fn().mockImplementation(async ({ groupId, volumeId }) => {
+        await mocks.removeMountFromChatGroup({ groupId, volumeId });
+      }),
+      updateMount: vi.fn().mockImplementation(async ({ groupId, volumeId, mountPath, readOnly }) => {
+        await mocks.updateChatGroupMount({ groupId, volumeId, mountPath, readOnly });
+      }),
+      TEST_ONLY: {},
+    });
     Object.assign(mockGroup, {
       id: 'g1',
       name: 'Test Group',
