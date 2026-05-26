@@ -8,7 +8,7 @@ const {
   mockOpenChat: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/composables/chat/chat-core-singletons', () => ({
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   loadData: mockLoadData,
 }));
 

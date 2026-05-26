@@ -9,7 +9,7 @@ const {
   mockGetProgress: vi.fn(),
 }));
 
-vi.mock('@/composables/chat/chat-core-singletons', () => ({
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   chatRuntimeStore: {
     isProcessing: ({ chatId }: { chatId: string }) => mockIsProcessing(chatId),
   },

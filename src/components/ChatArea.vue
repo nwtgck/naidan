@@ -2,7 +2,7 @@
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
-import { useChatAreaSession } from '@/composables/chat/chat-area-session';
+import { useChatAreaSession } from '@/composables/chat/ui/useChatAreaSession';
 import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
 import { useChatDebug } from '@/composables/chat/chat-scoped/useChatDebug';
 import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';

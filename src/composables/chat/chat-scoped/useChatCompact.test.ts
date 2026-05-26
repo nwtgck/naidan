@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const compactCurrentBranchForChat = vi.fn();
 const abortContextCompact = vi.fn();
 
-vi.mock('../context-compact-service', () => ({
+vi.mock('@/composables/chat/services/context-compact-service', () => ({
   createContextCompactService: () => ({
     compactCurrentBranchForChat,
     abortContextCompact,
@@ -36,13 +36,13 @@ vi.mock('@/composables/useChatWeshPreferences', () => ({
   }),
 }));
 
-vi.mock('../chat-derived-state', () => ({
+vi.mock('@/composables/chat/chat-derived-state', () => ({
   createChatDerivedState: () => ({
     chatGroups: computed(() => []),
   }),
 }));
 
-vi.mock('../chat-current-bridge', () => ({
+vi.mock('@/composables/chat/chat-current-bridge', () => ({
   createChatCurrentBridge: () => ({
     getCurrentChat: () => null,
     getChatTargetByOptionalId: () => null,
@@ -50,7 +50,7 @@ vi.mock('../chat-current-bridge', () => ({
   }),
 }));
 
-vi.mock('../chat-core-singletons', () => ({
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   chatRuntimeStore: {
     startTask: vi.fn(),
     finishTask: vi.fn(),

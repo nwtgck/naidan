@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { ContextCompactProgress } from '@/services/context-compact';
-import { chatRuntimeStore, contextCompactRuntime } from '@/composables/chat/chat-core-singletons';
+import { chatRuntimeStore, contextCompactRuntime } from '@/composables/chat/global/chat-core-singletons';
 
 export type ChatRuntimeAdapter = {
   isProcessing: ComputedRef<boolean>;

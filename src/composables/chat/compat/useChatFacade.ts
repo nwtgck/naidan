@@ -15,7 +15,7 @@ import { useToast } from '@/composables/useToast';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
-import { createChatControlService } from '@/composables/chat/chat-control-service';
+import { createChatControlService } from '@/composables/chat/services/chat-control-service';
 import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
 import {
   availableModels as sharedAvailableModels,
@@ -46,24 +46,24 @@ import {
   unregisterLiveInstance,
   updateChatContent,
   updateChatMeta,
-} from '@/composables/chat/chat-core-singletons';
+} from '@/composables/chat/global/chat-core-singletons';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { installChatBootstrap } from '@/composables/chat/chat-bootstrap';
 import { createChatTestSupport } from '@/composables/chat/chat-test-support';
-import { createContextCompactService } from '@/composables/chat/context-compact-service';
-import { createChatGenerationService } from '@/composables/chat/chat-generation-service';
-import { createChatHierarchyService } from '@/composables/chat/chat-hierarchy-service';
-import { createChatHistoryService } from '@/composables/chat/chat-history-service';
-import { createChatImageService } from '@/composables/chat/chat-image-service';
-import { createChatLifecycleService } from '@/composables/chat/chat-lifecycle-service';
-import { createChatMountService } from '@/composables/chat/chat-mount-service';
-import { createChatMetadataService } from '@/composables/chat/chat-metadata-service';
-import { createChatModelService } from '@/composables/chat/chat-model-service';
-import { createChatOpenService } from '@/composables/chat/chat-open-service';
-import { createChatRegenerationService } from '@/composables/chat/chat-regeneration-service';
-import { createChatTitleService } from '@/composables/chat/chat-title-service';
+import { createContextCompactService } from '@/composables/chat/services/context-compact-service';
+import { createChatGenerationService } from '@/composables/chat/services/chat-generation-service';
+import { createChatHierarchyService } from '@/composables/chat/services/chat-hierarchy-service';
+import { createChatHistoryService } from '@/composables/chat/services/chat-history-service';
+import { createChatImageService } from '@/composables/chat/services/chat-image-service';
+import { createChatLifecycleService } from '@/composables/chat/services/chat-lifecycle-service';
+import { createChatMountService } from '@/composables/chat/services/chat-mount-service';
+import { createChatMetadataService } from '@/composables/chat/services/chat-metadata-service';
+import { createChatModelService } from '@/composables/chat/services/chat-model-service';
+import { createChatOpenService } from '@/composables/chat/services/chat-open-service';
+import { createChatRegenerationService } from '@/composables/chat/services/chat-regeneration-service';
+import { createChatTitleService } from '@/composables/chat/services/chat-title-service';
 
-export type { AddToastOptions } from '@/composables/chat/chat-lifecycle-service';
+export type { AddToastOptions } from '@/composables/chat/services/chat-lifecycle-service';
 
 installChatBootstrap({
   registerBeforeUnload: (_args) => {

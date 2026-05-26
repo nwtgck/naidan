@@ -1,5 +1,5 @@
 import { useChat } from '@/composables/useChat';
-import type { ChatTmpDirectoryEntry } from '@/composables/chat/chat-tmp-directory-service';
+import type { ChatTmpDirectoryEntry } from '@/composables/chat/global/chat-tmp-directory-service';
 
 export type ChatTmpDirectoryAdapter = {
   ensureChatTmpDirectory({

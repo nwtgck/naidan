@@ -3,7 +3,7 @@ import type { Chat, ChatGroup, MessageNode, Settings, SidebarItem } from '@/mode
 import { getAllMessages, getChatBranchIterator } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
-import { getReadonlyChat, rootItems } from '@/composables/chat/chat-core-singletons';
+import { getReadonlyChat, rootItems } from '@/composables/chat/global/chat-core-singletons';
 
 export type ChatReadModelAdapter = {
   currentChat: ComputedRef<Readonly<Chat> | null>;

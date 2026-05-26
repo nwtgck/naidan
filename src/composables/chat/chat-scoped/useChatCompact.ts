@@ -19,8 +19,8 @@ import {
   rootItems,
   updateChatContent,
   updateChatMeta,
-} from '@/composables/chat/chat-core-singletons';
-import { createContextCompactService } from '@/composables/chat/context-compact-service';
+} from '@/composables/chat/global/chat-core-singletons';
+import { createContextCompactService } from '@/composables/chat/services/context-compact-service';
 
 export type ChatCompactAdapter = {
   progress: ComputedRef<ContextCompactProgress>;

@@ -1,4 +1,4 @@
-import { loadData } from '@/composables/chat/chat-core-singletons';
+import { loadData } from '@/composables/chat/global/chat-core-singletons';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 
 export type ChatBootstrapAdapter = {

@@ -21,7 +21,7 @@ vi.mock('@/composables/useSettings', () => ({
   }),
 }));
 
-vi.mock('@/composables/chat/chat-core-singletons', () => ({
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   getReadonlyChat: ({ chatId }: { chatId: string }) => mockGetReadonlyChat(chatId),
   rootItems: mockRootItems,
 }));
