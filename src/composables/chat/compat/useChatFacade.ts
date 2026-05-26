@@ -1,17 +1,10 @@
-import { toRaw, triggerRef, type ComputedRef } from 'vue';
-import type { Attachment, Chat, EndpointType, Reasoning, Settings } from '@/models/types';
-import { generateId } from '@/utils/id';
+import { triggerRef, type ComputedRef } from 'vue';
+import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Reasoning, Settings } from '@/models/types';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { storageService } from '@/services/storage';
 import { transformersJsService } from '@/services/transformers-js';
-import { getEnabledTools } from '@/services/tools/factory';
-import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import { useSettings } from '@/composables/useSettings';
-import { useConfirm } from '@/composables/useConfirm';
-import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useImageGeneration } from '@/composables/useImageGeneration';
-import { useChatTools } from '@/composables/useChatTools';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { createChatControlService } from '@/composables/chat/services/chat-control-service';
 import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
@@ -72,9 +65,24 @@ import {
   handleImageGenerationForChat,
   sendImageRequestForChat as sendImageRequestForChatImpl,
 } from '@/composables/chat/chat-scoped/chat-image-helpers';
-import { createChatGenerationService } from '@/composables/chat/services/chat-generation-service';
-import { createChatHistoryService } from '@/composables/chat/services/chat-history-service';
-import { createChatRegenerationService } from '@/composables/chat/services/chat-regeneration-service';
+import {
+  generateResponseForAssistant,
+  regenerateMessageForChat as regenerateMessageForScopedChat,
+  regenerateMessageForCurrentChat,
+  sendMessageForChat as sendMessageForScopedChat,
+  sendMessageToCurrentChat,
+  sendMessageToTargetChat,
+} from '@/composables/chat/chat-scoped/chat-generation-flow';
+import {
+  commitFullHistoryManipulationForChat,
+  editCurrentChatMessage,
+  editMessageForChat as editMessageForScopedChat,
+  forkChatForChat as forkScopedChat,
+  forkCurrentChat,
+  getSiblingsForChat,
+  switchVersionForChat as switchVersionForScopedChat,
+  switchVersionInCurrentChat,
+} from '@/composables/chat/chat-scoped/chat-history-flow';
 import type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
@@ -147,7 +155,6 @@ installChatBootstrap({
 // Only add behavior here when it is required to preserve legacy API compatibility.
 export function useChat() {
   const { settings } = useSettings();
-  const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
   const chatCurrentBridge = createChatCurrentBridge({
     currentChatRef: _currentChat,
     currentChatGroupRef: _currentChatGroup,
@@ -616,171 +623,77 @@ export function useChat() {
       chatId: chatId ?? chatCurrentBridge.getCurrentChatId({}) ?? undefined,
     });
   }
-  const { enabledToolNames } = useChatTools();
-  const chatGenerationService = createChatGenerationService({
-    getCurrentChat: () => _currentChat.value,
-    getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
-    getLiveChat,
-    registerLiveInstance,
-    isProcessing,
-    startProcessing: ({ chatId }) => {
-      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
-    },
-    finishProcessing: ({ chatId }) => {
-      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
-    },
-    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
-    resolveSettings: ({ chat }) => {
-      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
-      return {
-        endpointType: resolved.endpointType,
-        endpointUrl: resolved.endpointUrl,
-        endpointHttpHeaders: resolved.endpointHttpHeaders,
-        modelId: resolved.modelId,
-        lmParameters: resolved.lmParameters,
-        systemPromptMessages: resolved.systemPromptMessages,
-        autoTitleEnabled: resolved.autoTitleEnabled,
-      };
-    },
-    fetchAvailableModels: ({ chatId }) => fetchAvailableModels({ chatId, customEndpoint: undefined }),
-    canPersistBinary: () => storageService.canPersistBinary,
-    persistAttachment: async ({ attachment }) => {
-      switch (attachment.status) {
-      case 'memory':
-        if (storageService.canPersistBinary) {
-          try {
-            await storageService.saveFile(attachment.blob, attachment.binaryObjectId, attachment.originalName);
-            return { ...attachment, status: 'persisted' };
-          } catch {
-            return attachment;
-          }
-        }
-        return attachment;
-      case 'persisted':
-      case 'missing':
-        return attachment;
-      default: {
-        const _ex: never = attachment;
-        throw new Error(`Unhandled attachment status: ${_ex}`);
-      }
-      }
-    },
-    confirmTemporaryAttachments: async (_args) => {
-      if (settings.value.heavyContentAlertDismissed !== false) {
-        return true;
-      }
-      return await useConfirm().showConfirm({
-        title: 'Attachments cannot be saved',
-        message: 'You are using Local Storage, which has a 5MB limit. Attachments will be available during this session but will NOT be saved to your history. Switch to OPFS storage in Settings to enable permanent saving.',
-        confirmButtonText: 'Continue anyway',
-        cancelButtonText: 'Cancel',
+  async function generateResponse({
+    chat,
+    assistantId,
+    lmParameters,
+    onReady,
+  }: {
+    chat: Chat | Readonly<Chat>;
+    assistantId: string;
+    lmParameters?: LmParameters;
+    onReady?: (_args: Record<never, never>) => void;
+  }): Promise<void> {
+    await generateResponseForAssistant({
+      chat,
+      assistantId,
+      lmParameters,
+      onReady,
+    });
+  }
+
+  async function sendMessage({
+    content,
+    parentId,
+    attachments,
+    chatTarget,
+    lmParameters,
+  }: {
+    content: string;
+    parentId?: string | null;
+    attachments?: Attachment[];
+    chatTarget?: Chat | Readonly<Chat>;
+    lmParameters?: LmParameters;
+  }): Promise<boolean> {
+    if (chatTarget !== undefined) {
+      return await sendMessageToTargetChat({
+        targetChat: chatTarget,
+        content,
+        parentId,
+        attachments,
+        lmParameters,
       });
-    },
-    dismissHeavyContentAlert: (_args) => {
-      useSettings().setHeavyContentAlertDismissed?.({ dismissed: true });
-    },
-    showOnboardingDraft: ({ url, type, models }) => {
-      useSettings().setOnboardingDraft?.({ draft: { url: url || '', type, models, selectedModel: models[0] || '' } });
-      useSettings().setIsOnboardingDismissed?.({ dismissed: false });
-    },
-    isImageMode,
-    getSelectedImageModel,
-    getResolution,
-    getCount,
-    getSteps,
-    getSeed,
-    getPersistAs,
-    getAvailableModels: () => availableModels.value,
-    reportMissingImageModel: async (_args) => {
-      const { useGlobalEvents } = await import('@/composables/useGlobalEvents');
-      const { addErrorEvent } = useGlobalEvents();
-      addErrorEvent({ source: 'useChat:sendMessage', message: 'No image generation model found (starting with x/z-image-turbo:).' });
-    },
-    setActiveGeneration: ({ chatId, generation }) => {
-      chatRuntimeStore.setActiveGeneration({ chatId, generation });
-    },
-    deleteActiveGeneration: ({ chatId }) => {
-      chatRuntimeStore.deleteActiveGeneration({ chatId });
-    },
-    hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
-    handleImageGeneration,
-    loadBinaryObject: ({ id }) => storageService.getFile({ binaryObjectId: id }),
-    persistToolContent: async ({ text, type, toolCallId }) => {
-      const BINARY_THRESHOLD = 100 * 1024;
-      if (text.length > BINARY_THRESHOLD) {
-        const blob = new Blob([text], { type: 'text/plain' });
-        const binaryId = generateId();
-        await storageService.saveFile(blob, binaryId, `tool_${type}_${toolCallId}.txt`);
-        return { type: 'binary_object', id: binaryId };
-      }
-      return { type: 'text', text };
-    },
-    updateChatContent,
-    updateChatMeta,
-    reloadAfterGenerationMetaUpdate: async (_args) => {
-      await loadData({});
-    },
-    setVolatileAssistantError: chatVolatileState.setVolatileAssistantError,
-    clearVolatileAssistantError: chatVolatileState.clearVolatileAssistantError,
-    setVolatileToolOutput: chatVolatileState.setVolatileToolOutput,
-    appendVolatileToolOutput: chatVolatileState.appendVolatileToolOutput,
-    deleteVolatileToolOutput: chatVolatileState.deleteVolatileToolOutput,
-    notifyGenerationStatus: ({ chatId, status }) => {
-      storageService.notify({ type: 'chat_content_generation', id: chatId, status, timestamp: Date.now() });
-    },
-    getEnabledToolsForChat: async ({ chat }) => {
-      const shellExecuteEnabled = enabledToolNames.value.includes('shell_execute');
-      const chatTmpDirectory = shellExecuteEnabled && shouldIncludeWritableTmpMount({ storageType: settings.value.storageType })
-        ? await ensureChatTmpDirectory({ chatId: chat.id })
-        : undefined;
-      const chatGroupMounts = chat.groupId
-        ? (_currentChatGroup.value?.id === chat.groupId
-          ? _currentChatGroup.value.mounts
-          : (await storageService.loadChatGroup({ id: chat.groupId }))?.mounts)
-        : undefined;
-      return await getEnabledTools({
-        enabledNames: enabledToolNames.value,
-        settings: settings.value as unknown as Settings,
-        chatGroupMounts,
-        chatMounts: chat.mounts,
-        chatId: chat.id,
-        chatGroupId: chat.groupId ?? undefined,
-        naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: chat.id }),
-        tmpHandle: chatTmpDirectory?.handle,
-      });
-    },
-    requestPersistence: (_args) => {
-      const { requestPersistence } = useStoragePersistence();
-      requestPersistence();
-    },
-    showGenerationFailedToast: async ({ chat }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) {
-        return;
-      }
-      try {
-        const { useToast } = await import('@/composables/useToast');
-        const { addToast } = useToast();
-        addToast({
-          message: `Generation failed in "${chat.title || 'New Chat'}"`,
-          actionLabel: 'View',
-          onAction: async () => {
-            await openChat({ id: chat.id });
-          },
-        });
-      } catch {
-        // ignore
-      }
-    },
-    generateChatTitle: ({ chatId, signal, titleModelIdOverride }) => generateChatTitle({
+    }
+
+    return await sendMessageToCurrentChat({
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    });
+  }
+
+  async function sendMessageForChat({
+    chatId,
+    content,
+    parentId,
+    attachments,
+    lmParameters,
+  }: {
+    chatId: string;
+    content: string;
+    parentId: string | null | undefined;
+    attachments: Attachment[] | undefined;
+    lmParameters: LmParameters | undefined;
+  }): Promise<boolean> {
+    return await sendMessageForScopedChat({
       chatId,
-      signal,
-      titleModelIdOverride,
-    }),
-    reorderSidebarChatAfterSend: ({ chatId }) => reorderSidebarChatAfterSend({ chatId }),
-  });
-  const generateResponse = chatGenerationService.generateResponse;
-  const sendMessage = chatGenerationService.sendMessage;
-  const sendMessageForChat = chatGenerationService.sendMessageForChat;
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    });
+  }
 
   function abortContextCompact({
     chatId,
@@ -822,53 +735,131 @@ export function useChat() {
   const abortChat = chatControlService.abortChat;
   const compactCurrentBranch = chatControlService.compactCurrentBranch;
 
-  const chatHistoryService = createChatHistoryService({
-    currentChatRef: _currentChat,
-    liveChatRegistry,
-    getLiveChat,
-    registerLiveInstance,
-    updateChatContent,
-    updateChatMeta,
-    updateHierarchy: updater => storageService.updateHierarchy(updater),
-    loadData,
-    openChat: ({ id }) => openChat({ id }),
-    canPersistBinary: () => storageService.canPersistBinary,
-    saveFile: ({ blob, binaryObjectId, originalName }) => storageService.saveFile(blob, binaryObjectId, originalName),
-    isProcessing,
-    abortChat,
-    sendMessage: async ({ content, parentId, attachments, chatTarget, lmParameters }) => {
-      await sendMessage({ content, parentId, attachments, chatTarget, lmParameters });
-    },
-    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
-  });
-  const forkChat = chatHistoryService.forkChat;
-  const forkChatForChat = chatHistoryService.forkChatForChat;
-  const editMessage = chatHistoryService.editMessage;
-  const editMessageForChat = chatHistoryService.editMessageForChat;
-  const switchVersion = chatHistoryService.switchVersion;
-  const switchVersionForChat = chatHistoryService.switchVersionForChat;
-  const getSiblings = chatHistoryService.getSiblings;
+  async function forkChat({
+    messageId,
+    chatId,
+  }: {
+    messageId: string;
+    chatId?: string;
+  }): Promise<string | null> {
+    if (chatId !== undefined) {
+      return await forkScopedChat({
+        chatId,
+        messageId,
+      });
+    }
 
-  const chatRegenerationService = createChatRegenerationService({
-    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
-    getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
-    getLiveChat,
-    registerLiveInstance,
-    isProcessing,
-    abortChat,
-    startProcessing: ({ chatId }) => {
-      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
-    },
-    finishProcessing: ({ chatId }) => {
-      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
-    },
-    updateChatContent,
-    updateChatMeta,
-    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
-    generateResponse,
-  });
-  const regenerateMessage = chatRegenerationService.regenerateMessage;
-  const regenerateMessageForChat = chatRegenerationService.regenerateMessageForChat;
+    return await forkCurrentChat({
+      messageId,
+    });
+  }
+
+  async function forkChatForChat({
+    chatId,
+    messageId,
+  }: {
+    chatId: string;
+    messageId: string;
+  }): Promise<string | null> {
+    return await forkScopedChat({
+      chatId,
+      messageId,
+    });
+  }
+
+  async function editMessage({
+    messageId,
+    newContent,
+    lmParameters,
+  }: {
+    messageId: string;
+    newContent: string;
+    lmParameters?: LmParameters;
+  }): Promise<void> {
+    await editCurrentChatMessage({
+      messageId,
+      newContent,
+      lmParameters,
+    });
+  }
+
+  async function editMessageForChat({
+    chatId,
+    messageId,
+    newContent,
+    lmParameters,
+  }: {
+    chatId: string;
+    messageId: string;
+    newContent: string;
+    lmParameters?: LmParameters;
+  }): Promise<void> {
+    await editMessageForScopedChat({
+      chatId,
+      messageId,
+      newContent,
+      lmParameters,
+    });
+  }
+
+  async function switchVersion({
+    messageId,
+  }: {
+    messageId: string;
+  }): Promise<void> {
+    await switchVersionInCurrentChat({
+      messageId,
+    });
+  }
+
+  async function switchVersionForChat({
+    chatId,
+    messageId,
+  }: {
+    chatId: string;
+    messageId: string;
+  }): Promise<void> {
+    await switchVersionForScopedChat({
+      chatId,
+      messageId,
+    });
+  }
+
+  function getSiblings({
+    messageId,
+    chatId,
+  }: {
+    messageId: string;
+    chatId?: string;
+  }): MessageNode[] {
+    return getSiblingsForChat({
+      chatId,
+      messageId,
+    });
+  }
+
+  async function regenerateMessage({
+    failedMessageId,
+  }: {
+    failedMessageId: string;
+  }): Promise<void> {
+    await regenerateMessageForCurrentChat({
+      failedMessageId,
+    });
+  }
+
+  async function regenerateMessageForChat({
+    chatId,
+    failedMessageId,
+  }: {
+    chatId: string;
+    failedMessageId: string;
+  }): Promise<void> {
+    await regenerateMessageForScopedChat({
+      chatId,
+      failedMessageId,
+    });
+  }
 
   async function toggleDebug(_args: Record<never, never>) {
     const currentChatId = chatCurrentBridge.getCurrentChatId({});
@@ -903,7 +894,7 @@ export function useChat() {
       effort,
     });
   }
-  const commitFullHistoryManipulation = chatHistoryService.commitFullHistoryManipulation;
+  const commitFullHistoryManipulation = commitFullHistoryManipulationForChat;
   async function generateImage({
     prompt,
     model,
@@ -982,7 +973,6 @@ export function useChat() {
   const duplicateChatGroup = chatOrganization.duplicateChatGroup;
   const renameChatGroup = chatOrganization.renameChatGroup;
   const updateChatGroupMetadata = chatOrganization.updateChatGroupMetadata;
-  const reorderSidebarChatAfterSend = chatOrganization.reorderSidebarChatAfterSend;
   const moveChatToGroup = chatOrganization.moveChatToGroup;
   const setChatGroupCollapsed = sidebarStructure.setChatGroupCollapsed;
   const persistSidebarStructure = sidebarStructure.persistSidebarStructure;

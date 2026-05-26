@@ -1,227 +1,86 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockSendMessage,
   mockSendMessageForChat,
-  mockRegenerateMessage,
+  mockSendMessageToCurrentChat,
   mockRegenerateMessageForChat,
-  mockAbortChat,
-  mockEditMessage,
+  mockRegenerateMessageForCurrentChat,
   mockEditMessageForChat,
-  mockSwitchVersion,
+  mockEditCurrentChatMessage,
   mockSwitchVersionForChat,
-  mockForkChat,
+  mockSwitchVersionInCurrentChat,
   mockForkChatForChat,
-  mockGetSiblings,
-  mockGenerateChatTitleForChat,
+  mockForkCurrentChat,
+  mockGetSiblingsForChat,
   mockAbortTitleGenerationForChat,
-  mockFetchAvailableModelsForChat,
+  mockGetCurrentChatId,
+  mockGetActiveContextCompaction,
+  mockGetActiveGeneration,
+  mockHasExternalGeneration,
+  mockNotify,
 } = vi.hoisted(() => ({
-  mockSendMessage: vi.fn(),
   mockSendMessageForChat: vi.fn(),
-  mockRegenerateMessage: vi.fn(),
+  mockSendMessageToCurrentChat: vi.fn(),
   mockRegenerateMessageForChat: vi.fn(),
-  mockAbortChat: vi.fn(),
-  mockEditMessage: vi.fn(),
+  mockRegenerateMessageForCurrentChat: vi.fn(),
   mockEditMessageForChat: vi.fn(),
-  mockSwitchVersion: vi.fn(),
+  mockEditCurrentChatMessage: vi.fn(),
   mockSwitchVersionForChat: vi.fn(),
-  mockForkChat: vi.fn(),
+  mockSwitchVersionInCurrentChat: vi.fn(),
   mockForkChatForChat: vi.fn(),
-  mockGetSiblings: vi.fn(),
-  mockGenerateChatTitleForChat: vi.fn(),
+  mockForkCurrentChat: vi.fn(),
+  mockGetSiblingsForChat: vi.fn(),
   mockAbortTitleGenerationForChat: vi.fn(),
-  mockFetchAvailableModelsForChat: vi.fn(async () => []),
-}));
-
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    sendMessage: mockSendMessage,
-    sendMessageForChat: mockSendMessageForChat,
-    regenerateMessage: mockRegenerateMessage,
-    regenerateMessageForChat: mockRegenerateMessageForChat,
-    abortChat: mockAbortChat,
-    editMessage: mockEditMessage,
-    editMessageForChat: mockEditMessageForChat,
-    switchVersion: mockSwitchVersion,
-    switchVersionForChat: mockSwitchVersionForChat,
-    forkChat: mockForkChat,
-    forkChatForChat: mockForkChatForChat,
-    getSiblings: mockGetSiblings,
-  }),
-}));
-
-vi.mock('@/composables/useSettings', () => ({
-  useSettings: () => ({
-    settings: {
-      value: {
-        storageType: 'opfs',
-      },
-    },
-  }),
-}));
-
-vi.mock('@/composables/useGlobalEvents', () => ({
-  useGlobalEvents: () => ({
-    addErrorEvent: vi.fn(),
-  }),
-}));
-
-vi.mock('@/composables/useChatTools', () => ({
-  useChatTools: () => ({
-    enabledToolNames: { value: [] },
-  }),
-}));
-
-vi.mock('@/composables/useChatWeshPreferences', () => ({
-  useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
-  }),
-}));
-
-vi.mock('@/composables/useImageGeneration', () => ({
-  useImageGeneration: () => ({
-    isImageMode: vi.fn(() => false),
-    getSelectedImageModel: vi.fn(),
-    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
-    getCount: vi.fn(() => 1),
-    getSteps: vi.fn(() => undefined),
-    getSeed: vi.fn(() => undefined),
-    getPersistAs: vi.fn(() => 'original'),
-  }),
-}));
-
-vi.mock('@/composables/useConfirm', () => ({
-  useConfirm: () => ({
-    showConfirm: vi.fn(),
-  }),
-}));
-
-vi.mock('@/composables/useStoragePersistence', () => ({
-  useStoragePersistence: () => ({
-    requestPersistence: vi.fn(),
-  }),
-}));
-
-vi.mock('@/composables/useToast', () => ({
-  useToast: () => ({
-    addToast: vi.fn(),
-  }),
+  mockGetCurrentChatId: vi.fn(() => null),
+  mockGetActiveContextCompaction: vi.fn(() => undefined),
+  mockGetActiveGeneration: vi.fn(() => undefined),
+  mockHasExternalGeneration: vi.fn(() => false),
+  mockNotify: vi.fn(),
 }));
 
 vi.mock('@/services/storage', () => ({
   storageService: {
-    canPersistBinary: true,
-    saveFile: vi.fn(),
-    getFile: vi.fn(),
-    notify: vi.fn(),
-    loadChatGroup: vi.fn(),
-    updateHierarchy: vi.fn(),
+    notify: mockNotify,
   },
-}));
-
-vi.mock('@/services/tools/factory', () => ({
-  getEnabledTools: vi.fn(async () => []),
-}));
-
-vi.mock('@/services/wesh/mount-policy', () => ({
-  shouldIncludeWritableTmpMount: vi.fn(() => false),
 }));
 
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   chatRuntimeStore: {
     activeGenerations: new Map(),
-    hasExternalGeneration: vi.fn(() => false),
-    getActiveGeneration: vi.fn(),
-    startTask: vi.fn(),
-    finishTask: vi.fn(),
-  },
-  chatVolatileState: {
-    setVolatileAssistantError: vi.fn(),
-    clearVolatileAssistantError: vi.fn(),
-    setVolatileToolOutput: vi.fn(),
-    appendVolatileToolOutput: vi.fn(),
-    deleteVolatileToolOutput: vi.fn(),
+    getActiveGeneration: mockGetActiveGeneration,
+    hasExternalGeneration: mockHasExternalGeneration,
   },
   contextCompactRuntime: {
-    getActiveContextCompaction: vi.fn(),
+    getActiveContextCompaction: mockGetActiveContextCompaction,
   },
-  currentChatGroupRef: { value: null },
-  currentChatRef: { value: null },
-  ensureChatTmpDirectory: vi.fn(),
-  getLiveChat: vi.fn(({ chat }) => chat),
-  isProcessing: vi.fn(() => false),
-  liveChatRegistry: new Map(),
-  loadData: vi.fn(),
-  registerLiveInstance: vi.fn(),
-  updateChatContent: vi.fn(),
-  updateChatMeta: vi.fn(),
 }));
 
 vi.mock('@/composables/chat/chat-scoped/chat-title-helpers', () => ({
-  generateChatTitleForChat: mockGenerateChatTitleForChat,
   abortTitleGenerationForChat: mockAbortTitleGenerationForChat,
 }));
 
-vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
-  fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
+vi.mock('@/composables/chat/chat-scoped/chat-generation-flow', () => ({
+  sendMessageForChat: mockSendMessageForChat,
+  sendMessageToCurrentChat: mockSendMessageToCurrentChat,
+  regenerateMessageForChat: mockRegenerateMessageForChat,
+  regenerateMessageForCurrentChat: mockRegenerateMessageForCurrentChat,
 }));
 
-vi.mock('@/composables/chat/chat-scoped/chat-image-helpers', () => ({
-  handleImageGenerationForChat: vi.fn(),
-}));
-
-vi.mock('@/composables/chat/services/chat-generation-service', () => ({
-  createChatGenerationService: () => ({
-    sendMessage: mockSendMessage,
-    sendMessageForChat: mockSendMessageForChat,
-    generateResponse: vi.fn(),
-  }),
-}));
-
-vi.mock('@/composables/chat/services/chat-history-service', () => ({
-  createChatHistoryService: () => ({
-    forkChat: mockForkChat,
-    forkChatForChat: mockForkChatForChat,
-    editMessage: mockEditMessage,
-    editMessageForChat: mockEditMessageForChat,
-    switchVersion: mockSwitchVersion,
-    switchVersionForChat: mockSwitchVersionForChat,
-    getSiblings: mockGetSiblings,
-  }),
-}));
-
-vi.mock('@/composables/chat/services/chat-regeneration-service', () => ({
-  createChatRegenerationService: () => ({
-    regenerateMessage: mockRegenerateMessage,
-    regenerateMessageForChat: mockRegenerateMessageForChat,
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-history-flow', () => ({
+  editMessageForChat: mockEditMessageForChat,
+  editCurrentChatMessage: mockEditCurrentChatMessage,
+  switchVersionForChat: mockSwitchVersionForChat,
+  switchVersionInCurrentChat: mockSwitchVersionInCurrentChat,
+  forkChatForChat: mockForkChatForChat,
+  forkCurrentChat: mockForkCurrentChat,
+  getSiblingsForChat: mockGetSiblingsForChat,
 }));
 
 vi.mock('./useChatUiServices', () => ({
   useChatUiServices: () => ({
     currentBridge: {
-      getCurrentChat: vi.fn(() => null),
-      getCurrentChatId: vi.fn(() => null),
-      getChatTargetByOptionalId: vi.fn(() => null),
-      getChatTargetById: vi.fn(() => null),
-      triggerCurrentChat: vi.fn(),
+      getCurrentChatId: mockGetCurrentChatId,
     },
-    derivedState: {
-      chatGroups: { value: [] },
-    },
-  }),
-}));
-
-vi.mock('./useChatOrganization', () => ({
-  useChatOrganization: () => ({
-    reorderSidebarChatAfterSend: vi.fn(),
-  }),
-}));
-
-vi.mock('./useChatNavigation', () => ({
-  useChatNavigation: () => ({
-    openChat: vi.fn(),
   }),
 }));
 
@@ -230,11 +89,15 @@ import { useChatConversationActions } from './useChatConversationActions';
 describe('useChatConversationActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSendMessage.mockResolvedValue(false);
     mockSendMessageForChat.mockResolvedValue(true);
-    mockForkChat.mockResolvedValue('forked-chat');
+    mockSendMessageToCurrentChat.mockResolvedValue(false);
     mockForkChatForChat.mockResolvedValue('scoped-fork');
-    mockGetSiblings.mockReturnValue([]);
+    mockForkCurrentChat.mockResolvedValue('forked-chat');
+    mockGetSiblingsForChat.mockReturnValue([]);
+    mockGetCurrentChatId.mockReturnValue(null);
+    mockGetActiveContextCompaction.mockReturnValue(undefined);
+    mockGetActiveGeneration.mockReturnValue(undefined);
+    mockHasExternalGeneration.mockReturnValue(false);
   });
 
   it('uses scoped methods when they are available', async () => {
@@ -305,13 +168,13 @@ describe('useChatConversationActions', () => {
       chatId: 'chat-1',
       messageId: 'message-1',
     });
-    expect(mockGetSiblings).toHaveBeenCalledWith({
+    expect(mockGetSiblingsForChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
       messageId: 'message-1',
     });
   });
 
-  it('falls back to legacy methods when scoped methods cannot be used', async () => {
+  it('falls back to current-chat methods when chatId is undefined', async () => {
     const chatConversationActions = useChatConversationActions();
 
     await expect(chatConversationActions.sendMessage({
@@ -349,28 +212,27 @@ describe('useChatConversationActions', () => {
       messageId: 'message-1',
     })).toEqual([]);
 
-    expect(mockSendMessage).toHaveBeenCalledWith({
+    expect(mockSendMessageToCurrentChat).toHaveBeenCalledWith({
       content: 'Hello',
       parentId: undefined,
       attachments: undefined,
-      chatTarget: undefined,
       lmParameters: undefined,
     });
-    expect(mockRegenerateMessage).toHaveBeenCalledWith({
+    expect(mockRegenerateMessageForCurrentChat).toHaveBeenCalledWith({
       failedMessageId: 'assistant-1',
     });
-    expect(mockEditMessage).toHaveBeenCalledWith({
+    expect(mockEditCurrentChatMessage).toHaveBeenCalledWith({
       messageId: 'message-1',
       newContent: 'Updated',
       lmParameters: undefined,
     });
-    expect(mockSwitchVersion).toHaveBeenCalledWith({
+    expect(mockSwitchVersionInCurrentChat).toHaveBeenCalledWith({
       messageId: 'message-1',
     });
-    expect(mockForkChat).toHaveBeenCalledWith({
+    expect(mockForkCurrentChat).toHaveBeenCalledWith({
       messageId: 'message-1',
     });
-    expect(mockGetSiblings).toHaveBeenCalledWith({
+    expect(mockGetSiblingsForChat).toHaveBeenCalledWith({
       chatId: undefined,
       messageId: 'message-1',
     });
