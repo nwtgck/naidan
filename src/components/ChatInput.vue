@@ -10,7 +10,7 @@ import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
 import { useChatDraft as useScopedChatDraft } from '@/composables/chat/chat-scoped/useChatDraft';
-import { useChatMedia } from '@/composables/chat/chat-scoped/useChatMedia';
+import { useChatImageGeneration } from '@/composables/chat/chat-scoped/useChatImageGeneration';
 import { useChatModelSelection } from '@/composables/chat/chat-scoped/useChatModelSelection';
 import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
 import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
@@ -79,7 +79,7 @@ const chatGeneration = useChatGeneration({
 const chatDraft = useScopedChatDraft({
   chatId: currentChatId,
 });
-const chatMedia = useChatMedia({
+const chatMedia = useChatImageGeneration({
   chatId: currentChatId,
 });
 const chatModelSelection = useChatModelSelection({

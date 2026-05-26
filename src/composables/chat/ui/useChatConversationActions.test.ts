@@ -88,9 +88,6 @@ vi.mock('@/composables/useImageGeneration', () => ({
     getSteps: vi.fn(() => undefined),
     getSeed: vi.fn(() => undefined),
     getPersistAs: vi.fn(() => 'original'),
-    performBase64Generation: vi.fn(),
-    handleImageGeneration: vi.fn(),
-    sendImageRequest: vi.fn(),
   }),
 }));
 
@@ -170,10 +167,8 @@ vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
   fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
 }));
 
-vi.mock('@/composables/chat/services/chat-image-service', () => ({
-  createChatImageService: () => ({
-    handleImageGeneration: vi.fn(),
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-image-helpers', () => ({
+  handleImageGenerationForChat: vi.fn(),
 }));
 
 vi.mock('@/composables/chat/services/chat-generation-service', () => ({

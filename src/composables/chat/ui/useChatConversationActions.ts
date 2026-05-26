@@ -28,12 +28,14 @@ import {
 } from '@/composables/chat/global/chat-core-singletons';
 import { createChatGenerationService } from '@/composables/chat/services/chat-generation-service';
 import { createChatHistoryService } from '@/composables/chat/services/chat-history-service';
-import { createChatImageService } from '@/composables/chat/services/chat-image-service';
 import { createChatRegenerationService } from '@/composables/chat/services/chat-regeneration-service';
 import {
   abortTitleGenerationForChat,
   generateChatTitleForChat,
 } from '@/composables/chat/chat-scoped/chat-title-helpers';
+import {
+  handleImageGenerationForChat,
+} from '@/composables/chat/chat-scoped/chat-image-helpers';
 import { fetchAvailableModelsForChat } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { useChatUiServices } from './useChatUiServices';
@@ -120,35 +122,6 @@ export function useChatConversationActions(): ChatConversationActionsAdapter {
   const chatNavigation = useChatNavigation();
   const chatOrganization = useChatOrganization();
   const imageGeneration = useImageGeneration();
-  const chatImageService = createChatImageService({
-    getCurrentChat: () => currentBridge.getCurrentChat({}),
-    getLiveChat: ({ chat }) => currentBridge.getChatTargetById({ id: chat.id }) ?? undefined,
-    getAvailableModels: () => availableModels.value,
-    getStorageType: () => settings.value.storageType,
-    resolveSettings: ({ chat }) => {
-      const resolved = resolveChatSettings({
-        chat,
-        groups: derivedState.chatGroups.value,
-        globalSettings: settings.value,
-      });
-      return {
-        endpointUrl: resolved.endpointUrl,
-        endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
-      };
-    },
-    performGeneration: imageGeneration.performBase64Generation,
-    handleImageGenerationImpl: imageGeneration.handleImageGeneration,
-    sendImageRequestImpl: imageGeneration.sendImageRequest,
-    updateChatContent,
-    triggerCurrentChat: ({ chatId }) => currentBridge.triggerCurrentChat({ chatId }),
-    startProcessing: ({ chatId }) => {
-      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
-    },
-    finishProcessing: ({ chatId }) => {
-      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
-    },
-    sendMessage: async (_args) => false,
-  });
   const generationService = createChatGenerationService({
     getCurrentChat: () => currentBridge.getCurrentChat({}),
     getChatTarget: ({ chatId }) => currentBridge.getChatTargetByOptionalId({ chatId }),
@@ -237,7 +210,76 @@ export function useChatConversationActions(): ChatConversationActionsAdapter {
       chatRuntimeStore.deleteActiveGeneration({ chatId });
     },
     hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
-    handleImageGeneration: chatImageService.handleImageGeneration,
+    handleImageGeneration: async ({
+      chatId,
+      assistantId,
+      prompt,
+      width,
+      height,
+      count,
+      steps,
+      seed,
+      persistAs,
+      images,
+      model,
+      signal,
+    }) => {
+      const target = currentBridge.getChatTargetById({ id: chatId });
+      if (target === null) {
+        return;
+      }
+
+      const resolved = resolveChatSettings({
+        chat: target,
+        groups: derivedState.chatGroups.value,
+        globalSettings: settings.value,
+      });
+      if (resolved.endpointUrl === undefined) {
+        throw new Error('Image generation requires an endpoint URL');
+      }
+
+      await handleImageGenerationForChat({
+        chatId,
+        assistantId,
+        prompt,
+        width,
+        height,
+        count,
+        steps,
+        seed,
+        persistAs,
+        images,
+        model,
+        availableModels: availableModels.value,
+        endpointUrl: resolved.endpointUrl,
+        endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+        storageType: settings.value.storageType,
+        signal,
+        getLiveChat,
+        updateChatContent: async ({ chatId, updater }) => {
+          await updateChatContent({
+            id: chatId,
+            updater: (current) => {
+              if (current === null) {
+                throw new Error('Chat content not found');
+              }
+              return updater(current);
+            },
+          });
+        },
+        triggerChatRef: ({ chatId }) => currentBridge.triggerCurrentChat({ chatId }),
+        incTask: ({ chatId, type }) => {
+          if (type === 'process') {
+            chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
+          }
+        },
+        decTask: ({ chatId, type }) => {
+          if (type === 'process') {
+            chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
+          }
+        },
+      });
+    },
     loadBinaryObject: ({ id }) => storageService.getFile({ binaryObjectId: id }),
     persistToolContent: async ({ text, type, toolCallId }) => {
       const binaryThreshold = 100 * 1024;

@@ -368,8 +368,8 @@ vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatMedia', () => ({
-  useChatMedia: () => ({
+vi.mock('../composables/chat/chat-scoped/useChatImageGeneration', () => ({
+  useChatImageGeneration: () => ({
     availableModels: mockAvailableModels,
     isImageMode: computed(() => false),
     resolution: computed(() => ({ width: 512, height: 512 })),

@@ -1,5 +1,5 @@
 import { toRaw, triggerRef, type ComputedRef } from 'vue';
-import type { Chat, EndpointType, Reasoning, Settings } from '@/models/types';
+import type { Attachment, Chat, EndpointType, Reasoning, Settings } from '@/models/types';
 import { generateId } from '@/utils/id';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { storageService } from '@/services/storage';
@@ -67,9 +67,13 @@ import {
   abortTitleGenerationForChat,
   generateChatTitleForChat,
 } from '@/composables/chat/chat-scoped/chat-title-helpers';
+import {
+  generateImageForChat,
+  handleImageGenerationForChat,
+  sendImageRequestForChat as sendImageRequestForChatImpl,
+} from '@/composables/chat/chat-scoped/chat-image-helpers';
 import { createChatGenerationService } from '@/composables/chat/services/chat-generation-service';
 import { createChatHistoryService } from '@/composables/chat/services/chat-history-service';
-import { createChatImageService } from '@/composables/chat/services/chat-image-service';
 import { createChatRegenerationService } from '@/composables/chat/services/chat-regeneration-service';
 import type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
@@ -451,9 +455,6 @@ export function useChat() {
     setImageModel,
     getSelectedImageModel,
     getSortedImageModels,
-    performBase64Generation: _performGeneration,
-    handleImageGeneration: _handleImageGeneration,
-    sendImageRequest: _sendImageRequest,
     imageModeMap,
     imageResolutionMap,
     imageCountMap,
@@ -462,45 +463,130 @@ export function useChat() {
     imageModelOverrideMap,
   } = useImageGeneration();
 
-  const chatImageService = createChatImageService({
-    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
-    getLiveChat: ({ chat }) => getLiveChat({ chat }),
-    getAvailableModels: () => availableModels.value,
-    getStorageType: () => settings.value.storageType,
-    resolveSettings: ({ chat }) => {
-      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
-      return {
-        endpointUrl: resolved.endpointUrl,
-        endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
-      };
-    },
-    performGeneration: _performGeneration,
-    handleImageGenerationImpl: _handleImageGeneration,
-    sendImageRequestImpl: _sendImageRequest,
-    updateChatContent,
-    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
-    startProcessing: ({ chatId }) => {
-      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
-    },
-    finishProcessing: ({ chatId }) => {
-      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
-    },
-    sendMessage: ({ chatId, content, parentId, attachments }) => {
-      if (chatId === undefined) {
-        return sendMessage({ content, parentId, attachments });
-      }
+  async function handleImageGeneration({
+    chatId,
+    assistantId,
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    images,
+    model,
+    signal,
+  }: {
+    chatId: string;
+    assistantId: string;
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'] | undefined;
+    images: { blob: Blob }[];
+    model: string | undefined;
+    signal: AbortSignal | undefined;
+  }) {
+    const chat = chatCurrentBridge.getChatTargetById({ id: chatId });
+    if (chat === null) {
+      return;
+    }
 
-      return sendMessageForChat({
-        chatId,
-        content,
-        parentId,
-        attachments,
-        lmParameters: undefined,
-      });
-    },
-  });
-  const handleImageGeneration = chatImageService.handleImageGeneration;
-  const sendImageRequestForChat = chatImageService.sendImageRequestForChat;
+    const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
+    if (resolved.endpointUrl === undefined) {
+      throw new Error('Image generation requires an endpoint URL');
+    }
+
+    await handleImageGenerationForChat({
+      chatId,
+      assistantId,
+      prompt,
+      width,
+      height,
+      count,
+      steps,
+      seed,
+      persistAs,
+      images,
+      model,
+      availableModels: availableModels.value,
+      endpointUrl: resolved.endpointUrl,
+      endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+      storageType: settings.value.storageType,
+      signal,
+      getLiveChat,
+      updateChatContent: async ({ chatId, updater }) => {
+        await updateChatContent({
+          id: chatId,
+          updater: (current) => {
+            if (current === null) {
+              throw new Error('Chat content not found');
+            }
+            return updater(current);
+          },
+        });
+      },
+      triggerChatRef: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
+      incTask: ({ chatId, type }) => {
+        if (type === 'process') {
+          chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
+        }
+      },
+      decTask: ({ chatId, type }) => {
+        if (type === 'process') {
+          chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
+        }
+      },
+    });
+  }
+
+  async function sendImageRequestForChatCompat({
+    chatId,
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    attachments,
+  }: {
+    chatId: string;
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'];
+    attachments: Attachment[];
+  }) {
+    return await sendImageRequestForChatImpl({
+      chatId,
+      prompt,
+      width,
+      height,
+      count,
+      steps,
+      seed,
+      persistAs,
+      attachments,
+      availableModels: availableModels.value,
+      sendMessage: ({ content, parentId, attachments }) => {
+        return sendMessageForChat({
+          chatId,
+          content,
+          parentId,
+          attachments,
+          lmParameters: undefined,
+        });
+      },
+    });
+  }
+  const sendImageRequestForChat = sendImageRequestForChatCompat;
   async function generateChatTitle({
     chatId,
     signal,
@@ -818,8 +904,78 @@ export function useChat() {
     });
   }
   const commitFullHistoryManipulation = chatHistoryService.commitFullHistoryManipulation;
-  const generateImage = chatImageService.generateImage;
-  const sendImageRequest = chatImageService.sendImageRequest;
+  async function generateImage({
+    prompt,
+    model,
+    width,
+    height,
+    steps,
+    seed,
+    images,
+    chat,
+    signal,
+  }: {
+    prompt: string;
+    model: string;
+    width: number;
+    height: number;
+    steps: number | undefined;
+    seed: number | undefined;
+    images: { blob: Blob }[];
+    chat: Chat;
+    signal: AbortSignal | undefined;
+  }) {
+    return await generateImageForChat({
+      prompt,
+      model,
+      width,
+      height,
+      steps,
+      seed,
+      images,
+      chat,
+      chatGroups: chatGroups.value,
+      settings: settings.value as Settings,
+      signal,
+    });
+  }
+
+  async function sendImageRequest({
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    attachments,
+  }: {
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'];
+    attachments: Attachment[];
+  }) {
+    const currentChatId = chatCurrentBridge.getCurrentChatId({}) ?? undefined;
+    if (currentChatId === undefined) {
+      return false;
+    }
+
+    return await sendImageRequestForChatCompat({
+      chatId: currentChatId,
+      prompt,
+      width,
+      height,
+      count,
+      steps,
+      seed,
+      persistAs,
+      attachments,
+    });
+  }
 
   const createChatGroup = chatOrganization.createChatGroup;
   const deleteChatGroup = chatOrganization.deleteChatGroup;
