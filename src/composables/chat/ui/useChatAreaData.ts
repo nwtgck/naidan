@@ -63,9 +63,9 @@ export type ChatAreaDataAdapter = {
 export function useChatAreaData(): ChatAreaDataAdapter {
   const chatStore = useChat();
 
-  const availableModels = computed(() => chatStore.availableModels.value);
-  const fetchingModels = computed(() => chatStore.fetchingModels.value);
-  const chatFlow = computed(() => chatStore.chatFlow.value);
+  const availableModels = computed(() => chatStore.availableModels?.value ?? []);
+  const fetchingModels = computed(() => chatStore.fetchingModels?.value ?? false);
+  const chatFlow = computed(() => chatStore.chatFlow?.value ?? []);
   const availableChatGroups = computed(() => chatStore.chatGroups?.value ?? []);
 
   function getSortedImageModels({
@@ -73,6 +73,10 @@ export function useChatAreaData(): ChatAreaDataAdapter {
   }: {
     availableModels: string[];
   }) {
+    if (!chatStore.getSortedImageModels) {
+      return availableModels;
+    }
+
     return chatStore.getSortedImageModels({
       availableModels,
     });
@@ -85,6 +89,10 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     chatId: string | undefined;
     customEndpoint: FetchAvailableModelsCustomEndpoint | undefined;
   }) {
+    if (!chatStore.fetchAvailableModels) {
+      return [];
+    }
+
     return await chatStore.fetchAvailableModels({
       chatId,
       customEndpoint,
@@ -96,6 +104,10 @@ export function useChatAreaData(): ChatAreaDataAdapter {
   }: {
     item: ChatFlowItem;
   }) {
+    if (!chatStore.isThinkingActive) {
+      return false;
+    }
+
     return chatStore.isThinkingActive({
       item,
     });
@@ -106,6 +118,10 @@ export function useChatAreaData(): ChatAreaDataAdapter {
   }: {
     item: ChatFlowItem;
   }) {
+    if (!chatStore.isWaitingResponse) {
+      return false;
+    }
+
     return chatStore.isWaitingResponse({
       item,
     });
@@ -118,6 +134,10 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     id: string;
     updates: Partial<Pick<Chat, 'titleModelId'>>;
   }) {
+    if (!chatStore.updateChatSettings) {
+      return;
+    }
+
     await chatStore.updateChatSettings({
       id,
       updates,
@@ -131,6 +151,10 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     id: string;
     updates: Partial<Pick<ChatGroup, 'titleModelId'>>;
   }) {
+    if (!chatStore.updateChatGroupMetadata) {
+      return;
+    }
+
     await chatStore.updateChatGroupMetadata({
       id,
       updates,
