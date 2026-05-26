@@ -12,6 +12,8 @@ export type ChatReadModelAdapter = {
   allMessages: ComputedRef<MessageNode[]>;
   resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
   inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
+
+  TEST_ONLY: Record<string, never>;
 };
 
 export function useChatReadModel({

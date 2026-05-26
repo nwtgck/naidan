@@ -5,6 +5,8 @@ import { chatRuntimeStore, contextCompactRuntime } from '@/composables/chat/chat
 export type ChatRuntimeAdapter = {
   isProcessing: ComputedRef<boolean>;
   contextCompactProgress: ComputedRef<ContextCompactProgress>;
+
+  TEST_ONLY: Record<string, never>;
 };
 
 export function useChatRuntime({

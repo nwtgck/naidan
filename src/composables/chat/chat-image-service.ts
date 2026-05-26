@@ -8,6 +8,28 @@ type ResolvedImageSettings = {
 };
 
 export type ChatImageService = {
+  sendImageRequestForChat({
+    chatId,
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    attachments,
+  }: {
+    chatId: string;
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: ImageRequestParams['persistAs'];
+    attachments: Attachment[];
+  }): Promise<boolean>;
+
   handleImageGeneration({
     chatId,
     assistantId,
@@ -219,15 +241,58 @@ export function createChatImageService({
   startProcessing: ({ chatId }: { chatId: string }) => void;
   finishProcessing: ({ chatId }: { chatId: string }) => void;
   sendMessage: ({
+    chatId,
     content,
     parentId,
     attachments,
   }: {
+    chatId: string | undefined;
     content: string;
     parentId: string | null;
     attachments: Attachment[];
   }) => Promise<boolean>;
 }): ChatImageService {
+  async function sendImageRequestForChat({
+    chatId,
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    attachments,
+  }: {
+    chatId: string;
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: ImageRequestParams['persistAs'];
+    attachments: Attachment[];
+  }) {
+    return await sendImageRequestImpl({
+      prompt,
+      width,
+      height,
+      count,
+      steps,
+      seed,
+      persistAs,
+      chatId,
+      attachments,
+      availableModels: getAvailableModels(),
+      sendMessage: ({ content, parentId, attachments }) => sendMessage({
+        chatId,
+        content,
+        parentId: parentId || null,
+        attachments,
+      }),
+    });
+  }
+
   async function handleImageGeneration({
     chatId,
     assistantId,
@@ -364,7 +429,8 @@ export function createChatImageService({
     const target = getCurrentChat();
     if (!target) return false;
 
-    return await sendImageRequestImpl({
+    return await sendImageRequestForChat({
+      chatId: target.id,
       prompt,
       width,
       height,
@@ -372,18 +438,12 @@ export function createChatImageService({
       steps,
       seed,
       persistAs,
-      chatId: target.id,
       attachments,
-      availableModels: getAvailableModels(),
-      sendMessage: ({ content, parentId, attachments }) => sendMessage({
-        content,
-        parentId: parentId || null,
-        attachments,
-      }),
     });
   }
 
   return {
+    sendImageRequestForChat,
     handleImageGeneration,
     generateImage,
     sendImageRequest,

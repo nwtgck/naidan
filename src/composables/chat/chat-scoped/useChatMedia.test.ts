@@ -17,6 +17,8 @@ const {
   mockUpdateSeed,
   mockSetImageModel,
   mockGetSelectedImageModel,
+  mockSendImageRequest,
+  mockSendImageRequestForChat,
 } = vi.hoisted(() => ({
   mockAvailableModels: { value: ['model-a', 'model-b'] as string[] },
   mockIsImageMode: vi.fn(),
@@ -33,6 +35,8 @@ const {
   mockUpdateSeed: vi.fn(),
   mockSetImageModel: vi.fn(),
   mockGetSelectedImageModel: vi.fn(),
+  mockSendImageRequest: vi.fn(),
+  mockSendImageRequestForChat: vi.fn(),
 }));
 
 vi.mock('@/composables/useChat', () => ({
@@ -52,6 +56,8 @@ vi.mock('@/composables/useChat', () => ({
     updateSeed: mockUpdateSeed,
     setImageModel: mockSetImageModel,
     getSelectedImageModel: mockGetSelectedImageModel,
+    sendImageRequest: mockSendImageRequest,
+    sendImageRequestForChat: mockSendImageRequestForChat,
   }),
 }));
 
@@ -68,6 +74,8 @@ describe('useChatMedia', () => {
     mockGetSteps.mockReturnValue(undefined);
     mockGetSeed.mockReturnValue('browser_random');
     mockGetSelectedImageModel.mockReturnValue('model-a');
+    mockSendImageRequest.mockResolvedValue(true);
+    mockSendImageRequestForChat.mockResolvedValue(true);
   });
 
   it('returns defaults and no-ops when chatId is undefined', () => {
@@ -99,6 +107,26 @@ describe('useChatMedia', () => {
     expect(mockUpdateSteps).not.toHaveBeenCalled();
     expect(mockUpdateSeed).not.toHaveBeenCalled();
     expect(mockSetImageModel).not.toHaveBeenCalled();
+  });
+
+  it('returns false for image requests when chatId is undefined', async () => {
+    const chatMedia = useChatMedia({
+      chatId: computed(() => undefined),
+    });
+
+    await expect(chatMedia.sendImageRequest({
+      prompt: 'draw a cat',
+      width: 512,
+      height: 512,
+      count: 1,
+      steps: undefined,
+      seed: undefined,
+      persistAs: 'original',
+      attachments: [],
+    })).resolves.toBe(false);
+
+    expect(mockSendImageRequestForChat).not.toHaveBeenCalled();
+    expect(mockSendImageRequest).not.toHaveBeenCalled();
   });
 
   it('binds image settings to the scoped chatId', () => {
@@ -141,5 +169,35 @@ describe('useChatMedia', () => {
     expect(mockUpdateSteps).toHaveBeenCalledWith({ chatId: 'chat-1', steps: 12 });
     expect(mockUpdateSeed).toHaveBeenCalledWith({ chatId: 'chat-1', seed: 'browser_random' });
     expect(mockSetImageModel).toHaveBeenCalledWith({ chatId: 'chat-1', modelId: 'model-a' });
+  });
+
+  it('uses sendImageRequestForChat when available', async () => {
+    const chatMedia = useChatMedia({
+      chatId: computed(() => 'chat-1'),
+    });
+
+    await expect(chatMedia.sendImageRequest({
+      prompt: 'draw a cat',
+      width: 512,
+      height: 512,
+      count: 1,
+      steps: 20,
+      seed: 42,
+      persistAs: 'png',
+      attachments: [],
+    })).resolves.toBe(true);
+
+    expect(mockSendImageRequestForChat).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      prompt: 'draw a cat',
+      width: 512,
+      height: 512,
+      count: 1,
+      steps: 20,
+      seed: 42,
+      persistAs: 'png',
+      attachments: [],
+    });
+    expect(mockSendImageRequest).not.toHaveBeenCalled();
   });
 });

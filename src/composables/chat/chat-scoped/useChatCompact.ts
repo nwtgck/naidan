@@ -34,6 +34,8 @@ export type ChatCompactAdapter = {
   }): Promise<boolean>;
 
   abort(_args: Record<never, never>): void;
+
+  TEST_ONLY: Record<string, never>;
 };
 
 export function useChatCompact({

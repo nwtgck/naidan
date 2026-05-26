@@ -1,4 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
+import type { Attachment } from '@/models/types';
 import type { ImageRequestParams } from '@/utils/image-generation';
 import { useChat } from '@/composables/useChat';
 
@@ -51,6 +52,71 @@ export type ChatMediaAdapter = {
   }: {
     modelId: string;
   }): void;
+
+  sendImageRequest({
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    attachments,
+  }: {
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: ImageRequestParams['persistAs'];
+    attachments: Attachment[];
+  }): Promise<boolean>;
+
+  TEST_ONLY: Record<string, never>;
+};
+
+type ChatMediaStoreCompatibility = ReturnType<typeof useChat> & {
+  sendImageRequest?: ({
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    attachments,
+  }: {
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: ImageRequestParams['persistAs'];
+    attachments: Attachment[];
+  }) => Promise<boolean>;
+  sendImageRequestForChat?: ({
+    chatId,
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    attachments,
+  }: {
+    chatId: string;
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: ImageRequestParams['persistAs'];
+    attachments: Attachment[];
+  }) => Promise<boolean>;
 };
 
 export function useChatMedia({
@@ -58,7 +124,7 @@ export function useChatMedia({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatMediaAdapter {
-  const chatStore = useChat();
+  const chatStore = useChat() as ChatMediaStoreCompatibility;
 
   const isImageMode = computed(() => {
     const id = chatId.value;
@@ -215,6 +281,60 @@ export function useChatMedia({
     chatStore.setImageModel({ chatId: id, modelId });
   }
 
+  async function sendImageRequest({
+    prompt,
+    width,
+    height,
+    count,
+    steps,
+    seed,
+    persistAs,
+    attachments,
+  }: {
+    prompt: string;
+    width: number;
+    height: number;
+    count: number;
+    steps: number | undefined;
+    seed: number | 'browser_random' | undefined;
+    persistAs: ImageRequestParams['persistAs'];
+    attachments: Attachment[];
+  }): Promise<boolean> {
+    const id = chatId.value;
+    if (id === undefined) {
+      return false;
+    }
+
+    if (typeof chatStore.sendImageRequestForChat === 'function') {
+      return await chatStore.sendImageRequestForChat({
+        chatId: id,
+        prompt,
+        width,
+        height,
+        count,
+        steps,
+        seed,
+        persistAs,
+        attachments,
+      });
+    }
+
+    if (typeof chatStore.sendImageRequest === 'function') {
+      return await chatStore.sendImageRequest({
+        prompt,
+        width,
+        height,
+        count,
+        steps,
+        seed,
+        persistAs,
+        attachments,
+      });
+    }
+
+    return false;
+  }
+
   return {
     availableModels: chatStore.availableModels,
     isImageMode,
@@ -231,6 +351,7 @@ export function useChatMedia({
     updateSteps,
     updateSeed,
     setImageModel,
+    sendImageRequest,
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },

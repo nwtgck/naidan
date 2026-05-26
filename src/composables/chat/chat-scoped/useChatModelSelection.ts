@@ -12,6 +12,8 @@ export type ChatModelSelectionAdapter = {
   }: {
     modelId: string | undefined;
   }): Promise<void>;
+
+  TEST_ONLY: Record<string, never>;
 };
 
 type ChatModelSelectionStoreCompatibility = {

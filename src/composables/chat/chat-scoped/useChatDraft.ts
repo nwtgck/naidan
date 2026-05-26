@@ -20,6 +20,8 @@ export type ChatDraftAdapter = {
   clearDraft(_args: Record<never, never>): void;
 
   revokeAll(_args: Record<never, never>): void;
+
+  TEST_ONLY: Record<string, never>;
 };
 
 export function useChatDraft({

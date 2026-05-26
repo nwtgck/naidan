@@ -22,6 +22,8 @@ export type ChatGenerationAdapter = {
   }): Promise<void>;
 
   abort(_args: Record<never, never>): void;
+
+  TEST_ONLY: Record<string, never>;
 };
 
 type ChatGenerationStoreCompatibility = {

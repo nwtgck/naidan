@@ -24,6 +24,8 @@ export type ChatMountsAdapter = {
     volumeId: string;
     readOnly: boolean;
   }): Promise<void>;
+
+  TEST_ONLY: Record<string, never>;
 };
 
 type ChatMountStoreCompatibility = {

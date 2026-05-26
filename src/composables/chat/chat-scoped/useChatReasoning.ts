@@ -10,6 +10,8 @@ export type ChatReasoningAdapter = {
   }: {
     effort: Reasoning['effort'] | undefined;
   }): void;
+
+  TEST_ONLY: Record<string, never>;
 };
 
 export function useChatReasoning({

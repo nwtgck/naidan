@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'vue';
-import { useChat } from '@/composables/useChat';
 import { useLayout } from '@/composables/useLayout';
 import { generateId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
@@ -39,7 +38,6 @@ import {
 import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, LmParameters } from '@/models/types';
 
-const chatStore = useChat();
 const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
 const { addToast } = useToast();
@@ -790,7 +788,7 @@ async function handleGenerateImage() {
   const sendingChatId = currentChat.value.id;
   const { width, height } = currentResolution.value;
   const count = currentCount.value;
-  const success = await chatStore.sendImageRequest({
+  const success = await chatMedia.sendImageRequest({
     prompt,
     width,
     height,
