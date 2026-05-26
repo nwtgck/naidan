@@ -5,10 +5,13 @@ import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
 import { useChatAreaSession } from '@/composables/chat/chat-area-session';
 import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
+import { useChatDebug } from '@/composables/chat/chat-scoped/useChatDebug';
 import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
+import { useChatGrouping } from '@/composables/chat/chat-scoped/useChatGrouping';
 import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
 import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
 import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
+import { useChatTitle } from '@/composables/chat/chat-scoped/useChatTitle';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -81,15 +84,12 @@ const {
   toggleChatWeshTerminal,
 } = useLayout();
 const {
-  generatingTitle,
-  renameChat,
   updateChatSettings,
   updateChatGroupMetadata,
   availableModels,
   fetchingModels,
   getSortedImageModels,
   fetchAvailableModels,
-  abortTitleGeneration,
   chatFlow,
   isThinkingActive,
   isWaitingResponse,
@@ -108,7 +108,13 @@ const chatCompact = useChatCompact({
 const chatGeneration = useChatGeneration({
   chatId: currentChatId,
 });
+const chatGrouping = useChatGrouping({
+  chatId: currentChatId,
+});
 const chatHistory = useChatHistory({
+  chatId: currentChatId,
+});
+const chatTitle = useChatTitle({
   chatId: currentChatId,
 });
 const {
@@ -119,6 +125,12 @@ const {
   resolvedSettings,
 } = chatReadModel;
 const { isProcessing, contextCompactProgress } = chatRuntime;
+const chatDebug = useChatDebug({
+  chatId: currentChatId,
+  debugEnabled: computed(() => currentChat.value?.debugEnabled === true),
+});
+const isGeneratingTitle = computed(() => chatTitle.isGenerating.value);
+const isDebugEnabled = computed(() => chatDebug.enabled.value);
 
 const chatAreaSession = useChatAreaSession({
   chatId: currentChatId,
@@ -284,22 +296,18 @@ function clearTargetMessageQuery() {
 }
 
 async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
-  if (!currentChat.value) return;
-  await chatStore.moveChatToGroup({ chatId: currentChat.value.id, targetGroupId: groupId });
+  await chatGrouping.moveToGroup({ groupId });
 }
 
 async function handleSaveTitle({ title }: { title: string }) {
-  if (!currentChat.value) return;
-  await renameChat({ id: currentChat.value.id, newTitle: title });
+  await chatTitle.rename({ title });
 }
 
 async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
   if (!currentChat.value) return;
   const titleBeforeGeneration = currentChat.value.title?.trim();
   await updateActiveTitleModel({ modelId });
-  const generatedTitle = await chatStore.generateChatTitle({
-    chatId: currentChat.value.id,
-    signal: undefined,
+  const generatedTitle = await chatTitle.generateTitle({
     titleModelIdOverride: modelId,
   });
   if (!generatedTitle) return;
@@ -310,7 +318,7 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
 }
 
 function handleAbortTitleGeneration(_args: Record<string, never>) {
-  abortTitleGeneration({ chatId: currentChat.value?.id });
+  chatTitle.abort({});
 }
 
 async function exportChat() {
@@ -935,7 +943,7 @@ watch(
       :has-overrides="!!(currentChat && hasChatOverrides({ chat: currentChat }))"
       :show-chat-settings="showChatSettings"
       :outline-visibility="outlineVisibility"
-      :generating-title="generatingTitle"
+      :generating-title="isGeneratingTitle"
       :media-shelf-visibility="mediaShelfVisibility"
       :is-chat-wesh-terminal-open="isChatWeshTerminalOpen"
       @jump-origin="jumpToOrigin"
@@ -953,7 +961,7 @@ watch(
       @share-url="shareAsURL"
       @open-file-explorer="openChatFileExplorer({})"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
-      @toggle-debug="() => chatStore.toggleDebug({})"
+      @toggle-debug="() => chatDebug.toggle({})"
     />
 
     <!-- Chat Settings Panel -->
@@ -969,7 +977,7 @@ watch(
       :selected-title-model="activeTitleModelId"
       :title-model-source="activeTitleModelSource"
       :generated-titles="generatedTitleHistory"
-      :generating-title="generatingTitle"
+      :generating-title="isGeneratingTitle"
       :fetching-models="fetchingModels"
       @close="showTitleDialog = false"
       @save-title="title => handleSaveTitle({ title })"
@@ -1181,11 +1189,11 @@ watch(
 
       <!-- Chat State Inspector (Debug Mode) -->
       <ChatDebugInspector
-        v-if="currentChat?.debugEnabled"
-        :show="currentChat.debugEnabled"
+        v-if="isDebugEnabled"
+        :show="isDebugEnabled"
         :chat="currentChat"
         :active-messages="activeMessages"
-        @close="() => chatStore.toggleDebug({})"
+        @close="() => chatDebug.toggle({})"
         data-testid="chat-inspector"
       />
     </div>
