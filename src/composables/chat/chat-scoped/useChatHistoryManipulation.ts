@@ -1,12 +1,13 @@
 import type { SystemPrompt } from '@/models/types';
+import type { Ref } from 'vue';
 import type { HistoryItem } from '@/utils/chat-tree';
 import { useChat } from '@/composables/useChat';
-import { useCurrentChatState } from './useCurrentChatState';
+import { useChatReadModel } from './useChatReadModel';
 
 export type ChatHistoryManipulationAdapter = {
-  currentChat: ReturnType<typeof useCurrentChatState>['currentChat'];
-  activeMessages: ReturnType<typeof useCurrentChatState>['activeMessages'];
-  inheritedSettings: ReturnType<typeof useCurrentChatState>['inheritedSettings'];
+  currentChat: ReturnType<typeof useChatReadModel>['currentChat'];
+  activeMessages: ReturnType<typeof useChatReadModel>['activeMessages'];
+  inheritedSettings: ReturnType<typeof useChatReadModel>['inheritedSettings'];
 
   commit({
     chatId,
@@ -21,9 +22,13 @@ export type ChatHistoryManipulationAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-export function useChatHistoryManipulation(): ChatHistoryManipulationAdapter {
+export function useChatHistoryManipulation({
+  chatId,
+}: {
+  chatId: Ref<string | undefined>;
+}): ChatHistoryManipulationAdapter {
   const chatStore = useChat();
-  const currentChatState = useCurrentChatState();
+  const chatReadModel = useChatReadModel({ chatId });
 
   async function commit({
     chatId,
@@ -42,9 +47,9 @@ export function useChatHistoryManipulation(): ChatHistoryManipulationAdapter {
   }
 
   return {
-    currentChat: currentChatState.currentChat,
-    activeMessages: currentChatState.activeMessages,
-    inheritedSettings: currentChatState.inheritedSettings,
+    currentChat: chatReadModel.currentChat,
+    activeMessages: chatReadModel.activeMessages,
+    inheritedSettings: chatReadModel.inheritedSettings,
     commit,
     TEST_ONLY: {},
   };

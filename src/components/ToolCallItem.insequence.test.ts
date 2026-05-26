@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { computed, h } from 'vue';
 import ToolCallItem from './ToolCallItem.vue';
 import type { CombinedToolCall } from '@/models/types';
-import { useToolCallOutput } from '@/composables/chat/chat-scoped/useToolCallOutput';
+import { useToolCallOutput } from '@/composables/chat/ui/useToolCallOutput';
 
 vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
@@ -22,7 +22,7 @@ vi.mock('@/services/storage', () => ({
   storageService: { getFile: vi.fn() },
 }));
 
-vi.mock('@/composables/chat/chat-scoped/useToolCallOutput', () => ({
+vi.mock('@/composables/chat/ui/useToolCallOutput', () => ({
   useToolCallOutput: vi.fn(),
 }));
 

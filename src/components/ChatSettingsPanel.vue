@@ -3,6 +3,7 @@ import { ref, onMounted, watch, computed } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { useChatSettingsPanel } from '@/composables/chat/chat-scoped/useChatSettingsPanel';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import {
   XIcon, Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon
@@ -32,16 +33,18 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
+const { currentChatId } = useCurrentChatState();
 const {
   currentChat,
-  currentChatId,
   fetchingModels,
   availableModels,
   resolvedSettings,
   inheritedSettings,
   updateSettings,
   fetchModels: fetchChatModels,
-} = useChatSettingsPanel();
+} = useChatSettingsPanel({
+  chatId: currentChatId,
+});
 const sortedAvailableModels = computed(() => naturalSort({ values: availableModels?.value || [] }));
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();

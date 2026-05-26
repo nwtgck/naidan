@@ -1,20 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import { ref, nextTick } from 'vue';
+import { computed, ref, nextTick } from 'vue';
+import { useChatSettingsPanel } from '@/composables/chat/chat-scoped/useChatSettingsPanel';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
 // --- Mocks ---
 
 const mockCurrentChat = ref<any>(null);
 const mockFetchAvailableModels = vi.fn();
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    currentChat: mockCurrentChat,
-    fetchingModels: ref(false),
-    updateChatSettings: vi.fn(),
-    fetchAvailableModels: mockFetchAvailableModels,
-  }),
+vi.mock('../composables/chat/chat-scoped/useChatSettingsPanel', () => ({
+  useChatSettingsPanel: vi.fn(),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -34,6 +35,42 @@ describe('ChatSettingsPanel Error Handling', () => {
       systemPrompt: null,
       lmParameters: {},
     };
+
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      currentChatId: computed(() => mockCurrentChat.value?.id),
+      TEST_ONLY: {},
+    });
+
+    vi.mocked(useChatSettingsPanel).mockReturnValue({
+      currentChat: mockCurrentChat,
+      fetchingModels: computed(() => false),
+      availableModels: ref([]),
+      resolvedSettings: computed(() => ({
+        endpointType: mockCurrentChat.value.endpointType,
+        endpointUrl: mockCurrentChat.value.endpointUrl,
+        modelId: undefined,
+        sources: {
+          endpointType: 'chat',
+          endpointUrl: 'chat',
+          modelId: 'global',
+        },
+      })),
+      inheritedSettings: computed(() => ({
+        endpointType: 'openai',
+        endpointUrl: 'http://localhost',
+        modelId: undefined,
+        sources: {
+          endpointType: 'global',
+          endpointUrl: 'global',
+          modelId: 'global',
+        },
+      })),
+      updateSettings: vi.fn(),
+      fetchModels: vi.fn().mockImplementation(async () => {
+        return await mockFetchAvailableModels();
+      }),
+      TEST_ONLY: {},
+    });
   });
 
   it('should reset error state when endpoint URL changes', async () => {

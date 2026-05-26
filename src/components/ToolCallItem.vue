@@ -3,7 +3,7 @@ import { HammerIcon, CheckCircle2Icon, AlertCircleIcon, ChevronDownIcon, Chevron
 import { ref, watch, onMounted, nextTick, inject, computed, markRaw } from 'vue';
 import type { CombinedToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { useToolCallOutput } from '@/composables/chat/chat-scoped/useToolCallOutput';
+import { useToolCallOutput } from '@/composables/chat/ui/useToolCallOutput';
 import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
 
 const props = defineProps<{

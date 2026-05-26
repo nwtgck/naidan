@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, toRef } from 'vue';
 import type { ChatGroup } from '@/models/types';
-import { useChatGroupSettingsPanel } from '@/composables/chat/chat-scoped/useChatGroupSettingsPanel';
+import { useChatGroupSettingsPanel } from '@/composables/chat/ui/useChatGroupSettingsPanel';
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -39,7 +39,7 @@ const mockUpdateChatGroupMetadata = vi.fn().mockImplementation(({ id, updates })
 });
 const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-a', 'model-b']);
 
-vi.mock('../composables/chat/chat-scoped/useChatGroupSettingsPanel', () => ({
+vi.mock('../composables/chat/ui/useChatGroupSettingsPanel', () => ({
   useChatGroupSettingsPanel: vi.fn(),
 }));
 

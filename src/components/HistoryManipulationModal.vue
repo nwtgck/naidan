@@ -13,6 +13,7 @@ import { useLayout } from '@/composables/useLayout';
 import type { Attachment, SystemPrompt } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useChatHistoryManipulation } from '@/composables/chat/chat-scoped/useChatHistoryManipulation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -22,7 +23,10 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const { currentChat, activeMessages, inheritedSettings, commit } = useChatHistoryManipulation();
+const { currentChatId } = useCurrentChatState();
+const { currentChat, activeMessages, inheritedSettings, commit } = useChatHistoryManipulation({
+  chatId: currentChatId,
+});
 const { setActiveFocusArea } = useLayout();
 
 interface EditableHistoryItem extends HistoryItem {

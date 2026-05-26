@@ -1,15 +1,14 @@
-import { computed, type ComputedRef } from 'vue';
+import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Chat } from '@/models/types';
 import { useChat } from '@/composables/useChat';
-import { useCurrentChatState } from './useCurrentChatState';
+import { useChatReadModel } from './useChatReadModel';
 
 export type ChatSettingsPanelAdapter = {
   currentChat: ComputedRef<Readonly<Chat> | null>;
-  currentChatId: ComputedRef<string | undefined>;
   fetchingModels: ComputedRef<boolean>;
   availableModels: ReturnType<typeof useChat>['availableModels'];
-  resolvedSettings: ReturnType<typeof useCurrentChatState>['resolvedSettings'];
-  inheritedSettings: ReturnType<typeof useCurrentChatState>['inheritedSettings'];
+  resolvedSettings: ReturnType<typeof useChatReadModel>['resolvedSettings'];
+  inheritedSettings: ReturnType<typeof useChatReadModel>['inheritedSettings'];
 
   updateSettings({
     chatId,
@@ -28,9 +27,13 @@ export type ChatSettingsPanelAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-export function useChatSettingsPanel(): ChatSettingsPanelAdapter {
+export function useChatSettingsPanel({
+  chatId,
+}: {
+  chatId: Ref<string | undefined>;
+}): ChatSettingsPanelAdapter {
   const chatStore = useChat();
-  const currentChatState = useCurrentChatState();
+  const chatReadModel = useChatReadModel({ chatId });
 
   const fetchingModels = computed(() => chatStore.fetchingModels.value);
 
@@ -58,12 +61,11 @@ export function useChatSettingsPanel(): ChatSettingsPanelAdapter {
   }
 
   return {
-    currentChat: currentChatState.currentChat,
-    currentChatId: currentChatState.currentChatId,
+    currentChat: chatReadModel.currentChat,
     fetchingModels,
     availableModels: chatStore.availableModels,
-    resolvedSettings: currentChatState.resolvedSettings,
-    inheritedSettings: currentChatState.inheritedSettings,
+    resolvedSettings: chatReadModel.resolvedSettings,
+    inheritedSettings: chatReadModel.inheritedSettings,
     updateSettings,
     fetchModels,
     TEST_ONLY: {},

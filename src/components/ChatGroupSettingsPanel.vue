@@ -2,7 +2,7 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import { useChatGroupSettingsPanel } from '@/composables/chat/chat-scoped/useChatGroupSettingsPanel';
+import { useChatGroupSettingsPanel } from '@/composables/chat/ui/useChatGroupSettingsPanel';
 import {
   Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon,
