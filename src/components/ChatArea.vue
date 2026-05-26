@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
 import { useChatAreaSession } from '@/composables/chat/chat-area-session';
+import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -32,7 +33,6 @@ const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
-import type { ContextCompactProgress } from '@/services/context-compact';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -97,18 +97,10 @@ const {
   isWaitingResponse,
 } = chatStore;
 
-const compactCurrentBranch = chatStore.compactCurrentBranch ?? (async (_args: {
-  keepRecentMessages: number;
-  instructionOverride: string | undefined;
-}) => false);
-const abortContextCompact = chatStore.abortContextCompact ?? ((_args: { chatId: string | undefined }) => {});
-const contextCompactProgress = computed<ContextCompactProgress>(() => {
-  const maybeProgress = chatStore.contextCompactProgress as ContextCompactProgress | { value: ContextCompactProgress } | undefined;
-  if (maybeProgress && typeof maybeProgress === 'object' && 'value' in maybeProgress) {
-    return maybeProgress.value;
-  }
-  return maybeProgress ?? { phase: 'idle' };
+const chatCompact = useChatCompact({
+  chatId: computed(() => currentChat.value?.id),
 });
+const contextCompactProgress = chatCompact.progress;
 
 const chatAreaSession = useChatAreaSession({
   chatId: computed(() => currentChat.value?.id),
@@ -774,7 +766,7 @@ async function handleConfirmCompact({
   instruction: string;
 }) {
   closeCompactSettings({});
-  const didCompact = await compactCurrentBranch({
+  const didCompact = await chatCompact.run({
     keepRecentMessages: keepCount,
     instructionOverride: instruction,
   });
@@ -784,7 +776,7 @@ async function handleConfirmCompact({
 }
 
 function handleAbortContextCompact(_args: Record<never, never>) {
-  abortContextCompact({ chatId: currentChat.value?.id });
+  chatCompact.abort({});
 }
 
 function handleSwitchVersion({ messageId }: { messageId: string }) {

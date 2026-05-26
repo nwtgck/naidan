@@ -133,9 +133,6 @@ vi.mock('../composables/useChat', () => ({
     fetchAvailableModels: mockFetchAvailableModels,
     generateChatTitle: mockGenerateChatTitle,
     abortTitleGeneration: mockAbortTitleGeneration,
-    compactCurrentBranch: mockCompactCurrentBranch,
-    abortContextCompact: mockAbortContextCompact,
-    contextCompactProgress: mockContextCompactProgress,
     isGeneratingTitle: vi.fn(({ chatId: _chatId }) => mockGeneratingTitle.value),
     forkChat: vi.fn().mockResolvedValue('new-id'),
     openChatGroup: mockOpenChatGroup,
@@ -189,6 +186,14 @@ vi.mock('../composables/useChat', () => ({
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(() => false),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatCompact', () => ({
+  useChatCompact: () => ({
+    progress: mockContextCompactProgress,
+    run: mockCompactCurrentBranch,
+    abort: mockAbortContextCompact,
   }),
 }));
 
