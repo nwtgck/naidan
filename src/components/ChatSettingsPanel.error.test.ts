@@ -38,11 +38,18 @@ describe('ChatSettingsPanel Error Handling', () => {
 
     vi.mocked(useCurrentChatState).mockReturnValue({
       currentChatId: computed(() => mockCurrentChat.value?.id),
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatGroup: computed(() => null),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      chatGroups: computed(() => []),
       TEST_ONLY: {},
-    });
+    } as ReturnType<typeof useCurrentChatState>);
 
     vi.mocked(useChatSettingsPanel).mockReturnValue({
-      currentChat: mockCurrentChat,
+      currentChat: computed(() => mockCurrentChat.value),
       fetchingModels: computed(() => false),
       availableModels: ref([]),
       resolvedSettings: computed(() => ({
@@ -54,7 +61,7 @@ describe('ChatSettingsPanel Error Handling', () => {
           endpointUrl: 'chat',
           modelId: 'global',
         },
-      })),
+      })) as any,
       inheritedSettings: computed(() => ({
         endpointType: 'openai',
         endpointUrl: 'http://localhost',
@@ -64,13 +71,13 @@ describe('ChatSettingsPanel Error Handling', () => {
           endpointUrl: 'global',
           modelId: 'global',
         },
-      })),
+      })) as any,
       updateSettings: vi.fn(),
       fetchModels: vi.fn().mockImplementation(async () => {
         return await mockFetchAvailableModels();
       }),
       TEST_ONLY: {},
-    });
+    } as ReturnType<typeof useChatSettingsPanel>);
   });
 
   it('should reset error state when endpoint URL changes', async () => {

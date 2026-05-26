@@ -4,13 +4,16 @@
  * It uses the existing theme styles and colors.
  */
 import { computed, onMounted } from 'vue';
-import { useChat } from '@/composables/useChat';
+import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { usePrint } from '@/composables/usePrint';
 import MessageItem from './MessageItem.vue';
 
-const chatStore = useChat();
+const { currentChat, currentChatId, activeMessages } = useCurrentChatState();
+const chatHistory = useChatHistory({
+  chatId: currentChatId,
+});
 const { markPrintReady } = usePrint();
-const { currentChat, activeMessages } = chatStore;
 const chatTitle = computed(() => currentChat.value?.title || 'Chat History');
 
 onMounted(() => {
@@ -38,7 +41,7 @@ defineExpose({
         v-for="msg in activeMessages"
         :key="msg.id"
         :message="msg"
-        :siblings="chatStore.getSiblings({ messageId: msg.id })"
+        :siblings="chatHistory.getSiblings({ messageId: msg.id })"
         class="chat-print-message-item"
       />
     </div>

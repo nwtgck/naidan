@@ -4,7 +4,7 @@ import HistoryManipulationModal from './HistoryManipulationModal.vue';
 import { useChatHistoryManipulation } from '@/composables/chat/chat-scoped/useChatHistoryManipulation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { storageService } from '@/services/storage';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 
 // Mock vuedraggable
 vi.mock('vuedraggable', () => ({
@@ -44,16 +44,23 @@ describe('HistoryManipulationModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useCurrentChatState).mockReturnValue({
-      currentChatId: ref('chat-1'),
+      currentChatId: computed(() => 'chat-1'),
+      currentChat: computed(() => mockCurrentChat.value as any),
+      currentChatGroup: computed(() => null),
+      activeMessages: computed(() => mockActiveMessages.value),
+      allMessages: computed(() => mockActiveMessages.value),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => mockInheritedSettings.value as any),
+      chatGroups: computed(() => []),
       TEST_ONLY: {},
     });
     vi.mocked(useChatHistoryManipulation).mockReturnValue({
-      currentChat: mockCurrentChat,
-      activeMessages: mockActiveMessages,
-      inheritedSettings: mockInheritedSettings,
+      currentChat: computed(() => mockCurrentChat.value as any),
+      activeMessages: computed(() => mockActiveMessages.value),
+      inheritedSettings: computed(() => mockInheritedSettings.value as any),
       commit: mockCommit,
       TEST_ONLY: {},
-    });
+    } as unknown as ReturnType<typeof useChatHistoryManipulation>);
     mockActiveMessages.value = [
       { id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } },
       { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } }
