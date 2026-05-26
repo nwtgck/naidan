@@ -45,6 +45,20 @@ type PersistedToolContent =
   | { type: 'binary_object'; id: string };
 
 export type ChatGenerationService = {
+  sendMessageForChat({
+    chatId,
+    content,
+    parentId,
+    attachments,
+    lmParameters,
+  }: {
+    chatId: string;
+    content: string;
+    parentId: string | null | undefined;
+    attachments: Attachment[] | undefined;
+    lmParameters: LmParameters | undefined;
+  }): Promise<boolean>;
+
   sendMessage({
     content,
     parentId,
@@ -74,6 +88,7 @@ export type ChatGenerationService = {
 
 export function createChatGenerationService({
   getCurrentChat,
+  getChatTarget,
   getLiveChat,
   registerLiveInstance,
   isProcessing,
@@ -118,6 +133,11 @@ export function createChatGenerationService({
   reorderSidebarChatAfterSend,
 }: {
   getCurrentChat: () => Readonly<Chat> | null;
+  getChatTarget: ({
+    chatId,
+  }: {
+    chatId: string | undefined;
+  }) => Chat | Readonly<Chat> | null;
   getLiveChat: ({ chat }: { chat: Chat | Readonly<Chat> }) => Chat;
   registerLiveInstance: ({ chat }: { chat: Chat }) => void;
   isProcessing: ({ chatId }: { chatId: string }) => boolean;
@@ -271,12 +291,34 @@ export function createChatGenerationService({
   }) => Promise<string | undefined>;
   reorderSidebarChatAfterSend: ({ chatId }: { chatId: string }) => Promise<void>;
 }): ChatGenerationService {
+  async function sendMessageForChat({
+    chatId,
+    content,
+    parentId,
+    attachments,
+    lmParameters,
+  }: {
+    chatId: string;
+    content: string;
+    parentId: string | null | undefined;
+    attachments: Attachment[] | undefined;
+    lmParameters: LmParameters | undefined;
+  }) {
+    return sendMessageToTarget({
+      target: getChatTarget({ chatId }),
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    });
+  }
+
   async function sendMessage({
     content,
-    parentId = undefined,
-    attachments = [],
-    chatTarget = undefined,
-    lmParameters = undefined,
+    parentId,
+    attachments,
+    chatTarget,
+    lmParameters,
   }: {
     content: string;
     parentId?: string | null;
@@ -284,9 +326,31 @@ export function createChatGenerationService({
     chatTarget?: Chat | Readonly<Chat>;
     lmParameters?: LmParameters;
   }) {
-    const target = chatTarget || getCurrentChat();
+    return sendMessageToTarget({
+      target: chatTarget || getCurrentChat(),
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    });
+  }
+
+  async function sendMessageToTarget({
+    target,
+    content,
+    parentId,
+    attachments,
+    lmParameters,
+  }: {
+    target: Chat | Readonly<Chat> | null;
+    content: string;
+    parentId: string | null | undefined;
+    attachments: Attachment[] | undefined;
+    lmParameters: LmParameters | undefined;
+  }) {
     if (!target) return false;
     if (isProcessing({ chatId: target.id })) return false;
+    const normalizedAttachments = attachments ?? [];
 
     const chat = getLiveChat({ chat: target });
     startProcessing({ chatId: chat.id });
@@ -321,13 +385,13 @@ export function createChatGenerationService({
       }
 
       const processedAttachments: Attachment[] = [];
-      if (attachments.length > 0 && !canPersistBinary()) {
+      if (normalizedAttachments.length > 0 && !canPersistBinary()) {
         const confirmed = await confirmTemporaryAttachments({});
         if (!confirmed) return false;
         dismissHeavyContentAlert({});
       }
 
-      for (const attachment of attachments) {
+      for (const attachment of normalizedAttachments) {
         processedAttachments.push(await persistAttachment({ attachment }));
       }
 
@@ -810,6 +874,7 @@ export function createChatGenerationService({
   }
 
   return {
+    sendMessageForChat,
     sendMessage,
     generateResponse,
   };

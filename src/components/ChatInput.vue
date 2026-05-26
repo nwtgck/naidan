@@ -11,6 +11,7 @@ import ChatAttachMenu from './ChatAttachMenu.vue';
 import { useReasoning } from '@/composables/useReasoning';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/services/storage';
 import { startVolumeExtensionScan } from '@/services/tools/volume-extension-cache';
@@ -91,6 +92,10 @@ const isFocused = ref(false);
 const isHovered = ref(false);
 
 const isCurrentChatStreaming = computed(() => props.isStreaming);
+const currentChatId = computed(() => currentChat.value?.id);
+const chatGeneration = useChatGeneration({
+  chatId: currentChatId,
+});
 const canGenerateImage = computed(() => props.canGenerateImage);
 const hasImageModel = computed(() => props.hasImageModel);
 const availableImageModels = computed(() => props.availableImageModels);
@@ -855,7 +860,12 @@ async function handleSend() {
   // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
   const lmParameters = toRaw(chatStore.resolvedSettings?.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
 
-  const success = await chatStore.sendMessage({ content: text, parentId: undefined, attachments: currentAttachments, chatTarget: undefined, lmParameters: lmParameters as LmParameters });
+  const success = await chatGeneration.sendMessage({
+    content: text,
+    parentId: undefined,
+    attachments: currentAttachments,
+    lmParameters: lmParameters as LmParameters,
+  });
 
   if (success) {
     if (currentChat.value?.id === sendingChatId) {
@@ -1142,7 +1152,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @click="setActiveFocusArea({ area: 'chat' })"
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
-        @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat({ chatId: undefined }) : null"
+        @keydown.esc.prevent="isCurrentChatStreaming ? chatGeneration.abort({}) : null"
         placeholder="Type a message..."
         class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
@@ -1230,7 +1240,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         </div>
 
         <button
-          @click="isCurrentChatStreaming ? chatStore.abortChat({ chatId: undefined }) : handleSend()"
+          @click="isCurrentChatStreaming ? chatGeneration.abort({}) : handleSend()"
           :disabled="!isCurrentChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
           :title="isCurrentChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"

@@ -110,6 +110,9 @@ vi.mock('../services/storage/opfs-detection', () => ({
 const mockCurrentChat = ref<any>({ id: 'chat-1', modelId: 'model-1' });
 const mockCurrentChatGroup = ref<any>(null);
 const mockSendMessage = vi.fn();
+const mockSendMessageForChat = vi.fn();
+const mockRegenerateMessageForChat = vi.fn();
+const mockAbortChat = vi.fn();
 const mockUpdateChatSettings = vi.fn();
 
 const mockReasoningStore = {
@@ -157,6 +160,9 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     fetchAvailableModels: vi.fn(),
     sendMessage: mockSendMessage,
+    sendMessageForChat: mockSendMessageForChat,
+    regenerateMessageForChat: mockRegenerateMessageForChat,
+    abortChat: mockAbortChat,
     updateChatSettings: mockUpdateChatSettings,
     getLiveChat: vi.fn().mockImplementation((c) => {
       if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
@@ -203,6 +209,9 @@ const mockChatStore = {
   getSelectedImageModel: vi.fn(),
   fetchAvailableModels: vi.fn(),
   sendMessage: mockSendMessage,
+  sendMessageForChat: mockSendMessageForChat,
+  regenerateMessageForChat: mockRegenerateMessageForChat,
+  abortChat: mockAbortChat,
   updateChatSettings: mockUpdateChatSettings,
   getReasoningEffort: vi.fn(({ chatId }) => {
     if (mockCurrentChat.value?.id === chatId) {
@@ -234,6 +243,14 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => mockChatStore,
 }));
 
+vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
+  useChatGeneration: () => ({
+    sendMessage: mockSendMessageForChat,
+    regenerateMessage: mockRegenerateMessageForChat,
+    abort: () => mockAbortChat({ chatId: mockCurrentChat.value?.id }),
+  }),
+}));
+
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     activeFocusArea: ref('chat'),
@@ -261,6 +278,7 @@ describe('ChatInput Integration', () => {
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
     mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+    mockSendMessageForChat.mockResolvedValue(true);
   });
 
   const getWrapper = () => mount(ChatInput, {
@@ -529,7 +547,7 @@ describe('ChatInput Integration', () => {
   });
 
   it('should clear attachments after successful message send', async () => {
-    mockSendMessage.mockResolvedValue(true);
+    mockSendMessageForChat.mockResolvedValue(true);
     const wrapper = getWrapper();
     wrapper.vm.input = 'test message';
     wrapper.vm.TEST_ONLY.attachments.value = [
@@ -541,7 +559,7 @@ describe('ChatInput Integration', () => {
     await sendBtn.trigger('click');
     await flushPromises();
 
-    expect(mockSendMessage).toHaveBeenCalled();
+    expect(mockSendMessageForChat).toHaveBeenCalled();
     expect(wrapper.vm.input).toBe('');
     expect(wrapper.vm.TEST_ONLY.attachments.value.length).toBe(0);
   });

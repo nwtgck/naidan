@@ -356,6 +356,7 @@ export function useChat() {
   const { enabledToolNames } = useChatTools();
   const chatGenerationService = createChatGenerationService({
     getCurrentChat: () => _currentChat.value,
+    getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
     getLiveChat,
     registerLiveInstance,
     isProcessing,
@@ -516,6 +517,7 @@ export function useChat() {
   });
   const generateResponse = chatGenerationService.generateResponse;
   const sendMessage = chatGenerationService.sendMessage;
+  const sendMessageForChat = chatGenerationService.sendMessageForChat;
   const contextCompactService = createContextCompactService({
     getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
     getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
@@ -602,7 +604,8 @@ export function useChat() {
   const getSiblings = chatHistoryService.getSiblings;
 
   const chatRegenerationService = createChatRegenerationService({
-    currentChatRef: _currentChat,
+    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
+    getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
     getLiveChat,
     registerLiveInstance,
     isProcessing,
@@ -619,6 +622,7 @@ export function useChat() {
     generateResponse,
   });
   const regenerateMessage = chatRegenerationService.regenerateMessage;
+  const regenerateMessageForChat = chatRegenerationService.regenerateMessageForChat;
 
   const toggleDebug = chatMetadataService.toggleDebug;
 
@@ -685,7 +689,7 @@ export function useChat() {
     rootItems, chats, chatGroups, sidebarItems, currentChat, currentChatGroup, resolvedSettings, inheritedSettings, activeMessages, allMessages, streaming, generatingTitle, availableModels, fetchingModels,
     imageModeMap, imageResolutionMap, imageCountMap, imagePersistAsMap, imageProgressMap, imageModelOverrideMap,
     isImageMode, toggleImageMode, getResolution, updateResolution, getCount, updateCount, getSteps, updateSteps, getSeed, updateSeed, getPersistAs, updatePersistAs, setImageModel, getSelectedImageModel, getSortedImageModels, getReasoningEffort, updateReasoningEffort,
-    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatAtMessage, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, regenerateMessage, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount, addMountToChatGroup, removeMountFromChatGroup, updateChatGroupMount, compactCurrentBranch, abortContextCompact, getContextCompactProgress,
+    loadChats: loadData, fetchAvailableModels, createNewChat, openChat, openChatAtMessage, openChatGroup, deleteChat, deleteAllChats, renameChat, updateChatModel, updateChatGroupOverride, updateChatSettings, generateChatTitle, sendMessage, sendMessageForChat, regenerateMessage, regenerateMessageForChat, forkChat, editMessage, switchVersion, getSiblings, toggleDebug, commitFullHistoryManipulation, generateImage, generateResponse, handleImageGeneration, sendImageRequest, createChatGroup, deleteChatGroup, duplicateChatGroup, setChatGroupCollapsed, renameChatGroup, updateChatGroupMetadata, persistSidebarStructure, abortChat, abortTitleGeneration, updateChatMeta, updateChatContent, moveChatToGroup, addMountToChat, removeMountFromChat, updateChatMount, addMountToChatGroup, removeMountFromChatGroup, updateChatGroupMount, compactCurrentBranch, abortContextCompact, getContextCompactProgress,
     registerLiveInstance, unregisterLiveInstance, getLiveChat, isTaskRunning, isProcessing, isGeneratingTitle, ensureChatTmpDirectory, getChatTmpDirectory,
     getVolatileToolOutput,
     chatFlow, isThinkingActive, isWaitingResponse, contextCompactProgress,

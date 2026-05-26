@@ -1,10 +1,17 @@
-import { toRaw, type Ref } from 'vue';
 import { generateId } from '@/utils/id';
 import { findNodeInBranch, findParentInBranch } from '@/utils/chat-tree';
 import type { AssistantMessageNode, Chat, ChatContent, LmParameters } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 
 export type ChatRegenerationService = {
+  regenerateMessageForChat({
+    chatId,
+    failedMessageId,
+  }: {
+    chatId: string;
+    failedMessageId: string;
+  }): Promise<void>;
+
   regenerateMessage({
     failedMessageId,
   }: {
@@ -13,7 +20,8 @@ export type ChatRegenerationService = {
 };
 
 export function createChatRegenerationService({
-  currentChatRef,
+  getCurrentChat,
+  getChatTarget,
   getLiveChat,
   registerLiveInstance,
   isProcessing,
@@ -25,7 +33,12 @@ export function createChatRegenerationService({
   triggerCurrentChat,
   generateResponse,
 }: {
-  currentChatRef: Ref<Chat | null>;
+  getCurrentChat: () => Chat | null;
+  getChatTarget: ({
+    chatId,
+  }: {
+    chatId: string | undefined;
+  }) => Chat | null;
   getLiveChat: ({ chat }: { chat: Chat | Readonly<Chat> }) => Chat;
   registerLiveInstance: ({ chat }: { chat: Chat }) => void;
   isProcessing: ({ chatId }: { chatId: string }) => boolean;
@@ -59,13 +72,48 @@ export function createChatRegenerationService({
     onReady?: (_args: Record<never, never>) => void;
   }) => Promise<void>;
 }): ChatRegenerationService {
+  async function regenerateMessageForChat({
+    chatId,
+    failedMessageId,
+  }: {
+    chatId: string;
+    failedMessageId: string;
+  }) {
+    const targetChat = getChatTarget({ chatId });
+    if (!targetChat) {
+      return;
+    }
+
+    await regenerateMessageForTarget({
+      targetChat,
+      failedMessageId,
+    });
+  }
+
   async function regenerateMessage({
     failedMessageId,
   }: {
     failedMessageId: string;
   }) {
-    if (!currentChatRef.value) return;
-    const chatId = toRaw(currentChatRef.value).id;
+    const currentChat = getCurrentChat();
+    if (!currentChat) {
+      return;
+    }
+
+    await regenerateMessageForTarget({
+      targetChat: currentChat,
+      failedMessageId,
+    });
+  }
+
+  async function regenerateMessageForTarget({
+    targetChat,
+    failedMessageId,
+  }: {
+    targetChat: Chat;
+    failedMessageId: string;
+  }) {
+    const chatId = targetChat.id;
     if (isProcessing({ chatId })) {
       abortChat({ chatId });
       while (isProcessing({ chatId })) {
@@ -73,7 +121,7 @@ export function createChatRegenerationService({
       }
     }
 
-    const chat = getLiveChat({ chat: currentChatRef.value });
+    const chat = getLiveChat({ chat: targetChat });
     startProcessing({ chatId: chat.id });
     registerLiveInstance({ chat });
 
@@ -137,6 +185,7 @@ export function createChatRegenerationService({
   }
 
   return {
+    regenerateMessageForChat,
     regenerateMessage,
   };
 }
