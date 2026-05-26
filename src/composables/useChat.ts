@@ -1,6 +1,6 @@
 import { generateId } from '@/utils/id';
 import { computed, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
-import type { Chat, ChatGroup, Settings } from '@/models/types';
+import type { Chat, Settings } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from './useSettings';
@@ -15,16 +15,39 @@ import { useChatTools } from './useChatTools';
 import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
-import { createChatDataStore } from './chat/chat-data-store';
 import { createChatControlService } from './chat/chat-control-service';
+import {
+  chatDataStore,
+  chatRuntimeFacade,
+  chatRuntimeStore,
+  chatTmpDirectoryService,
+  chatVolatileState,
+  contextCompactProgress,
+  contextCompactRuntime,
+  currentChatGroupRef as _currentChatGroup,
+  currentChatRef as _currentChat,
+  ensureChatTmpDirectory,
+  fetchingModels,
+  generatingTitle,
+  getContextCompactProgress,
+  getChatTmpDirectory,
+  getLiveChat,
+  isGeneratingTitle,
+  isProcessing,
+  isTaskRunning,
+  liveChatRegistry,
+  loadData,
+  registerLiveInstance,
+  rootItems,
+  setContextCompactProgress,
+  streaming,
+  unregisterLiveInstance,
+  updateChatContent,
+  updateChatMeta,
+} from './chat/chat-core-singletons';
 import { createChatDerivedState } from './chat/chat-derived-state';
 import { installChatBootstrap } from './chat/chat-bootstrap';
-import { createChatRuntimeStore } from './chat/chat-runtime-store';
-import { createChatRuntimeFacade } from './chat/chat-runtime-facade';
-import { createChatTmpDirectoryService } from './chat/chat-tmp-directory-service';
 import { createChatTestSupport } from './chat/chat-test-support';
-import { createChatVolatileState } from './chat/chat-volatile-state';
-import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
 import { createChatGenerationService } from './chat/chat-generation-service';
 import { createChatHierarchyService } from './chat/chat-hierarchy-service';
@@ -37,90 +60,9 @@ import { createChatModelService } from './chat/chat-model-service';
 import { createChatOpenService } from './chat/chat-open-service';
 import { createChatRegenerationService } from './chat/chat-regeneration-service';
 import { createChatTitleService } from './chat/chat-title-service';
-import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
-import {
-  type ContextCompactProgress,
-} from '@/services/context-compact';
 
 export type { AddToastOptions } from './chat/chat-lifecycle-service';
-
-const chatRuntimeStore = createChatRuntimeStore({});
-const contextCompactRuntime = createContextCompactRuntime({});
-const chatVolatileState = createChatVolatileState({});
-const chatTmpDirectoryService = createChatTmpDirectoryService({
-  createTmpMountDirectory: ({ chatId }) => getOPFSTmpManager().createTmpDirectory({ prefix: chatId }),
-});
-
-function isTaskRunning({ chatId }: { chatId: string }) {
-  return chatRuntimeStore.isTaskRunning({ chatId });
-}
-
-function isProcessing({ chatId }: { chatId: string }) {
-  return chatRuntimeStore.isProcessing({ chatId });
-}
-
-function setContextCompactProgress({
-  chatId,
-  progress,
-}: {
-  chatId: string;
-  progress: ContextCompactProgress;
-}) {
-  contextCompactRuntime.setProgress({ chatId, progress });
-}
-
-function getContextCompactProgress({
-  chatId,
-}: {
-  chatId: string | undefined;
-}): ContextCompactProgress {
-  return contextCompactRuntime.getProgress({ chatId });
-}
-
-const ensureChatTmpDirectory = chatTmpDirectoryService.ensureChatTmpDirectory;
-const getChatTmpDirectory = chatTmpDirectoryService.getChatTmpDirectory;
-
-const chatDataStore = createChatDataStore({
-  applyVolatileAssistantErrorsToChat: chatVolatileState.applyVolatileAssistantErrorsToChat,
-  hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
-  isTaskRunning,
-  onExternalGenerationStarted: ({ chatId }) => {
-    chatRuntimeStore.setExternalGeneration({ chatId });
-  },
-  onExternalGenerationStopped: ({ chatId }) => {
-    chatRuntimeStore.deleteExternalGeneration({ chatId });
-  },
-  onExternalGenerationAbortRequest: ({ chatId }) => {
-    chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
-  },
-  onMigration: (_args) => {
-    for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
-    chatRuntimeStore.clearActiveGenerations({});
-    chatRuntimeStore.clearActiveTaskCounts({});
-    chatTmpDirectoryService.clearChatTmpDirectories({});
-  },
-});
-const rootItems = chatDataStore.rootItems;
-const _currentChat = chatDataStore.currentChatRef;
-const _currentChatGroup = chatDataStore.currentChatGroupRef;
-const liveChatRegistry = chatDataStore.liveChatRegistry;
-const registerLiveInstance = chatDataStore.registerLiveInstance;
-const unregisterLiveInstance = chatDataStore.unregisterLiveInstance;
-const getLiveChat = chatDataStore.getLiveChat;
-const loadData = chatDataStore.loadData;
-const updateChatContent = chatDataStore.updateChatContent;
-const updateChatMeta = chatDataStore.updateChatMeta;
-const chatRuntimeFacade = createChatRuntimeFacade({
-  currentChatRef: _currentChat,
-  runtimeStore: chatRuntimeStore,
-  contextCompactRuntime,
-});
-const streaming = chatRuntimeFacade.streaming;
-const generatingTitle = chatRuntimeFacade.generatingTitle;
-const fetchingModels = chatRuntimeFacade.fetchingModels;
-const contextCompactProgress = chatRuntimeFacade.contextCompactProgress;
-const isGeneratingTitle = chatRuntimeFacade.isGeneratingTitle;
 
 installChatBootstrap({
   registerBeforeUnload: (_args) => {
