@@ -18,6 +18,7 @@ import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { createChatDataStore } from './chat/chat-data-store';
 import { createChatControlService } from './chat/chat-control-service';
 import { createChatDerivedState } from './chat/chat-derived-state';
+import { installChatBootstrap } from './chat/chat-bootstrap';
 import { createChatRuntimeStore } from './chat/chat-runtime-store';
 import { createChatRuntimeFacade } from './chat/chat-runtime-facade';
 import { createChatTmpDirectoryService } from './chat/chat-tmp-directory-service';
@@ -77,33 +78,6 @@ function getContextCompactProgress({
   return contextCompactRuntime.getProgress({ chatId });
 }
 
-// --- Lifecycle & Cleanup ---
-
-if ((() => {
-  const t = typeof window;
-  switch (t) {
-  case 'undefined': return false;
-  case 'object':
-  case 'boolean':
-  case 'string':
-  case 'number':
-  case 'function':
-  case 'symbol':
-  case 'bigint':
-    return true;
-  default: {
-    const _ex: never = t;
-    return _ex;
-  }
-  }
-})()) {
-  window.addEventListener('beforeunload', () => {
-    for (const item of chatRuntimeStore.activeGenerations.values()) {
-      item.controller.abort();
-    }
-  });
-}
-
 const ensureChatTmpDirectory = chatTmpDirectoryService.ensureChatTmpDirectory;
 const getChatTmpDirectory = chatTmpDirectoryService.getChatTmpDirectory;
 
@@ -148,23 +122,55 @@ const fetchingModels = chatRuntimeFacade.fetchingModels;
 const contextCompactProgress = chatRuntimeFacade.contextCompactProgress;
 const isGeneratingTitle = chatRuntimeFacade.isGeneratingTitle;
 
-transformersJsService.subscribeModelList(async () => {
-  const { fetchAvailableModels, currentChat, resolvedSettings } = useChat();
-  const type = resolvedSettings.value?.endpointType;
-  if (type) {
-    switch (type) {
-    case 'transformers_js':
-      await fetchAvailableModels({ chatId: currentChat.value?.id, customEndpoint: undefined });
-      break;
-    case 'openai':
-    case 'ollama':
-      break;
+installChatBootstrap({
+  registerBeforeUnload: (_args) => {
+    const typeOfWindow = typeof window;
+    switch (typeOfWindow) {
+    case 'undefined':
+      return undefined;
+    case 'object':
+    case 'boolean':
+    case 'string':
+    case 'number':
+    case 'function':
+    case 'symbol':
+    case 'bigint': {
+      const onBeforeUnload = () => {
+        for (const item of chatRuntimeStore.activeGenerations.values()) {
+          item.controller.abort();
+        }
+      };
+      window.addEventListener('beforeunload', onBeforeUnload);
+      return () => {
+        window.removeEventListener('beforeunload', onBeforeUnload);
+      };
+    }
     default: {
-      const _ex: never = type;
-      throw new Error(`Unhandled endpoint type: ${_ex}`);
+      const _ex: never = typeOfWindow;
+      return _ex;
     }
     }
-  }
+  },
+  subscribeModelList: (_args) => {
+    return transformersJsService.subscribeModelList(async () => {
+      const { fetchAvailableModels, currentChat, resolvedSettings } = useChat();
+      const type = resolvedSettings.value?.endpointType;
+      if (!type) return;
+
+      switch (type) {
+      case 'transformers_js':
+        await fetchAvailableModels({ chatId: currentChat.value?.id, customEndpoint: undefined });
+        return;
+      case 'openai':
+      case 'ollama':
+        return;
+      default: {
+        const _ex: never = type;
+        throw new Error(`Unhandled endpoint type: ${_ex}`);
+      }
+      }
+    });
+  },
 });
 
 // Facade for broad existing callers. Prefer adding new state and feature logic to
