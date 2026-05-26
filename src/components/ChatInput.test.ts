@@ -99,6 +99,7 @@ vi.mock('../services/storage', () => ({
     createVolumeFromFiles: vi.fn(),
     createVolume: vi.fn(),
     getVolumeDirectoryHandle: vi.fn(),
+    getFile: vi.fn().mockResolvedValue(new Blob([])),
     listVolumes: vi.fn(),
   },
 }));
