@@ -34,6 +34,18 @@ export type ChatDataStore = {
     chat: Chat | Readonly<Chat>;
   }): Chat;
 
+  getLiveChatById({
+    chatId,
+  }: {
+    chatId: string;
+  }): Chat | null;
+
+  getReadonlyChat({
+    chatId,
+  }: {
+    chatId: string;
+  }): Readonly<Chat> | null;
+
   openChat({
     id,
     leafId,
@@ -228,6 +240,27 @@ export function createChatDataStore({
     const live = reactive(raw) as Chat;
     liveChatRegistry.set(chatId, live);
     return live;
+  }
+
+  function getLiveChatById({
+    chatId,
+  }: {
+    chatId: string;
+  }): Chat | null {
+    if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
+      return currentChatRef.value;
+    }
+
+    return liveChatRegistry.get(chatId) ?? null;
+  }
+
+  function getReadonlyChat({
+    chatId,
+  }: {
+    chatId: string;
+  }): Readonly<Chat> | null {
+    const liveChat = getLiveChatById({ chatId });
+    return liveChat;
   }
 
   async function updateChatContent({
@@ -462,6 +495,8 @@ export function createChatDataStore({
     registerLiveInstance,
     unregisterLiveInstance,
     getLiveChat,
+    getLiveChatById,
+    getReadonlyChat,
     openChat,
     openChatAtMessage,
     openChatGroup,

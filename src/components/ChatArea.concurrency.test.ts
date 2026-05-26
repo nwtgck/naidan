@@ -77,6 +77,24 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: () => ({
+    currentChat: mockCurrentChat,
+    currentChatGroup: ref(null),
+    activeMessages: mockActiveMessages,
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: ref({ lmParameters: { reasoning: { effort: undefined } }, modelId: 'm1', sources: { modelId: 'global' } }),
+    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
+  useChatRuntime: () => ({
+    isProcessing: computed(() => mockCurrentChat.value ? mockActiveGenerations.has(mockCurrentChat.value.id) : false),
+    contextCompactProgress: ref({ phase: 'idle' }),
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', defaultModelId: 'gpt-4' } },

@@ -5,6 +5,8 @@ import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
 import { useChatAreaSession } from '@/composables/chat/chat-area-session';
 import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
+import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
+import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -77,18 +79,12 @@ const {
   toggleChatWeshTerminal,
 } = useLayout();
 const {
-  currentChat,
-  currentChatGroup,
   generatingTitle,
   renameChat,
   updateChatSettings,
   updateChatGroupMetadata,
-  activeMessages,
-  allMessages,
   availableModels,
   fetchingModels,
-  resolvedSettings,
-  isProcessing,
   getSortedImageModels,
   fetchAvailableModels,
   abortTitleGeneration,
@@ -97,13 +93,27 @@ const {
   isWaitingResponse,
 } = chatStore;
 
-const chatCompact = useChatCompact({
-  chatId: computed(() => currentChat.value?.id),
+const currentChatId = computed(() => chatStore.currentChat?.value?.id);
+const chatReadModel = useChatReadModel({
+  chatId: currentChatId,
 });
-const contextCompactProgress = chatCompact.progress;
+const chatRuntime = useChatRuntime({
+  chatId: currentChatId,
+});
+const chatCompact = useChatCompact({
+  chatId: currentChatId,
+});
+const {
+  currentChat,
+  currentChatGroup,
+  activeMessages,
+  allMessages,
+  resolvedSettings,
+} = chatReadModel;
+const { isProcessing, contextCompactProgress } = chatRuntime;
 
 const chatAreaSession = useChatAreaSession({
-  chatId: computed(() => currentChat.value?.id),
+  chatId: currentChatId,
   leafId: computed(() => currentChat.value?.currentLeafId),
 });
 const {
@@ -202,7 +212,7 @@ const emit = defineEmits<{
 }>();
 
 const isCurrentChatStreaming = computed(() => {
-  return currentChat.value ? isProcessing({ chatId: currentChat.value.id }) : false;
+  return currentChat.value ? isProcessing.value : false;
 });
 
 // The index of the single flow item that should display the GeneratingIndicator.

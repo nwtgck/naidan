@@ -73,6 +73,24 @@ vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(() => mockChatStore)
 }));
 
+vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: () => ({
+    currentChat: mockChatStore.currentChat,
+    currentChatGroup: ref(null),
+    activeMessages: mockActiveMessages,
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: mockChatStore.resolvedSettings,
+    inheritedSettings: mockChatStore.inheritedSettings,
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
+  useChatRuntime: () => ({
+    isProcessing: computed(() => false),
+    contextCompactProgress: ref({ phase: 'idle' }),
+  }),
+}));
+
 // Mock useRouter
 vi.mock('vue-router', () => ({
   useRouter: () => ({
