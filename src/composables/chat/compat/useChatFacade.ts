@@ -1,4 +1,4 @@
-import { toRaw, type ComputedRef } from 'vue';
+import { toRaw, triggerRef, type ComputedRef } from 'vue';
 import type { Chat, Settings } from '@/models/types';
 import { generateId } from '@/utils/id';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
@@ -96,13 +96,36 @@ installChatBootstrap({
   },
   subscribeModelList: (_args) => {
     return transformersJsService.subscribeModelList(async () => {
-      const { fetchAvailableModels, currentChat, resolvedSettings } = useChat();
-      const type = resolvedSettings.value?.endpointType;
+      const { settings } = useSettings();
+      const { addErrorEvent } = useGlobalEvents();
+      const chatDerivedState = createChatDerivedState({
+        currentChatRef: _currentChat,
+        rootItems,
+        getSettings: () => settings.value as Settings,
+      });
+      const chatModelService = createChatModelService({
+        currentChatRef: _currentChat,
+        liveChatRegistry,
+        getChatGroups: () => chatDerivedState.chatGroups.value,
+        getSettings: () => settings.value,
+        triggerCurrentChat: ({ chatId }) => {
+          if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+            triggerRef(_currentChat);
+          }
+        },
+        runtimeStore: chatRuntimeStore,
+        availableModelsRef: sharedAvailableModels,
+        addErrorEvent,
+      });
+      const type = chatDerivedState.resolvedSettings.value?.endpointType;
       if (!type) return;
 
       switch (type) {
       case 'transformers_js':
-        await fetchAvailableModels({ chatId: currentChat.value?.id, customEndpoint: undefined });
+        await chatModelService.fetchAvailableModels({
+          chatId: _currentChat.value?.id,
+          customEndpoint: undefined,
+        });
         return;
       case 'openai':
       case 'ollama':

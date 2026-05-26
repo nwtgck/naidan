@@ -7,6 +7,25 @@ const { mockState } = vi.hoisted(() => ({
   },
 }));
 
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      value: {},
+    },
+  }),
+}));
+
+vi.mock('@/composables/chat/chat-derived-state', () => ({
+  createChatDerivedState: () => ({
+    chats: computed(() => mockState.chats),
+  }),
+}));
+
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  currentChatRef: { value: null },
+  rootItems: { value: [] },
+}));
+
 vi.mock('@/composables/useChat', () => ({
   useChat: () => ({
     chats: computed(() => mockState.chats),

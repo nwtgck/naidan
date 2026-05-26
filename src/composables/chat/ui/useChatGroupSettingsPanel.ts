@@ -1,7 +1,8 @@
 import { computed, type ComputedRef } from 'vue';
 import type { ChatGroup, EndpointType, Mount } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import { fetchingModels } from '@/composables/chat/global/chat-core-singletons';
 import { useCurrentChatState } from './useCurrentChatState';
+import { useChatUiServices } from './useChatUiServices';
 
 export type ChatGroupSettingsPanelAdapter = {
   currentChatGroup: ComputedRef<Readonly<ChatGroup> | null>;
@@ -57,10 +58,10 @@ export type ChatGroupSettingsPanelAdapter = {
 };
 
 export function useChatGroupSettingsPanel(): ChatGroupSettingsPanelAdapter {
-  const chatStore = useChat();
   const currentChatState = useCurrentChatState();
+  const { hierarchyService, modelService, mountService } = useChatUiServices({});
 
-  const fetchingModels = computed(() => chatStore.fetchingModels.value);
+  const fetchingModelsState = computed(() => fetchingModels.value);
 
   async function updateMetadata({
     groupId,
@@ -69,7 +70,7 @@ export function useChatGroupSettingsPanel(): ChatGroupSettingsPanelAdapter {
     groupId: string;
     updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }) {
-    await chatStore.updateChatGroupMetadata({
+    await hierarchyService.updateChatGroupMetadata({
       id: groupId,
       updates,
     });
@@ -84,7 +85,7 @@ export function useChatGroupSettingsPanel(): ChatGroupSettingsPanelAdapter {
     endpointUrl: string;
     endpointHttpHeaders: [string, string][] | undefined;
   }) {
-    return await chatStore.fetchAvailableModels({
+    return await modelService.fetchAvailableModels({
       chatId: undefined,
       customEndpoint: {
         type: endpointType,
@@ -101,7 +102,7 @@ export function useChatGroupSettingsPanel(): ChatGroupSettingsPanelAdapter {
     groupId: string;
     mount: Mount;
   }) {
-    await chatStore.addMountToChatGroup({
+    await mountService.addMountToChatGroup({
       groupId,
       mount,
     });
@@ -114,7 +115,7 @@ export function useChatGroupSettingsPanel(): ChatGroupSettingsPanelAdapter {
     groupId: string;
     volumeId: string;
   }) {
-    await chatStore.removeMountFromChatGroup({
+    await mountService.removeMountFromChatGroup({
       groupId,
       volumeId,
     });
@@ -131,7 +132,7 @@ export function useChatGroupSettingsPanel(): ChatGroupSettingsPanelAdapter {
     mountPath: string;
     readOnly: boolean;
   }) {
-    await chatStore.updateChatGroupMount({
+    await mountService.updateChatGroupMount({
       groupId,
       volumeId,
       mountPath,
@@ -141,7 +142,7 @@ export function useChatGroupSettingsPanel(): ChatGroupSettingsPanelAdapter {
 
   return {
     currentChatGroup: currentChatState.currentChatGroup,
-    fetchingModels,
+    fetchingModels: fetchingModelsState,
     updateMetadata,
     fetchModels,
     addMount,

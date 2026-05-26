@@ -8,8 +8,25 @@ const {
   mockUpdateReasoningEffort: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/chat-current-bridge', () => ({
+  createChatCurrentBridge: () => ({
+    getChatTargetById: ({ id }: { id: string }) => ({ id }),
+    getCurrentChat: () => null,
+    triggerCurrentChat: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  currentChatGroupRef: { value: null },
+  currentChatRef: { value: null },
+  getLiveChat: vi.fn(),
+  liveChatRegistry: new Map(),
+  loadData: vi.fn(),
+  updateChatMeta: vi.fn(),
+}));
+
+vi.mock('@/composables/chat/services/chat-metadata-service', () => ({
+  createChatMetadataService: () => ({
     getReasoningEffort: mockGetReasoningEffort,
     updateReasoningEffort: mockUpdateReasoningEffort,
   }),

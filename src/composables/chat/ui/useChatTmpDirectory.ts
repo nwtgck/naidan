@@ -1,4 +1,4 @@
-import { useChat } from '@/composables/useChat';
+import { ensureChatTmpDirectory } from '@/composables/chat/global/chat-core-singletons';
 import type { ChatTmpDirectoryEntry } from '@/composables/chat/global/chat-tmp-directory-service';
 
 export type ChatTmpDirectoryAdapter = {
@@ -12,10 +12,8 @@ export type ChatTmpDirectoryAdapter = {
 };
 
 export function useChatTmpDirectory(): ChatTmpDirectoryAdapter {
-  const chatStore = useChat();
-
   return {
-    ensureChatTmpDirectory: chatStore.ensureChatTmpDirectory,
+    ensureChatTmpDirectory,
     TEST_ONLY: {},
   };
 }

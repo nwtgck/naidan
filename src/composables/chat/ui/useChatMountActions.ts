@@ -1,5 +1,5 @@
 import type { Mount } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import { useChatUiServices } from './useChatUiServices';
 
 export type ChatMountActionsAdapter = {
   addMount({
@@ -31,10 +31,8 @@ export type ChatMountActionsAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatMountStoreCompatibility = ReturnType<typeof useChat>;
-
 export function useChatMountActions(): ChatMountActionsAdapter {
-  const chatStore = useChat() as ChatMountStoreCompatibility;
+  const { mountService } = useChatUiServices({});
 
   async function addMount({
     chatId,
@@ -47,7 +45,7 @@ export function useChatMountActions(): ChatMountActionsAdapter {
       return;
     }
 
-    await chatStore.addMountToChat({
+    await mountService.addMountToChat({
       chatId,
       mount,
     });
@@ -64,7 +62,7 @@ export function useChatMountActions(): ChatMountActionsAdapter {
       return;
     }
 
-    await chatStore.removeMountFromChat({
+    await mountService.removeMountFromChat({
       chatId,
       volumeId,
     });
@@ -83,7 +81,7 @@ export function useChatMountActions(): ChatMountActionsAdapter {
       return;
     }
 
-    await chatStore.updateChatMount({
+    await mountService.updateChatMount({
       chatId,
       volumeId,
       readOnly,

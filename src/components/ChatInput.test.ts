@@ -106,6 +106,92 @@ vi.mock('../services/storage/opfs-detection', () => ({
   checkFileSystemAccessSupport: vi.fn(() => false),
 }));
 
+vi.mock('../composables/useChatWeshTerminalSessions', () => ({
+  buildWorkerMountsForChat: vi.fn(async ({
+    chatMounts,
+    chatGroupMounts,
+    chatId,
+    naidanSysfsVisibility,
+  }: {
+    chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
+    chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
+    chatId: string | undefined;
+    chatGroupId: string | undefined;
+    naidanSysfsVisibility: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'all_chats';
+  }) => {
+    const { storageService } = await import('../services/storage');
+    const mounts: Array<{ type: string; path: string; readOnly?: boolean; visibility?: string }> = [];
+
+    if (chatId !== undefined && mockSettings.value.storageType === 'opfs') {
+      const tmp = await mockEnsureChatTmpDirectory({ chatId });
+      mounts.push({ type: 'directory', path: tmp.mountPath, readOnly: false });
+    }
+
+    if (naidanSysfsVisibility !== 'none') {
+      mounts.push({
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        visibility: naidanSysfsVisibility,
+      });
+    }
+
+    for (const mount of mockSettings.value.mounts ?? []) {
+      if (mount.type !== 'volume') {
+        continue;
+      }
+      if (mount.volumeId === undefined) {
+        continue;
+      }
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      if (handle !== undefined) {
+        mounts.push({ type: 'directory', path: mount.mountPath, readOnly: mount.readOnly });
+      }
+    }
+
+    for (const mount of chatGroupMounts ?? []) {
+      if (mount.type !== 'volume') {
+        continue;
+      }
+      if (mount.volumeId === undefined) {
+        continue;
+      }
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      if (handle === undefined) {
+        continue;
+      }
+      const existingIndex = mounts.findIndex(({ path }) => path === mount.mountPath);
+      const entry = { type: 'directory', path: mount.mountPath, readOnly: mount.readOnly };
+      if (existingIndex >= 0) {
+        mounts[existingIndex] = entry;
+      } else {
+        mounts.push(entry);
+      }
+    }
+
+    for (const mount of chatMounts) {
+      if (mount.type !== 'volume') {
+        continue;
+      }
+      if (mount.volumeId === undefined) {
+        continue;
+      }
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      if (handle === undefined) {
+        continue;
+      }
+      const existingIndex = mounts.findIndex(({ path }) => path === mount.mountPath);
+      const entry = { type: 'directory', path: mount.mountPath, readOnly: mount.readOnly };
+      if (existingIndex >= 0) {
+        mounts[existingIndex] = entry;
+      } else {
+        mounts.push(entry);
+      }
+    }
+
+    return mounts;
+  }),
+}));
+
 // Mock composables
 const mockCurrentChat = ref<any>({ id: 'chat-1', modelId: 'model-1' });
 const mockCurrentChatGroup = ref<any>(null);
@@ -251,6 +337,28 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/chat-scoped/useChatMedia', () => ({
+  useChatMedia: () => ({
+    availableModels: computed(() => mockChatStore.availableModels.value),
+    isImageMode: computed(() => mockIsImageMode.value),
+    resolution: computed(() => mockChatStore.getResolution()),
+    count: computed(() => mockChatStore.getCount()),
+    persistAs: computed(() => mockChatStore.getPersistAs()),
+    steps: computed(() => mockChatStore.getSteps()),
+    seed: computed(() => mockChatStore.getSeed()),
+    selectedImageModel: computed(() => mockChatStore.getSelectedImageModel()),
+    toggleImageMode: () => mockChatStore.toggleImageMode(),
+    updateResolution: ({ width, height }: { width: number; height: number }) => mockChatStore.updateResolution({ width, height }),
+    updateCount: ({ count }: { count: number }) => mockChatStore.updateCount({ count }),
+    updatePersistAs: ({ format }: { format: 'original' | 'webp' | 'jpeg' | 'png' }) => mockChatStore.updatePersistAs({ format }),
+    updateSteps: ({ steps }: { steps: number | undefined }) => mockChatStore.updateSteps({ steps }),
+    updateSeed: ({ seed }: { seed: number | 'browser_random' | undefined }) => mockChatStore.updateSeed({ seed }),
+    setImageModel: ({ modelId }: { modelId: string }) => mockChatStore.setImageModel({ modelId }),
+    sendImageRequest: vi.fn().mockResolvedValue(true),
+    TEST_ONLY: {},
+  }),
+}));
+
 vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
   useChatReadModel: ({ chatId }: { chatId: { value: string | undefined } }) => ({
     currentChat: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChat.value : null),
@@ -289,6 +397,22 @@ vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
     fetchingModels: mockChatStore.fetchingModels,
     fetchModels: () => mockChatStore.fetchAvailableModels({ chatId: mockCurrentChat.value?.id }),
     updateModel: ({ modelId }: { modelId: string | undefined }) => mockUpdateChatSettings(mockCurrentChat.value?.id, { modelId }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatMounts', () => ({
+  useChatMounts: ({ chatId }: { chatId: { value: string | undefined } }) => ({
+    mounts: computed(() => {
+      if (chatId.value !== mockCurrentChat.value?.id) {
+        return [];
+      }
+
+      return mockCurrentChat.value?.mounts ?? [];
+    }),
+    addMount: vi.fn(),
+    removeMount: vi.fn(),
+    updateMount: vi.fn(),
+    TEST_ONLY: {},
   }),
 }));
 

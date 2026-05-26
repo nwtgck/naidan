@@ -1,5 +1,5 @@
 import { computed, type ComputedRef } from 'vue';
-import { useChat } from '@/composables/useChat';
+import { chatVolatileState } from '@/composables/chat/global/chat-core-singletons';
 
 export type ToolCallOutputAdapter = {
   getOutput({
@@ -14,8 +14,6 @@ export type ToolCallOutputAdapter = {
 };
 
 export function useToolCallOutput(): ToolCallOutputAdapter {
-  const chatStore = useChat();
-
   function getOutput({
     toolCallId,
     status,
@@ -26,7 +24,7 @@ export function useToolCallOutput(): ToolCallOutputAdapter {
     return computed(() => {
       switch (status) {
       case 'executing':
-        return chatStore.getVolatileToolOutput({ toolCallId }) || undefined;
+        return chatVolatileState.getVolatileToolOutput({ toolCallId }) || undefined;
       case 'success':
       case 'error':
         return undefined;

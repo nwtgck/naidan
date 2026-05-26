@@ -1,11 +1,22 @@
-import { useChat } from '@/composables/useChat';
+import { useSettings } from '@/composables/useSettings';
+import { useChatTools } from '@/composables/useChatTools';
+import type { Settings } from '@/models/types';
+import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
+import {
+  chatDataStore,
+  currentChatRef,
+  rootItems,
+} from '@/composables/chat/global/chat-core-singletons';
+import { createChatOpenService } from '@/composables/chat/services/chat-open-service';
 
 export type ChatNavigationAdapter = {
   openChat({
     chatId,
+    leafId,
   }: {
     chatId: string;
-  }): ReturnType<ReturnType<typeof useChat>['openChat']>;
+    leafId?: string;
+  }): ReturnType<ReturnType<typeof createChatOpenService>['openChat']>;
 
   openChatAtMessage({
     chatId,
@@ -13,7 +24,7 @@ export type ChatNavigationAdapter = {
   }: {
     chatId: string;
     messageId: string;
-  }): ReturnType<ReturnType<typeof useChat>['openChatAtMessage']>;
+  }): ReturnType<ReturnType<typeof createChatOpenService>['openChatAtMessage']>;
 
   openChatGroup({
     groupId,
@@ -25,15 +36,34 @@ export type ChatNavigationAdapter = {
 };
 
 export function useChatNavigation(): ChatNavigationAdapter {
-  const chatStore = useChat();
+  const { settings } = useSettings();
+  const { setCurrentChatId, setToolEnabled } = useChatTools();
+  const chatDerivedState = createChatDerivedState({
+    currentChatRef,
+    rootItems,
+    getSettings: () => settings.value as Settings,
+  });
+  const chatOpenService = createChatOpenService({
+    setCurrentChatId,
+    setToolEnabled,
+    hasMountsForChat: chatDerivedState.hasMountsForChat,
+    openChatInStore: ({ id, leafId }) => chatDataStore.openChat({ id, leafId }),
+    openChatAtMessageInStore: ({ chatId, messageId }) => chatDataStore.openChatAtMessage({ chatId, messageId }),
+    openChatGroupInStore: ({ id }) => {
+      chatDataStore.openChatGroup({ id });
+    },
+  });
 
   function openChat({
     chatId,
+    leafId,
   }: {
     chatId: string;
+    leafId?: string;
   }) {
-    return chatStore.openChat({
+    return chatOpenService.openChat({
       id: chatId,
+      leafId,
     });
   }
 
@@ -44,7 +74,7 @@ export function useChatNavigation(): ChatNavigationAdapter {
     chatId: string;
     messageId: string;
   }) {
-    return chatStore.openChatAtMessage({
+    return chatOpenService.openChatAtMessage({
       chatId,
       messageId,
     });
@@ -55,7 +85,7 @@ export function useChatNavigation(): ChatNavigationAdapter {
   }: {
     groupId: string | null;
   }) {
-    chatStore.openChatGroup({
+    chatOpenService.openChatGroup({
       id: groupId,
     });
   }

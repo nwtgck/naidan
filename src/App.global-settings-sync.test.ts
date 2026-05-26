@@ -96,6 +96,28 @@ vi.mock('./composables/useChat', () => ({
   }),
 }));
 
+vi.mock('./composables/chat/ui/useSidebarData', () => ({
+  useSidebarData: () => ({
+    createNewChat: vi.fn(),
+    currentChat: { value: null },
+    currentChatGroup: { value: null },
+    chatGroups: { value: [] },
+  }),
+}));
+
+vi.mock('./composables/chat/ui/useChatListData', () => ({
+  useChatListData: () => ({
+    chats: { value: [] },
+  }),
+}));
+
+vi.mock('./composables/chat/ui/useChatAdminActions', () => ({
+  useChatAdminActions: () => ({
+    createChatGroup: vi.fn(),
+    deleteAllChats: vi.fn(),
+  }),
+}));
+
 vi.mock('./composables/useConfirm', () => ({
   useConfirm: () => ({
     isConfirmOpen: { value: false },

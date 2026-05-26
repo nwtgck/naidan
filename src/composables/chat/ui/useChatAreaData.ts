@@ -1,7 +1,11 @@
 import { computed, type ComputedRef } from 'vue';
 import type { Chat, ChatGroup, EndpointType } from '@/models/types';
+import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
-import { useChat } from '@/composables/useChat';
+import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
+import { fetchingModels, isProcessing } from '@/composables/chat/global/chat-core-singletons';
+import { useCurrentChatState } from './useCurrentChatState';
+import { useChatUiServices } from './useChatUiServices';
 
 type FetchAvailableModelsCustomEndpoint = {
   type: EndpointType;
@@ -61,23 +65,29 @@ export type ChatAreaDataAdapter = {
 };
 
 export function useChatAreaData(): ChatAreaDataAdapter {
-  const chatStore = useChat();
+  const currentChatState = useCurrentChatState();
+  const { derivedState, metadataService, hierarchyService, modelService, availableModels } = useChatUiServices({});
+  const { getSortedImageModels: getSortedImageModelsImpl } = useImageGeneration();
+  const {
+    chatFlow,
+    isThinkingActive: isThinkingActiveImpl,
+    isWaitingResponse: isWaitingResponseImpl,
+  } = useChatDisplayFlow({
+    chat: currentChatState.currentChat as ComputedRef<Chat | null>,
+    isProcessing,
+  });
 
-  const availableModels = computed(() => chatStore.availableModels?.value ?? []);
-  const fetchingModels = computed(() => chatStore.fetchingModels?.value ?? false);
-  const chatFlow = computed(() => chatStore.chatFlow?.value ?? []);
-  const availableChatGroups = computed(() => chatStore.chatGroups?.value ?? []);
+  const availableModelsState = computed(() => availableModels.value);
+  const fetchingModelsState = computed(() => fetchingModels.value);
+  const chatFlowState = computed(() => chatFlow.value);
+  const availableChatGroups = computed(() => derivedState.chatGroups.value);
 
   function getSortedImageModels({
     availableModels,
   }: {
     availableModels: string[];
   }) {
-    if (!chatStore.getSortedImageModels) {
-      return availableModels;
-    }
-
-    return chatStore.getSortedImageModels({
+    return getSortedImageModelsImpl({
       availableModels,
     });
   }
@@ -89,11 +99,7 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     chatId: string | undefined;
     customEndpoint: FetchAvailableModelsCustomEndpoint | undefined;
   }) {
-    if (!chatStore.fetchAvailableModels) {
-      return [];
-    }
-
-    return await chatStore.fetchAvailableModels({
+    return await modelService.fetchAvailableModels({
       chatId,
       customEndpoint,
     });
@@ -104,11 +110,7 @@ export function useChatAreaData(): ChatAreaDataAdapter {
   }: {
     item: ChatFlowItem;
   }) {
-    if (!chatStore.isThinkingActive) {
-      return false;
-    }
-
-    return chatStore.isThinkingActive({
+    return isThinkingActiveImpl({
       item,
     });
   }
@@ -118,11 +120,7 @@ export function useChatAreaData(): ChatAreaDataAdapter {
   }: {
     item: ChatFlowItem;
   }) {
-    if (!chatStore.isWaitingResponse) {
-      return false;
-    }
-
-    return chatStore.isWaitingResponse({
+    return isWaitingResponseImpl({
       item,
     });
   }
@@ -134,11 +132,7 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     id: string;
     updates: Partial<Pick<Chat, 'titleModelId'>>;
   }) {
-    if (!chatStore.updateChatSettings) {
-      return;
-    }
-
-    await chatStore.updateChatSettings({
+    await metadataService.updateChatSettings({
       id,
       updates,
     });
@@ -151,20 +145,16 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     id: string;
     updates: Partial<Pick<ChatGroup, 'titleModelId'>>;
   }) {
-    if (!chatStore.updateChatGroupMetadata) {
-      return;
-    }
-
-    await chatStore.updateChatGroupMetadata({
+    await hierarchyService.updateChatGroupMetadata({
       id,
       updates,
     });
   }
 
   return {
-    availableModels,
-    fetchingModels,
-    chatFlow,
+    availableModels: availableModelsState,
+    fetchingModels: fetchingModelsState,
+    chatFlow: chatFlowState,
     availableChatGroups,
     getSortedImageModels,
     fetchAvailableModels,

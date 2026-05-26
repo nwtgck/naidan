@@ -2,7 +2,25 @@ import { computed, type ComputedRef } from 'vue';
 import type { Chat } from '@/models/types';
 import type { HistoryItem } from '@/utils/chat-tree';
 import type { SystemPrompt } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import { storageService } from '@/services/storage';
+import { useSettings } from '@/composables/useSettings';
+import {
+  chatRuntimeStore,
+  currentChatRef,
+  fetchingModels,
+  getLiveChat,
+  isGeneratingTitle as isTitleGenerating,
+  isProcessing,
+  liveChatRegistry,
+  loadData,
+  registerLiveInstance,
+  updateChatContent,
+  updateChatMeta,
+} from '@/composables/chat/global/chat-core-singletons';
+import { createChatHistoryService } from '@/composables/chat/services/chat-history-service';
+import { createChatTitleService } from '@/composables/chat/services/chat-title-service';
+import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { useChatUiServices } from './useChatUiServices';
 
 export type ChatMutationActionsAdapter = {
   availableModels: ComputedRef<string[]>;
@@ -87,39 +105,81 @@ export type ChatMutationActionsAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatMutationStoreCompatibility = Omit<ReturnType<typeof useChat>, 'fetchAvailableModels' | 'updateChatModel'> & {
-  toggleDebugForChat?: ({
-    chatId,
-  }: {
-    chatId: string;
-  }) => Promise<void>;
-  fetchAvailableModels: ({
-    chatId,
-  }: {
-    chatId: string | undefined;
-  }) => Promise<string[]>;
-  updateChatModel: ({
-    id,
-    modelId,
-  }: {
-    id: string;
-    modelId: string | undefined;
-  }) => Promise<void>;
-  isGeneratingTitle?: ({
-    chatId,
-  }: {
-    chatId: string;
-  }) => boolean;
-  generatingTitle?: {
-    value: boolean;
-  };
-};
-
 export function useChatMutationActions(): ChatMutationActionsAdapter {
-  const chatStore = useChat() as ChatMutationStoreCompatibility;
+  const { settings } = useSettings();
+  const {
+    availableModels,
+    currentBridge,
+    derivedState,
+    hierarchyService,
+    metadataService,
+    modelService,
+    openService,
+  } = useChatUiServices({});
+  const titleService = createChatTitleService({
+    getCurrentChatId: () => currentBridge.getCurrentChatId({}),
+    getChatTarget: ({ chatId }) => currentBridge.getChatTargetByOptionalId({ chatId }),
+    getLiveChat: ({ chat }) => currentBridge.getChatTargetById({ id: chat.id }) ?? chat,
+    registerLiveInstance,
+    resolveSettings: ({ chat }) => {
+      const resolved = resolveChatSettings({
+        chat,
+        groups: derivedState.chatGroups.value,
+        globalSettings: settings.value,
+      });
+      return {
+        endpointType: resolved.endpointType,
+        endpointUrl: resolved.endpointUrl,
+        endpointHttpHeaders: resolved.endpointHttpHeaders,
+        modelId: resolved.modelId,
+        titleModelId: resolved.titleModelId,
+        lmParameters: resolved.lmParameters,
+      };
+    },
+    updateChatMeta,
+    loadData,
+    triggerCurrentChat: ({ chatId }) => currentBridge.triggerCurrentChat({ chatId }),
+    runtimeStore: chatRuntimeStore,
+    getFallbackLanguage: (_args) => {
+      const typeOfNavigator = typeof navigator;
+      switch (typeOfNavigator) {
+      case 'undefined':
+        return 'en';
+      case 'object':
+      case 'boolean':
+      case 'string':
+      case 'number':
+      case 'function':
+      case 'symbol':
+      case 'bigint':
+        return navigator.language;
+      default: {
+        const _ex: never = typeOfNavigator;
+        return _ex;
+      }
+      }
+    },
+  });
+  const chatHistoryService = createChatHistoryService({
+    currentChatRef,
+    liveChatRegistry,
+    getLiveChat,
+    registerLiveInstance,
+    updateChatContent,
+    updateChatMeta,
+    updateHierarchy: updater => storageService.updateHierarchy(updater),
+    loadData,
+    openChat: ({ id }) => openService.openChat({ id, leafId: undefined }),
+    canPersistBinary: () => storageService.canPersistBinary,
+    saveFile: ({ blob, binaryObjectId, originalName }) => storageService.saveFile(blob, binaryObjectId, originalName),
+    isProcessing,
+    abortChat: ({ chatId: _chatId }) => {},
+    sendMessage: async ({ content: _content, parentId: _parentId, attachments: _attachments, chatTarget: _chatTarget, lmParameters: _lmParameters }) => {},
+    triggerCurrentChat: ({ chatId }) => currentBridge.triggerCurrentChat({ chatId }),
+  });
 
-  const availableModels = computed(() => chatStore.availableModels?.value ?? []);
-  const fetchingModels = computed(() => chatStore.fetchingModels?.value ?? false);
+  const availableModelsState = computed(() => availableModels.value);
+  const fetchingModelsState = computed(() => fetchingModels.value);
 
   async function moveChatToGroup({
     chatId,
@@ -128,14 +188,14 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
     chatId: string;
     targetGroupId: string | null;
   }) {
-    await chatStore.moveChatToGroup({
+    await hierarchyService.moveChatToGroup({
       chatId,
       targetGroupId,
     });
   }
 
   async function toggleDebug(_args: Record<never, never>) {
-    await chatStore.toggleDebug({});
+    await metadataService.toggleDebug({});
   }
 
   async function toggleDebugForChat({
@@ -143,14 +203,9 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
   }: {
     chatId: string;
   }) {
-    if (typeof chatStore.toggleDebugForChat === 'function') {
-      await chatStore.toggleDebugForChat({
-        chatId,
-      });
-      return;
-    }
-
-    await chatStore.toggleDebug({});
+    await metadataService.toggleDebugForChat({
+      chatId,
+    });
   }
 
   async function renameChat({
@@ -160,7 +215,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
     id: string;
     newTitle: string;
   }) {
-    await chatStore.renameChat({
+    await metadataService.renameChat({
       id,
       newTitle,
     });
@@ -173,7 +228,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
     chatId: string;
     titleModelIdOverride: string | undefined;
   }) {
-    return await chatStore.generateChatTitle({
+    return await titleService.generateChatTitle({
       chatId,
       signal: undefined,
       titleModelIdOverride,
@@ -185,7 +240,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
   }: {
     chatId: string | undefined;
   }) {
-    chatStore.abortTitleGeneration({
+    titleService.abortTitleGeneration({
       chatId,
     });
   }
@@ -195,13 +250,9 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
   }: {
     chatId: string;
   }) {
-    if (typeof chatStore.isGeneratingTitle === 'function') {
-      return chatStore.isGeneratingTitle({
-        chatId,
-      });
-    }
-
-    return chatStore.generatingTitle?.value ?? false;
+    return isTitleGenerating({
+      chatId,
+    });
   }
 
   async function updateChatSettings({
@@ -211,7 +262,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
     id: string;
     updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }) {
-    await chatStore.updateChatSettings({
+    await metadataService.updateChatSettings({
       id,
       updates,
     });
@@ -222,8 +273,9 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
   }: {
     chatId: string | undefined;
   }) {
-    return await chatStore.fetchAvailableModels({
+    return await modelService.fetchAvailableModels({
       chatId,
+      customEndpoint: undefined,
     });
   }
 
@@ -234,9 +286,9 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
     id: string;
     modelId: string | undefined;
   }) {
-    await chatStore.updateChatModel({
+    await metadataService.updateChatModel({
       id,
-      modelId,
+      modelId: modelId ?? '',
     });
   }
 
@@ -249,7 +301,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
     messages: HistoryItem[];
     systemPrompt: SystemPrompt | undefined;
   }) {
-    await chatStore.commitFullHistoryManipulation({
+    await chatHistoryService.commitFullHistoryManipulation({
       chatId,
       messages,
       systemPrompt,
@@ -257,8 +309,8 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
   }
 
   return {
-    availableModels,
-    fetchingModels,
+    availableModels: availableModelsState,
+    fetchingModels: fetchingModelsState,
     moveChatToGroup,
     toggleDebug,
     toggleDebugForChat,

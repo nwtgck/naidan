@@ -10,6 +10,12 @@ vi.mock('@/composables/useChat', () => ({
   }),
 }));
 
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  chatVolatileState: {
+    getVolatileToolOutput: mockGetVolatileToolOutput,
+  },
+}));
+
 import { useToolCallOutput } from './useToolCallOutput';
 
 describe('useToolCallOutput', () => {

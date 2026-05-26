@@ -1,6 +1,8 @@
 import { computed, type ComputedRef } from 'vue';
 import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import { isProcessing as isChatProcessing } from '@/composables/chat/global/chat-core-singletons';
+import { useCurrentChatState } from './useCurrentChatState';
+import { useChatUiServices } from './useChatUiServices';
 
 export type SidebarDataAdapter = {
   currentChat: ComputedRef<Readonly<Chat> | null>;
@@ -94,19 +96,20 @@ export type SidebarDataAdapter = {
 };
 
 export function useSidebarData(): SidebarDataAdapter {
-  const chatStore = useChat();
+  const currentChatState = useCurrentChatState();
+  const { derivedState, hierarchyService, lifecycleService, metadataService, openService } = useChatUiServices({});
 
-  const currentChat = computed(() => chatStore.currentChat.value);
-  const currentChatGroup = computed(() => chatStore.currentChatGroup.value);
-  const sidebarItems = computed(() => chatStore.sidebarItems.value);
-  const chatGroups = computed(() => chatStore.chatGroups.value);
+  const currentChat = computed(() => currentChatState.currentChat.value);
+  const currentChatGroup = computed(() => currentChatState.currentChatGroup.value);
+  const sidebarItems = computed(() => derivedState.sidebarItems.value);
+  const chatGroups = computed(() => derivedState.chatGroups.value);
 
   function isProcessing({
     chatId,
   }: {
     chatId: string;
   }) {
-    return chatStore.isProcessing({
+    return isChatProcessing({
       chatId,
     });
   }
@@ -116,7 +119,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     topLevelItems: SidebarItem[];
   }) {
-    await chatStore.persistSidebarStructure({
+    await hierarchyService.persistSidebarStructure({
       topLevelItems,
     });
   }
@@ -128,7 +131,7 @@ export function useSidebarData(): SidebarDataAdapter {
     groupId: string;
     isCollapsed: boolean;
   }) {
-    chatStore.setChatGroupCollapsed({
+    void hierarchyService.setChatGroupCollapsed({
       groupId,
       isCollapsed,
     });
@@ -139,7 +142,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     name: string;
   }) {
-    return await chatStore.createChatGroup({
+    return await hierarchyService.createChatGroup({
       name,
     });
   }
@@ -149,7 +152,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     id: string;
   }) {
-    await chatStore.deleteChatGroup({
+    await hierarchyService.deleteChatGroup({
       id,
     });
   }
@@ -163,7 +166,7 @@ export function useSidebarData(): SidebarDataAdapter {
     modelId: string | undefined;
     systemPrompt: Chat['systemPrompt'];
   }) {
-    await chatStore.createNewChat({
+    await lifecycleService.createNewChat({
       groupId,
       modelId,
       systemPrompt,
@@ -175,8 +178,9 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     id: string;
   }) {
-    return await chatStore.openChat({
+    return await openService.openChat({
       id,
+      leafId: undefined,
     });
   }
 
@@ -185,7 +189,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     id: string;
   }) {
-    chatStore.openChatGroup({
+    openService.openChatGroup({
       id,
     });
   }
@@ -195,7 +199,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     id: string;
   }) {
-    await chatStore.deleteChat({
+    await lifecycleService.deleteChat({
       id,
     });
   }
@@ -207,7 +211,7 @@ export function useSidebarData(): SidebarDataAdapter {
     id: string;
     newTitle: string;
   }) {
-    await chatStore.renameChat({
+    await metadataService.renameChat({
       id,
       newTitle,
     });
@@ -220,7 +224,7 @@ export function useSidebarData(): SidebarDataAdapter {
     groupId: string;
     newName: string;
   }) {
-    await chatStore.renameChatGroup({
+    await hierarchyService.renameChatGroup({
       groupId,
       newName,
     });
@@ -231,7 +235,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     groupId: string;
   }) {
-    await chatStore.duplicateChatGroup({
+    await hierarchyService.duplicateChatGroup({
       groupId,
     });
   }

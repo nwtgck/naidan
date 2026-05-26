@@ -38,9 +38,18 @@ const {
   mockSendImageRequestForChat: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    availableModels: mockAvailableModels,
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      value: {
+        storageType: 'opfs',
+      },
+    },
+  }),
+}));
+
+vi.mock('@/composables/useImageGeneration', () => ({
+  useImageGeneration: () => ({
     isImageMode: mockIsImageMode,
     toggleImageMode: mockToggleImageMode,
     getResolution: mockGetResolution,
@@ -55,8 +64,44 @@ vi.mock('@/composables/useChat', () => ({
     updateSeed: mockUpdateSeed,
     setImageModel: mockSetImageModel,
     getSelectedImageModel: mockGetSelectedImageModel,
+    performBase64Generation: vi.fn(),
+    handleImageGeneration: vi.fn(),
+    sendImageRequest: mockSendImageRequest,
+  }),
+}));
+
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  chatRuntimeStore: {
+    startTask: vi.fn(),
+    finishTask: vi.fn(),
+  },
+  updateChatContent: vi.fn(),
+}));
+
+vi.mock('@/composables/chat/services/chat-image-service', () => ({
+  createChatImageService: () => ({
     sendImageRequest: mockSendImageRequest,
     sendImageRequestForChat: mockSendImageRequestForChat,
+  }),
+}));
+
+vi.mock('./useChatConversationActions', () => ({
+  useChatConversationActions: () => ({
+    sendMessage: vi.fn(),
+  }),
+}));
+
+vi.mock('./useChatUiServices', () => ({
+  useChatUiServices: () => ({
+    currentBridge: {
+      getCurrentChat: vi.fn(),
+      getChatTargetById: vi.fn(),
+      triggerCurrentChat: vi.fn(),
+    },
+    derivedState: {
+      chatGroups: { value: [] },
+    },
+    availableModels: mockAvailableModels,
   }),
 }));
 

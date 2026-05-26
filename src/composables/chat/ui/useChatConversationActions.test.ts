@@ -13,6 +13,7 @@ const {
   mockForkChat,
   mockForkChatForChat,
   mockGetSiblings,
+  mockGenerateChatTitle,
 } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
   mockSendMessageForChat: vi.fn(),
@@ -26,6 +27,7 @@ const {
   mockForkChat: vi.fn(),
   mockForkChatForChat: vi.fn(),
   mockGetSiblings: vi.fn(),
+  mockGenerateChatTitle: vi.fn(),
 }));
 
 vi.mock('@/composables/useChat', () => ({
@@ -42,6 +44,181 @@ vi.mock('@/composables/useChat', () => ({
     forkChat: mockForkChat,
     forkChatForChat: mockForkChatForChat,
     getSiblings: mockGetSiblings,
+  }),
+}));
+
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      value: {
+        storageType: 'opfs',
+      },
+    },
+  }),
+}));
+
+vi.mock('@/composables/useGlobalEvents', () => ({
+  useGlobalEvents: () => ({
+    addErrorEvent: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useChatTools', () => ({
+  useChatTools: () => ({
+    enabledToolNames: { value: [] },
+  }),
+}));
+
+vi.mock('@/composables/useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
+    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
+  }),
+}));
+
+vi.mock('@/composables/useImageGeneration', () => ({
+  useImageGeneration: () => ({
+    isImageMode: vi.fn(() => false),
+    getSelectedImageModel: vi.fn(),
+    getResolution: vi.fn(() => ({ width: 512, height: 512 })),
+    getCount: vi.fn(() => 1),
+    getSteps: vi.fn(() => undefined),
+    getSeed: vi.fn(() => undefined),
+    getPersistAs: vi.fn(() => 'original'),
+    performBase64Generation: vi.fn(),
+    handleImageGeneration: vi.fn(),
+    sendImageRequest: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useConfirm', () => ({
+  useConfirm: () => ({
+    showConfirm: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useStoragePersistence', () => ({
+  useStoragePersistence: () => ({
+    requestPersistence: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/useToast', () => ({
+  useToast: () => ({
+    addToast: vi.fn(),
+  }),
+}));
+
+vi.mock('@/services/storage', () => ({
+  storageService: {
+    canPersistBinary: true,
+    saveFile: vi.fn(),
+    getFile: vi.fn(),
+    notify: vi.fn(),
+    loadChatGroup: vi.fn(),
+    updateHierarchy: vi.fn(),
+  },
+}));
+
+vi.mock('@/services/tools/factory', () => ({
+  getEnabledTools: vi.fn(async () => []),
+}));
+
+vi.mock('@/services/wesh/mount-policy', () => ({
+  shouldIncludeWritableTmpMount: vi.fn(() => false),
+}));
+
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  chatRuntimeStore: {
+    activeGenerations: new Map(),
+    hasExternalGeneration: vi.fn(() => false),
+    getActiveGeneration: vi.fn(),
+    startTask: vi.fn(),
+    finishTask: vi.fn(),
+  },
+  chatVolatileState: {
+    setVolatileAssistantError: vi.fn(),
+    clearVolatileAssistantError: vi.fn(),
+    setVolatileToolOutput: vi.fn(),
+    appendVolatileToolOutput: vi.fn(),
+    deleteVolatileToolOutput: vi.fn(),
+  },
+  contextCompactRuntime: {
+    getActiveContextCompaction: vi.fn(),
+  },
+  currentChatGroupRef: { value: null },
+  currentChatRef: { value: null },
+  ensureChatTmpDirectory: vi.fn(),
+  getLiveChat: vi.fn(({ chat }) => chat),
+  isProcessing: vi.fn(() => false),
+  liveChatRegistry: new Map(),
+  loadData: vi.fn(),
+  registerLiveInstance: vi.fn(),
+  updateChatContent: vi.fn(),
+  updateChatMeta: vi.fn(),
+}));
+
+vi.mock('@/composables/chat/services/chat-title-service', () => ({
+  createChatTitleService: () => ({
+    generateChatTitle: mockGenerateChatTitle,
+    abortTitleGeneration: mockAbortChat,
+  }),
+}));
+
+vi.mock('@/composables/chat/services/chat-image-service', () => ({
+  createChatImageService: () => ({
+    handleImageGeneration: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/chat/services/chat-generation-service', () => ({
+  createChatGenerationService: () => ({
+    sendMessage: mockSendMessage,
+    sendMessageForChat: mockSendMessageForChat,
+    generateResponse: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/chat/services/chat-history-service', () => ({
+  createChatHistoryService: () => ({
+    forkChat: mockForkChat,
+    forkChatForChat: mockForkChatForChat,
+    editMessage: mockEditMessage,
+    editMessageForChat: mockEditMessageForChat,
+    switchVersion: mockSwitchVersion,
+    switchVersionForChat: mockSwitchVersionForChat,
+    getSiblings: mockGetSiblings,
+  }),
+}));
+
+vi.mock('@/composables/chat/services/chat-regeneration-service', () => ({
+  createChatRegenerationService: () => ({
+    regenerateMessage: mockRegenerateMessage,
+    regenerateMessageForChat: mockRegenerateMessageForChat,
+  }),
+}));
+
+vi.mock('./useChatUiServices', () => ({
+  useChatUiServices: () => ({
+    availableModels: { value: [] },
+    currentBridge: {
+      getCurrentChat: vi.fn(() => null),
+      getCurrentChatId: vi.fn(() => null),
+      getChatTargetByOptionalId: vi.fn(() => null),
+      getChatTargetById: vi.fn(() => null),
+      triggerCurrentChat: vi.fn(),
+    },
+    derivedState: {
+      chatGroups: { value: [] },
+    },
+    hierarchyService: {
+      reorderSidebarChatAfterSend: vi.fn(),
+    },
+    modelService: {
+      fetchAvailableModels: vi.fn(async () => []),
+    },
+    openService: {
+      openChat: vi.fn(),
+    },
   }),
 }));
 
