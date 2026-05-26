@@ -1,5 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import { useChat } from '@/composables/useChat';
+import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
 
 export type ChatModelSelectionAdapter = {
   availableModels: Ref<string[]>;
@@ -16,34 +16,16 @@ export type ChatModelSelectionAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatModelSelectionStoreCompatibility = {
-  availableModels: Ref<string[]>;
-  fetchingModels: ComputedRef<boolean>;
-  fetchAvailableModels: ({
-    chatId,
-  }: {
-    chatId: string | undefined;
-  }) => Promise<string[]>;
-  updateChatModel: ({
-    id,
-    modelId,
-  }: {
-    id: string;
-    modelId: string | undefined;
-  }) => Promise<void>;
-};
-
 export function useChatModelSelection({
   chatId,
 }: {
   chatId: Ref<string | undefined>;
 }): ChatModelSelectionAdapter {
-  const chatStore = useChat() as ChatModelSelectionStoreCompatibility;
-
-  const fetchingModels = computed(() => chatStore.fetchingModels.value);
+  const chatMutationActions = useChatMutationActions();
+  const fetchingModels = computed(() => chatMutationActions.fetchingModels.value);
 
   async function fetchModels(_args: Record<never, never>): Promise<string[]> {
-    return await chatStore.fetchAvailableModels({
+    return await chatMutationActions.fetchAvailableModels({
       chatId: chatId.value,
     });
   }
@@ -58,14 +40,14 @@ export function useChatModelSelection({
       return;
     }
 
-    await chatStore.updateChatModel({
+    await chatMutationActions.updateChatModel({
       id,
       modelId,
     });
   }
 
   return {
-    availableModels: chatStore.availableModels,
+    availableModels: chatMutationActions.availableModels,
     fetchingModels,
     fetchModels,
     updateModel,

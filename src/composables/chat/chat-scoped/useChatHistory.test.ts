@@ -3,30 +3,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockEditMessage,
-  mockEditMessageForChat,
   mockSwitchVersion,
-  mockSwitchVersionForChat,
   mockForkChat,
-  mockForkChatForChat,
   mockGetSiblings,
 } = vi.hoisted(() => ({
   mockEditMessage: vi.fn(),
-  mockEditMessageForChat: vi.fn(),
   mockSwitchVersion: vi.fn(),
-  mockSwitchVersionForChat: vi.fn(),
   mockForkChat: vi.fn(),
-  mockForkChatForChat: vi.fn(),
   mockGetSiblings: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/ui/useChatConversationActions', () => ({
+  useChatConversationActions: () => ({
     editMessage: mockEditMessage,
-    editMessageForChat: mockEditMessageForChat,
     switchVersion: mockSwitchVersion,
-    switchVersionForChat: mockSwitchVersionForChat,
     forkChat: mockForkChat,
-    forkChatForChat: mockForkChatForChat,
     getSiblings: mockGetSiblings,
   }),
 }));
@@ -37,7 +28,6 @@ describe('useChatHistory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockForkChat.mockResolvedValue('forked-chat');
-    mockForkChatForChat.mockResolvedValue('forked-chat');
     mockGetSiblings.mockReturnValue([]);
   });
 
@@ -64,10 +54,7 @@ describe('useChatHistory', () => {
       messageId: 'message-1',
     })).toEqual([]);
 
-    expect(mockEditMessageForChat).not.toHaveBeenCalled();
-    expect(mockSwitchVersionForChat).not.toHaveBeenCalled();
-    expect(mockForkChat).toHaveBeenCalledWith({ messageId: 'message-1' });
-    expect(mockForkChatForChat).not.toHaveBeenCalled();
+    expect(mockForkChat).toHaveBeenCalledWith({ messageId: 'message-1', chatId: undefined });
     expect(mockGetSiblings).toHaveBeenCalledWith({
       messageId: 'message-1',
       chatId: undefined,
@@ -100,21 +87,20 @@ describe('useChatHistory', () => {
       messageId: 'message-1',
     })).toBe(siblings);
 
-    expect(mockEditMessageForChat).toHaveBeenCalledWith({
+    expect(mockEditMessage).toHaveBeenCalledWith({
       chatId: 'chat-1',
       messageId: 'message-1',
       newContent: 'Updated',
       lmParameters: undefined,
     });
-    expect(mockSwitchVersionForChat).toHaveBeenCalledWith({
+    expect(mockSwitchVersion).toHaveBeenCalledWith({
       chatId: 'chat-1',
       messageId: 'message-1',
     });
-    expect(mockForkChatForChat).toHaveBeenCalledWith({
+    expect(mockForkChat).toHaveBeenCalledWith({
       messageId: 'message-1',
       chatId: 'chat-1',
     });
-    expect(mockForkChat).not.toHaveBeenCalled();
     expect(mockGetSiblings).toHaveBeenCalledWith({
       messageId: 'message-1',
       chatId: 'chat-1',

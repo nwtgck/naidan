@@ -13,8 +13,8 @@ const {
   mockUpdateChatModel: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/ui/useChatMutationActions', () => ({
+  useChatMutationActions: () => ({
     availableModels: mockAvailableModels,
     fetchingModels: mockFetchingModels,
     fetchAvailableModels: mockFetchAvailableModels,

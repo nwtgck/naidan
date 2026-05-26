@@ -1,6 +1,6 @@
 import type { Ref } from 'vue';
 import type { LmParameters, MessageNode } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import { useChatConversationActions } from '@/composables/chat/ui/useChatConversationActions';
 
 export type ChatHistoryAdapter = {
   editMessage({
@@ -34,40 +34,12 @@ export type ChatHistoryAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatHistoryStoreCompatibility = ReturnType<typeof useChat> & {
-  forkChatForChat?: ({
-    chatId,
-    messageId,
-  }: {
-    chatId: string;
-    messageId: string;
-  }) => Promise<string | null>;
-  editMessageForChat?: ({
-    chatId,
-    messageId,
-    newContent,
-    lmParameters,
-  }: {
-    chatId: string;
-    messageId: string;
-    newContent: string;
-    lmParameters: LmParameters | undefined;
-  }) => Promise<void>;
-  switchVersionForChat?: ({
-    chatId,
-    messageId,
-  }: {
-    chatId: string;
-    messageId: string;
-  }) => Promise<void>;
-};
-
 export function useChatHistory({
   chatId,
 }: {
   chatId: Ref<string | undefined>;
 }): ChatHistoryAdapter {
-  const chatStore = useChat() as ChatHistoryStoreCompatibility;
+  const chatConversationActions = useChatConversationActions();
 
   async function editMessage({
     messageId,
@@ -78,22 +50,12 @@ export function useChatHistory({
     newContent: string;
     lmParameters: LmParameters | undefined;
   }): Promise<void> {
-    const id = chatId.value;
-    if (id === undefined) {
+    if (chatId.value === undefined) {
       return;
     }
 
-    if (typeof chatStore.editMessageForChat === 'function') {
-      await chatStore.editMessageForChat({
-        chatId: id,
-        messageId,
-        newContent,
-        lmParameters,
-      });
-      return;
-    }
-
-    await chatStore.editMessage({
+    await chatConversationActions.editMessage({
+      chatId: chatId.value,
       messageId,
       newContent,
       lmParameters,
@@ -105,20 +67,14 @@ export function useChatHistory({
   }: {
     messageId: string;
   }): Promise<void> {
-    const id = chatId.value;
-    if (id === undefined) {
+    if (chatId.value === undefined) {
       return;
     }
 
-    if (typeof chatStore.switchVersionForChat === 'function') {
-      await chatStore.switchVersionForChat({
-        chatId: id,
-        messageId,
-      });
-      return;
-    }
-
-    await chatStore.switchVersion({ messageId });
+    await chatConversationActions.switchVersion({
+      chatId: chatId.value,
+      messageId,
+    });
   }
 
   async function forkChat({
@@ -126,15 +82,10 @@ export function useChatHistory({
   }: {
     messageId: string;
   }): Promise<string | null> {
-    const id = chatId.value;
-    if (id !== undefined && typeof chatStore.forkChatForChat === 'function') {
-      return await chatStore.forkChatForChat({
-        chatId: id,
-        messageId,
-      });
-    }
-
-    return await chatStore.forkChat({ messageId });
+    return await chatConversationActions.forkChat({
+      chatId: chatId.value,
+      messageId,
+    });
   }
 
   function getSiblings({
@@ -142,7 +93,7 @@ export function useChatHistory({
   }: {
     messageId: string;
   }): MessageNode[] {
-    return chatStore.getSiblings({
+    return chatConversationActions.getSiblings({
       messageId,
       chatId: chatId.value,
     });

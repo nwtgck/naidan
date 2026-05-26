@@ -1,6 +1,7 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Mount } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
+import { useChatMountActions } from '@/composables/chat/ui/useChatMountActions';
 
 export type ChatMountsAdapter = {
   mounts: ComputedRef<Mount[]>;
@@ -28,51 +29,16 @@ export type ChatMountsAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatMountStoreCompatibility = {
-  currentChat?: Ref<{ id: string; mounts?: Mount[] } | null>;
-  addMountToChat: ({
-    chatId,
-    mount,
-  }: {
-    chatId: string;
-    mount: Mount;
-  }) => Promise<void>;
-  removeMountFromChat: ({
-    chatId,
-    volumeId,
-  }: {
-    chatId: string;
-    volumeId: string;
-  }) => Promise<void>;
-  updateChatMount: ({
-    chatId,
-    volumeId,
-    readOnly,
-  }: {
-    chatId: string;
-    volumeId: string;
-    readOnly: boolean;
-  }) => Promise<void>;
-};
-
 export function useChatMounts({
   chatId,
 }: {
   chatId: Ref<string | undefined>;
 }): ChatMountsAdapter {
-  const chatStore = useChat() as ChatMountStoreCompatibility;
+  const chatReadModel = useChatReadModel({ chatId });
+  const chatMountActions = useChatMountActions();
 
   const mounts = computed(() => {
-    const id = chatId.value;
-    if (id === undefined) {
-      return [];
-    }
-
-    if (chatStore.currentChat?.value?.id === id) {
-      return chatStore.currentChat.value.mounts ?? [];
-    }
-
-    return [];
+    return chatReadModel.currentChat.value?.mounts ?? [];
   });
 
   async function addMount({
@@ -80,13 +46,12 @@ export function useChatMounts({
   }: {
     mount: Mount;
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
+    if (chatId.value === undefined) {
       return;
     }
 
-    await chatStore.addMountToChat({
-      chatId: id,
+    await chatMountActions.addMount({
+      chatId: chatId.value,
       mount,
     });
   }
@@ -96,13 +61,12 @@ export function useChatMounts({
   }: {
     volumeId: string;
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
+    if (chatId.value === undefined) {
       return;
     }
 
-    await chatStore.removeMountFromChat({
-      chatId: id,
+    await chatMountActions.removeMount({
+      chatId: chatId.value,
       volumeId,
     });
   }
@@ -114,13 +78,12 @@ export function useChatMounts({
     volumeId: string;
     readOnly: boolean;
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
+    if (chatId.value === undefined) {
       return;
     }
 
-    await chatStore.updateChatMount({
-      chatId: id,
+    await chatMountActions.updateMount({
+      chatId: chatId.value,
       volumeId,
       readOnly,
     });

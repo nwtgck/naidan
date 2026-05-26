@@ -63,8 +63,16 @@ export type ChatMutationActionsAdapter = {
   fetchAvailableModels({
     chatId,
   }: {
-    chatId: string;
+    chatId: string | undefined;
   }): Promise<string[]>;
+
+  updateChatModel({
+    id,
+    modelId,
+  }: {
+    id: string;
+    modelId: string | undefined;
+  }): Promise<void>;
 
   commitFullHistoryManipulation({
     chatId,
@@ -79,11 +87,23 @@ export type ChatMutationActionsAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatMutationStoreCompatibility = ReturnType<typeof useChat> & {
+type ChatMutationStoreCompatibility = Omit<ReturnType<typeof useChat>, 'fetchAvailableModels' | 'updateChatModel'> & {
   toggleDebugForChat?: ({
     chatId,
   }: {
     chatId: string;
+  }) => Promise<void>;
+  fetchAvailableModels: ({
+    chatId,
+  }: {
+    chatId: string | undefined;
+  }) => Promise<string[]>;
+  updateChatModel: ({
+    id,
+    modelId,
+  }: {
+    id: string;
+    modelId: string | undefined;
   }) => Promise<void>;
   isGeneratingTitle?: ({
     chatId,
@@ -200,10 +220,23 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
   async function fetchAvailableModels({
     chatId,
   }: {
-    chatId: string;
+    chatId: string | undefined;
   }) {
     return await chatStore.fetchAvailableModels({
       chatId,
+    });
+  }
+
+  async function updateChatModel({
+    id,
+    modelId,
+  }: {
+    id: string;
+    modelId: string | undefined;
+  }) {
+    await chatStore.updateChatModel({
+      id,
+      modelId,
     });
   }
 
@@ -235,6 +268,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
     isGeneratingTitle,
     updateChatSettings,
     fetchAvailableModels,
+    updateChatModel,
     commitFullHistoryManipulation,
     TEST_ONLY: {},
   };

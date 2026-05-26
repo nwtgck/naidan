@@ -18,7 +18,6 @@ const {
   mockSetImageModel,
   mockGetSelectedImageModel,
   mockSendImageRequest,
-  mockSendImageRequestForChat,
 } = vi.hoisted(() => ({
   mockAvailableModels: { value: ['model-a', 'model-b'] as string[] },
   mockIsImageMode: vi.fn(),
@@ -36,11 +35,10 @@ const {
   mockSetImageModel: vi.fn(),
   mockGetSelectedImageModel: vi.fn(),
   mockSendImageRequest: vi.fn(),
-  mockSendImageRequestForChat: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/ui/useChatImageActions', () => ({
+  useChatImageActions: () => ({
     availableModels: mockAvailableModels,
     isImageMode: mockIsImageMode,
     toggleImageMode: mockToggleImageMode,
@@ -57,7 +55,6 @@ vi.mock('@/composables/useChat', () => ({
     setImageModel: mockSetImageModel,
     getSelectedImageModel: mockGetSelectedImageModel,
     sendImageRequest: mockSendImageRequest,
-    sendImageRequestForChat: mockSendImageRequestForChat,
   }),
 }));
 
@@ -71,11 +68,10 @@ describe('useChatMedia', () => {
     mockGetResolution.mockReturnValue({ width: 512, height: 512 });
     mockGetCount.mockReturnValue(1);
     mockGetPersistAs.mockReturnValue('original');
-    mockGetSteps.mockReturnValue(undefined);
-    mockGetSeed.mockReturnValue('browser_random');
-    mockGetSelectedImageModel.mockReturnValue('model-a');
+    mockGetSteps.mockImplementation(({ chatId }) => (chatId === undefined ? undefined : 30));
+    mockGetSeed.mockImplementation(({ chatId }) => (chatId === undefined ? undefined : 'browser_random'));
+    mockGetSelectedImageModel.mockImplementation(({ chatId }) => (chatId === undefined ? undefined : 'model-a'));
     mockSendImageRequest.mockResolvedValue(true);
-    mockSendImageRequestForChat.mockResolvedValue(true);
   });
 
   it('returns defaults and no-ops when chatId is undefined', () => {
@@ -125,7 +121,6 @@ describe('useChatMedia', () => {
       attachments: [],
     })).resolves.toBe(false);
 
-    expect(mockSendImageRequestForChat).not.toHaveBeenCalled();
     expect(mockSendImageRequest).not.toHaveBeenCalled();
   });
 
@@ -149,10 +144,7 @@ describe('useChatMedia', () => {
     expect(chatMedia.steps.value).toBe(30);
     expect(chatMedia.seed.value).toBe(99);
     expect(chatMedia.selectedImageModel.value).toBe('model-b');
-    expect(mockGetSelectedImageModel).toHaveBeenCalledWith({
-      chatId: 'chat-1',
-      availableModels: ['model-a', 'model-b'],
-    });
+    expect(mockGetSelectedImageModel).toHaveBeenCalledWith({ chatId: 'chat-1' });
 
     chatMedia.toggleImageMode({});
     chatMedia.updateResolution({ width: 640, height: 480 });
@@ -171,7 +163,7 @@ describe('useChatMedia', () => {
     expect(mockSetImageModel).toHaveBeenCalledWith({ chatId: 'chat-1', modelId: 'model-a' });
   });
 
-  it('uses sendImageRequestForChat when available', async () => {
+  it('binds image requests to the scoped chatId', async () => {
     const chatMedia = useChatMedia({
       chatId: computed(() => 'chat-1'),
     });
@@ -187,7 +179,7 @@ describe('useChatMedia', () => {
       attachments: [],
     })).resolves.toBe(true);
 
-    expect(mockSendImageRequestForChat).toHaveBeenCalledWith({
+    expect(mockSendImageRequest).toHaveBeenCalledWith({
       chatId: 'chat-1',
       prompt: 'draw a cat',
       width: 512,
@@ -198,6 +190,5 @@ describe('useChatMedia', () => {
       persistAs: 'png',
       attachments: [],
     });
-    expect(mockSendImageRequest).not.toHaveBeenCalled();
   });
 });

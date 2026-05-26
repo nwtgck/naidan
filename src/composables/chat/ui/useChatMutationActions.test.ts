@@ -11,6 +11,7 @@ const {
   mockAbortTitleGeneration,
   mockIsGeneratingTitle,
   mockUpdateChatSettings,
+  mockUpdateChatModel,
   mockFetchAvailableModels,
   mockCommitFullHistoryManipulation,
 } = vi.hoisted(() => ({
@@ -24,6 +25,7 @@ const {
   mockAbortTitleGeneration: vi.fn(),
   mockIsGeneratingTitle: vi.fn().mockReturnValue(false),
   mockUpdateChatSettings: vi.fn().mockResolvedValue(undefined),
+  mockUpdateChatModel: vi.fn().mockResolvedValue(undefined),
   mockFetchAvailableModels: vi.fn().mockResolvedValue(['model-a']),
   mockCommitFullHistoryManipulation: vi.fn().mockResolvedValue(undefined),
 }));
@@ -40,6 +42,7 @@ vi.mock('@/composables/useChat', () => ({
     abortTitleGeneration: mockAbortTitleGeneration,
     isGeneratingTitle: mockIsGeneratingTitle,
     updateChatSettings: mockUpdateChatSettings,
+    updateChatModel: mockUpdateChatModel,
     fetchAvailableModels: mockFetchAvailableModels,
     commitFullHistoryManipulation: mockCommitFullHistoryManipulation,
   }),
@@ -88,6 +91,10 @@ describe('useChatMutationActions', () => {
       id: 'chat-1',
       updates: { titleModelId: 'model-a' },
     });
+    await chatMutationActions.updateChatModel({
+      id: 'chat-1',
+      modelId: 'model-b',
+    });
     await chatMutationActions.fetchAvailableModels({
       chatId: 'chat-1',
     });
@@ -119,6 +126,10 @@ describe('useChatMutationActions', () => {
     expect(mockUpdateChatSettings).toHaveBeenCalledWith({
       id: 'chat-1',
       updates: { titleModelId: 'model-a' },
+    });
+    expect(mockUpdateChatModel).toHaveBeenCalledWith({
+      id: 'chat-1',
+      modelId: 'model-b',
     });
     expect(mockFetchAvailableModels).toHaveBeenCalledWith({
       chatId: 'chat-1',

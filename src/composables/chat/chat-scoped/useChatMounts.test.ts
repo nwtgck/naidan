@@ -3,22 +3,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockCurrentChat,
-  mockAddMountToChat,
-  mockRemoveMountFromChat,
-  mockUpdateChatMount,
+  mockAddMount,
+  mockRemoveMount,
+  mockUpdateMount,
 } = vi.hoisted(() => ({
   mockCurrentChat: { value: null as { id: string; mounts?: any[] } | null },
-  mockAddMountToChat: vi.fn(),
-  mockRemoveMountFromChat: vi.fn(),
-  mockUpdateChatMount: vi.fn(),
+  mockAddMount: vi.fn(),
+  mockRemoveMount: vi.fn(),
+  mockUpdateMount: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: () => ({
     currentChat: mockCurrentChat,
-    addMountToChat: mockAddMountToChat,
-    removeMountFromChat: mockRemoveMountFromChat,
-    updateChatMount: mockUpdateChatMount,
+  }),
+}));
+
+vi.mock('@/composables/chat/ui/useChatMountActions', () => ({
+  useChatMountActions: () => ({
+    addMount: mockAddMount,
+    removeMount: mockRemoveMount,
+    updateMount: mockUpdateMount,
   }),
 }));
 
@@ -43,9 +48,9 @@ describe('useChatMounts', () => {
     await chatMounts.removeMount({ volumeId: 'vol-1' });
     await chatMounts.updateMount({ volumeId: 'vol-1', readOnly: false });
 
-    expect(mockAddMountToChat).not.toHaveBeenCalled();
-    expect(mockRemoveMountFromChat).not.toHaveBeenCalled();
-    expect(mockUpdateChatMount).not.toHaveBeenCalled();
+    expect(mockAddMount).not.toHaveBeenCalled();
+    expect(mockRemoveMount).not.toHaveBeenCalled();
+    expect(mockUpdateMount).not.toHaveBeenCalled();
   });
 
   it('binds reads and writes to the scoped chatId', async () => {
@@ -68,15 +73,15 @@ describe('useChatMounts', () => {
     await chatMounts.removeMount({ volumeId: 'vol-1' });
     await chatMounts.updateMount({ volumeId: 'vol-2', readOnly: true });
 
-    expect(mockAddMountToChat).toHaveBeenCalledWith({
+    expect(mockAddMount).toHaveBeenCalledWith({
       chatId: 'chat-1',
       mount: { type: 'volume', volumeId: 'vol-2', mountPath: '/home/user/data', readOnly: false },
     });
-    expect(mockRemoveMountFromChat).toHaveBeenCalledWith({
+    expect(mockRemoveMount).toHaveBeenCalledWith({
       chatId: 'chat-1',
       volumeId: 'vol-1',
     });
-    expect(mockUpdateChatMount).toHaveBeenCalledWith({
+    expect(mockUpdateMount).toHaveBeenCalledWith({
       chatId: 'chat-1',
       volumeId: 'vol-2',
       readOnly: true,

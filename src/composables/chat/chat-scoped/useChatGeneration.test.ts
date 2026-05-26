@@ -2,19 +2,19 @@ import { computed } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockSendMessageForChat,
-  mockRegenerateMessageForChat,
+  mockSendMessage,
+  mockRegenerateMessage,
   mockAbortChat,
 } = vi.hoisted(() => ({
-  mockSendMessageForChat: vi.fn(),
-  mockRegenerateMessageForChat: vi.fn(),
+  mockSendMessage: vi.fn(),
+  mockRegenerateMessage: vi.fn(),
   mockAbortChat: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    sendMessageForChat: mockSendMessageForChat,
-    regenerateMessageForChat: mockRegenerateMessageForChat,
+vi.mock('@/composables/chat/ui/useChatConversationActions', () => ({
+  useChatConversationActions: () => ({
+    sendMessage: mockSendMessage,
+    regenerateMessage: mockRegenerateMessage,
     abortChat: mockAbortChat,
   }),
 }));
@@ -24,7 +24,7 @@ import { useChatGeneration } from './useChatGeneration';
 describe('useChatGeneration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSendMessageForChat.mockResolvedValue(true);
+    mockSendMessage.mockResolvedValue(true);
   });
 
   it('returns false and does not send when chatId is undefined', async () => {
@@ -45,8 +45,8 @@ describe('useChatGeneration', () => {
 
     chatGeneration.abort({});
 
-    expect(mockSendMessageForChat).not.toHaveBeenCalled();
-    expect(mockRegenerateMessageForChat).not.toHaveBeenCalled();
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    expect(mockRegenerateMessage).not.toHaveBeenCalled();
     expect(mockAbortChat).toHaveBeenCalledWith({ chatId: undefined });
   });
 
@@ -68,14 +68,14 @@ describe('useChatGeneration', () => {
 
     chatGeneration.abort({});
 
-    expect(mockSendMessageForChat).toHaveBeenCalledWith({
+    expect(mockSendMessage).toHaveBeenCalledWith({
       chatId: 'chat-1',
       content: 'Hello',
       parentId: null,
       attachments: [],
       lmParameters: undefined,
     });
-    expect(mockRegenerateMessageForChat).toHaveBeenCalledWith({
+    expect(mockRegenerateMessage).toHaveBeenCalledWith({
       chatId: 'chat-1',
       failedMessageId: 'assistant-1',
     });
