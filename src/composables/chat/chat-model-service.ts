@@ -1,4 +1,4 @@
-import { toRaw, type Ref } from 'vue';
+import { ref, toRaw, type Ref } from 'vue';
 import type { Chat, ChatGroup, EndpointType, Settings } from '@/models/types';
 import { OpenAIProvider } from '@/services/lm/openai';
 import { OllamaProvider } from '@/services/lm/ollama';
@@ -6,6 +6,8 @@ import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import type { ChatRuntimeStore } from './chat-runtime-store';
 
 export type ChatModelService = {
+  availableModels: Ref<string[]>;
+
   fetchAvailableModels({
     chatId,
     customEndpoint,
@@ -22,7 +24,6 @@ export type ChatModelService = {
 export function createChatModelService({
   currentChatRef,
   liveChatRegistry,
-  availableModelsRef,
   getChatGroups,
   getSettings,
   triggerCurrentChat,
@@ -31,7 +32,6 @@ export function createChatModelService({
 }: {
   currentChatRef: Ref<Chat | null>;
   liveChatRegistry: Map<string, Chat>;
-  availableModelsRef: Ref<string[]>;
   getChatGroups: () => ChatGroup[];
   getSettings: () => {
     endpointType: Settings['endpointType'];
@@ -50,6 +50,8 @@ export function createChatModelService({
     details: string;
   }) => void;
 }): ChatModelService {
+  const availableModels = ref<string[]>([]);
+
   async function fetchAvailableModels({
     chatId,
     customEndpoint,
@@ -125,7 +127,7 @@ export function createChatModelService({
       const models = await provider.listModels({});
       const result = Array.isArray(models) ? models : [];
       if ((mutableChat && currentChatRef.value && toRaw(currentChatRef.value).id === mutableChat.id) || (!mutableChat && !chatId)) {
-        availableModelsRef.value = result;
+        availableModels.value = result;
       }
 
       if (mutableChat && mutableChat.modelId && !result.includes(mutableChat.modelId)) {
@@ -152,6 +154,7 @@ export function createChatModelService({
   }
 
   return {
+    availableModels,
     fetchAvailableModels,
   };
 }

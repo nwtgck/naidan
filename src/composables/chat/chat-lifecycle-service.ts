@@ -1,4 +1,4 @@
-import { reactive, toRaw, type Ref } from 'vue';
+import { reactive, ref, toRaw, type Ref } from 'vue';
 import { generateId } from '@/utils/id';
 import type { Chat, ChatGroup, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/models/types';
 
@@ -33,7 +33,6 @@ export type ChatLifecycleService = {
 };
 
 export function createChatLifecycleService({
-  creatingChat,
   currentChatRef,
   currentChatGroupRef,
   registerLiveInstance,
@@ -59,7 +58,6 @@ export function createChatLifecycleService({
   deleteLiveChat,
   deleteChatTmpDirectory,
 }: {
-  creatingChat: Ref<boolean>;
   currentChatRef: Ref<Chat | null>;
   currentChatGroupRef: Ref<ChatGroup | null>;
   registerLiveInstance: ({ chat }: { chat: Chat }) => void;
@@ -97,6 +95,8 @@ export function createChatLifecycleService({
   deleteLiveChat: ({ chatId }: { chatId: string }) => void;
   deleteChatTmpDirectory: ({ chatId }: { chatId: string }) => void;
 }): ChatLifecycleService {
+  const creatingChat = ref(false);
+
   async function createNewChat({
     groupId,
     modelId,

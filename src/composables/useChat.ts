@@ -1,5 +1,5 @@
 import { generateId } from '@/utils/id';
-import { ref, computed, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
+import { computed, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
 import type { Chat, ChatGroup, Settings } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { transformersJsService } from '@/services/transformers-js';
@@ -76,10 +76,6 @@ function getContextCompactProgress({
 }): ContextCompactProgress {
   return contextCompactRuntime.getProgress({ chatId });
 }
-
-const creatingChat = ref(false);
-const availableModels = ref<string[]>([]);
-
 
 // --- Lifecycle & Cleanup ---
 
@@ -229,7 +225,6 @@ export function useChat() {
   const openChatGroup = chatOpenService.openChatGroup;
 
   const chatLifecycleService = createChatLifecycleService({
-    creatingChat,
     currentChatRef: _currentChat,
     currentChatGroupRef: _currentChatGroup,
     registerLiveInstance,
@@ -307,7 +302,6 @@ export function useChat() {
   const chatModelService = createChatModelService({
     currentChatRef: _currentChat,
     liveChatRegistry,
-    availableModelsRef: availableModels,
     getChatGroups: () => chatGroups.value,
     getSettings: () => settings.value,
     triggerCurrentChat: ({ chatId }) => {
@@ -318,6 +312,7 @@ export function useChat() {
     runtimeStore: chatRuntimeStore,
     addErrorEvent,
   });
+  const availableModels = chatModelService.availableModels;
   const fetchAvailableModels = chatModelService.fetchAvailableModels;
 
   const {
