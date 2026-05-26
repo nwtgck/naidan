@@ -37,11 +37,11 @@ vi.mock('../composables/useSettings', () => ({
   })),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(() => ({
+vi.mock('../composables/chat/ui/useChatAdminActions', () => ({
+  useChatAdminActions: vi.fn(() => ({
     deleteAllChats: vi.fn(),
     createChatGroup: vi.fn(),
-    resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+    TEST_ONLY: {},
   })),
 }));
 
