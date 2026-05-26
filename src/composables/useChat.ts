@@ -17,6 +17,7 @@ import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { createChatDataStore } from './chat/chat-data-store';
+import { createChatControlService } from './chat/chat-control-service';
 import { createChatDerivedState } from './chat/chat-derived-state';
 import { createChatRuntimeStore } from './chat/chat-runtime-store';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
@@ -673,21 +674,6 @@ export function useChat() {
   });
   const generateResponse = chatGenerationService.generateResponse;
   const sendMessage = chatGenerationService.sendMessage;
-
-  const abortChat = ({ chatId }: { chatId: string | undefined }) => {
-    const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
-    if (id) {
-      abortContextCompact({ chatId: id });
-      if (chatRuntimeStore.activeGenerations.has(id)) {
-        chatRuntimeStore.getActiveGeneration({ chatId: id })?.controller.abort();
-        storageService.notify({ type: 'chat_content_generation', id, status: 'abort_request', timestamp: Date.now() });
-      } else if (chatRuntimeStore.hasExternalGeneration({ chatId: id })) {
-        storageService.notify({ type: 'chat_content_generation', id, status: 'abort_request', timestamp: Date.now() });
-      }
-      // Also abort title generation for this chat
-      abortTitleGeneration({ chatId: id });
-    }
-  };
   const contextCompactService = createContextCompactService({
     getCurrentChat: () => (_currentChat.value ? getLiveChat({ chat: _currentChat.value }) : null),
     getLiveChat,
@@ -735,19 +721,22 @@ export function useChat() {
     },
   });
   const abortContextCompact = contextCompactService.abortContextCompact;
-  const compactCurrentBranch = async ({
-    keepRecentMessages,
-    instructionOverride,
-  }: {
-    keepRecentMessages: number;
-    instructionOverride: string | undefined;
-  }): Promise<boolean> => {
-    const result = await contextCompactService.compactCurrentBranch({
-      keepRecentMessages,
-      instructionOverride,
-    });
-    return result.status === 'compacted';
-  };
+  const chatControlService = createChatControlService({
+    currentChatRef: _currentChat,
+    abortContextCompact,
+    hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
+    abortActiveGeneration: ({ chatId }) => {
+      chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
+    },
+    hasExternalGeneration: ({ chatId }) => chatRuntimeStore.hasExternalGeneration({ chatId }),
+    notifyAbortRequest: ({ chatId }) => {
+      storageService.notify({ type: 'chat_content_generation', id: chatId, status: 'abort_request', timestamp: Date.now() });
+    },
+    abortTitleGeneration,
+    compactCurrentBranchImpl: contextCompactService.compactCurrentBranch,
+  });
+  const abortChat = chatControlService.abortChat;
+  const compactCurrentBranch = chatControlService.compactCurrentBranch;
 
   const chatHistoryService = createChatHistoryService({
     currentChatRef: _currentChat,
