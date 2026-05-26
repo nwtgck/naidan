@@ -5,6 +5,8 @@ import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
 import { useChatAreaSession } from '@/composables/chat/chat-area-session';
 import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
+import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
+import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
 import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
 import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
 import { useSettings } from '@/composables/useSettings';
@@ -101,6 +103,12 @@ const chatRuntime = useChatRuntime({
   chatId: currentChatId,
 });
 const chatCompact = useChatCompact({
+  chatId: currentChatId,
+});
+const chatGeneration = useChatGeneration({
+  chatId: currentChatId,
+});
+const chatHistory = useChatHistory({
   chatId: currentChatId,
 });
 const {
@@ -757,11 +765,11 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
 }
 
 async function handleEdit({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) {
-  await chatStore.editMessage({ messageId, newContent, lmParameters });
+  await chatHistory.editMessage({ messageId, newContent, lmParameters });
 }
 
 async function handleRegenerate({ messageId }: { messageId: string }) {
-  await chatStore.regenerateMessage({ failedMessageId: messageId });
+  await chatGeneration.regenerateMessage({ failedMessageId: messageId });
 }
 
 async function handleCompactContext(_args: Record<never, never>) {
@@ -790,11 +798,11 @@ function handleAbortContextCompact(_args: Record<never, never>) {
 }
 
 function handleSwitchVersion({ messageId }: { messageId: string }) {
-  chatStore.switchVersion({ messageId });
+  void chatHistory.switchVersion({ messageId });
 }
 
 async function handleFork({ messageId }: { messageId: string }) {
-  const newId = await chatStore.forkChat({ messageId });
+  const newId = await chatHistory.forkChat({ messageId });
   if (newId) {
     router.push(`/chat/${newId}`);
   }
@@ -1080,7 +1088,7 @@ watch(
                       :id="'message-' + subItem.node.id"
                       :chat-id="currentChat!.id"
                       :message="subItem.node"
-                      :siblings="chatStore.getSiblings({ messageId: subItem.node.id })"
+                      :siblings="chatHistory.getSiblings({ messageId: subItem.node.id })"
                       :can-generate-image="canGenerateImage && hasImageModel"
                       :is-processing="isCurrentChatStreaming"
                       :is-generating="isCurrentChatStreaming && subItem.node.id === currentChat?.currentLeafId"
@@ -1096,7 +1104,7 @@ watch(
                       @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                       @switch-version="messageId => handleSwitchVersion({ messageId })"
                       @regenerate="messageId => handleRegenerate({ messageId })"
-                      @abort="chatStore.abortChat({ chatId: undefined })"
+                      @abort="chatGeneration.abort({})"
                     />
                     <ToolCallGroupItem
                       v-else-if="subItem.type === 'tool_group' && isExpanded"
@@ -1114,7 +1122,7 @@ watch(
                 :id="'message-' + flowItem.node.id"
                 :chat-id="currentChat!.id"
                 :message="flowItem.node"
-                :siblings="chatStore.getSiblings({ messageId: flowItem.node.id })"
+                :siblings="chatHistory.getSiblings({ messageId: flowItem.node.id })"
                 :can-generate-image="canGenerateImage && hasImageModel"
                 :is-processing="isCurrentChatStreaming"
                 :is-generating="isCurrentChatStreaming && flowItem.node.id === currentChat?.currentLeafId"
@@ -1131,7 +1139,7 @@ watch(
                 @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                 @switch-version="messageId => handleSwitchVersion({ messageId })"
                 @regenerate="messageId => handleRegenerate({ messageId })"
-                @abort="chatStore.abortChat({ chatId: undefined })"
+                @abort="chatGeneration.abort({})"
               />
 
               <!-- Standalone Tool Group -->
