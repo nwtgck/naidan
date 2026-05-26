@@ -288,7 +288,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
   }) {
     await metadataService.updateChatModel({
       id,
-      modelId: modelId ?? '',
+      modelId,
     });
   }
 

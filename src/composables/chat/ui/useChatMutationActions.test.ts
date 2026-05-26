@@ -187,4 +187,18 @@ describe('useChatMutationActions', () => {
       systemPrompt: undefined,
     });
   });
+
+  it('passes undefined modelId through to metadata service', async () => {
+    const chatMutationActions = useChatMutationActions();
+
+    await chatMutationActions.updateChatModel({
+      id: 'chat-1',
+      modelId: undefined,
+    });
+
+    expect(mockUpdateChatModel).toHaveBeenCalledWith({
+      id: 'chat-1',
+      modelId: undefined,
+    });
+  });
 });
