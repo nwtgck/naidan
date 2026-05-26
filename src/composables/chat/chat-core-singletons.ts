@@ -1,3 +1,4 @@
+import { ref } from 'vue';
 import { type ContextCompactProgress } from '@/services/context-compact';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { createChatDataStore } from './chat-data-store';
@@ -10,6 +11,8 @@ import { createContextCompactRuntime } from './context-compact-runtime';
 export const chatRuntimeStore = createChatRuntimeStore({});
 export const contextCompactRuntime = createContextCompactRuntime({});
 export const chatVolatileState = createChatVolatileState({});
+export const availableModels = ref<string[]>([]);
+export const creatingChat = ref(false);
 export const chatTmpDirectoryService = createChatTmpDirectoryService({
   createTmpMountDirectory: ({ chatId }) => getOPFSTmpManager().createTmpDirectory({ prefix: chatId }),
 });

@@ -18,12 +18,14 @@ import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { createChatControlService } from './chat/chat-control-service';
 import { createChatCurrentBridge } from './chat/chat-current-bridge';
 import {
+  availableModels as sharedAvailableModels,
   chatDataStore,
   chatRuntimeStore,
   chatTmpDirectoryService,
   chatVolatileState,
   contextCompactProgress,
   contextCompactRuntime,
+  creatingChat as sharedCreatingChat,
   currentChatGroupRef as _currentChatGroup,
   currentChatRef as _currentChat,
   ensureChatTmpDirectory,
@@ -181,6 +183,7 @@ export function useChat() {
   const chatLifecycleService = createChatLifecycleService({
     currentChatRef: _currentChat,
     currentChatGroupRef: _currentChatGroup,
+    creatingChatRef: sharedCreatingChat,
     registerLiveInstance,
     updateChatContent,
     updateChatMeta,
@@ -249,6 +252,7 @@ export function useChat() {
     getSettings: () => settings.value,
     triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
     runtimeStore: chatRuntimeStore,
+    availableModelsRef: sharedAvailableModels,
     addErrorEvent,
   });
   const availableModels = chatModelService.availableModels;
@@ -514,6 +518,7 @@ export function useChat() {
   const sendMessage = chatGenerationService.sendMessage;
   const contextCompactService = createContextCompactService({
     getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
+    getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
     getLiveChat,
     isProcessing,
     registerLiveInstance,

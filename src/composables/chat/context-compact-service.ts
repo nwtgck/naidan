@@ -60,6 +60,16 @@ export type ContextCompactService = {
     chatId: string | undefined;
   }): void;
 
+  compactCurrentBranchForChat({
+    chatId,
+    keepRecentMessages,
+    instructionOverride,
+  }: {
+    chatId: string;
+    keepRecentMessages: number;
+    instructionOverride: string | undefined;
+  }): Promise<CompactCurrentBranchResult>;
+
   compactCurrentBranch({
     keepRecentMessages,
     instructionOverride,
@@ -71,6 +81,7 @@ export type ContextCompactService = {
 
 export function createContextCompactService({
   getCurrentChat,
+  getChatTarget,
   getLiveChat,
   isProcessing,
   registerLiveInstance,
@@ -85,6 +96,7 @@ export function createContextCompactService({
   finishProcessing,
 }: {
   getCurrentChat: () => Chat | null;
+  getChatTarget: ({ chatId }: { chatId: string | undefined }) => Chat | null;
   getLiveChat: ({ chat }: { chat: Chat }) => Chat;
   isProcessing: ({ chatId }: { chatId: string }) => boolean;
   registerLiveInstance: ({ chat }: { chat: Chat }) => void;
@@ -134,7 +146,28 @@ export function createContextCompactService({
       return { status: 'skipped', reason: 'no_current_chat' };
     }
 
-    const mutableChat = getLiveChat({ chat: currentChat });
+    return compactCurrentBranchForChat({
+      chatId: currentChat.id,
+      keepRecentMessages,
+      instructionOverride,
+    });
+  }
+
+  async function compactCurrentBranchForChat({
+    chatId,
+    keepRecentMessages,
+    instructionOverride,
+  }: {
+    chatId: string;
+    keepRecentMessages: number;
+    instructionOverride: string | undefined;
+  }): Promise<CompactCurrentBranchResult> {
+    const targetChat = getChatTarget({ chatId });
+    if (!targetChat) {
+      return { status: 'skipped', reason: 'no_current_chat' };
+    }
+
+    const mutableChat = getLiveChat({ chat: targetChat });
     if (isProcessing({ chatId: mutableChat.id })) {
       return { status: 'skipped', reason: 'already_processing' };
     }
@@ -352,6 +385,7 @@ export function createContextCompactService({
 
   return {
     abortContextCompact,
+    compactCurrentBranchForChat,
     compactCurrentBranch,
   };
 }
