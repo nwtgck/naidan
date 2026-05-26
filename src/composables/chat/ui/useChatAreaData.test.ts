@@ -53,15 +53,8 @@ vi.mock('@/composables/useChatDisplayFlow', () => ({
 vi.mock('./useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => null),
+    chatGroups: computed(() => mockState.chatGroups),
     TEST_ONLY: {},
-  }),
-}));
-
-vi.mock('./useChatUiServices', () => ({
-  useChatUiServices: () => ({
-    derivedState: {
-      chatGroups: computed(() => mockState.chatGroups),
-    },
   }),
 }));
 

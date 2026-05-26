@@ -80,6 +80,48 @@ vi.mock('../composables/chat/ui/useSidebarData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed(() => mockSidebarItems.value),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: ({ chatId }: { chatId: string; leafId?: string }) => mockOpenChat({ id: chatId }),
+    openChatAtMessage: vi.fn(),
+    openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: mockCreateNewChat,
+    deleteChat: vi.fn(),
+    deleteAllChats: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: vi.fn(),
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+      mockSetChatGroupCollapsed({ groupId, isCollapsed }),
+    TEST_ONLY: {},
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointUrl: 'http://localhost' }),

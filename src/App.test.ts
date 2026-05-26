@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, reactive, nextTick } from 'vue';
+import { ref, reactive, nextTick, computed } from 'vue';
 import App from './App.vue';
 import type { Chat } from './models/types';
 import { useRouter, useRoute } from 'vue-router';
@@ -31,13 +31,18 @@ vi.mock('./composables/useChat', () => ({
   }),
 }));
 
-vi.mock('./composables/chat/ui/useSidebarData', () => ({
-  useSidebarData: () => ({
-    createNewChat: mockCreateNewChat,
-    currentChat: mockCurrentChat,
-    currentChatGroup: ref(null),
-    chatGroups: mockChatGroups,
-    createChatGroup: mockCreateChatGroup,
+vi.mock('./composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed(() => []),
+    TEST_ONLY: {},
   }),
 }));
 
@@ -47,10 +52,25 @@ vi.mock('./composables/chat/ui/useChatListData', () => ({
   }),
 }));
 
-vi.mock('./composables/chat/ui/useChatAdminActions', () => ({
-  useChatAdminActions: () => ({
-    createChatGroup: mockCreateChatGroup,
+vi.mock('./composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: mockCreateNewChat,
+    deleteChat: vi.fn(),
     deleteAllChats: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('./composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: mockCreateChatGroup,
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
   }),
 }));
 
@@ -117,8 +137,6 @@ vi.mock('./components/OnboardingModal.vue', () => ({
     template: '<div v-if="show" data-testid="onboarding-modal"></div>',
   },
 }));
-
-import { computed } from 'vue';
 
 vi.mock('./components/ToastContainer.vue', () => ({
   default: {

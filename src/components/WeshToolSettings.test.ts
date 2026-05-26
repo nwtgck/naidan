@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import WeshToolSettings from './WeshToolSettings.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
@@ -69,9 +69,17 @@ describe('WeshToolSettings.vue', () => {
     mockIsToolEnabled.mockImplementation(({ name }: { name: string }) => name === 'shell_execute');
     mockGetNaidanSysfsMountSelection.mockReturnValue('none');
     vi.mocked(useCurrentChatState).mockReturnValue({
-      currentChat: mockCurrentChat,
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatGroup: computed(() => null),
+      currentChatId: computed(() => mockCurrentChat.value?.id),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
       TEST_ONLY: {},
-    } as ReturnType<typeof useCurrentChatState>);
+    } as unknown as ReturnType<typeof useCurrentChatState>);
   });
 
   it('shows the shell toggle when the feature flag is enabled', async () => {

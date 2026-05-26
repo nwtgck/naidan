@@ -59,6 +59,30 @@ vi.mock('../composables/chat/ui/useSidebarData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => undefined),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => []),
+    sidebarItems: computed<SidebarItem[]>(() => mockChats.value.map(c => ({ id: `chat:${c.id}`, type: 'chat', chat: c }))),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/global/chat-core-singletons', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../composables/chat/global/chat-core-singletons')>();
+  return {
+    ...actual,
+    isProcessing: ({ chatId }: { chatId: string }) =>
+      Array.from(mockActiveTasks).some(task => task.startsWith('process:') && task.endsWith(`:${chatId}`)),
+  };
+});
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointUrl: 'http://localhost' }),

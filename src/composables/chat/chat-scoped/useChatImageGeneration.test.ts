@@ -66,10 +66,8 @@ vi.mock('./chat-image-helpers', () => ({
   sendImageRequestForChat: mockSendImageRequestForChat,
 }));
 
-vi.mock('@/composables/chat/ui/useChatConversationActions', () => ({
-  useChatConversationActions: () => ({
-    sendMessage: mockSendMessage,
-  }),
+vi.mock('./chat-generation-flow', () => ({
+  sendMessageForChat: mockSendMessage,
 }));
 
 import { useChatImageGeneration } from './useChatImageGeneration';

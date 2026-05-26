@@ -37,10 +37,11 @@ vi.mock('../composables/useSettings', () => ({
   })),
 }));
 
-vi.mock('../composables/chat/ui/useChatAdminActions', () => ({
-  useChatAdminActions: vi.fn(() => ({
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: vi.fn(() => ({
     deleteAllChats: vi.fn(),
-    createChatGroup: vi.fn(),
+    createNewChat: vi.fn(),
+    deleteChat: vi.fn(),
     TEST_ONLY: {},
   })),
 }));

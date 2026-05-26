@@ -3,7 +3,6 @@ import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
 import { isProcessing as isChatProcessing } from '@/composables/chat/global/chat-core-singletons';
 import { renameChatById } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
 import { useCurrentChatState } from './useCurrentChatState';
-import { useChatUiServices } from './useChatUiServices';
 import { useChatLifecycle } from './useChatLifecycle';
 import { useChatNavigation } from './useChatNavigation';
 import { useChatOrganization } from './useChatOrganization';
@@ -102,7 +101,6 @@ export type SidebarDataAdapter = {
 
 export function useSidebarData(): SidebarDataAdapter {
   const currentChatState = useCurrentChatState();
-  const { derivedState } = useChatUiServices({});
   const chatLifecycle = useChatLifecycle();
   const chatNavigation = useChatNavigation();
   const chatOrganization = useChatOrganization();
@@ -110,8 +108,8 @@ export function useSidebarData(): SidebarDataAdapter {
 
   const currentChat = computed(() => currentChatState.currentChat.value);
   const currentChatGroup = computed(() => currentChatState.currentChatGroup.value);
-  const sidebarItems = computed(() => derivedState.sidebarItems.value);
-  const chatGroups = computed(() => derivedState.chatGroups.value);
+  const sidebarItems = computed(() => currentChatState.sidebarItems.value);
+  const chatGroups = computed(() => currentChatState.chatGroups.value);
 
   function isProcessing({
     chatId,

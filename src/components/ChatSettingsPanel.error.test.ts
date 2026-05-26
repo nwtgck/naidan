@@ -45,6 +45,7 @@ describe('ChatSettingsPanel Error Handling', () => {
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => null),
       chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
       TEST_ONLY: {},
     } as ReturnType<typeof useCurrentChatState>);
 

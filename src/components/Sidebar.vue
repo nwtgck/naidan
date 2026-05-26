@@ -3,7 +3,6 @@ import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
-import { useSidebarData } from '@/composables/chat/ui/useSidebarData';
 import { useSettings } from '@/composables/useSettings';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
@@ -28,11 +27,112 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
 import { scrollIntoViewSafe } from '@/utils/dom';
+import { isProcessing as isChatProcessing } from '@/composables/chat/global/chat-core-singletons';
+import { renameChatById } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
+import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 
-const sidebarData = useSidebarData();
-const {
-  currentChat, currentChatGroup, isProcessing, sidebarItems, chatGroups,
-} = sidebarData;
+const currentChatState = useCurrentChatState();
+const chatLifecycle = useChatLifecycle();
+const chatNavigation = useChatNavigation();
+const chatOrganization = useChatOrganization();
+const sidebarStructure = useSidebarStructure();
+const currentChat = currentChatState.currentChat;
+const currentChatGroup = currentChatState.currentChatGroup;
+const sidebarItems = currentChatState.sidebarItems;
+const chatGroups = currentChatState.chatGroups;
+
+function isProcessing({
+  chatId,
+}: {
+  chatId: string;
+}) {
+  return isChatProcessing({ chatId });
+}
+
+const sidebarData = {
+  persistSidebarStructure: sidebarStructure.persistSidebarStructure,
+  setChatGroupCollapsed: ({
+    groupId,
+    isCollapsed,
+  }: {
+    groupId: string;
+    isCollapsed: boolean;
+  }) => {
+    void sidebarStructure.setChatGroupCollapsed({
+      groupId,
+      isCollapsed,
+    });
+  },
+  createChatGroup: ({
+    name,
+  }: {
+    name: string;
+  }) => chatOrganization.createChatGroup({
+    name,
+    options: undefined,
+  }),
+  deleteChatGroup: ({
+    id,
+  }: {
+    id: string;
+  }) => chatOrganization.deleteChatGroup({
+    id,
+  }),
+  createNewChat: ({
+    groupId,
+    modelId,
+    systemPrompt,
+  }: {
+    groupId: string | undefined;
+    modelId: string | undefined;
+    systemPrompt: ChatGroup['systemPrompt'];
+  }) => chatLifecycle.createNewChat({
+    groupId,
+    modelId,
+    systemPrompt,
+  }),
+  openChat: ({
+    id,
+  }: {
+    id: string;
+  }) => chatNavigation.openChat({
+    chatId: id,
+    leafId: undefined,
+  }),
+  openChatGroup: ({
+    id,
+  }: {
+    id: string;
+  }) => {
+    chatNavigation.openChatGroup({
+      groupId: id,
+    });
+  },
+  deleteChat: ({
+    id,
+  }: {
+    id: string;
+  }) => chatLifecycle.deleteChat({
+    id,
+    injectAddToast: undefined,
+  }),
+  renameChat: ({
+    id,
+    newTitle,
+  }: {
+    id: string;
+    newTitle: string;
+  }) => renameChatById({
+    chatId: id,
+    title: newTitle,
+  }),
+  renameChatGroup: chatOrganization.renameChatGroup,
+  duplicateChatGroup: chatOrganization.duplicateChatGroup,
+};
 
 const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
 const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));

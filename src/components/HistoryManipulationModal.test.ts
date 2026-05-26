@@ -52,6 +52,7 @@ describe('HistoryManipulationModal', () => {
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => mockInheritedSettings.value as any),
       chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
       TEST_ONLY: {},
     });
     vi.mocked(useChatHistoryManipulation).mockReturnValue({

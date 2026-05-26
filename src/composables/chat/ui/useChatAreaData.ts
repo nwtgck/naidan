@@ -5,7 +5,6 @@ import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { availableModels, fetchingModels, isProcessing, loadData } from '@/composables/chat/global/chat-core-singletons';
 import { useCurrentChatState } from './useCurrentChatState';
-import { useChatUiServices } from './useChatUiServices';
 import { fetchAvailableModelsForChat, fetchAvailableModelsForEndpoint } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { updateChatSettingsById } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
 import { storageService } from '@/services/storage';
@@ -69,7 +68,6 @@ export type ChatAreaDataAdapter = {
 
 export function useChatAreaData(): ChatAreaDataAdapter {
   const currentChatState = useCurrentChatState();
-  const { derivedState } = useChatUiServices({});
   const { getSortedImageModels: getSortedImageModelsImpl } = useImageGeneration();
   const {
     chatFlow,
@@ -83,7 +81,7 @@ export function useChatAreaData(): ChatAreaDataAdapter {
   const availableModelsState = computed(() => availableModels.value);
   const fetchingModelsState = computed(() => fetchingModels.value);
   const chatFlowState = computed(() => chatFlow.value);
-  const availableChatGroups = computed(() => derivedState.chatGroups.value);
+  const availableChatGroups = computed(() => currentChatState.chatGroups.value);
 
   function getSortedImageModels({
     availableModels,

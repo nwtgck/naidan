@@ -44,16 +44,9 @@ vi.mock('./useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => mockState.currentChat),
     currentChatGroup: computed(() => mockState.currentChatGroup),
+    sidebarItems: computed(() => mockState.sidebarItems),
+    chatGroups: computed(() => mockState.chatGroups),
     TEST_ONLY: {},
-  }),
-}));
-
-vi.mock('./useChatUiServices', () => ({
-  useChatUiServices: () => ({
-    derivedState: {
-      sidebarItems: computed(() => mockState.sidebarItems),
-      chatGroups: computed(() => mockState.chatGroups),
-    },
   }),
 }));
 

@@ -1,5 +1,5 @@
 import { computed, type ComputedRef } from 'vue';
-import type { Chat, ChatGroup, MessageNode } from '@/models/types';
+import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/models/types';
 import type { Settings } from '@/models/types';
 import { useSettings } from '@/composables/useSettings';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
@@ -22,6 +22,7 @@ export type CurrentChatStateAdapter = {
   resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
   inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
   chatGroups: ComputedRef<ChatGroup[]>;
+  sidebarItems: ComputedRef<SidebarItem[]>;
 
   TEST_ONLY: Record<string, never>;
 };
@@ -48,6 +49,7 @@ export function useCurrentChatState(): CurrentChatStateAdapter {
   const resolvedSettings = computed(() => chatDerivedState.resolvedSettings.value);
   const inheritedSettings = computed(() => chatDerivedState.inheritedSettings.value);
   const chatGroups = computed(() => chatDerivedState.chatGroups.value);
+  const sidebarItems = computed(() => chatDerivedState.sidebarItems.value);
 
   return {
     currentChat,
@@ -58,6 +60,7 @@ export function useCurrentChatState(): CurrentChatStateAdapter {
     resolvedSettings,
     inheritedSettings,
     chatGroups,
+    sidebarItems,
     TEST_ONLY: {},
   };
 }

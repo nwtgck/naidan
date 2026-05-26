@@ -1,10 +1,10 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { Attachment } from '@/models/types';
+import type { Attachment, LmParameters } from '@/models/types';
 import { availableModels } from '@/composables/chat/global/chat-core-singletons';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ImageRequestParams } from '@/utils/image-generation';
 import { sendImageRequestForChat } from './chat-image-helpers';
-import { useChatConversationActions } from '@/composables/chat/ui/useChatConversationActions';
+import { sendMessageForChat } from './chat-generation-flow';
 
 export type ChatImageGenerationAdapter = {
   availableModels: Ref<string[]>;
@@ -85,7 +85,6 @@ export function useChatImageGeneration({
   chatId: Ref<string | undefined>;
 }): ChatImageGenerationAdapter {
   const imageGeneration = useImageGeneration();
-  const chatConversationActions = useChatConversationActions();
 
   const isImageMode = computed(() => {
     const id = chatId.value;
@@ -263,12 +262,12 @@ export function useChatImageGeneration({
       persistAs,
       attachments,
       availableModels: availableModels.value,
-      sendMessage: ({ content, parentId, attachments }) => chatConversationActions.sendMessage({
+      sendMessage: ({ content, parentId, attachments }) => sendMessageForChat({
         chatId: id,
         content,
         parentId,
         attachments,
-        lmParameters: undefined,
+        lmParameters: undefined as LmParameters | undefined,
       }),
     });
   }

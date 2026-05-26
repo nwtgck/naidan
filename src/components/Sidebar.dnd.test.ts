@@ -6,10 +6,12 @@ import Sidebar from './Sidebar.vue';
 import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
 vi.mock('../composables/useChat');
 vi.mock('../composables/useSettings');
 vi.mock('../composables/useLayout');
+vi.mock('../composables/chat/ui/useCurrentChatState');
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),
 }));
@@ -59,6 +61,14 @@ vi.mock('../composables/chat/ui/useSidebarData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: mockChatStore.persistSidebarStructure,
+    setChatGroupCollapsed: mockChatStore.setChatGroupCollapsed,
+    TEST_ONLY: {},
+  }),
+}));
+
 describe('Sidebar DND Improvements', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -86,6 +96,18 @@ describe('Sidebar DND Improvements', () => {
       persistSidebarStructure: vi.fn(),
     };
     (useChat as any).mockReturnValue(mockChatStore);
+    (useCurrentChatState as any).mockReturnValue({
+      currentChat: mockChatStore.currentChat,
+      currentChatGroup: mockChatStore.currentChatGroup,
+      currentChatId: ref(undefined),
+      activeMessages: ref([]),
+      allMessages: ref([]),
+      resolvedSettings: ref(null),
+      inheritedSettings: ref(null),
+      chatGroups: mockChatStore.chatGroups,
+      sidebarItems: mockChatStore.sidebarItems,
+      TEST_ONLY: {},
+    });
     (useSettings as any).mockReturnValue({ settings: ref({}), isFetchingModels: ref(false) });
     (useLayout as any).mockReturnValue({
       isSidebarOpen: ref(true),

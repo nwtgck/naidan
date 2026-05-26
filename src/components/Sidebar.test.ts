@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
-import ChatGroupActions from './ChatGroupActions.vue';
-import SidebarDebugControls from './SidebarDebugControls.vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { ref, computed, nextTick, reactive } from 'vue';
+import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/models/types';
 
 // --- Shared Mock State ---
@@ -130,6 +128,77 @@ vi.mock('../composables/chat/ui/useSidebarData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => null),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => undefined),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      return items;
+    }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: mockCreateNewChat,
+    deleteChat: mockDeleteChat,
+    deleteAllChats: mockDeleteAllChats,
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: mockOpenChat,
+    openChatAtMessage: vi.fn(),
+    openChatGroup: mockOpenChatGroup,
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: mockCreateChatGroup,
+    deleteChatGroup: mockDeleteChatGroup,
+    duplicateChatGroup: mockDuplicateChatGroup,
+    renameChatGroup: mockRenameChatGroup,
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: mockPersistSidebarStructure,
+    setChatGroupCollapsed: mockSetChatGroupCollapsed,
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/chat-metadata-helpers', () => ({
+  renameChatById: ({ chatId, title }: { chatId: string; title: string }) => mockRenameChat({ id: chatId, newTitle: title }),
+}));
+
+vi.mock('../composables/chat/global/chat-core-singletons', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../composables/chat/global/chat-core-singletons')>();
+  return {
+    ...actual,
+    isProcessing: ({ chatId: _chatId }: { chatId: string }) => false,
+  };
+});
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: mockSettings,
@@ -179,8 +248,46 @@ describe('Sidebar Logic Stability', () => {
     'Logo': true,
     'Ghost': true,
     'ThemeToggle': true,
-    'ChatGroupActions': ChatGroupActions,
-    'SidebarDebugControls': SidebarDebugControls,
+    'ChatGroupActions': defineComponent({
+      name: 'ChatGroupActions',
+      props: {
+        isOpen: { type: Boolean, required: true },
+      },
+      emits: ['toggle', 'duplicate', 'delete', 'search'],
+      template: `
+        <div>
+          <button data-testid="group-more-actions" @click="$emit('toggle')">More</button>
+          <div v-if="isOpen">
+            <button data-testid="duplicate-group-button" @click="$emit('duplicate')">Duplicate</button>
+            <button data-testid="delete-group-button" @click="$emit('delete')">Delete</button>
+            <button data-testid="search-in-group-button" @click="$emit('search')">Search</button>
+          </div>
+        </div>
+      `,
+    }),
+    'SidebarDebugControls': defineComponent({
+      name: 'SidebarDebugControls',
+      props: {
+        isSidebarOpen: { type: Boolean, required: true },
+      },
+      setup() {
+        const showMenu = ref(false);
+        return {
+          errorCount: mockErrorCount,
+          showMenu,
+          handleToggleDebug: () => mockToggleDebug(),
+          handleOpenOpfs: () => mockOpenOPFS(),
+        };
+      },
+      template: `
+        <div v-if="isSidebarOpen">
+          <button data-testid="sidebar-debug-button" @click="handleToggleDebug">Debug</button>
+          <div v-if="errorCount > 0" data-testid="sidebar-error-badge">{{ errorCount }}</div>
+          <button data-testid="sidebar-opfs-menu-button" @click="showMenu = !showMenu">Menu</button>
+          <button v-if="showMenu" data-testid="sidebar-opfs-button" @click="handleOpenOpfs">OPFS</button>
+        </div>
+      `,
+    }),
     'ModelSelector': {
       name: 'ModelSelector',
       template: '<div data-testid="model-selector-mock" :model-value="modelValue" :allow-clear="allowClear">{{ modelValue }}<div v-if="loading" class="animate-spin-mock"></div></div>',

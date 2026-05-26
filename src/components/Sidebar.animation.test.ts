@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
-import { ref, reactive, nextTick } from 'vue';
+import { ref, reactive, nextTick, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
@@ -157,6 +157,60 @@ vi.mock('../composables/chat/ui/useSidebarData', () => ({
     renameChat: vi.fn(),
     renameChatGroup: vi.fn(),
     duplicateChatGroup: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => (mockCurrentChat.value as { id?: string } | null)?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed(() => mockSidebarItems.value),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: vi.fn(),
+    openChatAtMessage: vi.fn(),
+    openChatGroup: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: vi.fn(),
+    setChatGroupCollapsed: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: vi.fn(),
+    deleteChat: vi.fn(),
+    deleteAllChats: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
   }),
 }));
 

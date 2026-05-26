@@ -77,6 +77,44 @@ vi.mock('../composables/chat/ui/useSidebarData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      return items;
+    }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: ({ chatId }: { chatId: string; leafId?: string }) => {
+      mockCurrentChatGroup.value = null;
+      mockCurrentChat.value = mockChats.value.find(c => c.id === chatId) ?? null;
+    },
+    openChatAtMessage: vi.fn(),
+    openChatGroup: ({ groupId }: { groupId: string | null }) => {
+      if (groupId === null) {
+        mockCurrentChatGroup.value = null;
+        return;
+      }
+      mockCurrentChatGroup.value = mockChatGroups.value.find(g => g.id === groupId) ?? null;
+    },
+    TEST_ONLY: {},
+  }),
+}));
+
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),

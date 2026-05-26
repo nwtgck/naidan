@@ -68,6 +68,43 @@ vi.mock('../composables/chat/ui/useSidebarData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => null),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => undefined),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      return items;
+    }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: mockCreateChatGroup,
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: mockRenameChatGroup,
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/chat-metadata-helpers', () => ({
+  renameChatById: ({ chatId, title }: { chatId: string; title: string }) => mockRenameChat({ id: chatId, newTitle: title }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref(mockSettings),

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { ref, defineComponent } from 'vue';
+import { ref, defineComponent, computed } from 'vue';
 import App from './App.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Chat } from './models/types';
@@ -53,12 +53,18 @@ vi.mock('./composables/useChat', () => ({
   }),
 }));
 
-vi.mock('./composables/chat/ui/useSidebarData', () => ({
-  useSidebarData: () => ({
-    createNewChat: mockCreateNewChat,
-    currentChat: mockCurrentChat,
-    currentChatGroup: ref(null),
-    chatGroups: mockChatGroups,
+vi.mock('./composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed(() => []),
+    TEST_ONLY: {},
   }),
 }));
 
@@ -68,10 +74,25 @@ vi.mock('./composables/chat/ui/useChatListData', () => ({
   }),
 }));
 
-vi.mock('./composables/chat/ui/useChatAdminActions', () => ({
-  useChatAdminActions: () => ({
-    createChatGroup: vi.fn(),
+vi.mock('./composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: mockCreateNewChat,
+    deleteChat: vi.fn(),
     deleteAllChats: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('./composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
   }),
 }));
 

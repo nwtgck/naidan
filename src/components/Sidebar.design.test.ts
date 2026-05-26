@@ -5,6 +5,7 @@ import { useRouter, useRoute } from 'vue-router';
 import Sidebar from './Sidebar.vue';
 import { useChat } from '@/composables/useChat';
 import { useSidebarData } from '@/composables/chat/ui/useSidebarData';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useTheme } from '@/composables/useTheme';
 import { useConfirm } from '@/composables/useConfirm';
 import { useSettings } from '@/composables/useSettings';
@@ -30,6 +31,9 @@ vi.mock('../composables/useConfirm', () => ({
 }));
 vi.mock('../composables/chat/ui/useSidebarData', () => ({
   useSidebarData: vi.fn(),
+}));
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
@@ -105,6 +109,18 @@ describe('Sidebar Design Specifications', () => {
       renameChatGroup: vi.fn(),
       duplicateChatGroup: vi.fn(),
     });
+    (useCurrentChatState as unknown as Mock).mockReturnValue({
+      currentChat: ref(null),
+      currentChatGroup: ref(null),
+      currentChatId: ref(undefined),
+      activeMessages: ref([]),
+      allMessages: ref([]),
+      resolvedSettings: ref(null),
+      inheritedSettings: ref(null),
+      chatGroups: ref([]),
+      sidebarItems: ref([]),
+      TEST_ONLY: {},
+    });
   });
 
   it('is explicitly white in light mode to match the modern aesthetic', async () => {
@@ -175,6 +191,18 @@ describe('Sidebar Design Specifications', () => {
       renameChat: vi.fn(),
       renameChatGroup: vi.fn(),
       duplicateChatGroup: vi.fn(),
+    });
+    (useCurrentChatState as unknown as Mock).mockReturnValue({
+      currentChat,
+      currentChatGroup: ref(null),
+      currentChatId: ref('active-chat-id'),
+      activeMessages: ref([]),
+      allMessages: ref([]),
+      resolvedSettings: ref(null),
+      inheritedSettings: ref(null),
+      chatGroups: ref([]),
+      sidebarItems,
+      TEST_ONLY: {},
     });
 
     const wrapper = mount(Sidebar, {

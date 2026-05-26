@@ -87,6 +87,66 @@ vi.mock('../composables/chat/ui/useSidebarData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      return items;
+    }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: ({ chatId }: { chatId: string; leafId?: string }) => mockOpenChat({ id: chatId }),
+    openChatAtMessage: vi.fn(),
+    openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: mockPersistSidebarStructure,
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+      mockSetChatGroupCollapsed({ groupId, isCollapsed }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: vi.fn(),
+    deleteChat: vi.fn(),
+    deleteAllChats: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref(mockSettings),

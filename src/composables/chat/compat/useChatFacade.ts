@@ -6,7 +6,6 @@ import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from '@/composables/useSettings';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
-import { createChatControlService } from '@/composables/chat/services/chat-control-service';
 import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
 import {
   availableModels as sharedAvailableModels,
@@ -704,36 +703,61 @@ export function useChat() {
     abortContextCompactForChat({ chatId: targetChatId });
   }
 
-  const chatControlService = createChatControlService({
-    currentChatRef: _currentChat,
-    abortContextCompact,
-    hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
-    abortActiveGeneration: ({ chatId }) => {
-      chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
-    },
-    hasExternalGeneration: ({ chatId }) => chatRuntimeStore.hasExternalGeneration({ chatId }),
-    notifyAbortRequest: ({ chatId }) => {
-      storageService.notify({ type: 'chat_content_generation', id: chatId, status: 'abort_request', timestamp: Date.now() });
-    },
-    abortTitleGeneration,
-    compactCurrentBranchImpl: async ({
+  function abortChat({
+    chatId,
+  }: {
+    chatId: string | undefined;
+  }) {
+    const targetChatId = chatId ?? chatCurrentBridge.getCurrentChatId({}) ?? undefined;
+    if (targetChatId === undefined) {
+      return;
+    }
+
+    abortContextCompact({
+      chatId: targetChatId,
+    });
+
+    if (chatRuntimeStore.activeGenerations.has(targetChatId)) {
+      chatRuntimeStore.getActiveGeneration({ chatId: targetChatId })?.controller.abort();
+      storageService.notify({
+        type: 'chat_content_generation',
+        id: targetChatId,
+        status: 'abort_request',
+        timestamp: Date.now(),
+      });
+    } else if (chatRuntimeStore.hasExternalGeneration({ chatId: targetChatId })) {
+      storageService.notify({
+        type: 'chat_content_generation',
+        id: targetChatId,
+        status: 'abort_request',
+        timestamp: Date.now(),
+      });
+    }
+
+    abortTitleGeneration({
+      chatId: targetChatId,
+    });
+  }
+
+  async function compactCurrentBranch({
+    keepRecentMessages,
+    instructionOverride,
+  }: {
+    keepRecentMessages: number;
+    instructionOverride: string | undefined;
+  }) {
+    const currentChatId = chatCurrentBridge.getCurrentChatId({}) ?? undefined;
+    if (currentChatId === undefined) {
+      return false;
+    }
+
+    const result = await runCompactCurrentBranchForChat({
+      chatId: currentChatId,
       keepRecentMessages,
       instructionOverride,
-    }) => {
-      const currentChatId = chatCurrentBridge.getCurrentChatId({}) ?? undefined;
-      if (currentChatId === undefined) {
-        return { status: 'skipped' as const };
-      }
-
-      return await runCompactCurrentBranchForChat({
-        chatId: currentChatId,
-        keepRecentMessages,
-        instructionOverride,
-      });
-    },
-  });
-  const abortChat = chatControlService.abortChat;
-  const compactCurrentBranch = chatControlService.compactCurrentBranch;
+    });
+    return result.status === 'compacted';
+  }
 
   async function forkChat({
     messageId,

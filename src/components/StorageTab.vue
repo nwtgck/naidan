@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
-import { useChatAdminActions } from '@/composables/chat/ui/useChatAdminActions';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
@@ -29,7 +29,7 @@ const emit = defineEmits<{
 }>();
 
 const { save } = useSettings();
-const chatAdminActions = useChatAdminActions();
+const chatLifecycle = useChatLifecycle();
 const { showConfirm } = useConfirm();
 const { addToast } = useToast();
 const router = useRouter();
@@ -153,7 +153,7 @@ async function handleDeleteAllHistory() {
   });
 
   if (confirmed) {
-    await chatAdminActions.deleteAllChats({});
+    await chatLifecycle.deleteAllChats({});
     emit('close');
     router.push('/');
   }

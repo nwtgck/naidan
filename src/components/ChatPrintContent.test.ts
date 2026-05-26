@@ -51,6 +51,7 @@ describe('ChatPrintContent component', () => {
       resolvedSettings: computed(() => null),
       inheritedSettings: computed(() => null),
       chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
       TEST_ONLY: {},
     } as ReturnType<typeof useCurrentChatState>);
     vi.mocked(useChatHistory).mockReturnValue({
