@@ -1,9 +1,18 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
-import { useChatAreaSession } from '@/composables/chat/chat-area-session';
+import { useChatAreaSession } from '@/composables/chat/ui/useChatAreaSession';
+import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
+import { useChatDebug } from '@/composables/chat/chat-scoped/useChatDebug';
+import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
+import { useChatGrouping } from '@/composables/chat/chat-scoped/useChatGrouping';
+import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
+import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
+import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
+import { useChatTitle } from '@/composables/chat/chat-scoped/useChatTitle';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatAreaData } from '@/composables/chat/ui/useChatAreaData';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -32,7 +41,6 @@ const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
-import type { ContextCompactProgress } from '@/services/context-compact';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -62,8 +70,6 @@ import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
 import { createCompactInstruction, type ContextCompactPromptMode } from '@/services/context-compact';
 
-
-const chatStore = useChat();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
 const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
@@ -76,42 +82,60 @@ const {
   isChatWeshTerminalOpen,
   toggleChatWeshTerminal,
 } = useLayout();
+const currentChatState = useCurrentChatState();
+const chatAreaData = useChatAreaData();
 const {
-  currentChat,
-  currentChatGroup,
-  generatingTitle,
-  renameChat,
   updateChatSettings,
   updateChatGroupMetadata,
-  activeMessages,
-  allMessages,
   availableModels,
   fetchingModels,
-  resolvedSettings,
-  isProcessing,
   getSortedImageModels,
   fetchAvailableModels,
-  abortTitleGeneration,
   chatFlow,
   isThinkingActive,
   isWaitingResponse,
-} = chatStore;
+  availableChatGroups,
+} = chatAreaData;
 
-const compactCurrentBranch = chatStore.compactCurrentBranch ?? (async (_args: {
-  keepRecentMessages: number;
-  instructionOverride: string | undefined;
-}) => false);
-const abortContextCompact = chatStore.abortContextCompact ?? ((_args: { chatId: string | undefined }) => {});
-const contextCompactProgress = computed<ContextCompactProgress>(() => {
-  const maybeProgress = chatStore.contextCompactProgress as ContextCompactProgress | { value: ContextCompactProgress } | undefined;
-  if (maybeProgress && typeof maybeProgress === 'object' && 'value' in maybeProgress) {
-    return maybeProgress.value;
-  }
-  return maybeProgress ?? { phase: 'idle' };
+const currentChatId = currentChatState.currentChatId;
+const chatReadModel = useChatReadModel({
+  chatId: currentChatId,
 });
+const chatRuntime = useChatRuntime({
+  chatId: currentChatId,
+});
+const chatCompact = useChatCompact({
+  chatId: currentChatId,
+});
+const chatGeneration = useChatGeneration({
+  chatId: currentChatId,
+});
+const chatGrouping = useChatGrouping({
+  chatId: currentChatId,
+});
+const chatHistory = useChatHistory({
+  chatId: currentChatId,
+});
+const chatTitle = useChatTitle({
+  chatId: currentChatId,
+});
+const {
+  currentChat,
+  currentChatGroup,
+  activeMessages,
+  allMessages,
+  resolvedSettings,
+} = chatReadModel;
+const { isProcessing, contextCompactProgress } = chatRuntime;
+const chatDebug = useChatDebug({
+  chatId: currentChatId,
+  debugEnabled: computed(() => currentChat.value?.debugEnabled === true),
+});
+const isGeneratingTitle = computed(() => chatTitle.isGenerating.value);
+const isDebugEnabled = computed(() => chatDebug.enabled.value);
 
 const chatAreaSession = useChatAreaSession({
-  chatId: computed(() => currentChat.value?.id),
+  chatId: currentChatId,
   leafId: computed(() => currentChat.value?.currentLeafId),
 });
 const {
@@ -210,7 +234,7 @@ const emit = defineEmits<{
 }>();
 
 const isCurrentChatStreaming = computed(() => {
-  return currentChat.value ? isProcessing({ chatId: currentChat.value.id }) : false;
+  return currentChat.value ? isProcessing.value : false;
 });
 
 // The index of the single flow item that should display the GeneratingIndicator.
@@ -274,22 +298,18 @@ function clearTargetMessageQuery() {
 }
 
 async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
-  if (!currentChat.value) return;
-  await chatStore.moveChatToGroup({ chatId: currentChat.value.id, targetGroupId: groupId });
+  await chatGrouping.moveToGroup({ groupId });
 }
 
 async function handleSaveTitle({ title }: { title: string }) {
-  if (!currentChat.value) return;
-  await renameChat({ id: currentChat.value.id, newTitle: title });
+  await chatTitle.rename({ title });
 }
 
 async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
   if (!currentChat.value) return;
   const titleBeforeGeneration = currentChat.value.title?.trim();
   await updateActiveTitleModel({ modelId });
-  const generatedTitle = await chatStore.generateChatTitle({
-    chatId: currentChat.value.id,
-    signal: undefined,
+  const generatedTitle = await chatTitle.generateTitle({
     titleModelIdOverride: modelId,
   });
   if (!generatedTitle) return;
@@ -300,7 +320,7 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
 }
 
 function handleAbortTitleGeneration(_args: Record<string, never>) {
-  abortTitleGeneration({ chatId: currentChat.value?.id });
+  chatTitle.abort({});
 }
 
 async function exportChat() {
@@ -637,8 +657,6 @@ const canGenerateImage = computed(() => {
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
-const availableChatGroups = computed(() => chatStore.chatGroups?.value ?? []);
-
 const currentChatGroupBadge = computed(() => {
   const groupId = currentChat.value?.groupId;
   if (!groupId) return undefined;
@@ -755,11 +773,11 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
 }
 
 async function handleEdit({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) {
-  await chatStore.editMessage({ messageId, newContent, lmParameters });
+  await chatHistory.editMessage({ messageId, newContent, lmParameters });
 }
 
 async function handleRegenerate({ messageId }: { messageId: string }) {
-  await chatStore.regenerateMessage({ failedMessageId: messageId });
+  await chatGeneration.regenerateMessage({ failedMessageId: messageId });
 }
 
 async function handleCompactContext(_args: Record<never, never>) {
@@ -774,7 +792,7 @@ async function handleConfirmCompact({
   instruction: string;
 }) {
   closeCompactSettings({});
-  const didCompact = await compactCurrentBranch({
+  const didCompact = await chatCompact.run({
     keepRecentMessages: keepCount,
     instructionOverride: instruction,
   });
@@ -784,15 +802,15 @@ async function handleConfirmCompact({
 }
 
 function handleAbortContextCompact(_args: Record<never, never>) {
-  abortContextCompact({ chatId: currentChat.value?.id });
+  chatCompact.abort({});
 }
 
 function handleSwitchVersion({ messageId }: { messageId: string }) {
-  chatStore.switchVersion({ messageId });
+  void chatHistory.switchVersion({ messageId });
 }
 
 async function handleFork({ messageId }: { messageId: string }) {
-  const newId = await chatStore.forkChat({ messageId });
+  const newId = await chatHistory.forkChat({ messageId });
   if (newId) {
     router.push(`/chat/${newId}`);
   }
@@ -925,7 +943,7 @@ watch(
       :has-overrides="!!(currentChat && hasChatOverrides({ chat: currentChat }))"
       :show-chat-settings="showChatSettings"
       :outline-visibility="outlineVisibility"
-      :generating-title="generatingTitle"
+      :generating-title="isGeneratingTitle"
       :media-shelf-visibility="mediaShelfVisibility"
       :is-chat-wesh-terminal-open="isChatWeshTerminalOpen"
       @jump-origin="jumpToOrigin"
@@ -943,7 +961,7 @@ watch(
       @share-url="shareAsURL"
       @open-file-explorer="openChatFileExplorer({})"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
-      @toggle-debug="() => chatStore.toggleDebug({})"
+      @toggle-debug="() => chatDebug.toggle({})"
     />
 
     <!-- Chat Settings Panel -->
@@ -959,7 +977,7 @@ watch(
       :selected-title-model="activeTitleModelId"
       :title-model-source="activeTitleModelSource"
       :generated-titles="generatedTitleHistory"
-      :generating-title="generatingTitle"
+      :generating-title="isGeneratingTitle"
       :fetching-models="fetchingModels"
       @close="showTitleDialog = false"
       @save-title="title => handleSaveTitle({ title })"
@@ -1078,7 +1096,7 @@ watch(
                       :id="'message-' + subItem.node.id"
                       :chat-id="currentChat!.id"
                       :message="subItem.node"
-                      :siblings="chatStore.getSiblings({ messageId: subItem.node.id })"
+                      :siblings="chatHistory.getSiblings({ messageId: subItem.node.id })"
                       :can-generate-image="canGenerateImage && hasImageModel"
                       :is-processing="isCurrentChatStreaming"
                       :is-generating="isCurrentChatStreaming && subItem.node.id === currentChat?.currentLeafId"
@@ -1094,7 +1112,7 @@ watch(
                       @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                       @switch-version="messageId => handleSwitchVersion({ messageId })"
                       @regenerate="messageId => handleRegenerate({ messageId })"
-                      @abort="chatStore.abortChat({ chatId: undefined })"
+                      @abort="chatGeneration.abort({})"
                     />
                     <ToolCallGroupItem
                       v-else-if="subItem.type === 'tool_group' && isExpanded"
@@ -1112,7 +1130,7 @@ watch(
                 :id="'message-' + flowItem.node.id"
                 :chat-id="currentChat!.id"
                 :message="flowItem.node"
-                :siblings="chatStore.getSiblings({ messageId: flowItem.node.id })"
+                :siblings="chatHistory.getSiblings({ messageId: flowItem.node.id })"
                 :can-generate-image="canGenerateImage && hasImageModel"
                 :is-processing="isCurrentChatStreaming"
                 :is-generating="isCurrentChatStreaming && flowItem.node.id === currentChat?.currentLeafId"
@@ -1129,7 +1147,7 @@ watch(
                 @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                 @switch-version="messageId => handleSwitchVersion({ messageId })"
                 @regenerate="messageId => handleRegenerate({ messageId })"
-                @abort="chatStore.abortChat({ chatId: undefined })"
+                @abort="chatGeneration.abort({})"
               />
 
               <!-- Standalone Tool Group -->
@@ -1171,11 +1189,11 @@ watch(
 
       <!-- Chat State Inspector (Debug Mode) -->
       <ChatDebugInspector
-        v-if="currentChat?.debugEnabled"
-        :show="currentChat.debugEnabled"
+        v-if="isDebugEnabled"
+        :show="isDebugEnabled"
         :chat="currentChat"
         :active-messages="activeMessages"
-        @close="() => chatStore.toggleDebug({})"
+        @close="() => chatDebug.toggle({})"
         data-testid="chat-inspector"
       />
     </div>
@@ -1191,6 +1209,7 @@ watch(
     <ChatInput
       v-if="currentChat"
       ref="chatInputRef"
+      :chat-id="currentChat.id"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
       :is-streaming="isCurrentChatStreaming"

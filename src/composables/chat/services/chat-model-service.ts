@@ -1,9 +1,9 @@
-import { ref, toRaw, type Ref } from 'vue';
+import { toRaw, type Ref } from 'vue';
 import type { Chat, ChatGroup, EndpointType, Settings } from '@/models/types';
 import { OpenAIProvider } from '@/services/lm/openai';
 import { OllamaProvider } from '@/services/lm/ollama';
 import { TransformersJsProvider } from '@/services/transformers-js/provider';
-import type { ChatRuntimeStore } from './chat-runtime-store';
+import type { ChatRuntimeStore } from '@/composables/chat/global/chat-runtime-store';
 
 export type ChatModelService = {
   availableModels: Ref<string[]>;
@@ -28,6 +28,7 @@ export function createChatModelService({
   getSettings,
   triggerCurrentChat,
   runtimeStore,
+  availableModelsRef,
   addErrorEvent,
 }: {
   currentChatRef: Ref<Chat | null>;
@@ -40,6 +41,7 @@ export function createChatModelService({
   };
   triggerCurrentChat: ({ chatId }: { chatId: string }) => void;
   runtimeStore: ChatRuntimeStore;
+  availableModelsRef: Ref<string[]>;
   addErrorEvent: ({
     source,
     message,
@@ -50,7 +52,7 @@ export function createChatModelService({
     details: string;
   }) => void;
 }): ChatModelService {
-  const availableModels = ref<string[]>([]);
+  const availableModels = availableModelsRef;
 
   async function fetchAvailableModels({
     chatId,

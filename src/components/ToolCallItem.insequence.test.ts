@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { h } from 'vue';
+import { computed, h } from 'vue';
 import ToolCallItem from './ToolCallItem.vue';
 import type { CombinedToolCall } from '@/models/types';
+import { useToolCallOutput } from '@/composables/chat/ui/useToolCallOutput';
 
 vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
@@ -21,10 +22,8 @@ vi.mock('@/services/storage', () => ({
   storageService: { getFile: vi.fn() },
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    getVolatileToolOutput: vi.fn().mockReturnValue(undefined),
-  }),
+vi.mock('@/composables/chat/ui/useToolCallOutput', () => ({
+  useToolCallOutput: vi.fn(),
 }));
 
 const makeToolCall = (): CombinedToolCall => ({
@@ -37,6 +36,13 @@ const makeToolCall = (): CombinedToolCall => ({
 const inSeq = { global: { provide: { inSequence: true } } };
 
 describe('ToolCallItem detail state machine', () => {
+  beforeEach(() => {
+    vi.mocked(useToolCallOutput).mockReturnValue({
+      getOutput: vi.fn().mockReturnValue(computed(() => undefined)),
+      TEST_ONLY: {},
+    });
+  });
+
   it('starts in expanded state outside a sequence', () => {
     const wrapper = mount(ToolCallItem, { props: { toolCall: makeToolCall() } });
     expect(wrapper.vm.TEST_ONLY.detailState.value).toBe('expanded');

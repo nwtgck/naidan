@@ -10,7 +10,7 @@ import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
 import { Loader2Icon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
-import { useChat } from '@/composables/useChat';
+import { useChatAdminActions } from '@/composables/chat/ui/useChatAdminActions';
 import { useSampleChat } from '@/composables/useSampleChat';
 import { storageService } from '@/services/storage';
 import type { ProviderProfile } from '@/models/types';
@@ -53,11 +53,11 @@ vi.mock('../composables/useSettings', () => ({
   })),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(() => ({
+vi.mock('../composables/chat/ui/useChatAdminActions', () => ({
+  useChatAdminActions: vi.fn(() => ({
     deleteAllChats: vi.fn(),
     createChatGroup: vi.fn(),
-    resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+    TEST_ONLY: {},
   })),
 }));
 
@@ -213,10 +213,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       }),
     });
 
-    (useChat as unknown as Mock).mockReturnValue({
+    (useChatAdminActions as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
       createChatGroup: vi.fn(),
-      resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+      TEST_ONLY: {},
     });
 
     (useSampleChat as unknown as Mock).mockReturnValue({
@@ -800,9 +800,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('triggers clear all history after confirmation and navigates to root', async () => {
       const mockDeleteAllChats = vi.fn();
 
-      (useChat as unknown as Mock).mockReturnValue({
+      (useChatAdminActions as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
-        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+        createChatGroup: vi.fn(),
+        TEST_ONLY: {},
       });
 
       const wrapper = mount(SettingsModal, {
@@ -838,13 +839,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('does not reset onboarding flag when clearing history', async () => {
-      // We check this by verifying that useChat's deleteAllChats is called,
+      // We check this by verifying that the admin action's deleteAllChats is called,
       // and then in our manual verification of the code we've ensured
       // it doesn't touch the flag. From a UI perspective, the flag is in settingsStore.
       const mockDeleteAllChats = vi.fn();
-      (useChat as unknown as Mock).mockReturnValue({
+      (useChatAdminActions as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
-        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+        createChatGroup: vi.fn(),
+        TEST_ONLY: {},
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -1203,9 +1205,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   describe('Recipe Integration', () => {
     it('creates chat groups when handleImportRecipes is called', async () => {
       const mockCreateChatGroup = vi.fn().mockResolvedValue('new-id');
-      (useChat as unknown as Mock).mockReturnValue({
+      (useChatAdminActions as unknown as Mock).mockReturnValue({
+        deleteAllChats: vi.fn(),
         createChatGroup: mockCreateChatGroup,
-        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+        TEST_ONLY: {},
       });
 
       const wrapper = mount(SettingsModal, {
@@ -1249,9 +1252,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     it('shows error toast when recipe import fails', async () => {
       const mockCreateChatGroup = vi.fn().mockRejectedValue(new Error('Import failed'));
-      (useChat as unknown as Mock).mockReturnValue({
+      (useChatAdminActions as unknown as Mock).mockReturnValue({
+        deleteAllChats: vi.fn(),
         createChatGroup: mockCreateChatGroup,
-        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+        TEST_ONLY: {},
       });
 
       const wrapper = mount(SettingsModal, {

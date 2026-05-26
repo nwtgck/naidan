@@ -112,6 +112,24 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: () => ({
+    currentChat: mockCurrentChat,
+    currentChatGroup: ref(null),
+    activeMessages: mockActiveMessages,
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: mockResolvedSettings,
+    inheritedSettings: ref({ modelId: 'm', sources: { modelId: 'global' } }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
+  useChatRuntime: () => ({
+    isProcessing: computed(() => true),
+    contextCompactProgress: ref({ phase: 'idle' }),
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointType: 'transformers_js' }),

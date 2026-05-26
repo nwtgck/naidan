@@ -30,9 +30,10 @@ vi.mock('@/services/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mocks.createClient,
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/ui/useChatTmpDirectory', () => ({
+  useChatTmpDirectory: () => ({
     ensureChatTmpDirectory: mocks.ensureChatTmpDirectory,
+    TEST_ONLY: {},
   }),
 }));
 

@@ -3,7 +3,7 @@ import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
-import { useChat } from '@/composables/useChat';
+import { useSidebarData } from '@/composables/chat/ui/useSidebarData';
 import { useSettings } from '@/composables/useSettings';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
@@ -29,10 +29,10 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
 import { scrollIntoViewSafe } from '@/utils/dom';
 
-const chatStore = useChat();
+const sidebarData = useSidebarData();
 const {
-  currentChat, currentChatGroup, isProcessing,
-} = chatStore;
+  currentChat, currentChatGroup, isProcessing, sidebarItems, chatGroups,
+} = sidebarData;
 
 const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
 const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
@@ -400,12 +400,12 @@ function syncLocalItems() {
   if (isDragging.value || isInternalUpdate) return;
   const previousRects = captureSidebarItemRects();
   // Use JSON.parse/stringify for robust deep cloning of reactive objects in test environments
-  sidebarItemsLocal.value = JSON.parse(JSON.stringify(chatStore.sidebarItems.value));
+  sidebarItemsLocal.value = JSON.parse(JSON.stringify(sidebarItems.value));
   animateSidebarItemMoves({ previousRects });
 }
 
 // Watch for external sidebar changes (new chats, deletions, reordering) to sync local list
-watch(() => chatStore.sidebarItems.value, () => {
+watch(() => sidebarItems.value, () => {
   syncLocalItems();
 }, { deep: true });
 
@@ -423,7 +423,7 @@ async function onDragEnd() {
     dragHoverTimeout = null;
   }
   // Sync the UI structure to storage
-  await chatStore.persistSidebarStructure({ topLevelItems: sidebarItemsLocal.value });
+  await sidebarData.persistSidebarStructure({ topLevelItems: sidebarItemsLocal.value });
 
   // Wait for DOM and Sortable cleanup
   await nextTick();
@@ -441,9 +441,9 @@ function onDragOverGroup({ groupId }: { groupId: string }) {
   if (dragHoverTimeout) clearTimeout(dragHoverTimeout);
 
   dragHoverTimeout = setTimeout(() => {
-    const group = chatStore.chatGroups.value.find(g => g.id === groupId);
+    const group = chatGroups.value.find(g => g.id === groupId);
     if (group && group.isCollapsed) {
-      chatStore.setChatGroupCollapsed({ groupId, isCollapsed: false });
+      sidebarData.setChatGroupCollapsed({ groupId, isCollapsed: false });
     }
   }, 600); // 600ms hover to expand
 }
@@ -488,7 +488,7 @@ async function handleCreateChatGroup() {
     return;
   }
   skipLeaveAnimation.value = true;
-  await chatStore.createChatGroup({ name });
+  await sidebarData.createChatGroup({ name });
   newChatGroupName.value = '';
   isCreatingChatGroup.value = false;
   // Reset flag after transition would have finished
@@ -525,12 +525,12 @@ async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
     if (!confirmed) return;
   }
 
-  await chatStore.deleteChatGroup({ id: group.id });
+  await sidebarData.deleteChatGroup({ id: group.id });
 }
 
 async function handleNewChat({ groupId }: { groupId: string | undefined }) {
   setActiveFocusArea({ area: 'chat' });
-  await chatStore.createNewChat({
+  await sidebarData.createNewChat({
     groupId,
     modelId: undefined,
     systemPrompt: undefined
@@ -541,12 +541,12 @@ async function handleNewChat({ groupId }: { groupId: string | undefined }) {
 }
 
 async function handleOpenChat({ id }: { id: string }) {
-  await chatStore.openChat({ id });
+  await sidebarData.openChat({ id });
   router.push(`/chat/${id}`);
 }
 
 async function handleOpenChatGroup({ id }: { id: string }) {
-  chatStore.openChatGroup({ id });
+  sidebarData.openChatGroup({ id });
   router.push(`/chat-group/${id}`);
 }
 
@@ -559,7 +559,7 @@ watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId,
 
 async function handleDeleteChat({ id }: { id: string }) {
   const isCurrent = currentChat.value?.id === id;
-  await chatStore.deleteChat({ id });
+  await sidebarData.deleteChat({ id });
   if (isCurrent) router.push('/');
 }
 
@@ -570,7 +570,7 @@ function startEditing({ id, title }: { id: string; title: string | null }) {
 
 async function saveRename() {
   if (editingId.value && editingTitle.value.trim()) {
-    await chatStore.renameChat({ id: editingId.value, newTitle: editingTitle.value.trim() });
+    await sidebarData.renameChat({ id: editingId.value, newTitle: editingTitle.value.trim() });
   }
   editingId.value = null;
 }
@@ -582,7 +582,7 @@ function startEditingChatGroup({ chatGroup }: { chatGroup: ChatGroup }) {
 
 async function saveChatGroupRename() {
   if (editingChatGroupId.value && editingChatGroupName.value.trim()) {
-    await chatStore.renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
+    await sidebarData.renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
   }
   editingChatGroupId.value = null;
 }
@@ -636,7 +636,7 @@ function handleToggleChatGroupCollapse({ chatGroup }: { chatGroup: ChatGroup }) 
   }
 
   // Persist to store
-  chatStore.setChatGroupCollapsed({
+  sidebarData.setChatGroupCollapsed({
     groupId: chatGroup.id,
     isCollapsed: chatGroup.isCollapsed
   });
@@ -757,7 +757,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
 
     const groupId = currentChatGroup.value?.id;
     if (groupId) {
-      const group = chatStore.chatGroups.value.find(g => g.id === groupId);
+      const group = chatGroups.value.find(g => g.id === groupId);
       if (group) {
         if (e.key === 'ArrowRight' && group.isCollapsed) {
           e.preventDefault();
@@ -975,7 +975,7 @@ defineExpose({
                       :chat-group="element.chatGroup"
                       :is-open="activeActionGroupId === element.chatGroup.id"
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
-                      @duplicate="() => { chatStore.duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
+                      @duplicate="() => { sidebarData.duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
                       @delete="() => { handleDeleteChatGroup({ group: element.chatGroup }); activeActionGroupId = null; }"
                       @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
                     />

@@ -1,6 +1,6 @@
 import { storageService } from '@/services/storage';
 import { useSettings } from '@/composables/useSettings';
-import { useChat } from '@/composables/useChat';
+import { useChatTmpDirectory } from '@/composables/chat/ui/useChatTmpDirectory';
 import { createWeshTerminalSessions } from '@/composables/useWeshTerminalSessions';
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
@@ -28,11 +28,11 @@ export async function buildWorkerMountsForChat({
   naidanSysfsVisibility: NaidanSysfsMountSelection;
 }): Promise<WeshMount[]> {
   const { settings } = useSettings();
+  const { ensureChatTmpDirectory } = useChatTmpDirectory();
   const result: WeshMount[] = [];
 
   // /tmp first (same order as shell_execute tool), only for OPFS-backed chats.
   if (chatId && shouldIncludeWritableTmpMount({ storageType: settings.value.storageType })) {
-    const { ensureChatTmpDirectory } = useChat();
     const tmp = await ensureChatTmpDirectory({ chatId });
     result.push({ type: 'directory', path: '/tmp', handle: tmp.handle, readOnly: false });
   }

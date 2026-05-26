@@ -33,6 +33,14 @@ export type ChatHistoryService = {
     chatId?: string;
   }): Promise<string | null>;
 
+  forkChatForChat({
+    chatId,
+    messageId,
+  }: {
+    chatId: string;
+    messageId: string;
+  }): Promise<string | null>;
+
   editMessage({
     messageId,
     newContent,
@@ -43,9 +51,29 @@ export type ChatHistoryService = {
     lmParameters?: LmParameters;
   }): Promise<void>;
 
+  editMessageForChat({
+    chatId,
+    messageId,
+    newContent,
+    lmParameters,
+  }: {
+    chatId: string;
+    messageId: string;
+    newContent: string;
+    lmParameters?: LmParameters;
+  }): Promise<void>;
+
   switchVersion({
     messageId,
   }: {
+    messageId: string;
+  }): Promise<void>;
+
+  switchVersionForChat({
+    chatId,
+    messageId,
+  }: {
+    chatId: string;
     messageId: string;
   }): Promise<void>;
 
@@ -133,6 +161,23 @@ export function createChatHistoryService({
   }) => Promise<void>;
   triggerCurrentChat: ({ chatId }: { chatId: string }) => void;
 }): ChatHistoryService {
+  function getTargetChat({
+    chatId,
+  }: {
+    chatId: string | undefined;
+  }): Chat | null {
+    if (chatId) {
+      const target = liveChatRegistry.get(chatId);
+      return target ? getLiveChat({ chat: target }) : null;
+    }
+
+    if (!currentChatRef.value) {
+      return null;
+    }
+
+    return getLiveChat({ chat: currentChatRef.value });
+  }
+
   async function forkChat({
     messageId,
     chatId,
@@ -140,9 +185,8 @@ export function createChatHistoryService({
     messageId: string;
     chatId?: string;
   }) {
-    const target = chatId ? liveChatRegistry.get(chatId) : currentChatRef.value;
-    if (!target) return null;
-    const mutableChat = getLiveChat({ chat: target });
+    const mutableChat = getTargetChat({ chatId });
+    if (!mutableChat) return null;
     const path = Array.from(getChatBranchIterator({ chat: mutableChat }));
     const idx = path.findIndex(message => message.id === messageId);
     if (idx === -1) return null;
@@ -253,6 +297,19 @@ export function createChatHistoryService({
     return newChat.id;
   }
 
+  async function forkChatForChat({
+    chatId,
+    messageId,
+  }: {
+    chatId: string;
+    messageId: string;
+  }) {
+    return await forkChat({
+      chatId,
+      messageId,
+    });
+  }
+
   async function editMessage({
     messageId,
     newContent,
@@ -263,7 +320,25 @@ export function createChatHistoryService({
     lmParameters?: LmParameters;
   }) {
     if (!currentChatRef.value) return;
-    const chatId = toRaw(currentChatRef.value).id;
+    await editMessageForChat({
+      chatId: toRaw(currentChatRef.value).id,
+      messageId,
+      newContent,
+      lmParameters,
+    });
+  }
+
+  async function editMessageForChat({
+    chatId,
+    messageId,
+    newContent,
+    lmParameters,
+  }: {
+    chatId: string;
+    messageId: string;
+    newContent: string;
+    lmParameters?: LmParameters;
+  }) {
     if (isProcessing({ chatId })) {
       abortChat({ chatId });
       while (isProcessing({ chatId })) {
@@ -271,7 +346,8 @@ export function createChatHistoryService({
       }
     }
 
-    const chat = getLiveChat({ chat: currentChatRef.value });
+    const chat = getTargetChat({ chatId });
+    if (!chat) return;
     const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
     if (!node) return;
 
@@ -339,7 +415,21 @@ export function createChatHistoryService({
     messageId: string;
   }) {
     if (!currentChatRef.value) return;
-    const chat = getLiveChat({ chat: currentChatRef.value });
+    await switchVersionForChat({
+      chatId: toRaw(currentChatRef.value).id,
+      messageId,
+    });
+  }
+
+  async function switchVersionForChat({
+    chatId,
+    messageId,
+  }: {
+    chatId: string;
+    messageId: string;
+  }) {
+    const chat = getTargetChat({ chatId });
+    if (!chat) return;
     const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
     if (!node) return;
     chat.currentLeafId = findDeepestLeaf({ node }).id;
@@ -436,8 +526,11 @@ export function createChatHistoryService({
 
   return {
     forkChat,
+    forkChatForChat,
     editMessage,
+    editMessageForChat,
     switchVersion,
+    switchVersionForChat,
     getSiblings,
     commitFullHistoryManipulation,
   };

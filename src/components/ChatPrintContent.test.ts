@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import ChatPrintContent from './ChatPrintContent.vue';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
 
 // Mock dependencies
 const mockMarkPrintReady = vi.fn();
@@ -20,12 +22,12 @@ const mockActiveMessages = ref<any[]>([
   { id: 'msg_2', role: 'assistant', content: 'World' }
 ]);
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    currentChat: mockCurrentChat,
-    activeMessages: mockActiveMessages,
-    getSiblings: vi.fn(() => [])
-  }),
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatHistory', () => ({
+  useChatHistory: vi.fn(),
 }));
 
 // Mock MessageItem to avoid complex rendering
@@ -40,6 +42,24 @@ vi.mock('./MessageItem.vue', () => ({
 describe('ChatPrintContent component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatId: computed(() => mockCurrentChat.value?.id),
+      activeMessages: computed(() => mockActiveMessages.value),
+      currentChatGroup: computed(() => null),
+      allMessages: computed(() => mockActiveMessages.value),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      chatGroups: computed(() => []),
+      TEST_ONLY: {},
+    } as ReturnType<typeof useCurrentChatState>);
+    vi.mocked(useChatHistory).mockReturnValue({
+      editMessage: vi.fn(),
+      switchVersion: vi.fn(),
+      forkChat: vi.fn(),
+      getSiblings: vi.fn(() => []),
+      TEST_ONLY: {},
+    } as unknown as ReturnType<typeof useChatHistory>);
   });
 
   it('should call markPrintReady when mounted', () => {

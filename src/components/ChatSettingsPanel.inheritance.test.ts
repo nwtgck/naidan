@@ -3,11 +3,16 @@ import { mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import ModelSelector from './ModelSelector.vue';
-import { useChat } from '@/composables/useChat';
+import { useChatSettingsPanel } from '@/composables/chat/chat-scoped/useChatSettingsPanel';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(),
+vi.mock('../composables/chat/chat-scoped/useChatSettingsPanel', () => ({
+  useChatSettingsPanel: vi.fn(),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -62,12 +67,20 @@ describe('ChatSettingsPanel Inheritance UI', () => {
 
     const mockInheritedSettings = mockResolvedSettings; // In these tests they are same because chat has no overrides
 
-    (useChat as unknown as Mock).mockReturnValue({
+    (useCurrentChatState as unknown as Mock).mockReturnValue({
+      currentChatId: computed(() => mockCurrentChat.value?.id),
+      TEST_ONLY: {},
+    });
+
+    (useChatSettingsPanel as unknown as Mock).mockReturnValue({
       currentChat: mockCurrentChat,
-      fetchingModels: ref(false),
-      saveChat: vi.fn(),
+      fetchingModels: computed(() => false),
+      availableModels: ref([]),
       resolvedSettings: mockResolvedSettings,
       inheritedSettings: mockInheritedSettings,
+      updateSettings: vi.fn(),
+      fetchModels: vi.fn(),
+      TEST_ONLY: {},
     });
 
     (useSettings as unknown as Mock).mockReturnValue({

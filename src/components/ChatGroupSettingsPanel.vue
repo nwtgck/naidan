@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { useChatGroupSettingsPanel } from '@/composables/chat/ui/useChatGroupSettingsPanel';
 import {
   Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon,
@@ -34,14 +34,15 @@ import { naturalSort } from '@/utils/string';
 import { hasGroupOverrides } from '@/utils/chat-settings-resolver';
 import type { WeshMount } from '@/services/wesh/types';
 
-const chatStore = useChat();
 const {
   currentChatGroup,
   fetchingModels,
-  addMountToChatGroup,
-  removeMountFromChatGroup,
-  updateChatGroupMount,
-} = chatStore;
+  updateMetadata,
+  fetchModels: fetchGroupModels,
+  addMount,
+  removeMount,
+  updateMount,
+} = useChatGroupSettingsPanel();
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 const { openFileExplorer } = useFileExplorerModal();
@@ -67,7 +68,7 @@ const existingChatGroupMountPaths = computed(() => chatGroupMounts.value.map(m =
 
 async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
   if (!currentChatGroup.value) return;
-  await addMountToChatGroup({
+  await addMount({
     groupId: currentChatGroup.value.id,
     mount: { type: 'volume', volumeId, mountPath, readOnly },
   });
@@ -75,14 +76,14 @@ async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId
 
 async function handleChatGroupMountRemove({ volumeId }: { volumeId: string }) {
   if (!currentChatGroup.value) return;
-  await removeMountFromChatGroup({ groupId: currentChatGroup.value.id, volumeId });
+  await removeMount({ groupId: currentChatGroup.value.id, volumeId });
 }
 
 async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
   if (!currentChatGroup.value) return;
   const mount = chatGroupMounts.value.find(m => m.volumeId === volumeId);
   if (!mount) return;
-  await updateChatGroupMount({ groupId: currentChatGroup.value.id, volumeId, mountPath: mount.mountPath, readOnly });
+  await updateMount({ groupId: currentChatGroup.value.id, volumeId, mountPath: mount.mountPath, readOnly });
 }
 
 async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {
@@ -154,7 +155,7 @@ const hasActiveOverrides = computed(() => {
 
 async function saveChanges() {
   if (currentChatGroup.value) {
-    await chatStore.updateChatGroupMetadata({ id: currentChatGroup.value.id, updates: localSettings.value });
+    await updateMetadata({ groupId: currentChatGroup.value.id, updates: localSettings.value });
   }
 }
 
@@ -215,7 +216,11 @@ async function fetchModels() {
 
     try {
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const models = await chatStore.fetchAvailableModels({ chatId: undefined, customEndpoint: { type, url, headers: mutableHeaders } });
+      const models = await fetchGroupModels({
+        endpointType: type,
+        endpointUrl: url,
+        endpointHttpHeaders: mutableHeaders,
+      });
       groupModels.value = models;
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
@@ -296,7 +301,7 @@ async function setGroupNameFromModelId() {
   if (!modelId || !currentChatGroup.value) return;
 
   const newName = modelId.split('/').pop() || modelId;
-  await chatStore.updateChatGroupMetadata({ id: currentChatGroup.value.id, updates: { name: newName } });
+  await updateMetadata({ groupId: currentChatGroup.value.id, updates: { name: newName } });
 }
 
 

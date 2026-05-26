@@ -3,7 +3,8 @@ import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { XIcon, EyeIcon, SearchIcon } from 'lucide-vue-next';
 import { useRecentChats } from '@/composables/useRecentChats';
-import { useChat } from '@/composables/useChat';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
@@ -15,7 +16,8 @@ const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => impor
 
 const router = useRouter();
 const { isRecentOpen, closeRecent, recentChats } = useRecentChats();
-const { openChat, chatGroups } = useChat();
+const { openChat } = useChatNavigation();
+const { chatGroups } = useCurrentChatState();
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
   searchPreviewMode,
@@ -171,7 +173,7 @@ async function selectItem({ index }: { index: number }) {
   const target = filteredRecentChats.value[index];
   if (!target) return;
 
-  await openChat({ id: target.id });
+  await openChat({ chatId: target.id });
   router.push(`/chat/${target.id}`);
   closeRecent();
 }

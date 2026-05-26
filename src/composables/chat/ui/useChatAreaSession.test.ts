@@ -1,6 +1,6 @@
 import { computed, nextTick, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useChatAreaSession } from './chat-area-session';
+import { useChatAreaSession } from './useChatAreaSession';
 
 describe('useChatAreaSession', () => {
   beforeEach(() => {

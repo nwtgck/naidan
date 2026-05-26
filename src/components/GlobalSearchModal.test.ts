@@ -3,6 +3,8 @@ import { mount } from '@vue/test-utils';
 import GlobalSearchModal from './GlobalSearchModal.vue';
 import { ref, nextTick } from 'vue';
 import { setupScrollToMock } from '@/utils/test-utils';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
 // --- Mocks ---
 
@@ -59,14 +61,12 @@ vi.mock('../composables/useChatSearch', () => ({
 const mockOpenChat = vi.fn();
 const mockOpenChatAtMessage = vi.fn();
 const mockOpenChatGroup = vi.fn();
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    openChat: mockOpenChat,
-    openChatAtMessage: mockOpenChatAtMessage,
-    openChatGroup: mockOpenChatGroup,
-    chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
-    currentChat: ref(null),
-  }),
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: vi.fn(),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -115,6 +115,23 @@ describe('GlobalSearchModal Component', () => {
     mockChatId.value = undefined;
     mockResults.value = [];
     vi.clearAllMocks();
+    vi.mocked(useChatNavigation).mockReturnValue({
+      openChat: vi.fn().mockImplementation(async ({ chatId }) => {
+        await mockOpenChat({ id: chatId });
+      }),
+      openChatAtMessage: vi.fn().mockImplementation(async ({ chatId, messageId }) => {
+        await mockOpenChatAtMessage({ chatId, messageId });
+      }),
+      openChatGroup: vi.fn().mockImplementation(({ groupId }) => {
+        mockOpenChatGroup({ id: groupId });
+      }),
+      TEST_ONLY: {},
+    });
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
+      currentChat: ref(null),
+      TEST_ONLY: {},
+    } as ReturnType<typeof useCurrentChatState>);
   });
 
   it('should render when open', () => {

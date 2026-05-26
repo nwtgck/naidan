@@ -3,7 +3,7 @@ import { HammerIcon, CheckCircle2Icon, AlertCircleIcon, ChevronDownIcon, Chevron
 import { ref, watch, onMounted, nextTick, inject, computed, markRaw } from 'vue';
 import type { CombinedToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { useChat } from '@/composables/useChat';
+import { useToolCallOutput } from '@/composables/chat/ui/useToolCallOutput';
 import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
 
 const props = defineProps<{
@@ -11,7 +11,7 @@ const props = defineProps<{
 }>();
 
 const inSequence = inject<boolean>('inSequence', false);
-const chatStore = useChat();
+const toolCallOutput = useToolCallOutput();
 
 type DetailState = 'collapsed' | 'preview' | 'expanded';
 
@@ -103,18 +103,10 @@ const specializedContent = computed(() => {
 });
 
 const liveOutput = computed(() => {
-  const status = props.toolCall.result.status;
-  switch (status) {
-  case 'executing':
-    return chatStore.getVolatileToolOutput({ toolCallId: props.toolCall.id }) || undefined;
-  case 'success':
-  case 'error':
-    return undefined;
-  default: {
-    const _ex: never = status;
-    throw new Error(`Unhandled tool result status: ${_ex}`);
-  }
-  }
+  return toolCallOutput.getOutput({
+    toolCallId: props.toolCall.id,
+    status: props.toolCall.result.status,
+  }).value;
 });
 
 // Content area click in preview: expand fully.

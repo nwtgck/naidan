@@ -4,6 +4,8 @@ import RecentChatsModal from './RecentChatsModal.vue';
 import { ref, nextTick } from 'vue';
 import type { ChatSummary } from '@/models/types';
 import { setupScrollToMock } from '@/utils/test-utils';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
 // --- Mocks ---
 
@@ -20,11 +22,12 @@ vi.mock('../composables/useRecentChats', () => ({
 }));
 
 const mockOpenChat = vi.fn();
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    openChat: mockOpenChat,
-    chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
-  }),
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: vi.fn(),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -90,6 +93,18 @@ describe('RecentChatsModal Component', () => {
       { id: 'c2', title: null, accessedAt: Date.now() - 1000, updatedAt: Date.now() - 1000 },
     ];
     vi.clearAllMocks();
+    vi.mocked(useChatNavigation).mockReturnValue({
+      openChat: vi.fn().mockImplementation(async ({ chatId }) => {
+        await mockOpenChat({ id: chatId });
+      }),
+      openChatAtMessage: vi.fn(),
+      openChatGroup: vi.fn(),
+      TEST_ONLY: {},
+    });
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
+      TEST_ONLY: {},
+    } as ReturnType<typeof useCurrentChatState>);
   });
 
   it('should render when open', () => {

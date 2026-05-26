@@ -133,9 +133,6 @@ vi.mock('../composables/useChat', () => ({
     fetchAvailableModels: mockFetchAvailableModels,
     generateChatTitle: mockGenerateChatTitle,
     abortTitleGeneration: mockAbortTitleGeneration,
-    compactCurrentBranch: mockCompactCurrentBranch,
-    abortContextCompact: mockAbortContextCompact,
-    contextCompactProgress: mockContextCompactProgress,
     isGeneratingTitle: vi.fn(({ chatId: _chatId }) => mockGeneratingTitle.value),
     forkChat: vi.fn().mockResolvedValue('new-id'),
     openChatGroup: mockOpenChatGroup,
@@ -189,6 +186,32 @@ vi.mock('../composables/useChat', () => ({
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(() => false),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatCompact', () => ({
+  useChatCompact: () => ({
+    progress: mockContextCompactProgress,
+    run: mockCompactCurrentBranch,
+    abort: mockAbortContextCompact,
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: () => ({
+    currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
+    activeMessages: mockActiveMessages,
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
+    inheritedSettings: mockInheritedSettings,
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
+  useChatRuntime: () => ({
+    isProcessing: computed(() => !!mockCurrentChat.value && (mockStreaming.value || mockActiveGenerations.has(mockCurrentChat.value.id))),
+    contextCompactProgress: mockContextCompactProgress,
   }),
 }));
 

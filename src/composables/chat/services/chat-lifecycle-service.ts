@@ -1,4 +1,4 @@
-import { reactive, ref, toRaw, type Ref } from 'vue';
+import { reactive, toRaw, type Ref } from 'vue';
 import { generateId } from '@/utils/id';
 import type { Chat, ChatGroup, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/models/types';
 
@@ -35,6 +35,7 @@ export type ChatLifecycleService = {
 export function createChatLifecycleService({
   currentChatRef,
   currentChatGroupRef,
+  creatingChatRef,
   registerLiveInstance,
   updateChatContent,
   updateChatMeta,
@@ -60,6 +61,7 @@ export function createChatLifecycleService({
 }: {
   currentChatRef: Ref<Chat | null>;
   currentChatGroupRef: Ref<ChatGroup | null>;
+  creatingChatRef: Ref<boolean>;
   registerLiveInstance: ({ chat }: { chat: Chat }) => void;
   updateChatContent: ({
     id,
@@ -95,8 +97,6 @@ export function createChatLifecycleService({
   deleteLiveChat: ({ chatId }: { chatId: string }) => void;
   deleteChatTmpDirectory: ({ chatId }: { chatId: string }) => void;
 }): ChatLifecycleService {
-  const creatingChat = ref(false);
-
   async function createNewChat({
     groupId,
     modelId,
@@ -106,9 +106,9 @@ export function createChatLifecycleService({
     modelId: string | undefined;
     systemPrompt: SystemPrompt | undefined;
   }) {
-    if (creatingChat.value) return null;
+    if (creatingChatRef.value) return null;
     currentChatGroupRef.value = null;
-    creatingChat.value = true;
+    creatingChatRef.value = true;
     const chatId = generateId();
 
     try {
@@ -154,7 +154,7 @@ export function createChatLifecycleService({
       await loadData({});
       return chatObj;
     } finally {
-      creatingChat.value = false;
+      creatingChatRef.value = false;
     }
   }
 

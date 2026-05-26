@@ -1,7 +1,7 @@
-import { useChat } from './useChat';
+import { useReasoningStore } from '@/composables/chat/ui/useReasoningStore';
 
 export function useReasoning() {
-  const { getReasoningEffort, updateReasoningEffort } = useChat();
+  const { getReasoningEffort, updateReasoningEffort } = useReasoningStore();
 
   return {
     getReasoningEffort,

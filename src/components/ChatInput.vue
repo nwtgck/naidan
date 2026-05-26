@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'vue';
-import { useChat } from '@/composables/useChat';
-import { useChatDraft } from '@/composables/useChatDraft';
 import { useLayout } from '@/composables/useLayout';
 import { generateId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
-import { useReasoning } from '@/composables/useReasoning';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
+import { useChatDraft as useScopedChatDraft } from '@/composables/chat/chat-scoped/useChatDraft';
+import { useChatMedia } from '@/composables/chat/chat-scoped/useChatMedia';
+import { useChatModelSelection } from '@/composables/chat/chat-scoped/useChatModelSelection';
+import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
+import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
+import { useChatReasoning } from '@/composables/chat/chat-scoped/useChatReasoning';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/services/storage';
 import { startVolumeExtensionScan } from '@/services/tools/volume-extension-cache';
@@ -34,42 +38,16 @@ import {
 import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, LmParameters } from '@/models/types';
 
-const chatStore = useChat();
 const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
-const reasoningStore = useReasoning();
-const { getDraft, saveDraft, clearDraft } = useChatDraft();
-const {
-  currentChat,
-  currentChatGroup,
-  availableModels,
-  inheritedSettings,
-  fetchingModels,
-  isImageMode: _isImageMode,
-  toggleImageMode: _toggleImageMode,
-  getResolution,
-  updateResolution: _updateResolution,
-  getCount,
-  updateCount: _updateCount,
-  getPersistAs,
-  updatePersistAs: _updatePersistAs,
-  getSteps,
-  updateSteps: _updateSteps,
-  getSeed,
-  updateSeed: _updateSeed,
-  setImageModel,
-  getSelectedImageModel,
-  addMountToChat,
-  removeMountFromChat,
-  updateChatMount,
-} = chatStore;
 const { showConfirm } = useConfirm();
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
 const props = defineProps<{
+  chatId: string;
   autoSendPrompt?: string;
   visibility: 'submerged' | 'peeking' | 'active';
   isStreaming: boolean;
@@ -91,6 +69,32 @@ const isFocused = ref(false);
 const isHovered = ref(false);
 
 const isCurrentChatStreaming = computed(() => props.isStreaming);
+const currentChatId = computed(() => props.chatId);
+const chatReadModel = useChatReadModel({
+  chatId: currentChatId,
+});
+const chatGeneration = useChatGeneration({
+  chatId: currentChatId,
+});
+const chatDraft = useScopedChatDraft({
+  chatId: currentChatId,
+});
+const chatMedia = useChatMedia({
+  chatId: currentChatId,
+});
+const chatModelSelection = useChatModelSelection({
+  chatId: currentChatId,
+});
+const chatMounts = useChatMounts({
+  chatId: currentChatId,
+});
+const chatReasoning = useChatReasoning({
+  chatId: currentChatId,
+});
+const currentChat = chatReadModel.currentChat;
+const currentChatGroup = chatReadModel.currentChatGroup;
+const inheritedSettings = chatReadModel.inheritedSettings;
+const fetchingModels = chatModelSelection.fetchingModels;
 const canGenerateImage = computed(() => props.canGenerateImage);
 const hasImageModel = computed(() => props.hasImageModel);
 const availableImageModels = computed(() => props.availableImageModels);
@@ -106,95 +110,78 @@ function formatLabel({ value, source }: { value: string | undefined; source: Set
 
 
 const isImageMode = computed({
-  get: () => currentChat.value ? _isImageMode({ chatId: currentChat.value.id }) : false,
+  get: () => chatMedia.isImageMode.value,
   set: () => {
-    if (currentChat.value) {
-      _toggleImageMode({ chatId: currentChat.value.id });
-    }
+    chatMedia.toggleImageMode({});
   }
 });
 
 const currentResolution = computed(() => {
-  return currentChat.value ? getResolution({ chatId: currentChat.value.id }) : { width: 512, height: 512 };
+  return chatMedia.resolution.value;
 });
 
 function updateResolution({ width, height }: { width: number; height: number }) {
-  if (currentChat.value) {
-    _updateResolution({ chatId: currentChat.value.id, width, height });
-  }
+  chatMedia.updateResolution({ width, height });
 }
 
 const currentCount = computed(() => {
-  return currentChat.value ? getCount({ chatId: currentChat.value.id }) : 1;
+  return chatMedia.count.value;
 });
 
 function updateCount({ count }: { count: number }) {
-  if (currentChat.value) {
-    _updateCount({ chatId: currentChat.value.id, count });
-  }
+  chatMedia.updateCount({ count });
 }
 
 const currentPersistAs = computed(() => {
-  return currentChat.value ? getPersistAs({ chatId: currentChat.value.id }) : 'original';
+  return chatMedia.persistAs.value;
 });
 
 function updatePersistAs({ format }: { format: 'original' | 'webp' | 'jpeg' | 'png' }) {
-  if (currentChat.value) {
-    _updatePersistAs({ chatId: currentChat.value.id, format });
-  }
+  chatMedia.updatePersistAs({ format });
 }
 
 const currentSteps = computed(() => {
-  return currentChat.value ? getSteps({ chatId: currentChat.value.id }) : undefined;
+  return chatMedia.steps.value;
 });
 
 function updateSteps({ steps }: { steps: number | undefined }) {
-  if (currentChat.value) {
-    _updateSteps({ chatId: currentChat.value.id, steps });
-  }
+  chatMedia.updateSteps({ steps });
 }
 
 const currentSeed = computed(() => {
-  return currentChat.value ? getSeed({ chatId: currentChat.value.id }) : undefined;
+  return chatMedia.seed.value;
 });
 
 function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
-  if (currentChat.value) {
-    _updateSeed({ chatId: currentChat.value.id, seed });
-  }
+  chatMedia.updateSeed({ seed });
 }
 
 const selectedReasoningEffort = computed(() => {
-  return currentChat.value ? reasoningStore.getReasoningEffort({ chatId: currentChat.value.id }) : undefined;
+  return chatReasoning.effort.value;
 });
 
 function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
-  if (currentChat.value) {
-    reasoningStore.updateReasoningEffort({ chatId: currentChat.value.id, effort });
-  }
+  chatReasoning.updateEffort({ effort });
 }
 
 const selectedImageModel = computed(() => {
-  return currentChat.value ? getSelectedImageModel({ chatId: currentChat.value.id, availableModels: availableModels.value }) : undefined;
+  return chatMedia.selectedImageModel.value;
 });
 
 function handleUpdateImageModel({ modelId }: { modelId: string }) {
-  if (currentChat.value) {
-    setImageModel({ chatId: currentChat.value.id, modelId });
-  }
+  chatMedia.setImageModel({ modelId });
 }
 
 async function fetchModels() {
-  if (currentChat.value) {
-    await chatStore.fetchAvailableModels({ chatId: currentChat.value.id });
-  }
+  await chatModelSelection.fetchModels({});
 }
 
 function toggleImageMode() {
   isImageMode.value = !isImageMode.value;
 }
 
-const sortedAvailableModels = computed(() => naturalSort({ values: availableModels?.value || [] }));
+const sortedAvailableModels = computed(() => naturalSort({ values: chatMedia.availableModels.value || [] }));
+const chatMountList = computed(() => chatMounts.mounts.value);
 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
@@ -328,7 +315,7 @@ async function processFiles({ files }: { files: File[] }) {
 }
 
 function generateChatMountPath({ baseName }: { baseName: string }): string {
-  const existingPaths = (currentChat.value?.mounts ?? []).map(m => m.mountPath);
+  const existingPaths = chatMounts.mounts.value.map(m => m.mountPath);
   const sanitized = baseName.toLowerCase().replace(/[^a-z0-9]/g, '-');
   let path = `/home/user/${sanitized}`;
   const basePath = path;
@@ -343,8 +330,7 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
 async function finishMount({ volumeId, name }: { volumeId: string; name: string }) {
   if (!currentChat.value) return;
   const mountPath = generateChatMountPath({ baseName: name });
-  await addMountToChat({
-    chatId: currentChat.value.id,
+  await chatMounts.addMount({
     mount: { type: 'volume', volumeId, mountPath, readOnly: true },
   });
   setToolEnabled({ name: 'shell_execute', enabled: true });
@@ -531,7 +517,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
 
 async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Promise<void> {
   if (!currentChat.value) return;
-  const mounts = currentChat.value.mounts ?? [];
+  const mounts = chatMounts.mounts.value;
   if (mounts.length === 0) return;
 
   const workerMounts = await buildWorkerMountsForChat({
@@ -586,7 +572,7 @@ async function handleDetachMount({ volumeId }: { volumeId: string }) {
 
   const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
   if (!confirmed) return;
-  await removeMountFromChat({ chatId: currentChat.value.id, volumeId });
+  await chatMounts.removeMount({ volumeId });
   if (volumeType === 'opfs' || volumeType === undefined) {
     await storageService.deleteVolume({ volumeId });
   }
@@ -639,7 +625,7 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: str
   }
   }
 
-  await updateChatMount({ chatId: currentChat.value.id, volumeId, readOnly });
+  await chatMounts.updateMount({ volumeId, readOnly });
 }
 
 async function handlePaste({ event }: { event: ClipboardEvent }) {
@@ -803,7 +789,7 @@ async function handleGenerateImage() {
   const sendingChatId = currentChat.value.id;
   const { width, height } = currentResolution.value;
   const count = currentCount.value;
-  const success = await chatStore.sendImageRequest({
+  const success = await chatMedia.sendImageRequest({
     prompt,
     width,
     height,
@@ -818,7 +804,10 @@ async function handleGenerateImage() {
       input.value = '';
       attachments.value = [];
     }
-    clearDraft({ chatId: sendingChatId });
+    const sendingChatDraft = useScopedChatDraft({
+      chatId: computed(() => sendingChatId),
+    });
+    sendingChatDraft.clearDraft({});
     emit('sent');
     nextTick(() => adjustTextareaHeight({}));
   }
@@ -853,16 +842,24 @@ async function handleSend() {
   }
 
   // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
-  const lmParameters = toRaw(chatStore.resolvedSettings?.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
+  const lmParameters = toRaw(chatReadModel.resolvedSettings.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
 
-  const success = await chatStore.sendMessage({ content: text, parentId: undefined, attachments: currentAttachments, chatTarget: undefined, lmParameters: lmParameters as LmParameters });
+  const success = await chatGeneration.sendMessage({
+    content: text,
+    parentId: undefined,
+    attachments: currentAttachments,
+    lmParameters: lmParameters as LmParameters,
+  });
 
   if (success) {
     if (currentChat.value?.id === sendingChatId) {
       input.value = '';
       attachments.value = [];
     }
-    clearDraft({ chatId: sendingChatId });
+    const sendingChatDraft = useScopedChatDraft({
+      chatId: computed(() => sendingChatId),
+    });
+    sendingChatDraft.clearDraft({});
     emit('sent');
 
     nextTick(() => { // Ensure textarea is cleared before adjusting height
@@ -885,16 +882,19 @@ watch(isMaximized, () => {
 
 watch(
   () => currentChat.value?.id,
-  (newId, oldId) => {
+  (_newId, oldId) => {
     // Save previous draft
-    saveDraft({ chatId: oldId, draft: {
+    const previousChatDraft = useScopedChatDraft({
+      chatId: computed(() => oldId),
+    });
+    previousChatDraft.saveDraft({ draft: {
       input: input.value,
       attachments: attachments.value,
       attachmentUrls: attachmentUrls.value
     } });
 
     // Load new draft
-    const draft = getDraft({ chatId: newId });
+    const draft = chatDraft.getDraft({});
     input.value = draft.input;
     attachments.value = draft.attachments;
     attachmentUrls.value = draft.attachmentUrls;
@@ -960,15 +960,14 @@ useEventTargetListener(window, 'resize', handleWindowResize);
 
 onUnmounted(() => {
   // Save final state
-  saveDraft({ chatId: currentChat.value?.id, draft: {
+  chatDraft.saveDraft({ draft: {
     input: input.value,
     attachments: attachments.value,
     attachmentUrls: attachmentUrls.value
   } });
 
   // Revoke all created URLs across all drafts to prevent leaks
-  const { revokeAll } = useChatDraft();
-  revokeAll();
+  chatDraft.revokeAll({});
 });
 
 function handleFocus() {
@@ -1093,9 +1092,9 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       </div>
 
       <!-- Folder/File Mounts attached to this chat -->
-      <div v-if="currentChat?.mounts && currentChat.mounts.length > 0" class="px-4 pt-4" data-testid="chat-mounts-preview">
+      <div v-if="chatMountList.length > 0" class="px-4 pt-4" data-testid="chat-mounts-preview">
         <MountBadgeList
-          :mounts="currentChat.mounts"
+          :mounts="chatMountList"
           path-trim-prefix="/home/user/"
           :show-explorer="true"
           @toggle-read-only="handleToggleMountReadOnly"
@@ -1142,7 +1141,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @click="setActiveFocusArea({ area: 'chat' })"
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
-        @keydown.esc.prevent="isCurrentChatStreaming ? chatStore.abortChat({ chatId: undefined }) : null"
+        @keydown.esc.prevent="isCurrentChatStreaming ? chatGeneration.abort({}) : null"
         placeholder="Type a message..."
         class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
@@ -1187,7 +1186,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           <div class="w-[100px] sm:w-[180px]">
             <ModelSelector
               :model-value="currentChat.modelId"
-              @update:model-value="val => currentChat && chatStore.updateChatModel({ id: currentChat.id, modelId: val! })"
+              @update:model-value="val => chatModelSelection.updateModel({ modelId: val! })"
               :models="sortedAvailableModels"
               :placeholder="formatLabel({ value: inheritedSettings?.modelId, source: inheritedSettings?.sources.modelId })"
               :loading="fetchingModels"
@@ -1230,7 +1229,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         </div>
 
         <button
-          @click="isCurrentChatStreaming ? chatStore.abortChat({ chatId: undefined }) : handleSend()"
+          @click="isCurrentChatStreaming ? chatGeneration.abort({}) : handleSend()"
           :disabled="!isCurrentChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
           :title="isCurrentChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"

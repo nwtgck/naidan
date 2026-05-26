@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import ChatGroupSearchPreview from './ChatGroupSearchPreview.vue';
 import { nextTick } from 'vue';
 import { storageService } from '@/services/storage';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 
 // --- Mocks ---
 
@@ -28,10 +29,8 @@ vi.mock('../composables/useGlobalSearch', () => ({
 }));
 
 const mockOpenChat = vi.fn();
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    openChat: mockOpenChat,
-  }),
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: vi.fn(),
 }));
 
 // Mock Lucide icons
@@ -55,6 +54,14 @@ describe('ChatGroupSearchPreview Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useChatNavigation).mockReturnValue({
+      openChat: vi.fn().mockImplementation(async ({ chatId }) => {
+        await mockOpenChat({ id: chatId });
+      }),
+      openChatAtMessage: vi.fn(),
+      openChatGroup: vi.fn(),
+      TEST_ONLY: {},
+    });
     vi.mocked(storageService.listChats).mockResolvedValue([
       { id: 'c1', title: 'Chat 1', groupId: 'g1', updatedAt: 100 },
       { id: 'c2', title: 'Chat 2', groupId: 'g1', updatedAt: 200 },

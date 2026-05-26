@@ -36,6 +36,12 @@ export type ChatMetadataService = {
 
   toggleDebug(_args: Record<never, never>): Promise<void>;
 
+  toggleDebugForChat({
+    chatId,
+  }: {
+    chatId: string;
+  }): Promise<void>;
+
   updateReasoningEffort({
     chatId,
     effort,
@@ -199,12 +205,25 @@ export function createChatMetadataService({
     const currentChat = getCurrentChat();
     if (!currentChat) return;
 
-    const newValue = !currentChat.debugEnabled;
-    currentChat.debugEnabled = newValue;
-    triggerCurrentChat({ chatId: currentChat.id });
+    await toggleDebugForChat({
+      chatId: currentChat.id,
+    });
+  }
+
+  async function toggleDebugForChat({
+    chatId,
+  }: {
+    chatId: string;
+  }) {
+    const targetChat = getChatTarget({ id: chatId });
+    if (!targetChat) return;
+
+    const newValue = !targetChat.debugEnabled;
+    targetChat.debugEnabled = newValue;
+    triggerCurrentChat({ chatId });
 
     await updateChatMeta({
-      id: currentChat.id,
+      id: chatId,
       updater: (current) => {
         if (!current) throw new Error('Chat not found');
         return { ...current, debugEnabled: newValue, updatedAt: Date.now() };
@@ -248,6 +267,7 @@ export function createChatMetadataService({
     updateChatGroupOverride,
     updateChatSettings,
     toggleDebug,
+    toggleDebugForChat,
     updateReasoningEffort,
     getReasoningEffort,
   };

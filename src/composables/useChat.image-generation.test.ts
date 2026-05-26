@@ -111,6 +111,32 @@ describe('useChat Image Generation', () => {
     expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1","count":1,"persistAs":"original"} -->a cat');
   });
 
+  it('sendImageRequestForChat targets the explicit chatId without opening it', async () => {
+    const chat = { id: 'chat-explicit', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
+    chatStore.registerLiveInstance({ chat });
+
+    const updateSpy = vi.spyOn(storageService, 'updateChatContent');
+
+    const success = await chatStore.sendImageRequestForChat({
+      chatId: 'chat-explicit',
+      prompt: 'a fox',
+      width: 768,
+      height: 512,
+      count: 2,
+      steps: 25,
+      seed: 7,
+      persistAs: 'png',
+      attachments: [],
+    });
+
+    expect(success).toBe(true);
+    expect(updateSpy).toHaveBeenCalled();
+
+    const updater = updateSpy.mock.calls[0]![1];
+    const result = (await updater({ id: 'chat-explicit', root: { items: [] } } as any)) as any;
+    expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":768,"height":512,"model":"x/z-image-turbo:v1","count":2,"persistAs":"png","steps":25,"seed":7} -->a fox');
+  });
+
   it('sendImageRequest with attachments passes them to sendMessage', async () => {
     const chat = { id: 'chat-attachments', modelId: 'llama3', groupId: null, root: { items: [] }, currentLeafId: 'leaf-1' } as any;
     chatStore.registerLiveInstance({ chat });

@@ -4,7 +4,7 @@ import { FolderIcon, MessageSquareIcon, Loader2Icon, ChevronRightIcon } from 'lu
 import { storageService, type ChatSummary } from '@/services/storage';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import type { SearchResultItem } from '@/composables/useChatSearch';
-import { useChat } from '@/composables/useChat';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useRouter } from 'vue-router';
 import { scrollIntoViewSafe } from '@/utils/dom';
@@ -16,7 +16,7 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
-const { openChat } = useChat();
+const { openChat } = useChatNavigation();
 const { closeSearch } = useGlobalSearch();
 
 const chats = ref<ChatSummary[]>([]);
@@ -27,7 +27,7 @@ const chatListContainer = ref<HTMLElement | null>(null);
 const selectedChat = computed(() => chats.value.find(c => c.id === selectedChatId.value) || null);
 
 async function selectAndNavigate({ chatId }: { chatId: string }) {
-  await openChat({ id: chatId });
+  await openChat({ chatId });
   router.push(`/chat/${chatId}`);
   closeSearch();
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: {
@@ -110,6 +110,9 @@ vi.mock('../services/storage/opfs-detection', () => ({
 const mockCurrentChat = ref<any>({ id: 'chat-1', modelId: 'model-1' });
 const mockCurrentChatGroup = ref<any>(null);
 const mockSendMessage = vi.fn();
+const mockSendMessageForChat = vi.fn();
+const mockRegenerateMessageForChat = vi.fn();
+const mockAbortChat = vi.fn();
 const mockUpdateChatSettings = vi.fn();
 
 const mockReasoningStore = {
@@ -157,6 +160,9 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     fetchAvailableModels: vi.fn(),
     sendMessage: mockSendMessage,
+    sendMessageForChat: mockSendMessageForChat,
+    regenerateMessageForChat: mockRegenerateMessageForChat,
+    abortChat: mockAbortChat,
     updateChatSettings: mockUpdateChatSettings,
     getLiveChat: vi.fn().mockImplementation((c) => {
       if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
@@ -203,6 +209,9 @@ const mockChatStore = {
   getSelectedImageModel: vi.fn(),
   fetchAvailableModels: vi.fn(),
   sendMessage: mockSendMessage,
+  sendMessageForChat: mockSendMessageForChat,
+  regenerateMessageForChat: mockRegenerateMessageForChat,
+  abortChat: mockAbortChat,
   updateChatSettings: mockUpdateChatSettings,
   getReasoningEffort: vi.fn(({ chatId }) => {
     if (mockCurrentChat.value?.id === chatId) {
@@ -234,6 +243,55 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => mockChatStore,
 }));
 
+vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
+  useChatGeneration: () => ({
+    sendMessage: mockSendMessageForChat,
+    regenerateMessage: mockRegenerateMessageForChat,
+    abort: () => mockAbortChat({ chatId: mockCurrentChat.value?.id }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: ({ chatId }: { chatId: { value: string | undefined } }) => ({
+    currentChat: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChat.value : null),
+    currentChatGroup: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChatGroup.value : null),
+    activeMessages: ref([]),
+    allMessages: ref([]),
+    resolvedSettings: ref(null),
+    inheritedSettings: ref(null),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
+  useChatReasoning: () => ({
+    effort: computed(() => mockCurrentChat.value?.lmParameters?.reasoning?.effort),
+    updateEffort: ({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+      mockReasoningStore.updateReasoningEffort({
+        chatId: mockCurrentChat.value?.id,
+        effort,
+      });
+    },
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatDraft', () => ({
+  useChatDraft: () => ({
+    getDraft: () => mockDraft.value,
+    saveDraft: vi.fn(),
+    clearDraft: vi.fn(),
+    revokeAll: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
+  useChatModelSelection: () => ({
+    availableModels: mockChatStore.availableModels,
+    fetchingModels: mockChatStore.fetchingModels,
+    fetchModels: () => mockChatStore.fetchAvailableModels({ chatId: mockCurrentChat.value?.id }),
+    updateModel: ({ modelId }: { modelId: string | undefined }) => mockUpdateChatSettings(mockCurrentChat.value?.id, { modelId }),
+  }),
+}));
+
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     activeFocusArea: ref('chat'),
@@ -261,10 +319,12 @@ describe('ChatInput Integration', () => {
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
     mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+    mockSendMessageForChat.mockResolvedValue(true);
   });
 
   const getWrapper = () => mount(ChatInput, {
     props: {
+      chatId: 'chat-1',
       visibility: 'active',
       isStreaming: false,
       canGenerateImage: true,
@@ -529,7 +589,7 @@ describe('ChatInput Integration', () => {
   });
 
   it('should clear attachments after successful message send', async () => {
-    mockSendMessage.mockResolvedValue(true);
+    mockSendMessageForChat.mockResolvedValue(true);
     const wrapper = getWrapper();
     wrapper.vm.input = 'test message';
     wrapper.vm.TEST_ONLY.attachments.value = [
@@ -541,7 +601,7 @@ describe('ChatInput Integration', () => {
     await sendBtn.trigger('click');
     await flushPromises();
 
-    expect(mockSendMessage).toHaveBeenCalled();
+    expect(mockSendMessageForChat).toHaveBeenCalled();
     expect(wrapper.vm.input).toBe('');
     expect(wrapper.vm.TEST_ONLY.attachments.value.length).toBe(0);
   });
@@ -606,6 +666,7 @@ describe('ChatInput Integration', () => {
       id: 'chat-2',
       lmParameters: { reasoning: { effort: 'high' } }
     };
+    await wrapper.setProps({ chatId: 'chat-2' });
     await nextTick();
 
     // Verify it reflects the NEW chat's state

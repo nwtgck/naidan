@@ -7,7 +7,7 @@ import { getChatBranchIterator } from '@/utils/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
 import type { ResolvableLmParameters, ResolvableSettings } from '@/utils/chat-settings-resolver';
-import type { ChatRuntimeStore } from './chat-runtime-store';
+import type { ChatRuntimeStore } from '@/composables/chat/global/chat-runtime-store';
 
 type ResolvedTitleSettings = {
   endpointType: ResolvableSettings['endpointType'];

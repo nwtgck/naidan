@@ -6,6 +6,8 @@ import ChatInput from './ChatInput.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
+import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
+import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
 import { setupScrollToMock } from '@/utils/test-utils';
 
 
@@ -15,6 +17,12 @@ vi.mock('../composables/useChat', () => ({
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
+vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
+  useChatReadModel: vi.fn(),
+}));
+vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
+  useChatRuntime: vi.fn(),
+}));
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
 }));
@@ -23,11 +31,15 @@ describe('ChatArea Design Specifications', () => {
   beforeEach(() => {
     setupScrollToMock();
     const mockActiveMessages = ref<any[]>([]);
+    const mockCurrentChat = ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' });
+    const mockResolvedSettings = ref({
+      modelId: 'gemma3n:e2b',
+      sources: { modelId: 'chat' }
+    });
     (useChat as unknown as Mock).mockReturnValue({
-      currentChat: ref({ id: '1', title: 'Test Chat', modelId: 'gemma3n:e2b' }),
+      currentChat: mockCurrentChat,
       streaming: ref(false),
       activeGenerations: new Map(),
-      activeMessages: mockActiveMessages,
       availableModels: ref([]),
       fetchingModels: ref(false),
       generatingTitle: ref(false),
@@ -35,12 +47,7 @@ describe('ChatArea Design Specifications', () => {
       abortTitleGeneration: vi.fn(),
       fetchAvailableModels: vi.fn(),
       saveChat: vi.fn(),
-      resolvedSettings: ref({
-        modelId: 'gemma3n:e2b',
-        sources: { modelId: 'chat' }
-      }),
       isTaskRunning: vi.fn().mockReturnValue(false),
-      isProcessing: vi.fn().mockReturnValue(false),
       abortChat: vi.fn(),
       isImageMode: vi.fn(() => false),
       toggleImageMode: vi.fn(),
@@ -77,6 +84,21 @@ describe('ChatArea Design Specifications', () => {
       }))),
       isThinkingActive: vi.fn(() => false),
       isWaitingResponse: vi.fn(() => false),
+    });
+    (useChatReadModel as unknown as Mock).mockReturnValue({
+      currentChat: mockCurrentChat,
+      currentChatGroup: ref(null),
+      activeMessages: mockActiveMessages,
+      allMessages: computed(() => mockActiveMessages.value),
+      resolvedSettings: mockResolvedSettings,
+      inheritedSettings: ref({
+        modelId: 'gemma3n:e2b',
+        sources: { modelId: 'chat' }
+      }),
+    });
+    (useChatRuntime as unknown as Mock).mockReturnValue({
+      isProcessing: computed(() => false),
+      contextCompactProgress: ref({ phase: 'idle' }),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),
