@@ -1,5 +1,5 @@
 import type { ChatGroup } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import { useChatUiServices } from './useChatUiServices';
 
 export type ChatAdminActionsAdapter = {
   createChatGroup({
@@ -16,7 +16,7 @@ export type ChatAdminActionsAdapter = {
 };
 
 export function useChatAdminActions(): ChatAdminActionsAdapter {
-  const chatStore = useChat();
+  const { hierarchyService, lifecycleService } = useChatUiServices({});
 
   async function createChatGroup({
     name,
@@ -25,14 +25,14 @@ export function useChatAdminActions(): ChatAdminActionsAdapter {
     name: string;
     options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>;
   }) {
-    return await chatStore.createChatGroup({
+    return await hierarchyService.createChatGroup({
       name,
       options,
     });
   }
 
   async function deleteAllChats(_args: Record<never, never>) {
-    await chatStore.deleteAllChats({});
+    await lifecycleService.deleteAllChats({});
   }
 
   return {

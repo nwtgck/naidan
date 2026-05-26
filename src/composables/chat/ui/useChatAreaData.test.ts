@@ -25,18 +25,47 @@ const {
   mockUpdateChatGroupMetadata: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    availableModels: computed(() => mockState.availableModels),
-    fetchingModels: computed(() => mockState.fetchingModels),
-    chatFlow: computed(() => mockState.chatFlow),
-    chatGroups: computed(() => mockState.chatGroups),
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  fetchingModels: computed(() => mockState.fetchingModels),
+  isProcessing: vi.fn(() => false),
+}));
+
+vi.mock('@/composables/useImageGeneration', () => ({
+  useImageGeneration: () => ({
     getSortedImageModels: mockGetSortedImageModels,
-    fetchAvailableModels: mockFetchAvailableModels,
+  }),
+}));
+
+vi.mock('@/composables/useChatDisplayFlow', () => ({
+  useChatDisplayFlow: () => ({
+    chatFlow: computed(() => mockState.chatFlow),
     isThinkingActive: mockIsThinkingActive,
     isWaitingResponse: mockIsWaitingResponse,
-    updateChatSettings: mockUpdateChatSettings,
-    updateChatGroupMetadata: mockUpdateChatGroupMetadata,
+  }),
+}));
+
+vi.mock('./useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => null),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('./useChatUiServices', () => ({
+  useChatUiServices: () => ({
+    availableModels: computed(() => mockState.availableModels),
+    derivedState: {
+      chatGroups: computed(() => mockState.chatGroups),
+    },
+    metadataService: {
+      updateChatSettings: mockUpdateChatSettings,
+    },
+    hierarchyService: {
+      updateChatGroupMetadata: mockUpdateChatGroupMetadata,
+    },
+    modelService: {
+      fetchAvailableModels: mockFetchAvailableModels,
+    },
   }),
 }));
 

@@ -53,6 +53,28 @@ vi.mock('./composables/useChat', () => ({
   }),
 }));
 
+vi.mock('./composables/chat/ui/useSidebarData', () => ({
+  useSidebarData: () => ({
+    createNewChat: mockCreateNewChat,
+    currentChat: mockCurrentChat,
+    currentChatGroup: ref(null),
+    chatGroups: mockChatGroups,
+  }),
+}));
+
+vi.mock('./composables/chat/ui/useChatListData', () => ({
+  useChatListData: () => ({
+    chats: mockChats,
+  }),
+}));
+
+vi.mock('./composables/chat/ui/useChatAdminActions', () => ({
+  useChatAdminActions: () => ({
+    createChatGroup: vi.fn(),
+    deleteAllChats: vi.fn(),
+  }),
+}));
+
 vi.mock('./composables/useSettings', () => ({
   useSettings: () => ({
     init: vi.fn(),

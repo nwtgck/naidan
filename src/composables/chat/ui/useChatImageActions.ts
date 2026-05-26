@@ -1,7 +1,13 @@
 import { computed, type ComputedRef } from 'vue';
 import type { Attachment } from '@/models/types';
+import { useSettings } from '@/composables/useSettings';
+import { useImageGeneration } from '@/composables/useImageGeneration';
+import { chatRuntimeStore, updateChatContent } from '@/composables/chat/global/chat-core-singletons';
+import { createChatImageService } from '@/composables/chat/services/chat-image-service';
+import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import type { ImageRequestParams } from '@/utils/image-generation';
-import { useChat } from '@/composables/useChat';
+import { useChatConversationActions } from './useChatConversationActions';
+import { useChatUiServices } from './useChatUiServices';
 
 export type ChatImageActionsAdapter = {
   availableModels: ComputedRef<string[]>;
@@ -129,34 +135,48 @@ export type ChatImageActionsAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatImageStoreCompatibility = ReturnType<typeof useChat> & {
-  sendImageRequestForChat?: ({
-    chatId,
-    prompt,
-    width,
-    height,
-    count,
-    steps,
-    seed,
-    persistAs,
-    attachments,
-  }: {
-    chatId: string;
-    prompt: string;
-    width: number;
-    height: number;
-    count: number;
-    steps: number | undefined;
-    seed: number | 'browser_random' | undefined;
-    persistAs: ImageRequestParams['persistAs'];
-    attachments: Attachment[];
-  }) => Promise<boolean>;
-};
-
 export function useChatImageActions(): ChatImageActionsAdapter {
-  const chatStore = useChat() as ChatImageStoreCompatibility;
+  const { settings } = useSettings();
+  const { currentBridge, derivedState, availableModels } = useChatUiServices({});
+  const chatConversationActions = useChatConversationActions();
+  const imageGeneration = useImageGeneration();
+  const chatImageService = createChatImageService({
+    getCurrentChat: () => currentBridge.getCurrentChat({}),
+    getLiveChat: ({ chat }) => currentBridge.getChatTargetById({ id: chat.id }) ?? undefined,
+    getAvailableModels: () => availableModels.value,
+    getStorageType: () => settings.value.storageType,
+    resolveSettings: ({ chat }) => {
+      const resolved = resolveChatSettings({
+        chat,
+        groups: derivedState.chatGroups.value,
+        globalSettings: settings.value,
+      });
+      return {
+        endpointUrl: resolved.endpointUrl,
+        endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
+      };
+    },
+    performGeneration: imageGeneration.performBase64Generation,
+    handleImageGenerationImpl: imageGeneration.handleImageGeneration,
+    sendImageRequestImpl: imageGeneration.sendImageRequest,
+    updateChatContent,
+    triggerCurrentChat: ({ chatId }) => currentBridge.triggerCurrentChat({ chatId }),
+    startProcessing: ({ chatId }) => {
+      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
+    },
+    finishProcessing: ({ chatId }) => {
+      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
+    },
+    sendMessage: ({ chatId, content, parentId, attachments }) => chatConversationActions.sendMessage({
+      chatId,
+      content,
+      parentId,
+      attachments,
+      lmParameters: undefined,
+    }),
+  });
 
-  const availableModels = computed(() => chatStore.availableModels?.value ?? []);
+  const availableModelsState = computed(() => availableModels.value);
 
   function isImageMode({
     chatId,
@@ -167,7 +187,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return false;
     }
 
-    return chatStore.isImageMode({ chatId });
+    return imageGeneration.isImageMode({ chatId });
   }
 
   function toggleImageMode({
@@ -179,7 +199,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return;
     }
 
-    chatStore.toggleImageMode({ chatId });
+    imageGeneration.toggleImageMode({ chatId });
   }
 
   function getResolution({
@@ -191,7 +211,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return { width: 512, height: 512 };
     }
 
-    return chatStore.getResolution({ chatId });
+    return imageGeneration.getResolution({ chatId });
   }
 
   function updateResolution({
@@ -207,7 +227,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return;
     }
 
-    chatStore.updateResolution({ chatId, width, height });
+    imageGeneration.updateResolution({ chatId, width, height });
   }
 
   function getCount({
@@ -219,7 +239,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return 1;
     }
 
-    return chatStore.getCount({ chatId });
+    return imageGeneration.getCount({ chatId });
   }
 
   function updateCount({
@@ -233,7 +253,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return;
     }
 
-    chatStore.updateCount({ chatId, count });
+    imageGeneration.updateCount({ chatId, count });
   }
 
   function getPersistAs({
@@ -245,7 +265,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return 'original';
     }
 
-    return chatStore.getPersistAs({ chatId });
+    return imageGeneration.getPersistAs({ chatId });
   }
 
   function updatePersistAs({
@@ -259,7 +279,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return;
     }
 
-    chatStore.updatePersistAs({ chatId, format });
+    imageGeneration.updatePersistAs({ chatId, format });
   }
 
   function getSteps({
@@ -271,7 +291,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return undefined;
     }
 
-    return chatStore.getSteps({ chatId });
+    return imageGeneration.getSteps({ chatId });
   }
 
   function updateSteps({
@@ -285,7 +305,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return;
     }
 
-    chatStore.updateSteps({ chatId, steps });
+    imageGeneration.updateSteps({ chatId, steps });
   }
 
   function getSeed({
@@ -297,7 +317,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return undefined;
     }
 
-    return chatStore.getSeed({ chatId });
+    return imageGeneration.getSeed({ chatId });
   }
 
   function updateSeed({
@@ -311,7 +331,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return;
     }
 
-    chatStore.updateSeed({ chatId, seed });
+    imageGeneration.updateSeed({ chatId, seed });
   }
 
   function setImageModel({
@@ -325,7 +345,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return;
     }
 
-    chatStore.setImageModel({ chatId, modelId });
+    imageGeneration.setImageModel({ chatId, modelId });
   }
 
   function getSelectedImageModel({
@@ -337,7 +357,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       return undefined;
     }
 
-    return chatStore.getSelectedImageModel({
+    return imageGeneration.getSelectedImageModel({
       chatId,
       availableModels: availableModels.value,
     });
@@ -364,8 +384,8 @@ export function useChatImageActions(): ChatImageActionsAdapter {
     persistAs: ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }): Promise<boolean> {
-    if (chatId !== undefined && typeof chatStore.sendImageRequestForChat === 'function') {
-      return await chatStore.sendImageRequestForChat({
+    if (chatId !== undefined) {
+      return await chatImageService.sendImageRequestForChat({
         chatId,
         prompt,
         width,
@@ -378,11 +398,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
       });
     }
 
-    if (typeof chatStore.sendImageRequest !== 'function') {
-      return false;
-    }
-
-    return await chatStore.sendImageRequest({
+    return await chatImageService.sendImageRequest({
       prompt,
       width,
       height,
@@ -395,7 +411,7 @@ export function useChatImageActions(): ChatImageActionsAdapter {
   }
 
   return {
-    availableModels,
+    availableModels: availableModelsState,
     isImageMode,
     toggleImageMode,
     getResolution,

@@ -15,7 +15,7 @@ export type ChatMetadataService = {
     modelId,
   }: {
     id: string;
-    modelId: string;
+    modelId: string | undefined;
   }): Promise<void>;
 
   updateChatGroupOverride({
@@ -105,7 +105,7 @@ export function createChatMetadataService({
     modelId,
   }: {
     id: string;
-    modelId: string;
+    modelId: string | undefined;
   }) {
     const liveChat = getChatTarget({ id });
     if (liveChat) {

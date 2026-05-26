@@ -1,20 +1,47 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockOpenChat,
-  mockOpenChatAtMessage,
-  mockOpenChatGroup,
+  mockServiceOpenChat,
+  mockServiceOpenChatAtMessage,
+  mockServiceOpenChatGroup,
 } = vi.hoisted(() => ({
-  mockOpenChat: vi.fn(),
-  mockOpenChatAtMessage: vi.fn(),
-  mockOpenChatGroup: vi.fn(),
+  mockServiceOpenChat: vi.fn(),
+  mockServiceOpenChatAtMessage: vi.fn(),
+  mockServiceOpenChatGroup: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    openChat: mockOpenChat,
-    openChatAtMessage: mockOpenChatAtMessage,
-    openChatGroup: mockOpenChatGroup,
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      value: {},
+    },
+  }),
+}));
+
+vi.mock('@/composables/useChatTools', () => ({
+  useChatTools: () => ({
+    setCurrentChatId: vi.fn(),
+    setToolEnabled: vi.fn(),
+  }),
+}));
+
+vi.mock('@/composables/chat/chat-derived-state', () => ({
+  createChatDerivedState: () => ({
+    hasMountsForChat: vi.fn(() => false),
+  }),
+}));
+
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  chatDataStore: {},
+  currentChatRef: { value: null },
+  rootItems: { value: [] },
+}));
+
+vi.mock('@/composables/chat/services/chat-open-service', () => ({
+  createChatOpenService: () => ({
+    openChat: mockServiceOpenChat,
+    openChatAtMessage: mockServiceOpenChatAtMessage,
+    openChatGroup: mockServiceOpenChatGroup,
   }),
 }));
 
@@ -30,10 +57,12 @@ describe('useChatNavigation', () => {
 
     await chatNavigation.openChat({
       chatId: 'chat-1',
+      leafId: undefined,
     });
 
-    expect(mockOpenChat).toHaveBeenCalledWith({
+    expect(mockServiceOpenChat).toHaveBeenCalledWith({
       id: 'chat-1',
+      leafId: undefined,
     });
   });
 
@@ -45,7 +74,7 @@ describe('useChatNavigation', () => {
       messageId: 'message-1',
     });
 
-    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({
+    expect(mockServiceOpenChatAtMessage).toHaveBeenCalledWith({
       chatId: 'chat-1',
       messageId: 'message-1',
     });
@@ -58,7 +87,7 @@ describe('useChatNavigation', () => {
       groupId: 'group-1',
     });
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith({
+    expect(mockServiceOpenChatGroup).toHaveBeenCalledWith({
       id: 'group-1',
     });
   });

@@ -24,14 +24,23 @@ const {
   mockUpdateChatGroupMount: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    fetchingModels: mockFetchingModels,
-    updateChatGroupMetadata: mockUpdateChatGroupMetadata,
-    fetchAvailableModels: mockFetchAvailableModels,
-    addMountToChatGroup: mockAddMountToChatGroup,
-    removeMountFromChatGroup: mockRemoveMountFromChatGroup,
-    updateChatGroupMount: mockUpdateChatGroupMount,
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  fetchingModels: mockFetchingModels,
+}));
+
+vi.mock('./useChatUiServices', () => ({
+  useChatUiServices: () => ({
+    hierarchyService: {
+      updateChatGroupMetadata: mockUpdateChatGroupMetadata,
+    },
+    modelService: {
+      fetchAvailableModels: mockFetchAvailableModels,
+    },
+    mountService: {
+      addMountToChatGroup: mockAddMountToChatGroup,
+      removeMountFromChatGroup: mockRemoveMountFromChatGroup,
+      updateChatGroupMount: mockUpdateChatGroupMount,
+    },
   }),
 }));
 

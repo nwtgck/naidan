@@ -10,11 +10,13 @@ const {
   mockUpdateChatMount: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    addMountToChat: mockAddMountToChat,
-    removeMountFromChat: mockRemoveMountFromChat,
-    updateChatMount: mockUpdateChatMount,
+vi.mock('./useChatUiServices', () => ({
+  useChatUiServices: () => ({
+    mountService: {
+      addMountToChat: mockAddMountToChat,
+      removeMountFromChat: mockRemoveMountFromChat,
+      updateChatMount: mockUpdateChatMount,
+    },
   }),
 }));
 

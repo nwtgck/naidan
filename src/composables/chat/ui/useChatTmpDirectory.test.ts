@@ -4,10 +4,8 @@ const { mockEnsureChatTmpDirectory } = vi.hoisted(() => ({
   mockEnsureChatTmpDirectory: vi.fn().mockResolvedValue({ handle: { name: 'tmp' }, mountPath: '/tmp' }),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
-  }),
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
 }));
 
 import { useChatTmpDirectory } from './useChatTmpDirectory';

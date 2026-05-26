@@ -27,6 +27,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   }) {
     return await chatNavigation.openChat({
       chatId,
+      leafId: undefined,
     });
   }
 

@@ -30,21 +30,68 @@ const {
   mockCommitFullHistoryManipulation: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    availableModels: mockAvailableModels,
-    fetchingModels: mockFetchingModels,
-    moveChatToGroup: mockMoveChatToGroup,
-    toggleDebug: mockToggleDebug,
-    toggleDebugForChat: mockToggleDebugForChat,
-    renameChat: mockRenameChat,
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      value: {},
+    },
+  }),
+}));
+
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  chatRuntimeStore: {},
+  currentChatRef: { value: null },
+  fetchingModels: mockFetchingModels,
+  getLiveChat: vi.fn(({ chat }) => chat),
+  isGeneratingTitle: mockIsGeneratingTitle,
+  isProcessing: vi.fn(() => false),
+  liveChatRegistry: new Map(),
+  loadData: vi.fn(),
+  registerLiveInstance: vi.fn(),
+  updateChatContent: vi.fn(),
+  updateChatMeta: vi.fn(),
+}));
+
+vi.mock('@/composables/chat/services/chat-title-service', () => ({
+  createChatTitleService: () => ({
     generateChatTitle: mockGenerateChatTitle,
     abortTitleGeneration: mockAbortTitleGeneration,
-    isGeneratingTitle: mockIsGeneratingTitle,
-    updateChatSettings: mockUpdateChatSettings,
-    updateChatModel: mockUpdateChatModel,
-    fetchAvailableModels: mockFetchAvailableModels,
+  }),
+}));
+
+vi.mock('@/composables/chat/services/chat-history-service', () => ({
+  createChatHistoryService: () => ({
     commitFullHistoryManipulation: mockCommitFullHistoryManipulation,
+  }),
+}));
+
+vi.mock('./useChatUiServices', () => ({
+  useChatUiServices: () => ({
+    availableModels: mockAvailableModels,
+    currentBridge: {
+      getCurrentChatId: vi.fn(),
+      getChatTargetByOptionalId: vi.fn(),
+      triggerCurrentChat: vi.fn(),
+    },
+    derivedState: {
+      chatGroups: { value: [] },
+    },
+    hierarchyService: {
+      moveChatToGroup: mockMoveChatToGroup,
+    },
+    metadataService: {
+      toggleDebug: mockToggleDebug,
+      toggleDebugForChat: mockToggleDebugForChat,
+      renameChat: mockRenameChat,
+      updateChatSettings: mockUpdateChatSettings,
+      updateChatModel: mockUpdateChatModel,
+    },
+    modelService: {
+      fetchAvailableModels: mockFetchAvailableModels,
+    },
+    openService: {
+      openChat: vi.fn(),
+    },
   }),
 }));
 
@@ -138,6 +185,20 @@ describe('useChatMutationActions', () => {
       chatId: 'chat-1',
       messages: [],
       systemPrompt: undefined,
+    });
+  });
+
+  it('passes undefined modelId through to metadata service', async () => {
+    const chatMutationActions = useChatMutationActions();
+
+    await chatMutationActions.updateChatModel({
+      id: 'chat-1',
+      modelId: undefined,
+    });
+
+    expect(mockUpdateChatModel).toHaveBeenCalledWith({
+      id: 'chat-1',
+      modelId: undefined,
     });
   });
 });

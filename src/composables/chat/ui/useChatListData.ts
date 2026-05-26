@@ -1,6 +1,9 @@
 import { computed, type ComputedRef } from 'vue';
 import type { ChatSummary } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import type { Settings } from '@/models/types';
+import { useSettings } from '@/composables/useSettings';
+import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
+import { currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
 
 export type ChatListDataAdapter = {
   chats: ComputedRef<ChatSummary[]>;
@@ -9,10 +12,15 @@ export type ChatListDataAdapter = {
 };
 
 export function useChatListData(): ChatListDataAdapter {
-  const chatStore = useChat();
+  const { settings } = useSettings();
+  const chatDerivedState = createChatDerivedState({
+    currentChatRef,
+    rootItems,
+    getSettings: () => settings.value as Settings,
+  });
 
   return {
-    chats: computed(() => chatStore.chats.value),
+    chats: computed(() => chatDerivedState.chats.value),
     TEST_ONLY: {},
   };
 }
