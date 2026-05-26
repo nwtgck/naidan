@@ -21,6 +21,7 @@ import { createChatDerivedState } from './chat/chat-derived-state';
 import { createChatRuntimeStore } from './chat/chat-runtime-store';
 import { createChatRuntimeFacade } from './chat/chat-runtime-facade';
 import { createChatTmpDirectoryService } from './chat/chat-tmp-directory-service';
+import { createChatTestSupport } from './chat/chat-test-support';
 import { createChatVolatileState } from './chat/chat-volatile-state';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
@@ -736,28 +737,19 @@ export function useChat() {
   const reorderSidebarChatAfterSend = chatHierarchyService.reorderSidebarChatAfterSend;
   const moveChatToGroup = chatHierarchyService.moveChatToGroup;
 
-  const __testOnlySetCurrentChat = ({ chat }: { chat: Chat | null }) => {
-    _currentChat.value = chat;
-    if (chat) registerLiveInstance({ chat });
-  };
-  const __testOnlySetCurrentChatGroup = ({ group }: { group: ChatGroup | null }) => {
-    _currentChatGroup.value = group;
-  };
-  const __testOnlySetContextCompactProgress = ({
-    chatId,
-    progress,
-  }: {
-    chatId: string;
-    progress: ContextCompactProgress;
-  }) => {
-    setContextCompactProgress({
-      chatId,
-      progress,
-    });
-  };
-  const clearLiveChatRegistry = (_params: Record<string, never>) => {
-    liveChatRegistry.clear();
-  };
+  const chatTestSupport = createChatTestSupport({
+    currentChatRef: _currentChat,
+    currentChatGroupRef: _currentChatGroup,
+    registerLiveInstance,
+    setContextCompactProgress,
+    clearLiveChatRegistryImpl: (_args) => {
+      liveChatRegistry.clear();
+    },
+  });
+  const __testOnlySetCurrentChat = chatTestSupport.__testOnlySetCurrentChat;
+  const __testOnlySetCurrentChatGroup = chatTestSupport.__testOnlySetCurrentChatGroup;
+  const __testOnlySetContextCompactProgress = chatTestSupport.__testOnlySetContextCompactProgress;
+  const clearLiveChatRegistry = chatTestSupport.clearLiveChatRegistry;
 
   const clearActiveTaskCounts = (_params: Record<string, never>) => {
     chatRuntimeFacade.clearActiveTaskCounts({});
