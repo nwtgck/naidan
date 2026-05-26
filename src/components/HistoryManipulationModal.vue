@@ -8,11 +8,11 @@ import {
   PaperclipIcon, ImageIcon, HistoryIcon,
   CopyIcon, GripVerticalIcon, MessageSquareQuoteIcon, InfoIcon
 } from 'lucide-vue-next';
-import { useChat } from '@/composables/useChat';
 import type { HistoryItem } from '@/utils/chat-tree';
 import { useLayout } from '@/composables/useLayout';
 import type { Attachment, SystemPrompt } from '@/models/types';
 import { storageService } from '@/services/storage';
+import { useChatHistoryManipulation } from '@/composables/chat/chat-scoped/useChatHistoryManipulation';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -22,8 +22,7 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const chatStore = useChat();
-const { currentChat, activeMessages, inheritedSettings } = chatStore;
+const { currentChat, activeMessages, inheritedSettings, commit } = useChatHistoryManipulation();
 const { setActiveFocusArea } = useLayout();
 
 interface EditableHistoryItem extends HistoryItem {
@@ -267,7 +266,7 @@ const systemPromptBehavior = computed({
 async function handleSave() {
   if (!currentChat.value) return;
   const cleanMessages: HistoryItem[] = editableMessages.value.map(({ localId: _, ...msg }) => msg);
-  await chatStore.commitFullHistoryManipulation({ chatId: currentChat.value.id, messages: cleanMessages, systemPrompt: localSystemPrompt.value });
+  await commit({ chatId: currentChat.value.id, messages: cleanMessages, systemPrompt: localSystemPrompt.value });
   emit('close');
 }
 

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { useChatSettingsPanel } from '@/composables/chat/chat-scoped/useChatSettingsPanel';
 import {
   XIcon, Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon
@@ -32,14 +32,16 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const chatStore = useChat();
 const {
   currentChat,
+  currentChatId,
   fetchingModels,
   availableModels,
   resolvedSettings,
   inheritedSettings,
-} = chatStore;
+  updateSettings,
+  fetchModels: fetchChatModels,
+} = useChatSettingsPanel();
 const sortedAvailableModels = computed(() => naturalSort({ values: availableModels?.value || [] }));
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
@@ -86,7 +88,7 @@ watch(() => currentChat.value?.id, async (newId, oldId) => {
   if (oldId && oldId !== newId) {
     // If we're switching chats while the panel is open, ensure any pending changes in the OLD chat are saved.
     // We use the ID that was active when the changes were made.
-    await chatStore.updateChatSettings({ id: oldId, updates: localSettings.value });
+    await updateSettings({ chatId: oldId, updates: localSettings.value });
   }
   syncLocalWithCurrent();
 });
@@ -110,7 +112,7 @@ watch(() => props.show, (show) => {
 
 async function saveChanges() {
   if (currentChat.value) {
-    await chatStore.updateChatSettings({ id: currentChat.value.id, updates: localSettings.value });
+    await updateSettings({ chatId: currentChat.value.id, updates: localSettings.value });
   }
 }
 
@@ -174,10 +176,11 @@ async function removeHeader({ index }: { index: number }) {
 }
 
 async function fetchModels() {
-  if (currentChat.value) {
+  const chatId = currentChatId.value;
+  if (chatId) {
     error.value = null;
     try {
-      const models = await chatStore.fetchAvailableModels({ chatId: currentChat.value.id });
+      const models = await fetchChatModels({ chatId });
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
       }
