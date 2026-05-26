@@ -16,6 +16,8 @@ export type ChatReadModelAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
+// This adapter reads only chats that are already loaded into the live/current chat state.
+// It does not load arbitrary chatId values from storage on demand.
 export function useChatReadModel({
   chatId,
 }: {

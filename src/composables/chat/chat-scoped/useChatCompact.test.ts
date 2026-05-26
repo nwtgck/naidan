@@ -36,20 +36,6 @@ vi.mock('@/composables/useChatWeshPreferences', () => ({
   }),
 }));
 
-vi.mock('@/composables/chat/chat-derived-state', () => ({
-  createChatDerivedState: () => ({
-    chatGroups: computed(() => []),
-  }),
-}));
-
-vi.mock('@/composables/chat/chat-current-bridge', () => ({
-  createChatCurrentBridge: () => ({
-    getCurrentChat: () => null,
-    getChatTargetByOptionalId: () => null,
-    triggerCurrentChat: vi.fn(),
-  }),
-}));
-
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   chatRuntimeStore: {
     startTask: vi.fn(),
@@ -58,13 +44,13 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   contextCompactRuntime: {
     getProgress: ({ chatId }: { chatId: string | undefined }) => chatId ? { phase: 'preparing', compactedMessageCount: 1, suffixMessageCount: 2 } : { phase: 'idle' },
   },
-  currentChatRef: ref(null),
-  currentChatGroupRef: ref(null),
   getLiveChat: vi.fn(),
+  getReadonlyChat: vi.fn(),
+  getChatTargetByOptionalId: vi.fn(),
   isProcessing: vi.fn(),
-  liveChatRegistry: new Map(),
   registerLiveInstance: vi.fn(),
   rootItems: ref([]),
+  triggerCurrentChat: vi.fn(),
   updateChatContent: vi.fn(),
   updateChatMeta: vi.fn(),
 }));

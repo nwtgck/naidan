@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, toRaw, triggerRef } from 'vue';
 import { type ContextCompactProgress } from '@/services/context-compact';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { createChatDataStore } from './chat-data-store';
@@ -87,6 +87,28 @@ export const getReadonlyChat = chatDataStore.getReadonlyChat;
 export const loadData = chatDataStore.loadData;
 export const updateChatContent = chatDataStore.updateChatContent;
 export const updateChatMeta = chatDataStore.updateChatMeta;
+
+export function getChatTargetByOptionalId({
+  chatId,
+}: {
+  chatId: string | undefined;
+}) {
+  if (chatId === undefined) {
+    return null;
+  }
+
+  return getLiveChatById({ chatId });
+}
+
+export function triggerCurrentChat({
+  chatId,
+}: {
+  chatId: string;
+}) {
+  if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
+    triggerRef(currentChatRef);
+  }
+}
 
 export const chatRuntimeFacade = createChatRuntimeFacade({
   currentChatRef,

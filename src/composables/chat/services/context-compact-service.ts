@@ -95,7 +95,7 @@ export function createContextCompactService({
   startProcessing,
   finishProcessing,
 }: {
-  getCurrentChat: () => Chat | null;
+  getCurrentChat?: () => Chat | null;
   getChatTarget: ({ chatId }: { chatId: string | undefined }) => Chat | null;
   getLiveChat: ({ chat }: { chat: Chat }) => Chat;
   isProcessing: ({ chatId }: { chatId: string }) => boolean;
@@ -141,7 +141,7 @@ export function createContextCompactService({
     keepRecentMessages: number;
     instructionOverride: string | undefined;
   }): Promise<CompactCurrentBranchResult> {
-    const currentChat = getCurrentChat();
+    const currentChat = getCurrentChat?.();
     if (!currentChat) {
       return { status: 'skipped', reason: 'no_current_chat' };
     }

@@ -1,22 +1,20 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import type { Settings } from '@/models/types';
+import type { ChatGroup, SidebarItem } from '@/models/types';
 import type { ContextCompactProgress, ContextCompactPromptMode } from '@/services/context-compact';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
-import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
-import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import {
   chatRuntimeStore,
   contextCompactRuntime,
-  currentChatGroupRef,
-  currentChatRef,
+  getChatTargetByOptionalId,
   getLiveChat,
+  getReadonlyChat,
   isProcessing,
-  liveChatRegistry,
   registerLiveInstance,
   rootItems,
+  triggerCurrentChat,
   updateChatContent,
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
@@ -47,28 +45,19 @@ export function useChatCompact({
   const { addErrorEvent } = useGlobalEvents();
   const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
 
-  const chatCurrentBridge = createChatCurrentBridge({
-    currentChatRef,
-    currentChatGroupRef,
-    liveChatRegistry,
-    getLiveChat,
-  });
-  const chatDerivedState = createChatDerivedState({
-    currentChatRef,
-    rootItems,
-    getSettings: () => settings.value as Settings,
-  });
-  const chatGroups = chatDerivedState.chatGroups;
+  const chatGroups = computed(() => collectChatGroups({
+    items: rootItems.value,
+  }));
 
   const contextCompactService = createContextCompactService({
-    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
-    getChatTarget: ({ chatId: targetChatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId: targetChatId }),
+    getChatTarget: ({ chatId: targetChatId }) => getChatTargetByOptionalId({ chatId: targetChatId }),
     getLiveChat,
     isProcessing,
     registerLiveInstance,
     resolveSettings: ({ chat }) => {
+      const loadedChat = getReadonlyChat({ chatId: chat.id }) ?? chat;
       const resolved = resolveChatSettings({
-        chat,
+        chat: loadedChat,
         groups: chatGroups.value,
         globalSettings: settings.value,
       });
@@ -88,7 +77,7 @@ export function useChatCompact({
     runtime: contextCompactRuntime,
     updateChatContent,
     updateChatMeta,
-    triggerCurrentChat: ({ chatId: targetChatId }) => chatCurrentBridge.triggerCurrentChat({ chatId: targetChatId }),
+    triggerCurrentChat,
     addErrorEvent,
     startProcessing: ({ chatId: processingChatId }) => {
       chatRuntimeStore.startTask({ key: { kind: 'process', chatId: processingChatId } });
@@ -151,4 +140,28 @@ function resolveCompactPromptMode({
     throw new Error(`Unhandled naidan sysfs mount selection: ${_ex}`);
   }
   }
+}
+
+function collectChatGroups({
+  items,
+}: {
+  items: SidebarItem[];
+}): ChatGroup[] {
+  const groups: ChatGroup[] = [];
+
+  for (const item of items) {
+    switch (item.type) {
+    case 'chat':
+      break;
+    case 'chat_group':
+      groups.push(item.chatGroup);
+      break;
+    default: {
+      const _ex: never = item;
+      return _ex;
+    }
+    }
+  }
+
+  return groups;
 }
