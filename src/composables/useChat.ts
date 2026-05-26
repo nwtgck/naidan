@@ -19,6 +19,7 @@ import { createChatDataStore } from './chat/chat-data-store';
 import { createChatControlService } from './chat/chat-control-service';
 import { createChatDerivedState } from './chat/chat-derived-state';
 import { createChatRuntimeStore } from './chat/chat-runtime-store';
+import { createChatRuntimeFacade } from './chat/chat-runtime-facade';
 import { createChatTmpDirectoryService } from './chat/chat-tmp-directory-service';
 import { createChatVolatileState } from './chat/chat-volatile-state';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
@@ -49,25 +50,31 @@ const chatTmpDirectoryService = createChatTmpDirectoryService({
   createTmpMountDirectory: ({ chatId }) => getOPFSTmpManager().createTmpDirectory({ prefix: chatId }),
 });
 
-const streaming = computed(() => chatRuntimeStore.activeGenerations.size > 0 || chatRuntimeStore.externalGenerations.size > 0);
-const isGeneratingTitle = ({ chatId }: { chatId: string }) => chatRuntimeStore.isGeneratingTitle({ chatId });
-const generatingTitle = computed(() => {
-  if (!_currentChat.value) return false;
-  return isGeneratingTitle({ chatId: toRaw(_currentChat.value).id });
-});
-const contextCompactProgress = computed<ContextCompactProgress>(() => {
-  return getContextCompactProgress({ chatId: _currentChat.value ? toRaw(_currentChat.value).id : undefined });
-});
-const fetchingModels = computed(() => {
-  if (chatRuntimeStore.getTaskCount({ key: { kind: 'fetch', chatId: undefined } }) > 0) return true;
-  if (!_currentChat.value) return false;
-  return chatRuntimeStore.getTaskCount({
-    key: {
-      kind: 'fetch',
-      chatId: toRaw(_currentChat.value).id,
-    },
-  }) > 0;
-});
+function isTaskRunning({ chatId }: { chatId: string }) {
+  return chatRuntimeStore.isTaskRunning({ chatId });
+}
+
+function isProcessing({ chatId }: { chatId: string }) {
+  return chatRuntimeStore.isProcessing({ chatId });
+}
+
+function setContextCompactProgress({
+  chatId,
+  progress,
+}: {
+  chatId: string;
+  progress: ContextCompactProgress;
+}) {
+  contextCompactRuntime.setProgress({ chatId, progress });
+}
+
+function getContextCompactProgress({
+  chatId,
+}: {
+  chatId: string | undefined;
+}): ContextCompactProgress {
+  return contextCompactRuntime.getProgress({ chatId });
+}
 
 const creatingChat = ref(false);
 const availableModels = ref<string[]>([]);
@@ -98,32 +105,6 @@ if ((() => {
       item.controller.abort();
     }
   });
-}
-
-function isTaskRunning({ chatId }: { chatId: string }) {
-  return chatRuntimeStore.isTaskRunning({ chatId });
-}
-
-function isProcessing({ chatId }: { chatId: string }) {
-  return chatRuntimeStore.isProcessing({ chatId });
-}
-
-function setContextCompactProgress({
-  chatId,
-  progress,
-}: {
-  chatId: string;
-  progress: ContextCompactProgress;
-}) {
-  contextCompactRuntime.setProgress({ chatId, progress });
-}
-
-function getContextCompactProgress({
-  chatId,
-}: {
-  chatId: string | undefined;
-}): ContextCompactProgress {
-  return contextCompactRuntime.getProgress({ chatId });
 }
 
 const ensureChatTmpDirectory = chatTmpDirectoryService.ensureChatTmpDirectory;
@@ -159,6 +140,16 @@ const getLiveChat = chatDataStore.getLiveChat;
 const loadData = chatDataStore.loadData;
 const updateChatContent = chatDataStore.updateChatContent;
 const updateChatMeta = chatDataStore.updateChatMeta;
+const chatRuntimeFacade = createChatRuntimeFacade({
+  currentChatRef: _currentChat,
+  runtimeStore: chatRuntimeStore,
+  contextCompactRuntime,
+});
+const streaming = chatRuntimeFacade.streaming;
+const generatingTitle = chatRuntimeFacade.generatingTitle;
+const fetchingModels = chatRuntimeFacade.fetchingModels;
+const contextCompactProgress = chatRuntimeFacade.contextCompactProgress;
+const isGeneratingTitle = chatRuntimeFacade.isGeneratingTitle;
 
 transformersJsService.subscribeModelList(async () => {
   const { fetchAvailableModels, currentChat, resolvedSettings } = useChat();
@@ -769,7 +760,7 @@ export function useChat() {
   };
 
   const clearActiveTaskCounts = (_params: Record<string, never>) => {
-    chatRuntimeStore.clearActiveTaskCounts({});
+    chatRuntimeFacade.clearActiveTaskCounts({});
   };
 
   const getVolatileToolOutput = chatVolatileState.getVolatileToolOutput;
