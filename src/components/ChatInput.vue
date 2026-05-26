@@ -12,6 +12,8 @@ import { useReasoning } from '@/composables/useReasoning';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
+import { useChatMedia } from '@/composables/chat/chat-scoped/useChatMedia';
+import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/services/storage';
 import { startVolumeExtensionScan } from '@/services/tools/volume-extension-cache';
@@ -45,26 +47,8 @@ const { getDraft, saveDraft, clearDraft } = useChatDraft();
 const {
   currentChat,
   currentChatGroup,
-  availableModels,
   inheritedSettings,
   fetchingModels,
-  isImageMode: _isImageMode,
-  toggleImageMode: _toggleImageMode,
-  getResolution,
-  updateResolution: _updateResolution,
-  getCount,
-  updateCount: _updateCount,
-  getPersistAs,
-  updatePersistAs: _updatePersistAs,
-  getSteps,
-  updateSteps: _updateSteps,
-  getSeed,
-  updateSeed: _updateSeed,
-  setImageModel,
-  getSelectedImageModel,
-  addMountToChat,
-  removeMountFromChat,
-  updateChatMount,
 } = chatStore;
 const { showConfirm } = useConfirm();
 
@@ -96,6 +80,12 @@ const currentChatId = computed(() => currentChat.value?.id);
 const chatGeneration = useChatGeneration({
   chatId: currentChatId,
 });
+const chatMedia = useChatMedia({
+  chatId: currentChatId,
+});
+const chatMounts = useChatMounts({
+  chatId: currentChatId,
+});
 const canGenerateImage = computed(() => props.canGenerateImage);
 const hasImageModel = computed(() => props.hasImageModel);
 const availableImageModels = computed(() => props.availableImageModels);
@@ -111,62 +101,50 @@ function formatLabel({ value, source }: { value: string | undefined; source: Set
 
 
 const isImageMode = computed({
-  get: () => currentChat.value ? _isImageMode({ chatId: currentChat.value.id }) : false,
+  get: () => chatMedia.isImageMode.value,
   set: () => {
-    if (currentChat.value) {
-      _toggleImageMode({ chatId: currentChat.value.id });
-    }
+    chatMedia.toggleImageMode({});
   }
 });
 
 const currentResolution = computed(() => {
-  return currentChat.value ? getResolution({ chatId: currentChat.value.id }) : { width: 512, height: 512 };
+  return chatMedia.resolution.value;
 });
 
 function updateResolution({ width, height }: { width: number; height: number }) {
-  if (currentChat.value) {
-    _updateResolution({ chatId: currentChat.value.id, width, height });
-  }
+  chatMedia.updateResolution({ width, height });
 }
 
 const currentCount = computed(() => {
-  return currentChat.value ? getCount({ chatId: currentChat.value.id }) : 1;
+  return chatMedia.count.value;
 });
 
 function updateCount({ count }: { count: number }) {
-  if (currentChat.value) {
-    _updateCount({ chatId: currentChat.value.id, count });
-  }
+  chatMedia.updateCount({ count });
 }
 
 const currentPersistAs = computed(() => {
-  return currentChat.value ? getPersistAs({ chatId: currentChat.value.id }) : 'original';
+  return chatMedia.persistAs.value;
 });
 
 function updatePersistAs({ format }: { format: 'original' | 'webp' | 'jpeg' | 'png' }) {
-  if (currentChat.value) {
-    _updatePersistAs({ chatId: currentChat.value.id, format });
-  }
+  chatMedia.updatePersistAs({ format });
 }
 
 const currentSteps = computed(() => {
-  return currentChat.value ? getSteps({ chatId: currentChat.value.id }) : undefined;
+  return chatMedia.steps.value;
 });
 
 function updateSteps({ steps }: { steps: number | undefined }) {
-  if (currentChat.value) {
-    _updateSteps({ chatId: currentChat.value.id, steps });
-  }
+  chatMedia.updateSteps({ steps });
 }
 
 const currentSeed = computed(() => {
-  return currentChat.value ? getSeed({ chatId: currentChat.value.id }) : undefined;
+  return chatMedia.seed.value;
 });
 
 function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
-  if (currentChat.value) {
-    _updateSeed({ chatId: currentChat.value.id, seed });
-  }
+  chatMedia.updateSeed({ seed });
 }
 
 const selectedReasoningEffort = computed(() => {
@@ -180,13 +158,11 @@ function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' |
 }
 
 const selectedImageModel = computed(() => {
-  return currentChat.value ? getSelectedImageModel({ chatId: currentChat.value.id, availableModels: availableModels.value }) : undefined;
+  return chatMedia.selectedImageModel.value;
 });
 
 function handleUpdateImageModel({ modelId }: { modelId: string }) {
-  if (currentChat.value) {
-    setImageModel({ chatId: currentChat.value.id, modelId });
-  }
+  chatMedia.setImageModel({ modelId });
 }
 
 async function fetchModels() {
@@ -199,7 +175,8 @@ function toggleImageMode() {
   isImageMode.value = !isImageMode.value;
 }
 
-const sortedAvailableModels = computed(() => naturalSort({ values: availableModels?.value || [] }));
+const sortedAvailableModels = computed(() => naturalSort({ values: chatMedia.availableModels.value || [] }));
+const chatMountList = computed(() => chatMounts.mounts.value);
 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
@@ -333,7 +310,7 @@ async function processFiles({ files }: { files: File[] }) {
 }
 
 function generateChatMountPath({ baseName }: { baseName: string }): string {
-  const existingPaths = (currentChat.value?.mounts ?? []).map(m => m.mountPath);
+  const existingPaths = chatMounts.mounts.value.map(m => m.mountPath);
   const sanitized = baseName.toLowerCase().replace(/[^a-z0-9]/g, '-');
   let path = `/home/user/${sanitized}`;
   const basePath = path;
@@ -348,8 +325,7 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
 async function finishMount({ volumeId, name }: { volumeId: string; name: string }) {
   if (!currentChat.value) return;
   const mountPath = generateChatMountPath({ baseName: name });
-  await addMountToChat({
-    chatId: currentChat.value.id,
+  await chatMounts.addMount({
     mount: { type: 'volume', volumeId, mountPath, readOnly: true },
   });
   setToolEnabled({ name: 'shell_execute', enabled: true });
@@ -536,7 +512,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
 
 async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Promise<void> {
   if (!currentChat.value) return;
-  const mounts = currentChat.value.mounts ?? [];
+  const mounts = chatMounts.mounts.value;
   if (mounts.length === 0) return;
 
   const workerMounts = await buildWorkerMountsForChat({
@@ -591,7 +567,7 @@ async function handleDetachMount({ volumeId }: { volumeId: string }) {
 
   const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
   if (!confirmed) return;
-  await removeMountFromChat({ chatId: currentChat.value.id, volumeId });
+  await chatMounts.removeMount({ volumeId });
   if (volumeType === 'opfs' || volumeType === undefined) {
     await storageService.deleteVolume({ volumeId });
   }
@@ -644,7 +620,7 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: str
   }
   }
 
-  await updateChatMount({ chatId: currentChat.value.id, volumeId, readOnly });
+  await chatMounts.updateMount({ volumeId, readOnly });
 }
 
 async function handlePaste({ event }: { event: ClipboardEvent }) {
@@ -1103,9 +1079,9 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
       </div>
 
       <!-- Folder/File Mounts attached to this chat -->
-      <div v-if="currentChat?.mounts && currentChat.mounts.length > 0" class="px-4 pt-4" data-testid="chat-mounts-preview">
+      <div v-if="chatMountList.length > 0" class="px-4 pt-4" data-testid="chat-mounts-preview">
         <MountBadgeList
-          :mounts="currentChat.mounts"
+          :mounts="chatMountList"
           path-trim-prefix="/home/user/"
           :show-explorer="true"
           @toggle-read-only="handleToggleMountReadOnly"
