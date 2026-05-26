@@ -1,6 +1,14 @@
 import type { Ref } from 'vue';
 import type { LmParameters, MessageNode } from '@/models/types';
-import { useChatConversationActions } from '@/composables/chat/ui/useChatConversationActions';
+import {
+  editCurrentChatMessage,
+  editMessageForChat,
+  forkChatForChat,
+  forkCurrentChat,
+  getSiblingsForChat,
+  switchVersionForChat,
+  switchVersionInCurrentChat,
+} from '@/composables/chat/chat-scoped/chat-history-flow';
 
 export type ChatHistoryAdapter = {
   editMessage({
@@ -39,8 +47,6 @@ export function useChatHistory({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatHistoryAdapter {
-  const chatConversationActions = useChatConversationActions();
-
   async function editMessage({
     messageId,
     newContent,
@@ -51,10 +57,15 @@ export function useChatHistory({
     lmParameters: LmParameters | undefined;
   }): Promise<void> {
     if (chatId.value === undefined) {
+      await editCurrentChatMessage({
+        messageId,
+        newContent,
+        lmParameters,
+      });
       return;
     }
 
-    await chatConversationActions.editMessage({
+    await editMessageForChat({
       chatId: chatId.value,
       messageId,
       newContent,
@@ -68,10 +79,13 @@ export function useChatHistory({
     messageId: string;
   }): Promise<void> {
     if (chatId.value === undefined) {
+      await switchVersionInCurrentChat({
+        messageId,
+      });
       return;
     }
 
-    await chatConversationActions.switchVersion({
+    await switchVersionForChat({
       chatId: chatId.value,
       messageId,
     });
@@ -82,7 +96,13 @@ export function useChatHistory({
   }: {
     messageId: string;
   }): Promise<string | null> {
-    return await chatConversationActions.forkChat({
+    if (chatId.value === undefined) {
+      return await forkCurrentChat({
+        messageId,
+      });
+    }
+
+    return await forkChatForChat({
       chatId: chatId.value,
       messageId,
     });
@@ -93,9 +113,9 @@ export function useChatHistory({
   }: {
     messageId: string;
   }): MessageNode[] {
-    return chatConversationActions.getSiblings({
-      messageId,
+    return getSiblingsForChat({
       chatId: chatId.value,
+      messageId,
     });
   }
 

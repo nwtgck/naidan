@@ -13,13 +13,14 @@ const {
   mockGetSiblings: vi.fn(),
 }));
 
-vi.mock('@/composables/chat/ui/useChatConversationActions', () => ({
-  useChatConversationActions: () => ({
-    editMessage: mockEditMessage,
-    switchVersion: mockSwitchVersion,
-    forkChat: mockForkChat,
-    getSiblings: mockGetSiblings,
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-history-flow', () => ({
+  editCurrentChatMessage: mockEditMessage,
+  editMessageForChat: mockEditMessage,
+  switchVersionForChat: mockSwitchVersion,
+  switchVersionInCurrentChat: mockSwitchVersion,
+  forkChatForChat: mockForkChat,
+  forkCurrentChat: mockForkChat,
+  getSiblingsForChat: mockGetSiblings,
 }));
 
 import { useChatHistory } from './useChatHistory';

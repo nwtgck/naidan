@@ -61,10 +61,8 @@ vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
   fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
 }));
 
-vi.mock('@/composables/chat/services/chat-history-service', () => ({
-  createChatHistoryService: () => ({
-    commitFullHistoryManipulation: mockCommitFullHistoryManipulation,
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-history-flow', () => ({
+  commitFullHistoryManipulationForChat: mockCommitFullHistoryManipulation,
 }));
 
 vi.mock('./useChatUiServices', () => ({

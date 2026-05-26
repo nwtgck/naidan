@@ -1,5 +1,9 @@
 import type { Ref } from 'vue';
 import type { Attachment, LmParameters } from '@/models/types';
+import {
+  regenerateMessageForChat,
+  sendMessageForChat,
+} from '@/composables/chat/chat-scoped/chat-generation-flow';
 import { useChatConversationActions } from '@/composables/chat/ui/useChatConversationActions';
 
 export type ChatGenerationAdapter = {
@@ -48,7 +52,7 @@ export function useChatGeneration({
       return false;
     }
 
-    return await chatConversationActions.sendMessage({
+    return await sendMessageForChat({
       chatId: chatId.value,
       content,
       parentId,
@@ -66,7 +70,7 @@ export function useChatGeneration({
       return;
     }
 
-    await chatConversationActions.regenerateMessage({
+    await regenerateMessageForChat({
       chatId: chatId.value,
       failedMessageId,
     });

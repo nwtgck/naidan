@@ -2,25 +2,18 @@ import { computed, type ComputedRef } from 'vue';
 import type { Chat } from '@/models/types';
 import type { HistoryItem } from '@/utils/chat-tree';
 import type { SystemPrompt } from '@/models/types';
-import { storageService } from '@/services/storage';
 import {
   availableModels,
-  currentChatRef,
   fetchingModels,
-  getLiveChat,
-  isProcessing,
-  liveChatRegistry,
-  loadData,
-  registerLiveInstance,
-  updateChatContent,
-  updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
-import { createChatHistoryService } from '@/composables/chat/services/chat-history-service';
 import {
   abortTitleGenerationForChat,
   generateChatTitleForChat,
   isGeneratingChatTitle,
 } from '@/composables/chat/chat-scoped/chat-title-helpers';
+import {
+  commitFullHistoryManipulationForChat,
+} from '@/composables/chat/chat-scoped/chat-history-flow';
 import {
   renameChatById,
   toggleDebugForChatId,
@@ -29,7 +22,6 @@ import {
 } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
 import { fetchAvailableModelsForChat } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { useChatUiServices } from './useChatUiServices';
-import { useChatNavigation } from './useChatNavigation';
 import { useChatOrganization } from './useChatOrganization';
 
 export type ChatMutationActionsAdapter = {
@@ -119,25 +111,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
   const {
     currentBridge,
   } = useChatUiServices({});
-  const chatNavigation = useChatNavigation();
   const chatOrganization = useChatOrganization();
-  const chatHistoryService = createChatHistoryService({
-    currentChatRef,
-    liveChatRegistry,
-    getLiveChat,
-    registerLiveInstance,
-    updateChatContent,
-    updateChatMeta,
-    updateHierarchy: updater => storageService.updateHierarchy(updater),
-    loadData,
-    openChat: ({ id }) => chatNavigation.openChat({ chatId: id, leafId: undefined }),
-    canPersistBinary: () => storageService.canPersistBinary,
-    saveFile: ({ blob, binaryObjectId, originalName }) => storageService.saveFile(blob, binaryObjectId, originalName),
-    isProcessing,
-    abortChat: ({ chatId: _chatId }) => {},
-    sendMessage: async ({ content: _content, parentId: _parentId, attachments: _attachments, chatTarget: _chatTarget, lmParameters: _lmParameters }) => {},
-    triggerCurrentChat: ({ chatId }) => currentBridge.triggerCurrentChat({ chatId }),
-  });
 
   const availableModelsState = computed(() => availableModels.value);
   const fetchingModelsState = computed(() => fetchingModels.value);
@@ -268,7 +242,7 @@ export function useChatMutationActions(): ChatMutationActionsAdapter {
     messages: HistoryItem[];
     systemPrompt: SystemPrompt | undefined;
   }) {
-    await chatHistoryService.commitFullHistoryManipulation({
+    await commitFullHistoryManipulationForChat({
       chatId,
       messages,
       systemPrompt,

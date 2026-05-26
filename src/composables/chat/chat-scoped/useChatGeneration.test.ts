@@ -13,10 +13,13 @@ const {
 
 vi.mock('@/composables/chat/ui/useChatConversationActions', () => ({
   useChatConversationActions: () => ({
-    sendMessage: mockSendMessage,
-    regenerateMessage: mockRegenerateMessage,
     abortChat: mockAbortChat,
   }),
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-generation-flow', () => ({
+  sendMessageForChat: mockSendMessage,
+  regenerateMessageForChat: mockRegenerateMessage,
 }));
 
 import { useChatGeneration } from './useChatGeneration';
