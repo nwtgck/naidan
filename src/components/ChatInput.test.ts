@@ -274,6 +274,24 @@ vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/chat-scoped/useChatDraft', () => ({
+  useChatDraft: () => ({
+    getDraft: () => mockDraft.value,
+    saveDraft: vi.fn(),
+    clearDraft: vi.fn(),
+    revokeAll: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
+  useChatModelSelection: () => ({
+    availableModels: mockChatStore.availableModels,
+    fetchingModels: mockChatStore.fetchingModels,
+    fetchModels: () => mockChatStore.fetchAvailableModels({ chatId: mockCurrentChat.value?.id }),
+    updateModel: ({ modelId }: { modelId: string | undefined }) => mockUpdateChatSettings(mockCurrentChat.value?.id, { modelId }),
+  }),
+}));
+
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     activeFocusArea: ref('chat'),

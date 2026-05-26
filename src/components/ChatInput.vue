@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'vue';
 import { useChat } from '@/composables/useChat';
-import { useChatDraft } from '@/composables/useChatDraft';
 import { useLayout } from '@/composables/useLayout';
 import { generateId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
@@ -11,7 +10,9 @@ import ChatAttachMenu from './ChatAttachMenu.vue';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
+import { useChatDraft as useScopedChatDraft } from '@/composables/chat/chat-scoped/useChatDraft';
 import { useChatMedia } from '@/composables/chat/chat-scoped/useChatMedia';
+import { useChatModelSelection } from '@/composables/chat/chat-scoped/useChatModelSelection';
 import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
 import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
 import { useChatReasoning } from '@/composables/chat/chat-scoped/useChatReasoning';
@@ -43,10 +44,6 @@ const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
-const { getDraft, saveDraft, clearDraft } = useChatDraft();
-const {
-  fetchingModels,
-} = chatStore;
 const { showConfirm } = useConfirm();
 
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
@@ -80,7 +77,13 @@ const chatReadModel = useChatReadModel({
 const chatGeneration = useChatGeneration({
   chatId: currentChatId,
 });
+const chatDraft = useScopedChatDraft({
+  chatId: currentChatId,
+});
 const chatMedia = useChatMedia({
+  chatId: currentChatId,
+});
+const chatModelSelection = useChatModelSelection({
   chatId: currentChatId,
 });
 const chatMounts = useChatMounts({
@@ -92,6 +95,7 @@ const chatReasoning = useChatReasoning({
 const currentChat = chatReadModel.currentChat;
 const currentChatGroup = chatReadModel.currentChatGroup;
 const inheritedSettings = chatReadModel.inheritedSettings;
+const fetchingModels = chatModelSelection.fetchingModels;
 const canGenerateImage = computed(() => props.canGenerateImage);
 const hasImageModel = computed(() => props.hasImageModel);
 const availableImageModels = computed(() => props.availableImageModels);
@@ -170,9 +174,7 @@ function handleUpdateImageModel({ modelId }: { modelId: string }) {
 }
 
 async function fetchModels() {
-  if (currentChat.value) {
-    await chatStore.fetchAvailableModels({ chatId: currentChat.value.id });
-  }
+  await chatModelSelection.fetchModels({});
 }
 
 function toggleImageMode() {
@@ -803,7 +805,10 @@ async function handleGenerateImage() {
       input.value = '';
       attachments.value = [];
     }
-    clearDraft({ chatId: sendingChatId });
+    const sendingChatDraft = useScopedChatDraft({
+      chatId: computed(() => sendingChatId),
+    });
+    sendingChatDraft.clearDraft({});
     emit('sent');
     nextTick(() => adjustTextareaHeight({}));
   }
@@ -852,7 +857,10 @@ async function handleSend() {
       input.value = '';
       attachments.value = [];
     }
-    clearDraft({ chatId: sendingChatId });
+    const sendingChatDraft = useScopedChatDraft({
+      chatId: computed(() => sendingChatId),
+    });
+    sendingChatDraft.clearDraft({});
     emit('sent');
 
     nextTick(() => { // Ensure textarea is cleared before adjusting height
@@ -875,16 +883,19 @@ watch(isMaximized, () => {
 
 watch(
   () => currentChat.value?.id,
-  (newId, oldId) => {
+  (_newId, oldId) => {
     // Save previous draft
-    saveDraft({ chatId: oldId, draft: {
+    const previousChatDraft = useScopedChatDraft({
+      chatId: computed(() => oldId),
+    });
+    previousChatDraft.saveDraft({ draft: {
       input: input.value,
       attachments: attachments.value,
       attachmentUrls: attachmentUrls.value
     } });
 
     // Load new draft
-    const draft = getDraft({ chatId: newId });
+    const draft = chatDraft.getDraft({});
     input.value = draft.input;
     attachments.value = draft.attachments;
     attachmentUrls.value = draft.attachmentUrls;
@@ -950,15 +961,14 @@ useEventTargetListener(window, 'resize', handleWindowResize);
 
 onUnmounted(() => {
   // Save final state
-  saveDraft({ chatId: currentChat.value?.id, draft: {
+  chatDraft.saveDraft({ draft: {
     input: input.value,
     attachments: attachments.value,
     attachmentUrls: attachmentUrls.value
   } });
 
   // Revoke all created URLs across all drafts to prevent leaks
-  const { revokeAll } = useChatDraft();
-  revokeAll();
+  chatDraft.revokeAll({});
 });
 
 function handleFocus() {
@@ -1177,7 +1187,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           <div class="w-[100px] sm:w-[180px]">
             <ModelSelector
               :model-value="currentChat.modelId"
-              @update:model-value="val => currentChat && chatStore.updateChatModel({ id: currentChat.id, modelId: val! })"
+              @update:model-value="val => chatModelSelection.updateModel({ modelId: val! })"
               :models="sortedAvailableModels"
               :placeholder="formatLabel({ value: inheritedSettings?.modelId, source: inheritedSettings?.sources.modelId })"
               :loading="fetchingModels"
