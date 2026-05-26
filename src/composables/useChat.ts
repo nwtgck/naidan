@@ -1,5 +1,5 @@
 import { generateId } from '@/utils/id';
-import { computed, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
+import { toRaw, type ComputedRef } from 'vue';
 import type { Chat, Settings } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { transformersJsService } from '@/services/transformers-js';
@@ -16,9 +16,9 @@ import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { getEnabledTools } from '@/services/tools/factory';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import { createChatControlService } from './chat/chat-control-service';
+import { createChatCurrentBridge } from './chat/chat-current-bridge';
 import {
   chatDataStore,
-  chatRuntimeFacade,
   chatRuntimeStore,
   chatTmpDirectoryService,
   chatVolatileState,
@@ -120,14 +120,20 @@ installChatBootstrap({
 export function useChat() {
   const { settings } = useSettings();
   const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
+  const chatCurrentBridge = createChatCurrentBridge({
+    currentChatRef: _currentChat,
+    currentChatGroupRef: _currentChatGroup,
+    liveChatRegistry,
+    getLiveChat,
+  });
 
   const chatDerivedState = createChatDerivedState({
     currentChatRef: _currentChat,
     rootItems,
     getSettings: () => settings.value as Settings,
   });
-  const currentChat = computed(() => _currentChat.value ? readonly(_currentChat.value) : null);
-  const currentChatGroup = computed(() => _currentChatGroup.value ? readonly(_currentChatGroup.value) : null);
+  const currentChat = chatCurrentBridge.currentChat;
+  const currentChatGroup = chatCurrentBridge.currentChatGroup;
   const sidebarItems = chatDerivedState.sidebarItems;
   const chats = chatDerivedState.chats;
   const chatGroups = chatDerivedState.chatGroups;
@@ -223,20 +229,9 @@ export function useChat() {
   const deleteAllChats = chatLifecycleService.deleteAllChats;
 
   const chatMetadataService = createChatMetadataService({
-    getChatTarget: ({ id }) => {
-      const liveChat = liveChatRegistry.get(id);
-      if (liveChat) return liveChat;
-      if (_currentChat.value && toRaw(_currentChat.value).id === id) {
-        return _currentChat.value;
-      }
-      return null;
-    },
-    getCurrentChat: () => (_currentChat.value ? getLiveChat({ chat: _currentChat.value }) : null),
-    triggerCurrentChat: ({ chatId }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-        triggerRef(_currentChat);
-      }
-    },
+    getChatTarget: ({ id }) => chatCurrentBridge.getChatTargetById({ id }),
+    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
+    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
     updateChatMeta,
     loadData,
   });
@@ -252,11 +247,7 @@ export function useChat() {
     liveChatRegistry,
     getChatGroups: () => chatGroups.value,
     getSettings: () => settings.value,
-    triggerCurrentChat: ({ chatId }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-        triggerRef(_currentChat);
-      }
-    },
+    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
     runtimeStore: chatRuntimeStore,
     addErrorEvent,
   });
@@ -291,7 +282,7 @@ export function useChat() {
   } = useImageGeneration();
 
   const chatImageService = createChatImageService({
-    getCurrentChat: () => (_currentChat.value ? getLiveChat({ chat: _currentChat.value }) : null),
+    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
     getLiveChat: ({ chat }) => getLiveChat({ chat }),
     getAvailableModels: () => availableModels.value,
     getStorageType: () => settings.value.storageType,
@@ -306,11 +297,7 @@ export function useChat() {
     handleImageGenerationImpl: _handleImageGeneration,
     sendImageRequestImpl: _sendImageRequest,
     updateChatContent,
-    triggerCurrentChat: ({ chatId }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-        triggerRef(_currentChat);
-      }
-    },
+    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
     startProcessing: ({ chatId }) => {
       chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
     },
@@ -321,8 +308,8 @@ export function useChat() {
   });
   const handleImageGeneration = chatImageService.handleImageGeneration;
   const chatTitleService = createChatTitleService({
-    getCurrentChatId: () => (_currentChat.value ? toRaw(_currentChat.value).id : null),
-    getChatTarget: ({ chatId }) => (chatId ? liveChatRegistry.get(chatId) || null : _currentChat.value),
+    getCurrentChatId: () => chatCurrentBridge.getCurrentChatId({}),
+    getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
     getLiveChat: ({ chat }) => getLiveChat({ chat }),
     registerLiveInstance,
     resolveSettings: ({ chat }) => {
@@ -338,11 +325,7 @@ export function useChat() {
     },
     updateChatMeta,
     loadData,
-    triggerCurrentChat: ({ chatId }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-        triggerRef(_currentChat);
-      }
-    },
+    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
     runtimeStore: chatRuntimeStore,
     getFallbackLanguage: (_args) => {
       const typeOfNavigator = typeof navigator;
@@ -378,11 +361,7 @@ export function useChat() {
     finishProcessing: ({ chatId }) => {
       chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
     },
-    triggerCurrentChat: ({ chatId }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-        triggerRef(_currentChat);
-      }
-    },
+    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
     resolveSettings: ({ chat }) => {
       const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
       return {
@@ -534,7 +513,7 @@ export function useChat() {
   const generateResponse = chatGenerationService.generateResponse;
   const sendMessage = chatGenerationService.sendMessage;
   const contextCompactService = createContextCompactService({
-    getCurrentChat: () => (_currentChat.value ? getLiveChat({ chat: _currentChat.value }) : null),
+    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
     getLiveChat,
     isProcessing,
     registerLiveInstance,
@@ -566,11 +545,7 @@ export function useChat() {
     runtime: contextCompactRuntime,
     updateChatContent,
     updateChatMeta,
-    triggerCurrentChat: ({ chatId }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-        triggerRef(_currentChat);
-      }
-    },
+    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
     addErrorEvent,
     startProcessing: ({ chatId }) => {
       chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
@@ -614,11 +589,7 @@ export function useChat() {
     sendMessage: async ({ content, parentId, attachments, chatTarget, lmParameters }) => {
       await sendMessage({ content, parentId, attachments, chatTarget, lmParameters });
     },
-    triggerCurrentChat: ({ chatId }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-        triggerRef(_currentChat);
-      }
-    },
+    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
   });
   const forkChat = chatHistoryService.forkChat;
   const editMessage = chatHistoryService.editMessage;
@@ -639,11 +610,7 @@ export function useChat() {
     },
     updateChatContent,
     updateChatMeta,
-    triggerCurrentChat: ({ chatId }) => {
-      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-        triggerRef(_currentChat);
-      }
-    },
+    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
     generateResponse,
   });
   const regenerateMessage = chatRegenerationService.regenerateMessage;
@@ -695,7 +662,7 @@ export function useChat() {
   const clearLiveChatRegistry = chatTestSupport.clearLiveChatRegistry;
 
   const clearActiveTaskCounts = (_params: Record<string, never>) => {
-    chatRuntimeFacade.clearActiveTaskCounts({});
+    chatRuntimeStore.clearActiveTaskCounts({});
   };
 
   const getVolatileToolOutput = chatVolatileState.getVolatileToolOutput;
