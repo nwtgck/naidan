@@ -252,9 +252,9 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
 }));
 
 vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
-  useChatReadModel: () => ({
-    currentChat: mockCurrentChat,
-    currentChatGroup: mockCurrentChatGroup,
+  useChatReadModel: ({ chatId }: { chatId: { value: string | undefined } }) => ({
+    currentChat: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChat.value : null),
+    currentChatGroup: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChatGroup.value : null),
     activeMessages: ref([]),
     allMessages: ref([]),
     resolvedSettings: ref(null),
@@ -324,6 +324,7 @@ describe('ChatInput Integration', () => {
 
   const getWrapper = () => mount(ChatInput, {
     props: {
+      chatId: 'chat-1',
       visibility: 'active',
       isStreaming: false,
       canGenerateImage: true,
@@ -665,6 +666,7 @@ describe('ChatInput Integration', () => {
       id: 'chat-2',
       lmParameters: { reasoning: { effort: 'high' } }
     };
+    await wrapper.setProps({ chatId: 'chat-2' });
     await nextTick();
 
     // Verify it reflects the NEW chat's state

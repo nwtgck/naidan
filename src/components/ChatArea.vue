@@ -1209,6 +1209,7 @@ watch(
     <ChatInput
       v-if="currentChat"
       ref="chatInputRef"
+      :chat-id="currentChat.id"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
       :is-streaming="isCurrentChatStreaming"

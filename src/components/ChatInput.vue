@@ -47,6 +47,7 @@ const { showConfirm } = useConfirm();
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
 const props = defineProps<{
+  chatId: string;
   autoSendPrompt?: string;
   visibility: 'submerged' | 'peeking' | 'active';
   isStreaming: boolean;
@@ -68,7 +69,7 @@ const isFocused = ref(false);
 const isHovered = ref(false);
 
 const isCurrentChatStreaming = computed(() => props.isStreaming);
-const currentChatId = computed(() => currentChat.value?.id);
+const currentChatId = computed(() => props.chatId);
 const chatReadModel = useChatReadModel({
   chatId: currentChatId,
 });
