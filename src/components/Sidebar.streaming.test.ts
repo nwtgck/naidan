@@ -42,6 +42,29 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useSidebarData', () => ({
+  useSidebarData: () => ({
+    currentChat: ref(null),
+    currentChatGroup: ref(null),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      return mockChats.value.map(c => ({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+    }),
+    chatGroups: ref([]),
+    isProcessing: ({ chatId }: { chatId: string }) => mockActiveGenerations.has(chatId),
+    persistSidebarStructure: vi.fn(),
+    setChatGroupCollapsed: vi.fn(),
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    createNewChat: vi.fn(),
+    openChat: vi.fn(),
+    openChatGroup: vi.fn(),
+    deleteChat: vi.fn(),
+    renameChat: vi.fn(),
+    renameChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointUrl: 'http://localhost' }),

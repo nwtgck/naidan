@@ -2,7 +2,7 @@ import { computed, type ComputedRef } from 'vue';
 import type { Attachment } from '@/models/types';
 import { useSettings } from '@/composables/useSettings';
 import { useImageGeneration } from '@/composables/useImageGeneration';
-import { chatRuntimeStore, updateChatContent } from '@/composables/chat/global/chat-core-singletons';
+import { availableModels, chatRuntimeStore, updateChatContent } from '@/composables/chat/global/chat-core-singletons';
 import { createChatImageService } from '@/composables/chat/services/chat-image-service';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import type { ImageRequestParams } from '@/utils/image-generation';
@@ -137,7 +137,7 @@ export type ChatImageActionsAdapter = {
 
 export function useChatImageActions(): ChatImageActionsAdapter {
   const { settings } = useSettings();
-  const { currentBridge, derivedState, availableModels } = useChatUiServices({});
+  const { currentBridge, derivedState } = useChatUiServices({});
   const chatConversationActions = useChatConversationActions();
   const imageGeneration = useImageGeneration();
   const chatImageService = createChatImageService({

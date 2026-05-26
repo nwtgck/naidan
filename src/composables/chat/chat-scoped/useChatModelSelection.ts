@@ -1,5 +1,7 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
+import { availableModels, fetchingModels } from '@/composables/chat/global/chat-core-singletons';
+import { fetchAvailableModelsForChat } from './chat-model-helpers';
+import { updateChatModelById } from './chat-metadata-helpers';
 
 export type ChatModelSelectionAdapter = {
   availableModels: Ref<string[]>;
@@ -21,11 +23,10 @@ export function useChatModelSelection({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatModelSelectionAdapter {
-  const chatMutationActions = useChatMutationActions();
-  const fetchingModels = computed(() => chatMutationActions.fetchingModels.value);
+  const fetchingModelsState = computed(() => fetchingModels.value);
 
   async function fetchModels(_args: Record<never, never>): Promise<string[]> {
-    return await chatMutationActions.fetchAvailableModels({
+    return await fetchAvailableModelsForChat({
       chatId: chatId.value,
     });
   }
@@ -40,15 +41,15 @@ export function useChatModelSelection({
       return;
     }
 
-    await chatMutationActions.updateChatModel({
-      id,
+    await updateChatModelById({
+      chatId: id,
       modelId,
     });
   }
 
   return {
-    availableModels: chatMutationActions.availableModels,
-    fetchingModels,
+    availableModels,
+    fetchingModels: fetchingModelsState,
     fetchModels,
     updateModel,
     TEST_ONLY: {

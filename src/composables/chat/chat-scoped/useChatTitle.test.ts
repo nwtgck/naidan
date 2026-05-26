@@ -3,24 +3,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockIsGeneratingTitle,
-  mockRenameChat,
-  mockGenerateChatTitle,
-  mockAbortTitleGeneration,
+  mockRenameChatById,
+  mockGenerateChatTitleForChat,
+  mockAbortTitleGenerationForChat,
 } = vi.hoisted(() => ({
   mockIsGeneratingTitle: vi.fn(),
-  mockRenameChat: vi.fn(),
-  mockGenerateChatTitle: vi.fn(),
-  mockAbortTitleGeneration: vi.fn(),
+  mockRenameChatById: vi.fn(),
+  mockGenerateChatTitleForChat: vi.fn(),
+  mockAbortTitleGenerationForChat: vi.fn(),
 }));
 
-vi.mock('@/composables/chat/ui/useChatMutationActions', () => ({
-  useChatMutationActions: () => ({
-    isGeneratingTitle: mockIsGeneratingTitle,
-    renameChat: mockRenameChat,
-    generateChatTitle: mockGenerateChatTitle,
-    abortTitleGeneration: mockAbortTitleGeneration,
-    TEST_ONLY: {},
-  }),
+vi.mock('./chat-title-helpers', () => ({
+  isGeneratingChatTitle: mockIsGeneratingTitle,
+  generateChatTitleForChat: mockGenerateChatTitleForChat,
+  abortTitleGenerationForChat: mockAbortTitleGenerationForChat,
+}));
+
+vi.mock('./chat-metadata-helpers', () => ({
+  renameChatById: mockRenameChatById,
 }));
 
 import { useChatTitle } from './useChatTitle';
@@ -29,7 +29,7 @@ describe('useChatTitle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsGeneratingTitle.mockReturnValue(false);
-    mockGenerateChatTitle.mockResolvedValue('Generated');
+    mockGenerateChatTitleForChat.mockResolvedValue('Generated');
   });
 
   it('no-ops when chatId is undefined', async () => {
@@ -42,9 +42,9 @@ describe('useChatTitle', () => {
     await expect(chatTitle.generateTitle({ titleModelIdOverride: 'model-1' })).resolves.toBeUndefined();
     chatTitle.abort({});
 
-    expect(mockRenameChat).not.toHaveBeenCalled();
-    expect(mockGenerateChatTitle).not.toHaveBeenCalled();
-    expect(mockAbortTitleGeneration).toHaveBeenCalledWith({ chatId: undefined });
+    expect(mockRenameChatById).not.toHaveBeenCalled();
+    expect(mockGenerateChatTitleForChat).not.toHaveBeenCalled();
+    expect(mockAbortTitleGenerationForChat).toHaveBeenCalledWith({ chatId: undefined });
   });
 
   it('binds title actions to the scoped chatId', async () => {
@@ -59,15 +59,15 @@ describe('useChatTitle', () => {
     await expect(chatTitle.generateTitle({ titleModelIdOverride: 'model-1' })).resolves.toBe('Generated');
     chatTitle.abort({});
 
-    expect(mockRenameChat).toHaveBeenCalledWith({
-      id: 'chat-1',
-      newTitle: 'Next Title',
-    });
-    expect(mockGenerateChatTitle).toHaveBeenCalledWith({
+    expect(mockRenameChatById).toHaveBeenCalledWith({
       chatId: 'chat-1',
-      signal: undefined,
-      titleModelIdOverride: 'model-1',
+      title: 'Next Title',
     });
-    expect(mockAbortTitleGeneration).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockGenerateChatTitleForChat).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      titleModelIdOverride: 'model-1',
+      signal: undefined,
+    });
+    expect(mockAbortTitleGenerationForChat).toHaveBeenCalledWith({ chatId: 'chat-1' });
   });
 });

@@ -1,14 +1,17 @@
 import { computed, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const compactCurrentBranchForChat = vi.fn();
-const abortContextCompact = vi.fn();
+const {
+  compactCurrentBranchForChat,
+  abortContextCompact,
+} = vi.hoisted(() => ({
+  compactCurrentBranchForChat: vi.fn(),
+  abortContextCompact: vi.fn(),
+}));
 
-vi.mock('@/composables/chat/services/context-compact-service', () => ({
-  createContextCompactService: () => ({
-    compactCurrentBranchForChat,
-    abortContextCompact,
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-compact-flow', () => ({
+  runCompactCurrentBranchForChat: compactCurrentBranchForChat,
+  abortContextCompactForChat: abortContextCompact,
 }));
 
 vi.mock('@/composables/useSettings', () => ({
@@ -30,29 +33,10 @@ vi.mock('@/composables/useGlobalEvents', () => ({
   }),
 }));
 
-vi.mock('@/composables/useChatWeshPreferences', () => ({
-  useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: () => 'none',
-  }),
-}));
-
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
-  chatRuntimeStore: {
-    startTask: vi.fn(),
-    finishTask: vi.fn(),
-  },
   contextCompactRuntime: {
     getProgress: ({ chatId }: { chatId: string | undefined }) => chatId ? { phase: 'preparing', compactedMessageCount: 1, suffixMessageCount: 2 } : { phase: 'idle' },
   },
-  getLiveChat: vi.fn(),
-  getReadonlyChat: vi.fn(),
-  getChatTargetByOptionalId: vi.fn(),
-  isProcessing: vi.fn(),
-  registerLiveInstance: vi.fn(),
-  rootItems: ref([]),
-  triggerCurrentChat: vi.fn(),
-  updateChatContent: vi.fn(),
-  updateChatMeta: vi.fn(),
 }));
 
 import { useChatCompact } from './useChatCompact';

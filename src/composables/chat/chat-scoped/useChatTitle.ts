@@ -1,5 +1,10 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
+import {
+  abortTitleGenerationForChat,
+  generateChatTitleForChat,
+  isGeneratingChatTitle,
+} from './chat-title-helpers';
+import { renameChatById } from './chat-metadata-helpers';
 
 export type ChatTitleAdapter = {
   isGenerating: ComputedRef<boolean>;
@@ -26,15 +31,13 @@ export function useChatTitle({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatTitleAdapter {
-  const chatMutationActions = useChatMutationActions();
-
   const isGenerating = computed(() => {
     const id = chatId.value;
     if (id === undefined) {
       return false;
     }
 
-    return chatMutationActions.isGeneratingTitle({ chatId: id });
+    return isGeneratingChatTitle({ chatId: id });
   });
 
   async function rename({
@@ -47,9 +50,9 @@ export function useChatTitle({
       return;
     }
 
-    await chatMutationActions.renameChat({
-      id,
-      newTitle: title,
+    await renameChatById({
+      chatId: id,
+      title,
     });
   }
 
@@ -63,14 +66,15 @@ export function useChatTitle({
       return undefined;
     }
 
-    return await chatMutationActions.generateChatTitle({
+    return await generateChatTitleForChat({
       chatId: id,
       titleModelIdOverride,
+      signal: undefined,
     });
   }
 
   function abort(_args: Record<never, never>) {
-    chatMutationActions.abortTitleGeneration({
+    abortTitleGenerationForChat({
       chatId: chatId.value,
     });
   }

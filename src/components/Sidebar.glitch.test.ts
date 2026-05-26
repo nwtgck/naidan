@@ -7,6 +7,8 @@ import type { ChatSummary, SidebarItem } from '@/models/types';
 
 const mockChats = ref<ChatSummary[]>([]);
 const mockActiveTasks = reactive(new Set<string>());
+const mockCurrentChat = ref(null);
+const mockCurrentChatGroup = ref(null);
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
@@ -19,8 +21,8 @@ vi.mock('../composables/useLayout', () => ({
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
-    currentChat: ref(null),
-    currentChatGroup: ref(null),
+    currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
     chatGroups: ref([]),
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
@@ -30,6 +32,30 @@ vi.mock('../composables/useChat', () => ({
     isProcessing: ({ chatId }: { chatId: string }) => Array.from(mockActiveTasks).some(t => t.startsWith('process:') && t.endsWith(':' + chatId)),
     openChat: vi.fn(),
     openChatGroup: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarData', () => ({
+  useSidebarData: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      return mockChats.value.map(c => ({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+    }),
+    chatGroups: computed(() => []),
+    isProcessing: ({ chatId }: { chatId: string }) =>
+      Array.from(mockActiveTasks).some(task => task.startsWith('process:') && task.endsWith(`:${chatId}`)),
+    persistSidebarStructure: vi.fn(),
+    setChatGroupCollapsed: vi.fn(),
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    createNewChat: vi.fn(),
+    openChat: vi.fn(),
+    openChatGroup: vi.fn(),
+    deleteChat: vi.fn(),
+    renameChat: vi.fn(),
+    renameChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
   }),
 }));
 

@@ -5,10 +5,12 @@ const {
   mockCurrentChatGroup,
   mockFetchingModels,
   mockUpdateChatGroupMetadata,
-  mockFetchAvailableModels,
-  mockAddMountToChatGroup,
-  mockRemoveMountFromChatGroup,
-  mockUpdateChatGroupMount,
+  mockFetchAvailableModelsForEndpoint,
+  mockAddMount,
+  mockRemoveMount,
+  mockUpdateMount,
+  mockLoadData,
+  mockUpdateChatGroup,
 } = vi.hoisted(() => ({
   mockCurrentChatGroup: {
     value: {
@@ -18,29 +20,34 @@ const {
   },
   mockFetchingModels: { value: false },
   mockUpdateChatGroupMetadata: vi.fn(),
-  mockFetchAvailableModels: vi.fn(),
-  mockAddMountToChatGroup: vi.fn(),
-  mockRemoveMountFromChatGroup: vi.fn(),
-  mockUpdateChatGroupMount: vi.fn(),
+  mockFetchAvailableModelsForEndpoint: vi.fn(),
+  mockAddMount: vi.fn(),
+  mockRemoveMount: vi.fn(),
+  mockUpdateMount: vi.fn(),
+  mockLoadData: vi.fn(),
+  mockUpdateChatGroup: vi.fn(),
 }));
 
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   fetchingModels: mockFetchingModels,
+  loadData: mockLoadData,
 }));
 
-vi.mock('./useChatUiServices', () => ({
-  useChatUiServices: () => ({
-    hierarchyService: {
-      updateChatGroupMetadata: mockUpdateChatGroupMetadata,
-    },
-    modelService: {
-      fetchAvailableModels: mockFetchAvailableModels,
-    },
-    mountService: {
-      addMountToChatGroup: mockAddMountToChatGroup,
-      removeMountFromChatGroup: mockRemoveMountFromChatGroup,
-      updateChatGroupMount: mockUpdateChatGroupMount,
-    },
+vi.mock('@/services/storage', () => ({
+  storageService: {
+    updateChatGroup: mockUpdateChatGroup,
+  },
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
+  fetchAvailableModelsForEndpoint: mockFetchAvailableModelsForEndpoint,
+}));
+
+vi.mock('@/composables/chat/chat-scoped/useChatGroupMounts', () => ({
+  useChatGroupMounts: () => ({
+    addMount: mockAddMount,
+    removeMount: mockRemoveMount,
+    updateMount: mockUpdateMount,
   }),
 }));
 
@@ -57,7 +64,10 @@ describe('useChatGroupSettingsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetchingModels.value = false;
-    mockFetchAvailableModels.mockResolvedValue(['model-a']);
+    mockFetchAvailableModelsForEndpoint.mockResolvedValue(['model-a']);
+    mockUpdateChatGroup.mockImplementation(async (_groupId: string, updater: (current: { id: string; name: string } | null) => { id: string; name: string }) => {
+      mockUpdateChatGroupMetadata(updater({ id: 'group-1', name: 'Group 1' }));
+    });
   });
 
   it('exposes current group state and shared fetching state', () => {
@@ -97,12 +107,14 @@ describe('useChatGroupSettingsPanel', () => {
       readOnly: false,
     });
 
+    expect(mockUpdateChatGroup).toHaveBeenCalled();
     expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({
       id: 'group-1',
-      updates: { name: 'Renamed' },
+      name: 'Renamed',
+      updatedAt: expect.any(Number),
     });
-    expect(mockAddMountToChatGroup).toHaveBeenCalledWith({
-      groupId: 'group-1',
+    expect(mockLoadData).toHaveBeenCalledWith({});
+    expect(mockAddMount).toHaveBeenCalledWith({
       mount: {
         type: 'volume',
         volumeId: 'volume-1',
@@ -110,12 +122,10 @@ describe('useChatGroupSettingsPanel', () => {
         readOnly: true,
       },
     });
-    expect(mockRemoveMountFromChatGroup).toHaveBeenCalledWith({
-      groupId: 'group-1',
+    expect(mockRemoveMount).toHaveBeenCalledWith({
       volumeId: 'volume-1',
     });
-    expect(mockUpdateChatGroupMount).toHaveBeenCalledWith({
-      groupId: 'group-1',
+    expect(mockUpdateMount).toHaveBeenCalledWith({
       volumeId: 'volume-1',
       mountPath: '/mnt/volume-1',
       readOnly: false,
@@ -131,13 +141,11 @@ describe('useChatGroupSettingsPanel', () => {
       endpointHttpHeaders: [['Authorization', 'Bearer secret']],
     })).resolves.toEqual(['model-a']);
 
-    expect(mockFetchAvailableModels).toHaveBeenCalledWith({
-      chatId: undefined,
-      customEndpoint: {
-        type: 'openai',
-        url: 'http://localhost:1234',
-        headers: [['Authorization', 'Bearer secret']],
-      },
+    expect(mockFetchAvailableModelsForEndpoint).toHaveBeenCalledWith({
+      endpointType: 'openai',
+      endpointUrl: 'http://localhost:1234',
+      endpointHttpHeaders: [['Authorization', 'Bearer secret']],
+      errorSource: 'useChatGroupSettingsPanel:fetchModels',
     });
   });
 });

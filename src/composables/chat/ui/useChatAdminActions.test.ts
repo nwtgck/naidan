@@ -15,14 +15,15 @@ vi.mock('@/composables/useChat', () => ({
   }),
 }));
 
-vi.mock('./useChatUiServices', () => ({
-  useChatUiServices: () => ({
-    hierarchyService: {
-      createChatGroup: mockCreateChatGroup,
-    },
-    lifecycleService: {
-      deleteAllChats: mockDeleteAllChats,
-    },
+vi.mock('./useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: mockCreateChatGroup,
+  }),
+}));
+
+vi.mock('./useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    deleteAllChats: mockDeleteAllChats,
   }),
 }));
 

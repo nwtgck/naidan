@@ -4,46 +4,38 @@ const {
   mockAvailableModels,
   mockFetchingModels,
   mockMoveChatToGroup,
-  mockToggleDebug,
   mockToggleDebugForChat,
-  mockRenameChat,
-  mockGenerateChatTitle,
-  mockAbortTitleGeneration,
+  mockRenameChatById,
+  mockGenerateChatTitleForChat,
+  mockAbortTitleGenerationForChat,
   mockIsGeneratingTitle,
-  mockUpdateChatSettings,
-  mockUpdateChatModel,
-  mockFetchAvailableModels,
+  mockUpdateChatSettingsById,
+  mockUpdateChatModelById,
+  mockFetchAvailableModelsForChat,
   mockCommitFullHistoryManipulation,
+  mockGetCurrentChatId,
 } = vi.hoisted(() => ({
   mockAvailableModels: { value: ['model-a'] },
   mockFetchingModels: { value: false },
   mockMoveChatToGroup: vi.fn().mockResolvedValue(undefined),
-  mockToggleDebug: vi.fn().mockResolvedValue(undefined),
   mockToggleDebugForChat: vi.fn().mockResolvedValue(undefined),
-  mockRenameChat: vi.fn().mockResolvedValue(undefined),
-  mockGenerateChatTitle: vi.fn().mockResolvedValue('Generated'),
-  mockAbortTitleGeneration: vi.fn(),
+  mockRenameChatById: vi.fn().mockResolvedValue(undefined),
+  mockGenerateChatTitleForChat: vi.fn().mockResolvedValue('Generated'),
+  mockAbortTitleGenerationForChat: vi.fn(),
   mockIsGeneratingTitle: vi.fn().mockReturnValue(false),
-  mockUpdateChatSettings: vi.fn().mockResolvedValue(undefined),
-  mockUpdateChatModel: vi.fn().mockResolvedValue(undefined),
-  mockFetchAvailableModels: vi.fn().mockResolvedValue(['model-a']),
+  mockUpdateChatSettingsById: vi.fn().mockResolvedValue(undefined),
+  mockUpdateChatModelById: vi.fn().mockResolvedValue(undefined),
+  mockFetchAvailableModelsForChat: vi.fn().mockResolvedValue(['model-a']),
   mockCommitFullHistoryManipulation: vi.fn().mockResolvedValue(undefined),
-}));
-
-vi.mock('@/composables/useSettings', () => ({
-  useSettings: () => ({
-    settings: {
-      value: {},
-    },
-  }),
+  mockGetCurrentChatId: vi.fn(() => 'chat-1'),
 }));
 
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  availableModels: mockAvailableModels,
   chatRuntimeStore: {},
   currentChatRef: { value: null },
   fetchingModels: mockFetchingModels,
   getLiveChat: vi.fn(({ chat }) => chat),
-  isGeneratingTitle: mockIsGeneratingTitle,
   isProcessing: vi.fn(() => false),
   liveChatRegistry: new Map(),
   loadData: vi.fn(),
@@ -52,11 +44,21 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   updateChatMeta: vi.fn(),
 }));
 
-vi.mock('@/composables/chat/services/chat-title-service', () => ({
-  createChatTitleService: () => ({
-    generateChatTitle: mockGenerateChatTitle,
-    abortTitleGeneration: mockAbortTitleGeneration,
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-title-helpers', () => ({
+  generateChatTitleForChat: mockGenerateChatTitleForChat,
+  abortTitleGenerationForChat: mockAbortTitleGenerationForChat,
+  isGeneratingChatTitle: mockIsGeneratingTitle,
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-metadata-helpers', () => ({
+  toggleDebugForChatId: mockToggleDebugForChat,
+  renameChatById: mockRenameChatById,
+  updateChatSettingsById: mockUpdateChatSettingsById,
+  updateChatModelById: mockUpdateChatModelById,
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
+  fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
 }));
 
 vi.mock('@/composables/chat/services/chat-history-service', () => ({
@@ -67,31 +69,23 @@ vi.mock('@/composables/chat/services/chat-history-service', () => ({
 
 vi.mock('./useChatUiServices', () => ({
   useChatUiServices: () => ({
-    availableModels: mockAvailableModels,
     currentBridge: {
-      getCurrentChatId: vi.fn(),
+      getCurrentChatId: mockGetCurrentChatId,
       getChatTargetByOptionalId: vi.fn(),
       triggerCurrentChat: vi.fn(),
     },
-    derivedState: {
-      chatGroups: { value: [] },
-    },
-    hierarchyService: {
-      moveChatToGroup: mockMoveChatToGroup,
-    },
-    metadataService: {
-      toggleDebug: mockToggleDebug,
-      toggleDebugForChat: mockToggleDebugForChat,
-      renameChat: mockRenameChat,
-      updateChatSettings: mockUpdateChatSettings,
-      updateChatModel: mockUpdateChatModel,
-    },
-    modelService: {
-      fetchAvailableModels: mockFetchAvailableModels,
-    },
-    openService: {
-      openChat: vi.fn(),
-    },
+  }),
+}));
+
+vi.mock('./useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    moveChatToGroup: mockMoveChatToGroup,
+  }),
+}));
+
+vi.mock('./useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: vi.fn(),
   }),
 }));
 
@@ -101,8 +95,9 @@ describe('useChatMutationActions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsGeneratingTitle.mockReturnValue(false);
-    mockGenerateChatTitle.mockResolvedValue('Generated');
-    mockFetchAvailableModels.mockResolvedValue(['model-a']);
+    mockGenerateChatTitleForChat.mockResolvedValue('Generated');
+    mockFetchAvailableModelsForChat.mockResolvedValue(['model-a']);
+    mockGetCurrentChatId.mockReturnValue('chat-1');
   });
 
   it('exposes shared action state', () => {
@@ -120,9 +115,8 @@ describe('useChatMutationActions', () => {
       chatId: 'chat-1',
       targetGroupId: 'group-1',
     });
-    await chatMutationActions.toggleDebugForChat({
-      chatId: 'chat-1',
-    });
+    await chatMutationActions.toggleDebug({});
+    await chatMutationActions.toggleDebugForChat({ chatId: 'chat-1' });
     await chatMutationActions.renameChat({
       id: 'chat-1',
       newTitle: 'Renamed',
@@ -158,27 +152,30 @@ describe('useChatMutationActions', () => {
     expect(mockToggleDebugForChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
     });
-    expect(mockRenameChat).toHaveBeenCalledWith({
-      id: 'chat-1',
-      newTitle: 'Renamed',
-    });
-    expect(mockGenerateChatTitle).toHaveBeenCalledWith({
+    expect(mockToggleDebugForChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
-      signal: undefined,
+    });
+    expect(mockRenameChatById).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      title: 'Renamed',
+    });
+    expect(mockGenerateChatTitleForChat).toHaveBeenCalledWith({
+      chatId: 'chat-1',
       titleModelIdOverride: 'model-a',
+      signal: undefined,
     });
-    expect(mockAbortTitleGeneration).toHaveBeenCalledWith({
+    expect(mockAbortTitleGenerationForChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
     });
-    expect(mockUpdateChatSettings).toHaveBeenCalledWith({
-      id: 'chat-1',
+    expect(mockUpdateChatSettingsById).toHaveBeenCalledWith({
+      chatId: 'chat-1',
       updates: { titleModelId: 'model-a' },
     });
-    expect(mockUpdateChatModel).toHaveBeenCalledWith({
-      id: 'chat-1',
+    expect(mockUpdateChatModelById).toHaveBeenCalledWith({
+      chatId: 'chat-1',
       modelId: 'model-b',
     });
-    expect(mockFetchAvailableModels).toHaveBeenCalledWith({
+    expect(mockFetchAvailableModelsForChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
     });
     expect(mockCommitFullHistoryManipulation).toHaveBeenCalledWith({
@@ -196,8 +193,8 @@ describe('useChatMutationActions', () => {
       modelId: undefined,
     });
 
-    expect(mockUpdateChatModel).toHaveBeenCalledWith({
-      id: 'chat-1',
+    expect(mockUpdateChatModelById).toHaveBeenCalledWith({
+      chatId: 'chat-1',
       modelId: undefined,
     });
   });

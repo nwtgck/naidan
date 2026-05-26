@@ -47,6 +47,32 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useSidebarData', () => ({
+  useSidebarData: () => ({
+    currentChat: ref(null),
+    currentChatGroup: ref(null),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      return items;
+    }),
+    chatGroups: computed(() => mockChatGroups.value),
+    isProcessing: vi.fn().mockReturnValue(false),
+    persistSidebarStructure: vi.fn(),
+    setChatGroupCollapsed: vi.fn(),
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    createNewChat: vi.fn(),
+    openChat: vi.fn(),
+    openChatGroup: vi.fn(),
+    deleteChat: vi.fn(),
+    renameChat: vi.fn(),
+    renameChatGroup: vi.fn(),
+    duplicateChatGroup: mockDuplicateChatGroup,
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointUrl: 'http://localhost', defaultModelId: 'm1' }),

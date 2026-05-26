@@ -13,7 +13,9 @@ const {
   mockForkChat,
   mockForkChatForChat,
   mockGetSiblings,
-  mockGenerateChatTitle,
+  mockGenerateChatTitleForChat,
+  mockAbortTitleGenerationForChat,
+  mockFetchAvailableModelsForChat,
 } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
   mockSendMessageForChat: vi.fn(),
@@ -27,7 +29,9 @@ const {
   mockForkChat: vi.fn(),
   mockForkChatForChat: vi.fn(),
   mockGetSiblings: vi.fn(),
-  mockGenerateChatTitle: vi.fn(),
+  mockGenerateChatTitleForChat: vi.fn(),
+  mockAbortTitleGenerationForChat: vi.fn(),
+  mockFetchAvailableModelsForChat: vi.fn(async () => []),
 }));
 
 vi.mock('@/composables/useChat', () => ({
@@ -157,11 +161,13 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   updateChatMeta: vi.fn(),
 }));
 
-vi.mock('@/composables/chat/services/chat-title-service', () => ({
-  createChatTitleService: () => ({
-    generateChatTitle: mockGenerateChatTitle,
-    abortTitleGeneration: mockAbortChat,
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-title-helpers', () => ({
+  generateChatTitleForChat: mockGenerateChatTitleForChat,
+  abortTitleGenerationForChat: mockAbortTitleGenerationForChat,
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
+  fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
 }));
 
 vi.mock('@/composables/chat/services/chat-image-service', () => ({
@@ -199,7 +205,6 @@ vi.mock('@/composables/chat/services/chat-regeneration-service', () => ({
 
 vi.mock('./useChatUiServices', () => ({
   useChatUiServices: () => ({
-    availableModels: { value: [] },
     currentBridge: {
       getCurrentChat: vi.fn(() => null),
       getCurrentChatId: vi.fn(() => null),
@@ -210,15 +215,18 @@ vi.mock('./useChatUiServices', () => ({
     derivedState: {
       chatGroups: { value: [] },
     },
-    hierarchyService: {
-      reorderSidebarChatAfterSend: vi.fn(),
-    },
-    modelService: {
-      fetchAvailableModels: vi.fn(async () => []),
-    },
-    openService: {
-      openChat: vi.fn(),
-    },
+  }),
+}));
+
+vi.mock('./useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    reorderSidebarChatAfterSend: vi.fn(),
+  }),
+}));
+
+vi.mock('./useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: vi.fn(),
   }),
 }));
 
@@ -287,7 +295,7 @@ describe('useChatConversationActions', () => {
       chatId: 'chat-1',
       failedMessageId: 'assistant-1',
     });
-    expect(mockAbortChat).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockAbortTitleGenerationForChat).toHaveBeenCalledWith({ chatId: 'chat-1' });
     expect(mockEditMessageForChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
       messageId: 'message-1',

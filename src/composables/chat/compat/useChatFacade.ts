@@ -1,5 +1,5 @@
 import { toRaw, triggerRef, type ComputedRef } from 'vue';
-import type { Chat, Settings } from '@/models/types';
+import type { Chat, EndpointType, Reasoning, Settings } from '@/models/types';
 import { generateId } from '@/utils/id';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { storageService } from '@/services/storage';
@@ -8,10 +8,8 @@ import { getEnabledTools } from '@/services/tools/factory';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
-import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useImageGeneration } from '@/composables/useImageGeneration';
-import { useToast } from '@/composables/useToast';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
@@ -19,13 +17,11 @@ import { createChatControlService } from '@/composables/chat/services/chat-contr
 import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
 import {
   availableModels as sharedAvailableModels,
-  chatDataStore,
   chatRuntimeStore,
-  chatTmpDirectoryService,
+  chatTmpDirectories,
   chatVolatileState,
   contextCompactProgress,
   contextCompactRuntime,
-  creatingChat as sharedCreatingChat,
   currentChatGroupRef as _currentChatGroup,
   currentChatRef as _currentChat,
   ensureChatTmpDirectory,
@@ -50,20 +46,38 @@ import {
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { installChatBootstrap } from '@/composables/chat/chat-bootstrap';
 import { createChatTestSupport } from '@/composables/chat/chat-test-support';
-import { createContextCompactService } from '@/composables/chat/services/context-compact-service';
+import {
+  abortContextCompactForChat,
+  runCompactCurrentBranchForChat,
+} from '@/composables/chat/chat-scoped/chat-compact-flow';
+import {
+  getReasoningEffortForChatId,
+  renameChatById,
+  toggleDebugForChatId,
+  updateChatGroupOverrideById,
+  updateChatModelById,
+  updateChatSettingsById,
+  updateReasoningEffortForChatId,
+} from '@/composables/chat/chat-scoped/chat-metadata-helpers';
+import {
+  fetchAvailableModelsForChat,
+  fetchAvailableModelsForEndpoint,
+} from '@/composables/chat/chat-scoped/chat-model-helpers';
+import {
+  abortTitleGenerationForChat,
+  generateChatTitleForChat,
+} from '@/composables/chat/chat-scoped/chat-title-helpers';
 import { createChatGenerationService } from '@/composables/chat/services/chat-generation-service';
-import { createChatHierarchyService } from '@/composables/chat/services/chat-hierarchy-service';
 import { createChatHistoryService } from '@/composables/chat/services/chat-history-service';
 import { createChatImageService } from '@/composables/chat/services/chat-image-service';
-import { createChatLifecycleService } from '@/composables/chat/services/chat-lifecycle-service';
-import { createChatMountService } from '@/composables/chat/services/chat-mount-service';
-import { createChatMetadataService } from '@/composables/chat/services/chat-metadata-service';
-import { createChatModelService } from '@/composables/chat/services/chat-model-service';
-import { createChatOpenService } from '@/composables/chat/services/chat-open-service';
 import { createChatRegenerationService } from '@/composables/chat/services/chat-regeneration-service';
-import { createChatTitleService } from '@/composables/chat/services/chat-title-service';
+import type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
+import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 
-export type { AddToastOptions } from '@/composables/chat/services/chat-lifecycle-service';
+export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 
 installChatBootstrap({
   registerBeforeUnload: (_args) => {
@@ -97,34 +111,18 @@ installChatBootstrap({
   subscribeModelList: (_args) => {
     return transformersJsService.subscribeModelList(async () => {
       const { settings } = useSettings();
-      const { addErrorEvent } = useGlobalEvents();
       const chatDerivedState = createChatDerivedState({
         currentChatRef: _currentChat,
         rootItems,
         getSettings: () => settings.value as Settings,
-      });
-      const chatModelService = createChatModelService({
-        currentChatRef: _currentChat,
-        liveChatRegistry,
-        getChatGroups: () => chatDerivedState.chatGroups.value,
-        getSettings: () => settings.value,
-        triggerCurrentChat: ({ chatId }) => {
-          if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
-            triggerRef(_currentChat);
-          }
-        },
-        runtimeStore: chatRuntimeStore,
-        availableModelsRef: sharedAvailableModels,
-        addErrorEvent,
       });
       const type = chatDerivedState.resolvedSettings.value?.endpointType;
       if (!type) return;
 
       switch (type) {
       case 'transformers_js':
-        await chatModelService.fetchAvailableModels({
+        await fetchAvailableModelsForChat({
           chatId: _currentChat.value?.id,
-          customEndpoint: undefined,
         });
         return;
       case 'openai':
@@ -142,6 +140,7 @@ installChatBootstrap({
 // Compatibility facade for broad legacy callers.
 // New feature-specific state and behavior should prefer scoped composables or
 // services instead of extending this module further.
+// Only add behavior here when it is required to preserve legacy API compatibility.
 export function useChat() {
   const { settings } = useSettings();
   const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
@@ -167,119 +166,274 @@ export function useChat() {
   const activeMessages = chatDerivedState.activeMessages;
   const allMessages = chatDerivedState.allMessages;
 
-  const chatMountService = createChatMountService({
-    currentChatRef: _currentChat,
-    currentChatGroupRef: _currentChatGroup,
-    liveChatRegistry,
-    ensureChatTmpDirectory,
-    addMountToChatInStorage: ({ chatId, mount }) => storageService.addMountToChat({ chatId, mount }),
-    removeMountFromChatInStorage: ({ chatId, volumeId }) => storageService.removeMountFromChat({ chatId, volumeId }),
-    updateChatMountInStorage: ({ chatId, volumeId, readOnly }) => storageService.updateChatMount({ chatId, volumeId, readOnly }),
-    addMountToChatGroupInStorage: ({ groupId, mount }) => storageService.addMountToChatGroup({ groupId, mount }),
-    removeMountFromChatGroupInStorage: ({ groupId, volumeId }) => storageService.removeMountFromChatGroup({ groupId, volumeId }),
-    updateChatGroupMountInStorage: ({ groupId, volumeId, mountPath, readOnly }) => storageService.updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }),
-  });
-  const addMountToChat = chatMountService.addMountToChat;
-  const removeMountFromChat = chatMountService.removeMountFromChat;
-  const updateChatMount = chatMountService.updateChatMount;
-  const addMountToChatGroup = chatMountService.addMountToChatGroup;
-  const removeMountFromChatGroup = chatMountService.removeMountFromChatGroup;
-  const updateChatGroupMount = chatMountService.updateChatGroupMount;
+  async function addMountToChat({
+    chatId,
+    mount,
+  }: {
+    chatId: string;
+    mount: import('@/models/types').Mount;
+  }) {
+    await storageService.addMountToChat({ chatId, mount });
+    await ensureChatTmpDirectory({ chatId });
 
-  const hasMountsForChat = chatDerivedState.hasMountsForChat;
-
-  const { setToolEnabled, setCurrentChatId } = useChatTools();
-  const chatOpenService = createChatOpenService({
-    setCurrentChatId,
-    setToolEnabled,
-    hasMountsForChat,
-    openChatInStore: ({ id, leafId }) => chatDataStore.openChat({ id, leafId }),
-    openChatAtMessageInStore: ({ chatId, messageId }) => chatDataStore.openChatAtMessage({ chatId, messageId }),
-    openChatGroupInStore: ({ id }) => {
-      chatDataStore.openChatGroup({ id });
-    },
-  });
-  const openChat = chatOpenService.openChat;
-  const openChatAtMessage = chatOpenService.openChatAtMessage;
-  const openChatGroup = chatOpenService.openChatGroup;
-
-  const chatLifecycleService = createChatLifecycleService({
-    currentChatRef: _currentChat,
-    currentChatGroupRef: _currentChatGroup,
-    creatingChatRef: sharedCreatingChat,
-    registerLiveInstance,
-    updateChatContent,
-    updateChatMeta,
-    updateHierarchy: updater => storageService.updateHierarchy(updater),
-    loadData,
-    loadChat: ({ id }) => storageService.loadChat({ id }),
-    deleteChatFromStorage: ({ id }) => storageService.deleteChat({ id }),
-    listChats: (_args) => storageService.listChats(),
-    listChatGroups: (_args) => storageService.listChatGroups(),
-    deleteChatGroupFromStorage: ({ id }) => storageService.deleteChatGroup({ id }),
-    setCurrentChatId,
-    addToast: (toast) => useToast().addToast(toast),
-    openChat: ({ id }) => openChat({ id }),
-    hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
-    abortActiveGeneration: ({ chatId }) => {
-      chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
-      chatRuntimeStore.deleteActiveGeneration({ chatId });
-    },
-    clearTasksForChat: ({ chatId }) => {
-      chatRuntimeStore.clearTasksForChat({ chatId });
-    },
-    clearActiveGenerations: (_args) => {
-      for (const [, item] of chatRuntimeStore.activeGenerations.entries()) {
-        item.controller.abort();
+    const chat = liveChatRegistry.get(chatId);
+    if (chat !== undefined) {
+      chat.mounts = [...(chat.mounts ?? []), mount];
+      if (_currentChat.value?.id === chatId) {
+        triggerRef(_currentChat);
       }
-      chatRuntimeStore.clearActiveGenerations({});
-    },
-    clearActiveTaskCounts: (_args) => {
-      chatRuntimeStore.clearActiveTaskCounts({});
-    },
-    clearLiveChatRegistry: (_args) => {
-      liveChatRegistry.clear();
-    },
-    clearChatTmpDirectories: (_args) => {
-      chatTmpDirectoryService.clearChatTmpDirectories({});
-    },
-    deleteLiveChat: ({ chatId }) => {
-      liveChatRegistry.delete(chatId);
-    },
-    deleteChatTmpDirectory: ({ chatId }) => {
-      chatTmpDirectoryService.deleteChatTmpDirectory({ chatId });
-    },
-  });
-  const createNewChat = chatLifecycleService.createNewChat;
-  const deleteChat = chatLifecycleService.deleteChat;
-  const deleteAllChats = chatLifecycleService.deleteAllChats;
+    }
+  }
 
-  const chatMetadataService = createChatMetadataService({
-    getChatTarget: ({ id }) => chatCurrentBridge.getChatTargetById({ id }),
-    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
-    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
-    updateChatMeta,
-    loadData,
-  });
-  const renameChat = chatMetadataService.renameChat;
-  const updateChatModel = chatMetadataService.updateChatModel;
-  const updateChatGroupOverride = chatMetadataService.updateChatGroupOverride;
-  const updateChatSettings = chatMetadataService.updateChatSettings;
-  const getReasoningEffort = chatMetadataService.getReasoningEffort;
+  async function removeMountFromChat({
+    chatId,
+    volumeId,
+  }: {
+    chatId: string;
+    volumeId: string;
+  }) {
+    await storageService.removeMountFromChat({ chatId, volumeId });
 
-  const { addErrorEvent } = useGlobalEvents();
-  const chatModelService = createChatModelService({
-    currentChatRef: _currentChat,
-    liveChatRegistry,
-    getChatGroups: () => chatGroups.value,
-    getSettings: () => settings.value,
-    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
-    runtimeStore: chatRuntimeStore,
-    availableModelsRef: sharedAvailableModels,
-    addErrorEvent,
-  });
-  const availableModels = chatModelService.availableModels;
-  const fetchAvailableModels = chatModelService.fetchAvailableModels;
+    const chat = liveChatRegistry.get(chatId);
+    if (chat !== undefined) {
+      chat.mounts = (chat.mounts ?? []).filter(mount => !(mount.type === 'volume' && mount.volumeId === volumeId));
+      if (_currentChat.value?.id === chatId) {
+        triggerRef(_currentChat);
+      }
+    }
+  }
+
+  async function updateChatMount({
+    chatId,
+    volumeId,
+    readOnly,
+  }: {
+    chatId: string;
+    volumeId: string;
+    readOnly: boolean;
+  }) {
+    await storageService.updateChatMount({ chatId, volumeId, readOnly });
+
+    const chat = liveChatRegistry.get(chatId);
+    if (chat !== undefined) {
+      chat.mounts = (chat.mounts ?? []).map(mount =>
+        mount.type === 'volume' && mount.volumeId === volumeId ? { ...mount, readOnly } : mount
+      );
+      if (_currentChat.value?.id === chatId) {
+        triggerRef(_currentChat);
+      }
+    }
+  }
+
+  async function addMountToChatGroup({
+    groupId,
+    mount,
+  }: {
+    groupId: string;
+    mount: import('@/models/types').Mount;
+  }) {
+    await storageService.addMountToChatGroup({ groupId, mount });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = [...(_currentChatGroup.value.mounts ?? []), mount];
+    }
+  }
+
+  async function removeMountFromChatGroup({
+    groupId,
+    volumeId,
+  }: {
+    groupId: string;
+    volumeId: string;
+  }) {
+    await storageService.removeMountFromChatGroup({ groupId, volumeId });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = (_currentChatGroup.value.mounts ?? []).filter(
+        mount => !(mount.type === 'volume' && mount.volumeId === volumeId)
+      );
+    }
+  }
+
+  async function updateChatGroupMount({
+    groupId,
+    volumeId,
+    mountPath,
+    readOnly,
+  }: {
+    groupId: string;
+    volumeId: string;
+    mountPath: string;
+    readOnly: boolean;
+  }) {
+    await storageService.updateChatGroupMount({ groupId, volumeId, mountPath, readOnly });
+    if (_currentChatGroup.value?.id === groupId) {
+      _currentChatGroup.value.mounts = (_currentChatGroup.value.mounts ?? []).map(mount =>
+        mount.type === 'volume' && mount.volumeId === volumeId ? { ...mount, mountPath, readOnly } : mount
+      );
+    }
+  }
+
+  const chatNavigation = useChatNavigation();
+  const chatLifecycle = useChatLifecycle();
+  const chatOrganization = useChatOrganization();
+  const sidebarStructure = useSidebarStructure();
+
+  async function openChat({
+    id,
+    leafId,
+  }: {
+    id: string;
+    leafId?: string;
+  }) {
+    return await chatNavigation.openChat({
+      chatId: id,
+      leafId,
+    });
+  }
+
+  async function openChatAtMessage({
+    chatId,
+    messageId,
+  }: {
+    chatId: string;
+    messageId: string;
+  }) {
+    return await chatNavigation.openChatAtMessage({
+      chatId,
+      messageId,
+    });
+  }
+
+  function openChatGroup({
+    id,
+  }: {
+    id: string | null;
+  }) {
+    chatNavigation.openChatGroup({
+      groupId: id,
+    });
+  }
+
+  async function createNewChat({
+    groupId,
+    modelId,
+    systemPrompt,
+  }: {
+    groupId: string | undefined;
+    modelId: string | undefined;
+    systemPrompt: Chat['systemPrompt'];
+  }) {
+    return await chatLifecycle.createNewChat({
+      groupId,
+      modelId,
+      systemPrompt,
+    });
+  }
+
+  async function deleteChat({
+    id,
+    injectAddToast,
+  }: {
+    id: string;
+    injectAddToast?: ((toast: AddToastOptions) => string) | undefined;
+  }) {
+    await chatLifecycle.deleteChat({
+      id,
+      injectAddToast,
+    });
+  }
+
+  async function deleteAllChats(_args: Record<never, never>) {
+    await chatLifecycle.deleteAllChats({});
+  }
+
+  async function renameChat({
+    id,
+    newTitle,
+  }: {
+    id: string;
+    newTitle: string;
+  }) {
+    await renameChatById({
+      chatId: id,
+      title: newTitle,
+    });
+  }
+
+  async function updateChatModel({
+    id,
+    modelId,
+  }: {
+    id: string;
+    modelId: string | undefined;
+  }) {
+    await updateChatModelById({
+      chatId: id,
+      modelId,
+    });
+  }
+
+  async function updateChatGroupOverride({
+    id,
+    groupId,
+  }: {
+    id: string;
+    groupId: string | null;
+  }) {
+    await updateChatGroupOverrideById({
+      chatId: id,
+      groupId,
+    });
+  }
+
+  async function updateChatSettings({
+    id,
+    updates,
+  }: {
+    id: string;
+    updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
+  }) {
+    await updateChatSettingsById({
+      chatId: id,
+      updates,
+    });
+  }
+
+  function getReasoningEffort({
+    chatId,
+  }: {
+    chatId: string;
+  }) {
+    return getReasoningEffortForChatId({
+      chatId,
+    });
+  }
+
+  const availableModels = sharedAvailableModels;
+
+  async function fetchAvailableModels({
+    chatId,
+    customEndpoint,
+  }: {
+    chatId: string | undefined;
+    customEndpoint?: {
+      type: EndpointType;
+      url: string;
+      headers: readonly (readonly [string, string])[] | undefined;
+    } | undefined;
+  }) {
+    if (customEndpoint !== undefined) {
+      return await fetchAvailableModelsForEndpoint({
+        endpointType: customEndpoint.type,
+        endpointUrl: customEndpoint.url,
+        endpointHttpHeaders: customEndpoint.headers ? customEndpoint.headers.map(([name, value]) => [name, value]) : undefined,
+        errorSource: 'useChat:fetchAvailableModels',
+      });
+    }
+
+    return await fetchAvailableModelsForChat({
+      chatId,
+    });
+  }
 
   const {
     isImageMode,
@@ -347,48 +501,35 @@ export function useChat() {
   });
   const handleImageGeneration = chatImageService.handleImageGeneration;
   const sendImageRequestForChat = chatImageService.sendImageRequestForChat;
-  const chatTitleService = createChatTitleService({
-    getCurrentChatId: () => chatCurrentBridge.getCurrentChatId({}),
-    getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
-    getLiveChat: ({ chat }) => getLiveChat({ chat }),
-    registerLiveInstance,
-    resolveSettings: ({ chat }) => {
-      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
-      return {
-        endpointType: resolved.endpointType,
-        endpointUrl: resolved.endpointUrl,
-        endpointHttpHeaders: resolved.endpointHttpHeaders,
-        modelId: resolved.modelId,
-        titleModelId: resolved.titleModelId,
-        lmParameters: resolved.lmParameters,
-      };
-    },
-    updateChatMeta,
-    loadData,
-    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
-    runtimeStore: chatRuntimeStore,
-    getFallbackLanguage: (_args) => {
-      const typeOfNavigator = typeof navigator;
-      switch (typeOfNavigator) {
-      case 'undefined':
-        return 'en';
-      case 'object':
-      case 'boolean':
-      case 'string':
-      case 'number':
-      case 'function':
-      case 'symbol':
-      case 'bigint':
-        return navigator.language;
-      default: {
-        const _ex: never = typeOfNavigator;
-        return _ex;
-      }
-      }
-    },
-  });
-  const generateChatTitle = chatTitleService.generateChatTitle;
-  const abortTitleGeneration = chatTitleService.abortTitleGeneration;
+  async function generateChatTitle({
+    chatId,
+    signal,
+    titleModelIdOverride,
+  }: {
+    chatId: string | undefined;
+    signal: AbortSignal | undefined;
+    titleModelIdOverride: string | undefined;
+  }) {
+    if (chatId === undefined) {
+      return undefined;
+    }
+
+    return await generateChatTitleForChat({
+      chatId,
+      signal,
+      titleModelIdOverride,
+    });
+  }
+
+  function abortTitleGeneration({
+    chatId,
+  }: {
+    chatId: string | undefined;
+  }) {
+    abortTitleGenerationForChat({
+      chatId: chatId ?? chatCurrentBridge.getCurrentChatId({}) ?? undefined,
+    });
+  }
   const { enabledToolNames } = useChatTools();
   const chatGenerationService = createChatGenerationService({
     getCurrentChat: () => _currentChat.value,
@@ -554,50 +695,16 @@ export function useChat() {
   const generateResponse = chatGenerationService.generateResponse;
   const sendMessage = chatGenerationService.sendMessage;
   const sendMessageForChat = chatGenerationService.sendMessageForChat;
-  const contextCompactService = createContextCompactService({
-    getCurrentChat: () => chatCurrentBridge.getCurrentChat({}),
-    getChatTarget: ({ chatId }) => chatCurrentBridge.getChatTargetByOptionalId({ chatId }),
-    getLiveChat,
-    isProcessing,
-    registerLiveInstance,
-    resolveSettings: ({ chat }) => {
-      const resolved = resolveChatSettings({ chat, groups: chatGroups.value, globalSettings: settings.value });
-      return {
-        endpointType: resolved.endpointType,
-        endpointUrl: resolved.endpointUrl,
-        endpointHttpHeaders: resolved.endpointHttpHeaders,
-        modelId: resolved.modelId,
-        lmParameters: resolved.lmParameters,
-      };
-    },
-    getPromptMode: ({ chatId }) => {
-      const mountSelection = getNaidanSysfsMountSelection({ chatId });
-      switch (mountSelection) {
-      case 'none':
-        return 'without_message_ids';
-      case 'current_chat_only':
-      case 'current_chat_with_chat_group':
-      case 'all_chats':
-        return 'with_message_ids';
-      default: {
-        const _ex: never = mountSelection;
-        throw new Error(`Unhandled naidan sysfs mount selection: ${_ex}`);
-      }
-      }
-    },
-    runtime: contextCompactRuntime,
-    updateChatContent,
-    updateChatMeta,
-    triggerCurrentChat: ({ chatId }) => chatCurrentBridge.triggerCurrentChat({ chatId }),
-    addErrorEvent,
-    startProcessing: ({ chatId }) => {
-      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
-    },
-    finishProcessing: ({ chatId }) => {
-      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
-    },
-  });
-  const abortContextCompact = contextCompactService.abortContextCompact;
+
+  function abortContextCompact({
+    chatId,
+  }: {
+    chatId: string | undefined;
+  }) {
+    const targetChatId = chatId ?? chatCurrentBridge.getCurrentChatId({}) ?? undefined;
+    abortContextCompactForChat({ chatId: targetChatId });
+  }
+
   const chatControlService = createChatControlService({
     currentChatRef: _currentChat,
     abortContextCompact,
@@ -610,7 +717,21 @@ export function useChat() {
       storageService.notify({ type: 'chat_content_generation', id: chatId, status: 'abort_request', timestamp: Date.now() });
     },
     abortTitleGeneration,
-    compactCurrentBranchImpl: contextCompactService.compactCurrentBranch,
+    compactCurrentBranchImpl: async ({
+      keepRecentMessages,
+      instructionOverride,
+    }) => {
+      const currentChatId = chatCurrentBridge.getCurrentChatId({}) ?? undefined;
+      if (currentChatId === undefined) {
+        return { status: 'skipped' as const };
+      }
+
+      return await runCompactCurrentBranchForChat({
+        chatId: currentChatId,
+        keepRecentMessages,
+        instructionOverride,
+      });
+    },
   });
   const abortChat = chatControlService.abortChat;
   const compactCurrentBranch = chatControlService.compactCurrentBranch;
@@ -663,35 +784,52 @@ export function useChat() {
   const regenerateMessage = chatRegenerationService.regenerateMessage;
   const regenerateMessageForChat = chatRegenerationService.regenerateMessageForChat;
 
-  const toggleDebug = chatMetadataService.toggleDebug;
-  const toggleDebugForChat = chatMetadataService.toggleDebugForChat;
-  const updateReasoningEffort = chatMetadataService.updateReasoningEffort;
+  async function toggleDebug(_args: Record<never, never>) {
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return;
+    }
+
+    await toggleDebugForChatId({
+      chatId: currentChatId,
+    });
+  }
+
+  async function toggleDebugForChat({
+    chatId,
+  }: {
+    chatId: string;
+  }) {
+    await toggleDebugForChatId({
+      chatId,
+    });
+  }
+
+  async function updateReasoningEffort({
+    chatId,
+    effort,
+  }: {
+    chatId: string;
+    effort: Reasoning['effort'];
+  }) {
+    await updateReasoningEffortForChatId({
+      chatId,
+      effort,
+    });
+  }
   const commitFullHistoryManipulation = chatHistoryService.commitFullHistoryManipulation;
   const generateImage = chatImageService.generateImage;
   const sendImageRequest = chatImageService.sendImageRequest;
 
-  const chatHierarchyService = createChatHierarchyService({
-    rootItems,
-    currentChatRef: _currentChat,
-    currentChatGroupRef: _currentChatGroup,
-    getChatGroups: () => chatGroups.value,
-    getSidebarSendMessageReorder: () => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled',
-    replaceSidebarItems: chatDataStore.replaceSidebarItems,
-    updateChatGroup: ({ id, updater }) => storageService.updateChatGroup(id, updater),
-    deleteChatGroupFromStorage: ({ id }) => storageService.deleteChatGroup({ id }),
-    updateHierarchy: updater => storageService.updateHierarchy(updater),
-    loadData,
-    deleteChat,
-  });
-  const createChatGroup = chatHierarchyService.createChatGroup;
-  const deleteChatGroup = chatHierarchyService.deleteChatGroup;
-  const setChatGroupCollapsed = chatHierarchyService.setChatGroupCollapsed;
-  const duplicateChatGroup = chatHierarchyService.duplicateChatGroup;
-  const renameChatGroup = chatHierarchyService.renameChatGroup;
-  const updateChatGroupMetadata = chatHierarchyService.updateChatGroupMetadata;
-  const persistSidebarStructure = chatHierarchyService.persistSidebarStructure;
-  const reorderSidebarChatAfterSend = chatHierarchyService.reorderSidebarChatAfterSend;
-  const moveChatToGroup = chatHierarchyService.moveChatToGroup;
+  const createChatGroup = chatOrganization.createChatGroup;
+  const deleteChatGroup = chatOrganization.deleteChatGroup;
+  const duplicateChatGroup = chatOrganization.duplicateChatGroup;
+  const renameChatGroup = chatOrganization.renameChatGroup;
+  const updateChatGroupMetadata = chatOrganization.updateChatGroupMetadata;
+  const reorderSidebarChatAfterSend = chatOrganization.reorderSidebarChatAfterSend;
+  const moveChatToGroup = chatOrganization.moveChatToGroup;
+  const setChatGroupCollapsed = sidebarStructure.setChatGroupCollapsed;
+  const persistSidebarStructure = sidebarStructure.persistSidebarStructure;
 
   const chatTestSupport = createChatTestSupport({
     currentChatRef: _currentChat,
@@ -736,7 +874,7 @@ export function useChat() {
       activeTaskCounts: chatRuntimeStore.TEST_ONLY.activeTaskCounts,
       compactProgressByChat: contextCompactRuntime.TEST_ONLY.compactProgressByChat,
       activeContextCompactions: contextCompactRuntime.activeContextCompactions,
-      chatTmpDirectories: chatTmpDirectoryService.TEST_ONLY.chatTmpDirectories,
+      chatTmpDirectories,
       clearLiveChatRegistry,
       clearActiveTaskCounts,
       volatileToolOutputs: chatVolatileState.TEST_ONLY.volatileToolOutputs,

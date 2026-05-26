@@ -13,6 +13,7 @@ const mockCurrentChatGroup = ref<{ id: string } | null>(null);
 const mockOpenChat = vi.fn();
 const mockOpenChatGroup = vi.fn();
 const mockSetChatGroupCollapsed = vi.fn();
+const mockPersistSidebarStructure = vi.fn();
 
 const mockActiveFocusArea = ref('chat');
 const mockSetActiveFocusArea = vi.fn(({ area }: { area: FocusArea }) => {
@@ -42,6 +43,32 @@ vi.mock('../composables/useChat', () => ({
     getReasoningEffort: vi.fn(),
     updateReasoningEffort: vi.fn(),
     getLiveChat: vi.fn().mockImplementation((c) => c),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarData', () => ({
+  useSidebarData: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      return items;
+    }),
+    chatGroups: computed(() => mockChatGroups.value),
+    isProcessing: vi.fn().mockReturnValue(false),
+    persistSidebarStructure: mockPersistSidebarStructure,
+    setChatGroupCollapsed: mockSetChatGroupCollapsed,
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    createNewChat: vi.fn(),
+    openChat: mockOpenChat,
+    openChatGroup: mockOpenChatGroup,
+    deleteChat: vi.fn(),
+    renameChat: vi.fn(),
+    renameChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
   }),
 }));
 

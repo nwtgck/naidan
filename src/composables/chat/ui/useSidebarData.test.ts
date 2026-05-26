@@ -12,7 +12,7 @@ const {
   mockOpenChat,
   mockOpenChatGroup,
   mockDeleteChat,
-  mockRenameChat,
+  mockRenameChatById,
   mockRenameChatGroup,
   mockDuplicateChatGroup,
 } = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ const {
   mockOpenChat: vi.fn().mockResolvedValue(null),
   mockOpenChatGroup: vi.fn(),
   mockDeleteChat: vi.fn().mockResolvedValue(undefined),
-  mockRenameChat: vi.fn().mockResolvedValue(undefined),
+  mockRenameChatById: vi.fn().mockResolvedValue(undefined),
   mockRenameChatGroup: vi.fn().mockResolvedValue(undefined),
   mockDuplicateChatGroup: vi.fn().mockResolvedValue(undefined),
 }));
@@ -54,26 +54,41 @@ vi.mock('./useChatUiServices', () => ({
       sidebarItems: computed(() => mockState.sidebarItems),
       chatGroups: computed(() => mockState.chatGroups),
     },
-    hierarchyService: {
-      persistSidebarStructure: mockPersistSidebarStructure,
-      setChatGroupCollapsed: mockSetChatGroupCollapsed,
-      createChatGroup: mockCreateChatGroup,
-      deleteChatGroup: mockDeleteChatGroup,
-      renameChatGroup: mockRenameChatGroup,
-      duplicateChatGroup: mockDuplicateChatGroup,
-    },
-    lifecycleService: {
-      createNewChat: mockCreateNewChat,
-      deleteChat: mockDeleteChat,
-    },
-    metadataService: {
-      renameChat: mockRenameChat,
-    },
-    openService: {
-      openChat: mockOpenChat,
-      openChatGroup: mockOpenChatGroup,
-    },
   }),
+}));
+
+vi.mock('./useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: mockPersistSidebarStructure,
+    setChatGroupCollapsed: mockSetChatGroupCollapsed,
+  }),
+}));
+
+vi.mock('./useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: mockCreateChatGroup,
+    deleteChatGroup: mockDeleteChatGroup,
+    renameChatGroup: mockRenameChatGroup,
+    duplicateChatGroup: mockDuplicateChatGroup,
+  }),
+}));
+
+vi.mock('./useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: mockCreateNewChat,
+    deleteChat: mockDeleteChat,
+  }),
+}));
+
+vi.mock('./useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: mockOpenChat,
+    openChatGroup: mockOpenChatGroup,
+  }),
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-metadata-helpers', () => ({
+  renameChatById: mockRenameChatById,
 }));
 
 import { useSidebarData } from './useSidebarData';
@@ -119,17 +134,17 @@ describe('useSidebarData', () => {
     expect(mockIsProcessing).toHaveBeenCalledWith({ chatId: 'chat-1' });
     expect(mockPersistSidebarStructure).toHaveBeenCalledWith({ topLevelItems: [] });
     expect(mockSetChatGroupCollapsed).toHaveBeenCalledWith({ groupId: 'group-1', isCollapsed: true });
-    expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Group 1' });
+    expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Group 1', options: undefined });
     expect(mockDeleteChatGroup).toHaveBeenCalledWith({ id: 'group-1' });
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: 'group-1',
       modelId: undefined,
       systemPrompt: undefined,
     });
-    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'chat-1', leafId: undefined });
-    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'group-1' });
-    expect(mockDeleteChat).toHaveBeenCalledWith({ id: 'chat-1' });
-    expect(mockRenameChat).toHaveBeenCalledWith({ id: 'chat-1', newTitle: 'Renamed' });
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-1', leafId: undefined });
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ groupId: 'group-1' });
+    expect(mockDeleteChat).toHaveBeenCalledWith({ id: 'chat-1', injectAddToast: undefined });
+    expect(mockRenameChatById).toHaveBeenCalledWith({ chatId: 'chat-1', title: 'Renamed' });
     expect(mockRenameChatGroup).toHaveBeenCalledWith({ groupId: 'group-1', newName: 'Renamed Group' });
     expect(mockDuplicateChatGroup).toHaveBeenCalledWith({ groupId: 'group-1' });
   });

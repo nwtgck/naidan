@@ -35,6 +35,14 @@ const mockCreateChatGroup = vi.fn();
 const mockRenameChatGroup = vi.fn();
 const mockDeleteChatGroup = vi.fn();
 const mockSaveSettings = vi.fn();
+const mockOpenChat = vi.fn();
+const mockOpenChatGroup = vi.fn();
+const mockSetChatGroupCollapsed = vi.fn();
+const mockPersistSidebarStructure = vi.fn();
+const mockDeleteChat = vi.fn();
+const mockRenameChat = vi.fn();
+const mockDuplicateChatGroup = vi.fn();
+const mockCreateNewChat = vi.fn();
 
 // --- Vitest Mocks ---
 
@@ -85,14 +93,40 @@ vi.mock('../composables/useChat', () => ({
     createChatGroup: mockCreateChatGroup,
     renameChatGroup: mockRenameChatGroup,
     deleteChatGroup: mockDeleteChatGroup,
-    openChat: vi.fn(),
-    openChatGroup: vi.fn(),
-    setChatGroupCollapsed: vi.fn(),
-    persistSidebarStructure: vi.fn(),
+    openChat: mockOpenChat,
+    openChatGroup: mockOpenChatGroup,
+    setChatGroupCollapsed: mockSetChatGroupCollapsed,
+    persistSidebarStructure: mockPersistSidebarStructure,
     deleteAllChats: mockDeleteAllChats,
     isTaskRunning: vi.fn().mockReturnValue(false),
     isProcessing: vi.fn().mockReturnValue(false),
     abortChat: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarData', () => ({
+  useSidebarData: () => ({
+    currentChat: computed(() => null),
+    currentChatGroup: computed(() => null),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      return items;
+    }),
+    chatGroups: computed(() => mockChatGroups.value),
+    isProcessing: vi.fn().mockReturnValue(false),
+    persistSidebarStructure: mockPersistSidebarStructure,
+    setChatGroupCollapsed: mockSetChatGroupCollapsed,
+    createChatGroup: mockCreateChatGroup,
+    deleteChatGroup: mockDeleteChatGroup,
+    createNewChat: mockCreateNewChat,
+    openChat: mockOpenChat,
+    openChatGroup: mockOpenChatGroup,
+    deleteChat: mockDeleteChat,
+    renameChat: mockRenameChat,
+    renameChatGroup: mockRenameChatGroup,
+    duplicateChatGroup: mockDuplicateChatGroup,
   }),
 }));
 

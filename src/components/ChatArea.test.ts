@@ -42,6 +42,12 @@ const mockGenerateChatTitle = vi.fn();
 const mockAbortTitleGeneration = vi.fn();
 const mockCompactCurrentBranch = vi.fn().mockResolvedValue(true);
 const mockAbortContextCompact = vi.fn();
+const mockRegenerateMessage = vi.fn();
+const mockEditMessage = vi.fn();
+const mockSwitchVersion = vi.fn();
+const mockForkChat = vi.fn().mockResolvedValue('new-id');
+const mockGetSiblings = vi.fn().mockReturnValue([]);
+const mockToggleChatDebug = vi.fn();
 const mockContextCompactProgress = ref<any>({ phase: 'idle' });
 const mockRenameChat = vi.fn().mockImplementation(({ newTitle }) => {
   if (mockCurrentChat.value) {
@@ -208,11 +214,248 @@ vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    chatGroups: computed(() => mockChatGroups.value),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatAreaData', () => ({
+  useChatAreaData: () => ({
+    updateChatSettings: mockUpdateChatSettings,
+    updateChatGroupMetadata: mockUpdateChatGroupMetadata,
+    availableModels: computed(() => mockAvailableModels.value),
+    fetchingModels: computed(() => mockFetchingModels.value),
+    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) =>
+      [...availableModels].sort((left, right) => left.localeCompare(right, undefined, { numeric: true })),
+    fetchAvailableModels: mockFetchAvailableModels,
+    chatFlow: computed(() => mockChatFlowOverride.value ?? mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
+    availableChatGroups: computed(() => mockChatGroups.value),
+  }),
+}));
+
 vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
   useChatRuntime: () => ({
     isProcessing: computed(() => !!mockCurrentChat.value && (mockStreaming.value || mockActiveGenerations.has(mockCurrentChat.value.id))),
     contextCompactProgress: mockContextCompactProgress,
   }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
+  useChatGeneration: () => ({
+    sendMessage: mockSendMessage,
+    regenerateMessage: mockRegenerateMessage,
+    abort: mockAbortChat,
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatHistory', () => ({
+  useChatHistory: () => ({
+    editMessage: mockEditMessage,
+    switchVersion: mockSwitchVersion,
+    forkChat: mockForkChat,
+    getSiblings: mockGetSiblings,
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatGrouping', () => ({
+  useChatGrouping: () => ({
+    moveToGroup: ({ groupId }: { groupId: string | null }) =>
+      mockMoveChatToGroup({
+        chatId: mockCurrentChat.value?.id,
+        targetGroupId: groupId,
+      }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatTitle', () => ({
+  useChatTitle: () => ({
+    isGenerating: computed(() => mockGeneratingTitle.value),
+    rename: ({ title }: { title: string }) =>
+      mockRenameChat({
+        id: mockCurrentChat.value?.id,
+        newTitle: title,
+      }),
+    generateTitle: ({ titleModelIdOverride }: { titleModelIdOverride: string | undefined }) =>
+      mockGenerateChatTitle({
+        chatId: mockCurrentChat.value?.id,
+        titleModelIdOverride,
+      }),
+    abort: () =>
+      mockAbortTitleGeneration({
+        chatId: mockCurrentChat.value?.id,
+      }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatDebug', () => ({
+  useChatDebug: () => ({
+    enabled: computed(() => mockCurrentChat.value?.debugEnabled === true),
+    toggle: () => {
+      mockToggleChatDebug();
+      if (mockCurrentChat.value) {
+        mockCurrentChat.value.debugEnabled = !mockCurrentChat.value.debugEnabled;
+      }
+    },
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatSettingsPanel', () => ({
+  useChatSettingsPanel: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    fetchingModels: computed(() => mockFetchingModels.value),
+    availableModels: mockAvailableModels,
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    updateSettings: ({ chatId, updates }: { chatId: string; updates: Record<string, unknown> }) =>
+      mockUpdateChatSettings({
+        id: chatId,
+        updates,
+      }),
+    fetchModels: ({ chatId }: { chatId: string }) =>
+      mockFetchAvailableModels({
+        chatId,
+        customEndpoint: undefined,
+      }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
+  useChatModelSelection: () => ({
+    availableModels: mockAvailableModels,
+    fetchingModels: computed(() => mockFetchingModels.value),
+    fetchModels: () =>
+      mockFetchAvailableModels({
+        chatId: mockCurrentChat.value?.id,
+        customEndpoint: undefined,
+      }),
+    updateModel: ({ modelId }: { modelId: string | undefined }) =>
+      mockUpdateChatModel({
+        id: mockCurrentChat.value?.id,
+        modelId,
+      }),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
+  useChatReasoning: () => ({
+    effort: computed(() => mockCurrentChat.value?.lmParameters?.reasoning?.effort),
+    updateEffort: ({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+      if (mockCurrentChat.value) {
+        mockCurrentChat.value.lmParameters = {
+          ...(mockCurrentChat.value.lmParameters || EMPTY_LM_PARAMETERS),
+          reasoning: { effort },
+        };
+      }
+    },
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatMedia', () => ({
+  useChatMedia: () => ({
+    availableModels: mockAvailableModels,
+    isImageMode: computed(() => false),
+    resolution: computed(() => ({ width: 512, height: 512 })),
+    count: computed(() => 1),
+    persistAs: computed(() => 'original'),
+    steps: computed(() => undefined),
+    seed: computed(() => 'browser_random'),
+    selectedImageModel: computed(() => undefined),
+    toggleImageMode: vi.fn(),
+    updateResolution: vi.fn(),
+    updateCount: vi.fn(),
+    updatePersistAs: vi.fn(),
+    updateSteps: vi.fn(),
+    updateSeed: vi.fn(),
+    setImageModel: vi.fn(),
+    sendImageRequest: vi.fn().mockResolvedValue(true),
+  }),
+}));
+
+vi.mock('../composables/useChatWeshTerminalSessions', () => ({
+  buildWorkerMountsForChat: vi.fn(async ({
+    chatMounts,
+    chatGroupMounts,
+    chatId,
+    chatGroupId,
+    naidanSysfsVisibility,
+  }: {
+    chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
+    chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
+    chatId: string | undefined;
+    chatGroupId: string | undefined;
+    naidanSysfsVisibility: string;
+  }) => {
+    const mounts: WeshMount[] = [];
+
+    if (chatId !== undefined && mockSettings.value.storageType === 'opfs') {
+      mounts.push({ type: 'directory', path: '/tmp', handle: mockTmpHandle, readOnly: false });
+    }
+
+    if (naidanSysfsVisibility !== 'none') {
+      mounts.push({
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        readOnly: true,
+        storageType: mockSettings.value.storageType,
+        visibility: naidanSysfsVisibility as 'current_chat_only' | 'current_chat_with_chat_group' | 'all_chats',
+        currentChatId: chatId ?? '',
+        currentChatGroupId: chatGroupId,
+      });
+    }
+
+    for (const mount of mockSettings.value.mounts ?? []) {
+      if (mount.type !== 'volume') continue;
+      const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      if (handle !== undefined) {
+        mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
+      }
+    }
+
+    for (const mount of chatGroupMounts ?? []) {
+      if (mount.type !== 'volume') continue;
+      const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId! });
+      if (handle !== undefined) {
+        mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
+      }
+    }
+
+    for (const mount of chatMounts ?? []) {
+      if (mount.type !== 'volume') continue;
+      const handle = await mockGetVolumeDirectoryHandle({ volumeId: mount.volumeId! });
+      if (handle !== undefined) {
+        mounts.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
+      }
+    }
+
+    return mounts;
+  }),
+  useChatWeshTerminalSessions: vi.fn(() => ({
+    createChatWorkerSession: vi.fn(),
+    ensureActiveSession: vi.fn(),
+    reopenSessionIfNeeded: vi.fn(),
+    closeSession: vi.fn(),
+    closeAllSessions: vi.fn(),
+    sessions: ref([]),
+    activeSessionId: ref(undefined),
+  })),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -260,6 +503,7 @@ vi.mock('../composables/useFileExplorerModal', () => ({
 vi.mock('../services/storage', () => ({
   storageService: {
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
+    subscribeToChanges: vi.fn(),
   },
 }));
 

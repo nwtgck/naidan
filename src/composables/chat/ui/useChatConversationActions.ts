@@ -11,6 +11,7 @@ import { useToast } from '@/composables/useToast';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import {
+  availableModels,
   chatRuntimeStore,
   chatVolatileState,
   contextCompactRuntime,
@@ -29,9 +30,15 @@ import { createChatGenerationService } from '@/composables/chat/services/chat-ge
 import { createChatHistoryService } from '@/composables/chat/services/chat-history-service';
 import { createChatImageService } from '@/composables/chat/services/chat-image-service';
 import { createChatRegenerationService } from '@/composables/chat/services/chat-regeneration-service';
-import { createChatTitleService } from '@/composables/chat/services/chat-title-service';
+import {
+  abortTitleGenerationForChat,
+  generateChatTitleForChat,
+} from '@/composables/chat/chat-scoped/chat-title-helpers';
+import { fetchAvailableModelsForChat } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { useChatUiServices } from './useChatUiServices';
+import { useChatNavigation } from './useChatNavigation';
+import { useChatOrganization } from './useChatOrganization';
 
 export type ChatConversationActionsAdapter = {
   sendMessage({
@@ -107,58 +114,12 @@ export function useChatConversationActions(): ChatConversationActionsAdapter {
   const { enabledToolNames } = useChatTools();
   const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
   const {
-    availableModels,
     currentBridge,
     derivedState,
-    hierarchyService,
-    modelService,
-    openService,
   } = useChatUiServices({});
+  const chatNavigation = useChatNavigation();
+  const chatOrganization = useChatOrganization();
   const imageGeneration = useImageGeneration();
-  const titleService = createChatTitleService({
-    getCurrentChatId: () => currentBridge.getCurrentChatId({}),
-    getChatTarget: ({ chatId }) => currentBridge.getChatTargetByOptionalId({ chatId }),
-    getLiveChat,
-    registerLiveInstance,
-    resolveSettings: ({ chat }) => {
-      const resolved = resolveChatSettings({
-        chat,
-        groups: derivedState.chatGroups.value,
-        globalSettings: settings.value,
-      });
-      return {
-        endpointType: resolved.endpointType,
-        endpointUrl: resolved.endpointUrl,
-        endpointHttpHeaders: resolved.endpointHttpHeaders,
-        modelId: resolved.modelId,
-        titleModelId: resolved.titleModelId,
-        lmParameters: resolved.lmParameters,
-      };
-    },
-    updateChatMeta,
-    loadData,
-    triggerCurrentChat: ({ chatId }) => currentBridge.triggerCurrentChat({ chatId }),
-    runtimeStore: chatRuntimeStore,
-    getFallbackLanguage: (_args) => {
-      const typeOfNavigator = typeof navigator;
-      switch (typeOfNavigator) {
-      case 'undefined':
-        return 'en';
-      case 'object':
-      case 'boolean':
-      case 'string':
-      case 'number':
-      case 'function':
-      case 'symbol':
-      case 'bigint':
-        return navigator.language;
-      default: {
-        const _ex: never = typeOfNavigator;
-        return _ex;
-      }
-      }
-    },
-  });
   const chatImageService = createChatImageService({
     getCurrentChat: () => currentBridge.getCurrentChat({}),
     getLiveChat: ({ chat }) => currentBridge.getChatTargetById({ id: chat.id }) ?? undefined,
@@ -217,7 +178,7 @@ export function useChatConversationActions(): ChatConversationActionsAdapter {
         autoTitleEnabled: resolved.autoTitleEnabled,
       };
     },
-    fetchAvailableModels: ({ chatId }) => modelService.fetchAvailableModels({ chatId, customEndpoint: undefined }),
+    fetchAvailableModels: ({ chatId }) => fetchAvailableModelsForChat({ chatId }),
     canPersistBinary: () => storageService.canPersistBinary,
     persistAttachment: async ({ attachment }) => {
       switch (attachment.status) {
@@ -334,19 +295,25 @@ export function useChatConversationActions(): ChatConversationActionsAdapter {
           message: `Generation failed in "${chat.title || 'New Chat'}"`,
           actionLabel: 'View',
           onAction: async () => {
-            await openService.openChat({ id: chat.id, leafId: undefined });
+            await chatNavigation.openChat({ chatId: chat.id, leafId: undefined });
           },
         });
       } catch {
         // ignore
       }
     },
-    generateChatTitle: ({ chatId, signal, titleModelIdOverride }) => titleService.generateChatTitle({
-      chatId,
-      signal,
-      titleModelIdOverride,
-    }),
-    reorderSidebarChatAfterSend: ({ chatId }) => hierarchyService.reorderSidebarChatAfterSend({ chatId }),
+    generateChatTitle: ({ chatId, signal, titleModelIdOverride }) => {
+      if (chatId === undefined) {
+        return Promise.resolve(undefined);
+      }
+
+      return generateChatTitleForChat({
+        chatId,
+        signal,
+        titleModelIdOverride,
+      });
+    },
+    reorderSidebarChatAfterSend: ({ chatId }) => chatOrganization.reorderSidebarChatAfterSend({ chatId }),
   });
   const historyService = createChatHistoryService({
     currentChatRef,
@@ -357,7 +324,7 @@ export function useChatConversationActions(): ChatConversationActionsAdapter {
     updateChatMeta,
     updateHierarchy: updater => storageService.updateHierarchy(updater),
     loadData,
-    openChat: ({ id }) => openService.openChat({ id, leafId: undefined }),
+    openChat: ({ id }) => chatNavigation.openChat({ chatId: id, leafId: undefined }),
     canPersistBinary: () => storageService.canPersistBinary,
     saveFile: ({ blob, binaryObjectId, originalName }) => storageService.saveFile(blob, binaryObjectId, originalName),
     isProcessing,
@@ -455,7 +422,7 @@ export function useChatConversationActions(): ChatConversationActionsAdapter {
     } else if (chatRuntimeStore.hasExternalGeneration({ chatId: id })) {
       storageService.notify({ type: 'chat_content_generation', id, status: 'abort_request', timestamp: Date.now() });
     }
-    titleService.abortTitleGeneration({ chatId: id });
+    abortTitleGenerationForChat({ chatId: id });
   }
 
   async function editMessage({

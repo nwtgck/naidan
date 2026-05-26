@@ -1,8 +1,13 @@
 import { computed, type ComputedRef } from 'vue';
 import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
 import { isProcessing as isChatProcessing } from '@/composables/chat/global/chat-core-singletons';
+import { renameChatById } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
 import { useCurrentChatState } from './useCurrentChatState';
 import { useChatUiServices } from './useChatUiServices';
+import { useChatLifecycle } from './useChatLifecycle';
+import { useChatNavigation } from './useChatNavigation';
+import { useChatOrganization } from './useChatOrganization';
+import { useSidebarStructure } from './useSidebarStructure';
 
 export type SidebarDataAdapter = {
   currentChat: ComputedRef<Readonly<Chat> | null>;
@@ -97,7 +102,11 @@ export type SidebarDataAdapter = {
 
 export function useSidebarData(): SidebarDataAdapter {
   const currentChatState = useCurrentChatState();
-  const { derivedState, hierarchyService, lifecycleService, metadataService, openService } = useChatUiServices({});
+  const { derivedState } = useChatUiServices({});
+  const chatLifecycle = useChatLifecycle();
+  const chatNavigation = useChatNavigation();
+  const chatOrganization = useChatOrganization();
+  const sidebarStructure = useSidebarStructure();
 
   const currentChat = computed(() => currentChatState.currentChat.value);
   const currentChatGroup = computed(() => currentChatState.currentChatGroup.value);
@@ -119,7 +128,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     topLevelItems: SidebarItem[];
   }) {
-    await hierarchyService.persistSidebarStructure({
+    await sidebarStructure.persistSidebarStructure({
       topLevelItems,
     });
   }
@@ -131,7 +140,7 @@ export function useSidebarData(): SidebarDataAdapter {
     groupId: string;
     isCollapsed: boolean;
   }) {
-    void hierarchyService.setChatGroupCollapsed({
+    void sidebarStructure.setChatGroupCollapsed({
       groupId,
       isCollapsed,
     });
@@ -142,8 +151,9 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     name: string;
   }) {
-    return await hierarchyService.createChatGroup({
+    return await chatOrganization.createChatGroup({
       name,
+      options: undefined,
     });
   }
 
@@ -152,7 +162,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     id: string;
   }) {
-    await hierarchyService.deleteChatGroup({
+    await chatOrganization.deleteChatGroup({
       id,
     });
   }
@@ -166,7 +176,7 @@ export function useSidebarData(): SidebarDataAdapter {
     modelId: string | undefined;
     systemPrompt: Chat['systemPrompt'];
   }) {
-    await lifecycleService.createNewChat({
+    await chatLifecycle.createNewChat({
       groupId,
       modelId,
       systemPrompt,
@@ -178,8 +188,8 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     id: string;
   }) {
-    return await openService.openChat({
-      id,
+    return await chatNavigation.openChat({
+      chatId: id,
       leafId: undefined,
     });
   }
@@ -189,8 +199,8 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     id: string;
   }) {
-    openService.openChatGroup({
-      id,
+    chatNavigation.openChatGroup({
+      groupId: id,
     });
   }
 
@@ -199,8 +209,9 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     id: string;
   }) {
-    await lifecycleService.deleteChat({
+    await chatLifecycle.deleteChat({
       id,
+      injectAddToast: undefined,
     });
   }
 
@@ -211,9 +222,9 @@ export function useSidebarData(): SidebarDataAdapter {
     id: string;
     newTitle: string;
   }) {
-    await metadataService.renameChat({
-      id,
-      newTitle,
+    await renameChatById({
+      chatId: id,
+      title: newTitle,
     });
   }
 
@@ -224,7 +235,7 @@ export function useSidebarData(): SidebarDataAdapter {
     groupId: string;
     newName: string;
   }) {
-    await hierarchyService.renameChatGroup({
+    await chatOrganization.renameChatGroup({
       groupId,
       newName,
     });
@@ -235,7 +246,7 @@ export function useSidebarData(): SidebarDataAdapter {
   }: {
     groupId: string;
   }) {
-    await hierarchyService.duplicateChatGroup({
+    await chatOrganization.duplicateChatGroup({
       groupId,
     });
   }

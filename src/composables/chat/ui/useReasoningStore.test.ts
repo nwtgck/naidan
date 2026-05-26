@@ -1,35 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockGetReasoningEffort,
-  mockUpdateReasoningEffort,
+  mockGetReasoningEffortForChatId,
+  mockUpdateReasoningEffortForChatId,
 } = vi.hoisted(() => ({
-  mockGetReasoningEffort: vi.fn(),
-  mockUpdateReasoningEffort: vi.fn(),
+  mockGetReasoningEffortForChatId: vi.fn(),
+  mockUpdateReasoningEffortForChatId: vi.fn(),
 }));
 
-vi.mock('@/composables/chat/chat-current-bridge', () => ({
-  createChatCurrentBridge: () => ({
-    getChatTargetById: ({ id }: { id: string }) => ({ id }),
-    getCurrentChat: () => null,
-    triggerCurrentChat: vi.fn(),
-  }),
-}));
-
-vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
-  currentChatGroupRef: { value: null },
-  currentChatRef: { value: null },
-  getLiveChat: vi.fn(),
-  liveChatRegistry: new Map(),
-  loadData: vi.fn(),
-  updateChatMeta: vi.fn(),
-}));
-
-vi.mock('@/composables/chat/services/chat-metadata-service', () => ({
-  createChatMetadataService: () => ({
-    getReasoningEffort: mockGetReasoningEffort,
-    updateReasoningEffort: mockUpdateReasoningEffort,
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-metadata-helpers', () => ({
+  getReasoningEffortForChatId: mockGetReasoningEffortForChatId,
+  updateReasoningEffortForChatId: mockUpdateReasoningEffortForChatId,
 }));
 
 import { useReasoningStore } from './useReasoningStore';
@@ -37,7 +18,7 @@ import { useReasoningStore } from './useReasoningStore';
 describe('useReasoningStore', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetReasoningEffort.mockReturnValue('medium');
+    mockGetReasoningEffortForChatId.mockReturnValue('medium');
   });
 
   it('delegates reasoning access to the compat store', () => {
@@ -50,8 +31,8 @@ describe('useReasoningStore', () => {
       effort: 'low',
     });
 
-    expect(mockGetReasoningEffort).toHaveBeenCalledWith({ chatId: 'chat-1' });
-    expect(mockUpdateReasoningEffort).toHaveBeenCalledWith({
+    expect(mockGetReasoningEffortForChatId).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockUpdateReasoningEffortForChatId).toHaveBeenCalledWith({
       chatId: 'chat-1',
       effort: 'low',
     });

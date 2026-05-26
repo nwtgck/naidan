@@ -3,6 +3,8 @@ import { mount } from '@vue/test-utils';
 import ChatArea from './ChatArea.vue';
 import { nextTick, ref, computed, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
+import { useChat } from '@/composables/useChat';
+import type { Attachment, LmParameters } from '@/models/types';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
@@ -92,6 +94,103 @@ vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
   useChatRuntime: () => ({
     isProcessing: computed(() => mockCurrentChat.value ? mockActiveGenerations.has(mockCurrentChat.value.id) : false),
     contextCompactProgress: ref({ phase: 'idle' }),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => ({ lmParameters: { reasoning: { effort: undefined } }, modelId: 'm1', sources: { modelId: 'global' } })),
+    inheritedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
+    chatGroups: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatAreaData', () => ({
+  useChatAreaData: () => ({
+    updateChatSettings: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    availableModels: computed(() => []),
+    fetchingModels: computed(() => false),
+    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
+    fetchAvailableModels: vi.fn(),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
+    availableChatGroups: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
+  useChatGeneration: () => ({
+    sendMessage: ({
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    }: {
+      content: string;
+      parentId: string | null | undefined;
+      attachments: Attachment[] | undefined;
+      lmParameters: LmParameters | undefined;
+    }) => useChat().sendMessage({
+      content,
+      parentId,
+      attachments: attachments ?? [],
+      chatTarget: undefined,
+      lmParameters,
+    }),
+    regenerateMessage: vi.fn(),
+    abort: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
+  useChatModelSelection: () => ({
+    availableModels: ref([]),
+    fetchingModels: computed(() => false),
+    fetchModels: vi.fn(),
+    updateModel: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatMedia', () => ({
+  useChatMedia: () => ({
+    availableModels: ref([]),
+    isImageMode: computed(() => false),
+    resolution: computed(() => ({ width: 512, height: 512 })),
+    count: computed(() => 1),
+    persistAs: computed(() => 'original'),
+    steps: computed(() => undefined),
+    seed: computed(() => 'browser_random'),
+    selectedImageModel: computed(() => undefined),
+    toggleImageMode: vi.fn(),
+    updateResolution: vi.fn(),
+    updateCount: vi.fn(),
+    updatePersistAs: vi.fn(),
+    updateSteps: vi.fn(),
+    updateSeed: vi.fn(),
+    setImageModel: vi.fn(),
+    sendImageRequest: vi.fn().mockResolvedValue(true),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
+  useChatReasoning: () => ({
+    effort: computed(() => undefined),
+    updateEffort: vi.fn(),
   }),
 }));
 

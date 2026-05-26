@@ -71,6 +71,7 @@ vi.mock('@/composables/useImageGeneration', () => ({
 }));
 
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  availableModels: mockAvailableModels,
   chatRuntimeStore: {
     startTask: vi.fn(),
     finishTask: vi.fn(),
@@ -101,7 +102,6 @@ vi.mock('./useChatUiServices', () => ({
     derivedState: {
       chatGroups: { value: [] },
     },
-    availableModels: mockAvailableModels,
   }),
 }));
 
