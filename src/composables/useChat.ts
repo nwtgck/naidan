@@ -9,7 +9,6 @@ import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
 import { useToast } from './useToast';
-import { findNodeInBranch } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 
 import { useChatTools } from './useChatTools';
@@ -20,6 +19,7 @@ import { createChatDataStore } from './chat/chat-data-store';
 import { createChatControlService } from './chat/chat-control-service';
 import { createChatDerivedState } from './chat/chat-derived-state';
 import { createChatRuntimeStore } from './chat/chat-runtime-store';
+import { createChatVolatileState } from './chat/chat-volatile-state';
 import { createContextCompactRuntime } from './chat/context-compact-runtime';
 import { createContextCompactService } from './chat/context-compact-service';
 import { createChatGenerationService } from './chat/chat-generation-service';
@@ -41,14 +41,13 @@ import {
 
 export type { AddToastOptions } from './chat/chat-lifecycle-service';
 
-const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
-const volatileToolOutputs = reactive(new Map<string, string>());
 const chatTmpDirectories = reactive(new Map<string, {
   handle: FileSystemDirectoryHandle;
   mountPath: '/tmp';
 }>());
 const chatRuntimeStore = createChatRuntimeStore({});
 const contextCompactRuntime = createContextCompactRuntime({});
+const chatVolatileState = createChatVolatileState({});
 
 const streaming = computed(() => chatRuntimeStore.activeGenerations.size > 0 || chatRuntimeStore.externalGenerations.size > 0);
 const isGeneratingTitle = ({ chatId }: { chatId: string }) => chatRuntimeStore.isGeneratingTitle({ chatId });
@@ -127,45 +126,6 @@ function getContextCompactProgress({
   return contextCompactRuntime.getProgress({ chatId });
 }
 
-function setVolatileAssistantError({ chatId, messageId, error }: {
-  chatId: string;
-  messageId: string;
-  error: string;
-}) {
-  const existing = volatileAssistantErrors.get(chatId);
-  if (existing) {
-    existing.set(messageId, error);
-    return;
-  }
-
-  volatileAssistantErrors.set(chatId, new Map([[messageId, error]]));
-}
-
-function clearVolatileAssistantError({ chatId, messageId }: {
-  chatId: string;
-  messageId: string;
-}) {
-  const existing = volatileAssistantErrors.get(chatId);
-  if (!existing) return;
-
-  existing.delete(messageId);
-  if (existing.size === 0) {
-    volatileAssistantErrors.delete(chatId);
-  }
-}
-
-function applyVolatileAssistantErrorsToChat({ chat }: { chat: Chat }) {
-  const errors = volatileAssistantErrors.get(chat.id);
-  if (!errors || errors.size === 0) return;
-
-  for (const [messageId, error] of errors.entries()) {
-    const node = findNodeInBranch({ items: chat.root.items, targetId: messageId });
-    if (!node || node.role !== 'assistant') continue;
-    node.error = error;
-  }
-}
-
-
 async function ensureChatTmpDirectory({
   chatId,
 }: {
@@ -199,7 +159,7 @@ function getChatTmpDirectory({
 }
 
 const chatDataStore = createChatDataStore({
-  applyVolatileAssistantErrorsToChat,
+  applyVolatileAssistantErrorsToChat: chatVolatileState.applyVolatileAssistantErrorsToChat,
   hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
   isTaskRunning,
   onExternalGenerationStarted: ({ chatId }) => {
@@ -607,18 +567,11 @@ export function useChat() {
     reloadAfterGenerationMetaUpdate: async (_args) => {
       await loadData({});
     },
-    setVolatileAssistantError,
-    clearVolatileAssistantError,
-    setVolatileToolOutput: ({ toolCallId, output }) => {
-      volatileToolOutputs.set(toolCallId, output);
-    },
-    appendVolatileToolOutput: ({ toolCallId, text }) => {
-      const previous = volatileToolOutputs.get(toolCallId) || '';
-      volatileToolOutputs.set(toolCallId, previous + text);
-    },
-    deleteVolatileToolOutput: ({ toolCallId }) => {
-      volatileToolOutputs.delete(toolCallId);
-    },
+    setVolatileAssistantError: chatVolatileState.setVolatileAssistantError,
+    clearVolatileAssistantError: chatVolatileState.clearVolatileAssistantError,
+    setVolatileToolOutput: chatVolatileState.setVolatileToolOutput,
+    appendVolatileToolOutput: chatVolatileState.appendVolatileToolOutput,
+    deleteVolatileToolOutput: chatVolatileState.deleteVolatileToolOutput,
     notifyGenerationStatus: ({ chatId, status }) => {
       storageService.notify({ type: 'chat_content_generation', id: chatId, status, timestamp: Date.now() });
     },
@@ -848,9 +801,7 @@ export function useChat() {
     chatRuntimeStore.clearActiveTaskCounts({});
   };
 
-  const getVolatileToolOutput = ({ toolCallId }: { toolCallId: string }) => {
-    return volatileToolOutputs.get(toolCallId);
-  };
+  const getVolatileToolOutput = chatVolatileState.getVolatileToolOutput;
 
   const {
     chatFlow,
@@ -878,7 +829,7 @@ export function useChat() {
       chatTmpDirectories,
       clearLiveChatRegistry,
       clearActiveTaskCounts,
-      volatileToolOutputs,
+      volatileToolOutputs: chatVolatileState.TEST_ONLY.volatileToolOutputs,
       __testOnlySetCurrentChat,
       __testOnlySetCurrentChatGroup,
       __testOnlySetContextCompactProgress,
