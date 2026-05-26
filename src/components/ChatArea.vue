@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useChat } from '@/composables/useChat';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
 import { useChatAreaSession } from '@/composables/chat/chat-area-session';
 import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
@@ -12,6 +11,8 @@ import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
 import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
 import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
 import { useChatTitle } from '@/composables/chat/chat-scoped/useChatTitle';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatAreaData } from '@/composables/chat/ui/useChatAreaData';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -69,8 +70,6 @@ import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
 import { createCompactInstruction, type ContextCompactPromptMode } from '@/services/context-compact';
 
-
-const chatStore = useChat();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
 const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
@@ -83,6 +82,8 @@ const {
   isChatWeshTerminalOpen,
   toggleChatWeshTerminal,
 } = useLayout();
+const currentChatState = useCurrentChatState();
+const chatAreaData = useChatAreaData();
 const {
   updateChatSettings,
   updateChatGroupMetadata,
@@ -93,9 +94,10 @@ const {
   chatFlow,
   isThinkingActive,
   isWaitingResponse,
-} = chatStore;
+  availableChatGroups,
+} = chatAreaData;
 
-const currentChatId = computed(() => chatStore.currentChat?.value?.id);
+const currentChatId = currentChatState.currentChatId;
 const chatReadModel = useChatReadModel({
   chatId: currentChatId,
 });
@@ -654,8 +656,6 @@ const canGenerateImage = computed(() => {
   return availableImageModels.value.length > 0;
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
-
-const availableChatGroups = computed(() => chatStore.chatGroups?.value ?? []);
 
 const currentChatGroupBadge = computed(() => {
   const groupId = currentChat.value?.groupId;
