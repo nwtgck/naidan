@@ -1,7 +1,6 @@
 import { generateId } from '@/utils/id';
 import { ref, computed, reactive, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
-import type { Chat, AssistantMessageNode, ChatGroup, SidebarItem, ChatSummary, Settings } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { Chat, ChatGroup, SidebarItem, ChatSummary, Settings } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from './useSettings';
@@ -10,7 +9,7 @@ import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
 import { useToast } from './useToast';
-import { findNodeInBranch, findParentInBranch, getChatBranchIterator, getAllMessages } from '@/utils/chat-tree';
+import { findNodeInBranch, getChatBranchIterator, getAllMessages } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 
 import { useChatTools } from './useChatTools';
@@ -30,6 +29,7 @@ import { createChatMountService } from './chat/chat-mount-service';
 import { createChatMetadataService } from './chat/chat-metadata-service';
 import { createChatModelService } from './chat/chat-model-service';
 import { createChatOpenService } from './chat/chat-open-service';
+import { createChatRegenerationService } from './chat/chat-regeneration-service';
 import { createChatTitleService } from './chat/chat-title-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
@@ -732,80 +732,6 @@ export function useChat() {
   const generateResponse = chatGenerationService.generateResponse;
   const sendMessage = chatGenerationService.sendMessage;
 
-  const regenerateMessage = async ({ failedMessageId }: { failedMessageId: string }) => {
-    if (!_currentChat.value) return;
-    const chatId = toRaw(_currentChat.value).id;
-    if (isProcessing({ chatId })) {
-      abortChat({ chatId });
-      // Wait for the task to actually stop and decTask to be called
-      while (isProcessing({ chatId })) {
-        await new Promise(r => setTimeout(r, 10));
-      }
-    }
-
-    const chat = getLiveChat({ chat: _currentChat.value });
-    chatRuntimeStore.startTask({
-      key: {
-        kind: 'process',
-        chatId: chat.id,
-      },
-    });
-    registerLiveInstance({ chat });
-    try {
-      const failedNode = findNodeInBranch({ items: chat.root.items, targetId: failedMessageId });
-      if (!failedNode || failedNode.role !== 'assistant') return;
-      const parent = findParentInBranch({ items: chat.root.items, childId: failedMessageId });
-      if (!parent || parent.role !== 'user') return;
-      const newAssistantMsg: AssistantMessageNode = {
-        id: generateId(),
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-        modelId: failedNode.modelId,
-        replies: { items: [] },
-        attachments: undefined,
-        thinking: undefined,
-        error: undefined,
-        lmParameters: failedNode.lmParameters || EMPTY_LM_PARAMETERS,
-        toolCalls: undefined,
-        results: undefined,
-      };
-      parent.replies.items.push(newAssistantMsg);
-      chat.currentLeafId = newAssistantMsg.id;
-      if (_currentChat.value && toRaw(_currentChat.value).id === chat.id) triggerRef(_currentChat);
-      await updateChatContent({ id: chat.id, updater: (current) => ({ ...current, root: chat.root, currentLeafId: chat.currentLeafId }) });
-      await updateChatMeta({ id: chat.id, updater: (curr) => {
-        if (!curr) return chat;
-        return { ...curr, updatedAt: Date.now(), currentLeafId: chat.currentLeafId };
-      } });
-      let markGenerationReady: (() => void) | undefined;
-      const generationReady = new Promise<void>(resolve => {
-        markGenerationReady = resolve;
-      });
-      generateResponse({
-        chat,
-        assistantId: newAssistantMsg.id,
-        lmParameters: failedNode.lmParameters,
-        onReady: (_args) => {
-          markGenerationReady?.();
-          markGenerationReady = undefined;
-        },
-      }).catch(e => {
-        markGenerationReady?.();
-        markGenerationReady = undefined;
-        console.error('Background generation failed:', e);
-      });
-      await generationReady;
-    } finally {
-      chatRuntimeStore.finishTask({
-        key: {
-          kind: 'process',
-          chatId: chat.id,
-        },
-      });
-    }
-  };
-
   const abortChat = ({ chatId }: { chatId: string | undefined }) => {
     const id = chatId || (_currentChat.value ? toRaw(_currentChat.value).id : null);
     if (id) {
@@ -908,6 +834,29 @@ export function useChat() {
   const editMessage = chatHistoryService.editMessage;
   const switchVersion = chatHistoryService.switchVersion;
   const getSiblings = chatHistoryService.getSiblings;
+
+  const chatRegenerationService = createChatRegenerationService({
+    currentChatRef: _currentChat,
+    getLiveChat,
+    registerLiveInstance,
+    isProcessing,
+    abortChat,
+    startProcessing: ({ chatId }) => {
+      chatRuntimeStore.startTask({ key: { kind: 'process', chatId } });
+    },
+    finishProcessing: ({ chatId }) => {
+      chatRuntimeStore.finishTask({ key: { kind: 'process', chatId } });
+    },
+    updateChatContent,
+    updateChatMeta,
+    triggerCurrentChat: ({ chatId }) => {
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+        triggerRef(_currentChat);
+      }
+    },
+    generateResponse,
+  });
+  const regenerateMessage = chatRegenerationService.regenerateMessage;
 
   const toggleDebug = chatMetadataService.toggleDebug;
 
