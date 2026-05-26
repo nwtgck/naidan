@@ -43,6 +43,12 @@ export type ChatMetadataService = {
     chatId: string;
     effort: Reasoning['effort'];
   }): Promise<void>;
+
+  getReasoningEffort({
+    chatId,
+  }: {
+    chatId: string;
+  }): Reasoning['effort'] | undefined;
 };
 
 export function createChatMetadataService({
@@ -227,6 +233,15 @@ export function createChatMetadataService({
     });
   }
 
+  function getReasoningEffort({
+    chatId,
+  }: {
+    chatId: string;
+  }) {
+    const chat = getChatTarget({ id: chatId });
+    return chat?.lmParameters?.reasoning?.effort;
+  }
+
   return {
     renameChat,
     updateChatModel,
@@ -234,5 +249,6 @@ export function createChatMetadataService({
     updateChatSettings,
     toggleDebug,
     updateReasoningEffort,
+    getReasoningEffort,
   };
 }

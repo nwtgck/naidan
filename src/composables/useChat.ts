@@ -1,11 +1,8 @@
 import { generateId } from '@/utils/id';
 import { ref, computed, reactive, triggerRef, readonly, toRaw, type ComputedRef } from 'vue';
-import type { Chat, MessageNode, AssistantMessageNode, ChatGroup, SidebarItem, ChatSummary, EndpointType, SystemPrompt, LmParameters, Reasoning, Settings } from '@/models/types';
+import type { Chat, AssistantMessageNode, ChatGroup, SidebarItem, ChatSummary, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from './useSettings';
 import { useConfirm } from './useConfirm';
@@ -13,7 +10,7 @@ import { useGlobalEvents } from './useGlobalEvents';
 import { useStoragePersistence } from './useStoragePersistence';
 import { useImageGeneration } from './useImageGeneration';
 import { useToast } from './useToast';
-import { findNodeInBranch, findParentInBranch, getChatBranchIterator, getAllMessages, type HistoryItem } from '@/utils/chat-tree';
+import { findNodeInBranch, findParentInBranch, getChatBranchIterator, getAllMessages } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 
 import { useChatTools } from './useChatTools';
@@ -28,9 +25,10 @@ import { createChatGenerationService } from './chat/chat-generation-service';
 import { createChatHierarchyService } from './chat/chat-hierarchy-service';
 import { createChatHistoryService } from './chat/chat-history-service';
 import { createChatImageService } from './chat/chat-image-service';
-import { type AddToastOptions, createChatLifecycleService } from './chat/chat-lifecycle-service';
+import { createChatLifecycleService } from './chat/chat-lifecycle-service';
 import { createChatMountService } from './chat/chat-mount-service';
 import { createChatMetadataService } from './chat/chat-metadata-service';
+import { createChatModelService } from './chat/chat-model-service';
 import { createChatOpenService } from './chat/chat-open-service';
 import { createChatTitleService } from './chat/chat-title-service';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
@@ -320,122 +318,6 @@ export function useChat() {
     return getAllMessages({ chat: _currentChat.value });
   });
 
-  const fetchAvailableModels = async ({ chatId, customEndpoint }: { chatId?: string, customEndpoint?: { type: EndpointType, url: string, headers?: readonly (readonly [string, string])[] } }) => {
-    const mutableChat = chatId ? liveChatRegistry.get(chatId) : undefined;
-    if (mutableChat) {
-      chatRuntimeStore.startTask({
-        key: {
-          kind: 'fetch',
-          chatId: mutableChat.id,
-        },
-      });
-    } else if (!customEndpoint) {
-      chatRuntimeStore.startTask({
-        key: {
-          kind: 'fetch',
-          chatId: undefined,
-        },
-      });
-    }
-
-    let type: EndpointType;
-    let url: string;
-    let headers: readonly (readonly [string, string])[] | undefined;
-
-    if (customEndpoint) {
-      type = customEndpoint.type; url = customEndpoint.url; headers = customEndpoint.headers;
-    } else if (mutableChat) {
-      const group = mutableChat.groupId ? chatGroups.value.find(g => g.id === mutableChat.groupId) : null;
-      type = mutableChat.endpointType || group?.endpoint?.type || settings.value.endpointType;
-      url = mutableChat.endpointUrl || group?.endpoint?.url || settings.value.endpointUrl || '';
-      headers = mutableChat.endpointHttpHeaders || group?.endpoint?.httpHeaders || settings.value.endpointHttpHeaders;
-    } else if (_currentChat.value) {
-      const chat = toRaw(_currentChat.value);
-      const group = chat.groupId ? chatGroups.value.find(g => g.id === chat.groupId) : null;
-      type = chat.endpointType || group?.endpoint?.type || settings.value.endpointType;
-      url = chat.endpointUrl || group?.endpoint?.url || settings.value.endpointUrl || '';
-      headers = chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || settings.value.endpointHttpHeaders;
-    } else {
-      type = settings.value.endpointType;
-      url = settings.value.endpointUrl || '';
-      headers = settings.value.endpointHttpHeaders;
-    }
-
-    if (!url && type !== 'transformers_js') {
-      if (mutableChat) {
-        chatRuntimeStore.finishTask({
-          key: {
-            kind: 'fetch',
-            chatId: mutableChat.id,
-          },
-        });
-      } else if (!customEndpoint) {
-        chatRuntimeStore.finishTask({
-          key: {
-            kind: 'fetch',
-            chatId: undefined,
-          },
-        });
-      }
-      return [];
-    }
-
-    try {
-      const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const provider = (() => {
-        switch (type) {
-        case 'ollama':
-          return new OllamaProvider({ endpoint: url, headers: mutableHeaders });
-        case 'openai':
-          return new OpenAIProvider({ endpoint: url, headers: mutableHeaders });
-        case 'transformers_js':
-          return new TransformersJsProvider();
-        default: {
-          const _ex: never = type;
-          throw new Error(`Unhandled endpoint type: ${_ex}`);
-        }
-        }
-      })();
-
-      const models = await provider.listModels({});
-      const result = Array.isArray(models) ? models : [];
-      if ((mutableChat && _currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) || (!mutableChat && !chatId)) {
-        availableModels.value = result;
-      }
-
-      // If we're fetching for a specific chat and it has a modelId override that's no longer available, clear it.
-      if (mutableChat && mutableChat.modelId && !result.includes(mutableChat.modelId)) {
-        mutableChat.modelId = '';
-        mutableChat.updatedAt = Date.now();
-        if (_currentChat.value && toRaw(_currentChat.value).id === mutableChat.id) triggerRef(_currentChat);
-        // We don't call updateChatModel here to avoid "Chat not found" errors for unsaved chats.
-        // The components or next storage sync will handle persistence.
-      }
-
-      return result;
-    } catch (e) {
-      const { addErrorEvent } = useGlobalEvents();
-      addErrorEvent({ source: 'useChat:fetchAvailableModels', message: 'Failed to fetch models for resolution', details: e instanceof Error ? e : String(e), });
-      return [];
-    } finally {
-      if (mutableChat) {
-        chatRuntimeStore.finishTask({
-          key: {
-            kind: 'fetch',
-            chatId: mutableChat.id,
-          },
-        });
-      } else if (!customEndpoint) {
-        chatRuntimeStore.finishTask({
-          key: {
-            kind: 'fetch',
-            chatId: undefined,
-          },
-        });
-      }
-    }
-  };
-
   const chatMountService = createChatMountService({
     currentChatRef: _currentChat,
     currentChatGroupRef: _currentChatGroup,
@@ -553,6 +435,24 @@ export function useChat() {
   const updateChatModel = chatMetadataService.updateChatModel;
   const updateChatGroupOverride = chatMetadataService.updateChatGroupOverride;
   const updateChatSettings = chatMetadataService.updateChatSettings;
+  const getReasoningEffort = chatMetadataService.getReasoningEffort;
+
+  const { addErrorEvent } = useGlobalEvents();
+  const chatModelService = createChatModelService({
+    currentChatRef: _currentChat,
+    liveChatRegistry,
+    availableModelsRef: availableModels,
+    getChatGroups: () => chatGroups.value,
+    getSettings: () => settings.value,
+    triggerCurrentChat: ({ chatId }) => {
+      if (_currentChat.value && toRaw(_currentChat.value).id === chatId) {
+        triggerRef(_currentChat);
+      }
+    },
+    runtimeStore: chatRuntimeStore,
+    addErrorEvent,
+  });
+  const fetchAvailableModels = chatModelService.fetchAvailableModels;
 
   const {
     isImageMode,
@@ -920,8 +820,6 @@ export function useChat() {
       abortTitleGeneration({ chatId: id });
     }
   };
-
-  const { addErrorEvent } = useGlobalEvents();
   const contextCompactService = createContextCompactService({
     getCurrentChat: () => (_currentChat.value ? getLiveChat({ chat: _currentChat.value }) : null),
     getLiveChat,
@@ -1012,11 +910,6 @@ export function useChat() {
   const getSiblings = chatHistoryService.getSiblings;
 
   const toggleDebug = chatMetadataService.toggleDebug;
-
-  const getReasoningEffort = ({ chatId }: { chatId: string }) => {
-    const chat = liveChatRegistry.get(chatId) || (_currentChat.value && toRaw(_currentChat.value).id === chatId ? _currentChat.value : null);
-    return chat?.lmParameters?.reasoning?.effort;
-  };
 
   const updateReasoningEffort = chatMetadataService.updateReasoningEffort;
 
