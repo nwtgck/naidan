@@ -40,27 +40,6 @@ const router = createRouter({
 
 let mockChatStore: any;
 
-vi.mock('../composables/chat/ui/useSidebarData', () => ({
-  useSidebarData: () => ({
-    currentChat: mockChatStore.currentChat,
-    currentChatGroup: mockChatStore.currentChatGroup,
-    sidebarItems: mockChatStore.sidebarItems,
-    chatGroups: mockChatStore.chatGroups,
-    isProcessing: mockChatStore.isProcessing,
-    persistSidebarStructure: mockChatStore.persistSidebarStructure,
-    setChatGroupCollapsed: mockChatStore.setChatGroupCollapsed,
-    createChatGroup: vi.fn(),
-    deleteChatGroup: vi.fn(),
-    createNewChat: vi.fn(),
-    openChat: mockChatStore.openChat,
-    openChatGroup: mockChatStore.openChatGroup,
-    deleteChat: vi.fn(),
-    renameChat: vi.fn(),
-    renameChatGroup: vi.fn(),
-    duplicateChatGroup: vi.fn(),
-  }),
-}));
-
 vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
   useSidebarStructure: () => ({
     persistSidebarStructure: mockChatStore.persistSidebarStructure,

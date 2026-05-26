@@ -4,7 +4,6 @@ import { mount } from '@vue/test-utils';
 import { useRouter, useRoute } from 'vue-router';
 import Sidebar from './Sidebar.vue';
 import { useChat } from '@/composables/useChat';
-import { useSidebarData } from '@/composables/chat/ui/useSidebarData';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useTheme } from '@/composables/useTheme';
 import { useConfirm } from '@/composables/useConfirm';
@@ -28,9 +27,6 @@ vi.mock('../composables/useTheme', () => ({
 }));
 vi.mock('../composables/useConfirm', () => ({
   useConfirm: vi.fn(),
-}));
-vi.mock('../composables/chat/ui/useSidebarData', () => ({
-  useSidebarData: vi.fn(),
 }));
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
@@ -90,24 +86,6 @@ describe('Sidebar Design Specifications', () => {
     });
     (useConfirm as unknown as Mock).mockReturnValue({
       showConfirm: vi.fn(),
-    });
-    (useSidebarData as unknown as Mock).mockReturnValue({
-      currentChat: ref(null),
-      currentChatGroup: ref(null),
-      sidebarItems: ref([]),
-      chatGroups: ref([]),
-      isProcessing: vi.fn().mockReturnValue(false),
-      persistSidebarStructure: vi.fn(),
-      setChatGroupCollapsed: vi.fn(),
-      createChatGroup: vi.fn(),
-      deleteChatGroup: vi.fn(),
-      createNewChat: vi.fn(),
-      openChat: vi.fn(),
-      openChatGroup: vi.fn(),
-      deleteChat: vi.fn(),
-      renameChat: vi.fn(),
-      renameChatGroup: vi.fn(),
-      duplicateChatGroup: vi.fn(),
     });
     (useCurrentChatState as unknown as Mock).mockReturnValue({
       currentChat: ref(null),
@@ -174,24 +152,6 @@ describe('Sidebar Design Specifications', () => {
     const currentChat = ref({ id: 'active-chat-id' });
     const sidebarItems = ref([{ id: 'item-1', type: 'chat', chat: { id: 'active-chat-id', title: 'Test Active' } }]);
 
-    (useSidebarData as unknown as Mock).mockReturnValue({
-      currentChat,
-      currentChatGroup: ref(null),
-      sidebarItems,
-      chatGroups: ref([]),
-      isProcessing: vi.fn().mockReturnValue(false),
-      persistSidebarStructure: vi.fn(),
-      setChatGroupCollapsed: vi.fn(),
-      createChatGroup: vi.fn(),
-      deleteChatGroup: vi.fn(),
-      createNewChat: vi.fn(),
-      openChat: vi.fn(),
-      openChatGroup: vi.fn(),
-      deleteChat: vi.fn(),
-      renameChat: vi.fn(),
-      renameChatGroup: vi.fn(),
-      duplicateChatGroup: vi.fn(),
-    });
     (useCurrentChatState as unknown as Mock).mockReturnValue({
       currentChat,
       currentChatGroup: ref(null),

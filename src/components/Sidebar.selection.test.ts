@@ -45,38 +45,6 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useSidebarData', () => ({
-  useSidebarData: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    currentChatGroup: computed(() => mockCurrentChatGroup.value),
-    sidebarItems: computed<SidebarItem[]>(() => {
-      const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
-      return items;
-    }),
-    chatGroups: computed(() => mockChatGroups.value),
-    isProcessing: vi.fn().mockReturnValue(false),
-    persistSidebarStructure: vi.fn(),
-    setChatGroupCollapsed: vi.fn(),
-    createChatGroup: vi.fn(),
-    deleteChatGroup: vi.fn(),
-    createNewChat: vi.fn(),
-    openChatGroup: vi.fn(({ id }: { id: string | null }) => {
-      if (id === null) mockCurrentChatGroup.value = null;
-      else mockCurrentChatGroup.value = mockChatGroups.value.find(g => g.id === id);
-    }),
-    openChat: vi.fn(({ id }: { id: string }) => {
-      mockCurrentChatGroup.value = null;
-      mockCurrentChat.value = mockChats.value.find(c => c.id === id);
-    }),
-    deleteChat: vi.fn(),
-    renameChat: vi.fn(),
-    renameChatGroup: vi.fn(),
-    duplicateChatGroup: vi.fn(),
-  }),
-}));
-
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => mockCurrentChat.value),

@@ -105,7 +105,6 @@ const mockChats = ref<any[]>([]);
 const mockSidebarItems = ref<any[]>([]);
 const mockCurrentChat = ref(null);
 const mockCurrentChatGroup = ref(null);
-const mockIsProcessing = vi.fn().mockReturnValue(false);
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
@@ -136,27 +135,6 @@ vi.mock('../composables/useChat', () => ({
     setChatGroupCollapsed: vi.fn(),
     persistSidebarStructure: vi.fn(),
     isProcessing: vi.fn().mockReturnValue(false),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useSidebarData', () => ({
-  useSidebarData: () => ({
-    currentChat: mockCurrentChat,
-    currentChatGroup: mockCurrentChatGroup,
-    sidebarItems: mockSidebarItems,
-    chatGroups: mockChatGroups,
-    isProcessing: mockIsProcessing,
-    persistSidebarStructure: vi.fn(),
-    setChatGroupCollapsed: vi.fn(),
-    createChatGroup: vi.fn(),
-    deleteChatGroup: vi.fn(),
-    createNewChat: vi.fn(),
-    openChat: vi.fn(),
-    openChatGroup: vi.fn(),
-    deleteChat: vi.fn(),
-    renameChat: vi.fn(),
-    renameChatGroup: vi.fn(),
-    duplicateChatGroup: vi.fn(),
   }),
 }));
 

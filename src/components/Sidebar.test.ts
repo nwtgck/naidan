@@ -102,32 +102,6 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useSidebarData', () => ({
-  useSidebarData: () => ({
-    currentChat: computed(() => null),
-    currentChatGroup: computed(() => null),
-    sidebarItems: computed<SidebarItem[]>(() => {
-      const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
-      return items;
-    }),
-    chatGroups: computed(() => mockChatGroups.value),
-    isProcessing: vi.fn().mockReturnValue(false),
-    persistSidebarStructure: mockPersistSidebarStructure,
-    setChatGroupCollapsed: mockSetChatGroupCollapsed,
-    createChatGroup: mockCreateChatGroup,
-    deleteChatGroup: mockDeleteChatGroup,
-    createNewChat: mockCreateNewChat,
-    openChat: mockOpenChat,
-    openChatGroup: mockOpenChatGroup,
-    deleteChat: mockDeleteChat,
-    renameChat: mockRenameChat,
-    renameChatGroup: mockRenameChatGroup,
-    duplicateChatGroup: mockDuplicateChatGroup,
-  }),
-}));
-
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => null),

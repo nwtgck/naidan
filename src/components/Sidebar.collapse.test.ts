@@ -59,27 +59,6 @@ vi.mock('../composables/useChat', () => ({
   })),
 }));
 
-vi.mock('../composables/chat/ui/useSidebarData', () => ({
-  useSidebarData: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    currentChatGroup: computed(() => mockCurrentChatGroup.value),
-    sidebarItems: computed(() => mockSidebarItems.value),
-    chatGroups: computed(() => mockChatGroups.value),
-    isProcessing: vi.fn().mockReturnValue(false),
-    persistSidebarStructure: vi.fn(),
-    setChatGroupCollapsed: mockSetChatGroupCollapsed,
-    createChatGroup: vi.fn(),
-    deleteChatGroup: vi.fn(),
-    createNewChat: mockCreateNewChat,
-    openChat: mockOpenChat,
-    openChatGroup: mockOpenChatGroup,
-    deleteChat: vi.fn(),
-    renameChat: vi.fn(),
-    renameChatGroup: vi.fn(),
-    duplicateChatGroup: vi.fn(),
-  }),
-}));
-
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => mockCurrentChat.value),
