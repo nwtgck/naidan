@@ -2,7 +2,7 @@ import { generateId } from '@/utils/id';
 import type { Chat, MessageNode } from '@/models/types';
 import { storageService } from '@/services/storage';
 import sampleContent from '@/assets/sample-showcase.md?raw';
-import { useChat } from './useChat';
+import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
 import { processThinking } from '@/utils/chat-tree';
 
 const longSampleTopics = [
@@ -105,7 +105,7 @@ async function persistSampleChat({ chat, loadChats, openChat }: {
 }
 
 export function useSampleChat() {
-  const { loadChats, openChat } = useChat();
+  const { loadChats, openChat } = useChatBootstrap();
 
   const createSampleChat = async () => {
     const now = Date.now();
@@ -147,7 +147,7 @@ export function useSampleChat() {
     await persistSampleChat({
       chat: sampleChatObj,
       loadChats,
-      openChat,
+      openChat: ({ id }) => openChat({ chatId: id }),
     });
   };
 
@@ -183,7 +183,7 @@ export function useSampleChat() {
     await persistSampleChat({
       chat: longSampleChatObj,
       loadChats,
-      openChat,
+      openChat: ({ id }) => openChat({ chatId: id }),
     });
   };
 
