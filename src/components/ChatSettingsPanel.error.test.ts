@@ -51,7 +51,7 @@ describe('ChatSettingsPanel Error Handling', () => {
     vi.mocked(useChatSettingsPanel).mockReturnValue({
       currentChat: computed(() => mockCurrentChat.value),
       fetchingModels: computed(() => false),
-      availableModels: ref([]),
+      availableModels: computed(() => []),
       resolvedSettings: computed(() => ({
         endpointType: mockCurrentChat.value.endpointType,
         endpointUrl: mockCurrentChat.value.endpointUrl,

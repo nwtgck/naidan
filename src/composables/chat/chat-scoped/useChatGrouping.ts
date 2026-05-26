@@ -1,5 +1,5 @@
 import type { Ref } from 'vue';
-import { useChat } from '@/composables/useChat';
+import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
 
 export type ChatGroupingAdapter = {
   moveToGroup({
@@ -16,7 +16,7 @@ export function useChatGrouping({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatGroupingAdapter {
-  const chatStore = useChat();
+  const chatMutationActions = useChatMutationActions();
 
   async function moveToGroup({
     groupId,
@@ -28,7 +28,7 @@ export function useChatGrouping({
       return;
     }
 
-    await chatStore.moveChatToGroup({
+    await chatMutationActions.moveChatToGroup({
       chatId: id,
       targetGroupId: groupId,
     });

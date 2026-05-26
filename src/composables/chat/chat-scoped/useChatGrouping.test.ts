@@ -5,9 +5,10 @@ const { mockMoveChatToGroup } = vi.hoisted(() => ({
   mockMoveChatToGroup: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/ui/useChatMutationActions', () => ({
+  useChatMutationActions: () => ({
     moveChatToGroup: mockMoveChatToGroup,
+    TEST_ONLY: {},
   }),
 }));
 

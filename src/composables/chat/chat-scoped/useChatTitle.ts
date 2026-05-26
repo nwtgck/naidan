@@ -1,5 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import { useChat } from '@/composables/useChat';
+import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
 
 export type ChatTitleAdapter = {
   isGenerating: ComputedRef<boolean>;
@@ -21,23 +21,12 @@ export type ChatTitleAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatTitleStoreCompatibility = ReturnType<typeof useChat> & {
-  generatingTitle?: {
-    value: boolean;
-  };
-  isGeneratingTitle?: ({
-    chatId,
-  }: {
-    chatId: string;
-  }) => boolean;
-};
-
 export function useChatTitle({
   chatId,
 }: {
   chatId: Ref<string | undefined>;
 }): ChatTitleAdapter {
-  const chatStore = useChat() as ChatTitleStoreCompatibility;
+  const chatMutationActions = useChatMutationActions();
 
   const isGenerating = computed(() => {
     const id = chatId.value;
@@ -45,11 +34,7 @@ export function useChatTitle({
       return false;
     }
 
-    if (typeof chatStore.isGeneratingTitle === 'function') {
-      return chatStore.isGeneratingTitle({ chatId: id });
-    }
-
-    return chatStore.generatingTitle?.value ?? false;
+    return chatMutationActions.isGeneratingTitle({ chatId: id });
   });
 
   async function rename({
@@ -62,7 +47,7 @@ export function useChatTitle({
       return;
     }
 
-    await chatStore.renameChat({
+    await chatMutationActions.renameChat({
       id,
       newTitle: title,
     });
@@ -78,15 +63,14 @@ export function useChatTitle({
       return undefined;
     }
 
-    return await chatStore.generateChatTitle({
+    return await chatMutationActions.generateChatTitle({
       chatId: id,
-      signal: undefined,
       titleModelIdOverride,
     });
   }
 
   function abort(_args: Record<never, never>) {
-    chatStore.abortTitleGeneration({
+    chatMutationActions.abortTitleGeneration({
       chatId: chatId.value,
     });
   }

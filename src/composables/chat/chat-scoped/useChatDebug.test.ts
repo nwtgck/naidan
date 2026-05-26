@@ -9,10 +9,11 @@ const {
   mockToggleDebugForChat: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/ui/useChatMutationActions', () => ({
+  useChatMutationActions: () => ({
     toggleDebug: mockToggleDebug,
     toggleDebugForChat: mockToggleDebugForChat,
+    TEST_ONLY: {},
   }),
 }));
 

@@ -1,12 +1,12 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Chat } from '@/models/types';
-import { useChat } from '@/composables/useChat';
+import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
 import { useChatReadModel } from './useChatReadModel';
 
 export type ChatSettingsPanelAdapter = {
   currentChat: ComputedRef<Readonly<Chat> | null>;
   fetchingModels: ComputedRef<boolean>;
-  availableModels: ReturnType<typeof useChat>['availableModels'];
+  availableModels: ReturnType<typeof useChatMutationActions>['availableModels'];
   resolvedSettings: ReturnType<typeof useChatReadModel>['resolvedSettings'];
   inheritedSettings: ReturnType<typeof useChatReadModel>['inheritedSettings'];
 
@@ -32,10 +32,10 @@ export function useChatSettingsPanel({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatSettingsPanelAdapter {
-  const chatStore = useChat();
+  const chatMutationActions = useChatMutationActions();
   const chatReadModel = useChatReadModel({ chatId });
 
-  const fetchingModels = computed(() => chatStore.fetchingModels.value);
+  const fetchingModels = computed(() => chatMutationActions.fetchingModels.value);
 
   async function updateSettings({
     chatId,
@@ -44,7 +44,7 @@ export function useChatSettingsPanel({
     chatId: string;
     updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }) {
-    await chatStore.updateChatSettings({
+    await chatMutationActions.updateChatSettings({
       id: chatId,
       updates,
     });
@@ -55,7 +55,7 @@ export function useChatSettingsPanel({
   }: {
     chatId: string;
   }) {
-    return await chatStore.fetchAvailableModels({
+    return await chatMutationActions.fetchAvailableModels({
       chatId,
     });
   }
@@ -63,7 +63,7 @@ export function useChatSettingsPanel({
   return {
     currentChat: chatReadModel.currentChat,
     fetchingModels,
-    availableModels: chatStore.availableModels,
+    availableModels: chatMutationActions.availableModels,
     resolvedSettings: chatReadModel.resolvedSettings,
     inheritedSettings: chatReadModel.inheritedSettings,
     updateSettings,

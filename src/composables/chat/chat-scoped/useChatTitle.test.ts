@@ -2,26 +2,24 @@ import { computed } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockGeneratingTitle,
   mockIsGeneratingTitle,
   mockRenameChat,
   mockGenerateChatTitle,
   mockAbortTitleGeneration,
 } = vi.hoisted(() => ({
-  mockGeneratingTitle: { value: false },
   mockIsGeneratingTitle: vi.fn(),
   mockRenameChat: vi.fn(),
   mockGenerateChatTitle: vi.fn(),
   mockAbortTitleGeneration: vi.fn(),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    generatingTitle: mockGeneratingTitle,
+vi.mock('@/composables/chat/ui/useChatMutationActions', () => ({
+  useChatMutationActions: () => ({
     isGeneratingTitle: mockIsGeneratingTitle,
     renameChat: mockRenameChat,
     generateChatTitle: mockGenerateChatTitle,
     abortTitleGeneration: mockAbortTitleGeneration,
+    TEST_ONLY: {},
   }),
 }));
 
@@ -30,7 +28,6 @@ import { useChatTitle } from './useChatTitle';
 describe('useChatTitle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGeneratingTitle.value = false;
     mockIsGeneratingTitle.mockReturnValue(false);
     mockGenerateChatTitle.mockResolvedValue('Generated');
   });

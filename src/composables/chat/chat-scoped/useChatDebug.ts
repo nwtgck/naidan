@@ -1,5 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import { useChat } from '@/composables/useChat';
+import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
 
 export type ChatDebugAdapter = {
   enabled: ComputedRef<boolean>;
@@ -9,14 +9,6 @@ export type ChatDebugAdapter = {
   TEST_ONLY: Record<string, never>;
 };
 
-type ChatDebugStoreCompatibility = ReturnType<typeof useChat> & {
-  toggleDebugForChat?: ({
-    chatId,
-  }: {
-    chatId: string;
-  }) => Promise<void>;
-};
-
 export function useChatDebug({
   chatId,
   debugEnabled,
@@ -24,20 +16,20 @@ export function useChatDebug({
   chatId: Ref<string | undefined>;
   debugEnabled: ComputedRef<boolean>;
 }): ChatDebugAdapter {
-  const chatStore = useChat() as ChatDebugStoreCompatibility;
+  const chatMutationActions = useChatMutationActions();
 
   const enabled = computed(() => debugEnabled.value);
 
   async function toggle(_args: Record<never, never>): Promise<void> {
     const id = chatId.value;
-    if (id !== undefined && typeof chatStore.toggleDebugForChat === 'function') {
-      await chatStore.toggleDebugForChat({
+    if (id !== undefined) {
+      await chatMutationActions.toggleDebugForChat({
         chatId: id,
       });
       return;
     }
 
-    await chatStore.toggleDebug({});
+    await chatMutationActions.toggleDebug({});
   }
 
   return {
