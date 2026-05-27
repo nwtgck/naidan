@@ -1,5 +1,12 @@
+import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
+import { installChatBootstrap } from '@/composables/chat/chat-bootstrap';
 import { loadData } from '@/composables/chat/global/chat-core-singletons';
+import { chatRuntimeStore, currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
+import { fetchAvailableModelsForChat } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import type { Settings } from '@/models/types';
+import { transformersJsService } from '@/services/transformers-js';
+import { useSettings } from '@/composables/useSettings';
 
 export type ChatBootstrapAdapter = {
   loadChats(_args: Record<never, never>): Promise<void>;
@@ -14,7 +21,55 @@ export type ChatBootstrapAdapter = {
 };
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
+  const { settings } = useSettings();
   const chatNavigation = useChatNavigation();
+  const chatDerivedState = createChatDerivedState({
+    currentChatRef,
+    rootItems,
+    getSettings: () => settings.value as Settings,
+  });
+
+  installChatBootstrap({
+    registerBeforeUnload: (_args) => {
+      if (typeof window === 'undefined') {
+        return undefined;
+      }
+
+      const onBeforeUnload = () => {
+        for (const item of chatRuntimeStore.activeGenerations.values()) {
+          item.controller.abort();
+        }
+      };
+
+      window.addEventListener('beforeunload', onBeforeUnload);
+      return () => {
+        window.removeEventListener('beforeunload', onBeforeUnload);
+      };
+    },
+    subscribeModelList: (_args) => {
+      return transformersJsService.subscribeModelList(async () => {
+        const type = chatDerivedState.resolvedSettings.value?.endpointType;
+        if (type === undefined) {
+          return;
+        }
+
+        switch (type) {
+        case 'transformers_js':
+          await fetchAvailableModelsForChat({
+            chatId: currentChatRef.value?.id,
+          });
+          return;
+        case 'openai':
+        case 'ollama':
+          return;
+        default: {
+          const _ex: never = type;
+          throw new Error(`Unhandled endpoint type: ${_ex}`);
+        }
+        }
+      });
+    },
+  });
 
   async function loadChats(_args: Record<never, never>) {
     await loadData({});

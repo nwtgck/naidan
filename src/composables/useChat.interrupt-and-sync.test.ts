@@ -73,7 +73,7 @@ vi.mock('./useSettings', () => ({
 describe('useChat Interrupt and Sync Tests', () => {
   const chatStore = useChat();
   const {
-    sendMessage, editMessage, TEST_ONLY
+    sendMessage, editMessage, regenerateMessage, TEST_ONLY
   } = chatStore;
   const { __testOnlySetCurrentChat } = TEST_ONLY;
 
@@ -83,6 +83,9 @@ describe('useChat Interrupt and Sync Tests', () => {
     vi.clearAllMocks();
     __testOnlySetCurrentChat({ chat: null });
     TEST_ONLY.activeGenerations.clear();
+    TEST_ONLY.externalGenerations.clear();
+    TEST_ONLY.activeTitleGenerations.clear();
+    TEST_ONLY.activeContextCompactions.clear();
     TEST_ONLY.clearActiveTaskCounts({});
     TEST_ONLY.clearLiveChatRegistry({});
     mockRootItems.length = 0;
@@ -252,5 +255,120 @@ describe('useChat Interrupt and Sync Tests', () => {
 
     // 6. Verify that storageService.updateChatContent was called for the AbortError suffix
     expect(vi.mocked(storageService.updateChatContent)).toHaveBeenCalled();
+  }, 15000);
+
+  it('should request external abort before regenerateMessage and continue', async () => {
+    const chatId = 'external-regen-test';
+    const assistantId = 'assistant-1';
+    const chat = reactive({
+      id: chatId,
+      title: 'External Regen',
+      root: {
+        items: [
+          {
+            id: 'user-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: 0,
+            replies: {
+              items: [
+                {
+                  id: assistantId,
+                  role: 'assistant',
+                  content: 'First answer',
+                  timestamp: 0,
+                  replies: { items: [] },
+                  modelId: 'gpt-4',
+                  lmParameters: undefined,
+                },
+              ],
+            },
+          },
+        ],
+      },
+      currentLeafId: assistantId,
+      modelId: 'gpt-4',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any;
+    __testOnlySetCurrentChat({ chat });
+    vi.mocked(storageService.loadChat).mockResolvedValue(chat);
+    TEST_ONLY.externalGenerations.add(chatId);
+    vi.mocked(storageService.notify).mockImplementation((event: any) => {
+      if (event.type === 'chat_content_generation' && event.status === 'abort_request' && event.id === chatId) {
+        TEST_ONLY.externalGenerations.delete(chatId);
+      }
+    });
+
+    mockLlm.chat.mockImplementationOnce(async (params: any) => {
+      params.onChunk('Regenerated');
+    });
+
+    await regenerateMessage({ failedMessageId: assistantId });
+
+    expect(vi.mocked(storageService.notify)).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'chat_content_generation',
+      id: chatId,
+      status: 'abort_request',
+    }));
+    expect(chat.root.items[0].replies.items).toHaveLength(2);
+    expect(chat.root.items[0].replies.items[1].content).toBe('Regenerated');
+  }, 15000);
+
+  it('should abort active compact processing before editMessage and continue', async () => {
+    const chatId = 'compact-edit-test';
+    const chat = reactive({
+      id: chatId,
+      title: 'Compact Edit',
+      root: {
+        items: [
+          {
+            id: 'user-1',
+            role: 'user',
+            content: 'Original',
+            timestamp: 0,
+            replies: {
+              items: [
+                {
+                  id: 'assistant-1',
+                  role: 'assistant',
+                  content: 'Old response',
+                  timestamp: 0,
+                  replies: { items: [] },
+                  modelId: 'gpt-4',
+                },
+              ],
+            },
+          },
+        ],
+      },
+      currentLeafId: 'assistant-1',
+      modelId: 'gpt-4',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      debugEnabled: false,
+    }) as any;
+    __testOnlySetCurrentChat({ chat });
+    vi.mocked(storageService.loadChat).mockResolvedValue(chat);
+
+    const compactController = new AbortController();
+    const compactAbort = vi.spyOn(compactController, 'abort').mockImplementation(() => {
+      TEST_ONLY.activeContextCompactions.delete(chatId);
+      TEST_ONLY.activeTaskCounts.delete(`process:${chatId}`);
+    });
+    TEST_ONLY.activeContextCompactions.set(chatId, compactController);
+    TEST_ONLY.activeTaskCounts.set(`process:${chatId}`, 1);
+
+    mockLlm.chat.mockImplementationOnce(async (params: any) => {
+      params.onChunk('Edited Response');
+    });
+
+    await editMessage({ messageId: 'user-1', newContent: 'Updated content' });
+    await vi.waitUntil(() => !chatStore.streaming.value);
+
+    expect(compactAbort).toHaveBeenCalledTimes(1);
+    expect(chat.root.items).toHaveLength(2);
+    expect(chat.root.items[1].replies.items[0].content).toBe('Edited Response');
   }, 15000);
 });

@@ -1,13 +1,8 @@
 import type { Ref } from 'vue';
 import type { Attachment, LmParameters } from '@/models/types';
-import { storageService } from '@/services/storage';
 import {
-  chatRuntimeStore,
-  contextCompactRuntime,
-} from '@/composables/chat/global/chat-core-singletons';
-import {
-  abortTitleGenerationForChat,
-} from '@/composables/chat/chat-scoped/chat-title-helpers';
+  abortProcessingForChat,
+} from '@/composables/chat/chat-scoped/chat-processing-abort';
 import {
   regenerateMessageForChat,
   sendMessageForChat,
@@ -86,24 +81,7 @@ export function useChatGeneration({
       return;
     }
 
-    contextCompactRuntime.getActiveContextCompaction({ chatId: chatId.value })?.abort();
-    if (chatRuntimeStore.activeGenerations.has(chatId.value)) {
-      chatRuntimeStore.getActiveGeneration({ chatId: chatId.value })?.controller.abort();
-      storageService.notify({
-        type: 'chat_content_generation',
-        id: chatId.value,
-        status: 'abort_request',
-        timestamp: Date.now(),
-      });
-    } else if (chatRuntimeStore.hasExternalGeneration({ chatId: chatId.value })) {
-      storageService.notify({
-        type: 'chat_content_generation',
-        id: chatId.value,
-        status: 'abort_request',
-        timestamp: Date.now(),
-      });
-    }
-    abortTitleGenerationForChat({
+    abortProcessingForChat({
       chatId: chatId.value,
     });
   }

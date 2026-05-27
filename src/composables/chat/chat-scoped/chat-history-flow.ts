@@ -23,7 +23,6 @@ import {
 } from '@/utils/chat-tree';
 import { generateId } from '@/utils/id';
 import {
-  chatRuntimeStore,
   currentChatRef,
   getChatTargetByOptionalId,
   getLiveChat,
@@ -39,6 +38,9 @@ import {
   sendMessageToCurrentChat,
   sendMessageToTargetChat,
 } from '@/composables/chat/chat-scoped/chat-generation-flow';
+import {
+  abortProcessingForChat,
+} from '@/composables/chat/chat-scoped/chat-processing-abort';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
@@ -364,7 +366,7 @@ async function editMessageInTarget({
   lmParameters: LmParameters | undefined;
 }): Promise<void> {
   if (isProcessing({ chatId: targetChat.id })) {
-    chatRuntimeStoreAbort({
+    abortProcessingForChat({
       chatId: targetChat.id,
     });
     while (isProcessing({ chatId: targetChat.id })) {
@@ -513,12 +515,4 @@ async function sendEditedMessage({
     attachments,
     lmParameters,
   });
-}
-
-function chatRuntimeStoreAbort({
-  chatId,
-}: {
-  chatId: string;
-}): void {
-  chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
 }

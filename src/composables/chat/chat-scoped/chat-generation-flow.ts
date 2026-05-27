@@ -70,6 +70,9 @@ import {
   generateChatTitleForChat,
 } from '@/composables/chat/chat-scoped/chat-title-helpers';
 import {
+  abortProcessingForChat,
+} from '@/composables/chat/chat-scoped/chat-processing-abort';
+import {
   handleImageGenerationForChat,
 } from '@/composables/chat/chat-scoped/chat-image-helpers';
 import {
@@ -742,7 +745,7 @@ async function regenerateMessageForTarget({
 }): Promise<void> {
   const chatId = targetChat.id;
   if (isProcessing({ chatId })) {
-    abortChatTasks({ chatId });
+    abortProcessingForChat({ chatId });
     while (isProcessing({ chatId })) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -1222,12 +1225,4 @@ async function showGenerationFailedToast({
       await useChatNavigation().openChat({ chatId: chat.id, leafId: undefined });
     },
   });
-}
-
-function abortChatTasks({
-  chatId,
-}: {
-  chatId: string;
-}): void {
-  chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
 }

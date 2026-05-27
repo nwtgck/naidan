@@ -1,7 +1,6 @@
 import { computed, type ComputedRef } from 'vue';
 import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Reasoning, Settings } from '@/models/types';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
-import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from '@/composables/useSettings';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
@@ -35,7 +34,6 @@ import {
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
-import { installChatBootstrap } from '@/composables/chat/chat-bootstrap';
 import { createChatTestSupport } from '@/composables/chat/chat-test-support';
 import {
   getReasoningEffortForChatId,
@@ -80,64 +78,6 @@ import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 
 export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
-
-installChatBootstrap({
-  registerBeforeUnload: (_args) => {
-    const typeOfWindow = typeof window;
-    switch (typeOfWindow) {
-    case 'undefined':
-      return undefined;
-    case 'object':
-    case 'boolean':
-    case 'string':
-    case 'number':
-    case 'function':
-    case 'symbol':
-    case 'bigint': {
-      const onBeforeUnload = () => {
-        for (const item of chatRuntimeStore.activeGenerations.values()) {
-          item.controller.abort();
-        }
-      };
-      window.addEventListener('beforeunload', onBeforeUnload);
-      return () => {
-        window.removeEventListener('beforeunload', onBeforeUnload);
-      };
-    }
-    default: {
-      const _ex: never = typeOfWindow;
-      return _ex;
-    }
-    }
-  },
-  subscribeModelList: (_args) => {
-    return transformersJsService.subscribeModelList(async () => {
-      const { settings } = useSettings();
-      const chatDerivedState = createChatDerivedState({
-        currentChatRef: _currentChat,
-        rootItems,
-        getSettings: () => settings.value as Settings,
-      });
-      const type = chatDerivedState.resolvedSettings.value?.endpointType;
-      if (!type) return;
-
-      switch (type) {
-      case 'transformers_js':
-        await fetchAvailableModelsForChat({
-          chatId: _currentChat.value?.id,
-        });
-        return;
-      case 'openai':
-      case 'ollama':
-        return;
-      default: {
-        const _ex: never = type;
-        throw new Error(`Unhandled endpoint type: ${_ex}`);
-      }
-      }
-    });
-  },
-});
 
 // Compatibility facade for broad legacy tests and legacy callers.
 // Production feature logic should live in scoped composables and helpers.
@@ -1079,6 +1019,8 @@ export function useChat() {
     TEST_ONLY: {
       liveChatRegistry,
       activeGenerations: chatRuntimeStore.activeGenerations,
+      externalGenerations: chatRuntimeStore.externalGenerations,
+      activeTitleGenerations: chatRuntimeStore.activeTitleGenerations,
       activeTaskCounts: chatRuntimeStore.TEST_ONLY.activeTaskCounts,
       compactProgressByChat: contextCompactRuntime.TEST_ONLY.compactProgressByChat,
       activeContextCompactions: contextCompactRuntime.activeContextCompactions,
