@@ -53,86 +53,105 @@ function isProcessing({
   return isChatProcessing({ chatId });
 }
 
-const sidebarData = {
-  persistSidebarStructure: sidebarStructure.persistSidebarStructure,
-  setChatGroupCollapsed: ({
+const persistSidebarStructure = sidebarStructure.persistSidebarStructure;
+
+function setChatGroupCollapsed({
+  groupId,
+  isCollapsed,
+}: {
+  groupId: string;
+  isCollapsed: boolean;
+}) {
+  void sidebarStructure.setChatGroupCollapsed({
     groupId,
     isCollapsed,
-  }: {
-    groupId: string;
-    isCollapsed: boolean;
-  }) => {
-    void sidebarStructure.setChatGroupCollapsed({
-      groupId,
-      isCollapsed,
-    });
-  },
-  createChatGroup: ({
-    name,
-  }: {
-    name: string;
-  }) => chatOrganization.createChatGroup({
+  });
+}
+
+function createChatGroup({
+  name,
+}: {
+  name: string;
+}) {
+  return chatOrganization.createChatGroup({
     name,
     options: undefined,
-  }),
-  deleteChatGroup: ({
+  });
+}
+
+function deleteChatGroup({
+  id,
+}: {
+  id: string;
+}) {
+  return chatOrganization.deleteChatGroup({
     id,
-  }: {
-    id: string;
-  }) => chatOrganization.deleteChatGroup({
-    id,
-  }),
-  createNewChat: ({
+  });
+}
+
+function createNewChat({
+  groupId,
+  modelId,
+  systemPrompt,
+}: {
+  groupId: string | undefined;
+  modelId: string | undefined;
+  systemPrompt: ChatGroup['systemPrompt'];
+}) {
+  return chatLifecycle.createNewChat({
     groupId,
     modelId,
     systemPrompt,
-  }: {
-    groupId: string | undefined;
-    modelId: string | undefined;
-    systemPrompt: ChatGroup['systemPrompt'];
-  }) => chatLifecycle.createNewChat({
-    groupId,
-    modelId,
-    systemPrompt,
-  }),
-  openChat: ({
-    id,
-  }: {
-    id: string;
-  }) => chatNavigation.openChat({
+  });
+}
+
+function openChat({
+  id,
+}: {
+  id: string;
+}) {
+  return chatNavigation.openChat({
     chatId: id,
     leafId: undefined,
-  }),
-  openChatGroup: ({
-    id,
-  }: {
-    id: string;
-  }) => {
-    chatNavigation.openChatGroup({
-      groupId: id,
-    });
-  },
-  deleteChat: ({
-    id,
-  }: {
-    id: string;
-  }) => chatLifecycle.deleteChat({
+  });
+}
+
+function openChatGroup({
+  id,
+}: {
+  id: string;
+}) {
+  chatNavigation.openChatGroup({
+    groupId: id,
+  });
+}
+
+function deleteChat({
+  id,
+}: {
+  id: string;
+}) {
+  return chatLifecycle.deleteChat({
     id,
     injectAddToast: undefined,
-  }),
-  renameChat: ({
-    id,
-    newTitle,
-  }: {
-    id: string;
-    newTitle: string;
-  }) => renameChatById({
+  });
+}
+
+function renameChat({
+  id,
+  newTitle,
+}: {
+  id: string;
+  newTitle: string;
+}) {
+  return renameChatById({
     chatId: id,
     title: newTitle,
-  }),
-  renameChatGroup: chatOrganization.renameChatGroup,
-  duplicateChatGroup: chatOrganization.duplicateChatGroup,
-};
+  });
+}
+
+const renameChatGroup = chatOrganization.renameChatGroup;
+const duplicateChatGroup = chatOrganization.duplicateChatGroup;
 
 const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
 const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
@@ -523,7 +542,7 @@ async function onDragEnd() {
     dragHoverTimeout = null;
   }
   // Sync the UI structure to storage
-  await sidebarData.persistSidebarStructure({ topLevelItems: sidebarItemsLocal.value });
+  await persistSidebarStructure({ topLevelItems: sidebarItemsLocal.value });
 
   // Wait for DOM and Sortable cleanup
   await nextTick();
@@ -543,7 +562,7 @@ function onDragOverGroup({ groupId }: { groupId: string }) {
   dragHoverTimeout = setTimeout(() => {
     const group = chatGroups.value.find(g => g.id === groupId);
     if (group && group.isCollapsed) {
-      sidebarData.setChatGroupCollapsed({ groupId, isCollapsed: false });
+      setChatGroupCollapsed({ groupId, isCollapsed: false });
     }
   }, 600); // 600ms hover to expand
 }
@@ -588,7 +607,7 @@ async function handleCreateChatGroup() {
     return;
   }
   skipLeaveAnimation.value = true;
-  await sidebarData.createChatGroup({ name });
+  await createChatGroup({ name });
   newChatGroupName.value = '';
   isCreatingChatGroup.value = false;
   // Reset flag after transition would have finished
@@ -625,12 +644,12 @@ async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
     if (!confirmed) return;
   }
 
-  await sidebarData.deleteChatGroup({ id: group.id });
+  await deleteChatGroup({ id: group.id });
 }
 
 async function handleNewChat({ groupId }: { groupId: string | undefined }) {
   setActiveFocusArea({ area: 'chat' });
-  await sidebarData.createNewChat({
+  await createNewChat({
     groupId,
     modelId: undefined,
     systemPrompt: undefined
@@ -641,12 +660,12 @@ async function handleNewChat({ groupId }: { groupId: string | undefined }) {
 }
 
 async function handleOpenChat({ id }: { id: string }) {
-  await sidebarData.openChat({ id });
+  await openChat({ id });
   router.push(`/chat/${id}`);
 }
 
 async function handleOpenChatGroup({ id }: { id: string }) {
-  sidebarData.openChatGroup({ id });
+  openChatGroup({ id });
   router.push(`/chat-group/${id}`);
 }
 
@@ -659,7 +678,7 @@ watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId,
 
 async function handleDeleteChat({ id }: { id: string }) {
   const isCurrent = currentChat.value?.id === id;
-  await sidebarData.deleteChat({ id });
+  await deleteChat({ id });
   if (isCurrent) router.push('/');
 }
 
@@ -670,7 +689,7 @@ function startEditing({ id, title }: { id: string; title: string | null }) {
 
 async function saveRename() {
   if (editingId.value && editingTitle.value.trim()) {
-    await sidebarData.renameChat({ id: editingId.value, newTitle: editingTitle.value.trim() });
+    await renameChat({ id: editingId.value, newTitle: editingTitle.value.trim() });
   }
   editingId.value = null;
 }
@@ -682,7 +701,7 @@ function startEditingChatGroup({ chatGroup }: { chatGroup: ChatGroup }) {
 
 async function saveChatGroupRename() {
   if (editingChatGroupId.value && editingChatGroupName.value.trim()) {
-    await sidebarData.renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
+    await renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
   }
   editingChatGroupId.value = null;
 }
@@ -736,7 +755,7 @@ function handleToggleChatGroupCollapse({ chatGroup }: { chatGroup: ChatGroup }) 
   }
 
   // Persist to store
-  sidebarData.setChatGroupCollapsed({
+  setChatGroupCollapsed({
     groupId: chatGroup.id,
     isCollapsed: chatGroup.isCollapsed
   });
@@ -1075,7 +1094,7 @@ defineExpose({
                       :chat-group="element.chatGroup"
                       :is-open="activeActionGroupId === element.chatGroup.id"
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
-                      @duplicate="() => { sidebarData.duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
+                      @duplicate="() => { duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
                       @delete="() => { handleDeleteChatGroup({ group: element.chatGroup }); activeActionGroupId = null; }"
                       @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
                     />
