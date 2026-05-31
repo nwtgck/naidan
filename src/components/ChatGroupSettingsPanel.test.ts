@@ -2,15 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, toRef } from 'vue';
-import type { ChatGroup } from '@/models/types';
-import { useChatGroupSettingsPanel } from '@/composables/chat/ui/useChatGroupSettingsPanel';
+import type { ChatGroup, Settings } from '@/models/types';
+import { fetchAvailableModelsForEndpoint } from '@/composables/chat/chat-scoped/chat-model-helpers';
+import { useChatGroupMounts } from '@/composables/chat/chat-scoped/useChatGroupMounts';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useSettings } from '@/composables/useSettings';
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
   removeMountFromChatGroup: vi.fn().mockResolvedValue(undefined),
   updateChatGroupMount: vi.fn().mockResolvedValue(undefined),
   getVolumeDirectoryHandle: vi.fn(),
+  updateChatGroup: vi.fn(),
   openFileExplorer: vi.fn(),
+  fetchingModels: { value: false },
+  setActiveFocusArea: vi.fn(),
+  openSearch: vi.fn(),
 }));
 
 const mockGroup = reactive<ChatGroup>({
@@ -25,11 +32,14 @@ const mockGroup = reactive<ChatGroup>({
   lmParameters: undefined,
 });
 
-const mockSettings = reactive({
+const mockSettings = reactive<Settings>({
   endpointType: 'openai',
   endpointUrl: 'http://global-url',
   defaultModelId: 'global-model',
+  autoTitleEnabled: true,
+  storageType: 'opfs',
   providerProfiles: [],
+  mounts: [],
 });
 
 const mockUpdateChatGroupMetadata = vi.fn().mockImplementation(({ id, updates }) => {
@@ -39,14 +49,37 @@ const mockUpdateChatGroupMetadata = vi.fn().mockImplementation(({ id, updates })
 });
 const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-a', 'model-b']);
 
-vi.mock('../composables/chat/ui/useChatGroupSettingsPanel', () => ({
-  useChatGroupSettingsPanel: vi.fn(),
-}));
+function expectLatestGroupUpdate({
+  partial,
+}: {
+  partial: Partial<ChatGroup>;
+}) {
+  const calls = mockUpdateChatGroupMetadata.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  expect(calls.at(-1)?.[0]).toEqual(expect.objectContaining(partial));
+}
 
 vi.mock('../services/storage', () => ({
   storageService: {
     getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    updateChatGroup: mocks.updateChatGroup,
   },
+}));
+
+vi.mock('../composables/chat/global/chat-core-singletons', () => ({
+  fetchingModels: mocks.fetchingModels,
+}));
+
+vi.mock('../composables/chat/chat-scoped/chat-model-helpers', () => ({
+  fetchAvailableModelsForEndpoint: vi.fn(),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatGroupMounts', () => ({
+  useChatGroupMounts: vi.fn(),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useFileExplorerModal', () => ({
@@ -56,9 +89,7 @@ vi.mock('../composables/useFileExplorerModal', () => ({
 }));
 
 vi.mock('../composables/useSettings', () => ({
-  useSettings: () => ({
-    settings: toRef(mockSettings),
-  }),
+  useSettings: vi.fn(),
 }));
 
 const globalStubs = {
@@ -76,41 +107,59 @@ const globalStubs = {
   },
 };
 
-const mockSetActiveFocusArea = vi.fn();
-const mockOpenSearch = vi.fn();
-
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
-    setActiveFocusArea: mockSetActiveFocusArea,
+    setActiveFocusArea: mocks.setActiveFocusArea,
   }),
 }));
 
 vi.mock('../composables/useGlobalSearch', () => ({
   useGlobalSearch: () => ({
-    openSearch: mockOpenSearch,
+    openSearch: mocks.openSearch,
   }),
 }));
 
 describe('ChatGroupSettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useChatGroupSettingsPanel).mockReturnValue({
+    mocks.updateChatGroup.mockImplementation(async (groupId: string, updater: (current: ChatGroup | null) => ChatGroup) => {
+      if (mockGroup.id === groupId) {
+        const next = updater(mockGroup);
+        mockUpdateChatGroupMetadata(next);
+        Object.assign(mockGroup, next);
+      }
+    });
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      currentChatId: computed(() => undefined),
+      currentChat: computed(() => null),
       currentChatGroup: computed(() => mockGroup),
-      fetchingModels: computed(() => false),
-      updateMetadata: vi.fn().mockImplementation(async ({ groupId, updates }) => {
-        await mockUpdateChatGroupMetadata({ id: groupId, updates });
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
+    } as ReturnType<typeof useCurrentChatState>);
+    vi.mocked(useSettings).mockReturnValue({
+      settings: toRef(mockSettings),
+    } as unknown as ReturnType<typeof useSettings>);
+    vi.mocked(useChatGroupMounts).mockReturnValue({
+      mounts: computed(() => mockGroup.mounts ?? []),
+      addMount: vi.fn().mockImplementation(async ({ mount }) => {
+        await mocks.addMountToChatGroup({ groupId: mockGroup.id, mount });
       }),
-      fetchModels: mockFetchAvailableModels,
-      addMount: vi.fn().mockImplementation(async ({ groupId, mount }) => {
-        await mocks.addMountToChatGroup({ groupId, mount });
+      removeMount: vi.fn().mockImplementation(async ({ volumeId }) => {
+        await mocks.removeMountFromChatGroup({ groupId: mockGroup.id, volumeId });
       }),
-      removeMount: vi.fn().mockImplementation(async ({ groupId, volumeId }) => {
-        await mocks.removeMountFromChatGroup({ groupId, volumeId });
-      }),
-      updateMount: vi.fn().mockImplementation(async ({ groupId, volumeId, mountPath, readOnly }) => {
-        await mocks.updateChatGroupMount({ groupId, volumeId, mountPath, readOnly });
+      updateMount: vi.fn().mockImplementation(async ({ volumeId, mountPath, readOnly }) => {
+        await mocks.updateChatGroupMount({ groupId: mockGroup.id, volumeId, mountPath, readOnly });
       }),
       TEST_ONLY: {},
+    } as unknown as ReturnType<typeof useChatGroupMounts>);
+    mocks.fetchingModels.value = false;
+    vi.mocked(fetchAvailableModelsForEndpoint).mockImplementation(async ({ endpointType, endpointUrl, endpointHttpHeaders }) => {
+      return await mockFetchAvailableModels({ endpointType, endpointUrl, endpointHttpHeaders });
     });
     Object.assign(mockGroup, {
       id: 'g1',
@@ -192,9 +241,12 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await select.setValue('ollama');
     await select.trigger('change');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
-      endpoint: expect.objectContaining({ type: 'ollama' })
-    }) });
+    expectLatestGroupUpdate({
+      partial: {
+        id: 'g1',
+        endpoint: expect.objectContaining({ type: 'ollama' }) as ChatGroup['endpoint'],
+      },
+    });
 
     await nextTick();
     // Now local endpoint is set, so URL input should exist
@@ -239,17 +291,23 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
     await appendBtn?.trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
-      systemPrompt: expect.objectContaining({ behavior: 'append' })
-    }) });
+    expectLatestGroupUpdate({
+      partial: {
+        id: 'g1',
+        systemPrompt: expect.objectContaining({ behavior: 'append' }) as ChatGroup['systemPrompt'],
+      },
+    });
 
     // Click Override
     const overrideBtn = wrapper.findAll('button').find(b => b.text() === 'Override');
     await overrideBtn?.trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
-      systemPrompt: expect.objectContaining({ behavior: 'override' })
-    }) });
+    expectLatestGroupUpdate({
+      partial: {
+        id: 'g1',
+        systemPrompt: expect.objectContaining({ behavior: 'override' }) as ChatGroup['systemPrompt'],
+      },
+    });
   });
 
   it('clears system prompt override when clicking Inherit button', async () => {
@@ -267,9 +325,12 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await inheritBtn?.trigger('click');
     await nextTick();
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
-      systemPrompt: undefined
-    }) });
+    expectLatestGroupUpdate({
+      partial: {
+        id: 'g1',
+        systemPrompt: undefined,
+      },
+    });
 
     // Verify UI state
     expect(wrapper.find('[data-testid="group-setting-system-prompt-textarea"]').exists()).toBe(false);
@@ -306,9 +367,12 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await textarea.setValue('Custom prompt');
     await textarea.trigger('blur');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
-      systemPrompt: expect.objectContaining({ content: 'Custom prompt' })
-    }) });
+    expectLatestGroupUpdate({
+      partial: {
+        id: 'g1',
+        systemPrompt: expect.objectContaining({ content: 'Custom prompt' }) as ChatGroup['systemPrompt'],
+      },
+    });
   });
 
   it('restores defaults when the button is clicked', async () => {
@@ -318,10 +382,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await wrapper.find('[data-testid="group-setting-restore-defaults"]').trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
-      modelId: undefined,
-      systemPrompt: undefined
-    }) });
+    expectLatestGroupUpdate({
+      partial: {
+        id: 'g1',
+        modelId: undefined,
+        systemPrompt: undefined,
+      },
+    });
   });
 
   it('passes a naturally sorted list of models to ModelSelector', async () => {
@@ -357,20 +424,23 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await urlInput.setValue('http://localhost:11434');
     await flushPromises();
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
-      modelId: undefined
-    }) });
+    expectLatestGroupUpdate({
+      partial: {
+        id: 'g1',
+        modelId: undefined,
+      },
+    });
   });
 
   it('sets active focus area to chat-group-settings on click or focus', async () => {
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
 
     await wrapper.trigger('click');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-group-settings' });
+    expect(mocks.setActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-group-settings' });
 
-    mockSetActiveFocusArea.mockClear();
+    mocks.setActiveFocusArea.mockClear();
     await wrapper.trigger('focusin');
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-group-settings' });
+    expect(mocks.setActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-group-settings' });
   });
 
   it('triggers global search when clicking search button', async () => {
@@ -380,7 +450,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     const searchBtn = wrapper.findAll('button').find(b => b.text().includes('Search Group'));
     await searchBtn?.trigger('click');
 
-    expect(mockOpenSearch).toHaveBeenCalledWith({ groupIds: [mockGroup.id] });
+    expect(mocks.openSearch).toHaveBeenCalledWith({ groupIds: [mockGroup.id] });
   });
 
   it('updates group name from model ID when the button is clicked', async () => {
@@ -393,9 +463,12 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     await setNameBtn.trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'g1', updates: expect.objectContaining({
-      name: 'my-model:latest'
-    }) });
+    expectLatestGroupUpdate({
+      partial: {
+        id: 'g1',
+        name: 'my-model:latest',
+      },
+    });
   });
 
   describe('Folders (chat group mounts)', () => {

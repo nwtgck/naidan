@@ -8,7 +8,6 @@ import { useChatDebug } from '@/composables/chat/chat-scoped/useChatDebug';
 import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
 import { useChatGrouping } from '@/composables/chat/chat-scoped/useChatGrouping';
 import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
-import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
 import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
 import { useChatTitle } from '@/composables/chat/chat-scoped/useChatTitle';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -98,9 +97,6 @@ const {
 } = chatAreaData;
 
 const currentChatId = currentChatState.currentChatId;
-const chatReadModel = useChatReadModel({
-  chatId: currentChatId,
-});
 const chatRuntime = useChatRuntime({
   chatId: currentChatId,
 });
@@ -119,13 +115,12 @@ const chatHistory = useChatHistory({
 const chatTitle = useChatTitle({
   chatId: currentChatId,
 });
-const {
-  currentChat,
-  currentChatGroup,
-  activeMessages,
-  allMessages,
-  resolvedSettings,
-} = chatReadModel;
+const currentChat = currentChatState.currentChat;
+const currentChatGroup = currentChatState.currentChatGroup;
+const activeMessages = currentChatState.activeMessages;
+const allMessages = currentChatState.allMessages;
+const resolvedSettings = currentChatState.resolvedSettings;
+const inheritedSettings = currentChatState.inheritedSettings;
 const { isProcessing, contextCompactProgress } = chatRuntime;
 const chatDebug = useChatDebug({
   chatId: currentChatId,
@@ -1210,6 +1205,11 @@ watch(
       v-if="currentChat"
       ref="chatInputRef"
       :chat-id="currentChat.id"
+      :current-chat="currentChat"
+      :current-chat-group="currentChatGroup"
+      :resolved-lm-parameters="resolvedSettings?.lmParameters"
+      :inherited-model-id="inheritedSettings?.modelId"
+      :inherited-model-source="inheritedSettings?.sources.modelId"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
       :is-streaming="isCurrentChatStreaming"

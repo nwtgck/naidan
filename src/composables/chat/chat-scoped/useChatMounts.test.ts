@@ -8,6 +8,7 @@ const {
   mockRemoveMountFromChat,
   mockUpdateChatMount,
   mockEnsureChatTmpDirectory,
+  mockGetReadonlyChat,
   mockGetLiveChatById,
   mockTriggerCurrentChat,
 } = vi.hoisted(() => ({
@@ -17,14 +18,9 @@ const {
   mockRemoveMountFromChat: vi.fn().mockResolvedValue(undefined),
   mockUpdateChatMount: vi.fn().mockResolvedValue(undefined),
   mockEnsureChatTmpDirectory: vi.fn().mockResolvedValue({ handle: {}, mountPath: '/tmp' }),
+  mockGetReadonlyChat: vi.fn(),
   mockGetLiveChatById: vi.fn(),
   mockTriggerCurrentChat: vi.fn(),
-}));
-
-vi.mock('@/composables/chat/chat-scoped/useChatReadModel', () => ({
-  useChatReadModel: () => ({
-    currentChat: mockCurrentChat,
-  }),
 }));
 
 vi.mock('@/services/storage', () => ({
@@ -38,6 +34,7 @@ vi.mock('@/services/storage', () => ({
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   currentChatRef: mockCurrentChatRef,
   ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
+  getReadonlyChat: mockGetReadonlyChat,
   getLiveChatById: mockGetLiveChatById,
   triggerCurrentChat: mockTriggerCurrentChat,
 }));
@@ -49,6 +46,7 @@ describe('useChatMounts', () => {
     vi.clearAllMocks();
     mockCurrentChat.value = null;
     mockCurrentChatRef.value = null;
+    mockGetReadonlyChat.mockReturnValue(null);
     mockGetLiveChatById.mockReturnValue(undefined);
   });
 
@@ -77,6 +75,7 @@ describe('useChatMounts', () => {
     };
     mockCurrentChat.value = liveChat;
     mockCurrentChatRef.value = { id: 'chat-1' };
+    mockGetReadonlyChat.mockReturnValue(liveChat);
     mockGetLiveChatById.mockReturnValue(liveChat);
 
     const chatMounts = useChatMounts({

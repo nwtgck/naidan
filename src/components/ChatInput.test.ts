@@ -450,6 +450,11 @@ describe('ChatInput Integration', () => {
   const getWrapper = () => mount(ChatInput, {
     props: {
       chatId: 'chat-1',
+      currentChat: mockCurrentChat.value!,
+      currentChatGroup: mockCurrentChatGroup.value,
+      resolvedLmParameters: undefined,
+      inheritedModelId: undefined,
+      inheritedModelSource: undefined,
       visibility: 'active',
       isStreaming: false,
       canGenerateImage: true,

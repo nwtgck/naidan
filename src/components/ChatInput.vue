@@ -13,7 +13,6 @@ import { useChatDraft as useScopedChatDraft } from '@/composables/chat/chat-scop
 import { useChatImageGeneration } from '@/composables/chat/chat-scoped/useChatImageGeneration';
 import { useChatModelSelection } from '@/composables/chat/chat-scoped/useChatModelSelection';
 import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
-import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
 import { useChatReasoning } from '@/composables/chat/chat-scoped/useChatReasoning';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/services/storage';
@@ -36,7 +35,7 @@ import {
   Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
-import type { Attachment, LmParameters } from '@/models/types';
+import type { Attachment, Chat, ChatGroup, LmParameters } from '@/models/types';
 
 const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
@@ -48,6 +47,11 @@ const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEd
 
 const props = defineProps<{
   chatId: string;
+  currentChat: Chat;
+  currentChatGroup: ChatGroup | null;
+  resolvedLmParameters: LmParameters | undefined;
+  inheritedModelId: string | undefined;
+  inheritedModelSource: SettingsSource | undefined;
   autoSendPrompt?: string;
   visibility: 'submerged' | 'peeking' | 'active';
   isStreaming: boolean;
@@ -70,9 +74,6 @@ const isHovered = ref(false);
 
 const isCurrentChatStreaming = computed(() => props.isStreaming);
 const currentChatId = computed(() => props.chatId);
-const chatReadModel = useChatReadModel({
-  chatId: currentChatId,
-});
 const chatGeneration = useChatGeneration({
   chatId: currentChatId,
 });
@@ -91,9 +92,8 @@ const chatMounts = useChatMounts({
 const chatReasoning = useChatReasoning({
   chatId: currentChatId,
 });
-const currentChat = chatReadModel.currentChat;
-const currentChatGroup = chatReadModel.currentChatGroup;
-const inheritedSettings = chatReadModel.inheritedSettings;
+const currentChat = computed(() => props.currentChat);
+const currentChatGroup = computed(() => props.currentChatGroup);
 const fetchingModels = chatModelSelection.fetchingModels;
 const canGenerateImage = computed(() => props.canGenerateImage);
 const hasImageModel = computed(() => props.hasImageModel);
@@ -842,7 +842,7 @@ async function handleSend() {
   }
 
   // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
-  const lmParameters = toRaw(chatReadModel.resolvedSettings.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
+  const lmParameters = toRaw(props.resolvedLmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
 
   const success = await chatGeneration.sendMessage({
     content: text,
@@ -1188,7 +1188,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
               :model-value="currentChat.modelId"
               @update:model-value="val => chatModelSelection.updateModel({ modelId: val! })"
               :models="sortedAvailableModels"
-              :placeholder="formatLabel({ value: inheritedSettings?.modelId, source: inheritedSettings?.sources.modelId })"
+              :placeholder="formatLabel({ value: inheritedModelId, source: inheritedModelSource })"
               :loading="fetchingModels"
               allow-clear
               @refresh="fetchModels"

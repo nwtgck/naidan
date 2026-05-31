@@ -2,7 +2,10 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import { useChatGroupSettingsPanel } from '@/composables/chat/ui/useChatGroupSettingsPanel';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatGroupMounts } from '@/composables/chat/chat-scoped/useChatGroupMounts';
+import { fetchingModels } from '@/composables/chat/global/chat-core-singletons';
+import { fetchAvailableModelsForEndpoint } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import {
   Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon,
@@ -34,18 +37,14 @@ import { naturalSort } from '@/utils/string';
 import { hasGroupOverrides } from '@/utils/chat-settings-resolver';
 import type { WeshMount } from '@/services/wesh/types';
 
-const {
-  currentChatGroup,
-  fetchingModels,
-  updateMetadata,
-  fetchModels: fetchGroupModels,
-  addMount,
-  removeMount,
-  updateMount,
-} = useChatGroupSettingsPanel();
+const { currentChatGroup } = useCurrentChatState();
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 const { openFileExplorer } = useFileExplorerModal();
+const chatGroupMountsActions = useChatGroupMounts({
+  chatGroupId: computed(() => currentChatGroup.value?.id),
+});
+const isFetchingModels = computed(() => fetchingModels.value);
 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
@@ -68,22 +67,21 @@ const existingChatGroupMountPaths = computed(() => chatGroupMounts.value.map(m =
 
 async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
   if (!currentChatGroup.value) return;
-  await addMount({
-    groupId: currentChatGroup.value.id,
+  await chatGroupMountsActions.addMount({
     mount: { type: 'volume', volumeId, mountPath, readOnly },
   });
 }
 
 async function handleChatGroupMountRemove({ volumeId }: { volumeId: string }) {
   if (!currentChatGroup.value) return;
-  await removeMount({ groupId: currentChatGroup.value.id, volumeId });
+  await chatGroupMountsActions.removeMount({ volumeId });
 }
 
 async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
   if (!currentChatGroup.value) return;
   const mount = chatGroupMounts.value.find(m => m.volumeId === volumeId);
   if (!mount) return;
-  await updateMount({ groupId: currentChatGroup.value.id, volumeId, mountPath: mount.mountPath, readOnly });
+  await chatGroupMountsActions.updateMount({ volumeId, mountPath: mount.mountPath, readOnly });
 }
 
 async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {
@@ -155,7 +153,17 @@ const hasActiveOverrides = computed(() => {
 
 async function saveChanges() {
   if (currentChatGroup.value) {
-    await updateMetadata({ groupId: currentChatGroup.value.id, updates: localSettings.value });
+    await storageService.updateChatGroup(currentChatGroup.value.id, (current) => {
+      if (current === null) {
+        throw new Error('Chat group not found');
+      }
+
+      return {
+        ...current,
+        ...localSettings.value,
+        updatedAt: Date.now(),
+      };
+    });
   }
 }
 
@@ -216,10 +224,11 @@ async function fetchModels() {
 
     try {
       const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const models = await fetchGroupModels({
+      const models = await fetchAvailableModelsForEndpoint({
         endpointType: type,
         endpointUrl: url,
         endpointHttpHeaders: mutableHeaders,
+        errorSource: 'ChatGroupSettingsPanel:fetchModels',
       });
       groupModels.value = models;
       if (models.length === 0) {
@@ -301,7 +310,17 @@ async function setGroupNameFromModelId() {
   if (!modelId || !currentChatGroup.value) return;
 
   const newName = modelId.split('/').pop() || modelId;
-  await updateMetadata({ groupId: currentChatGroup.value.id, updates: { name: newName } });
+  await storageService.updateChatGroup(currentChatGroup.value.id, (current) => {
+    if (current === null) {
+      throw new Error('Chat group not found');
+    }
+
+    return {
+      ...current,
+      name: newName,
+      updatedAt: Date.now(),
+    };
+  });
 }
 
 
@@ -528,7 +547,7 @@ defineExpose({
               <ModelSelector
                 :model-value="localSettings.modelId"
                 @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
-                :loading="fetchingModels"
+                :loading="isFetchingModels"
                 :models="sortedGroupModels"
                 :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
                 :allow-clear="true"
@@ -595,7 +614,7 @@ defineExpose({
                 :model-value="localSettings.titleModelId"
                 @update:model-value="val => { localSettings.titleModelId = val; saveChanges(); }"
                 :models="sortedGroupModels"
-                :loading="fetchingModels"
+                :loading="isFetchingModels"
                 :placeholder="'Global (' + (settings.titleModelId || 'None') + ')'"
                 :allow-clear="true"
                 @refresh="fetchModels"

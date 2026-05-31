@@ -1,11 +1,11 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Mount } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
 import {
   currentChatRef,
   ensureChatTmpDirectory,
   getLiveChatById,
+  getReadonlyChat,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
 
@@ -40,10 +40,13 @@ export function useChatMounts({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatMountsAdapter {
-  const chatReadModel = useChatReadModel({ chatId });
-
   const mounts = computed(() => {
-    return chatReadModel.currentChat.value?.mounts ?? [];
+    const id = chatId.value;
+    if (id === undefined) {
+      return [];
+    }
+
+    return getReadonlyChat({ chatId: id })?.mounts ?? [];
   });
 
   async function addMount({

@@ -251,6 +251,14 @@ vi.mock('../composables/chat/ui/useChatAreaData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/chat-scoped/chat-metadata-helpers', () => ({
+  updateChatSettingsById: ({ chatId, updates }: { chatId: string; updates: Record<string, unknown> }) =>
+    mockUpdateChatSettings({
+      id: chatId,
+      updates,
+    }),
+}));
+
 vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
   useChatRuntime: () => ({
     isProcessing: computed(() => !!mockCurrentChat.value && (mockStreaming.value || mockActiveGenerations.has(mockCurrentChat.value.id))),
@@ -314,26 +322,6 @@ vi.mock('../composables/chat/chat-scoped/useChatDebug', () => ({
         mockCurrentChat.value.debugEnabled = !mockCurrentChat.value.debugEnabled;
       }
     },
-  }),
-}));
-
-vi.mock('../composables/chat/chat-scoped/useChatSettingsPanel', () => ({
-  useChatSettingsPanel: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    fetchingModels: computed(() => mockFetchingModels.value),
-    availableModels: mockAvailableModels,
-    resolvedSettings: computed(() => mockResolvedSettings.value),
-    inheritedSettings: computed(() => mockInheritedSettings.value),
-    updateSettings: ({ chatId, updates }: { chatId: string; updates: Record<string, unknown> }) =>
-      mockUpdateChatSettings({
-        id: chatId,
-        updates,
-      }),
-    fetchModels: ({ chatId }: { chatId: string }) =>
-      mockFetchAvailableModels({
-        chatId,
-        customEndpoint: undefined,
-      }),
   }),
 }));
 
@@ -1089,11 +1077,11 @@ Question`,
 
   it('should update the chat title model override when the active title model source is chat', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    mockResolvedSettings.value = ref({
+    mockResolvedSettings.value = {
       modelId: 'global-default-model',
       titleModelId: 'model-2',
       sources: { modelId: 'global', titleModelId: 'chat' }
-    });
+    };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
       titleModelId: 'model-2',
@@ -1113,11 +1101,11 @@ Question`,
 
   it('should update the group title model override when the active title model source is group', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    mockResolvedSettings.value = ref({
+    mockResolvedSettings.value = {
       modelId: 'global-default-model',
       titleModelId: 'model-2',
       sources: { modelId: 'global', titleModelId: 'chat_group' }
-    });
+    };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
       groupId: 'group-1',
