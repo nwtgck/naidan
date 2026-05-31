@@ -1,6 +1,12 @@
 import type { Ref } from 'vue';
 import type { Attachment, LmParameters } from '@/models/types';
-import { useChatConversationActions } from '@/composables/chat/ui/useChatConversationActions';
+import {
+  abortProcessingForChat,
+} from '@/composables/chat/chat-scoped/chat-processing-abort';
+import {
+  regenerateMessageForChat,
+  sendMessageForChat,
+} from '@/composables/chat/chat-scoped/chat-generation-flow';
 
 export type ChatGenerationAdapter = {
   sendMessage({
@@ -31,8 +37,6 @@ export function useChatGeneration({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatGenerationAdapter {
-  const chatConversationActions = useChatConversationActions();
-
   async function sendMessage({
     content,
     parentId,
@@ -48,7 +52,7 @@ export function useChatGeneration({
       return false;
     }
 
-    return await chatConversationActions.sendMessage({
+    return await sendMessageForChat({
       chatId: chatId.value,
       content,
       parentId,
@@ -66,14 +70,20 @@ export function useChatGeneration({
       return;
     }
 
-    await chatConversationActions.regenerateMessage({
+    await regenerateMessageForChat({
       chatId: chatId.value,
       failedMessageId,
     });
   }
 
   function abort(_args: Record<never, never>) {
-    chatConversationActions.abortChat({ chatId: chatId.value });
+    if (chatId.value === undefined) {
+      return;
+    }
+
+    abortProcessingForChat({
+      chatId: chatId.value,
+    });
   }
 
   return {

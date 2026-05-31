@@ -1,7 +1,9 @@
 import type { SystemPrompt } from '@/models/types';
 import type { Ref } from 'vue';
 import type { HistoryItem } from '@/utils/chat-tree';
-import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
+import {
+  commitFullHistoryManipulationForChat,
+} from '@/composables/chat/chat-scoped/chat-history-flow';
 import { useChatReadModel } from './useChatReadModel';
 
 export type ChatHistoryManipulationAdapter = {
@@ -27,7 +29,6 @@ export function useChatHistoryManipulation({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatHistoryManipulationAdapter {
-  const chatMutationActions = useChatMutationActions();
   const chatReadModel = useChatReadModel({ chatId });
 
   async function commit({
@@ -39,7 +40,7 @@ export function useChatHistoryManipulation({
     messages: HistoryItem[];
     systemPrompt: SystemPrompt | undefined;
   }) {
-    await chatMutationActions.commitFullHistoryManipulation({
+    await commitFullHistoryManipulationForChat({
       chatId,
       messages,
       systemPrompt,

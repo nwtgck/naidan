@@ -4,19 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   mockSendMessage,
   mockRegenerateMessage,
-  mockAbortChat,
+  mockAbortProcessing,
 } = vi.hoisted(() => ({
   mockSendMessage: vi.fn(),
   mockRegenerateMessage: vi.fn(),
-  mockAbortChat: vi.fn(),
+  mockAbortProcessing: vi.fn(),
 }));
 
-vi.mock('@/composables/chat/ui/useChatConversationActions', () => ({
-  useChatConversationActions: () => ({
-    sendMessage: mockSendMessage,
-    regenerateMessage: mockRegenerateMessage,
-    abortChat: mockAbortChat,
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-generation-flow', () => ({
+  sendMessageForChat: mockSendMessage,
+  regenerateMessageForChat: mockRegenerateMessage,
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-processing-abort', () => ({
+  abortProcessingForChat: mockAbortProcessing,
 }));
 
 import { useChatGeneration } from './useChatGeneration';
@@ -47,7 +48,7 @@ describe('useChatGeneration', () => {
 
     expect(mockSendMessage).not.toHaveBeenCalled();
     expect(mockRegenerateMessage).not.toHaveBeenCalled();
-    expect(mockAbortChat).toHaveBeenCalledWith({ chatId: undefined });
+    expect(mockAbortProcessing).not.toHaveBeenCalled();
   });
 
   it('binds send, regenerate, and abort to the scoped chatId', async () => {
@@ -79,6 +80,6 @@ describe('useChatGeneration', () => {
       chatId: 'chat-1',
       failedMessageId: 'assistant-1',
     });
-    expect(mockAbortChat).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockAbortProcessing).toHaveBeenCalledWith({ chatId: 'chat-1' });
   });
 });

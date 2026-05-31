@@ -99,6 +99,7 @@ vi.mock('../services/storage', () => ({
     createVolumeFromFiles: vi.fn(),
     createVolume: vi.fn(),
     getVolumeDirectoryHandle: vi.fn(),
+    getFile: vi.fn().mockResolvedValue(new Blob([])),
     listVolumes: vi.fn(),
   },
 }));
@@ -337,8 +338,8 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatMedia', () => ({
-  useChatMedia: () => ({
+vi.mock('../composables/chat/chat-scoped/useChatImageGeneration', () => ({
+  useChatImageGeneration: () => ({
     availableModels: computed(() => mockChatStore.availableModels.value),
     isImageMode: computed(() => mockIsImageMode.value),
     resolution: computed(() => mockChatStore.getResolution()),

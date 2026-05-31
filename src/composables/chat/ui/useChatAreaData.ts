@@ -3,9 +3,11 @@ import type { Chat, ChatGroup, EndpointType } from '@/models/types';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
-import { fetchingModels, isProcessing } from '@/composables/chat/global/chat-core-singletons';
+import { availableModels, fetchingModels, isProcessing, loadData } from '@/composables/chat/global/chat-core-singletons';
 import { useCurrentChatState } from './useCurrentChatState';
-import { useChatUiServices } from './useChatUiServices';
+import { fetchAvailableModelsForChat, fetchAvailableModelsForEndpoint } from '@/composables/chat/chat-scoped/chat-model-helpers';
+import { updateChatSettingsById } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
+import { storageService } from '@/services/storage';
 
 type FetchAvailableModelsCustomEndpoint = {
   type: EndpointType;
@@ -66,7 +68,6 @@ export type ChatAreaDataAdapter = {
 
 export function useChatAreaData(): ChatAreaDataAdapter {
   const currentChatState = useCurrentChatState();
-  const { derivedState, metadataService, hierarchyService, modelService, availableModels } = useChatUiServices({});
   const { getSortedImageModels: getSortedImageModelsImpl } = useImageGeneration();
   const {
     chatFlow,
@@ -80,7 +81,7 @@ export function useChatAreaData(): ChatAreaDataAdapter {
   const availableModelsState = computed(() => availableModels.value);
   const fetchingModelsState = computed(() => fetchingModels.value);
   const chatFlowState = computed(() => chatFlow.value);
-  const availableChatGroups = computed(() => derivedState.chatGroups.value);
+  const availableChatGroups = computed(() => currentChatState.chatGroups.value);
 
   function getSortedImageModels({
     availableModels,
@@ -99,10 +100,16 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     chatId: string | undefined;
     customEndpoint: FetchAvailableModelsCustomEndpoint | undefined;
   }) {
-    return await modelService.fetchAvailableModels({
-      chatId,
-      customEndpoint,
-    });
+    if (customEndpoint !== undefined) {
+      return await fetchAvailableModelsForEndpoint({
+        endpointType: customEndpoint.type,
+        endpointUrl: customEndpoint.url,
+        endpointHttpHeaders: customEndpoint.headers,
+        errorSource: 'useChatAreaData:fetchAvailableModels',
+      });
+    }
+
+    return await fetchAvailableModelsForChat({ chatId });
   }
 
   function isThinkingActive({
@@ -132,8 +139,8 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     id: string;
     updates: Partial<Pick<Chat, 'titleModelId'>>;
   }) {
-    await metadataService.updateChatSettings({
-      id,
+    await updateChatSettingsById({
+      chatId: id,
       updates,
     });
   }
@@ -145,10 +152,18 @@ export function useChatAreaData(): ChatAreaDataAdapter {
     id: string;
     updates: Partial<Pick<ChatGroup, 'titleModelId'>>;
   }) {
-    await hierarchyService.updateChatGroupMetadata({
-      id,
-      updates,
+    await storageService.updateChatGroup(id, (current) => {
+      if (current === null) {
+        throw new Error('Chat group not found');
+      }
+
+      return {
+        ...current,
+        ...updates,
+        updatedAt: Date.now(),
+      };
     });
+    await loadData({});
   }
 
   return {

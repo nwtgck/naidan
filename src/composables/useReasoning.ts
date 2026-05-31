@@ -1,11 +1,13 @@
-import { useReasoningStore } from '@/composables/chat/ui/useReasoningStore';
+import {
+  getReasoningEffortForChatId,
+  updateReasoningEffortForChatId,
+} from '@/composables/chat/chat-scoped/chat-metadata-helpers';
 
 export function useReasoning() {
-  const { getReasoningEffort, updateReasoningEffort } = useReasoningStore();
-
   return {
-    getReasoningEffort,
-    updateReasoningEffort,
+    getReasoningEffort: ({ chatId }: { chatId: string }) => getReasoningEffortForChatId({ chatId }),
+    updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: import('@/models/types').Reasoning['effort'] | undefined }) =>
+      updateReasoningEffortForChatId({ chatId, effort }),
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.
     },

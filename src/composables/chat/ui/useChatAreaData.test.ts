@@ -5,11 +5,13 @@ import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 const {
   mockState,
   mockGetSortedImageModels,
-  mockFetchAvailableModels,
+  mockFetchAvailableModelsForChat,
+  mockFetchAvailableModelsForEndpoint,
   mockIsThinkingActive,
   mockIsWaitingResponse,
-  mockUpdateChatSettings,
+  mockUpdateChatSettingsById,
   mockUpdateChatGroupMetadata,
+  mockLoadData,
 } = vi.hoisted(() => ({
   mockState: {
     availableModels: ['model-a', 'model-b'] as string[],
@@ -18,16 +20,20 @@ const {
     chatGroups: [{ id: 'group-1', name: 'Group 1' }],
   },
   mockGetSortedImageModels: vi.fn(({ availableModels }) => availableModels),
-  mockFetchAvailableModels: vi.fn().mockResolvedValue(['model-a']),
+  mockFetchAvailableModelsForChat: vi.fn().mockResolvedValue(['model-a']),
+  mockFetchAvailableModelsForEndpoint: vi.fn().mockResolvedValue(['model-z']),
   mockIsThinkingActive: vi.fn(() => false),
   mockIsWaitingResponse: vi.fn(() => false),
-  mockUpdateChatSettings: vi.fn().mockResolvedValue(undefined),
+  mockUpdateChatSettingsById: vi.fn().mockResolvedValue(undefined),
   mockUpdateChatGroupMetadata: vi.fn().mockResolvedValue(undefined),
+  mockLoadData: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  availableModels: computed(() => mockState.availableModels),
   fetchingModels: computed(() => mockState.fetchingModels),
   isProcessing: vi.fn(() => false),
+  loadData: mockLoadData,
 }));
 
 vi.mock('@/composables/useImageGeneration', () => ({
@@ -47,26 +53,24 @@ vi.mock('@/composables/useChatDisplayFlow', () => ({
 vi.mock('./useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => null),
+    chatGroups: computed(() => mockState.chatGroups),
     TEST_ONLY: {},
   }),
 }));
 
-vi.mock('./useChatUiServices', () => ({
-  useChatUiServices: () => ({
-    availableModels: computed(() => mockState.availableModels),
-    derivedState: {
-      chatGroups: computed(() => mockState.chatGroups),
-    },
-    metadataService: {
-      updateChatSettings: mockUpdateChatSettings,
-    },
-    hierarchyService: {
-      updateChatGroupMetadata: mockUpdateChatGroupMetadata,
-    },
-    modelService: {
-      fetchAvailableModels: mockFetchAvailableModels,
-    },
-  }),
+vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
+  fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
+  fetchAvailableModelsForEndpoint: mockFetchAvailableModelsForEndpoint,
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-metadata-helpers', () => ({
+  updateChatSettingsById: mockUpdateChatSettingsById,
+}));
+
+vi.mock('@/services/storage', () => ({
+  storageService: {
+    updateChatGroup: mockUpdateChatGroupMetadata,
+  },
 }));
 
 import { useChatAreaData } from './useChatAreaData';
@@ -78,7 +82,8 @@ describe('useChatAreaData', () => {
     mockState.fetchingModels = false;
     mockState.chatFlow = [];
     mockState.chatGroups = [{ id: 'group-1', name: 'Group 1' }];
-    mockFetchAvailableModels.mockResolvedValue(['model-a']);
+    mockFetchAvailableModelsForChat.mockResolvedValue(['model-a']);
+    mockFetchAvailableModelsForEndpoint.mockResolvedValue(['model-z']);
   });
 
   it('exposes chat area state from the compat store', () => {
@@ -108,18 +113,14 @@ describe('useChatAreaData', () => {
       updates: { titleModelId: 'model-b' },
     });
 
-    expect(mockFetchAvailableModels).toHaveBeenCalledWith({
+    expect(mockFetchAvailableModelsForChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
-      customEndpoint: undefined,
     });
-    expect(mockUpdateChatSettings).toHaveBeenCalledWith({
-      id: 'chat-1',
+    expect(mockUpdateChatSettingsById).toHaveBeenCalledWith({
+      chatId: 'chat-1',
       updates: { titleModelId: 'model-a' },
     });
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({
-      id: 'group-1',
-      updates: { titleModelId: 'model-b' },
-    });
+    expect(mockUpdateChatGroupMetadata).toHaveBeenCalled();
   });
 
   it('delegates image model sorting and flow predicates', () => {

@@ -4,22 +4,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   mockAvailableModels,
   mockFetchingModels,
-  mockFetchAvailableModels,
-  mockUpdateChatModel,
+  mockFetchAvailableModelsForChat,
+  mockUpdateChatModelById,
 } = vi.hoisted(() => ({
   mockAvailableModels: { value: ['gpt-4'] as string[] },
   mockFetchingModels: { value: false },
-  mockFetchAvailableModels: vi.fn(),
-  mockUpdateChatModel: vi.fn(),
+  mockFetchAvailableModelsForChat: vi.fn(),
+  mockUpdateChatModelById: vi.fn(),
 }));
 
-vi.mock('@/composables/chat/ui/useChatMutationActions', () => ({
-  useChatMutationActions: () => ({
-    availableModels: mockAvailableModels,
-    fetchingModels: mockFetchingModels,
-    fetchAvailableModels: mockFetchAvailableModels,
-    updateChatModel: mockUpdateChatModel,
-  }),
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  availableModels: mockAvailableModels,
+  fetchingModels: mockFetchingModels,
+}));
+
+vi.mock('./chat-model-helpers', () => ({
+  fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
+}));
+
+vi.mock('./chat-metadata-helpers', () => ({
+  updateChatModelById: mockUpdateChatModelById,
 }));
 
 import { useChatModelSelection } from './useChatModelSelection';
@@ -29,7 +33,7 @@ describe('useChatModelSelection', () => {
     vi.clearAllMocks();
     mockAvailableModels.value = ['gpt-4'];
     mockFetchingModels.value = false;
-    mockFetchAvailableModels.mockResolvedValue(['gpt-4', 'gpt-4o']);
+    mockFetchAvailableModelsForChat.mockResolvedValue(['gpt-4', 'gpt-4o']);
   });
 
   it('binds fetch and update to the scoped chatId', async () => {
@@ -43,9 +47,9 @@ describe('useChatModelSelection', () => {
 
     await chatModelSelection.updateModel({ modelId: 'gpt-4o' });
 
-    expect(mockFetchAvailableModels).toHaveBeenCalledWith({ chatId: 'chat-1' });
-    expect(mockUpdateChatModel).toHaveBeenCalledWith({
-      id: 'chat-1',
+    expect(mockFetchAvailableModelsForChat).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockUpdateChatModelById).toHaveBeenCalledWith({
+      chatId: 'chat-1',
       modelId: 'gpt-4o',
     });
   });
@@ -58,7 +62,7 @@ describe('useChatModelSelection', () => {
     await chatModelSelection.fetchModels({});
     await chatModelSelection.updateModel({ modelId: 'gpt-4o' });
 
-    expect(mockFetchAvailableModels).toHaveBeenCalledWith({ chatId: undefined });
-    expect(mockUpdateChatModel).not.toHaveBeenCalled();
+    expect(mockFetchAvailableModelsForChat).toHaveBeenCalledWith({ chatId: undefined });
+    expect(mockUpdateChatModelById).not.toHaveBeenCalled();
   });
 });

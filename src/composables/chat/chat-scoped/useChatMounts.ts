@@ -1,7 +1,13 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Mount } from '@/models/types';
+import { storageService } from '@/services/storage';
 import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
-import { useChatMountActions } from '@/composables/chat/ui/useChatMountActions';
+import {
+  currentChatRef,
+  ensureChatTmpDirectory,
+  getLiveChatById,
+  triggerCurrentChat,
+} from '@/composables/chat/global/chat-core-singletons';
 
 export type ChatMountsAdapter = {
   mounts: ComputedRef<Mount[]>;
@@ -35,7 +41,6 @@ export function useChatMounts({
   chatId: Ref<string | undefined>;
 }): ChatMountsAdapter {
   const chatReadModel = useChatReadModel({ chatId });
-  const chatMountActions = useChatMountActions();
 
   const mounts = computed(() => {
     return chatReadModel.currentChat.value?.mounts ?? [];
@@ -46,14 +51,24 @@ export function useChatMounts({
   }: {
     mount: Mount;
   }) {
-    if (chatId.value === undefined) {
+    const id = chatId.value;
+    if (id === undefined) {
       return;
     }
 
-    await chatMountActions.addMount({
-      chatId: chatId.value,
+    await storageService.addMountToChat({
+      chatId: id,
       mount,
     });
+    await ensureChatTmpDirectory({ chatId: id });
+
+    const chat = getLiveChatById({ chatId: id });
+    if (chat !== undefined && chat !== null) {
+      chat.mounts = [...(chat.mounts ?? []), mount];
+      if (currentChatRef.value?.id === id) {
+        triggerCurrentChat({ chatId: id });
+      }
+    }
   }
 
   async function removeMount({
@@ -61,14 +76,23 @@ export function useChatMounts({
   }: {
     volumeId: string;
   }) {
-    if (chatId.value === undefined) {
+    const id = chatId.value;
+    if (id === undefined) {
       return;
     }
 
-    await chatMountActions.removeMount({
-      chatId: chatId.value,
+    await storageService.removeMountFromChat({
+      chatId: id,
       volumeId,
     });
+
+    const chat = getLiveChatById({ chatId: id });
+    if (chat !== undefined && chat !== null) {
+      chat.mounts = (chat.mounts ?? []).filter(mount => !(mount.type === 'volume' && mount.volumeId === volumeId));
+      if (currentChatRef.value?.id === id) {
+        triggerCurrentChat({ chatId: id });
+      }
+    }
   }
 
   async function updateMount({
@@ -78,15 +102,26 @@ export function useChatMounts({
     volumeId: string;
     readOnly: boolean;
   }) {
-    if (chatId.value === undefined) {
+    const id = chatId.value;
+    if (id === undefined) {
       return;
     }
 
-    await chatMountActions.updateMount({
-      chatId: chatId.value,
+    await storageService.updateChatMount({
+      chatId: id,
       volumeId,
       readOnly,
     });
+
+    const chat = getLiveChatById({ chatId: id });
+    if (chat !== undefined && chat !== null) {
+      chat.mounts = (chat.mounts ?? []).map(mount =>
+        mount.type === 'volume' && mount.volumeId === volumeId ? { ...mount, readOnly } : mount
+      );
+      if (currentChatRef.value?.id === id) {
+        triggerCurrentChat({ chatId: id });
+      }
+    }
   }
 
   return {

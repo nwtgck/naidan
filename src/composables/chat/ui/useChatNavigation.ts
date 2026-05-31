@@ -1,13 +1,12 @@
+import type { Settings } from '@/models/types';
 import { useSettings } from '@/composables/useSettings';
 import { useChatTools } from '@/composables/useChatTools';
-import type { Settings } from '@/models/types';
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import {
   chatDataStore,
   currentChatRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
-import { createChatOpenService } from '@/composables/chat/services/chat-open-service';
 
 export type ChatNavigationAdapter = {
   openChat({
@@ -16,7 +15,7 @@ export type ChatNavigationAdapter = {
   }: {
     chatId: string;
     leafId?: string;
-  }): ReturnType<ReturnType<typeof createChatOpenService>['openChat']>;
+  }): Promise<import('@/models/types').Chat | null>;
 
   openChatAtMessage({
     chatId,
@@ -24,7 +23,7 @@ export type ChatNavigationAdapter = {
   }: {
     chatId: string;
     messageId: string;
-  }): ReturnType<ReturnType<typeof createChatOpenService>['openChatAtMessage']>;
+  }): Promise<import('@/models/types').Chat | null>;
 
   openChatGroup({
     groupId,
@@ -43,41 +42,45 @@ export function useChatNavigation(): ChatNavigationAdapter {
     rootItems,
     getSettings: () => settings.value as Settings,
   });
-  const chatOpenService = createChatOpenService({
-    setCurrentChatId,
-    setToolEnabled,
-    hasMountsForChat: chatDerivedState.hasMountsForChat,
-    openChatInStore: ({ id, leafId }) => chatDataStore.openChat({ id, leafId }),
-    openChatAtMessageInStore: ({ chatId, messageId }) => chatDataStore.openChatAtMessage({ chatId, messageId }),
-    openChatGroupInStore: ({ id }) => {
-      chatDataStore.openChatGroup({ id });
-    },
-  });
 
-  function openChat({
+  async function openChat({
     chatId,
     leafId,
   }: {
     chatId: string;
     leafId?: string;
   }) {
-    return chatOpenService.openChat({
-      id: chatId,
-      leafId,
-    });
+    setCurrentChatId({ chatId });
+    const chat = await chatDataStore.openChat({ id: chatId, leafId });
+    if (chat === null) {
+      setCurrentChatId({ chatId: null });
+      return null;
+    }
+
+    if (chatDerivedState.hasMountsForChat({ chat })) {
+      setToolEnabled({ name: 'shell_execute', enabled: true });
+    }
+    return chat;
   }
 
-  function openChatAtMessage({
+  async function openChatAtMessage({
     chatId,
     messageId,
   }: {
     chatId: string;
     messageId: string;
   }) {
-    return chatOpenService.openChatAtMessage({
-      chatId,
-      messageId,
-    });
+    setCurrentChatId({ chatId });
+    const chat = await chatDataStore.openChatAtMessage({ chatId, messageId });
+    if (chat === null) {
+      setCurrentChatId({ chatId: null });
+      return null;
+    }
+
+    if (chatDerivedState.hasMountsForChat({ chat })) {
+      setToolEnabled({ name: 'shell_execute', enabled: true });
+    }
+    return chat;
   }
 
   function openChatGroup({
@@ -85,9 +88,7 @@ export function useChatNavigation(): ChatNavigationAdapter {
   }: {
     groupId: string | null;
   }) {
-    chatOpenService.openChatGroup({
-      id: groupId,
-    });
+    chatDataStore.openChatGroup({ id: groupId });
   }
 
   return {

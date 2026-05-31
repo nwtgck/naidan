@@ -2,9 +2,10 @@
 import { ref, watch, computed, defineAsyncComponent } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
-import { useChatAdminActions } from './composables/chat/ui/useChatAdminActions';
+import { useCurrentChatState } from './composables/chat/ui/useCurrentChatState';
+import { useChatLifecycle } from './composables/chat/ui/useChatLifecycle';
 import { useChatListData } from './composables/chat/ui/useChatListData';
-import { useSidebarData } from './composables/chat/ui/useSidebarData';
+import { useChatOrganization } from './composables/chat/ui/useChatOrganization';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
@@ -41,9 +42,10 @@ const CustomDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import
 const OPFSExplorer = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/OPFSExplorer.vue') });
 const FileExplorerModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/FileExplorerModal.vue') });
 
-const chatAdminActions = useChatAdminActions();
+const currentChatState = useCurrentChatState();
+const chatLifecycle = useChatLifecycle();
 const chatListData = useChatListData();
-const sidebarData = useSidebarData();
+const chatOrganization = useChatOrganization();
 const settingsStore = useSettings();
 const { addRecentChat, toggleRecent } = useRecentChats();
 const { isSidebarOpen, isDebugOpen, isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
@@ -158,9 +160,9 @@ watch(
     if (len === 0 && !q) {
       const { setActiveFocusArea } = useLayout();
       setActiveFocusArea({ area: 'chat' });
-      await sidebarData.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-      if (sidebarData.currentChat.value) {
-        router.push(`/chat/${sidebarData.currentChat.value.id}`);
+      await chatLifecycle.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+      if (currentChatState.currentChat.value) {
+        router.push(`/chat/${currentChatState.currentChat.value.id}`);
       }
       return;
     }
@@ -171,11 +173,11 @@ watch(
     if (q) {
       let targetGroupId: string | undefined = undefined;
       if (typeof chatGroupId === 'string') {
-        const group = sidebarData.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
+        const group = currentChatState.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
         if (group) {
           targetGroupId = group.id;
         } else {
-          targetGroupId = await chatAdminActions.createChatGroup({ name: chatGroupId, options: undefined });
+          targetGroupId = await chatOrganization.createChatGroup({ name: chatGroupId, options: undefined });
         }
       }
 
@@ -186,14 +188,14 @@ watch(
 
       const { setActiveFocusArea } = useLayout();
       setActiveFocusArea({ area: 'chat' });
-      await sidebarData.createNewChat({
+      await chatLifecycle.createNewChat({
         groupId: targetGroupId,
         modelId: targetModelId,
         systemPrompt
       });
 
-      if (sidebarData.currentChat.value) {
-        const id = sidebarData.currentChat.value.id;
+      if (currentChatState.currentChat.value) {
+        const id = currentChatState.currentChat.value.id;
         router.push({
           path: `/chat/${id}`,
           query: { q: q.toString() }
@@ -211,13 +213,13 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
     e.preventDefault();
     const { setActiveFocusArea } = useLayout();
     setActiveFocusArea({ area: 'chat' });
-    await sidebarData.createNewChat({
+    await chatLifecycle.createNewChat({
       groupId: undefined,
       modelId: undefined,
       systemPrompt: undefined
     });
-    if (sidebarData.currentChat.value) {
-      router.push(`/chat/${sidebarData.currentChat.value.id}`);
+    if (currentChatState.currentChat.value) {
+      router.push(`/chat/${currentChatState.currentChat.value.id}`);
     }
   }
 

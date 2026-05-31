@@ -1,15 +1,48 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
+  mockInstallChatBootstrap,
   mockLoadData,
   mockOpenChat,
 } = vi.hoisted(() => ({
+  mockInstallChatBootstrap: vi.fn(),
   mockLoadData: vi.fn().mockResolvedValue(undefined),
   mockOpenChat: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/composables/chat/chat-bootstrap', () => ({
+  installChatBootstrap: mockInstallChatBootstrap,
+}));
+
+vi.mock('@/composables/chat/chat-derived-state', () => ({
+  createChatDerivedState: () => ({
+    resolvedSettings: { value: undefined },
+  }),
+}));
+
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   loadData: mockLoadData,
+  chatRuntimeStore: {
+    activeGenerations: new Map(),
+  },
+  currentChatRef: { value: null },
+  rootItems: { value: [] },
+}));
+
+vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
+  fetchAvailableModelsForChat: vi.fn(),
+}));
+
+vi.mock('@/services/transformers-js', () => ({
+  transformersJsService: {
+    subscribeModelList: vi.fn(),
+  },
+}));
+
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: { value: {} },
+  }),
 }));
 
 vi.mock('@/composables/chat/ui/useChatNavigation', () => ({
@@ -27,6 +60,8 @@ describe('useChatBootstrap', () => {
 
   it('delegates load and open actions', async () => {
     const chatBootstrap = useChatBootstrap();
+
+    expect(mockInstallChatBootstrap).toHaveBeenCalledTimes(1);
 
     await chatBootstrap.loadChats({});
     await chatBootstrap.openChat({

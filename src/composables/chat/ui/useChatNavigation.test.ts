@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
-  mockServiceOpenChat,
-  mockServiceOpenChatAtMessage,
-  mockServiceOpenChatGroup,
+  mockSetCurrentChatId,
+  mockSetToolEnabled,
+  mockHasMountsForChat,
+  mockStoreOpenChat,
+  mockStoreOpenChatAtMessage,
+  mockStoreOpenChatGroup,
 } = vi.hoisted(() => ({
-  mockServiceOpenChat: vi.fn(),
-  mockServiceOpenChatAtMessage: vi.fn(),
-  mockServiceOpenChatGroup: vi.fn(),
+  mockSetCurrentChatId: vi.fn(),
+  mockSetToolEnabled: vi.fn(),
+  mockHasMountsForChat: vi.fn(() => false),
+  mockStoreOpenChat: vi.fn(),
+  mockStoreOpenChatAtMessage: vi.fn(),
+  mockStoreOpenChatGroup: vi.fn(),
 }));
 
 vi.mock('@/composables/useSettings', () => ({
@@ -20,29 +26,25 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('@/composables/useChatTools', () => ({
   useChatTools: () => ({
-    setCurrentChatId: vi.fn(),
-    setToolEnabled: vi.fn(),
+    setCurrentChatId: mockSetCurrentChatId,
+    setToolEnabled: mockSetToolEnabled,
   }),
 }));
 
 vi.mock('@/composables/chat/chat-derived-state', () => ({
   createChatDerivedState: () => ({
-    hasMountsForChat: vi.fn(() => false),
+    hasMountsForChat: mockHasMountsForChat,
   }),
 }));
 
 vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
-  chatDataStore: {},
+  chatDataStore: {
+    openChat: mockStoreOpenChat,
+    openChatAtMessage: mockStoreOpenChatAtMessage,
+    openChatGroup: mockStoreOpenChatGroup,
+  },
   currentChatRef: { value: null },
   rootItems: { value: [] },
-}));
-
-vi.mock('@/composables/chat/services/chat-open-service', () => ({
-  createChatOpenService: () => ({
-    openChat: mockServiceOpenChat,
-    openChatAtMessage: mockServiceOpenChatAtMessage,
-    openChatGroup: mockServiceOpenChatGroup,
-  }),
 }));
 
 import { useChatNavigation } from './useChatNavigation';
@@ -50,6 +52,8 @@ import { useChatNavigation } from './useChatNavigation';
 describe('useChatNavigation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockStoreOpenChat.mockResolvedValue({ id: 'chat-1' });
+    mockStoreOpenChatAtMessage.mockResolvedValue({ id: 'chat-1' });
   });
 
   it('maps openChat to the compat store signature', async () => {
@@ -60,7 +64,8 @@ describe('useChatNavigation', () => {
       leafId: undefined,
     });
 
-    expect(mockServiceOpenChat).toHaveBeenCalledWith({
+    expect(mockSetCurrentChatId).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockStoreOpenChat).toHaveBeenCalledWith({
       id: 'chat-1',
       leafId: undefined,
     });
@@ -74,7 +79,8 @@ describe('useChatNavigation', () => {
       messageId: 'message-1',
     });
 
-    expect(mockServiceOpenChatAtMessage).toHaveBeenCalledWith({
+    expect(mockSetCurrentChatId).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockStoreOpenChatAtMessage).toHaveBeenCalledWith({
       chatId: 'chat-1',
       messageId: 'message-1',
     });
@@ -87,7 +93,7 @@ describe('useChatNavigation', () => {
       groupId: 'group-1',
     });
 
-    expect(mockServiceOpenChatGroup).toHaveBeenCalledWith({
+    expect(mockStoreOpenChatGroup).toHaveBeenCalledWith({
       id: 'group-1',
     });
   });

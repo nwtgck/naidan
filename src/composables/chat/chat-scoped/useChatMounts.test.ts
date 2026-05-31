@@ -3,14 +3,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   mockCurrentChat,
-  mockAddMount,
-  mockRemoveMount,
-  mockUpdateMount,
+  mockCurrentChatRef,
+  mockAddMountToChat,
+  mockRemoveMountFromChat,
+  mockUpdateChatMount,
+  mockEnsureChatTmpDirectory,
+  mockGetLiveChatById,
+  mockTriggerCurrentChat,
 } = vi.hoisted(() => ({
   mockCurrentChat: { value: null as { id: string; mounts?: any[] } | null },
-  mockAddMount: vi.fn(),
-  mockRemoveMount: vi.fn(),
-  mockUpdateMount: vi.fn(),
+  mockCurrentChatRef: { value: null as { id: string } | null },
+  mockAddMountToChat: vi.fn().mockResolvedValue(undefined),
+  mockRemoveMountFromChat: vi.fn().mockResolvedValue(undefined),
+  mockUpdateChatMount: vi.fn().mockResolvedValue(undefined),
+  mockEnsureChatTmpDirectory: vi.fn().mockResolvedValue({ handle: {}, mountPath: '/tmp' }),
+  mockGetLiveChatById: vi.fn(),
+  mockTriggerCurrentChat: vi.fn(),
 }));
 
 vi.mock('@/composables/chat/chat-scoped/useChatReadModel', () => ({
@@ -19,12 +27,19 @@ vi.mock('@/composables/chat/chat-scoped/useChatReadModel', () => ({
   }),
 }));
 
-vi.mock('@/composables/chat/ui/useChatMountActions', () => ({
-  useChatMountActions: () => ({
-    addMount: mockAddMount,
-    removeMount: mockRemoveMount,
-    updateMount: mockUpdateMount,
-  }),
+vi.mock('@/services/storage', () => ({
+  storageService: {
+    addMountToChat: mockAddMountToChat,
+    removeMountFromChat: mockRemoveMountFromChat,
+    updateChatMount: mockUpdateChatMount,
+  },
+}));
+
+vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
+  currentChatRef: mockCurrentChatRef,
+  ensureChatTmpDirectory: mockEnsureChatTmpDirectory,
+  getLiveChatById: mockGetLiveChatById,
+  triggerCurrentChat: mockTriggerCurrentChat,
 }));
 
 import { useChatMounts } from './useChatMounts';
@@ -33,6 +48,8 @@ describe('useChatMounts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCurrentChat.value = null;
+    mockCurrentChatRef.value = null;
+    mockGetLiveChatById.mockReturnValue(undefined);
   });
 
   it('returns empty mounts and no-ops when chatId is undefined', async () => {
@@ -48,16 +65,19 @@ describe('useChatMounts', () => {
     await chatMounts.removeMount({ volumeId: 'vol-1' });
     await chatMounts.updateMount({ volumeId: 'vol-1', readOnly: false });
 
-    expect(mockAddMount).not.toHaveBeenCalled();
-    expect(mockRemoveMount).not.toHaveBeenCalled();
-    expect(mockUpdateMount).not.toHaveBeenCalled();
+    expect(mockAddMountToChat).not.toHaveBeenCalled();
+    expect(mockRemoveMountFromChat).not.toHaveBeenCalled();
+    expect(mockUpdateChatMount).not.toHaveBeenCalled();
   });
 
   it('binds reads and writes to the scoped chatId', async () => {
-    mockCurrentChat.value = {
+    const liveChat = {
       id: 'chat-1',
       mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true }],
     };
+    mockCurrentChat.value = liveChat;
+    mockCurrentChatRef.value = { id: 'chat-1' };
+    mockGetLiveChatById.mockReturnValue(liveChat);
 
     const chatMounts = useChatMounts({
       chatId: computed(() => 'chat-1'),
@@ -73,18 +93,24 @@ describe('useChatMounts', () => {
     await chatMounts.removeMount({ volumeId: 'vol-1' });
     await chatMounts.updateMount({ volumeId: 'vol-2', readOnly: true });
 
-    expect(mockAddMount).toHaveBeenCalledWith({
+    expect(mockAddMountToChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
       mount: { type: 'volume', volumeId: 'vol-2', mountPath: '/home/user/data', readOnly: false },
     });
-    expect(mockRemoveMount).toHaveBeenCalledWith({
+    expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+    });
+    expect(mockRemoveMountFromChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
       volumeId: 'vol-1',
     });
-    expect(mockUpdateMount).toHaveBeenCalledWith({
+    expect(mockUpdateChatMount).toHaveBeenCalledWith({
       chatId: 'chat-1',
       volumeId: 'vol-2',
       readOnly: true,
+    });
+    expect(mockTriggerCurrentChat).toHaveBeenCalledWith({
+      chatId: 'chat-1',
     });
   });
 });

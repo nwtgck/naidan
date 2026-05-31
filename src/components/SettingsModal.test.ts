@@ -10,7 +10,8 @@ import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
 import { Loader2Icon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
-import { useChatAdminActions } from '@/composables/chat/ui/useChatAdminActions';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
+import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSampleChat } from '@/composables/useSampleChat';
 import { storageService } from '@/services/storage';
 import type { ProviderProfile } from '@/models/types';
@@ -53,10 +54,24 @@ vi.mock('../composables/useSettings', () => ({
   })),
 }));
 
-vi.mock('../composables/chat/ui/useChatAdminActions', () => ({
-  useChatAdminActions: vi.fn(() => ({
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: vi.fn(() => ({
     deleteAllChats: vi.fn(),
+    createNewChat: vi.fn(),
+    deleteChat: vi.fn(),
+    TEST_ONLY: {},
+  })),
+}));
+
+vi.mock('../composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: vi.fn(() => ({
     createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
     TEST_ONLY: {},
   })),
 }));
@@ -213,8 +228,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       }),
     });
 
-    (useChatAdminActions as unknown as Mock).mockReturnValue({
+    (useChatLifecycle as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
+      createNewChat: vi.fn(),
+      deleteChat: vi.fn(),
+      TEST_ONLY: {},
+    });
+
+    (useChatOrganization as unknown as Mock).mockReturnValue({
       createChatGroup: vi.fn(),
       TEST_ONLY: {},
     });
@@ -800,9 +821,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('triggers clear all history after confirmation and navigates to root', async () => {
       const mockDeleteAllChats = vi.fn();
 
-      (useChatAdminActions as unknown as Mock).mockReturnValue({
+      (useChatLifecycle as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
-        createChatGroup: vi.fn(),
+        createNewChat: vi.fn(),
+        deleteChat: vi.fn(),
         TEST_ONLY: {},
       });
 
@@ -843,9 +865,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       // and then in our manual verification of the code we've ensured
       // it doesn't touch the flag. From a UI perspective, the flag is in settingsStore.
       const mockDeleteAllChats = vi.fn();
-      (useChatAdminActions as unknown as Mock).mockReturnValue({
+      (useChatLifecycle as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
-        createChatGroup: vi.fn(),
+        createNewChat: vi.fn(),
+        deleteChat: vi.fn(),
         TEST_ONLY: {},
       });
 
@@ -1205,9 +1228,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   describe('Recipe Integration', () => {
     it('creates chat groups when handleImportRecipes is called', async () => {
       const mockCreateChatGroup = vi.fn().mockResolvedValue('new-id');
-      (useChatAdminActions as unknown as Mock).mockReturnValue({
-        deleteAllChats: vi.fn(),
+      (useChatOrganization as unknown as Mock).mockReturnValue({
         createChatGroup: mockCreateChatGroup,
+        deleteChatGroup: vi.fn(),
+        duplicateChatGroup: vi.fn(),
+        renameChatGroup: vi.fn(),
+        updateChatGroupMetadata: vi.fn(),
+        moveChatToGroup: vi.fn(),
+        reorderSidebarChatAfterSend: vi.fn(),
         TEST_ONLY: {},
       });
 
@@ -1252,9 +1280,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     it('shows error toast when recipe import fails', async () => {
       const mockCreateChatGroup = vi.fn().mockRejectedValue(new Error('Import failed'));
-      (useChatAdminActions as unknown as Mock).mockReturnValue({
-        deleteAllChats: vi.fn(),
+      (useChatOrganization as unknown as Mock).mockReturnValue({
         createChatGroup: mockCreateChatGroup,
+        deleteChatGroup: vi.fn(),
+        duplicateChatGroup: vi.fn(),
+        renameChatGroup: vi.fn(),
+        updateChatGroupMetadata: vi.fn(),
+        moveChatToGroup: vi.fn(),
+        reorderSidebarChatAfterSend: vi.fn(),
         TEST_ONLY: {},
       });
 

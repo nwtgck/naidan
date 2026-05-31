@@ -1,22 +1,4 @@
-type ChatBootstrapState = {
-  beforeUnloadHandler: (() => void) | undefined;
-  unsubscribeModelList: (() => void) | undefined;
-};
-
-const CHAT_BOOTSTRAP_KEY = '__naidan_use_chat_bootstrap__';
-
-function getBootstrapState(): ChatBootstrapState {
-  const globalState = globalThis as typeof globalThis & {
-    [CHAT_BOOTSTRAP_KEY]?: ChatBootstrapState;
-  };
-  if (!globalState[CHAT_BOOTSTRAP_KEY]) {
-    globalState[CHAT_BOOTSTRAP_KEY] = {
-      beforeUnloadHandler: undefined,
-      unsubscribeModelList: undefined,
-    };
-  }
-  return globalState[CHAT_BOOTSTRAP_KEY]!;
-}
+let installedCleanup: (() => void) | undefined;
 
 export function installChatBootstrap({
   registerBeforeUnload,
@@ -25,11 +7,13 @@ export function installChatBootstrap({
   registerBeforeUnload: (_args: Record<never, never>) => (() => void) | undefined;
   subscribeModelList: (_args: Record<never, never>) => (() => void) | undefined;
 }) {
-  const state = getBootstrapState();
+  installedCleanup?.();
 
-  state.beforeUnloadHandler?.();
-  state.beforeUnloadHandler = registerBeforeUnload({});
+  const beforeUnloadCleanup = registerBeforeUnload({});
+  const modelListCleanup = subscribeModelList({});
 
-  state.unsubscribeModelList?.();
-  state.unsubscribeModelList = subscribeModelList({});
+  installedCleanup = () => {
+    beforeUnloadCleanup?.();
+    modelListCleanup?.();
+  };
 }

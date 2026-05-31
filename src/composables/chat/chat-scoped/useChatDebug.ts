@@ -1,5 +1,5 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
-import { useChatMutationActions } from '@/composables/chat/ui/useChatMutationActions';
+import { toggleDebugForChatId } from './chat-metadata-helpers';
 
 export type ChatDebugAdapter = {
   enabled: ComputedRef<boolean>;
@@ -16,20 +16,17 @@ export function useChatDebug({
   chatId: Ref<string | undefined>;
   debugEnabled: ComputedRef<boolean>;
 }): ChatDebugAdapter {
-  const chatMutationActions = useChatMutationActions();
-
   const enabled = computed(() => debugEnabled.value);
 
   async function toggle(_args: Record<never, never>): Promise<void> {
     const id = chatId.value;
-    if (id !== undefined) {
-      await chatMutationActions.toggleDebugForChat({
-        chatId: id,
-      });
+    if (id === undefined) {
       return;
     }
 
-    await chatMutationActions.toggleDebug({});
+    await toggleDebugForChatId({
+      chatId: id,
+    });
   }
 
   return {

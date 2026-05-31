@@ -1,6 +1,9 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Reasoning } from '@/models/types';
-import { useReasoning } from '@/composables/useReasoning';
+import {
+  getReasoningEffortForChatId,
+  updateReasoningEffortForChatId,
+} from './chat-metadata-helpers';
 
 export type ChatReasoningAdapter = {
   effort: ComputedRef<Reasoning['effort'] | undefined>;
@@ -19,15 +22,13 @@ export function useChatReasoning({
 }: {
   chatId: Ref<string | undefined>;
 }): ChatReasoningAdapter {
-  const reasoningStore = useReasoning();
-
   const effort = computed(() => {
     const id = chatId.value;
     if (id === undefined) {
       return undefined;
     }
 
-    return reasoningStore.getReasoningEffort({ chatId: id });
+    return getReasoningEffortForChatId({ chatId: id });
   });
 
   function updateEffort({
@@ -40,7 +41,7 @@ export function useChatReasoning({
       return;
     }
 
-    reasoningStore.updateReasoningEffort({
+    void updateReasoningEffortForChatId({
       chatId: id,
       effort,
     });

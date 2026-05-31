@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import RecentChatsModal from './RecentChatsModal.vue';
-import { ref, nextTick } from 'vue';
+import { computed, ref, nextTick } from 'vue';
 import type { ChatSummary } from '@/models/types';
 import { setupScrollToMock } from '@/utils/test-utils';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
@@ -102,9 +102,17 @@ describe('RecentChatsModal Component', () => {
       TEST_ONLY: {},
     });
     vi.mocked(useCurrentChatState).mockReturnValue({
-      chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
+      currentChat: computed(() => null),
+      currentChatGroup: computed(() => null),
+      currentChatId: computed(() => undefined),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      chatGroups: computed(() => [{ id: 'g1', name: 'Group 1' }]),
+      sidebarItems: computed(() => []),
       TEST_ONLY: {},
-    } as ReturnType<typeof useCurrentChatState>);
+    } as unknown as ReturnType<typeof useCurrentChatState>);
   });
 
   it('should render when open', () => {

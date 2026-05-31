@@ -1,21 +1,23 @@
 import { ref, toRaw, triggerRef } from 'vue';
 import { type ContextCompactProgress } from '@/services/context-compact';
-import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 import { createChatDataStore } from './chat-data-store';
 import { createChatRuntimeFacade } from './chat-runtime-facade';
 import { createChatRuntimeStore } from './chat-runtime-store';
-import { createChatTmpDirectoryService } from './chat-tmp-directory-service';
 import { createChatVolatileState } from './chat-volatile-state';
 import { createContextCompactRuntime } from './context-compact-runtime';
+import {
+  chatTmpDirectories,
+  clearChatTmpDirectories,
+  deleteChatTmpDirectory,
+  ensureChatTmpDirectory,
+  getChatTmpDirectory,
+} from './chat-tmp-directory-store';
 
 export const chatRuntimeStore = createChatRuntimeStore({});
 export const contextCompactRuntime = createContextCompactRuntime({});
 export const chatVolatileState = createChatVolatileState({});
 export const availableModels = ref<string[]>([]);
 export const creatingChat = ref(false);
-export const chatTmpDirectoryService = createChatTmpDirectoryService({
-  createTmpMountDirectory: ({ chatId }) => getOPFSTmpManager().createTmpDirectory({ prefix: chatId }),
-});
 
 export function isTaskRunning({
   chatId,
@@ -51,9 +53,6 @@ export function getContextCompactProgress({
   return contextCompactRuntime.getProgress({ chatId });
 }
 
-export const ensureChatTmpDirectory = chatTmpDirectoryService.ensureChatTmpDirectory;
-export const getChatTmpDirectory = chatTmpDirectoryService.getChatTmpDirectory;
-
 export const chatDataStore = createChatDataStore({
   applyVolatileAssistantErrorsToChat: chatVolatileState.applyVolatileAssistantErrorsToChat,
   hasActiveGeneration: ({ chatId }) => chatRuntimeStore.activeGenerations.has(chatId),
@@ -71,7 +70,7 @@ export const chatDataStore = createChatDataStore({
     for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
     chatRuntimeStore.clearActiveGenerations({});
     chatRuntimeStore.clearActiveTaskCounts({});
-    chatTmpDirectoryService.clearChatTmpDirectories({});
+    clearChatTmpDirectories({});
   },
 });
 
@@ -120,3 +119,4 @@ export const generatingTitle = chatRuntimeFacade.generatingTitle;
 export const fetchingModels = chatRuntimeFacade.fetchingModels;
 export const contextCompactProgress = chatRuntimeFacade.contextCompactProgress;
 export const isGeneratingTitle = chatRuntimeFacade.isGeneratingTitle;
+export { chatTmpDirectories, clearChatTmpDirectories, deleteChatTmpDirectory, ensureChatTmpDirectory, getChatTmpDirectory };
