@@ -26,8 +26,14 @@ export function useChatModelSelection({
   const fetchingModelsState = computed(() => fetchingModels.value);
 
   async function fetchModels(_args: Record<never, never>): Promise<string[]> {
+    const id = chatId.value;
+    if (id === undefined) {
+      return [];
+    }
+
     return await fetchAvailableModelsForChat({
-      chatId: chatId.value,
+      chatId: id,
+      errorSource: 'useChatModelSelection:fetchModels',
     });
   }
 

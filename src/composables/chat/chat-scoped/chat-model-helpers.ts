@@ -10,37 +10,42 @@ import {
   availableModels,
   chatRuntimeStore,
   currentChatRef,
-  getChatTargetByOptionalId,
+  getLiveChatById,
   rootItems,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
 
 export async function fetchAvailableModelsForChat({
   chatId,
+  errorSource,
 }: {
-  chatId: string | undefined;
+  chatId: string;
+  errorSource: string;
 }): Promise<string[]> {
-  const mutableChat = getChatTargetByOptionalId({ chatId }) ?? undefined;
-  if (mutableChat !== undefined) {
-    chatRuntimeStore.startTask({ key: { kind: 'fetch', chatId: mutableChat.id } });
-  } else if (chatId === undefined) {
-    chatRuntimeStore.startTask({ key: { kind: 'fetch', chatId: undefined } });
+  const mutableChat = getLiveChatById({ chatId }) ?? undefined;
+  if (mutableChat === undefined) {
+    return [];
   }
 
+  chatRuntimeStore.startTask({ key: { kind: 'fetch', chatId: mutableChat.id } });
+
   try {
-    const endpoint = resolveChatEndpoint({ chatId });
-    if (endpoint === undefined) {
-      return [];
-    }
+    const { settings } = useSettings();
+    const groups = collectChatGroups({ items: rootItems.value });
+    const endpoint = resolveChatEndpointForChat({
+      chat: mutableChat,
+      chatGroups: groups,
+      settings: settings.value,
+    });
 
     const models = await fetchAvailableModelsForEndpoint({
       endpointType: endpoint.type,
       endpointUrl: endpoint.url,
       endpointHttpHeaders: endpoint.headers,
-      errorSource: 'useChatModelSelection:fetchModels',
+      errorSource,
     });
 
-    if ((mutableChat !== undefined && currentChatRef.value !== null && toRaw(currentChatRef.value).id === mutableChat.id) || chatId === undefined) {
+    if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === mutableChat.id) {
       availableModels.value = models;
     }
 
@@ -52,11 +57,34 @@ export async function fetchAvailableModelsForChat({
 
     return models;
   } finally {
-    if (mutableChat !== undefined) {
-      chatRuntimeStore.finishTask({ key: { kind: 'fetch', chatId: mutableChat.id } });
-    } else if (chatId === undefined) {
-      chatRuntimeStore.finishTask({ key: { kind: 'fetch', chatId: undefined } });
-    }
+    chatRuntimeStore.finishTask({ key: { kind: 'fetch', chatId: mutableChat.id } });
+  }
+}
+
+export async function fetchAvailableModelsForGlobalEndpoint({
+  errorSource,
+}: {
+  errorSource: string;
+}): Promise<string[]> {
+  chatRuntimeStore.startTask({ key: { kind: 'fetch', chatId: undefined } });
+
+  const { settings } = useSettings();
+  try {
+    const endpoint = resolveGlobalEndpoint({
+      settings: settings.value,
+    });
+
+    const models = await fetchAvailableModelsForEndpoint({
+      endpointType: endpoint.type,
+      endpointUrl: endpoint.url,
+      endpointHttpHeaders: endpoint.headers,
+      errorSource,
+    });
+
+    availableModels.value = models;
+    return models;
+  } finally {
+    chatRuntimeStore.finishTask({ key: { kind: 'fetch', chatId: undefined } });
   }
 }
 
@@ -95,46 +123,56 @@ export async function fetchAvailableModelsForEndpoint({
   }
 }
 
-function resolveChatEndpoint({
-  chatId,
+export function resolveChatEndpointForChat({
+  chat,
+  chatGroups,
+  settings,
 }: {
-  chatId: string | undefined;
+  chat: {
+    groupId?: string | null | undefined;
+    endpointType?: EndpointType | undefined;
+    endpointUrl?: string | undefined;
+    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined;
+  };
+  chatGroups: readonly ChatGroup[];
+  settings: {
+    endpointType: EndpointType;
+    endpointUrl?: string | undefined;
+    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined;
+  };
 }): {
   type: EndpointType;
   url: string | undefined;
   headers: [string, string][] | undefined;
-} | undefined {
-  const { settings } = useSettings();
-  const mutableChat = getChatTargetByOptionalId({ chatId });
-
-  if (mutableChat !== null) {
-    const group = mutableChat.groupId ? collectChatGroups({ items: rootItems.value }).find(({ id }) => id === mutableChat.groupId) : undefined;
-    return {
-      type: mutableChat.endpointType || group?.endpoint?.type || settings.value.endpointType,
-      url: mutableChat.endpointUrl || group?.endpoint?.url || settings.value.endpointUrl,
-      headers: cloneHeaders({
-        headers: mutableChat.endpointHttpHeaders || group?.endpoint?.httpHeaders || settings.value.endpointHttpHeaders,
-      }),
-    };
-  }
-
-  if (currentChatRef.value !== null) {
-    const chat = toRaw(currentChatRef.value);
-    const group = chat.groupId ? collectChatGroups({ items: rootItems.value }).find(({ id }) => id === chat.groupId) : undefined;
-    return {
-      type: chat.endpointType || group?.endpoint?.type || settings.value.endpointType,
-      url: chat.endpointUrl || group?.endpoint?.url || settings.value.endpointUrl,
-      headers: cloneHeaders({
-        headers: chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || settings.value.endpointHttpHeaders,
-      }),
-    };
-  }
-
+} {
+  const group = chat.groupId ? chatGroups.find(({ id }) => id === chat.groupId) : undefined;
   return {
-    type: settings.value.endpointType,
-    url: settings.value.endpointUrl,
+    type: chat.endpointType || group?.endpoint?.type || settings.endpointType,
+    url: chat.endpointUrl || group?.endpoint?.url || settings.endpointUrl,
     headers: cloneHeaders({
-      headers: settings.value.endpointHttpHeaders,
+      headers: chat.endpointHttpHeaders || group?.endpoint?.httpHeaders || settings.endpointHttpHeaders,
+    }),
+  };
+}
+
+export function resolveGlobalEndpoint({
+  settings,
+}: {
+  settings: {
+    endpointType: EndpointType;
+    endpointUrl?: string | undefined;
+    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined;
+  };
+}): {
+  type: EndpointType;
+  url: string | undefined;
+  headers: [string, string][] | undefined;
+} {
+  return {
+    type: settings.endpointType,
+    url: settings.endpointUrl,
+    headers: cloneHeaders({
+      headers: settings.endpointHttpHeaders,
     }),
   };
 }

@@ -181,7 +181,10 @@ async function fetchModels() {
   if (chatId) {
     error.value = null;
     try {
-      const models = await fetchAvailableModelsForChat({ chatId });
+      const models = await fetchAvailableModelsForChat({
+        chatId,
+        errorSource: 'ChatSettingsPanel:fetchModels',
+      });
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
       }

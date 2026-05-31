@@ -66,8 +66,8 @@ describe('ChatSettingsPanel Error Handling', () => {
     } as ReturnType<typeof useCurrentChatState>);
     mockAvailableModelsRef.value = [];
     mockFetchingModelsRef.value = false;
-    vi.mocked(fetchAvailableModelsForChat).mockImplementation(async () => {
-      return await mockFetchAvailableModels();
+    vi.mocked(fetchAvailableModelsForChat).mockImplementation(async ({ chatId, errorSource }) => {
+      return await mockFetchAvailableModels({ chatId, errorSource });
     });
   });
 

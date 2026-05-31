@@ -177,7 +177,10 @@ export async function sendMessageToTargetChat({
     let resolvedModel = mutableChat.modelId || resolved.modelId;
 
     if (url || type === 'transformers_js') {
-      const models = await fetchAvailableModelsForChat({ chatId: mutableChat.id });
+      const models = await fetchAvailableModelsForChat({
+        chatId: mutableChat.id,
+        errorSource: 'chat-generation-flow:resolve-models',
+      });
       if (models.length > 0) {
         const preferredModel = mutableChat.modelId || resolved.modelId;
         if (preferredModel && models.includes(preferredModel)) {
@@ -192,7 +195,10 @@ export async function sendMessageToTargetChat({
       showOnboardingDraft({
         url,
         type,
-        models: await fetchAvailableModelsForChat({ chatId: mutableChat.id }),
+        models: await fetchAvailableModelsForChat({
+          chatId: mutableChat.id,
+          errorSource: 'chat-generation-flow:show-onboarding',
+        }),
       });
       return false;
     }

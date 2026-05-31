@@ -55,8 +55,12 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
 
         switch (type) {
         case 'transformers_js':
+          if (currentChatRef.value === null) {
+            return;
+          }
           await fetchAvailableModelsForChat({
-            chatId: currentChatRef.value?.id,
+            chatId: currentChatRef.value.id,
+            errorSource: 'useChatBootstrap:subscribeModelList',
           });
           return;
         case 'openai':

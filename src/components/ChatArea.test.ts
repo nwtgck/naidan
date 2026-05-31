@@ -93,7 +93,20 @@ const mockOpenChatGroup = vi.fn();
 const mockMoveChatToGroup = vi.fn();
 const mockUpdateChatModel = vi.fn().mockImplementation(({ id, modelId }) => {
   if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
-    mockCurrentChat.value.modelId = modelId;
+    mockCurrentChat.value = {
+      ...mockCurrentChat.value,
+      modelId,
+    };
+  }
+  if (mockResolvedSettings.value) {
+    mockResolvedSettings.value = {
+      ...mockResolvedSettings.value,
+      modelId,
+      sources: {
+        ...mockResolvedSettings.value.sources,
+        modelId: 'chat',
+      },
+    };
   }
 });
 const mockSaveChat = vi.fn();
@@ -257,6 +270,12 @@ vi.mock('../composables/chat/chat-scoped/chat-metadata-helpers', () => ({
       id: chatId,
       updates,
     }),
+  updateChatModelById: ({ chatId, modelId }: { chatId: string; modelId: string | undefined }) => {
+    return mockUpdateChatModel({
+      id: chatId,
+      modelId,
+    });
+  },
 }));
 
 vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
@@ -334,11 +353,35 @@ vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
         chatId: mockCurrentChat.value?.id,
         customEndpoint: undefined,
       }),
-    updateModel: ({ modelId }: { modelId: string | undefined }) =>
-      mockUpdateChatModel({
+    updateModel: ({ modelId }: { modelId: string | undefined }) => {
+      if (mockCurrentChat.value) {
+        mockCurrentChat.value = {
+          ...mockCurrentChat.value,
+          modelId,
+        };
+        queueMicrotask(() => {
+          if (mockCurrentChat.value) {
+            mockCurrentChat.value = {
+              ...mockCurrentChat.value,
+              modelId,
+            };
+          }
+        });
+        setTimeout(() => {
+          if (mockCurrentChat.value) {
+            mockCurrentChat.value = {
+              ...mockCurrentChat.value,
+              modelId,
+            };
+          }
+        }, 0);
+      }
+
+      return mockUpdateChatModel({
         id: mockCurrentChat.value?.id,
         modelId,
-      }),
+      });
+    },
   }),
 }));
 
@@ -515,7 +558,41 @@ let wrapper: VueWrapper<any> | null = null;
 function resetMocks() {
   const { clearAllDrafts } = useChatDraft();
   clearAllDrafts();
+  vi.useRealTimers();
   vi.clearAllMocks();
+  mockRenameChat.mockImplementation(({ newTitle }) => {
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.title = newTitle;
+    }
+  });
+  mockUpdateChatSettings.mockImplementation(({ id, updates }) => {
+    if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
+      Object.assign(mockCurrentChat.value, updates);
+    }
+  });
+  mockUpdateChatGroupMetadata.mockImplementation(({ id, updates }) => {
+    if (mockCurrentChatGroup.value && mockCurrentChatGroup.value.id === id) {
+      Object.assign(mockCurrentChatGroup.value, updates);
+    }
+  });
+  mockUpdateChatModel.mockImplementation(({ id, modelId }) => {
+    if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
+      mockCurrentChat.value = {
+        ...mockCurrentChat.value,
+        modelId,
+      };
+    }
+    if (mockResolvedSettings.value) {
+      mockResolvedSettings.value = {
+        ...mockResolvedSettings.value,
+        modelId,
+        sources: {
+          ...mockResolvedSettings.value.sources,
+          modelId: 'chat',
+        },
+      };
+    }
+  });
   mockStreaming.value = false;
   mockGeneratingTitle.value = false;
   mockActiveGenerations.clear();

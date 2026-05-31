@@ -159,8 +159,8 @@ describe('ChatSettingsPanel.vue', () => {
     vi.mocked(updateChatSettingsById).mockImplementation(async ({ chatId, updates }) => {
       await mockUpdateChatSettings({ id: chatId, updates });
     });
-    vi.mocked(fetchAvailableModelsForChat).mockImplementation(async ({ chatId }) => {
-      return await mockFetchAvailableModels({ chatId });
+    vi.mocked(fetchAvailableModelsForChat).mockImplementation(async ({ chatId, errorSource }) => {
+      return await mockFetchAvailableModels({ chatId, errorSource });
     });
 
     (useSettings as unknown as Mock).mockReturnValue({

@@ -47,6 +47,7 @@ import {
 import {
   fetchAvailableModelsForChat,
   fetchAvailableModelsForEndpoint,
+  fetchAvailableModelsForGlobalEndpoint,
 } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import {
   generateChatTitleForChat,
@@ -401,8 +402,15 @@ export function useChat() {
       });
     }
 
+    if (chatId === undefined) {
+      return await fetchAvailableModelsForGlobalEndpoint({
+        errorSource: 'useChat:fetchAvailableModels:global',
+      });
+    }
+
     return await fetchAvailableModelsForChat({
       chatId,
+      errorSource: 'useChat:fetchAvailableModels',
     });
   }
 

@@ -6,6 +6,7 @@ const {
   mockState,
   mockGetSortedImageModels,
   mockFetchAvailableModelsForChat,
+  mockFetchAvailableModelsForGlobalEndpoint,
   mockFetchAvailableModelsForEndpoint,
   mockIsThinkingActive,
   mockIsWaitingResponse,
@@ -21,6 +22,7 @@ const {
   },
   mockGetSortedImageModels: vi.fn(({ availableModels }) => availableModels),
   mockFetchAvailableModelsForChat: vi.fn().mockResolvedValue(['model-a']),
+  mockFetchAvailableModelsForGlobalEndpoint: vi.fn().mockResolvedValue(['model-global']),
   mockFetchAvailableModelsForEndpoint: vi.fn().mockResolvedValue(['model-z']),
   mockIsThinkingActive: vi.fn(() => false),
   mockIsWaitingResponse: vi.fn(() => false),
@@ -60,6 +62,7 @@ vi.mock('./useCurrentChatState', () => ({
 
 vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
   fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
+  fetchAvailableModelsForGlobalEndpoint: mockFetchAvailableModelsForGlobalEndpoint,
   fetchAvailableModelsForEndpoint: mockFetchAvailableModelsForEndpoint,
 }));
 
@@ -83,6 +86,7 @@ describe('useChatAreaData', () => {
     mockState.chatFlow = [];
     mockState.chatGroups = [{ id: 'group-1', name: 'Group 1' }];
     mockFetchAvailableModelsForChat.mockResolvedValue(['model-a']);
+    mockFetchAvailableModelsForGlobalEndpoint.mockResolvedValue(['model-global']);
     mockFetchAvailableModelsForEndpoint.mockResolvedValue(['model-z']);
   });
 
@@ -115,12 +119,26 @@ describe('useChatAreaData', () => {
 
     expect(mockFetchAvailableModelsForChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
+      errorSource: 'useChatAreaData:fetchAvailableModels',
     });
     expect(mockUpdateChatSettingsById).toHaveBeenCalledWith({
       chatId: 'chat-1',
       updates: { titleModelId: 'model-a' },
     });
     expect(mockUpdateChatGroupMetadata).toHaveBeenCalled();
+  });
+
+  it('uses the global endpoint fetch path when chatId is undefined', async () => {
+    const chatAreaData = useChatAreaData();
+
+    await expect(chatAreaData.fetchAvailableModels({
+      chatId: undefined,
+      customEndpoint: undefined,
+    })).resolves.toEqual(['model-global']);
+
+    expect(mockFetchAvailableModelsForGlobalEndpoint).toHaveBeenCalledWith({
+      errorSource: 'useChatAreaData:fetchAvailableModels:global',
+    });
   });
 
   it('delegates image model sorting and flow predicates', () => {

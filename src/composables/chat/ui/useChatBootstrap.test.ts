@@ -4,10 +4,12 @@ const {
   mockInstallChatBootstrap,
   mockLoadData,
   mockOpenChat,
+  mockFetchAvailableModelsForChat,
 } = vi.hoisted(() => ({
   mockInstallChatBootstrap: vi.fn(),
   mockLoadData: vi.fn().mockResolvedValue(undefined),
   mockOpenChat: vi.fn().mockResolvedValue(undefined),
+  mockFetchAvailableModelsForChat: vi.fn(),
 }));
 
 vi.mock('@/composables/chat/chat-bootstrap', () => ({
@@ -30,7 +32,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
 }));
 
 vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
-  fetchAvailableModelsForChat: vi.fn(),
+  fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
 }));
 
 vi.mock('@/services/transformers-js', () => ({
@@ -41,7 +43,7 @@ vi.mock('@/services/transformers-js', () => ({
 
 vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
-    settings: { value: {} },
+    settings: { value: { endpointType: 'openai' } },
   }),
 }));
 

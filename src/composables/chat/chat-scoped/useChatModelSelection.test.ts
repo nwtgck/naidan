@@ -47,22 +47,25 @@ describe('useChatModelSelection', () => {
 
     await chatModelSelection.updateModel({ modelId: 'gpt-4o' });
 
-    expect(mockFetchAvailableModelsForChat).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockFetchAvailableModelsForChat).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      errorSource: 'useChatModelSelection:fetchModels',
+    });
     expect(mockUpdateChatModelById).toHaveBeenCalledWith({
       chatId: 'chat-1',
       modelId: 'gpt-4o',
     });
   });
 
-  it('no-ops update when chatId is undefined and still uses shared fetch fallback', async () => {
+  it('no-ops update and returns empty models when chatId is undefined', async () => {
     const chatModelSelection = useChatModelSelection({
       chatId: computed(() => undefined),
     });
 
-    await chatModelSelection.fetchModels({});
+    await expect(chatModelSelection.fetchModels({})).resolves.toEqual([]);
     await chatModelSelection.updateModel({ modelId: 'gpt-4o' });
 
-    expect(mockFetchAvailableModelsForChat).toHaveBeenCalledWith({ chatId: undefined });
+    expect(mockFetchAvailableModelsForChat).not.toHaveBeenCalled();
     expect(mockUpdateChatModelById).not.toHaveBeenCalled();
   });
 });

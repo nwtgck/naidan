@@ -5,7 +5,11 @@ import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { availableModels, fetchingModels, isProcessing, loadData } from '@/composables/chat/global/chat-core-singletons';
 import { useCurrentChatState } from './useCurrentChatState';
-import { fetchAvailableModelsForChat, fetchAvailableModelsForEndpoint } from '@/composables/chat/chat-scoped/chat-model-helpers';
+import {
+  fetchAvailableModelsForChat,
+  fetchAvailableModelsForEndpoint,
+  fetchAvailableModelsForGlobalEndpoint,
+} from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { updateChatSettingsById } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
 import { storageService } from '@/services/storage';
 
@@ -109,7 +113,16 @@ export function useChatAreaData(): ChatAreaDataAdapter {
       });
     }
 
-    return await fetchAvailableModelsForChat({ chatId });
+    if (chatId === undefined) {
+      return await fetchAvailableModelsForGlobalEndpoint({
+        errorSource: 'useChatAreaData:fetchAvailableModels:global',
+      });
+    }
+
+    return await fetchAvailableModelsForChat({
+      chatId,
+      errorSource: 'useChatAreaData:fetchAvailableModels',
+    });
   }
 
   function isThinkingActive({
