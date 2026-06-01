@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { computed, ref, nextTick } from 'vue';
+import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { fetchAvailableModelsForChat } from '@/composables/chat/chat-scoped/chat-model-helpers';
+import { useChatModels } from '@/composables/chat/useChatModels';
 
 // --- Mocks ---
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
@@ -18,20 +18,20 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
 }));
 
-vi.mock('../composables/chat/global/chat-core-singletons', async () => {
-  const actual = await vi.importActual<typeof import('../composables/chat/global/chat-core-singletons')>(
-    '../composables/chat/global/chat-core-singletons'
-  );
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
+}));
 
-  return {
-    ...actual,
-    availableModels: mockAvailableModelsRef,
-    fetchingModels: mockFetchingModelsRef,
-  };
-});
-
-vi.mock('../composables/chat/chat-scoped/chat-model-helpers', () => ({
-  fetchAvailableModelsForChat: vi.fn(),
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: vi.fn(),
+    toggleDebug: vi.fn(),
+    updateModel: vi.fn(),
+    updateSettings: vi.fn(),
+    reasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    TEST_ONLY: {},
+  }),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -66,8 +66,15 @@ describe('ChatSettingsPanel Error Handling', () => {
     } as ReturnType<typeof useCurrentChatState>);
     mockAvailableModelsRef.value = [];
     mockFetchingModelsRef.value = false;
-    vi.mocked(fetchAvailableModelsForChat).mockImplementation(async ({ chatId, errorSource }) => {
-      return await mockFetchAvailableModels({ chatId, errorSource });
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: computed(() => mockAvailableModelsRef.value) as unknown as ReturnType<typeof useChatModels>['availableModels'],
+      fetchingModels: computed(() => mockFetchingModelsRef.value),
+      fetchForChat: async ({ chatId }) => {
+        return await mockFetchAvailableModels({ chatId });
+      },
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: vi.fn(),
+      TEST_ONLY: {},
     });
   });
 

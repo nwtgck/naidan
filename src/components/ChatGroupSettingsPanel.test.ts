@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
-import { computed, nextTick, reactive, toRef } from 'vue';
+import { computed, nextTick, reactive, ref, toRef } from 'vue';
 import type { ChatGroup, Settings } from '@/models/types';
-import { fetchAvailableModelsForEndpoint } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { useChatGroupMounts } from '@/composables/chat/chat-scoped/useChatGroupMounts';
+import { useChatGroups } from '@/composables/chat/useChatGroups';
+import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 
@@ -56,7 +57,17 @@ function expectLatestGroupUpdate({
 }) {
   const calls = mockUpdateChatGroupMetadata.mock.calls;
   expect(calls.length).toBeGreaterThan(0);
-  expect(calls.at(-1)?.[0]).toEqual(expect.objectContaining(partial));
+  const latest = calls.at(-1)?.[0];
+  const { id, ...updates } = partial;
+  if (latest && typeof latest === 'object' && 'updates' in latest) {
+    expect(latest).toEqual(expect.objectContaining({
+      ...(id !== undefined && { id }),
+      updates: expect.objectContaining(updates),
+    }));
+    return;
+  }
+
+  expect(latest).toEqual(expect.objectContaining(partial));
 }
 
 vi.mock('../services/storage', () => ({
@@ -66,12 +77,12 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-vi.mock('../composables/chat/global/chat-core-singletons', () => ({
-  fetchingModels: mocks.fetchingModels,
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
 }));
 
-vi.mock('../composables/chat/chat-scoped/chat-model-helpers', () => ({
-  fetchAvailableModelsForEndpoint: vi.fn(),
+vi.mock('../composables/chat/useChatGroups', () => ({
+  useChatGroups: vi.fn(),
 }));
 
 vi.mock('../composables/chat/chat-scoped/useChatGroupMounts', () => ({
@@ -157,9 +168,26 @@ describe('ChatGroupSettingsPanel.vue', () => {
       }),
       TEST_ONLY: {},
     } as unknown as ReturnType<typeof useChatGroupMounts>);
-    mocks.fetchingModels.value = false;
-    vi.mocked(fetchAvailableModelsForEndpoint).mockImplementation(async ({ endpointType, endpointUrl, endpointHttpHeaders }) => {
-      return await mockFetchAvailableModels({ endpointType, endpointUrl, endpointHttpHeaders });
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: ref([]),
+      fetchingModels: computed(() => mocks.fetchingModels.value),
+      fetchForChat: vi.fn(),
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: async ({ customEndpoint }) => {
+        return await mockFetchAvailableModels({
+          endpointType: customEndpoint.type,
+          endpointUrl: customEndpoint.url,
+          endpointHttpHeaders: customEndpoint.headers,
+        });
+      },
+      TEST_ONLY: {},
+    });
+    vi.mocked(useChatGroups).mockReturnValue({
+      updateChatGroupMetadata: async ({ chatGroupId, updates }) => {
+        mockUpdateChatGroupMetadata({ id: chatGroupId, updates });
+      },
+      moveChatToGroup: vi.fn(),
+      TEST_ONLY: {},
     });
     Object.assign(mockGroup, {
       id: 'g1',

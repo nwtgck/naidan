@@ -1,11 +1,21 @@
+import type { ChatGroup } from '@/models/types';
 import { storageService } from '@/services/storage';
 import {
+  currentChatGroupRef,
   currentChatRef,
   loadData,
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
 
 export type ChatGroupsAdapter = {
+  updateChatGroupMetadata({
+    chatGroupId,
+    updates,
+  }: {
+    chatGroupId: string;
+    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
+  }): Promise<void>;
+
   moveChatToGroup({
     chatId,
     chatGroupId,
@@ -18,6 +28,32 @@ export type ChatGroupsAdapter = {
 };
 
 export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
+  async function updateChatGroupMetadata({
+    chatGroupId,
+    updates,
+  }: {
+    chatGroupId: string;
+    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
+  }): Promise<void> {
+    if (currentChatGroupRef.value?.id === chatGroupId) {
+      Object.assign(currentChatGroupRef.value, updates);
+      currentChatGroupRef.value.updatedAt = Date.now();
+    }
+
+    await storageService.updateChatGroup(chatGroupId, (current) => {
+      if (current === null) {
+        throw new Error('Chat group not found');
+      }
+
+      return {
+        ...current,
+        ...updates,
+        updatedAt: Date.now(),
+      };
+    });
+    await loadData({});
+  }
+
   async function moveChatToGroup({
     chatId,
     chatGroupId,
@@ -90,6 +126,7 @@ export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
   }
 
   return {
+    updateChatGroupMetadata,
     moveChatToGroup,
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.

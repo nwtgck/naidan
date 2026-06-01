@@ -5,6 +5,7 @@ import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import ModelSelector from './ModelSelector.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
+import { useChatModels } from '@/composables/chat/useChatModels';
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
   mockAvailableModelsRef: { value: [] as string[] },
   mockFetchingModelsRef: { value: false },
@@ -18,17 +19,21 @@ vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
 }));
 
-vi.mock('../composables/chat/global/chat-core-singletons', async () => {
-  const actual = await vi.importActual<typeof import('../composables/chat/global/chat-core-singletons')>(
-    '../composables/chat/global/chat-core-singletons'
-  );
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
+}));
 
-  return {
-    ...actual,
-    availableModels: mockAvailableModelsRef,
-    fetchingModels: mockFetchingModelsRef,
-  };
-});
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: vi.fn(),
+    toggleDebug: vi.fn(),
+    updateModel: vi.fn(),
+    updateSettings: vi.fn(),
+    reasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
 
 describe('ChatSettingsPanel Inheritance UI', () => {
   const mockCurrentChat = ref<any>(null);
@@ -92,6 +97,14 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     });
     mockFetchingModelsRef.value = false;
     mockAvailableModelsRef.value = [];
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: computed(() => mockAvailableModelsRef.value) as unknown as ReturnType<typeof useChatModels>['availableModels'],
+      fetchingModels: computed(() => mockFetchingModelsRef.value),
+      fetchForChat: vi.fn(),
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: vi.fn(),
+      TEST_ONLY: {},
+    });
 
     (useSettings as unknown as Mock).mockReturnValue({
       settings: mockSettings,

@@ -152,6 +152,56 @@ vi.mock('../composables/chat/ui/useChatAreaData', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/chat-activity-queries', () => ({
+  isChatProcessing: () => false,
+  getChatContextCompactProgress: () => ({ phase: 'idle' }),
+  isChatGeneratingTitle: () => false,
+}));
+
+vi.mock('../composables/chat/useChatConversation', () => ({
+  useChatConversation: () => ({
+    sendMessage: vi.fn().mockResolvedValue(true),
+    regenerateMessage: vi.fn(),
+    abort: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatBranches', () => ({
+  useChatBranches: () => ({
+    editMessage: vi.fn(),
+    switchVersion: vi.fn(),
+    forkChat: ({ messageId }: { chatId: string; messageId: string }) => mockForkChat({ messageId }),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
+    availableModels: ref([]),
+    fetchingModels: computed(() => false),
+    fetchForChat: vi.fn(),
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMounts', () => ({
+  useChatMounts: () => ({
+    getMounts: () => computed(() => []),
+    addMount: vi.fn(),
+    removeMount: vi.fn(),
+    updateMount: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    reasoningEffort: () => computed(() => undefined),
+    updateReasoningEffort: vi.fn(),
+    updateModel: vi.fn(),
+    toggleDebug: vi.fn(),
+  }),
+}));
+
 vi.mock('../composables/chat/chat-scoped/useChatHistory', () => ({
   useChatHistory: () => ({
     editMessage: vi.fn(),

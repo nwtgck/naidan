@@ -4,12 +4,12 @@ const {
   mockInstallChatBootstrap,
   mockLoadData,
   mockOpenChat,
-  mockFetchAvailableModelsForChat,
+  mockFetchForChat,
 } = vi.hoisted(() => ({
   mockInstallChatBootstrap: vi.fn(),
   mockLoadData: vi.fn().mockResolvedValue(undefined),
   mockOpenChat: vi.fn().mockResolvedValue(undefined),
-  mockFetchAvailableModelsForChat: vi.fn(),
+  mockFetchForChat: vi.fn(),
 }));
 
 vi.mock('@/composables/chat/chat-bootstrap', () => ({
@@ -31,8 +31,15 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   rootItems: { value: [] },
 }));
 
-vi.mock('@/composables/chat/chat-scoped/chat-model-helpers', () => ({
-  fetchAvailableModelsForChat: mockFetchAvailableModelsForChat,
+vi.mock('@/composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
+    availableModels: { value: [] },
+    fetchingModels: { value: false },
+    fetchForChat: mockFetchForChat,
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
+    TEST_ONLY: {},
+  }),
 }));
 
 vi.mock('@/services/transformers-js', () => ({

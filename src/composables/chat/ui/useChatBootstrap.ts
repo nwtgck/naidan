@@ -1,8 +1,8 @@
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { installChatBootstrap } from '@/composables/chat/chat-bootstrap';
+import { useChatModels } from '@/composables/chat/useChatModels';
 import { loadData } from '@/composables/chat/global/chat-core-singletons';
 import { chatRuntimeStore, currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
-import { fetchAvailableModelsForChat } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import type { Settings } from '@/models/types';
 import { transformersJsService } from '@/services/transformers-js';
@@ -22,6 +22,7 @@ export type ChatBootstrapAdapter = {
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
   const { settings } = useSettings();
+  const chatModels = useChatModels({});
   const chatNavigation = useChatNavigation();
   const chatDerivedState = createChatDerivedState({
     currentChatRef,
@@ -58,9 +59,8 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
           if (currentChatRef.value === null) {
             return;
           }
-          await fetchAvailableModelsForChat({
+          await chatModels.fetchForChat({
             chatId: currentChatRef.value.id,
-            errorSource: 'useChatBootstrap:subscribeModelList',
           });
           return;
         case 'openai':

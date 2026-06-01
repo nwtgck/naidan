@@ -2,10 +2,10 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { useChatGroups } from '@/composables/chat/useChatGroups';
+import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatGroupMounts } from '@/composables/chat/chat-scoped/useChatGroupMounts';
-import { fetchingModels } from '@/composables/chat/global/chat-core-singletons';
-import { fetchAvailableModelsForEndpoint } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import {
   Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon,
@@ -40,11 +40,13 @@ import type { WeshMount } from '@/services/wesh/types';
 const { currentChatGroup } = useCurrentChatState();
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
+const chatGroups = useChatGroups({});
+const chatModels = useChatModels({});
 const { openFileExplorer } = useFileExplorerModal();
 const chatGroupMountsActions = useChatGroupMounts({
   chatGroupId: computed(() => currentChatGroup.value?.id),
 });
-const isFetchingModels = computed(() => fetchingModels.value);
+const isFetchingModels = computed(() => chatModels.fetchingModels.value);
 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
@@ -153,16 +155,9 @@ const hasActiveOverrides = computed(() => {
 
 async function saveChanges() {
   if (currentChatGroup.value) {
-    await storageService.updateChatGroup(currentChatGroup.value.id, (current) => {
-      if (current === null) {
-        throw new Error('Chat group not found');
-      }
-
-      return {
-        ...current,
-        ...localSettings.value,
-        updatedAt: Date.now(),
-      };
+    await chatGroups.updateChatGroupMetadata({
+      chatGroupId: currentChatGroup.value.id,
+      updates: localSettings.value,
     });
   }
 }
@@ -223,12 +218,12 @@ async function fetchModels() {
     }
 
     try {
-      const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const models = await fetchAvailableModelsForEndpoint({
-        endpointType: type,
-        endpointUrl: url,
-        endpointHttpHeaders: mutableHeaders,
-        errorSource: 'ChatGroupSettingsPanel:fetchModels',
+      const models = await chatModels.fetchForEndpoint({
+        customEndpoint: {
+          type,
+          url,
+          headers: headers ? JSON.parse(JSON.stringify(headers)) : undefined,
+        },
       });
       groupModels.value = models;
       if (models.length === 0) {
