@@ -45,6 +45,14 @@ export type ChatMetadataAdapter = {
     modelId: string | undefined;
   }): Promise<void>;
 
+  updateGroupOverride({
+    chatId,
+    chatGroupId,
+  }: {
+    chatId: string;
+    chatGroupId: string | undefined;
+  }): Promise<void>;
+
   updateSettings({
     chatId,
     updates,
@@ -163,6 +171,37 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
     });
   }
 
+  async function updateGroupOverride({
+    chatId,
+    chatGroupId,
+  }: {
+    chatId: string;
+    chatGroupId: string | undefined;
+  }): Promise<void> {
+    const liveChat = getLiveChatById({ chatId });
+    if (liveChat !== null) {
+      liveChat.groupId = chatGroupId;
+      liveChat.updatedAt = Date.now();
+      triggerCurrentChat({ chatId });
+    }
+
+    await updateChatMeta({
+      id: chatId,
+      updater: (current) => {
+        if (current === null) {
+          throw new Error('Chat not found');
+        }
+
+        return {
+          ...current,
+          groupId: chatGroupId,
+          updatedAt: Date.now(),
+        };
+      },
+    });
+    await loadData({});
+  }
+
   async function updateSettings({
     chatId,
     updates,
@@ -270,6 +309,7 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
     rename,
     toggleDebug,
     updateModel,
+    updateGroupOverride,
     updateSettings,
     reasoningEffort,
     updateReasoningEffort,

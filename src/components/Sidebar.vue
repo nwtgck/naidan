@@ -28,7 +28,7 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { isProcessing as isChatProcessing } from '@/composables/chat/global/chat-core-singletons';
-import { renameChatById } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
@@ -39,6 +39,7 @@ const currentChatState = useCurrentChatState();
 const chatLifecycle = useChatLifecycle();
 const chatNavigation = useChatNavigation();
 const chatOrganization = useChatOrganization();
+const chatMetadata = useChatMetadata({});
 const sidebarStructure = useSidebarStructure();
 const currentChat = currentChatState.currentChat;
 const currentChatGroup = currentChatState.currentChatGroup;
@@ -144,7 +145,7 @@ function renameChat({
   id: string;
   newTitle: string;
 }) {
-  return renameChatById({
+  return chatMetadata.rename({
     chatId: id,
     title: newTitle,
   });

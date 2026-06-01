@@ -161,8 +161,11 @@ vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/chat-metadata-helpers', () => ({
-  renameChatById: ({ chatId, title }: { chatId: string; title: string }) => mockRenameChat({ id: chatId, newTitle: title }),
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: ({ chatId, title }: { chatId: string; title: string }) => mockRenameChat({ id: chatId, newTitle: title }),
+    TEST_ONLY: {},
+  }),
 }));
 
 vi.mock('../composables/chat/global/chat-core-singletons', async (importOriginal) => {

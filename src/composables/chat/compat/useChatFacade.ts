@@ -36,9 +36,6 @@ import {
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { createChatTestSupport } from '@/composables/chat/chat-test-support';
 import {
-  updateChatGroupOverrideById,
-} from '@/composables/chat/chat-scoped/chat-metadata-helpers';
-import {
   generateImageForChat,
   handleImageGenerationForChat,
   sendImageRequestForChat as sendImageRequestForChatImpl,
@@ -294,9 +291,9 @@ export function useChat() {
     id: string;
     groupId: string | null;
   }) {
-    await updateChatGroupOverrideById({
+    await chatMetadata.updateGroupOverride({
       chatId: id,
-      groupId,
+      chatGroupId: groupId ?? undefined,
     });
   }
 

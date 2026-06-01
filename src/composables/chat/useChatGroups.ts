@@ -24,7 +24,7 @@ export type ChatGroupsAdapter = {
     chatGroupId: string | undefined;
   }): Promise<void>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {

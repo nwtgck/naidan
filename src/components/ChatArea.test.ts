@@ -263,47 +263,6 @@ vi.mock('../composables/chat/ui/useChatAreaData', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/chat-metadata-helpers', () => ({
-  renameChatById: ({ chatId, title }: { chatId: string; title: string }) =>
-    mockRenameChat({
-      id: chatId,
-      newTitle: title,
-    }),
-  toggleDebugForChatId: ({ chatId }: { chatId: string }) => {
-    if (mockCurrentChat.value?.id === chatId) {
-      mockCurrentChat.value = {
-        ...mockCurrentChat.value,
-        debugEnabled: !mockCurrentChat.value.debugEnabled,
-      };
-    }
-    return mockToggleChatDebug();
-  },
-  updateChatSettingsById: ({ chatId, updates }: { chatId: string; updates: Record<string, unknown> }) =>
-    mockUpdateChatSettings({
-      id: chatId,
-      updates,
-    }),
-  updateChatModelById: ({ chatId, modelId }: { chatId: string; modelId: string | undefined }) => {
-    return mockUpdateChatModel({
-      id: chatId,
-      modelId,
-    });
-  },
-  getReasoningEffortForChatId: ({ chatId }: { chatId: string }) =>
-    mockCurrentChat.value?.id === chatId ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined,
-  updateReasoningEffortForChatId: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
-    if (mockCurrentChat.value?.id === chatId) {
-      mockCurrentChat.value = {
-        ...mockCurrentChat.value,
-        lmParameters: {
-          ...(mockCurrentChat.value.lmParameters || EMPTY_LM_PARAMETERS),
-          reasoning: { effort },
-        },
-      };
-    }
-  },
-}));
-
 vi.mock('../composables/chat/chat-activity-queries', () => ({
   isChatProcessing: ({ chatId }: { chatId: string }) =>
     !!mockCurrentChat.value && mockCurrentChat.value.id === chatId && (mockStreaming.value || mockActiveGenerations.has(chatId)),

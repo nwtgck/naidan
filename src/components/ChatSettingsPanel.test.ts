@@ -148,6 +148,7 @@ describe('ChatSettingsPanel.vue', () => {
       rename: vi.fn(),
       toggleDebug: vi.fn(),
       updateModel: vi.fn(),
+      updateGroupOverride: vi.fn(),
       updateSettings: async ({ chatId, updates }) => {
         await mockUpdateChatSettings({ id: chatId, updates });
       },

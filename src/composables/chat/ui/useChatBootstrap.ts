@@ -17,7 +17,7 @@ export type ChatBootstrapAdapter = {
     chatId: string;
   }): Promise<unknown>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
