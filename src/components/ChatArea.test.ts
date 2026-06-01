@@ -313,6 +313,22 @@ vi.mock('../composables/chat/chat-activity-queries', () => ({
     mockCurrentChat.value?.id === chatId ? mockGeneratingTitle.value : false,
 }));
 
+vi.mock('../composables/useChatDisplayFlow', () => ({
+  useChatDisplayFlow: () => ({
+    chatFlow: computed(() => mockChatFlowOverride.value ?? mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
+  }),
+}));
+
 vi.mock('../composables/chat/useChatConversation', () => ({
   useChatConversation: () => ({
     sendMessage: ({ chatId, content, parentId, attachments, lmParameters }: {
@@ -385,6 +401,14 @@ vi.mock('../composables/chat/useChatGroups', () => ({
       mockMoveChatToGroup({
         chatId,
         targetGroupId: chatGroupId,
+      }),
+    updateChatGroupMetadata: ({ chatGroupId, updates }: {
+      chatGroupId: string;
+      updates: Record<string, unknown>;
+    }) =>
+      mockUpdateChatGroupMetadata({
+        id: chatGroupId,
+        updates,
       }),
   }),
 }));

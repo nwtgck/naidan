@@ -6,8 +6,7 @@ import ChatInput from './ChatInput.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { useChatAreaData } from '@/composables/chat/ui/useChatAreaData';
-import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
+import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { setupScrollToMock } from '@/utils/test-utils';
 
 
@@ -17,11 +16,8 @@ vi.mock('../composables/useSettings', () => ({
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
 }));
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: vi.fn(),
-}));
-vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
-  useChatRuntime: vi.fn(),
+vi.mock('../composables/useChatDisplayFlow', () => ({
+  useChatDisplayFlow: vi.fn(),
 }));
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
@@ -53,13 +49,7 @@ describe('ChatArea Design Specifications', () => {
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
     });
-    (useChatAreaData as unknown as Mock).mockReturnValue({
-      updateChatSettings: vi.fn(),
-      updateChatGroupMetadata: vi.fn(),
-      availableModels: computed(() => []),
-      fetchingModels: computed(() => false),
-      getSortedImageModels: vi.fn(() => []),
-      fetchAvailableModels: vi.fn(),
+    (useChatDisplayFlow as unknown as Mock).mockReturnValue({
       chatFlow: computed(() => mockActiveMessages.value.map(m => ({
         type: 'message',
         node: m,
@@ -71,11 +61,6 @@ describe('ChatArea Design Specifications', () => {
       }))),
       isThinkingActive: vi.fn(() => false),
       isWaitingResponse: vi.fn(() => false),
-      availableChatGroups: computed(() => []),
-    });
-    (useChatRuntime as unknown as Mock).mockReturnValue({
-      isProcessing: computed(() => false),
-      contextCompactProgress: ref({ phase: 'idle' }),
     });
     (useSettings as unknown as Mock).mockReturnValue({
       settings: ref({ defaultModelId: 'gpt-4' }),

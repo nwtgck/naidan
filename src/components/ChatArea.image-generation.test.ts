@@ -128,6 +128,24 @@ vi.mock('../composables/chat/ui/useChatAreaData', () => ({
   }),
 }));
 
+vi.mock('../composables/useChatDisplayFlow', () => ({
+  useChatDisplayFlow: () => ({
+    chatFlow: computed(() => mockChatStore.chatFlow.value),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
+    availableModels: mockChatStore.availableModels,
+    fetchingModels: computed(() => false),
+    fetchForChat: vi.fn(),
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
+  }),
+}));
+
 vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
   useChatGeneration: () => ({
     sendMessage: ({

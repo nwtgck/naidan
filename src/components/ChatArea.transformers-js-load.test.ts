@@ -156,6 +156,22 @@ vi.mock('../composables/chat/chat-activity-queries', () => ({
   isChatGeneratingTitle: () => false,
 }));
 
+vi.mock('../composables/useChatDisplayFlow', () => ({
+  useChatDisplayFlow: () => ({
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: m.role === 'assistant' && !m.content ? 'waiting' : 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(({ item }: { item: { type: string; mode?: string } }) => item.type === 'message' && item.mode === 'waiting'),
+  }),
+}));
+
 vi.mock('../composables/chat/useChatConversation', () => ({
   useChatConversation: () => ({
     sendMessage: vi.fn().mockResolvedValue(true),

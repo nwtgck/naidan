@@ -7,16 +7,18 @@ import { useChatConversation } from '@/composables/chat/useChatConversation';
 import { useChatBranches } from '@/composables/chat/useChatBranches';
 import { useChatCompaction } from '@/composables/chat/useChatCompaction';
 import { useChatGroups } from '@/composables/chat/useChatGroups';
+import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatTitle } from '@/composables/chat/useChatTitle';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { useChatAreaData } from '@/composables/chat/ui/useChatAreaData';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import {
   getChatContextCompactProgress,
   isChatGeneratingTitle,
   isChatProcessing,
 } from '@/composables/chat/chat-activity-queries';
+import { useChatDisplayFlow, type ChatFlowItem } from '@/composables/useChatDisplayFlow';
+import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -36,8 +38,6 @@ import ChatAreaHeader from './ChatAreaHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
-import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
-
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 // Lazily load the outline overlay, prefetch on mounted.
@@ -87,37 +87,36 @@ const {
   toggleChatWeshTerminal,
 } = useLayout();
 const currentChatState = useCurrentChatState();
-const chatAreaData = useChatAreaData();
-const {
-  updateChatSettings,
-  updateChatGroupMetadata,
-  availableModels,
-  fetchingModels,
-  getSortedImageModels,
-  fetchAvailableModels,
-  chatFlow,
-  isThinkingActive,
-  isWaitingResponse,
-  availableChatGroups,
-} = chatAreaData;
-
 const currentChatId = currentChatState.currentChatId;
 const chatConversation = useChatConversation({});
 const chatBranches = useChatBranches({});
 const chatCompaction = useChatCompaction({});
 const chatGroups = useChatGroups({});
+const chatModels = useChatModels({});
 const chatTitle = useChatTitle({});
 const chatMetadata = useChatMetadata({});
+const { getSortedImageModels } = useImageGeneration();
 const currentChat = currentChatState.currentChat;
 const currentChatGroup = currentChatState.currentChatGroup;
 const activeMessages = currentChatState.activeMessages;
 const allMessages = currentChatState.allMessages;
 const resolvedSettings = currentChatState.resolvedSettings;
 const inheritedSettings = currentChatState.inheritedSettings;
+const availableChatGroups = currentChatState.chatGroups;
+const availableModels = chatModels.availableModels;
+const fetchingModels = chatModels.fetchingModels;
 const isProcessing = computed(() => {
   const chat = currentChat.value;
   if (!chat) return false;
   return isChatProcessing({ chatId: chat.id });
+});
+const {
+  chatFlow,
+  isThinkingActive,
+  isWaitingResponse,
+} = useChatDisplayFlow({
+  chat: currentChat,
+  isProcessing: ({ chatId }) => isChatProcessing({ chatId }),
 });
 const contextCompactProgress = computed<ContextCompactProgress>(() => {
   const chat = currentChat.value;
@@ -722,14 +721,14 @@ async function updateActiveTitleModel({
 }) {
   switch (source) {
   case 'chat':
-    await updateChatSettings({ id: chatId, updates: { titleModelId: modelId } });
+    await chatMetadata.updateSettings({ chatId, updates: { titleModelId: modelId } });
     return;
   case 'chat_group':
     if (chatGroupId === undefined) {
       await saveSettings({ patch: { titleModelId: modelId } });
       return;
     }
-    await updateChatGroupMetadata({ id: chatGroupId, updates: { titleModelId: modelId } });
+    await chatGroups.updateChatGroupMetadata({ chatGroupId, updates: { titleModelId: modelId } });
     return;
   case 'global':
     await saveSettings({ patch: { titleModelId: modelId } });
@@ -918,9 +917,8 @@ function getCurrentChatSiblings({ messageId }: { messageId: string }) {
 function handleRefreshModels(_args: Record<never, never>) {
   const chat = currentChat.value;
   if (!chat) return;
-  void fetchAvailableModels({
+  void chatModels.fetchForChat({
     chatId: chat.id,
-    customEndpoint: undefined,
   });
 }
 
