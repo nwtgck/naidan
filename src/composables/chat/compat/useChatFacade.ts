@@ -43,6 +43,9 @@ import {
   handleImageGenerationForChat,
   sendImageRequestForChat as sendImageRequestForChatImpl,
 } from '@/composables/chat/chat-scoped/chat-image-helpers';
+import { useChatBranches } from '@/composables/chat/useChatBranches';
+import { useChatCompaction } from '@/composables/chat/useChatCompaction';
+import { useChatConversation } from '@/composables/chat/useChatConversation';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatTitle as useOwnedChatTitle } from '@/composables/chat/useChatTitle';
@@ -54,10 +57,7 @@ import {
   commitFullHistoryManipulationForChat,
   getSiblingsForChat,
 } from '@/composables/chat/chat-scoped/chat-history-flow';
-import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
-import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
-import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
 import { useChatImageGeneration } from '@/composables/chat/chat-scoped/useChatImageGeneration';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
@@ -87,6 +87,9 @@ export function useChat() {
   });
   const currentChat = chatCurrentBridge.currentChat;
   const currentChatGroup = chatCurrentBridge.currentChatGroup;
+  const chatConversation = useChatConversation({});
+  const chatBranches = useChatBranches({});
+  const chatCompaction = useChatCompaction({});
   const chatMetadata = useChatMetadata({});
   const chatModelsOwner = useChatModels({});
   const chatTitleOwner = useOwnedChatTitle({});
@@ -97,32 +100,6 @@ export function useChat() {
   const inheritedSettings = chatDerivedState.inheritedSettings;
   const activeMessages = chatDerivedState.activeMessages;
   const allMessages = chatDerivedState.allMessages;
-
-  function createScopedChatId({
-    chatId,
-  }: {
-    chatId: string | undefined;
-  }) {
-    return computed(() => chatId);
-  }
-
-  function getCurrentChatGeneration() {
-    return useChatGeneration({
-      chatId: computed(() => _currentChat.value?.id),
-    });
-  }
-
-  function getCurrentChatHistory() {
-    return useChatHistory({
-      chatId: computed(() => _currentChat.value?.id),
-    });
-  }
-
-  function getCurrentChatCompact() {
-    return useChatCompact({
-      chatId: computed(() => _currentChat.value?.id),
-    });
-  }
 
   function getCurrentChatImageGeneration() {
     return useChatImageGeneration({
@@ -623,7 +600,13 @@ export function useChat() {
       });
     }
 
-    return await getCurrentChatGeneration().sendMessage({
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return false;
+    }
+
+    return await chatConversation.sendMessage({
+      chatId: currentChatId,
       content,
       parentId,
       attachments,
@@ -644,10 +627,8 @@ export function useChat() {
     attachments: Attachment[] | undefined;
     lmParameters: LmParameters | undefined;
   }): Promise<boolean> {
-    const chatGeneration = useChatGeneration({
-      chatId: createScopedChatId({ chatId }),
-    });
-    return await chatGeneration.sendMessage({
+    return await chatConversation.sendMessage({
+      chatId,
       content,
       parentId,
       attachments,
@@ -661,14 +642,19 @@ export function useChat() {
     chatId: string | undefined;
   }) {
     if (chatId !== undefined) {
-      const chatCompact = useChatCompact({
-        chatId: createScopedChatId({ chatId }),
+      chatCompaction.abort({
+        chatId,
       });
-      chatCompact.abort({});
       return;
     }
 
-    getCurrentChatCompact().abort({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return;
+    }
+    chatCompaction.abort({
+      chatId: currentChatId,
+    });
   }
 
   function abortChat({
@@ -677,14 +663,19 @@ export function useChat() {
     chatId: string | undefined;
   }) {
     if (chatId !== undefined) {
-      const chatGeneration = useChatGeneration({
-        chatId: createScopedChatId({ chatId }),
+      chatConversation.abort({
+        chatId,
       });
-      chatGeneration.abort({});
       return;
     }
 
-    getCurrentChatGeneration().abort({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return;
+    }
+    chatConversation.abort({
+      chatId: currentChatId,
+    });
   }
 
   async function compactCurrentBranch({
@@ -694,7 +685,13 @@ export function useChat() {
     keepRecentMessages: number;
     instructionOverride: string | undefined;
   }) {
-    return await getCurrentChatCompact().run({
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return false;
+    }
+
+    return await chatCompaction.compactCurrentBranch({
+      chatId: currentChatId,
       keepRecentMessages,
       instructionOverride,
     });
@@ -709,10 +706,8 @@ export function useChat() {
     keepRecentMessages: number;
     instructionOverride: string | undefined;
   }) {
-    const chatCompact = useChatCompact({
-      chatId: createScopedChatId({ chatId }),
-    });
-    return await chatCompact.run({
+    return await chatCompaction.compactCurrentBranch({
+      chatId,
       keepRecentMessages,
       instructionOverride,
     });
@@ -726,15 +721,18 @@ export function useChat() {
     chatId?: string;
   }): Promise<string | null> {
     if (chatId !== undefined) {
-      const chatHistory = useChatHistory({
-        chatId: createScopedChatId({ chatId }),
-      });
-      return await chatHistory.forkChat({
+      return await chatBranches.forkChat({
+        chatId,
         messageId,
       });
     }
 
-    return await getCurrentChatHistory().forkChat({
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return null;
+    }
+    return await chatBranches.forkChat({
+      chatId: currentChatId,
       messageId,
     });
   }
@@ -746,10 +744,8 @@ export function useChat() {
     chatId: string;
     messageId: string;
   }): Promise<string | null> {
-    const chatHistory = useChatHistory({
-      chatId: createScopedChatId({ chatId }),
-    });
-    return await chatHistory.forkChat({
+    return await chatBranches.forkChat({
+      chatId,
       messageId,
     });
   }
@@ -763,7 +759,12 @@ export function useChat() {
     newContent: string;
     lmParameters?: LmParameters;
   }): Promise<void> {
-    await getCurrentChatHistory().editMessage({
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return;
+    }
+    await chatBranches.editMessage({
+      chatId: currentChatId,
       messageId,
       newContent,
       lmParameters,
@@ -781,10 +782,8 @@ export function useChat() {
     newContent: string;
     lmParameters?: LmParameters;
   }): Promise<void> {
-    const chatHistory = useChatHistory({
-      chatId: createScopedChatId({ chatId }),
-    });
-    await chatHistory.editMessage({
+    await chatBranches.editMessage({
+      chatId,
       messageId,
       newContent,
       lmParameters,
@@ -796,7 +795,12 @@ export function useChat() {
   }: {
     messageId: string;
   }): Promise<void> {
-    await getCurrentChatHistory().switchVersion({
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return;
+    }
+    await chatBranches.switchVersion({
+      chatId: currentChatId,
       messageId,
     });
   }
@@ -808,10 +812,8 @@ export function useChat() {
     chatId: string;
     messageId: string;
   }): Promise<void> {
-    const chatHistory = useChatHistory({
-      chatId: createScopedChatId({ chatId }),
-    });
-    await chatHistory.switchVersion({
+    await chatBranches.switchVersion({
+      chatId,
       messageId,
     });
   }
@@ -834,7 +836,12 @@ export function useChat() {
   }: {
     failedMessageId: string;
   }): Promise<void> {
-    await getCurrentChatGeneration().regenerateMessage({
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return;
+    }
+    await chatConversation.regenerateMessage({
+      chatId: currentChatId,
       failedMessageId,
     });
   }
@@ -846,10 +853,8 @@ export function useChat() {
     chatId: string;
     failedMessageId: string;
   }): Promise<void> {
-    const chatGeneration = useChatGeneration({
-      chatId: createScopedChatId({ chatId }),
-    });
-    await chatGeneration.regenerateMessage({
+    await chatConversation.regenerateMessage({
+      chatId,
       failedMessageId,
     });
   }
