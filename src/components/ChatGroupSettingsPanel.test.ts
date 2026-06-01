@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import ChatGroupSettingsPanel from './ChatGroupSettingsPanel.vue';
 import { computed, nextTick, reactive, ref, toRef } from 'vue';
 import type { ChatGroup, Settings } from '@/models/types';
-import { useChatGroupMounts } from '@/composables/chat/chat-scoped/useChatGroupMounts';
+import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -85,7 +85,7 @@ vi.mock('../composables/chat/useChatGroups', () => ({
   useChatGroups: vi.fn(),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatGroupMounts', () => ({
+vi.mock('../composables/chat/useChatGroupMounts', () => ({
   useChatGroupMounts: vi.fn(),
 }));
 
@@ -156,15 +156,14 @@ describe('ChatGroupSettingsPanel.vue', () => {
       settings: toRef(mockSettings),
     } as unknown as ReturnType<typeof useSettings>);
     vi.mocked(useChatGroupMounts).mockReturnValue({
-      mounts: computed(() => mockGroup.mounts ?? []),
-      addMount: vi.fn().mockImplementation(async ({ mount }) => {
-        await mocks.addMountToChatGroup({ groupId: mockGroup.id, mount });
+      addMount: vi.fn().mockImplementation(async ({ chatGroupId, mount }) => {
+        await mocks.addMountToChatGroup({ groupId: chatGroupId, mount });
       }),
-      removeMount: vi.fn().mockImplementation(async ({ volumeId }) => {
-        await mocks.removeMountFromChatGroup({ groupId: mockGroup.id, volumeId });
+      removeMount: vi.fn().mockImplementation(async ({ chatGroupId, volumeId }) => {
+        await mocks.removeMountFromChatGroup({ groupId: chatGroupId, volumeId });
       }),
-      updateMount: vi.fn().mockImplementation(async ({ volumeId, mountPath, readOnly }) => {
-        await mocks.updateChatGroupMount({ groupId: mockGroup.id, volumeId, mountPath, readOnly });
+      updateMount: vi.fn().mockImplementation(async ({ chatGroupId, volumeId, mountPath, readOnly }) => {
+        await mocks.updateChatGroupMount({ groupId: chatGroupId, volumeId, mountPath, readOnly });
       }),
       TEST_ONLY: {},
     } as unknown as ReturnType<typeof useChatGroupMounts>);

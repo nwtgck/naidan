@@ -4,8 +4,8 @@ import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
+import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { useChatGroupMounts } from '@/composables/chat/chat-scoped/useChatGroupMounts';
 import {
   Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon,
@@ -43,9 +43,7 @@ const { setActiveFocusArea } = useLayout();
 const chatGroups = useChatGroups({});
 const chatModels = useChatModels({});
 const { openFileExplorer } = useFileExplorerModal();
-const chatGroupMountsActions = useChatGroupMounts({
-  chatGroupId: computed(() => currentChatGroup.value?.id),
-});
+const chatGroupMountsActions = useChatGroupMounts({});
 const isFetchingModels = computed(() => chatModels.fetchingModels.value);
 
 const selectedProviderProfileId = ref('');
@@ -68,22 +66,26 @@ const chatGroupMounts = computed<readonly Mount[]>(() => currentChatGroup.value?
 const existingChatGroupMountPaths = computed(() => chatGroupMounts.value.map(m => m.mountPath));
 
 async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
-  if (!currentChatGroup.value) return;
+  const chatGroupId = currentChatGroup.value?.id;
+  if (!chatGroupId) return;
   await chatGroupMountsActions.addMount({
+    chatGroupId,
     mount: { type: 'volume', volumeId, mountPath, readOnly },
   });
 }
 
 async function handleChatGroupMountRemove({ volumeId }: { volumeId: string }) {
-  if (!currentChatGroup.value) return;
-  await chatGroupMountsActions.removeMount({ volumeId });
+  const chatGroupId = currentChatGroup.value?.id;
+  if (!chatGroupId) return;
+  await chatGroupMountsActions.removeMount({ chatGroupId, volumeId });
 }
 
 async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
-  if (!currentChatGroup.value) return;
+  const chatGroupId = currentChatGroup.value?.id;
+  if (!chatGroupId) return;
   const mount = chatGroupMounts.value.find(m => m.volumeId === volumeId);
   if (!mount) return;
-  await chatGroupMountsActions.updateMount({ volumeId, mountPath: mount.mountPath, readOnly });
+  await chatGroupMountsActions.updateMount({ chatGroupId, volumeId, mountPath: mount.mountPath, readOnly });
 }
 
 async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {

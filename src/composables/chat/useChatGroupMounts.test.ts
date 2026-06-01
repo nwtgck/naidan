@@ -1,4 +1,3 @@
-import { computed } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -41,29 +40,7 @@ describe('useChatGroupMounts', () => {
     mockRootItems.value = [];
   });
 
-  it('returns empty mounts and no-ops when chatGroupId is undefined', async () => {
-    const chatGroupMounts = useChatGroupMounts({
-      chatGroupId: computed(() => undefined),
-    });
-
-    expect(chatGroupMounts.mounts.value).toEqual([]);
-
-    await chatGroupMounts.addMount({
-      mount: { type: 'volume', volumeId: 'vol-1', mountPath: '/mnt/vol-1', readOnly: true },
-    });
-    await chatGroupMounts.removeMount({ volumeId: 'vol-1' });
-    await chatGroupMounts.updateMount({
-      volumeId: 'vol-1',
-      mountPath: '/mnt/vol-1',
-      readOnly: false,
-    });
-
-    expect(mockAddMountToChatGroup).not.toHaveBeenCalled();
-    expect(mockRemoveMountFromChatGroup).not.toHaveBeenCalled();
-    expect(mockUpdateChatGroupMount).not.toHaveBeenCalled();
-  });
-
-  it('binds writes to the scoped chatGroupId', async () => {
+  it('binds writes to the provided chatGroupId', async () => {
     mockCurrentChatGroupRef.value = {
       id: 'group-1',
       mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/mnt/vol-1', readOnly: true }],
@@ -78,19 +55,18 @@ describe('useChatGroupMounts', () => {
       },
     ];
 
-    const chatGroupMounts = useChatGroupMounts({
-      chatGroupId: computed(() => 'group-1'),
-    });
-
-    expect(chatGroupMounts.mounts.value).toEqual([
-      { type: 'volume', volumeId: 'vol-1', mountPath: '/mnt/vol-1', readOnly: true },
-    ]);
+    const chatGroupMounts = useChatGroupMounts({});
 
     await chatGroupMounts.addMount({
+      chatGroupId: 'group-1',
       mount: { type: 'volume', volumeId: 'vol-2', mountPath: '/mnt/vol-2', readOnly: false },
     });
-    await chatGroupMounts.removeMount({ volumeId: 'vol-1' });
+    await chatGroupMounts.removeMount({
+      chatGroupId: 'group-1',
+      volumeId: 'vol-1',
+    });
     await chatGroupMounts.updateMount({
+      chatGroupId: 'group-1',
       volumeId: 'vol-2',
       mountPath: '/mnt/shared',
       readOnly: true,

@@ -56,10 +56,10 @@ import {
 } from '@/composables/chat/chat-scoped/chat-history-flow';
 import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
 import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
-import { useChatGroupMounts } from '@/composables/chat/chat-scoped/useChatGroupMounts';
+import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
 import { useChatImageGeneration } from '@/composables/chat/chat-scoped/useChatImageGeneration';
-import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
+import { useChatMounts } from '@/composables/chat/useChatMounts';
 import type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
@@ -106,14 +106,6 @@ export function useChat() {
     return computed(() => chatId);
   }
 
-  function createScopedChatGroupId({
-    chatGroupId,
-  }: {
-    chatGroupId: string | undefined;
-  }) {
-    return computed(() => chatGroupId);
-  }
-
   function getCurrentChatGeneration() {
     return useChatGeneration({
       chatId: computed(() => _currentChat.value?.id),
@@ -145,10 +137,10 @@ export function useChat() {
     chatId: string;
     mount: import('@/models/types').Mount;
   }) {
-    const chatMounts = useChatMounts({
-      chatId: createScopedChatId({ chatId }),
+    await useChatMounts({}).addMount({
+      chatId,
+      mount,
     });
-    await chatMounts.addMount({ mount });
   }
 
   async function removeMountFromChat({
@@ -158,10 +150,10 @@ export function useChat() {
     chatId: string;
     volumeId: string;
   }) {
-    const chatMounts = useChatMounts({
-      chatId: createScopedChatId({ chatId }),
+    await useChatMounts({}).removeMount({
+      chatId,
+      volumeId,
     });
-    await chatMounts.removeMount({ volumeId });
   }
 
   async function updateChatMount({
@@ -173,10 +165,8 @@ export function useChat() {
     volumeId: string;
     readOnly: boolean;
   }) {
-    const chatMounts = useChatMounts({
-      chatId: createScopedChatId({ chatId }),
-    });
-    await chatMounts.updateMount({
+    await useChatMounts({}).updateMount({
+      chatId,
       volumeId,
       readOnly,
     });
@@ -189,10 +179,10 @@ export function useChat() {
     groupId: string;
     mount: import('@/models/types').Mount;
   }) {
-    const chatGroupMounts = useChatGroupMounts({
-      chatGroupId: createScopedChatGroupId({ chatGroupId: groupId }),
+    await useChatGroupMounts({}).addMount({
+      chatGroupId: groupId,
+      mount,
     });
-    await chatGroupMounts.addMount({ mount });
   }
 
   async function removeMountFromChatGroup({
@@ -202,10 +192,10 @@ export function useChat() {
     groupId: string;
     volumeId: string;
   }) {
-    const chatGroupMounts = useChatGroupMounts({
-      chatGroupId: createScopedChatGroupId({ chatGroupId: groupId }),
+    await useChatGroupMounts({}).removeMount({
+      chatGroupId: groupId,
+      volumeId,
     });
-    await chatGroupMounts.removeMount({ volumeId });
   }
 
   async function updateChatGroupMount({
@@ -219,10 +209,8 @@ export function useChat() {
     mountPath: string;
     readOnly: boolean;
   }) {
-    const chatGroupMounts = useChatGroupMounts({
-      chatGroupId: createScopedChatGroupId({ chatGroupId: groupId }),
-    });
-    await chatGroupMounts.updateMount({
+    await useChatGroupMounts({}).updateMount({
+      chatGroupId: groupId,
       volumeId,
       mountPath,
       readOnly,

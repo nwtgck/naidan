@@ -50,25 +50,7 @@ describe('useChatMounts', () => {
     mockGetLiveChatById.mockReturnValue(undefined);
   });
 
-  it('returns empty mounts and no-ops when chatId is undefined', async () => {
-    const chatMounts = useChatMounts({
-      chatId: computed(() => undefined),
-    });
-
-    expect(chatMounts.mounts.value).toEqual([]);
-
-    await chatMounts.addMount({
-      mount: { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true },
-    });
-    await chatMounts.removeMount({ volumeId: 'vol-1' });
-    await chatMounts.updateMount({ volumeId: 'vol-1', readOnly: false });
-
-    expect(mockAddMountToChat).not.toHaveBeenCalled();
-    expect(mockRemoveMountFromChat).not.toHaveBeenCalled();
-    expect(mockUpdateChatMount).not.toHaveBeenCalled();
-  });
-
-  it('binds reads and writes to the scoped chatId', async () => {
+  it('binds reads and writes to the provided chatId', async () => {
     const liveChat = {
       id: 'chat-1',
       mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true }],
@@ -78,19 +60,28 @@ describe('useChatMounts', () => {
     mockGetReadonlyChat.mockReturnValue(liveChat);
     mockGetLiveChatById.mockReturnValue(liveChat);
 
-    const chatMounts = useChatMounts({
+    const chatMounts = useChatMounts({});
+    const mounts = chatMounts.getMounts({
       chatId: computed(() => 'chat-1'),
     });
 
-    expect(chatMounts.mounts.value).toEqual([
+    expect(mounts.value).toEqual([
       { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true },
     ]);
 
     await chatMounts.addMount({
+      chatId: 'chat-1',
       mount: { type: 'volume', volumeId: 'vol-2', mountPath: '/home/user/data', readOnly: false },
     });
-    await chatMounts.removeMount({ volumeId: 'vol-1' });
-    await chatMounts.updateMount({ volumeId: 'vol-2', readOnly: true });
+    await chatMounts.removeMount({
+      chatId: 'chat-1',
+      volumeId: 'vol-1',
+    });
+    await chatMounts.updateMount({
+      chatId: 'chat-1',
+      volumeId: 'vol-2',
+      readOnly: true,
+    });
 
     expect(mockAddMountToChat).toHaveBeenCalledWith({
       chatId: 'chat-1',

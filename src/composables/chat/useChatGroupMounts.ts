@@ -1,101 +1,87 @@
-import { computed, type ComputedRef, type Ref } from 'vue';
-import type { ChatGroup, Mount, SidebarItem } from '@/models/types';
+import type { Mount } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { currentChatGroupRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
+import {
+  currentChatGroupRef,
+  rootItems,
+} from '@/composables/chat/global/chat-core-singletons';
 
 export type ChatGroupMountsAdapter = {
-  mounts: ComputedRef<Mount[]>;
-
   addMount({
+    chatGroupId,
     mount,
   }: {
+    chatGroupId: string;
     mount: Mount;
   }): Promise<void>;
 
   removeMount({
+    chatGroupId,
     volumeId,
   }: {
+    chatGroupId: string;
     volumeId: string;
   }): Promise<void>;
 
   updateMount({
+    chatGroupId,
     volumeId,
     mountPath,
     readOnly,
   }: {
+    chatGroupId: string;
     volumeId: string;
     mountPath: string;
     readOnly: boolean;
   }): Promise<void>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
-export function useChatGroupMounts({
-  chatGroupId,
-}: {
-  chatGroupId: Ref<string | undefined>;
-}): ChatGroupMountsAdapter {
-  const currentChatGroup = computed(() => {
-    const id = chatGroupId.value;
-    if (id === undefined) {
-      return null;
-    }
-
-    return findChatGroupById({
-      items: rootItems.value,
-      chatGroupId: id,
-    });
-  });
-
-  const mounts = computed(() => currentChatGroup.value?.mounts ?? []);
-
+export function useChatGroupMounts(_args: Record<never, never>): ChatGroupMountsAdapter {
   async function addMount({
+    chatGroupId,
     mount,
   }: {
+    chatGroupId: string;
     mount: Mount;
   }): Promise<void> {
-    const groupId = chatGroupId.value;
-    if (groupId === undefined) {
-      return;
-    }
-
     await storageService.addMountToChatGroup({
-      groupId,
+      groupId: chatGroupId,
       mount,
     });
 
-    const group = currentChatGroup.value;
+    const group = findChatGroupById({
+      chatGroupId,
+    });
     if (group !== null) {
       group.mounts = [...(group.mounts ?? []), mount];
     }
 
-    if (currentChatGroupRef.value?.id === groupId && currentChatGroupRef.value !== group) {
+    if (currentChatGroupRef.value?.id === chatGroupId && currentChatGroupRef.value !== group) {
       currentChatGroupRef.value.mounts = [...(currentChatGroupRef.value.mounts ?? []), mount];
     }
   }
 
   async function removeMount({
+    chatGroupId,
     volumeId,
   }: {
+    chatGroupId: string;
     volumeId: string;
   }): Promise<void> {
-    const groupId = chatGroupId.value;
-    if (groupId === undefined) {
-      return;
-    }
-
     await storageService.removeMountFromChatGroup({
-      groupId,
+      groupId: chatGroupId,
       volumeId,
     });
 
-    const group = currentChatGroup.value;
+    const group = findChatGroupById({
+      chatGroupId,
+    });
     if (group !== null) {
       group.mounts = (group.mounts ?? []).filter(mount => !(mount.type === 'volume' && mount.volumeId === volumeId));
     }
 
-    if (currentChatGroupRef.value?.id === groupId && currentChatGroupRef.value !== group) {
+    if (currentChatGroupRef.value?.id === chatGroupId && currentChatGroupRef.value !== group) {
       currentChatGroupRef.value.mounts = (currentChatGroupRef.value.mounts ?? []).filter(
         mount => !(mount.type === 'volume' && mount.volumeId === volumeId)
       );
@@ -103,44 +89,45 @@ export function useChatGroupMounts({
   }
 
   async function updateMount({
+    chatGroupId,
     volumeId,
     mountPath,
     readOnly,
   }: {
+    chatGroupId: string;
     volumeId: string;
     mountPath: string;
     readOnly: boolean;
   }): Promise<void> {
-    const groupId = chatGroupId.value;
-    if (groupId === undefined) {
-      return;
-    }
-
     await storageService.updateChatGroupMount({
-      groupId,
+      groupId: chatGroupId,
       volumeId,
       mountPath,
       readOnly,
     });
 
     const applyUpdate = ({
-      mounts: existingMounts,
+      mounts,
     }: {
       mounts: Mount[] | undefined;
     }): Mount[] => {
-      return (existingMounts ?? []).map(mount =>
+      return (mounts ?? []).map(mount =>
         mount.type === 'volume' && mount.volumeId === volumeId
           ? { ...mount, mountPath, readOnly }
           : mount
       );
     };
 
-    const group = currentChatGroup.value;
+    const group = findChatGroupById({
+      chatGroupId,
+    });
     if (group !== null) {
-      group.mounts = applyUpdate({ mounts: group.mounts });
+      group.mounts = applyUpdate({
+        mounts: group.mounts,
+      });
     }
 
-    if (currentChatGroupRef.value?.id === groupId && currentChatGroupRef.value !== group) {
+    if (currentChatGroupRef.value?.id === chatGroupId && currentChatGroupRef.value !== group) {
       currentChatGroupRef.value.mounts = applyUpdate({
         mounts: currentChatGroupRef.value.mounts,
       });
@@ -148,22 +135,21 @@ export function useChatGroupMounts({
   }
 
   return {
-    mounts,
     addMount,
     removeMount,
     updateMount,
-    TEST_ONLY: {},
+    TEST_ONLY: {
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    },
   };
 }
 
 function findChatGroupById({
-  items,
   chatGroupId,
 }: {
-  items: SidebarItem[];
   chatGroupId: string;
-}): ChatGroup | null {
-  for (const item of items) {
+}) {
+  for (const item of rootItems.value) {
     switch (item.type) {
     case 'chat':
       break;
