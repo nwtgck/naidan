@@ -52,8 +52,8 @@ import {
 } from '@/composables/chat/chat-scoped/chat-generation-flow';
 import {
   commitFullHistoryManipulationForChat,
-  getSiblingsForChat,
 } from '@/composables/chat/chat-scoped/chat-history-flow';
+import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
@@ -815,10 +815,17 @@ export function useChat() {
     messageId: string;
     chatId?: string;
   }): MessageNode[] {
-    return getSiblingsForChat({
-      chatId,
+    const targetChat = chatId !== undefined
+      ? chatCurrentBridge.getChatTargetById({ id: chatId })
+      : chatCurrentBridge.getCurrentChat({});
+    if (targetChat === null) {
+      return [];
+    }
+
+    return [...getSiblingsInChatBranch({
+      root: targetChat.root,
       messageId,
-    });
+    })];
   }
 
   async function regenerateMessage({

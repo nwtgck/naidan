@@ -35,7 +35,6 @@ import {
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
 import {
-  sendMessageToCurrentChat,
   sendMessageToTargetChat,
 } from '@/composables/chat/chat-scoped/chat-generation-flow';
 import {
@@ -54,17 +53,6 @@ export async function forkChatForChat({
 }): Promise<string | null> {
   return await forkChatFromTarget({
     targetChat: getChatTargetByOptionalId({ chatId }),
-    messageId,
-  });
-}
-
-export async function forkCurrentChat({
-  messageId,
-}: {
-  messageId: string;
-}): Promise<string | null> {
-  return await forkChatFromTarget({
-    targetChat: currentChatRef.value,
     messageId,
   });
 }
@@ -92,26 +80,6 @@ export async function editMessageForChat({
   });
 }
 
-export async function editCurrentChatMessage({
-  messageId,
-  newContent,
-  lmParameters,
-}: {
-  messageId: string;
-  newContent: string;
-  lmParameters: LmParameters | undefined;
-}): Promise<void> {
-  if (currentChatRef.value === null) {
-    return;
-  }
-  await editMessageInTarget({
-    targetChat: currentChatRef.value,
-    messageId,
-    newContent,
-    lmParameters,
-  });
-}
-
 export async function switchVersionForChat({
   chatId,
   messageId,
@@ -127,37 +95,6 @@ export async function switchVersionForChat({
     targetChat,
     messageId,
   });
-}
-
-export async function switchVersionInCurrentChat({
-  messageId,
-}: {
-  messageId: string;
-}): Promise<void> {
-  if (currentChatRef.value === null) {
-    return;
-  }
-  await switchVersionInTarget({
-    targetChat: currentChatRef.value,
-    messageId,
-  });
-}
-
-export function getSiblingsForChat({
-  chatId,
-  messageId,
-}: {
-  chatId: string | undefined;
-  messageId: string;
-}): MessageNode[] {
-  const target = chatId ? liveChatRegistry.get(chatId) ?? null : currentChatRef.value;
-  if (target === null) {
-    return [];
-  }
-
-  const mutableChat = getLiveChat({ chat: target });
-  const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
-  return parent ? parent.replies.items : mutableChat.root.items;
 }
 
 export async function commitFullHistoryManipulationForChat({
@@ -498,16 +435,6 @@ async function sendEditedMessage({
   lmParameters: LmParameters | undefined;
 }): Promise<void> {
   const parent = findParentInBranch({ items: mutableChat.root.items, childId: messageId });
-  if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === mutableChat.id) {
-    await sendMessageToCurrentChat({
-      content: newContent,
-      parentId: parent ? parent.id : null,
-      attachments,
-      lmParameters,
-    });
-    return;
-  }
-
   await sendMessageToTargetChat({
     targetChat: mutableChat,
     content: newContent,
