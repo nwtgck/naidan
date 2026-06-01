@@ -34,10 +34,10 @@ export type ChatConversationAdapter = {
     chatId: string;
   }): void;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
-export function useChatConversation(_args: Record<string, never>): ChatConversationAdapter {
+export function useChatConversation(_args: Record<never, never>): ChatConversationAdapter {
   async function sendMessage({
     chatId,
     content,

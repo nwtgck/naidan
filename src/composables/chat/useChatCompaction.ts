@@ -20,10 +20,10 @@ export type ChatCompactionAdapter = {
     chatId: string;
   }): void;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
-export function useChatCompaction(_args: Record<string, never>): ChatCompactionAdapter {
+export function useChatCompaction(_args: Record<never, never>): ChatCompactionAdapter {
   async function compactCurrentBranch({
     chatId,
     keepRecentMessages,

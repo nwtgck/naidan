@@ -34,10 +34,10 @@ export type ChatBranchesAdapter = {
     messageId: string;
   }): Promise<string | null>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
-export function useChatBranches(_args: Record<string, never>): ChatBranchesAdapter {
+export function useChatBranches(_args: Record<never, never>): ChatBranchesAdapter {
   async function editMessage({
     chatId,
     messageId,
