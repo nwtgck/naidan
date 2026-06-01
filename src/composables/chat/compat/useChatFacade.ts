@@ -39,7 +39,7 @@ import {
   generateImageForChat,
   handleImageGenerationForChat,
   sendImageRequestForChat as sendImageRequestForChatImpl,
-} from '@/composables/chat/chat-scoped/chat-image-helpers';
+} from '@/composables/chat/chat-scoped/chat-image-flow';
 import { useChatBranches } from '@/composables/chat/useChatBranches';
 import { useChatCompaction } from '@/composables/chat/useChatCompaction';
 import { useChatConversation } from '@/composables/chat/useChatConversation';

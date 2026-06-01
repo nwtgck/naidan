@@ -3,7 +3,7 @@ import type { Attachment, LmParameters } from '@/models/types';
 import { availableModels } from '@/composables/chat/global/chat-core-singletons';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ImageRequestParams } from '@/utils/image-generation';
-import { sendImageRequestForChat } from '@/composables/chat/chat-scoped/chat-image-helpers';
+import { sendImageRequestForChat } from '@/composables/chat/chat-scoped/chat-image-flow';
 import { sendMessageForChat } from '@/composables/chat/chat-scoped/chat-generation-flow';
 
 export type ChatImageGenerationAdapter = {

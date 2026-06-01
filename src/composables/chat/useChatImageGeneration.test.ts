@@ -62,7 +62,7 @@ vi.mock('@/composables/useImageGeneration', () => ({
   }),
 }));
 
-vi.mock('@/composables/chat/chat-scoped/chat-image-helpers', () => ({
+vi.mock('@/composables/chat/chat-scoped/chat-image-flow', () => ({
   sendImageRequestForChat: mockSendImageRequestForChat,
 }));
 

@@ -74,7 +74,7 @@ import {
 } from '@/composables/chat/chat-scoped/chat-processing-abort';
 import {
   handleImageGenerationForChat,
-} from '@/composables/chat/chat-scoped/chat-image-helpers';
+} from '@/composables/chat/chat-scoped/chat-image-flow';
 import {
   fetchAvailableModelsForChat,
 } from '@/composables/chat/chat-scoped/chat-model-flow';
