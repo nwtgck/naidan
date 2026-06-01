@@ -27,7 +27,7 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
 import { scrollIntoViewSafe } from '@/utils/dom';
-import { isProcessing as isChatProcessing } from '@/composables/chat/global/chat-core-singletons';
+import { isChatProcessing } from '@/composables/chat/chat-activity-queries';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';

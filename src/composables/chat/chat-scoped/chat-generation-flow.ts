@@ -56,8 +56,8 @@ import {
   currentChatGroupRef,
   currentChatRef,
   ensureChatTmpDirectory,
-  getChatTargetByOptionalId,
   getLiveChat,
+  getLiveChatById,
   isProcessing,
   loadData,
   registerLiveInstance,
@@ -112,7 +112,7 @@ export async function sendMessageForChat({
   attachments: Attachment[] | undefined;
   lmParameters: LmParameters | undefined;
 }): Promise<boolean> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   return await sendMessageToTargetChat({
     targetChat,
     content,
@@ -716,7 +716,7 @@ export async function regenerateMessageForChat({
   chatId: string;
   failedMessageId: string;
 }): Promise<void> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
     return;
   }
@@ -1142,7 +1142,7 @@ async function handleImageGenerationWithDefaults({
   model: string | undefined;
   signal: AbortSignal | undefined;
 }): Promise<void> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
     return;
   }

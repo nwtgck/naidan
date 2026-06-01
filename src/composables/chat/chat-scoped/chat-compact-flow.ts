@@ -18,8 +18,8 @@ import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import {
   chatRuntimeStore,
   contextCompactRuntime,
-  getChatTargetByOptionalId,
   getLiveChat,
+  getLiveChatById,
   getReadonlyChat,
   isProcessing,
   registerLiveInstance,
@@ -59,7 +59,7 @@ export async function runCompactCurrentBranchForChat({
   keepRecentMessages: number;
   instructionOverride: string | undefined;
 }): Promise<CompactCurrentBranchResult> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
     return { status: 'skipped', reason: 'no_current_chat' };
   }

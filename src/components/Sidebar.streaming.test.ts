@@ -96,13 +96,9 @@ vi.mock('../composables/chat/ui/useChatOrganization', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/global/chat-core-singletons', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../composables/chat/global/chat-core-singletons')>();
-  return {
-    ...actual,
-    isProcessing: ({ chatId }: { chatId: string }) => mockActiveGenerations.has(chatId),
-  };
-});
+vi.mock('../composables/chat/chat-activity-queries', () => ({
+  isChatProcessing: ({ chatId }: { chatId: string }) => mockActiveGenerations.has(chatId),
+}));
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({

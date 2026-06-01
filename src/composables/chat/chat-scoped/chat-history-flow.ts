@@ -23,11 +23,9 @@ import {
 } from '@/utils/chat-tree';
 import { generateId } from '@/utils/id';
 import {
-  currentChatRef,
-  getChatTargetByOptionalId,
   getLiveChat,
+  getLiveChatById,
   isProcessing,
-  liveChatRegistry,
   loadData,
   registerLiveInstance,
   triggerCurrentChat as notifyChatChanged,
@@ -52,7 +50,7 @@ export async function forkChatForChat({
   messageId: string;
 }): Promise<string | null> {
   return await forkChatFromTarget({
-    targetChat: getChatTargetByOptionalId({ chatId }),
+    targetChat: getLiveChatById({ chatId }),
     messageId,
   });
 }
@@ -68,7 +66,7 @@ export async function editMessageForChat({
   newContent: string;
   lmParameters: LmParameters | undefined;
 }): Promise<void> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
     return;
   }
@@ -87,7 +85,7 @@ export async function switchVersionForChat({
   chatId: string;
   messageId: string;
 }): Promise<void> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
     return;
   }
@@ -106,7 +104,7 @@ export async function commitFullHistoryManipulationForChat({
   messages: HistoryItem[];
   systemPrompt: SystemPrompt | undefined;
 }): Promise<void> {
-  const target = liveChatRegistry.get(chatId) || (currentChatRef.value !== null && toRaw(currentChatRef.value).id === chatId ? currentChatRef.value : null);
+  const target = getLiveChatById({ chatId });
   if (target === null) {
     return;
   }
