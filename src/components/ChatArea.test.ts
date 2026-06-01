@@ -527,7 +527,7 @@ vi.mock('../composables/chat/useChatMounts', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatImageGeneration', () => ({
+vi.mock('../composables/chat/useChatImageGeneration', () => ({
   useChatImageGeneration: () => ({
     availableModels: mockAvailableModels,
     isImageMode: computed(() => false),

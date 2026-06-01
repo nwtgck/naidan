@@ -10,7 +10,7 @@ import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useChatConversation } from '@/composables/chat/useChatConversation';
 import { useChatDraft } from '@/composables/useChatDraft';
-import { useChatImageGeneration } from '@/composables/chat/chat-scoped/useChatImageGeneration';
+import { useChatImageGeneration } from '@/composables/chat/useChatImageGeneration';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';

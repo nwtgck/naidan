@@ -58,7 +58,6 @@ import {
   getSiblingsForChat,
 } from '@/composables/chat/chat-scoped/chat-history-flow';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
-import { useChatImageGeneration } from '@/composables/chat/chat-scoped/useChatImageGeneration';
 import { useChatMounts } from '@/composables/chat/useChatMounts';
 import type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
@@ -100,12 +99,6 @@ export function useChat() {
   const inheritedSettings = chatDerivedState.inheritedSettings;
   const activeMessages = chatDerivedState.activeMessages;
   const allMessages = chatDerivedState.allMessages;
-
-  function getCurrentChatImageGeneration() {
-    return useChatImageGeneration({
-      chatId: computed(() => _currentChat.value?.id),
-    });
-  }
 
   async function addMountToChat({
     chatId,
@@ -948,7 +941,13 @@ export function useChat() {
     persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }) {
-    return await getCurrentChatImageGeneration().sendImageRequest({
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return false;
+    }
+
+    return await sendImageRequestForChatCompat({
+      chatId: currentChatId,
       prompt,
       width,
       height,
