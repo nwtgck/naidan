@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
 import ChatPrintContent from './ChatPrintContent.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
+import { useChatBranches } from '@/composables/chat/useChatBranches';
 
 // Mock dependencies
 const mockMarkPrintReady = vi.fn();
@@ -15,7 +15,8 @@ vi.mock('../composables/usePrint', () => ({
 
 const mockCurrentChat = ref<any>({
   id: 'chat_123',
-  title: 'Test Chat Title'
+  title: 'Test Chat Title',
+  root: { items: [] },
 });
 const mockActiveMessages = ref<any[]>([
   { id: 'msg_1', role: 'user', content: 'Hello' },
@@ -26,8 +27,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatHistory', () => ({
-  useChatHistory: vi.fn(),
+vi.mock('../composables/chat/useChatBranches', () => ({
+  useChatBranches: vi.fn(),
 }));
 
 // Mock MessageItem to avoid complex rendering
@@ -54,13 +55,13 @@ describe('ChatPrintContent component', () => {
       sidebarItems: computed(() => []),
       TEST_ONLY: {},
     } as ReturnType<typeof useCurrentChatState>);
-    vi.mocked(useChatHistory).mockReturnValue({
+    vi.mocked(useChatBranches).mockReturnValue({
       editMessage: vi.fn(),
       switchVersion: vi.fn(),
       forkChat: vi.fn(),
       getSiblings: vi.fn(() => []),
       TEST_ONLY: {},
-    } as unknown as ReturnType<typeof useChatHistory>);
+    } as unknown as ReturnType<typeof useChatBranches>);
   });
 
   it('should call markPrintReady when mounted', () => {

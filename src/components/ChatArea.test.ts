@@ -46,7 +46,6 @@ const mockRegenerateMessage = vi.fn();
 const mockEditMessage = vi.fn();
 const mockSwitchVersion = vi.fn();
 const mockForkChat = vi.fn().mockResolvedValue('new-id');
-const mockGetSiblings = vi.fn().mockReturnValue([]);
 const mockToggleChatDebug = vi.fn();
 const mockContextCompactProgress = ref<any>({ phase: 'idle' });
 const mockRenameChat = vi.fn().mockImplementation(({ newTitle }) => {
@@ -265,6 +264,20 @@ vi.mock('../composables/chat/ui/useChatAreaData', () => ({
 }));
 
 vi.mock('../composables/chat/chat-scoped/chat-metadata-helpers', () => ({
+  renameChatById: ({ chatId, title }: { chatId: string; title: string }) =>
+    mockRenameChat({
+      id: chatId,
+      newTitle: title,
+    }),
+  toggleDebugForChatId: ({ chatId }: { chatId: string }) => {
+    if (mockCurrentChat.value?.id === chatId) {
+      mockCurrentChat.value = {
+        ...mockCurrentChat.value,
+        debugEnabled: !mockCurrentChat.value.debugEnabled,
+      };
+    }
+    return mockToggleChatDebug();
+  },
   updateChatSettingsById: ({ chatId, updates }: { chatId: string; updates: Record<string, unknown> }) =>
     mockUpdateChatSettings({
       id: chatId,
@@ -276,91 +289,144 @@ vi.mock('../composables/chat/chat-scoped/chat-metadata-helpers', () => ({
       modelId,
     });
   },
+  getReasoningEffortForChatId: ({ chatId }: { chatId: string }) =>
+    mockCurrentChat.value?.id === chatId ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined,
+  updateReasoningEffortForChatId: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+    if (mockCurrentChat.value?.id === chatId) {
+      mockCurrentChat.value = {
+        ...mockCurrentChat.value,
+        lmParameters: {
+          ...(mockCurrentChat.value.lmParameters || EMPTY_LM_PARAMETERS),
+          reasoning: { effort },
+        },
+      };
+    }
+  },
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
-  useChatRuntime: () => ({
-    isProcessing: computed(() => !!mockCurrentChat.value && (mockStreaming.value || mockActiveGenerations.has(mockCurrentChat.value.id))),
-    contextCompactProgress: mockContextCompactProgress,
+vi.mock('../composables/chat/chat-activity-queries', () => ({
+  isChatProcessing: ({ chatId }: { chatId: string }) =>
+    !!mockCurrentChat.value && mockCurrentChat.value.id === chatId && (mockStreaming.value || mockActiveGenerations.has(chatId)),
+  getChatContextCompactProgress: ({ chatId }: { chatId: string }) =>
+    mockCurrentChat.value?.id === chatId ? mockContextCompactProgress.value : { phase: 'idle' },
+  isChatGeneratingTitle: ({ chatId }: { chatId: string }) =>
+    mockCurrentChat.value?.id === chatId ? mockGeneratingTitle.value : false,
+}));
+
+vi.mock('../composables/chat/useChatConversation', () => ({
+  useChatConversation: () => ({
+    sendMessage: ({ chatId, content, parentId, attachments, lmParameters }: {
+      chatId: string;
+      content: string;
+      parentId: string | null | undefined;
+      attachments: unknown[] | undefined;
+      lmParameters: unknown;
+    }) => mockSendMessage({
+      chatId,
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    }),
+    regenerateMessage: ({ chatId, failedMessageId }: { chatId: string; failedMessageId: string }) =>
+      mockRegenerateMessage({
+        chatId,
+        failedMessageId,
+      }),
+    abort: ({ chatId }: { chatId: string }) => mockAbortChat({ chatId }),
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
-  useChatGeneration: () => ({
-    sendMessage: mockSendMessage,
-    regenerateMessage: mockRegenerateMessage,
-    abort: mockAbortChat,
+vi.mock('../composables/chat/useChatBranches', () => ({
+  useChatBranches: () => ({
+    editMessage: ({ chatId, messageId, newContent, lmParameters }: {
+      chatId: string;
+      messageId: string;
+      newContent: string;
+      lmParameters: unknown;
+    }) => mockEditMessage({
+      chatId,
+      messageId,
+      newContent,
+      lmParameters,
+    }),
+    switchVersion: ({ chatId, messageId }: { chatId: string; messageId: string }) =>
+      mockSwitchVersion({
+        chatId,
+        messageId,
+      }),
+    forkChat: ({ chatId, messageId }: { chatId: string; messageId: string }) =>
+      mockForkChat({
+        chatId,
+        messageId,
+      }),
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatHistory', () => ({
-  useChatHistory: () => ({
-    editMessage: mockEditMessage,
-    switchVersion: mockSwitchVersion,
-    forkChat: mockForkChat,
-    getSiblings: mockGetSiblings,
+vi.mock('../composables/chat/useChatCompaction', () => ({
+  useChatCompaction: () => ({
+    compactCurrentBranch: ({ chatId, keepRecentMessages, instructionOverride }: {
+      chatId: string;
+      keepRecentMessages: number;
+      instructionOverride: string | undefined;
+    }) => mockCompactCurrentBranch({
+      chatId,
+      keepRecentMessages,
+      instructionOverride,
+    }),
+    abort: ({ chatId }: { chatId: string }) =>
+      mockAbortContextCompact({ chatId }),
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatGrouping', () => ({
-  useChatGrouping: () => ({
-    moveToGroup: ({ groupId }: { groupId: string | null }) =>
+vi.mock('../composables/chat/useChatGroups', () => ({
+  useChatGroups: () => ({
+    moveChatToGroup: ({ chatId, chatGroupId }: { chatId: string; chatGroupId: string | null }) =>
       mockMoveChatToGroup({
-        chatId: mockCurrentChat.value?.id,
-        targetGroupId: groupId,
+        chatId,
+        targetGroupId: chatGroupId,
       }),
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatTitle', () => ({
+vi.mock('../composables/chat/useChatTitle', () => ({
   useChatTitle: () => ({
-    isGenerating: computed(() => mockGeneratingTitle.value),
-    rename: ({ title }: { title: string }) =>
-      mockRenameChat({
-        id: mockCurrentChat.value?.id,
-        newTitle: title,
-      }),
-    generateTitle: ({ titleModelIdOverride }: { titleModelIdOverride: string | undefined }) =>
+    generateTitle: ({ chatId, titleModelIdOverride }: { chatId: string; titleModelIdOverride: string | undefined }) =>
       mockGenerateChatTitle({
-        chatId: mockCurrentChat.value?.id,
+        chatId,
         titleModelIdOverride,
       }),
-    abort: () =>
+    abortTitleGeneration: ({ chatId }: { chatId: string }) =>
       mockAbortTitleGeneration({
-        chatId: mockCurrentChat.value?.id,
+        chatId,
       }),
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatDebug', () => ({
-  useChatDebug: () => ({
-    enabled: computed(() => mockCurrentChat.value?.debugEnabled === true),
-    toggle: () => {
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: ({ chatId, title }: { chatId: string; title: string }) =>
+      mockRenameChat({
+        id: chatId,
+        newTitle: title,
+      }),
+    toggleDebug: ({ chatId }: { chatId: string }) => {
       mockToggleChatDebug();
-      if (mockCurrentChat.value) {
-        mockCurrentChat.value.debugEnabled = !mockCurrentChat.value.debugEnabled;
+      if (mockCurrentChat.value?.id === chatId) {
+        mockCurrentChat.value = {
+          ...mockCurrentChat.value,
+          debugEnabled: !mockCurrentChat.value.debugEnabled,
+        };
       }
     },
-  }),
-}));
-
-vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
-  useChatModelSelection: () => ({
-    availableModels: mockAvailableModels,
-    fetchingModels: computed(() => mockFetchingModels.value),
-    fetchModels: () =>
-      mockFetchAvailableModels({
-        chatId: mockCurrentChat.value?.id,
-        customEndpoint: undefined,
-      }),
-    updateModel: ({ modelId }: { modelId: string | undefined }) => {
-      if (mockCurrentChat.value) {
+    updateModel: ({ chatId, modelId }: { chatId: string; modelId: string | undefined }) => {
+      if (mockCurrentChat.value?.id === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
           modelId,
         };
         queueMicrotask(() => {
-          if (mockCurrentChat.value) {
+          if (mockCurrentChat.value?.id === chatId) {
             mockCurrentChat.value = {
               ...mockCurrentChat.value,
               modelId,
@@ -368,7 +434,7 @@ vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
           }
         });
         setTimeout(() => {
-          if (mockCurrentChat.value) {
+          if (mockCurrentChat.value?.id === chatId) {
             mockCurrentChat.value = {
               ...mockCurrentChat.value,
               modelId,
@@ -378,24 +444,57 @@ vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
       }
 
       return mockUpdateChatModel({
-        id: mockCurrentChat.value?.id,
+        id: chatId,
         modelId,
       });
+    },
+    updateSettings: ({ chatId, updates }: { chatId: string; updates: Record<string, unknown> }) =>
+      mockUpdateChatSettings({
+        id: chatId,
+        updates,
+      }),
+    reasoningEffort: ({ chatId }: { chatId: { value: string } }) =>
+      computed(() => mockCurrentChat.value?.id === chatId.value ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined),
+    updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+      if (mockCurrentChat.value?.id === chatId) {
+        mockCurrentChat.value = {
+          ...mockCurrentChat.value,
+          lmParameters: {
+            ...(mockCurrentChat.value.lmParameters || EMPTY_LM_PARAMETERS),
+            reasoning: { effort },
+          },
+        };
+      }
     },
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
-  useChatReasoning: () => ({
-    effort: computed(() => mockCurrentChat.value?.lmParameters?.reasoning?.effort),
-    updateEffort: ({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
-      if (mockCurrentChat.value) {
-        mockCurrentChat.value.lmParameters = {
-          ...(mockCurrentChat.value.lmParameters || EMPTY_LM_PARAMETERS),
-          reasoning: { effort },
-        };
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
+    availableModels: mockAvailableModels,
+    fetchingModels: computed(() => mockFetchingModels.value),
+    fetchForChat: ({ chatId }: { chatId: string }) =>
+      mockFetchAvailableModels({
+        chatId,
+        customEndpoint: undefined,
+      }),
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMounts', () => ({
+  useChatMounts: () => ({
+    getMounts: ({ chatId }: { chatId: { value: string } }) => computed(() => {
+      if (mockCurrentChat.value?.id !== chatId.value) {
+        return [];
       }
-    },
+
+      return mockCurrentChat.value?.mounts ?? [];
+    }),
+    addMount: vi.fn(),
+    removeMount: vi.fn(),
+    updateMount: vi.fn(),
   }),
 }));
 
@@ -757,6 +856,7 @@ describe('ChatArea UI States', () => {
     });
 
     expect(mockCompactCurrentBranch).toHaveBeenCalledWith({
+      chatId: '1',
       keepRecentMessages: 6,
       instructionOverride: 'Edited compact prompt',
     });
@@ -3385,7 +3485,7 @@ describe('ChatArea Model Selection', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockSendMessage).toHaveBeenCalledWith({ content: 'automatic message', parentId: undefined, attachments: [], chatTarget: undefined, lmParameters: expect.anything() });
+    expect(mockSendMessage).toHaveBeenCalledWith({ chatId: '1', content: 'automatic message', parentId: undefined, attachments: [], lmParameters: expect.anything() });
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 
