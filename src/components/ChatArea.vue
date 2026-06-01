@@ -328,6 +328,7 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
   });
   const generatedTitle = await chatTitle.generateTitle({
     chatId,
+    signal: undefined,
     titleModelIdOverride: modelId,
   });
   if (!generatedTitle) return;
@@ -337,7 +338,7 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
   generatedTitleHistory.value = Array.from(new Set(nextHistory));
 }
 
-function handleAbortTitleGeneration(_args: Record<string, never>) {
+function handleAbortTitleGeneration(_args: Record<never, never>) {
   const chat = currentChat.value;
   if (!chat) return;
   chatTitle.abortTitleGeneration({

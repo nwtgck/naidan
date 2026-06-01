@@ -36,27 +36,16 @@ import {
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { createChatTestSupport } from '@/composables/chat/chat-test-support';
 import {
-  getReasoningEffortForChatId,
-  renameChatById,
-  toggleDebugForChatId,
   updateChatGroupOverrideById,
-  updateChatModelById,
-  updateChatSettingsById,
-  updateReasoningEffortForChatId,
 } from '@/composables/chat/chat-scoped/chat-metadata-helpers';
-import {
-  fetchAvailableModelsForChat,
-  fetchAvailableModelsForEndpoint,
-  fetchAvailableModelsForGlobalEndpoint,
-} from '@/composables/chat/chat-scoped/chat-model-helpers';
-import {
-  generateChatTitleForChat,
-} from '@/composables/chat/chat-scoped/chat-title-helpers';
 import {
   generateImageForChat,
   handleImageGenerationForChat,
   sendImageRequestForChat as sendImageRequestForChatImpl,
 } from '@/composables/chat/chat-scoped/chat-image-helpers';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
+import { useChatModels } from '@/composables/chat/useChatModels';
+import { useChatTitle as useOwnedChatTitle } from '@/composables/chat/useChatTitle';
 import {
   generateResponseForAssistant,
   sendMessageToTargetChat,
@@ -71,7 +60,6 @@ import { useChatGroupMounts } from '@/composables/chat/chat-scoped/useChatGroupM
 import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
 import { useChatImageGeneration } from '@/composables/chat/chat-scoped/useChatImageGeneration';
 import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
-import { useChatTitle } from '@/composables/chat/chat-scoped/useChatTitle';
 import type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
@@ -99,6 +87,9 @@ export function useChat() {
   });
   const currentChat = chatCurrentBridge.currentChat;
   const currentChatGroup = chatCurrentBridge.currentChatGroup;
+  const chatMetadata = useChatMetadata({});
+  const chatModelsOwner = useChatModels({});
+  const chatTitleOwner = useOwnedChatTitle({});
   const sidebarItems = chatDerivedState.sidebarItems;
   const chats = chatDerivedState.chats;
   const chatGroups = chatDerivedState.chatGroups;
@@ -137,12 +128,6 @@ export function useChat() {
 
   function getCurrentChatCompact() {
     return useChatCompact({
-      chatId: computed(() => _currentChat.value?.id),
-    });
-  }
-
-  function getCurrentChatTitle() {
-    return useChatTitle({
       chatId: computed(() => _currentChat.value?.id),
     });
   }
@@ -325,7 +310,7 @@ export function useChat() {
     id: string;
     newTitle: string;
   }) {
-    await renameChatById({
+    await chatMetadata.rename({
       chatId: id,
       title: newTitle,
     });
@@ -338,7 +323,7 @@ export function useChat() {
     id: string;
     modelId: string | undefined;
   }) {
-    await updateChatModelById({
+    await chatMetadata.updateModel({
       chatId: id,
       modelId,
     });
@@ -364,7 +349,7 @@ export function useChat() {
     id: string;
     updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }) {
-    await updateChatSettingsById({
+    await chatMetadata.updateSettings({
       chatId: id,
       updates,
     });
@@ -375,9 +360,9 @@ export function useChat() {
   }: {
     chatId: string;
   }) {
-    return getReasoningEffortForChatId({
-      chatId,
-    });
+    return chatMetadata.reasoningEffort({
+      chatId: computed(() => chatId),
+    }).value;
   }
 
   const availableModels = sharedAvailableModels;
@@ -394,23 +379,21 @@ export function useChat() {
     } | undefined;
   }) {
     if (customEndpoint !== undefined) {
-      return await fetchAvailableModelsForEndpoint({
-        endpointType: customEndpoint.type,
-        endpointUrl: customEndpoint.url,
-        endpointHttpHeaders: customEndpoint.headers ? customEndpoint.headers.map(([name, value]) => [name, value]) : undefined,
-        errorSource: 'useChat:fetchAvailableModels',
+      return await chatModelsOwner.fetchForEndpoint({
+        customEndpoint: {
+          type: customEndpoint.type,
+          url: customEndpoint.url,
+          headers: customEndpoint.headers ? customEndpoint.headers.map(([name, value]) => [name, value]) : undefined,
+        },
       });
     }
 
     if (chatId === undefined) {
-      return await fetchAvailableModelsForGlobalEndpoint({
-        errorSource: 'useChat:fetchAvailableModels:global',
-      });
+      return await chatModelsOwner.fetchForGlobalEndpoint({});
     }
 
-    return await fetchAvailableModelsForChat({
+    return await chatModelsOwner.fetchForChat({
       chatId,
-      errorSource: 'useChat:fetchAvailableModels',
     });
   }
 
@@ -576,17 +559,18 @@ export function useChat() {
     }
 
     if (signal !== undefined) {
-      return await generateChatTitleForChat({
+      return await chatTitleOwner.generateTitle({
         chatId,
         signal,
         titleModelIdOverride,
       });
     }
 
-    const chatTitle = useChatTitle({
-      chatId: createScopedChatId({ chatId }),
+    return await chatTitleOwner.generateTitle({
+      chatId,
+      signal: undefined,
+      titleModelIdOverride,
     });
-    return await chatTitle.generateTitle({ titleModelIdOverride });
   }
 
   function abortTitleGeneration({
@@ -595,14 +579,19 @@ export function useChat() {
     chatId: string | undefined;
   }) {
     if (chatId !== undefined) {
-      const chatTitle = useChatTitle({
-        chatId: createScopedChatId({ chatId }),
+      chatTitleOwner.abortTitleGeneration({
+        chatId,
       });
-      chatTitle.abort({});
       return;
     }
 
-    getCurrentChatTitle().abort({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    if (currentChatId === null) {
+      return;
+    }
+    chatTitleOwner.abortTitleGeneration({
+      chatId: currentChatId,
+    });
   }
   async function generateResponse({
     chat,
@@ -883,7 +872,7 @@ export function useChat() {
       return;
     }
 
-    await toggleDebugForChatId({
+    await chatMetadata.toggleDebug({
       chatId: currentChatId,
     });
   }
@@ -893,7 +882,7 @@ export function useChat() {
   }: {
     chatId: string;
   }) {
-    await toggleDebugForChatId({
+    await chatMetadata.toggleDebug({
       chatId,
     });
   }
@@ -905,7 +894,7 @@ export function useChat() {
     chatId: string;
     effort: Reasoning['effort'];
   }) {
-    await updateReasoningEffortForChatId({
+    await chatMetadata.updateReasoningEffort({
       chatId,
       effort,
     });

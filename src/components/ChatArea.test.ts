@@ -391,9 +391,14 @@ vi.mock('../composables/chat/useChatGroups', () => ({
 
 vi.mock('../composables/chat/useChatTitle', () => ({
   useChatTitle: () => ({
-    generateTitle: ({ chatId, titleModelIdOverride }: { chatId: string; titleModelIdOverride: string | undefined }) =>
+    generateTitle: ({ chatId, signal, titleModelIdOverride }: {
+      chatId: string;
+      signal: AbortSignal | undefined;
+      titleModelIdOverride: string | undefined;
+    }) =>
       mockGenerateChatTitle({
         chatId,
+        signal,
         titleModelIdOverride,
       }),
     abortTitleGeneration: ({ chatId }: { chatId: string }) =>

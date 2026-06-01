@@ -22,9 +22,11 @@ export type ChatTitleCommandsAdapter = {
   generateTitle({
     chatId,
     titleModelIdOverride,
+    signal,
   }: {
     chatId: string;
     titleModelIdOverride: string | undefined;
+    signal: AbortSignal | undefined;
   }): Promise<string | null | undefined>;
 
   abortTitleGeneration({
@@ -40,9 +42,11 @@ export function useChatTitle(_args: Record<never, never>): ChatTitleCommandsAdap
   async function generateTitle({
     chatId,
     titleModelIdOverride,
+    signal,
   }: {
     chatId: string;
     titleModelIdOverride: string | undefined;
+    signal: AbortSignal | undefined;
   }): Promise<string | null | undefined> {
     const target = getLiveChatById({ chatId });
     if (target === null) {
@@ -101,6 +105,7 @@ export function useChatTitle(_args: Record<never, never>): ChatTitleCommandsAdap
       ];
 
       let generatedTitle = '';
+      const combinedSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
       await provider.chat({
         messages: promptMessages,
         model: titleModelId,
@@ -108,7 +113,7 @@ export function useChatTitle(_args: Record<never, never>): ChatTitleCommandsAdap
           generatedTitle += chunk;
         },
         parameters: undefined,
-        signal: controller.signal,
+        signal: combinedSignal,
       });
 
       const finalTitle = cleanGeneratedTitle({ title: generatedTitle });
