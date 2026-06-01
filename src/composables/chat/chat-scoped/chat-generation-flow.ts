@@ -68,7 +68,7 @@ import {
 } from '@/composables/chat/global/chat-core-singletons';
 import {
   generateChatTitleForChat,
-} from '@/composables/chat/chat-scoped/chat-title-helpers';
+} from '@/composables/chat/chat-scoped/chat-title-flow';
 import {
   abortProcessingForChat,
 } from '@/composables/chat/chat-scoped/chat-processing-abort';
@@ -77,7 +77,7 @@ import {
 } from '@/composables/chat/chat-scoped/chat-image-helpers';
 import {
   fetchAvailableModelsForChat,
-} from '@/composables/chat/chat-scoped/chat-model-helpers';
+} from '@/composables/chat/chat-scoped/chat-model-flow';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';

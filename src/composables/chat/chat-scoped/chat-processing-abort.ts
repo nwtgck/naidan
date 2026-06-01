@@ -5,7 +5,7 @@ import {
 } from '@/composables/chat/global/chat-core-singletons';
 import {
   abortTitleGenerationForChat,
-} from '@/composables/chat/chat-scoped/chat-title-helpers';
+} from '@/composables/chat/chat-scoped/chat-title-flow';
 
 export function abortProcessingForChat({
   chatId,
