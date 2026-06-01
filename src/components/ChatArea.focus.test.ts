@@ -137,13 +137,6 @@ vi.mock('../composables/chat/ui/useChatAreaData', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
-  useChatRuntime: () => ({
-    isProcessing: computed(() => false),
-    contextCompactProgress: ref({ phase: 'idle' }),
-  }),
-}));
-
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({}),

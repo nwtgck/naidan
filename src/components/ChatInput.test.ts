@@ -376,17 +376,6 @@ vi.mock('../composables/chat/useChatImageGeneration', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
-  useChatReadModel: ({ chatId }: { chatId: { value: string | undefined } }) => ({
-    currentChat: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChat.value : null),
-    currentChatGroup: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChatGroup.value : null),
-    activeMessages: ref([]),
-    allMessages: ref([]),
-    resolvedSettings: ref(null),
-    inheritedSettings: ref(null),
-  }),
-}));
-
 vi.mock('../composables/chat/useChatMetadata', () => ({
   useChatMetadata: () => ({
     rename: vi.fn(),

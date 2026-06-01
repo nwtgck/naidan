@@ -80,30 +80,6 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
-  useChatReadModel: () => ({
-    currentChat: mockCurrentChat,
-    currentChatGroup: computed(() => {
-      const groupId = mockCurrentChat.value?.groupId;
-      if (!groupId) {
-        return null;
-      }
-      return mockChatGroups.value.find(({ id }) => id === groupId) ?? null;
-    }),
-    activeMessages: mockActiveMessages,
-    allMessages: computed(() => mockActiveMessages.value),
-    resolvedSettings: mockResolvedSettings,
-    inheritedSettings: mockInheritedSettings,
-  }),
-}));
-
-vi.mock('../composables/chat/chat-scoped/useChatRuntime', () => ({
-  useChatRuntime: () => ({
-    isProcessing: computed(() => false),
-    contextCompactProgress: ref({ phase: 'idle' }),
-  }),
-}));
-
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => mockCurrentChat.value),

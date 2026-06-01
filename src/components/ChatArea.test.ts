@@ -215,17 +215,6 @@ vi.mock('../composables/chat/chat-scoped/useChatCompact', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
-  useChatReadModel: () => ({
-    currentChat: mockCurrentChat,
-    currentChatGroup: mockCurrentChatGroup,
-    activeMessages: mockActiveMessages,
-    allMessages: computed(() => mockActiveMessages.value),
-    resolvedSettings: mockResolvedSettings.value || ref({ lmParameters: { reasoning: { effort: undefined } } }),
-    inheritedSettings: mockInheritedSettings,
-  }),
-}));
-
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: () => ({
     currentChat: computed(() => mockCurrentChat.value),
