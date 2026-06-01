@@ -245,10 +245,11 @@ vi.mock('../composables/chat/useChatImageGeneration', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
-  useChatReasoning: () => ({
-    effort: computed(() => undefined),
-    updateEffort: vi.fn(),
+vi.mock('../composables/chat/useChatImageProgress', () => ({
+  useChatImageProgress: () => ({
+    progress: computed(() => undefined),
+    currentStep: computed(() => undefined),
+    totalSteps: computed(() => undefined),
   }),
 }));
 

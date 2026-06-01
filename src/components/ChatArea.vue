@@ -1130,6 +1130,8 @@ watch(
       </div>
 
       <ConversationOutlineOverlay
+        v-if="currentChat"
+        :chat-id="currentChat!.id"
         :visibility="outlineVisibility"
         :flow-items="chatFlow"
         :initial-message-id="initialOutlineMessageId"

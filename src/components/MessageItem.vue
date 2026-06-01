@@ -27,8 +27,8 @@ const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => 
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
 import { useLayout } from '@/composables/useLayout';
 import { useSettings } from '@/composables/useSettings';
-import { useChatImageProgress } from '@/composables/chat/chat-scoped/useChatImageProgress';
-import { useChatReasoning } from '@/composables/chat/chat-scoped/useChatReasoning';
+import { useChatImageProgress } from '@/composables/chat/useChatImageProgress';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import {
   isImageGenerationPending,
   isImageGenerationProcessed,
@@ -40,7 +40,7 @@ import {
 } from '@/utils/image-generation';
 
 const props = withDefaults(defineProps<{
-  chatId?: string;
+  chatId: string;
   message: MessageNode;
   siblings?: MessageNode[];
   canGenerateImage?: boolean;
@@ -101,10 +101,11 @@ const attachmentUrls = ref<Record<string, string>>({});
 const messageChatId = computed(() => props.chatId);
 
 const { openPreview } = useImagePreview();
+const chatMetadata = useChatMetadata({});
 const chatImageProgress = useChatImageProgress({
   chatId: messageChatId,
 });
-const chatReasoning = useChatReasoning({
+const chatReasoningEffort = chatMetadata.reasoningEffort({
   chatId: messageChatId,
 });
 const { preferredEditorMode, setPreferredEditorMode } = useLayout();
@@ -219,7 +220,7 @@ watch(isEditing, (editing) => {
     if (props.message.role === 'user' && props.message.lmParameters?.reasoning) {
       editReasoningEffort.value = props.message.lmParameters.reasoning.effort;
     } else {
-      editReasoningEffort.value = chatReasoning.effort.value;
+      editReasoningEffort.value = chatReasoningEffort.value;
     }
 
     // Initialize image generation settings if it's an image request
