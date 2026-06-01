@@ -87,7 +87,6 @@ const {
   toggleChatWeshTerminal,
 } = useLayout();
 const currentChatState = useCurrentChatState();
-const currentChatId = currentChatState.currentChatId;
 const chatConversation = useChatConversation({});
 const chatBranches = useChatBranches({});
 const chatCompaction = useChatCompaction({});
@@ -131,10 +130,14 @@ const isGeneratingTitle = computed(() => {
   return isChatGeneratingTitle({ chatId: chat.id });
 });
 const isDebugEnabled = computed(() => currentChat.value?.debugEnabled === true);
+const chatIdentityKey = computed(() => {
+  const chatId = currentChat.value?.id ?? 'no-chat';
+  const leafId = currentChat.value?.currentLeafId ?? 'no-leaf';
+  return `${chatId}:${leafId}`;
+});
 
 const chatAreaSession = useChatAreaSession({
-  chatId: currentChatId,
-  leafId: computed(() => currentChat.value?.currentLeafId),
+  chatIdentityKey,
 });
 const {
   showCompactSettings,
