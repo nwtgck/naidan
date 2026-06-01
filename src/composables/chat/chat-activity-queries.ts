@@ -9,6 +9,14 @@ export function isChatProcessing({
   return chatRuntimeStore.isProcessing({ chatId });
 }
 
+export function isChatTaskRunning({
+  chatId,
+}: {
+  chatId: string;
+}): boolean {
+  return chatRuntimeStore.isTaskRunning({ chatId });
+}
+
 export function getChatContextCompactProgress({
   chatId,
 }: {
