@@ -64,8 +64,9 @@ import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 
 export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 
-// Compatibility facade for broad legacy tests and legacy callers.
-// Production feature logic should live in scoped composables and helpers.
+// Compatibility facade used only by .test.ts files that still exercise the legacy useChat API.
+// Production code should not add new useChat dependencies. Keep maintaining those .test.ts files
+// through this facade for now, but put new features in an existing focused composable or a new one.
 // Only add behavior here when it is required to preserve the legacy useChat API.
 export function useChat() {
   const { settings } = useSettings();
@@ -344,6 +345,13 @@ export function useChat() {
     }
 
     if (chatId === undefined) {
+      const currentChatId = chatCurrentBridge.getCurrentChatId({});
+      if (currentChatId !== null) {
+        return await chatModelsOwner.fetchForChat({
+          chatId: currentChatId,
+        });
+      }
+
       return await chatModelsOwner.fetchForGlobalEndpoint({});
     }
 

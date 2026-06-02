@@ -146,10 +146,8 @@ function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
   chatMedia.updateSeed({ seed });
 }
 
-const selectedReasoningEffort = computed(() => {
-  return chatMetadata.reasoningEffort({
-    chatId: currentChatId,
-  }).value;
+const selectedReasoningEffort = chatMetadata.reasoningEffort({
+  chatId: currentChatId,
 });
 
 function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
