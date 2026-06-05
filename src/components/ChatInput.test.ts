@@ -456,8 +456,8 @@ describe('ChatInput Integration', () => {
   const getWrapper = () => mount(ChatInput, {
     props: {
       chatId: 'chat-1',
-      currentChat: mockCurrentChat.value!,
-      currentChatGroup: mockCurrentChatGroup.value,
+      chat: mockCurrentChat.value!,
+      chatGroup: mockCurrentChatGroup.value,
       resolvedLmParameters: undefined,
       inheritedModelId: undefined,
       inheritedModelSource: undefined,
@@ -767,7 +767,7 @@ describe('ChatInput Integration', () => {
     const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
     expect(toolsMenu.exists()).toBe(true);
 
-    // Update currentChat to have initial lmParameters
+    // Update the chat to have initial lmParameters
     mockCurrentChat.value = {
       id: 'chat-1',
       modelId: 'model-1',

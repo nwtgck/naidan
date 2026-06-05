@@ -898,7 +898,7 @@ function handleForkLastMessage() {
   }
 }
 
-function getCurrentChatSiblings({ messageId }: { messageId: string }) {
+function getChatSiblings({ messageId }: { messageId: string }) {
   const chatValue = chat.value;
   if (!chatValue) return [];
   return [...getSiblingsInChatBranch({
@@ -1020,9 +1020,9 @@ watch(
     </div>
 
     <ChatPaneHeader
-      :current-chat="chat"
+      :chat="chat"
       :chat-groups="availableChatGroups"
-      :current-chat-group-badge="chatGroupBadge"
+      :chat-group-badge="chatGroupBadge"
       :active-message-count="activeMessages.length"
       :model-label="currentModelLabel"
       :has-overrides="!!(chat && hasChatOverrides({ chat }))"
@@ -1180,7 +1180,7 @@ watch(
                       :id="'message-' + subItem.node.id"
                       :chat-id="props.chatId"
                       :message="subItem.node"
-                      :siblings="getCurrentChatSiblings({ messageId: subItem.node.id })"
+                      :siblings="getChatSiblings({ messageId: subItem.node.id })"
                       :can-generate-image="canGenerateImage && hasImageModel"
                       :is-processing="isChatStreaming"
                       :is-generating="isChatStreaming && subItem.node.id === chat?.currentLeafId"
@@ -1214,7 +1214,7 @@ watch(
                 :id="'message-' + flowItem.node.id"
                 :chat-id="props.chatId"
                 :message="flowItem.node"
-                :siblings="getCurrentChatSiblings({ messageId: flowItem.node.id })"
+                :siblings="getChatSiblings({ messageId: flowItem.node.id })"
                 :can-generate-image="canGenerateImage && hasImageModel"
                 :is-processing="isChatStreaming"
                 :is-generating="isChatStreaming && flowItem.node.id === chat?.currentLeafId"
@@ -1294,8 +1294,8 @@ watch(
       v-if="chat"
       ref="chatInputRef"
       :chat-id="chat.id"
-      :current-chat="chat"
-      :current-chat-group="chatGroup"
+      :chat="chat"
+      :chat-group="chatGroup"
       :resolved-lm-parameters="resolvedSettings?.lmParameters"
       :inherited-model-id="inheritedSettings?.modelId"
       :inherited-model-source="inheritedSettings?.sources.modelId"

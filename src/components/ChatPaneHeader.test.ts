@@ -44,9 +44,9 @@ function mountHeader({
 
   return mount(ChatPaneHeader, {
     props: {
-      currentChat: chat,
+      chat,
       chatGroups: groups,
-      currentChatGroupBadge: currentGroup,
+      chatGroupBadge: currentGroup,
       activeMessageCount,
       modelLabel: 'gpt-test (Group)',
       hasOverrides: true,
@@ -93,9 +93,9 @@ describe('ChatPaneHeader', () => {
   it('animates the title text while title generation is running', () => {
     const wrapper = mount(ChatPaneHeader, {
       props: {
-        currentChat: makeChat(),
+        chat: makeChat(),
         chatGroups: [makeGroup()],
-        currentChatGroupBadge: makeGroup(),
+        chatGroupBadge: makeGroup(),
         activeMessageCount: 2,
         modelLabel: 'gpt-test (Group)',
         hasOverrides: true,
