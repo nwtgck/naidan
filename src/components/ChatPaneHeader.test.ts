@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import ChatAreaHeader from './ChatAreaHeader.vue';
+import ChatPaneHeader from './ChatPaneHeader.vue';
 import type { Chat, ChatGroup } from '@/models/types';
 
 function makeChat(overrides: Partial<Chat> = {}): Chat {
@@ -42,7 +42,7 @@ function mountHeader({
     ? groups.find(group => group.id === chat.groupId)
     : undefined;
 
-  return mount(ChatAreaHeader, {
+  return mount(ChatPaneHeader, {
     props: {
       currentChat: chat,
       chatGroups: groups,
@@ -64,7 +64,7 @@ function mountHeader({
   });
 }
 
-describe('ChatAreaHeader', () => {
+describe('ChatPaneHeader', () => {
   it('renders chat identity badges and emits settings updates', async () => {
     const wrapper = mountHeader({
       chat: makeChat(),
@@ -91,7 +91,7 @@ describe('ChatAreaHeader', () => {
   });
 
   it('animates the title text while title generation is running', () => {
-    const wrapper = mount(ChatAreaHeader, {
+    const wrapper = mount(ChatPaneHeader, {
       props: {
         currentChat: makeChat(),
         chatGroups: [makeGroup()],

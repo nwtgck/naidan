@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
-import { useChatAreaSession } from '@/composables/chat/ui/useChatAreaSession';
+import { useChatPaneAutoScroll, type ChatPaneInitialOpenTarget, type ChatPaneScrollTarget } from '@/composables/useChatPaneAutoScroll';
+import { useChatPaneSession } from '@/composables/chat/ui/useChatPaneSession';
 import { useChatConversation } from '@/composables/chat/useChatConversation';
 import { useChatBranches } from '@/composables/chat/useChatBranches';
 import { useChatCompaction } from '@/composables/chat/useChatCompaction';
@@ -34,7 +34,7 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
-import ChatAreaHeader from './ChatAreaHeader.vue';
+import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
@@ -135,7 +135,7 @@ const chatIdentityKey = computed(() => {
   return `${chatId}:${leafId}`;
 });
 
-const chatAreaSession = useChatAreaSession({
+const chatAreaSession = useChatPaneSession({
   chatIdentityKey,
 });
 const {
@@ -526,7 +526,7 @@ async function waitForPaint({ frames }: { frames: number }) {
   }
 }
 
-async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatAreaScrollTarget, behavior: ScrollBehavior, offset: number }) {
+async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatPaneScrollTarget, behavior: ScrollBehavior, offset: number }) {
   if (!container.value) return false;
 
   let el: HTMLElement | null = null;
@@ -560,7 +560,7 @@ async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: strin
   });
 }
 
-async function scrollInitialOpenTarget({ target }: { target: ChatAreaInitialOpenTarget }) {
+async function scrollInitialOpenTarget({ target }: { target: ChatPaneInitialOpenTarget }) {
   switch (target.kind) {
   case 'bottom':
     scrollToBottom({ scrollForce: 'force', behavior: 'instant' });
@@ -742,7 +742,7 @@ watch(
   }
 );
 
-const autoScroll = useChatAreaAutoScroll({
+const autoScroll = useChatPaneAutoScroll({
   currentChat,
   activeMessages,
   chatFlow,
@@ -1019,7 +1019,7 @@ watch(
       </div>
     </div>
 
-    <ChatAreaHeader
+    <ChatPaneHeader
       :current-chat="currentChat"
       :chat-groups="availableChatGroups"
       :current-chat-group-badge="currentChatGroupBadge"
