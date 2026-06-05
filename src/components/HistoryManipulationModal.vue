@@ -12,8 +12,8 @@ import type { HistoryItem } from '@/utils/chat-tree';
 import { useLayout } from '@/composables/useLayout';
 import type { Attachment, SystemPrompt } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { useChatHistoryManipulation } from '@/composables/chat/chat-scoped/useChatHistoryManipulation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -23,10 +23,7 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const { currentChatId } = useCurrentChatState();
-const { currentChat, activeMessages, inheritedSettings, commit } = useChatHistoryManipulation({
-  chatId: currentChatId,
-});
+const { currentChat, activeMessages, inheritedSettings } = useCurrentChatState();
 const { setActiveFocusArea } = useLayout();
 
 interface EditableHistoryItem extends HistoryItem {
@@ -270,7 +267,11 @@ const systemPromptBehavior = computed({
 async function handleSave() {
   if (!currentChat.value) return;
   const cleanMessages: HistoryItem[] = editableMessages.value.map(({ localId: _, ...msg }) => msg);
-  await commit({ chatId: currentChat.value.id, messages: cleanMessages, systemPrompt: localSystemPrompt.value });
+  await commitFullHistoryManipulationForChat({
+    chatId: currentChat.value.id,
+    messages: cleanMessages,
+    systemPrompt: localSystemPrompt.value,
+  });
   emit('close');
 }
 

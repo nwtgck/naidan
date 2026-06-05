@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import HistoryManipulationModal from './HistoryManipulationModal.vue';
-import { useChatHistoryManipulation } from '@/composables/chat/chat-scoped/useChatHistoryManipulation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { storageService } from '@/services/storage';
 import { computed, nextTick, ref } from 'vue';
+import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
 
 // Mock vuedraggable
 vi.mock('vuedraggable', () => ({
@@ -15,12 +15,12 @@ vi.mock('vuedraggable', () => ({
   }
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatHistoryManipulation', () => ({
-  useChatHistoryManipulation: vi.fn(),
-}));
-
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
+}));
+
+vi.mock('../composables/chat/chat-scoped/chat-history-flow', () => ({
+  commitFullHistoryManipulationForChat: vi.fn(),
 }));
 
 // Mock useLayout
@@ -55,13 +55,7 @@ describe('HistoryManipulationModal', () => {
       sidebarItems: computed(() => []),
       TEST_ONLY: {},
     });
-    vi.mocked(useChatHistoryManipulation).mockReturnValue({
-      currentChat: computed(() => mockCurrentChat.value as any),
-      activeMessages: computed(() => mockActiveMessages.value),
-      inheritedSettings: computed(() => mockInheritedSettings.value as any),
-      commit: mockCommit,
-      TEST_ONLY: {},
-    } as unknown as ReturnType<typeof useChatHistoryManipulation>);
+    vi.mocked(commitFullHistoryManipulationForChat).mockImplementation(mockCommit);
     mockActiveMessages.value = [
       { id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } },
       { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } }

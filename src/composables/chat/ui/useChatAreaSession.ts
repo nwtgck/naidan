@@ -3,11 +3,9 @@ import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
 type OutlineVisibility = 'hidden' | 'visible';
 
 export function useChatAreaSession({
-  chatId,
-  leafId,
+  chatIdentityKey,
 }: {
-  chatId: Ref<string | undefined>;
-  leafId: Ref<string | undefined>;
+  chatIdentityKey: Readonly<Ref<string>>;
 }) {
   const showCompactSettings = ref(false);
   const showNeuralSyncEffect = ref(false);
@@ -70,7 +68,7 @@ export function useChatAreaSession({
     initialOutlineMessageId.value = undefined;
   }
 
-  watch([chatId, leafId], () => {
+  watch(chatIdentityKey, () => {
     closeCompactSettings({});
     closeOutline({});
     clearNeuralSyncEffect({});

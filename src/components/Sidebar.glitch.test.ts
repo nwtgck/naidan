@@ -50,14 +50,10 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/global/chat-core-singletons', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../composables/chat/global/chat-core-singletons')>();
-  return {
-    ...actual,
-    isProcessing: ({ chatId }: { chatId: string }) =>
-      Array.from(mockActiveTasks).some(task => task.startsWith('process:') && task.endsWith(`:${chatId}`)),
-  };
-});
+vi.mock('../composables/chat/chat-activity-queries', () => ({
+  isChatProcessing: ({ chatId }: { chatId: string }) =>
+    Array.from(mockActiveTasks).some(task => task.startsWith('process:') && task.endsWith(`:${chatId}`)),
+}));
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({

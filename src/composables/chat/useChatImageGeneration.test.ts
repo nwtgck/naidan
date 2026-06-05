@@ -62,11 +62,11 @@ vi.mock('@/composables/useImageGeneration', () => ({
   }),
 }));
 
-vi.mock('./chat-image-helpers', () => ({
+vi.mock('@/composables/chat/chat-scoped/chat-image-flow', () => ({
   sendImageRequestForChat: mockSendImageRequestForChat,
 }));
 
-vi.mock('./chat-generation-flow', () => ({
+vi.mock('@/composables/chat/chat-scoped/chat-generation-flow', () => ({
   sendMessageForChat: mockSendMessage,
 }));
 
@@ -80,60 +80,10 @@ describe('useChatImageGeneration', () => {
     mockGetResolution.mockReturnValue({ width: 512, height: 512 });
     mockGetCount.mockReturnValue(1);
     mockGetPersistAs.mockReturnValue('original');
-    mockGetSteps.mockImplementation(({ chatId }) => (chatId === undefined ? undefined : 30));
-    mockGetSeed.mockImplementation(({ chatId }) => (chatId === undefined ? undefined : 'browser_random'));
-    mockGetSelectedImageModel.mockImplementation(({ chatId }) => (chatId === undefined ? undefined : 'model-a'));
+    mockGetSteps.mockReturnValue(30);
+    mockGetSeed.mockReturnValue('browser_random');
+    mockGetSelectedImageModel.mockReturnValue('model-a');
     mockSendImageRequestForChat.mockResolvedValue(true);
-  });
-
-  it('returns defaults and no-ops when chatId is undefined', () => {
-    const chatImageGeneration = useChatImageGeneration({
-      chatId: computed(() => undefined),
-    });
-
-    expect(chatImageGeneration.availableModels.value).toEqual(['model-a', 'model-b']);
-    expect(chatImageGeneration.isImageMode.value).toBe(false);
-    expect(chatImageGeneration.resolution.value).toEqual({ width: 512, height: 512 });
-    expect(chatImageGeneration.count.value).toBe(1);
-    expect(chatImageGeneration.persistAs.value).toBe('original');
-    expect(chatImageGeneration.steps.value).toBeUndefined();
-    expect(chatImageGeneration.seed.value).toBeUndefined();
-    expect(chatImageGeneration.selectedImageModel.value).toBeUndefined();
-
-    chatImageGeneration.toggleImageMode({});
-    chatImageGeneration.updateResolution({ width: 1024, height: 768 });
-    chatImageGeneration.updateCount({ count: 2 });
-    chatImageGeneration.updatePersistAs({ format: 'png' });
-    chatImageGeneration.updateSteps({ steps: 28 });
-    chatImageGeneration.updateSeed({ seed: 42 });
-    chatImageGeneration.setImageModel({ modelId: 'model-b' });
-
-    expect(mockToggleImageMode).not.toHaveBeenCalled();
-    expect(mockUpdateResolution).not.toHaveBeenCalled();
-    expect(mockUpdateCount).not.toHaveBeenCalled();
-    expect(mockUpdatePersistAs).not.toHaveBeenCalled();
-    expect(mockUpdateSteps).not.toHaveBeenCalled();
-    expect(mockUpdateSeed).not.toHaveBeenCalled();
-    expect(mockSetImageModel).not.toHaveBeenCalled();
-  });
-
-  it('returns false for image requests when chatId is undefined', async () => {
-    const chatImageGeneration = useChatImageGeneration({
-      chatId: computed(() => undefined),
-    });
-
-    await expect(chatImageGeneration.sendImageRequest({
-      prompt: 'draw a cat',
-      width: 512,
-      height: 512,
-      count: 1,
-      steps: undefined,
-      seed: undefined,
-      persistAs: 'original',
-      attachments: [],
-    })).resolves.toBe(false);
-
-    expect(mockSendImageRequestForChat).not.toHaveBeenCalled();
   });
 
   it('binds image settings to the scoped chatId', () => {

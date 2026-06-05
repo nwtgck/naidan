@@ -1,20 +1,19 @@
-import type { Ref } from 'vue';
 import type { Attachment, LmParameters } from '@/models/types';
-import {
-  abortProcessingForChat,
-} from '@/composables/chat/chat-scoped/chat-processing-abort';
+import { abortProcessingForChat } from '@/composables/chat/chat-scoped/chat-processing-abort';
 import {
   regenerateMessageForChat,
   sendMessageForChat,
 } from '@/composables/chat/chat-scoped/chat-generation-flow';
 
-export type ChatGenerationAdapter = {
+export type ChatConversationAdapter = {
   sendMessage({
+    chatId,
     content,
     parentId,
     attachments,
     lmParameters,
   }: {
+    chatId: string;
     content: string;
     parentId: string | null | undefined;
     attachments: Attachment[] | undefined;
@@ -22,38 +21,38 @@ export type ChatGenerationAdapter = {
   }): Promise<boolean>;
 
   regenerateMessage({
+    chatId,
     failedMessageId,
   }: {
+    chatId: string;
     failedMessageId: string;
   }): Promise<void>;
 
-  abort(_args: Record<never, never>): void;
+  abort({
+    chatId,
+  }: {
+    chatId: string;
+  }): void;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
-export function useChatGeneration({
-  chatId,
-}: {
-  chatId: Ref<string | undefined>;
-}): ChatGenerationAdapter {
+export function useChatConversation(_args: Record<never, never>): ChatConversationAdapter {
   async function sendMessage({
+    chatId,
     content,
     parentId,
     attachments,
     lmParameters,
   }: {
+    chatId: string;
     content: string;
     parentId: string | null | undefined;
     attachments: Attachment[] | undefined;
     lmParameters: LmParameters | undefined;
   }): Promise<boolean> {
-    if (chatId.value === undefined) {
-      return false;
-    }
-
     return await sendMessageForChat({
-      chatId: chatId.value,
+      chatId,
       content,
       parentId,
       attachments,
@@ -62,27 +61,25 @@ export function useChatGeneration({
   }
 
   async function regenerateMessage({
+    chatId,
     failedMessageId,
   }: {
+    chatId: string;
     failedMessageId: string;
   }): Promise<void> {
-    if (chatId.value === undefined) {
-      return;
-    }
-
     await regenerateMessageForChat({
-      chatId: chatId.value,
+      chatId,
       failedMessageId,
     });
   }
 
-  function abort(_args: Record<never, never>) {
-    if (chatId.value === undefined) {
-      return;
-    }
-
+  function abort({
+    chatId,
+  }: {
+    chatId: string;
+  }) {
     abortProcessingForChat({
-      chatId: chatId.value,
+      chatId,
     });
   }
 

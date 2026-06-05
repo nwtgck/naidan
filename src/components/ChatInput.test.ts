@@ -330,15 +330,31 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => mockChatStore,
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
-  useChatGeneration: () => ({
-    sendMessage: mockSendMessageForChat,
-    regenerateMessage: mockRegenerateMessageForChat,
-    abort: () => mockAbortChat({ chatId: mockCurrentChat.value?.id }),
+vi.mock('../composables/chat/useChatConversation', () => ({
+  useChatConversation: () => ({
+    sendMessage: ({ chatId, content, parentId, attachments, lmParameters }: {
+      chatId: string;
+      content: string;
+      parentId: string | null | undefined;
+      attachments: unknown[] | undefined;
+      lmParameters: unknown;
+    }) => mockSendMessageForChat({
+      chatId,
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    }),
+    regenerateMessage: ({ chatId, failedMessageId }: { chatId: string; failedMessageId: string }) =>
+      mockRegenerateMessageForChat({
+        chatId,
+        failedMessageId,
+      }),
+    abort: ({ chatId }: { chatId: string }) => mockAbortChat({ chatId }),
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatImageGeneration', () => ({
+vi.mock('../composables/chat/useChatImageGeneration', () => ({
   useChatImageGeneration: () => ({
     availableModels: computed(() => mockChatStore.availableModels.value),
     isImageMode: computed(() => mockIsImageMode.value),
@@ -360,50 +376,41 @@ vi.mock('../composables/chat/chat-scoped/useChatImageGeneration', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatReadModel', () => ({
-  useChatReadModel: ({ chatId }: { chatId: { value: string | undefined } }) => ({
-    currentChat: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChat.value : null),
-    currentChatGroup: computed(() => chatId.value === mockCurrentChat.value?.id ? mockCurrentChatGroup.value : null),
-    activeMessages: ref([]),
-    allMessages: ref([]),
-    resolvedSettings: ref(null),
-    inheritedSettings: ref(null),
-  }),
-}));
-
-vi.mock('../composables/chat/chat-scoped/useChatReasoning', () => ({
-  useChatReasoning: () => ({
-    effort: computed(() => mockCurrentChat.value?.lmParameters?.reasoning?.effort),
-    updateEffort: ({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: vi.fn(),
+    toggleDebug: vi.fn(),
+    updateModel: vi.fn(),
+    updateSettings: vi.fn(),
+    reasoningEffort: ({ chatId }: { chatId: { value: string } }) =>
+      computed(() => {
+        if (mockCurrentChat.value?.id === chatId.value) {
+          return mockCurrentChat.value?.lmParameters?.reasoning?.effort;
+        }
+        return undefined;
+      }),
+    updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
       mockReasoningStore.updateReasoningEffort({
-        chatId: mockCurrentChat.value?.id,
+        chatId,
         effort,
       });
     },
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatDraft', () => ({
-  useChatDraft: () => ({
-    getDraft: () => mockDraft.value,
-    saveDraft: vi.fn(),
-    clearDraft: vi.fn(),
-    revokeAll: vi.fn(),
-  }),
-}));
-
-vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
-  useChatModelSelection: () => ({
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
     availableModels: mockChatStore.availableModels,
     fetchingModels: mockChatStore.fetchingModels,
-    fetchModels: () => mockChatStore.fetchAvailableModels({ chatId: mockCurrentChat.value?.id }),
-    updateModel: ({ modelId }: { modelId: string | undefined }) => mockUpdateChatSettings(mockCurrentChat.value?.id, { modelId }),
+    fetchForChat: ({ chatId }: { chatId: string }) => mockChatStore.fetchAvailableModels({ chatId }),
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
   }),
 }));
 
-vi.mock('../composables/chat/chat-scoped/useChatMounts', () => ({
-  useChatMounts: ({ chatId }: { chatId: { value: string | undefined } }) => ({
-    mounts: computed(() => {
+vi.mock('../composables/chat/useChatMounts', () => ({
+  useChatMounts: () => ({
+    getMounts: ({ chatId }: { chatId: { value: string } }) => computed(() => {
       if (chatId.value !== mockCurrentChat.value?.id) {
         return [];
       }
@@ -413,7 +420,6 @@ vi.mock('../composables/chat/chat-scoped/useChatMounts', () => ({
     addMount: vi.fn(),
     removeMount: vi.fn(),
     updateMount: vi.fn(),
-    TEST_ONLY: {},
   }),
 }));
 
@@ -450,6 +456,11 @@ describe('ChatInput Integration', () => {
   const getWrapper = () => mount(ChatInput, {
     props: {
       chatId: 'chat-1',
+      currentChat: mockCurrentChat.value!,
+      currentChatGroup: mockCurrentChatGroup.value,
+      resolvedLmParameters: undefined,
+      inheritedModelId: undefined,
+      inheritedModelSource: undefined,
       visibility: 'active',
       isStreaming: false,
       canGenerateImage: true,

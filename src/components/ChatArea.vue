@@ -3,16 +3,22 @@ import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatAreaAutoScroll, type ChatAreaInitialOpenTarget, type ChatAreaScrollTarget } from '@/composables/useChatAreaAutoScroll';
 import { useChatAreaSession } from '@/composables/chat/ui/useChatAreaSession';
-import { useChatCompact } from '@/composables/chat/chat-scoped/useChatCompact';
-import { useChatDebug } from '@/composables/chat/chat-scoped/useChatDebug';
-import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
-import { useChatGrouping } from '@/composables/chat/chat-scoped/useChatGrouping';
-import { useChatHistory } from '@/composables/chat/chat-scoped/useChatHistory';
-import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
-import { useChatRuntime } from '@/composables/chat/chat-scoped/useChatRuntime';
-import { useChatTitle } from '@/composables/chat/chat-scoped/useChatTitle';
+import { useChatConversation } from '@/composables/chat/useChatConversation';
+import { useChatBranches } from '@/composables/chat/useChatBranches';
+import { useChatCompaction } from '@/composables/chat/useChatCompaction';
+import { useChatGroups } from '@/composables/chat/useChatGroups';
+import { useChatModels } from '@/composables/chat/useChatModels';
+import { useChatTitle } from '@/composables/chat/useChatTitle';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import { useChatAreaData } from '@/composables/chat/ui/useChatAreaData';
+import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
+import {
+  getChatContextCompactProgress,
+  isChatGeneratingTitle,
+  isChatProcessing,
+} from '@/composables/chat/chat-activity-queries';
+import { useChatDisplayFlow, type ChatFlowItem } from '@/composables/useChatDisplayFlow';
+import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -32,8 +38,6 @@ import ChatAreaHeader from './ChatAreaHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
 import TransformersJsLoadingIndicator from './TransformersJsLoadingIndicator.vue';
-import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
-
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 // Lazily load the outline overlay, prefetch on mounted.
@@ -68,7 +72,7 @@ import { scrollIntoViewSafe } from '@/utils/dom';
 import { generateChatShareURL } from '@/services/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
-import { createCompactInstruction, type ContextCompactPromptMode } from '@/services/context-compact';
+import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/services/context-compact';
 
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
@@ -83,60 +87,57 @@ const {
   toggleChatWeshTerminal,
 } = useLayout();
 const currentChatState = useCurrentChatState();
-const chatAreaData = useChatAreaData();
+const chatConversation = useChatConversation({});
+const chatBranches = useChatBranches({});
+const chatCompaction = useChatCompaction({});
+const chatGroups = useChatGroups({});
+const chatModels = useChatModels({});
+const chatTitle = useChatTitle({});
+const chatMetadata = useChatMetadata({});
+const { getSortedImageModels } = useImageGeneration();
+const currentChat = currentChatState.currentChat;
+const currentChatGroup = currentChatState.currentChatGroup;
+const activeMessages = currentChatState.activeMessages;
+const allMessages = currentChatState.allMessages;
+const resolvedSettings = currentChatState.resolvedSettings;
+const inheritedSettings = currentChatState.inheritedSettings;
+const availableChatGroups = currentChatState.chatGroups;
+const availableModels = chatModels.availableModels;
+const fetchingModels = chatModels.fetchingModels;
+const isProcessing = computed(() => {
+  const chat = currentChat.value;
+  if (!chat) return false;
+  return isChatProcessing({ chatId: chat.id });
+});
 const {
-  updateChatSettings,
-  updateChatGroupMetadata,
-  availableModels,
-  fetchingModels,
-  getSortedImageModels,
-  fetchAvailableModels,
   chatFlow,
   isThinkingActive,
   isWaitingResponse,
-  availableChatGroups,
-} = chatAreaData;
-
-const currentChatId = currentChatState.currentChatId;
-const chatReadModel = useChatReadModel({
-  chatId: currentChatId,
+} = useChatDisplayFlow({
+  chat: currentChat,
+  isProcessing: ({ chatId }) => isChatProcessing({ chatId }),
 });
-const chatRuntime = useChatRuntime({
-  chatId: currentChatId,
+const contextCompactProgress = computed<ContextCompactProgress>(() => {
+  const chat = currentChat.value;
+  if (!chat) {
+    return { phase: 'idle' };
+  }
+  return getChatContextCompactProgress({ chatId: chat.id });
 });
-const chatCompact = useChatCompact({
-  chatId: currentChatId,
+const isGeneratingTitle = computed(() => {
+  const chat = currentChat.value;
+  if (!chat) return false;
+  return isChatGeneratingTitle({ chatId: chat.id });
 });
-const chatGeneration = useChatGeneration({
-  chatId: currentChatId,
+const isDebugEnabled = computed(() => currentChat.value?.debugEnabled === true);
+const chatIdentityKey = computed(() => {
+  const chatId = currentChat.value?.id ?? 'no-chat';
+  const leafId = currentChat.value?.currentLeafId ?? 'no-leaf';
+  return `${chatId}:${leafId}`;
 });
-const chatGrouping = useChatGrouping({
-  chatId: currentChatId,
-});
-const chatHistory = useChatHistory({
-  chatId: currentChatId,
-});
-const chatTitle = useChatTitle({
-  chatId: currentChatId,
-});
-const {
-  currentChat,
-  currentChatGroup,
-  activeMessages,
-  allMessages,
-  resolvedSettings,
-} = chatReadModel;
-const { isProcessing, contextCompactProgress } = chatRuntime;
-const chatDebug = useChatDebug({
-  chatId: currentChatId,
-  debugEnabled: computed(() => currentChat.value?.debugEnabled === true),
-});
-const isGeneratingTitle = computed(() => chatTitle.isGenerating.value);
-const isDebugEnabled = computed(() => chatDebug.enabled.value);
 
 const chatAreaSession = useChatAreaSession({
-  chatId: currentChatId,
-  leafId: computed(() => currentChat.value?.currentLeafId),
+  chatIdentityKey,
 });
 const {
   showCompactSettings,
@@ -298,18 +299,38 @@ function clearTargetMessageQuery() {
 }
 
 async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
-  await chatGrouping.moveToGroup({ groupId });
+  const chat = currentChat.value;
+  if (!chat) return;
+  await chatGroups.moveChatToGroup({
+    chatId: chat.id,
+    chatGroupId: groupId ?? undefined,
+  });
 }
 
 async function handleSaveTitle({ title }: { title: string }) {
-  await chatTitle.rename({ title });
+  const chat = currentChat.value;
+  if (!chat) return;
+  await chatMetadata.rename({
+    chatId: chat.id,
+    title,
+  });
 }
 
 async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
-  if (!currentChat.value) return;
-  const titleBeforeGeneration = currentChat.value.title?.trim();
-  await updateActiveTitleModel({ modelId });
+  const chat = currentChat.value;
+  if (!chat) return;
+  const chatId = chat.id;
+  const chatGroupId = chat.groupId ?? undefined;
+  const titleBeforeGeneration = chat.title?.trim();
+  await updateActiveTitleModel({
+    source: activeTitleModelSource.value,
+    chatId,
+    chatGroupId,
+    modelId,
+  });
   const generatedTitle = await chatTitle.generateTitle({
+    chatId,
+    signal: undefined,
     titleModelIdOverride: modelId,
   });
   if (!generatedTitle) return;
@@ -319,8 +340,12 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
   generatedTitleHistory.value = Array.from(new Set(nextHistory));
 }
 
-function handleAbortTitleGeneration(_args: Record<string, never>) {
-  chatTitle.abort({});
+function handleAbortTitleGeneration(_args: Record<never, never>) {
+  const chat = currentChat.value;
+  if (!chat) return;
+  chatTitle.abortTitleGeneration({
+    chatId: chat.id,
+  });
 }
 
 async function exportChat() {
@@ -686,19 +711,27 @@ const activeTitleModelId = computed(() => {
   }
 });
 
-async function updateActiveTitleModel({ modelId }: { modelId: string | undefined }) {
-  const source = activeTitleModelSource.value;
+async function updateActiveTitleModel({
+  source,
+  chatId,
+  chatGroupId,
+  modelId,
+}: {
+  source: SettingsSource;
+  chatId: string;
+  chatGroupId: string | undefined;
+  modelId: string | undefined;
+}) {
   switch (source) {
   case 'chat':
-    if (!currentChat.value) return;
-    await updateChatSettings({ id: currentChat.value.id, updates: { titleModelId: modelId } });
+    await chatMetadata.updateSettings({ chatId, updates: { titleModelId: modelId } });
     return;
   case 'chat_group':
-    if (!currentChat.value?.groupId) {
+    if (chatGroupId === undefined) {
       await saveSettings({ patch: { titleModelId: modelId } });
       return;
     }
-    await updateChatGroupMetadata({ id: currentChat.value.groupId, updates: { titleModelId: modelId } });
+    await chatGroups.updateChatGroupMetadata({ chatGroupId, updates: { titleModelId: modelId } });
     return;
   case 'global':
     await saveSettings({ patch: { titleModelId: modelId } });
@@ -773,11 +806,23 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
 }
 
 async function handleEdit({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) {
-  await chatHistory.editMessage({ messageId, newContent, lmParameters });
+  const chat = currentChat.value;
+  if (!chat) return;
+  await chatBranches.editMessage({
+    chatId: chat.id,
+    messageId,
+    newContent,
+    lmParameters,
+  });
 }
 
 async function handleRegenerate({ messageId }: { messageId: string }) {
-  await chatGeneration.regenerateMessage({ failedMessageId: messageId });
+  const chat = currentChat.value;
+  if (!chat) return;
+  await chatConversation.regenerateMessage({
+    chatId: chat.id,
+    failedMessageId: messageId,
+  });
 }
 
 async function handleCompactContext(_args: Record<never, never>) {
@@ -792,7 +837,10 @@ async function handleConfirmCompact({
   instruction: string;
 }) {
   closeCompactSettings({});
-  const didCompact = await chatCompact.run({
+  const chat = currentChat.value;
+  if (!chat) return;
+  const didCompact = await chatCompaction.compactCurrentBranch({
+    chatId: chat.id,
     keepRecentMessages: keepCount,
     instructionOverride: instruction,
   });
@@ -802,15 +850,29 @@ async function handleConfirmCompact({
 }
 
 function handleAbortContextCompact(_args: Record<never, never>) {
-  chatCompact.abort({});
+  const chat = currentChat.value;
+  if (!chat) return;
+  chatCompaction.abort({
+    chatId: chat.id,
+  });
 }
 
 function handleSwitchVersion({ messageId }: { messageId: string }) {
-  void chatHistory.switchVersion({ messageId });
+  const chat = currentChat.value;
+  if (!chat) return;
+  void chatBranches.switchVersion({
+    chatId: chat.id,
+    messageId,
+  });
 }
 
 async function handleFork({ messageId }: { messageId: string }) {
-  const newId = await chatHistory.forkChat({ messageId });
+  const chat = currentChat.value;
+  if (!chat) return;
+  const newId = await chatBranches.forkChat({
+    chatId: chat.id,
+    messageId,
+  });
   if (newId) {
     router.push(`/chat/${newId}`);
   }
@@ -844,6 +906,39 @@ function handleForkLastMessage() {
   if (lastMsgItem && lastMsgItem.type === 'message') {
     handleFork({ messageId: lastMsgItem.node.id });
   }
+}
+
+function getCurrentChatSiblings({ messageId }: { messageId: string }) {
+  const chat = currentChat.value;
+  if (!chat) return [];
+  return [...getSiblingsInChatBranch({
+    root: chat.root,
+    messageId,
+  })];
+}
+
+function handleRefreshModels(_args: Record<never, never>) {
+  const chat = currentChat.value;
+  if (!chat) return;
+  void chatModels.fetchForChat({
+    chatId: chat.id,
+  });
+}
+
+function handleAbortGeneration(_args: Record<never, never>) {
+  const chat = currentChat.value;
+  if (!chat) return;
+  chatConversation.abort({
+    chatId: chat.id,
+  });
+}
+
+function handleToggleDebug(_args: Record<never, never>) {
+  const chat = currentChat.value;
+  if (!chat) return;
+  void chatMetadata.toggleDebug({
+    chatId: chat.id,
+  });
 }
 
 function jumpToOrigin() {
@@ -961,7 +1056,7 @@ watch(
       @share-url="shareAsURL"
       @open-file-explorer="openChatFileExplorer({})"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
-      @toggle-debug="() => chatDebug.toggle({})"
+      @toggle-debug="handleToggleDebug({})"
     />
 
     <!-- Chat Settings Panel -->
@@ -983,7 +1078,7 @@ watch(
       @save-title="title => handleSaveTitle({ title })"
       @generate-title="modelId => handleGenerateTitle({ modelId })"
       @abort-title="handleAbortTitleGeneration({})"
-      @refresh-models="fetchAvailableModels({ chatId: currentChat?.id, customEndpoint: undefined })"
+      @refresh-models="handleRefreshModels({})"
     />
 
     <!-- History Manipulation Modal -->
@@ -1038,6 +1133,8 @@ watch(
       </div>
 
       <ConversationOutlineOverlay
+        v-if="currentChat"
+        :chat-id="currentChat!.id"
         :visibility="outlineVisibility"
         :flow-items="chatFlow"
         :initial-message-id="initialOutlineMessageId"
@@ -1096,7 +1193,7 @@ watch(
                       :id="'message-' + subItem.node.id"
                       :chat-id="currentChat!.id"
                       :message="subItem.node"
-                      :siblings="chatHistory.getSiblings({ messageId: subItem.node.id })"
+                      :siblings="getCurrentChatSiblings({ messageId: subItem.node.id })"
                       :can-generate-image="canGenerateImage && hasImageModel"
                       :is-processing="isCurrentChatStreaming"
                       :is-generating="isCurrentChatStreaming && subItem.node.id === currentChat?.currentLeafId"
@@ -1112,7 +1209,7 @@ watch(
                       @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                       @switch-version="messageId => handleSwitchVersion({ messageId })"
                       @regenerate="messageId => handleRegenerate({ messageId })"
-                      @abort="chatGeneration.abort({})"
+                      @abort="handleAbortGeneration({})"
                     />
                     <ToolCallGroupItem
                       v-else-if="subItem.type === 'tool_group' && isExpanded"
@@ -1130,7 +1227,7 @@ watch(
                 :id="'message-' + flowItem.node.id"
                 :chat-id="currentChat!.id"
                 :message="flowItem.node"
-                :siblings="chatHistory.getSiblings({ messageId: flowItem.node.id })"
+                :siblings="getCurrentChatSiblings({ messageId: flowItem.node.id })"
                 :can-generate-image="canGenerateImage && hasImageModel"
                 :is-processing="isCurrentChatStreaming"
                 :is-generating="isCurrentChatStreaming && flowItem.node.id === currentChat?.currentLeafId"
@@ -1147,7 +1244,7 @@ watch(
                 @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                 @switch-version="messageId => handleSwitchVersion({ messageId })"
                 @regenerate="messageId => handleRegenerate({ messageId })"
-                @abort="chatGeneration.abort({})"
+                @abort="handleAbortGeneration({})"
               />
 
               <!-- Standalone Tool Group -->
@@ -1193,7 +1290,7 @@ watch(
         :show="isDebugEnabled"
         :chat="currentChat"
         :active-messages="activeMessages"
-        @close="() => chatDebug.toggle({})"
+        @close="handleToggleDebug({})"
         data-testid="chat-inspector"
       />
     </div>
@@ -1210,6 +1307,11 @@ watch(
       v-if="currentChat"
       ref="chatInputRef"
       :chat-id="currentChat.id"
+      :current-chat="currentChat"
+      :current-chat-group="currentChatGroup"
+      :resolved-lm-parameters="resolvedSettings?.lmParameters"
+      :inherited-model-id="inheritedSettings?.modelId"
+      :inherited-model-source="inheritedSettings?.sources.modelId"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
       :is-streaming="isCurrentChatStreaming"

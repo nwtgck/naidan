@@ -3,12 +3,12 @@ import { mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import ModelSelector from './ModelSelector.vue';
-import { useChatSettingsPanel } from '@/composables/chat/chat-scoped/useChatSettingsPanel';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
-
-vi.mock('../composables/chat/chat-scoped/useChatSettingsPanel', () => ({
-  useChatSettingsPanel: vi.fn(),
+import { useChatModels } from '@/composables/chat/useChatModels';
+const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
+  mockAvailableModelsRef: { value: [] as string[] },
+  mockFetchingModelsRef: { value: false },
 }));
 
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
@@ -17,6 +17,22 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: vi.fn(),
+    toggleDebug: vi.fn(),
+    updateModel: vi.fn(),
+    updateSettings: vi.fn(),
+    reasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    TEST_ONLY: {},
+  }),
 }));
 
 describe('ChatSettingsPanel Inheritance UI', () => {
@@ -69,17 +85,24 @@ describe('ChatSettingsPanel Inheritance UI', () => {
 
     (useCurrentChatState as unknown as Mock).mockReturnValue({
       currentChatId: computed(() => mockCurrentChat.value?.id),
-      TEST_ONLY: {},
-    });
-
-    (useChatSettingsPanel as unknown as Mock).mockReturnValue({
-      currentChat: mockCurrentChat,
-      fetchingModels: computed(() => false),
-      availableModels: ref([]),
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatGroup: computed(() => null),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
       resolvedSettings: mockResolvedSettings,
       inheritedSettings: mockInheritedSettings,
-      updateSettings: vi.fn(),
-      fetchModels: vi.fn(),
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
+    });
+    mockFetchingModelsRef.value = false;
+    mockAvailableModelsRef.value = [];
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: computed(() => mockAvailableModelsRef.value) as unknown as ReturnType<typeof useChatModels>['availableModels'],
+      fetchingModels: computed(() => mockFetchingModelsRef.value),
+      fetchForChat: vi.fn(),
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: vi.fn(),
       TEST_ONLY: {},
     });
 

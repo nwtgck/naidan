@@ -10,8 +10,7 @@ import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
 import {
   chatRuntimeStore,
-  getChatTargetByOptionalId,
-  getLiveChat,
+  getLiveChatById,
   isGeneratingTitle,
   loadData,
   registerLiveInstance,
@@ -31,12 +30,8 @@ export function isGeneratingChatTitle({
 export function abortTitleGenerationForChat({
   chatId,
 }: {
-  chatId: string | undefined;
+  chatId: string;
 }): void {
-  if (chatId === undefined) {
-    return;
-  }
-
   if (!chatRuntimeStore.activeTitleGenerations.has(chatId)) {
     return;
   }
@@ -54,12 +49,10 @@ export async function generateChatTitleForChat({
   titleModelIdOverride: string | undefined;
   signal: AbortSignal | undefined;
 }): Promise<string | undefined> {
-  const target = getChatTargetByOptionalId({ chatId });
-  if (target === null) {
+  const mutableChat = getLiveChatById({ chatId });
+  if (mutableChat === null) {
     return undefined;
   }
-
-  const mutableChat = getLiveChat({ chat: target });
   const taskId = mutableChat.id;
   const titleAtStart = mutableChat.title;
 

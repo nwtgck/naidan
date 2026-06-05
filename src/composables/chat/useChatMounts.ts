@@ -1,131 +1,130 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Mount } from '@/models/types';
 import { storageService } from '@/services/storage';
-import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
 import {
   currentChatRef,
   ensureChatTmpDirectory,
   getLiveChatById,
+  getReadonlyChat,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
 
 export type ChatMountsAdapter = {
-  mounts: ComputedRef<Mount[]>;
+  getMounts({
+    chatId,
+  }: {
+    chatId: Readonly<Ref<string>>;
+  }): ComputedRef<Mount[]>;
 
   addMount({
+    chatId,
     mount,
   }: {
+    chatId: string;
     mount: Mount;
   }): Promise<void>;
 
   removeMount({
+    chatId,
     volumeId,
   }: {
+    chatId: string;
     volumeId: string;
   }): Promise<void>;
 
   updateMount({
+    chatId,
     volumeId,
     readOnly,
   }: {
+    chatId: string;
     volumeId: string;
     readOnly: boolean;
   }): Promise<void>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
-export function useChatMounts({
-  chatId,
-}: {
-  chatId: Ref<string | undefined>;
-}): ChatMountsAdapter {
-  const chatReadModel = useChatReadModel({ chatId });
-
-  const mounts = computed(() => {
-    return chatReadModel.currentChat.value?.mounts ?? [];
-  });
+export function useChatMounts(_args: Record<never, never>): ChatMountsAdapter {
+  function getMounts({
+    chatId,
+  }: {
+    chatId: Readonly<Ref<string>>;
+  }): ComputedRef<Mount[]> {
+    return computed(() => getReadonlyChat({ chatId: chatId.value })?.mounts ?? []);
+  }
 
   async function addMount({
+    chatId,
     mount,
   }: {
+    chatId: string;
     mount: Mount;
-  }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-
+  }): Promise<void> {
     await storageService.addMountToChat({
-      chatId: id,
+      chatId,
       mount,
     });
-    await ensureChatTmpDirectory({ chatId: id });
+    await ensureChatTmpDirectory({ chatId });
 
-    const chat = getLiveChatById({ chatId: id });
+    const chat = getLiveChatById({ chatId });
     if (chat !== undefined && chat !== null) {
       chat.mounts = [...(chat.mounts ?? []), mount];
-      if (currentChatRef.value?.id === id) {
-        triggerCurrentChat({ chatId: id });
+      if (currentChatRef.value?.id === chatId) {
+        triggerCurrentChat({ chatId });
       }
     }
   }
 
   async function removeMount({
+    chatId,
     volumeId,
   }: {
+    chatId: string;
     volumeId: string;
-  }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-
+  }): Promise<void> {
     await storageService.removeMountFromChat({
-      chatId: id,
+      chatId,
       volumeId,
     });
 
-    const chat = getLiveChatById({ chatId: id });
+    const chat = getLiveChatById({ chatId });
     if (chat !== undefined && chat !== null) {
       chat.mounts = (chat.mounts ?? []).filter(mount => !(mount.type === 'volume' && mount.volumeId === volumeId));
-      if (currentChatRef.value?.id === id) {
-        triggerCurrentChat({ chatId: id });
+      if (currentChatRef.value?.id === chatId) {
+        triggerCurrentChat({ chatId });
       }
     }
   }
 
   async function updateMount({
+    chatId,
     volumeId,
     readOnly,
   }: {
+    chatId: string;
     volumeId: string;
     readOnly: boolean;
-  }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-
+  }): Promise<void> {
     await storageService.updateChatMount({
-      chatId: id,
+      chatId,
       volumeId,
       readOnly,
     });
 
-    const chat = getLiveChatById({ chatId: id });
+    const chat = getLiveChatById({ chatId });
     if (chat !== undefined && chat !== null) {
       chat.mounts = (chat.mounts ?? []).map(mount =>
         mount.type === 'volume' && mount.volumeId === volumeId ? { ...mount, readOnly } : mount
       );
-      if (currentChatRef.value?.id === id) {
-        triggerCurrentChat({ chatId: id });
+      if (currentChatRef.value?.id === chatId) {
+        triggerCurrentChat({ chatId });
       }
     }
   }
 
   return {
-    mounts,
+    getMounts,
     addMount,
     removeMount,
     updateMount,

@@ -1,9 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
+import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import MessageItem from './MessageItem.vue';
 import { SENTINEL_IMAGE_PENDING, SENTINEL_IMAGE_RESPONSE_PREFIX } from '@/utils/image-generation';
 import { useSettings } from '@/composables/useSettings';
+
+const mount: any = (component: unknown, options?: Record<string, unknown>) => {
+  if (component === MessageItem) {
+    const normalizedOptions = options ?? {};
+    const props = (normalizedOptions.props as Record<string, unknown> | undefined) ?? {};
+
+    return baseMount(component, {
+      ...normalizedOptions,
+      props: {
+        chatId: 'chat-1',
+        ...props,
+      },
+    });
+  }
+
+  return baseMount(component, options);
+};
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),

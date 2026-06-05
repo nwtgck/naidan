@@ -7,7 +7,6 @@ import {
   currentChatGroupRef,
   currentChatRef,
   loadData,
-  updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
 import { useChatLifecycle } from './useChatLifecycle';
 import { useCurrentChatState } from './useCurrentChatState';
@@ -227,20 +226,6 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatRef.value.groupId = targetGroupId;
       currentChatRef.value.updatedAt = Date.now();
     }
-
-    await updateChatMeta({
-      id: chatId,
-      updater: (current) => {
-        if (current === null) {
-          throw new Error('Chat not found');
-        }
-        return {
-          ...current,
-          groupId: targetGroupId,
-          updatedAt: Date.now(),
-        };
-      },
-    });
 
     await storageService.updateHierarchy((current) => {
       let detachedChatId: string | undefined;

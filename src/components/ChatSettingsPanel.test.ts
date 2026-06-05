@@ -2,14 +2,15 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, reactive, toRef, nextTick, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import { useChatSettingsPanel } from '@/composables/chat/chat-scoped/useChatSettingsPanel';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
+import { useChatModels } from '@/composables/chat/useChatModels';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 
 // --- Mocks ---
-
-vi.mock('../composables/chat/chat-scoped/useChatSettingsPanel', () => ({
-  useChatSettingsPanel: vi.fn(),
+const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
+  mockAvailableModelsRef: { value: [] as string[] },
+  mockFetchingModelsRef: { value: false },
 }));
 
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
@@ -18,6 +19,14 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: vi.fn(),
 }));
 
 const mockSetActiveFocusArea = vi.fn();
@@ -122,21 +131,39 @@ describe('ChatSettingsPanel.vue', () => {
 
     (useCurrentChatState as unknown as Mock).mockReturnValue({
       currentChatId: computed(() => mockCurrentChat.value?.id),
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatGroup: computed(() => null),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
+      resolvedSettings: mockResolvedSettings,
+      inheritedSettings: mockResolvedSettings,
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
       TEST_ONLY: {},
     });
 
-    (useChatSettingsPanel as unknown as Mock).mockReturnValue({
-      currentChat: mockCurrentChat,
-      fetchingModels: computed(() => false),
-      availableModels: ref(['model-1', 'model-2']),
-      resolvedSettings: mockResolvedSettings,
-      inheritedSettings: mockResolvedSettings,
-      updateSettings: vi.fn().mockImplementation(async ({ chatId, updates }) => {
+    mockAvailableModelsRef.value = ['model-1', 'model-2'];
+    mockFetchingModelsRef.value = false;
+    vi.mocked(useChatMetadata).mockReturnValue({
+      rename: vi.fn(),
+      toggleDebug: vi.fn(),
+      updateModel: vi.fn(),
+      updateGroupOverride: vi.fn(),
+      updateSettings: async ({ chatId, updates }) => {
         await mockUpdateChatSettings({ id: chatId, updates });
-      }),
-      fetchModels: vi.fn().mockImplementation(async ({ chatId }) => {
+      },
+      reasoningEffort: vi.fn(),
+      updateReasoningEffort: vi.fn(),
+      TEST_ONLY: {},
+    });
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: computed(() => mockAvailableModelsRef.value) as unknown as ReturnType<typeof useChatModels>['availableModels'],
+      fetchingModels: computed(() => mockFetchingModelsRef.value),
+      fetchForChat: async ({ chatId }) => {
         return await mockFetchAvailableModels({ chatId });
-      }),
+      },
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: vi.fn(),
       TEST_ONLY: {},
     });
 
@@ -778,20 +805,8 @@ describe('ChatSettingsPanel.vue', () => {
     });
 
     it('shows loading state during model fetch', async () => {
-      (useChatSettingsPanel as unknown as Mock).mockReturnValue({
-        currentChat: mockCurrentChat,
-        fetchingModels: computed(() => true),
-        availableModels: ref([]),
-        resolvedSettings: computed(() => ({ sources: {} })),
-        inheritedSettings: computed(() => ({ sources: {} })),
-        updateSettings: vi.fn().mockImplementation(async ({ chatId, updates }) => {
-          await mockUpdateChatSettings({ id: chatId, updates });
-        }),
-        fetchModels: vi.fn().mockImplementation(async ({ chatId }) => {
-          return await mockFetchAvailableModels({ chatId });
-        }),
-        TEST_ONLY: {},
-      });
+      mockFetchingModelsRef.value = true;
+      mockAvailableModelsRef.value = [];
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
@@ -835,20 +850,8 @@ describe('ChatSettingsPanel.vue', () => {
     });
 
     it('passes a naturally sorted list of models to ModelSelector', async () => {
-      (useChatSettingsPanel as unknown as Mock).mockReturnValue({
-        currentChat: mockCurrentChat,
-        fetchingModels: computed(() => false),
-        availableModels: ref(['model-10', 'model-2', 'model-1']),
-        resolvedSettings: computed(() => ({ sources: {} })),
-        inheritedSettings: computed(() => ({ sources: {} })),
-        updateSettings: vi.fn().mockImplementation(async ({ chatId, updates }) => {
-          await mockUpdateChatSettings({ id: chatId, updates });
-        }),
-        fetchModels: vi.fn().mockImplementation(async ({ chatId }) => {
-          return await mockFetchAvailableModels({ chatId });
-        }),
-        TEST_ONLY: {},
-      });
+      mockFetchingModelsRef.value = false;
+      mockAvailableModelsRef.value = ['model-10', 'model-2', 'model-1'];
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },

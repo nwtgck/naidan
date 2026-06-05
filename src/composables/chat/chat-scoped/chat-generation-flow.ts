@@ -56,8 +56,8 @@ import {
   currentChatGroupRef,
   currentChatRef,
   ensureChatTmpDirectory,
-  getChatTargetByOptionalId,
   getLiveChat,
+  getLiveChatById,
   isProcessing,
   loadData,
   registerLiveInstance,
@@ -68,16 +68,16 @@ import {
 } from '@/composables/chat/global/chat-core-singletons';
 import {
   generateChatTitleForChat,
-} from '@/composables/chat/chat-scoped/chat-title-helpers';
+} from '@/composables/chat/chat-scoped/chat-title-flow';
 import {
   abortProcessingForChat,
 } from '@/composables/chat/chat-scoped/chat-processing-abort';
 import {
   handleImageGenerationForChat,
-} from '@/composables/chat/chat-scoped/chat-image-helpers';
+} from '@/composables/chat/chat-scoped/chat-image-flow';
 import {
   fetchAvailableModelsForChat,
-} from '@/composables/chat/chat-scoped/chat-model-helpers';
+} from '@/composables/chat/chat-scoped/chat-model-flow';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
@@ -112,7 +112,7 @@ export async function sendMessageForChat({
   attachments: Attachment[] | undefined;
   lmParameters: LmParameters | undefined;
 }): Promise<boolean> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   return await sendMessageToTargetChat({
     targetChat,
     content,
@@ -177,7 +177,10 @@ export async function sendMessageToTargetChat({
     let resolvedModel = mutableChat.modelId || resolved.modelId;
 
     if (url || type === 'transformers_js') {
-      const models = await fetchAvailableModelsForChat({ chatId: mutableChat.id });
+      const models = await fetchAvailableModelsForChat({
+        chatId: mutableChat.id,
+        errorSource: 'chat-generation-flow:resolve-models',
+      });
       if (models.length > 0) {
         const preferredModel = mutableChat.modelId || resolved.modelId;
         if (preferredModel && models.includes(preferredModel)) {
@@ -192,7 +195,10 @@ export async function sendMessageToTargetChat({
       showOnboardingDraft({
         url,
         type,
-        models: await fetchAvailableModelsForChat({ chatId: mutableChat.id }),
+        models: await fetchAvailableModelsForChat({
+          chatId: mutableChat.id,
+          errorSource: 'chat-generation-flow:show-onboarding',
+        }),
       });
       return false;
     }
@@ -710,7 +716,7 @@ export async function regenerateMessageForChat({
   chatId: string;
   failedMessageId: string;
 }): Promise<void> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
     return;
   }
@@ -1136,7 +1142,7 @@ async function handleImageGenerationWithDefaults({
   model: string | undefined;
   signal: AbortSignal | undefined;
 }): Promise<void> {
-  const targetChat = getChatTargetByOptionalId({ chatId });
+  const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
     return;
   }

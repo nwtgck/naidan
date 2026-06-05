@@ -36,7 +36,7 @@ vi.mock('@/composables/chat/global/chat-core-singletons', () => ({
   },
 }));
 
-vi.mock('@/composables/chat/chat-scoped/chat-title-helpers', () => ({
+vi.mock('@/composables/chat/chat-scoped/chat-title-flow', () => ({
   abortTitleGenerationForChat: mockAbortTitleGeneration,
 }));
 

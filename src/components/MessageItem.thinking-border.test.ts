@@ -1,7 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode } from '@/models/types';
+
+const mount: any = (component: unknown, options?: Record<string, unknown>) => {
+  if (component === MessageItem) {
+    const normalizedOptions = options ?? {};
+    const props = (normalizedOptions.props as Record<string, unknown> | undefined) ?? {};
+
+    return baseMount(component, {
+      ...normalizedOptions,
+      props: {
+        chatId: 'chat-1',
+        ...props,
+      },
+    });
+  }
+
+  return baseMount(component, options);
+};
 
 describe('MessageItem Thinking Border (New Implementation)', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({

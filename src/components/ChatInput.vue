@@ -8,13 +8,12 @@ import ChatToolsMenu from './ChatToolsMenu.vue';
 import ChatAttachMenu from './ChatAttachMenu.vue';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
-import { useChatGeneration } from '@/composables/chat/chat-scoped/useChatGeneration';
-import { useChatDraft as useScopedChatDraft } from '@/composables/chat/chat-scoped/useChatDraft';
-import { useChatImageGeneration } from '@/composables/chat/chat-scoped/useChatImageGeneration';
-import { useChatModelSelection } from '@/composables/chat/chat-scoped/useChatModelSelection';
-import { useChatMounts } from '@/composables/chat/chat-scoped/useChatMounts';
-import { useChatReadModel } from '@/composables/chat/chat-scoped/useChatReadModel';
-import { useChatReasoning } from '@/composables/chat/chat-scoped/useChatReasoning';
+import { useChatConversation } from '@/composables/chat/useChatConversation';
+import { useChatDraft } from '@/composables/useChatDraft';
+import { useChatImageGeneration } from '@/composables/chat/useChatImageGeneration';
+import { useChatModels } from '@/composables/chat/useChatModels';
+import { useChatMounts } from '@/composables/chat/useChatMounts';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { buildWorkerMountsForChat } from '@/composables/useChatWeshTerminalSessions';
 import { storageService } from '@/services/storage';
 import { startVolumeExtensionScan } from '@/services/tools/volume-extension-cache';
@@ -36,7 +35,7 @@ import {
   Loader2Icon,
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
-import type { Attachment, LmParameters } from '@/models/types';
+import type { Attachment, Chat, ChatGroup, LmParameters } from '@/models/types';
 
 const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
@@ -48,6 +47,11 @@ const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEd
 
 const props = defineProps<{
   chatId: string;
+  currentChat: Chat;
+  currentChatGroup: ChatGroup | null;
+  resolvedLmParameters: LmParameters | undefined;
+  inheritedModelId: string | undefined;
+  inheritedModelSource: SettingsSource | undefined;
   autoSendPrompt?: string;
   visibility: 'submerged' | 'peeking' | 'active';
   isStreaming: boolean;
@@ -70,31 +74,17 @@ const isHovered = ref(false);
 
 const isCurrentChatStreaming = computed(() => props.isStreaming);
 const currentChatId = computed(() => props.chatId);
-const chatReadModel = useChatReadModel({
-  chatId: currentChatId,
-});
-const chatGeneration = useChatGeneration({
-  chatId: currentChatId,
-});
-const chatDraft = useScopedChatDraft({
-  chatId: currentChatId,
-});
+const chatConversation = useChatConversation({});
+const chatDraft = useChatDraft();
 const chatMedia = useChatImageGeneration({
   chatId: currentChatId,
 });
-const chatModelSelection = useChatModelSelection({
-  chatId: currentChatId,
-});
-const chatMounts = useChatMounts({
-  chatId: currentChatId,
-});
-const chatReasoning = useChatReasoning({
-  chatId: currentChatId,
-});
-const currentChat = chatReadModel.currentChat;
-const currentChatGroup = chatReadModel.currentChatGroup;
-const inheritedSettings = chatReadModel.inheritedSettings;
-const fetchingModels = chatModelSelection.fetchingModels;
+const chatModels = useChatModels({});
+const chatMounts = useChatMounts({});
+const chatMetadata = useChatMetadata({});
+const currentChat = computed(() => props.currentChat);
+const currentChatGroup = computed(() => props.currentChatGroup);
+const fetchingModels = chatModels.fetchingModels;
 const canGenerateImage = computed(() => props.canGenerateImage);
 const hasImageModel = computed(() => props.hasImageModel);
 const availableImageModels = computed(() => props.availableImageModels);
@@ -156,12 +146,15 @@ function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
   chatMedia.updateSeed({ seed });
 }
 
-const selectedReasoningEffort = computed(() => {
-  return chatReasoning.effort.value;
+const selectedReasoningEffort = chatMetadata.reasoningEffort({
+  chatId: currentChatId,
 });
 
 function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
-  chatReasoning.updateEffort({ effort });
+  void chatMetadata.updateReasoningEffort({
+    chatId: props.chatId,
+    effort,
+  });
 }
 
 const selectedImageModel = computed(() => {
@@ -173,7 +166,9 @@ function handleUpdateImageModel({ modelId }: { modelId: string }) {
 }
 
 async function fetchModels() {
-  await chatModelSelection.fetchModels({});
+  await chatModels.fetchForChat({
+    chatId: props.chatId,
+  });
 }
 
 function toggleImageMode() {
@@ -181,7 +176,9 @@ function toggleImageMode() {
 }
 
 const sortedAvailableModels = computed(() => naturalSort({ values: chatMedia.availableModels.value || [] }));
-const chatMountList = computed(() => chatMounts.mounts.value);
+const chatMountList = chatMounts.getMounts({
+  chatId: currentChatId,
+});
 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
@@ -315,7 +312,7 @@ async function processFiles({ files }: { files: File[] }) {
 }
 
 function generateChatMountPath({ baseName }: { baseName: string }): string {
-  const existingPaths = chatMounts.mounts.value.map(m => m.mountPath);
+  const existingPaths = chatMountList.value.map(m => m.mountPath);
   const sanitized = baseName.toLowerCase().replace(/[^a-z0-9]/g, '-');
   let path = `/home/user/${sanitized}`;
   const basePath = path;
@@ -331,6 +328,7 @@ async function finishMount({ volumeId, name }: { volumeId: string; name: string 
   if (!currentChat.value) return;
   const mountPath = generateChatMountPath({ baseName: name });
   await chatMounts.addMount({
+    chatId: props.chatId,
     mount: { type: 'volume', volumeId, mountPath, readOnly: true },
   });
   setToolEnabled({ name: 'shell_execute', enabled: true });
@@ -517,7 +515,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
 
 async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Promise<void> {
   if (!currentChat.value) return;
-  const mounts = chatMounts.mounts.value;
+  const mounts = chatMountList.value;
   if (mounts.length === 0) return;
 
   const workerMounts = await buildWorkerMountsForChat({
@@ -572,7 +570,10 @@ async function handleDetachMount({ volumeId }: { volumeId: string }) {
 
   const confirmed = await showConfirm({ title, message, confirmButtonText, confirmButtonVariant: 'danger' });
   if (!confirmed) return;
-  await chatMounts.removeMount({ volumeId });
+  await chatMounts.removeMount({
+    chatId: props.chatId,
+    volumeId,
+  });
   if (volumeType === 'opfs' || volumeType === undefined) {
     await storageService.deleteVolume({ volumeId });
   }
@@ -625,7 +626,11 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: str
   }
   }
 
-  await chatMounts.updateMount({ volumeId, readOnly });
+  await chatMounts.updateMount({
+    chatId: props.chatId,
+    volumeId,
+    readOnly,
+  });
 }
 
 async function handlePaste({ event }: { event: ClipboardEvent }) {
@@ -804,10 +809,7 @@ async function handleGenerateImage() {
       input.value = '';
       attachments.value = [];
     }
-    const sendingChatDraft = useScopedChatDraft({
-      chatId: computed(() => sendingChatId),
-    });
-    sendingChatDraft.clearDraft({});
+    chatDraft.clearDraft({ chatId: sendingChatId });
     emit('sent');
     nextTick(() => adjustTextareaHeight({}));
   }
@@ -842,9 +844,10 @@ async function handleSend() {
   }
 
   // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
-  const lmParameters = toRaw(chatReadModel.resolvedSettings.value?.lmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
+  const lmParameters = toRaw(props.resolvedLmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
 
-  const success = await chatGeneration.sendMessage({
+  const success = await chatConversation.sendMessage({
+    chatId: props.chatId,
     content: text,
     parentId: undefined,
     attachments: currentAttachments,
@@ -856,10 +859,9 @@ async function handleSend() {
       input.value = '';
       attachments.value = [];
     }
-    const sendingChatDraft = useScopedChatDraft({
-      chatId: computed(() => sendingChatId),
-    });
-    sendingChatDraft.clearDraft({});
+    if (sendingChatId !== undefined) {
+      chatDraft.clearDraft({ chatId: sendingChatId });
+    }
     emit('sent');
 
     nextTick(() => { // Ensure textarea is cleared before adjusting height
@@ -884,17 +886,15 @@ watch(
   () => currentChat.value?.id,
   (_newId, oldId) => {
     // Save previous draft
-    const previousChatDraft = useScopedChatDraft({
-      chatId: computed(() => oldId),
-    });
-    previousChatDraft.saveDraft({ draft: {
-      input: input.value,
-      attachments: attachments.value,
-      attachmentUrls: attachmentUrls.value
-    } });
+    if (oldId !== undefined) {
+      chatDraft.saveDraft({ chatId: oldId, draft: {
+        input: input.value,
+        attachments: attachments.value,
+        attachmentUrls: attachmentUrls.value
+      } });
+    }
 
-    // Load new draft
-    const draft = chatDraft.getDraft({});
+    const draft = chatDraft.getDraft({ chatId: props.chatId });
     input.value = draft.input;
     attachments.value = draft.attachments;
     attachmentUrls.value = draft.attachmentUrls;
@@ -960,14 +960,14 @@ useEventTargetListener(window, 'resize', handleWindowResize);
 
 onUnmounted(() => {
   // Save final state
-  chatDraft.saveDraft({ draft: {
+  chatDraft.saveDraft({ chatId: props.chatId, draft: {
     input: input.value,
     attachments: attachments.value,
     attachmentUrls: attachmentUrls.value
   } });
 
   // Revoke all created URLs across all drafts to prevent leaks
-  chatDraft.revokeAll({});
+  chatDraft.revokeAll();
 });
 
 function handleFocus() {
@@ -1141,7 +1141,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @click="setActiveFocusArea({ area: 'chat' })"
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
-        @keydown.esc.prevent="isCurrentChatStreaming ? chatGeneration.abort({}) : null"
+        @keydown.esc.prevent="isCurrentChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
         placeholder="Type a message..."
         class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
@@ -1186,9 +1186,9 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
           <div class="w-[100px] sm:w-[180px]">
             <ModelSelector
               :model-value="currentChat.modelId"
-              @update:model-value="val => chatModelSelection.updateModel({ modelId: val! })"
+              @update:model-value="val => chatMetadata.updateModel({ chatId: props.chatId, modelId: val! })"
               :models="sortedAvailableModels"
-              :placeholder="formatLabel({ value: inheritedSettings?.modelId, source: inheritedSettings?.sources.modelId })"
+              :placeholder="formatLabel({ value: inheritedModelId, source: inheritedModelSource })"
               :loading="fetchingModels"
               allow-clear
               @refresh="fetchModels"
@@ -1229,7 +1229,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         </div>
 
         <button
-          @click="isCurrentChatStreaming ? chatGeneration.abort({}) : handleSend()"
+          @click="isCurrentChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
           :disabled="!isCurrentChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
           :title="isCurrentChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"

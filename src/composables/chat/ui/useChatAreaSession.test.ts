@@ -10,11 +10,9 @@ describe('useChatAreaSession', () => {
   it('resets compact dialog, outline, and neural sync effect when chat identity changes', async () => {
     vi.useFakeTimers();
     try {
-      const currentChatId = ref<string | undefined>('chat-1');
-      const currentLeafId = ref<string | undefined>('leaf-1');
+      const chatIdentityKey = ref('chat-1:leaf-1');
       const session = useChatAreaSession({
-        chatId: computed(() => currentChatId.value),
-        leafId: computed(() => currentLeafId.value),
+        chatIdentityKey: computed(() => chatIdentityKey.value),
       });
 
       session.openCompactSettings({});
@@ -28,7 +26,7 @@ describe('useChatAreaSession', () => {
       expect(session.initialOutlineMessageId.value).toBe('message-1');
       expect(session.showNeuralSyncEffect.value).toBe(true);
 
-      currentChatId.value = 'chat-2';
+      chatIdentityKey.value = 'chat-2:leaf-1';
       await nextTick();
 
       expect(session.showCompactSettings.value).toBe(false);
@@ -45,8 +43,7 @@ describe('useChatAreaSession', () => {
     vi.useFakeTimers();
     try {
       const session = useChatAreaSession({
-        chatId: computed(() => 'chat-1'),
-        leafId: computed(() => 'leaf-1'),
+        chatIdentityKey: computed(() => 'chat-1:leaf-1'),
       });
 
       session.playNeuralSyncEffect({});
@@ -63,8 +60,7 @@ describe('useChatAreaSession', () => {
 
   it('captures the viewport message when opening the outline and clears it when closing', () => {
     const session = useChatAreaSession({
-      chatId: computed(() => 'chat-1'),
-      leafId: computed(() => 'leaf-1'),
+      chatIdentityKey: computed(() => 'chat-1:leaf-1'),
     });
 
     session.toggleOutline({

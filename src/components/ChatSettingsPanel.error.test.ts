@@ -1,21 +1,37 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { computed, ref, nextTick } from 'vue';
-import { useChatSettingsPanel } from '@/composables/chat/chat-scoped/useChatSettingsPanel';
+import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatModels } from '@/composables/chat/useChatModels';
 
 // --- Mocks ---
+const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
+  mockAvailableModelsRef: { value: [] as string[] },
+  mockFetchingModelsRef: { value: false },
+}));
 
 const mockCurrentChat = ref<any>(null);
 const mockFetchAvailableModels = vi.fn();
 
-vi.mock('../composables/chat/chat-scoped/useChatSettingsPanel', () => ({
-  useChatSettingsPanel: vi.fn(),
-}));
-
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: vi.fn(),
+    toggleDebug: vi.fn(),
+    updateModel: vi.fn(),
+    updateSettings: vi.fn(),
+    reasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    TEST_ONLY: {},
+  }),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -48,37 +64,18 @@ describe('ChatSettingsPanel Error Handling', () => {
       sidebarItems: computed(() => []),
       TEST_ONLY: {},
     } as ReturnType<typeof useCurrentChatState>);
-
-    vi.mocked(useChatSettingsPanel).mockReturnValue({
-      currentChat: computed(() => mockCurrentChat.value),
-      fetchingModels: computed(() => false),
-      availableModels: computed(() => []),
-      resolvedSettings: computed(() => ({
-        endpointType: mockCurrentChat.value.endpointType,
-        endpointUrl: mockCurrentChat.value.endpointUrl,
-        modelId: undefined,
-        sources: {
-          endpointType: 'chat',
-          endpointUrl: 'chat',
-          modelId: 'global',
-        },
-      })) as any,
-      inheritedSettings: computed(() => ({
-        endpointType: 'openai',
-        endpointUrl: 'http://localhost',
-        modelId: undefined,
-        sources: {
-          endpointType: 'global',
-          endpointUrl: 'global',
-          modelId: 'global',
-        },
-      })) as any,
-      updateSettings: vi.fn(),
-      fetchModels: vi.fn().mockImplementation(async () => {
-        return await mockFetchAvailableModels();
-      }),
+    mockAvailableModelsRef.value = [];
+    mockFetchingModelsRef.value = false;
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: computed(() => mockAvailableModelsRef.value) as unknown as ReturnType<typeof useChatModels>['availableModels'],
+      fetchingModels: computed(() => mockFetchingModelsRef.value),
+      fetchForChat: async ({ chatId }) => {
+        return await mockFetchAvailableModels({ chatId });
+      },
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: vi.fn(),
       TEST_ONLY: {},
-    } as ReturnType<typeof useChatSettingsPanel>);
+    });
   });
 
   it('should reset error state when endpoint URL changes', async () => {

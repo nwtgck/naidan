@@ -1,8 +1,8 @@
 import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
 import { installChatBootstrap } from '@/composables/chat/chat-bootstrap';
+import { useChatModels } from '@/composables/chat/useChatModels';
 import { loadData } from '@/composables/chat/global/chat-core-singletons';
 import { chatRuntimeStore, currentChatRef, rootItems } from '@/composables/chat/global/chat-core-singletons';
-import { fetchAvailableModelsForChat } from '@/composables/chat/chat-scoped/chat-model-helpers';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import type { Settings } from '@/models/types';
 import { transformersJsService } from '@/services/transformers-js';
@@ -17,11 +17,12 @@ export type ChatBootstrapAdapter = {
     chatId: string;
   }): Promise<unknown>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
   const { settings } = useSettings();
+  const chatModels = useChatModels({});
   const chatNavigation = useChatNavigation();
   const chatDerivedState = createChatDerivedState({
     currentChatRef,
@@ -55,8 +56,11 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
 
         switch (type) {
         case 'transformers_js':
-          await fetchAvailableModelsForChat({
-            chatId: currentChatRef.value?.id,
+          if (currentChatRef.value === null) {
+            return;
+          }
+          await chatModels.fetchForChat({
+            chatId: currentChatRef.value.id,
           });
           return;
         case 'openai':

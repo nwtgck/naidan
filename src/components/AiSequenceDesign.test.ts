@@ -1,12 +1,29 @@
 import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import ToolCallGroupItem from './ToolCallGroupItem.vue';
 import type { AssistantMessageNode, CombinedToolCall } from '@/models/types';
 import { ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
+
+const mount: any = (component: unknown, options?: Record<string, unknown>) => {
+  if (component === MessageItem) {
+    const normalizedOptions = options ?? {};
+    const props = (normalizedOptions.props as Record<string, unknown> | undefined) ?? {};
+
+    return baseMount(component, {
+      ...normalizedOptions,
+      props: {
+        chatId: 'chat-1',
+        ...props,
+      },
+    });
+  }
+
+  return baseMount(component, options);
+};
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),

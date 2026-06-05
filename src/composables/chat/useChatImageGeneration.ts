@@ -3,8 +3,8 @@ import type { Attachment, LmParameters } from '@/models/types';
 import { availableModels } from '@/composables/chat/global/chat-core-singletons';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ImageRequestParams } from '@/utils/image-generation';
-import { sendImageRequestForChat } from './chat-image-helpers';
-import { sendMessageForChat } from './chat-generation-flow';
+import { sendImageRequestForChat } from '@/composables/chat/chat-scoped/chat-image-flow';
+import { sendMessageForChat } from '@/composables/chat/chat-scoped/chat-generation-flow';
 
 export type ChatImageGenerationAdapter = {
   availableModels: Ref<string[]>;
@@ -76,81 +76,31 @@ export type ChatImageGenerationAdapter = {
     attachments: Attachment[];
   }): Promise<boolean>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatImageGeneration({
   chatId,
 }: {
-  chatId: Ref<string | undefined>;
+  chatId: Readonly<Ref<string>>;
 }): ChatImageGenerationAdapter {
   const imageGeneration = useImageGeneration();
 
-  const isImageMode = computed(() => {
-    const id = chatId.value;
-    if (id === undefined) {
-      return false;
-    }
-    return imageGeneration.isImageMode({ chatId: id });
-  });
-
-  const resolution = computed(() => {
-    const id = chatId.value;
-    if (id === undefined) {
-      return { width: 512, height: 512 };
-    }
-    return imageGeneration.getResolution({ chatId: id });
-  });
-
-  const count = computed(() => {
-    const id = chatId.value;
-    if (id === undefined) {
-      return 1;
-    }
-    return imageGeneration.getCount({ chatId: id });
-  });
-
-  const persistAs = computed(() => {
-    const id = chatId.value;
-    if (id === undefined) {
-      return 'original';
-    }
-    return imageGeneration.getPersistAs({ chatId: id });
-  });
-
-  const steps = computed(() => {
-    const id = chatId.value;
-    if (id === undefined) {
-      return undefined;
-    }
-    return imageGeneration.getSteps({ chatId: id });
-  });
-
-  const seed = computed(() => {
-    const id = chatId.value;
-    if (id === undefined) {
-      return undefined;
-    }
-    return imageGeneration.getSeed({ chatId: id });
-  });
-
+  const isImageMode = computed(() => imageGeneration.isImageMode({ chatId: chatId.value }));
+  const resolution = computed(() => imageGeneration.getResolution({ chatId: chatId.value }));
+  const count = computed(() => imageGeneration.getCount({ chatId: chatId.value }));
+  const persistAs = computed(() => imageGeneration.getPersistAs({ chatId: chatId.value }));
+  const steps = computed(() => imageGeneration.getSteps({ chatId: chatId.value }));
+  const seed = computed(() => imageGeneration.getSeed({ chatId: chatId.value }));
   const selectedImageModel = computed(() => {
-    const id = chatId.value;
-    if (id === undefined) {
-      return undefined;
-    }
     return imageGeneration.getSelectedImageModel({
-      chatId: id,
+      chatId: chatId.value,
       availableModels: availableModels.value,
     });
   });
 
   function toggleImageMode(_args: Record<never, never>) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-    imageGeneration.toggleImageMode({ chatId: id });
+    imageGeneration.toggleImageMode({ chatId: chatId.value });
   }
 
   function updateResolution({
@@ -160,11 +110,7 @@ export function useChatImageGeneration({
     width: number;
     height: number;
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-    imageGeneration.updateResolution({ chatId: id, width, height });
+    imageGeneration.updateResolution({ chatId: chatId.value, width, height });
   }
 
   function updateCount({
@@ -172,11 +118,7 @@ export function useChatImageGeneration({
   }: {
     count: number;
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-    imageGeneration.updateCount({ chatId: id, count });
+    imageGeneration.updateCount({ chatId: chatId.value, count });
   }
 
   function updatePersistAs({
@@ -184,11 +126,7 @@ export function useChatImageGeneration({
   }: {
     format: 'original' | 'webp' | 'jpeg' | 'png';
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-    imageGeneration.updatePersistAs({ chatId: id, format });
+    imageGeneration.updatePersistAs({ chatId: chatId.value, format });
   }
 
   function updateSteps({
@@ -196,11 +134,7 @@ export function useChatImageGeneration({
   }: {
     steps: number | undefined;
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-    imageGeneration.updateSteps({ chatId: id, steps });
+    imageGeneration.updateSteps({ chatId: chatId.value, steps });
   }
 
   function updateSeed({
@@ -208,11 +142,7 @@ export function useChatImageGeneration({
   }: {
     seed: number | 'browser_random' | undefined;
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-    imageGeneration.updateSeed({ chatId: id, seed });
+    imageGeneration.updateSeed({ chatId: chatId.value, seed });
   }
 
   function setImageModel({
@@ -220,11 +150,7 @@ export function useChatImageGeneration({
   }: {
     modelId: string;
   }) {
-    const id = chatId.value;
-    if (id === undefined) {
-      return;
-    }
-    imageGeneration.setImageModel({ chatId: id, modelId });
+    imageGeneration.setImageModel({ chatId: chatId.value, modelId });
   }
 
   async function sendImageRequest({
@@ -247,9 +173,6 @@ export function useChatImageGeneration({
     attachments: Attachment[];
   }): Promise<boolean> {
     const id = chatId.value;
-    if (id === undefined) {
-      return false;
-    }
 
     return await sendImageRequestForChat({
       chatId: id,
