@@ -108,8 +108,8 @@ const chatId = computed(() => props.chatId);
 const chatPaneState = useChatPaneState({
   chatId,
 });
-const currentChat = chatPaneState.chat;
-const currentChatGroup = chatPaneState.chatGroup;
+const chat = chatPaneState.chat;
+const chatGroup = chatPaneState.chatGroup;
 const activeMessages = chatPaneState.activeMessages;
 const allMessages = chatPaneState.allMessages;
 const resolvedSettings = chatPaneState.resolvedSettings;
@@ -123,15 +123,15 @@ const {
   isThinkingActive,
   isWaitingResponse,
 } = useChatDisplayFlow({
-  chat: currentChat,
+  chat,
   isProcessing: ({ chatId }) => isChatProcessing({ chatId }),
 });
 const contextCompactProgress = computed<ContextCompactProgress>(() => getChatContextCompactProgress({ chatId: props.chatId }));
 const isGeneratingTitle = computed(() => isChatGeneratingTitle({ chatId: props.chatId }));
-const isDebugEnabled = computed(() => currentChat.value?.debugEnabled === true);
+const isDebugEnabled = computed(() => chat.value?.debugEnabled === true);
 const chatIdentityKey = computed(() => {
   const chatId = props.chatId;
-  const leafId = currentChat.value?.currentLeafId ?? 'no-leaf';
+  const leafId = chat.value?.currentLeafId ?? 'no-leaf';
   return `${chatId}:${leafId}`;
 });
 
@@ -224,14 +224,14 @@ const {
 } = useSettings();
 const router = useRouter();
 
-const isCurrentChatStreaming = computed(() => {
-  return currentChat.value ? isProcessing.value : false;
+const isChatStreaming = computed(() => {
+  return chat.value ? isProcessing.value : false;
 });
 
 // The index of the single flow item that should display the GeneratingIndicator.
 // Only the very last item during streaming gets the indicator — never more than one.
 const generatingIndicatorIndex = computed(() => {
-  if (!isCurrentChatStreaming.value) return -1;
+  if (!isChatStreaming.value) return -1;
   return chatFlow.value.length - 1;
 });
 
@@ -289,29 +289,29 @@ function clearTargetMessageQuery() {
 }
 
 async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   await chatGroups.moveChatToGroup({
-    chatId: chat.id,
+    chatId: chatValue.id,
     chatGroupId: groupId ?? undefined,
   });
 }
 
 async function handleSaveTitle({ title }: { title: string }) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   await chatMetadata.rename({
-    chatId: chat.id,
+    chatId: chatValue.id,
     title,
   });
 }
 
 async function handleGenerateTitle({ modelId }: { modelId: string | undefined }) {
-  const chat = currentChat.value;
-  if (!chat) return;
-  const chatId = chat.id;
-  const chatGroupId = chat.groupId ?? undefined;
-  const titleBeforeGeneration = chat.title?.trim();
+  const chatValue = chat.value;
+  if (!chatValue) return;
+  const chatId = chatValue.id;
+  const chatGroupId = chatValue.groupId ?? undefined;
+  const titleBeforeGeneration = chatValue.title?.trim();
   await updateActiveTitleModel({
     source: activeTitleModelSource.value,
     chatId,
@@ -331,17 +331,17 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
 }
 
 function handleAbortTitleGeneration(_args: Record<never, never>) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   chatTitle.abortTitleGeneration({
-    chatId: chat.id,
+    chatId: chatValue.id,
   });
 }
 
 async function exportChat() {
-  if (!currentChat.value || !chatFlow.value) return;
+  if (!chat.value || !chatFlow.value) return;
 
-  let markdownContent = `# ${currentChat.value.title || 'New Chat'}\n\n`;
+  let markdownContent = `# ${chat.value.title || 'New Chat'}\n\n`;
 
   const processFlowItems = async (items: ChatFlowItem[]) => {
     for (const item of items) {
@@ -449,7 +449,7 @@ async function exportChat() {
   await processFlowItems(chatFlow.value);
 
   const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
-  const filename = `${currentChat.value.title || 'new_chat'}.txt`;
+  const filename = `${chat.value.title || 'new_chat'}.txt`;
 
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
@@ -461,10 +461,10 @@ async function exportChat() {
 }
 
 async function shareAsURL() {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
 
   try {
-    const url = await generateChatShareURL({ chatId: currentChat.value.id });
+    const url = await generateChatShareURL({ chatId: chat.value.id });
     await navigator.clipboard.writeText(url);
     addToast({
       message: 'Share URL copied to clipboard!',
@@ -479,13 +479,13 @@ async function shareAsURL() {
 }
 
 async function openChatFileExplorer(_args: Record<string, never>) {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
 
   const mounts = await buildWorkerMountsForChat({
-    chatMounts: currentChat.value.mounts ?? [],
-    chatGroupMounts: currentChatGroup.value?.mounts,
-    chatId: currentChat.value.id,
-    chatGroupId: currentChat.value.groupId ?? undefined,
+    chatMounts: chat.value.mounts ?? [],
+    chatGroupMounts: chatGroup.value?.mounts,
+    chatId: chat.value.id,
+    chatGroupId: chat.value.groupId ?? undefined,
     naidanSysfsVisibility: chatAreaNaidanSysfsVisibility.value,
   });
 
@@ -499,9 +499,9 @@ async function openChatFileExplorer(_args: Record<string, never>) {
 }
 
 function handlePrint() {
-  if (currentChat.value) {
+  if (chat.value) {
     usePrint().print({
-      title: currentChat.value.title || 'Chat',
+      title: chat.value.title || 'Chat',
       mode: 'chat'
     });
   }
@@ -621,7 +621,7 @@ watch(
     return {
       messageId: props.targetMessageId,
       chatId: props.chatId,
-      leafId: currentChat.value?.currentLeafId,
+      leafId: chat.value?.currentLeafId,
       flowKey,
     };
   },
@@ -672,8 +672,8 @@ const canGenerateImage = computed(() => {
 });
 const hasImageModel = computed(() => availableImageModels.value.length > 0);
 
-const currentChatGroupBadge = computed(() => {
-  const groupId = currentChat.value?.groupId;
+const chatGroupBadge = computed(() => {
+  const groupId = chat.value?.groupId;
   if (!groupId) return undefined;
   return availableChatGroups.value.find(group => group.id === groupId);
 });
@@ -689,9 +689,9 @@ const activeTitleModelId = computed(() => {
   const source = activeTitleModelSource.value;
   switch (source) {
   case 'chat':
-    return currentChat.value?.titleModelId;
+    return chat.value?.titleModelId;
   case 'chat_group':
-    return currentChatGroup.value?.titleModelId;
+    return chatGroup.value?.titleModelId;
   case 'global':
     return settings.value.titleModelId;
   default: {
@@ -743,10 +743,10 @@ watch(
 );
 
 const autoScroll = useChatPaneAutoScroll({
-  currentChat,
+  chat,
   activeMessages,
   chatFlow,
-  processingStatus: computed(() => isCurrentChatStreaming.value ? 'processing' : 'idle'),
+  processingStatus: computed(() => isChatStreaming.value ? 'processing' : 'idle'),
 });
 
 const responseViewportReserve = ref<{ chatId: string, navigationKey: string, userTurnId: string, heightPx: number } | undefined>(undefined);
@@ -796,10 +796,10 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
 }
 
 async function handleEdit({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   await chatBranches.editMessage({
-    chatId: chat.id,
+    chatId: chatValue.id,
     messageId,
     newContent,
     lmParameters,
@@ -807,10 +807,10 @@ async function handleEdit({ messageId, newContent, lmParameters }: { messageId: 
 }
 
 async function handleRegenerate({ messageId }: { messageId: string }) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   await chatConversation.regenerateMessage({
-    chatId: chat.id,
+    chatId: chatValue.id,
     failedMessageId: messageId,
   });
 }
@@ -827,10 +827,10 @@ async function handleConfirmCompact({
   instruction: string;
 }) {
   closeCompactSettings({});
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   const didCompact = await chatCompaction.compactCurrentBranch({
-    chatId: chat.id,
+    chatId: chatValue.id,
     keepRecentMessages: keepCount,
     instructionOverride: instruction,
   });
@@ -840,27 +840,27 @@ async function handleConfirmCompact({
 }
 
 function handleAbortContextCompact(_args: Record<never, never>) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   chatCompaction.abort({
-    chatId: chat.id,
+    chatId: chatValue.id,
   });
 }
 
 function handleSwitchVersion({ messageId }: { messageId: string }) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   void chatBranches.switchVersion({
-    chatId: chat.id,
+    chatId: chatValue.id,
     messageId,
   });
 }
 
 async function handleFork({ messageId }: { messageId: string }) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   const newId = await chatBranches.forkChat({
-    chatId: chat.id,
+    chatId: chatValue.id,
     messageId,
   });
   if (newId) {
@@ -899,41 +899,41 @@ function handleForkLastMessage() {
 }
 
 function getCurrentChatSiblings({ messageId }: { messageId: string }) {
-  const chat = currentChat.value;
-  if (!chat) return [];
+  const chatValue = chat.value;
+  if (!chatValue) return [];
   return [...getSiblingsInChatBranch({
-    root: chat.root,
+    root: chatValue.root,
     messageId,
   })];
 }
 
 function handleRefreshModels(_args: Record<never, never>) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   void chatModels.fetchForChat({
-    chatId: chat.id,
+    chatId: chatValue.id,
   });
 }
 
 function handleAbortGeneration(_args: Record<never, never>) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   chatConversation.abort({
-    chatId: chat.id,
+    chatId: chatValue.id,
   });
 }
 
 function handleToggleDebug(_args: Record<never, never>) {
-  const chat = currentChat.value;
-  if (!chat) return;
+  const chatValue = chat.value;
+  if (!chatValue) return;
   void chatMetadata.toggleDebug({
-    chatId: chat.id,
+    chatId: chatValue.id,
   });
 }
 
 function jumpToOrigin() {
-  if (currentChat.value?.originChatId) {
-    router.push(`/chat/${currentChat.value.originChatId}`);
+  if (chat.value?.originChatId) {
+    router.push(`/chat/${chat.value.originChatId}`);
   }
 }
 
@@ -1020,12 +1020,12 @@ watch(
     </div>
 
     <ChatPaneHeader
-      :current-chat="currentChat"
+      :current-chat="chat"
       :chat-groups="availableChatGroups"
-      :current-chat-group-badge="currentChatGroupBadge"
+      :current-chat-group-badge="chatGroupBadge"
       :active-message-count="activeMessages.length"
       :model-label="currentModelLabel"
-      :has-overrides="!!(currentChat && hasChatOverrides({ chat: currentChat }))"
+      :has-overrides="!!(chat && hasChatOverrides({ chat }))"
       :show-chat-settings="showChatSettings"
       :outline-visibility="outlineVisibility"
       :generating-title="isGeneratingTitle"
@@ -1038,7 +1038,7 @@ watch(
       @move-to-group="groupId => handleMoveToGroup({ groupId })"
       @toggle-outline="toggleOutline({})"
       @print="handlePrint"
-      @search-chat="() => { if (currentChat) useGlobalSearch().openSearch({ chatId: currentChat.id }); }"
+      @search-chat="() => { if (chat) useGlobalSearch().openSearch({ chatId: chat.id }); }"
       @open-history="showHistoryModal = true"
       @compact-context="handleCompactContext({})"
       @export-chat="exportChat"
@@ -1057,7 +1057,7 @@ watch(
 
     <ChatTitleDialog
       :is-open="showTitleDialog"
-      :title="currentChat?.title ?? null"
+      :title="chat?.title ?? null"
       :available-models="availableModels"
       :selected-title-model="activeTitleModelId"
       :title-model-source="activeTitleModelSource"
@@ -1090,10 +1090,10 @@ watch(
     <!-- Chat Wesh Terminal Modal -->
     <ChatWeshTerminalModal
       :is-open="isChatWeshTerminalOpen"
-      :chat-mounts="currentChat?.mounts"
-      :chat-group-mounts="currentChatGroup?.mounts"
+      :chat-mounts="chat?.mounts"
+      :chat-group-mounts="chatGroup?.mounts"
       :chat-id="props.chatId"
-      :chat-group-id="currentChat?.groupId ?? undefined"
+      :chat-group-id="chat?.groupId ?? undefined"
       :naidan-sysfs-visibility="chatAreaNaidanSysfsVisibility"
       @close="toggleChatWeshTerminal()"
     />
@@ -1123,7 +1123,7 @@ watch(
       </div>
 
       <ConversationOutlineOverlay
-        v-if="currentChat"
+        v-if="chat"
         :chat-id="props.chatId"
         :visibility="outlineVisibility"
         :flow-items="chatFlow"
@@ -1138,7 +1138,7 @@ watch(
         style="overflow-anchor: none;"
         :style="{ paddingBottom: inputVisibility === 'submerged' ? '48px' : '300px' }"
       >
-        <template v-if="currentChat">
+        <template v-if="chat">
           <div v-if="activeMessages.length > 0" class="relative p-2">
             <template v-for="(flowItem, flowIdx) in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
               <!-- AI Process Sequence (Collapsible Group) -->
@@ -1146,7 +1146,7 @@ watch(
                 v-if="flowItem.type === 'process_sequence'"
                 :id="'process-sequence-' + flowItem.id"
                 :items="flowItem.items"
-                :is-processing="isCurrentChatStreaming"
+                :is-processing="isChatStreaming"
                 :flow="flowItem.flow"
                 :summary="flowItem.summary"
                 :stats="flowItem.stats"
@@ -1182,8 +1182,8 @@ watch(
                       :message="subItem.node"
                       :siblings="getCurrentChatSiblings({ messageId: subItem.node.id })"
                       :can-generate-image="canGenerateImage && hasImageModel"
-                      :is-processing="isCurrentChatStreaming"
-                      :is-generating="isCurrentChatStreaming && subItem.node.id === currentChat?.currentLeafId"
+                      :is-processing="isChatStreaming"
+                      :is-generating="isChatStreaming && subItem.node.id === chat?.currentLeafId"
                       :available-image-models="availableImageModels"
                       :endpoint-type="resolvedSettings?.endpointType"
                       :flow="subItem.flow"
@@ -1216,8 +1216,8 @@ watch(
                 :message="flowItem.node"
                 :siblings="getCurrentChatSiblings({ messageId: flowItem.node.id })"
                 :can-generate-image="canGenerateImage && hasImageModel"
-                :is-processing="isCurrentChatStreaming"
-                :is-generating="isCurrentChatStreaming && flowItem.node.id === currentChat?.currentLeafId"
+                :is-processing="isChatStreaming"
+                :is-generating="isChatStreaming && flowItem.node.id === chat?.currentLeafId"
                 :available-image-models="availableImageModels"
                 :endpoint-type="resolvedSettings?.endpointType"
                 :flow="flowItem.flow"
@@ -1275,7 +1275,7 @@ watch(
       <ChatDebugInspector
         v-if="isDebugEnabled"
         :show="isDebugEnabled"
-        :chat="currentChat"
+        :chat="chat"
         :active-messages="activeMessages"
         @close="handleToggleDebug({})"
         data-testid="chat-inspector"
@@ -1284,24 +1284,24 @@ watch(
 
     <!-- Input Layer -->
     <ChatMediaShelf
-      v-if="currentChat && mediaShelfVisibility === 'visible'"
-      :chat-id="currentChat.id"
+      v-if="chat && mediaShelfVisibility === 'visible'"
+      :chat-id="chat.id"
       :messages="allMessages"
       @close="setMediaShelfVisibility({ visibility: 'hidden' })"
       @jump-to-message="(id) => jumpToMessage({ messageId: id })"
     />
     <ChatInput
-      v-if="currentChat"
+      v-if="chat"
       ref="chatInputRef"
-      :chat-id="currentChat.id"
-      :current-chat="currentChat"
-      :current-chat-group="currentChatGroup"
+      :chat-id="chat.id"
+      :current-chat="chat"
+      :current-chat-group="chatGroup"
       :resolved-lm-parameters="resolvedSettings?.lmParameters"
       :inherited-model-id="inheritedSettings?.modelId"
       :inherited-model-source="inheritedSettings?.sources.modelId"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
-      :is-streaming="isCurrentChatStreaming"
+      :is-streaming="isChatStreaming"
       :can-generate-image="canGenerateImage"
       :has-image-model="hasImageModel"
       :available-image-models="availableImageModels"

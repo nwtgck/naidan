@@ -198,12 +198,12 @@ function getResponseStateAfterContentChange({
 }
 
 export function useChatPaneAutoScroll({
-  currentChat,
+  chat,
   activeMessages,
   chatFlow,
   processingStatus,
 }: {
-  currentChat: MaybeReadonlyRef<ChatPaneContext | null>;
+  chat: MaybeReadonlyRef<ChatPaneContext | null>;
   activeMessages: MaybeReadonlyRef<readonly MessageNode[]>;
   chatFlow: MaybeReadonlyRef<readonly ChatFlowItem[]>;
   processingStatus: MaybeReadonlyRef<ChatPaneProcessingStatus>;
@@ -211,12 +211,12 @@ export function useChatPaneAutoScroll({
   const state = ref<ChatPaneAutoScrollState>({ kind: 'uninitialized' });
 
   const snapshot = computed<ChatPaneAutoScrollSnapshot>(() => {
-    const chat = currentChat.value;
+    const chatValue = chat.value;
     const latestUserTurnId = getLatestUserTurnId({ activeMessages: [...activeMessages.value] });
 
     return {
-      chatId: chat?.id,
-      navigationKey: chat ? getNavigationKey({ chat }) : undefined,
+      chatId: chatValue?.id,
+      navigationKey: chatValue ? getNavigationKey({ chat: chatValue }) : undefined,
       processingStatus: processingStatus.value,
       latestUserTurnId,
       initialOpenTarget: getInitialOpenTarget({ latestUserTurnId }),
