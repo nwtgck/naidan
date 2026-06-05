@@ -3,31 +3,31 @@ import type { MessageNode } from '@/models/types';
 import type { ChatFlowItem } from './useChatDisplayFlow';
 
 type MaybeReadonlyRef<T> = Ref<T> | ComputedRef<T>;
-type ChatAreaContext = {
+type ChatPaneContext = {
   id: string;
   currentLeafId?: string;
 };
-type ChatAreaProcessingStatus = 'idle' | 'processing';
+type ChatPaneProcessingStatus = 'idle' | 'processing';
 
-export type ChatAreaScrollTarget =
+export type ChatPaneScrollTarget =
   | { kind: 'message'; anchorId: string; messageId: string }
   | { kind: 'process_sequence'; anchorId: string; sequenceId: string }
   | { kind: 'tool_group'; anchorId: string; toolGroupId: string };
 
-export type ChatAreaInitialOpenTarget =
-  | ChatAreaScrollTarget
+export type ChatPaneInitialOpenTarget =
+  | ChatPaneScrollTarget
   | { kind: 'bottom' };
 
-export interface ChatAreaAutoScrollSnapshot {
+export interface ChatPaneAutoScrollSnapshot {
   chatId: string | undefined;
   navigationKey: string | undefined;
-  processingStatus: ChatAreaProcessingStatus;
+  processingStatus: ChatPaneProcessingStatus;
   latestUserTurnId: string | undefined;
-  initialOpenTarget: ChatAreaInitialOpenTarget;
-  firstAssistantVisibleTarget: ChatAreaScrollTarget | undefined;
+  initialOpenTarget: ChatPaneInitialOpenTarget;
+  firstAssistantVisibleTarget: ChatPaneScrollTarget | undefined;
 }
 
-type ChatAreaAutoScrollState =
+type ChatPaneAutoScrollState =
   | { kind: 'uninitialized' }
   | {
       kind: 'tracking';
@@ -39,9 +39,9 @@ type ChatAreaAutoScrollState =
         | { kind: 'assistant_scrolled'; userTurnId: string };
     };
 
-export type ChatAreaAutoScrollAction =
-  | { kind: 'initial_open'; target: ChatAreaInitialOpenTarget }
-  | { kind: 'assistant'; target: ChatAreaScrollTarget; userTurnId: string };
+export type ChatPaneAutoScrollAction =
+  | { kind: 'initial_open'; target: ChatPaneInitialOpenTarget }
+  | { kind: 'assistant'; target: ChatPaneScrollTarget; userTurnId: string };
 
 function getLatestUserTurnId({ activeMessages }: { activeMessages: MessageNode[] }): string | undefined {
   for (let index = activeMessages.length - 1; index >= 0; index--) {
@@ -66,7 +66,7 @@ function getLatestUserTurnId({ activeMessages }: { activeMessages: MessageNode[]
   return undefined;
 }
 
-function getInitialOpenTarget({ latestUserTurnId }: { latestUserTurnId: string | undefined }): ChatAreaInitialOpenTarget {
+function getInitialOpenTarget({ latestUserTurnId }: { latestUserTurnId: string | undefined }): ChatPaneInitialOpenTarget {
   if (!latestUserTurnId) {
     return { kind: 'bottom' };
   }
@@ -77,7 +77,7 @@ function getInitialOpenTarget({ latestUserTurnId }: { latestUserTurnId: string |
   };
 }
 
-function getScrollTargetForItem({ item }: { item: ChatFlowItem }): ChatAreaScrollTarget | undefined {
+function getScrollTargetForItem({ item }: { item: ChatFlowItem }): ChatPaneScrollTarget | undefined {
   switch (item.type) {
   case 'message': {
     const role = item.node.role;
@@ -123,7 +123,7 @@ function getFirstAssistantVisibleTarget({
 }: {
   chatFlow: ChatFlowItem[];
   latestUserTurnId: string | undefined;
-}): ChatAreaScrollTarget | undefined {
+}): ChatPaneScrollTarget | undefined {
   if (!latestUserTurnId) return undefined;
 
   let currentUserTurnId: string | undefined;
@@ -146,7 +146,7 @@ function getFirstAssistantVisibleTarget({
   return undefined;
 }
 
-function getNavigationKey({ chat }: { chat: ChatAreaContext }): string {
+function getNavigationKey({ chat }: { chat: ChatPaneContext }): string {
   return `${chat.id}:${chat.currentLeafId ?? ''}`;
 }
 
@@ -154,7 +154,7 @@ function getOpenedResponseState({
   latestUserTurnId,
 }: {
   latestUserTurnId: string | undefined;
-}): Extract<ChatAreaAutoScrollState, { kind: 'tracking' }>['response'] {
+}): Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'] {
   if (!latestUserTurnId) {
     return { kind: 'awaiting_user_turn' };
   }
@@ -168,9 +168,9 @@ function getResponseStateAfterContentChange({
   currentResponse,
   latestUserTurnId,
 }: {
-  currentResponse: Extract<ChatAreaAutoScrollState, { kind: 'tracking' }>['response'];
+  currentResponse: Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'];
   latestUserTurnId: string | undefined;
-}): Extract<ChatAreaAutoScrollState, { kind: 'tracking' }>['response'] {
+}): Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'] {
   if (!latestUserTurnId) {
     return { kind: 'awaiting_user_turn' };
   }
@@ -197,26 +197,26 @@ function getResponseStateAfterContentChange({
   }
 }
 
-export function useChatAreaAutoScroll({
-  currentChat,
+export function useChatPaneAutoScroll({
+  chat,
   activeMessages,
   chatFlow,
   processingStatus,
 }: {
-  currentChat: MaybeReadonlyRef<ChatAreaContext | null>;
+  chat: MaybeReadonlyRef<ChatPaneContext | null>;
   activeMessages: MaybeReadonlyRef<readonly MessageNode[]>;
   chatFlow: MaybeReadonlyRef<readonly ChatFlowItem[]>;
-  processingStatus: MaybeReadonlyRef<ChatAreaProcessingStatus>;
+  processingStatus: MaybeReadonlyRef<ChatPaneProcessingStatus>;
 }) {
-  const state = ref<ChatAreaAutoScrollState>({ kind: 'uninitialized' });
+  const state = ref<ChatPaneAutoScrollState>({ kind: 'uninitialized' });
 
-  const snapshot = computed<ChatAreaAutoScrollSnapshot>(() => {
-    const chat = currentChat.value;
+  const snapshot = computed<ChatPaneAutoScrollSnapshot>(() => {
+    const chatValue = chat.value;
     const latestUserTurnId = getLatestUserTurnId({ activeMessages: [...activeMessages.value] });
 
     return {
-      chatId: chat?.id,
-      navigationKey: chat ? getNavigationKey({ chat }) : undefined,
+      chatId: chatValue?.id,
+      navigationKey: chatValue ? getNavigationKey({ chat: chatValue }) : undefined,
       processingStatus: processingStatus.value,
       latestUserTurnId,
       initialOpenTarget: getInitialOpenTarget({ latestUserTurnId }),
@@ -227,7 +227,7 @@ export function useChatAreaAutoScroll({
     };
   });
 
-  function consumeScrollAction(): ChatAreaAutoScrollAction | undefined {
+  function consumeScrollAction(): ChatPaneAutoScrollAction | undefined {
     const currentSnapshot = snapshot.value;
     const previousState = state.value;
 

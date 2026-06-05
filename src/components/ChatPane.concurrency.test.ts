@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import ChatPane from './ChatPane.vue';
 import { nextTick, ref, computed, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
@@ -19,6 +19,13 @@ const router = createRouter({
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<any>(null);
 const mockActiveMessages = ref<any[]>([]);
+const mockChatGroups = ref<any[]>([]);
+const mockResolvedSettings = ref<any>({
+  lmParameters: { reasoning: { effort: undefined } },
+  modelId: 'm1',
+  sources: { modelId: 'global' },
+});
+const mockInheritedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -34,9 +41,9 @@ vi.mock('../composables/useChat', () => ({
     getSiblings: vi.fn().mockReturnValue([]),
     saveChat: vi.fn(),
     moveChatToGroup: vi.fn(),
-    chatGroups: ref([]),
-    resolvedSettings: ref({ lmParameters: { reasoning: { effort: undefined } }, modelId: 'm1', sources: { modelId: 'global' } }),
-    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    chatGroups: mockChatGroups,
+    resolvedSettings: mockResolvedSettings,
+    inheritedSettings: mockInheritedSettings,
     availableModels: ref([]),
     isTaskRunning: vi.fn((id: string) => mockActiveGenerations.has(id)),
     isProcessing: vi.fn((id: string) => mockActiveGenerations.has(id)),
@@ -79,47 +86,43 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
-  useCurrentChatState: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    currentChatGroup: computed(() => null),
-    currentChatId: computed(() => mockCurrentChat.value?.id),
+
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockCurrentChat.value),
+    chatGroup: computed(() => null),
     activeMessages: computed(() => mockActiveMessages.value),
     allMessages: computed(() => mockActiveMessages.value),
-    resolvedSettings: computed(() => ({ lmParameters: { reasoning: { effort: undefined } }, modelId: 'm1', sources: { modelId: 'global' } })),
-    inheritedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
-    chatGroups: computed(() => []),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    chatGroups: computed(() => mockChatGroups.value),
   }),
 }));
 
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => []),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => []),
-  }),
-}));
 
-vi.mock('../composables/chat/chat-activity-queries', () => ({
-  isChatProcessing: ({ chatId }: { chatId: string }) => mockActiveGenerations.has(chatId),
-  getChatContextCompactProgress: () => ({ phase: 'idle' }),
-  isChatGeneratingTitle: () => false,
-}));
+function mountChatPane({
+  props,
+  attachTo,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  attachTo?: Element | string;
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    attachTo,
+    global,
+  });
+}
 
 vi.mock('../composables/chat/useChatConversation', () => ({
   useChatConversation: () => ({
@@ -241,7 +244,7 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-describe('ChatArea Concurrency Button State', () => {
+describe('ChatPane Concurrency Button State', () => {
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -263,7 +266,7 @@ describe('ChatArea Concurrency Button State', () => {
       updatedAt: Date.now(),
     };
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
@@ -348,7 +351,7 @@ describe('ChatArea Concurrency Button State', () => {
       isWaitingResponse: vi.fn(() => false),
     } as any);
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {

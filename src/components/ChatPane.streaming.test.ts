@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import ChatPane from './ChatPane.vue';
 import { nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
@@ -79,7 +79,41 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-describe('ChatArea Streaming DOM Test', () => {
+vi.mock('../composables/chat/ui/useChatPaneState', async () => {
+  const currentChatStateModule = await import('../composables/chat/ui/useCurrentChatState');
+  return {
+    useChatPaneState: () => {
+      const state = currentChatStateModule.useCurrentChatState();
+      return {
+        chat: state.currentChat,
+        chatGroup: state.currentChatGroup,
+        activeMessages: state.activeMessages,
+        allMessages: state.allMessages,
+        resolvedSettings: state.resolvedSettings,
+        inheritedSettings: state.inheritedSettings,
+        chatGroups: state.chatGroups,
+        TEST_ONLY: {
+          // Export internal state and logic used only for testing here. Do not reference these in production logic.
+        },
+      };
+    },
+  };
+});
+
+function mountChatPane({
+  global,
+}: {
+  global?: Record<string, unknown>;
+}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: useChat().currentChat.value?.id ?? 'chat-1',
+    },
+    global,
+  });
+}
+
+describe('ChatPane Streaming DOM Test', () => {
   const chatStore = useChat();
   beforeEach(() => {
     setupScrollToMock();
@@ -96,7 +130,7 @@ describe('ChatArea Streaming DOM Test', () => {
       systemPrompt: undefined
     });
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mountChatPane({
       global: {
         plugins: [router],
       },

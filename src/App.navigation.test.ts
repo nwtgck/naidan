@@ -5,13 +5,13 @@ import App from './App.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Chat } from './models/types';
 
-// Mock ChatArea to track mounting/unmounting
+// Mock CurrentChatPane to track mounting/unmounting
 const mountSpy = vi.fn();
 const unmountSpy = vi.fn();
 
-const MockChatArea = defineComponent({
-  name: 'ChatArea', // Needs to match if we want to mimic real component name, though usually not strict
-  template: '<div data-testid="chat-area">Chat Content</div>',
+const MockCurrentChatPane = defineComponent({
+  name: 'CurrentChatPane',
+  template: '<div data-testid="current-chat-pane">Chat Content</div>',
   mounted() {
     mountSpy();
   },
@@ -24,8 +24,8 @@ const MockChatArea = defineComponent({
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: MockChatArea },
-    { path: '/chat/:id', component: MockChatArea }
+    { path: '/', component: MockCurrentChatPane },
+    { path: '/chat/:id', component: MockCurrentChatPane }
   ]
 });
 

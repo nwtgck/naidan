@@ -47,8 +47,8 @@ const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEd
 
 const props = defineProps<{
   chatId: string;
-  currentChat: Chat;
-  currentChatGroup: ChatGroup | null;
+  chat: Chat;
+  chatGroup: ChatGroup | null;
   resolvedLmParameters: LmParameters | undefined;
   inheritedModelId: string | undefined;
   inheritedModelSource: SettingsSource | undefined;
@@ -72,18 +72,18 @@ const emit = defineEmits<{
 const isFocused = ref(false);
 const isHovered = ref(false);
 
-const isCurrentChatStreaming = computed(() => props.isStreaming);
-const currentChatId = computed(() => props.chatId);
+const isChatStreaming = computed(() => props.isStreaming);
+const chatId = computed(() => props.chatId);
 const chatConversation = useChatConversation({});
 const chatDraft = useChatDraft();
 const chatMedia = useChatImageGeneration({
-  chatId: currentChatId,
+  chatId,
 });
 const chatModels = useChatModels({});
 const chatMounts = useChatMounts({});
 const chatMetadata = useChatMetadata({});
-const currentChat = computed(() => props.currentChat);
-const currentChatGroup = computed(() => props.currentChatGroup);
+const chat = computed(() => props.chat);
+const chatGroup = computed(() => props.chatGroup);
 const fetchingModels = chatModels.fetchingModels;
 const canGenerateImage = computed(() => props.canGenerateImage);
 const hasImageModel = computed(() => props.hasImageModel);
@@ -147,7 +147,7 @@ function updateSeed({ seed }: { seed: number | 'browser_random' | undefined }) {
 }
 
 const selectedReasoningEffort = chatMetadata.reasoningEffort({
-  chatId: currentChatId,
+  chatId,
 });
 
 function updateReasoningEffort({ effort }: { effort: 'none' | 'low' | 'medium' | 'high' | undefined }) {
@@ -177,7 +177,7 @@ function toggleImageMode() {
 
 const sortedAvailableModels = computed(() => naturalSort({ values: chatMedia.availableModels.value || [] }));
 const chatMountList = chatMounts.getMounts({
-  chatId: currentChatId,
+  chatId,
 });
 
 const input = ref('');
@@ -325,7 +325,7 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
 }
 
 async function finishMount({ volumeId, name }: { volumeId: string; name: string }) {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
   const mountPath = generateChatMountPath({ baseName: name });
   await chatMounts.addMount({
     chatId: props.chatId,
@@ -341,7 +341,7 @@ async function attachCopyAsVolume({ entries, name }: {
   entries: Array<{ file: File; relativePath: string }>;
   name: string;
 }) {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
   const copyId = generateId();
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
@@ -368,7 +368,7 @@ async function attachCopyAsVolume({ entries, name }: {
 }
 
 async function attachLinkAsVolume() {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
   try {
     // @ts-expect-error: File System Access API
     const handle = await window.showDirectoryPicker({ mode: 'read' });
@@ -429,11 +429,11 @@ async function collectFilesFromDirectoryEntry(
   return results;
 }
 
-// Called by ChatArea when files/directories are dropped onto the chat area.
+// Called by the chat pane when files/directories are dropped onto the chat surface.
 // Phase 1 (synchronous): collect handles/entries while DataTransfer is still valid.
 // Phase 2 (async): process them — directories become host volumes (link) or OPFS copies.
 async function processDropItems({ items }: { items: DataTransferItem[] }) {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
 
   type DropCollected =
     | { kind: 'fsa-handle'; promise: Promise<FileSystemHandle> }
@@ -514,16 +514,16 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
 }
 
 async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Promise<void> {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
   const mounts = chatMountList.value;
   if (mounts.length === 0) return;
 
   const workerMounts = await buildWorkerMountsForChat({
     chatMounts: mounts,
-    chatGroupMounts: currentChatGroup.value?.mounts,
-    chatId: currentChat.value.id,
-    chatGroupId: currentChat.value.groupId ?? undefined,
-    naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: currentChat.value.id }),
+    chatGroupMounts: chatGroup.value?.mounts,
+    chatId: chat.value.id,
+    chatGroupId: chat.value.groupId ?? undefined,
+    naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: chat.value.id }),
   });
 
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
@@ -539,7 +539,7 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
 }
 
 async function handleDetachMount({ volumeId }: { volumeId: string }) {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
   let volumeType: 'opfs' | 'host' | undefined;
   for await (const vol of storageService.listVolumes()) {
     if (vol.id === volumeId) {
@@ -580,7 +580,7 @@ async function handleDetachMount({ volumeId }: { volumeId: string }) {
 }
 
 async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
-  if (!currentChat.value) return;
+  if (!chat.value) return;
 
   let volumeType: 'opfs' | 'host' | undefined;
   for await (const vol of storageService.listVolumes()) {
@@ -787,11 +787,11 @@ function toggleSubmerged() {
 }
 
 async function handleGenerateImage() {
-  if (!currentChat.value || (!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
+  if (!chat.value || (!input.value.trim() && attachments.value.length === 0) || props.isStreaming) return;
 
   const prompt = input.value;
   const currentAttachments = [...attachments.value];
-  const sendingChatId = currentChat.value.id;
+  const sendingChatId = chat.value.id;
   const { width, height } = currentResolution.value;
   const count = currentCount.value;
   const success = await chatMedia.sendImageRequest({
@@ -805,7 +805,7 @@ async function handleGenerateImage() {
     attachments: currentAttachments
   });
   if (success) {
-    if (currentChat.value?.id === sendingChatId) {
+    if (chat.value?.id === sendingChatId) {
       input.value = '';
       attachments.value = [];
     }
@@ -825,7 +825,7 @@ async function handleSend() {
 
   const text = input.value;
   const currentAttachments = [...attachments.value];
-  const sendingChatId = currentChat.value?.id;
+  const sendingChatId = chat.value?.id;
 
   if (isMaximized.value && textareaRef.value) {
     const startHeight = textareaRef.value.getBoundingClientRect().height;
@@ -843,8 +843,8 @@ async function handleSend() {
     isMaximized.value = false; // Reset maximized state immediately
   }
 
-  // Use resolvedSettings if available (correctly inherits), otherwise fallback to currentChat's own parameters
-  const lmParameters = toRaw(props.resolvedLmParameters || currentChat.value?.lmParameters || { reasoning: { effort: undefined } });
+  // Use resolvedSettings if available (correctly inherits), otherwise fallback to the chat's own parameters.
+  const lmParameters = toRaw(props.resolvedLmParameters || chat.value?.lmParameters || { reasoning: { effort: undefined } });
 
   const success = await chatConversation.sendMessage({
     chatId: props.chatId,
@@ -855,7 +855,7 @@ async function handleSend() {
   });
 
   if (success) {
-    if (currentChat.value?.id === sendingChatId) {
+    if (chat.value?.id === sendingChatId) {
       input.value = '';
       attachments.value = [];
     }
@@ -883,7 +883,7 @@ watch(isMaximized, () => {
 });
 
 watch(
-  () => currentChat.value?.id,
+  () => chat.value?.id,
   (_newId, oldId) => {
     // Save previous draft
     if (oldId !== undefined) {
@@ -899,7 +899,7 @@ watch(
     attachments.value = draft.attachments;
     attachmentUrls.value = draft.attachmentUrls;
 
-    if (currentChat.value) {
+    if (chat.value) {
       isMaximized.value = false;
       fetchModels();
       nextTick(() => {
@@ -924,7 +924,7 @@ watch(
 );
 
 onMounted(async () => {
-  if (currentChat.value) {
+  if (chat.value) {
     fetchModels();
   }
 
@@ -936,11 +936,11 @@ onMounted(async () => {
       emit('auto-sent');
     };
 
-    if (currentChat.value) {
+    if (chat.value) {
       doAutoSend();
     } else {
-      const unwatch = watch(() => currentChat.value, (chat) => {
-        if (chat) {
+      const unwatch = watch(() => chat.value, (chatValue) => {
+        if (chatValue) {
           unwatch();
           doAutoSend();
         }
@@ -950,7 +950,7 @@ onMounted(async () => {
 
   nextTick(() => {
     adjustTextareaHeight({ force: false }); // Call adjustTextareaHeight on mount without forcing scroll
-    if (currentChat.value) {
+    if (chat.value) {
       focusInput();
     }
   });
@@ -1034,7 +1034,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 
 <template>
   <div
-    v-if="currentChat"
+    v-if="chat"
     class="absolute bottom-0 left-0 right-0 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] sm:p-3 sm:pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-transparent pointer-events-none z-30 transition-transform duration-500 ease-in-out will-change-transform"
     :class="visibility === 'submerged' ? 'translate-y-[calc(100%-32px-env(safe-area-inset-bottom))] sm:translate-y-[calc(100%-40px-env(safe-area-inset-bottom))]' : 'translate-y-0'"
   >
@@ -1141,7 +1141,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         @click="setActiveFocusArea({ area: 'chat' })"
         @keydown.enter.ctrl.prevent="handleSend"
         @keydown.enter.meta.prevent="handleSend"
-        @keydown.esc.prevent="isCurrentChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
+        @keydown.esc.prevent="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : null"
         placeholder="Type a message..."
         class="w-full text-base pl-5 pr-20 pt-4 pb-2 focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 resize-none min-h-[84px] transition-colors"
         :class="{ 'animate-height': isAnimatingHeight }"
@@ -1185,7 +1185,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <div class="flex items-center gap-2">
           <div class="w-[100px] sm:w-[180px]">
             <ModelSelector
-              :model-value="currentChat.modelId"
+              :model-value="chat.modelId"
               @update:model-value="val => chatMetadata.updateModel({ chatId: props.chatId, modelId: val! })"
               :models="sortedAvailableModels"
               :placeholder="formatLabel({ value: inheritedModelId, source: inheritedModelSource })"
@@ -1205,7 +1205,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 
           <ChatToolsMenu
             :can-generate-image="canGenerateImage && hasImageModel"
-            :is-processing="isCurrentChatStreaming"
+            :is-processing="isChatStreaming"
             :is-image-mode="isImageMode"
             :is-think-active="selectedReasoningEffort !== undefined"
             :selected-width="currentResolution.width"
@@ -1229,13 +1229,13 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         </div>
 
         <button
-          @click="isCurrentChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
-          :disabled="!isCurrentChatStreaming && !input.trim() && attachments.length === 0"
+          @click="isChatStreaming ? chatConversation.abort({ chatId: props.chatId }) : handleSend()"
+          :disabled="!isChatStreaming && !input.trim() && attachments.length === 0"
           class="px-4 py-2.5 text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-lg shadow-blue-500/30 whitespace-nowrap"
-          :title="isCurrentChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
-          :data-testid="isCurrentChatStreaming ? 'abort-button' : 'send-button'"
+          :title="isChatStreaming ? 'Stop generating (Esc)' : 'Send message (' + sendShortcutText + ')'"
+          :data-testid="isChatStreaming ? 'abort-button' : 'send-button'"
         >
-          <template v-if="isCurrentChatStreaming">
+          <template v-if="isChatStreaming">
             <span class="text-xs font-medium opacity-90 hidden sm:inline">Esc</span>
             <SquareIcon class="w-4 h-4 fill-white text-white" />
           </template>

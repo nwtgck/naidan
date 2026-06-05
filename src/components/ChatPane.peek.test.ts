@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -10,7 +10,9 @@ import { setupScrollToMock } from '@/utils/test-utils';
 
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>(null);
+const mockCurrentChatGroup = ref(null);
 const mockActiveMessages = ref<any[]>([]);
+const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
 const mockInheritedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
 
@@ -35,9 +37,10 @@ vi.mock('../composables/useLayout', () => ({
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
-    chatGroups: ref([]),
-    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
-    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    currentChatGroup: mockCurrentChatGroup,
+    chatGroups: mockChatGroups,
+    resolvedSettings: mockResolvedSettings,
+    inheritedSettings: mockInheritedSettings,
     availableModels: ref([]),
     fetchingModels: ref(false),
     generatingTitle: ref(false),
@@ -84,40 +87,16 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
-  useCurrentChatState: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    currentChatGroup: computed(() => null),
-    currentChatId: computed(() => mockCurrentChat.value?.id),
+
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockCurrentChat.value),
+    chatGroup: computed(() => mockCurrentChatGroup.value),
     activeMessages: computed(() => mockActiveMessages.value),
     allMessages: computed(() => mockActiveMessages.value),
     resolvedSettings: computed(() => mockResolvedSettings.value),
     inheritedSettings: computed(() => mockInheritedSettings.value),
-    chatGroups: computed(() => []),
-    sidebarItems: computed(() => []),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => []),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => []),
+    chatGroups: computed(() => mockChatGroups.value),
   }),
 }));
 
@@ -138,7 +117,31 @@ vi.mock('../composables/useChatDraft', () => ({
   }),
 }));
 
-describe('ChatArea Peek Mode Specifications', () => {
+function mountChatPane({
+  props,
+  attachTo,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  attachTo?: Element | string;
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    attachTo,
+    global,
+  });
+}
+
+describe('ChatPane Peek Mode Specifications', () => {
   const router = createRouter({
     history: createWebHistory(),
     routes: [{ path: '/', component: { template: 'div' } }],
@@ -169,7 +172,7 @@ describe('ChatArea Peek Mode Specifications', () => {
   });
 
   it('toggles submerged state when the submerge button is clicked', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
@@ -189,7 +192,7 @@ describe('ChatArea Peek Mode Specifications', () => {
   });
 
   it('automatically unsubmerges when mouse enters the input area', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
@@ -206,7 +209,7 @@ describe('ChatArea Peek Mode Specifications', () => {
   });
 
   it('maintains submerged state when switching chats', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
@@ -232,7 +235,7 @@ describe('ChatArea Peek Mode Specifications', () => {
   });
 
   it('adjusts scroll container padding-bottom based on visibility state', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
@@ -249,7 +252,7 @@ describe('ChatArea Peek Mode Specifications', () => {
   });
 
   it('resets maximized state when submerging', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
@@ -266,7 +269,7 @@ describe('ChatArea Peek Mode Specifications', () => {
   });
 
   it('stays in active state on mouseleave if focused', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();
@@ -292,7 +295,7 @@ describe('ChatArea Peek Mode Specifications', () => {
   });
 
   it('contains a hit area extension for stable hover detection', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'ModelSelector': true, 'ChatToolsMenu': true, 'lucide-vue-next': true, 'BinaryObjectPreviewModal': true, 'HistoryManipulationModal': true } },
     });
     await nextTick();

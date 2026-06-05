@@ -1,7 +1,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import ChatPane from './ChatPane.vue';
 import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { transformersJsService } from '@/services/transformers-js';
@@ -61,18 +61,20 @@ const mockResolvedSettings = ref<any>({
   modelId: 'm',
   sources: { modelId: 'global' }
 });
+const mockInheritedSettings = ref<any>({ modelId: 'm', sources: { modelId: 'global' } });
+const mockChatGroups = ref<any[]>([]);
 const mockFetchingModels = ref(false);
 const mockAvailableModels = ref<string[]>([]);
+const mockIsProcessing = ref(true);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
     currentChatGroup: ref(null),
-    chatGroups: ref([]),
+    chatGroups: mockChatGroups,
     resolvedSettings: mockResolvedSettings,
-    inheritedSettings: ref({ modelId: 'm', sources: { modelId: 'global' } }),
+    inheritedSettings: mockInheritedSettings,
     availableModels: ref([]),
-    isProcessing: vi.fn(() => true),
     activeMessages: mockActiveMessages,
     getSiblings: vi.fn().mockReturnValue([]),
     getSortedImageModels: vi.fn(() => []),
@@ -114,47 +116,50 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
-  useCurrentChatState: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    currentChatGroup: computed(() => null),
-    currentChatId: computed(() => mockCurrentChat.value?.id),
-    activeMessages: computed(() => mockActiveMessages.value),
-    allMessages: computed(() => mockActiveMessages.value),
-    resolvedSettings: computed(() => mockResolvedSettings.value),
-    inheritedSettings: computed(() => ({ modelId: 'm', sources: { modelId: 'global' } })),
-    chatGroups: computed(() => []),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => mockAvailableModels.value),
-    fetchingModels: computed(() => mockFetchingModels.value),
-    getSortedImageModels: vi.fn(() => []),
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: m.role === 'assistant' && !m.content ? 'waiting' : 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(({ item }: { item: { type: string; mode?: string } }) => item.type === 'message' && item.mode === 'waiting'),
-    availableChatGroups: computed(() => []),
-  }),
-}));
-
 vi.mock('../composables/chat/chat-activity-queries', () => ({
-  isChatProcessing: () => true,
+  isChatProcessing: () => mockIsProcessing.value,
+  isChatTaskRunning: () => mockIsProcessing.value,
   getChatContextCompactProgress: () => ({ phase: 'idle' }),
   isChatGeneratingTitle: () => false,
 }));
+
+
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockCurrentChat.value),
+    chatGroup: computed(() => null),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    chatGroups: computed(() => mockChatGroups.value),
+  }),
+}));
+
+
+function mountChatPane({
+  props,
+  attachTo,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  attachTo?: Element | string;
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    attachTo,
+    global,
+  });
+}
 
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
@@ -277,7 +282,7 @@ vi.mock('mermaid', () => ({
   default: { initialize: vi.fn(), run: vi.fn() }
 }));
 
-describe('Transformers.js Loading Flow in ChatArea', () => {
+describe('Transformers.js Loading Flow in ChatPane', () => {
   let wrapper: VueWrapper<any>;
 
   beforeEach(async () => {
@@ -303,7 +308,7 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
       loadingModelId: 'hf.co/SmolLM2'
     });
 
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] }
     });
 
@@ -317,23 +322,18 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
     expect(loader.text()).toContain('45%');
     expect(loader.text()).toContain('SmolLM2');
 
-    // Verify Assistant MessageItem is NOT rendered (it should be <!--v-if-->)
-    const messageItems = wrapper.findAllComponents({ name: 'MessageItem' });
-    const assistantItem = messageItems.find(m => m.props('message').role === 'assistant');
-    // In vue-test-utils, if v-if is on the root element, the component wrapper might still exist
-    // but its html() will be empty or <!--v-if-->
-    expect(assistantItem?.find('div').exists()).toBe(false);
+    // Verify Assistant MessageItem root is not rendered while loading.
+    expect(wrapper.find('#message-msg-2').exists()).toBe(false);
 
-    // User message should still be visible
-    const userItem = messageItems.find(m => m.props('message').role === 'user');
-    expect(userItem?.find('div').exists()).toBe(true);
+    // User message should still be visible.
+    expect(wrapper.find('#message-msg-1').exists()).toBe(true);
   });
 
   it('shows assistant message and hides loading indicator when engine becomes ready', async () => {
     // 1. Start with loading state
     (transformersJsService as any).__triggerStateChange({ status: 'loading', progress: 99 });
 
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] }
     });
 
@@ -360,7 +360,7 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
     // 1. Engine already ready
     (transformersJsService as any).__triggerStateChange({ status: 'ready', progress: 100 });
 
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] }
     });
 
@@ -386,7 +386,7 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
       sources: { modelId: 'global' }
     };
 
-    wrapper = mount(ChatArea, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] }
     });
 

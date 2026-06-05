@@ -1,8 +1,8 @@
 import { computed, nextTick, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useChatAreaSession } from './useChatAreaSession';
+import { useChatPaneSession } from './useChatPaneSession';
 
-describe('useChatAreaSession', () => {
+describe('useChatPaneSession', () => {
   beforeEach(() => {
     vi.useRealTimers();
   });
@@ -11,7 +11,7 @@ describe('useChatAreaSession', () => {
     vi.useFakeTimers();
     try {
       const chatIdentityKey = ref('chat-1:leaf-1');
-      const session = useChatAreaSession({
+      const session = useChatPaneSession({
         chatIdentityKey: computed(() => chatIdentityKey.value),
       });
 
@@ -42,7 +42,7 @@ describe('useChatAreaSession', () => {
   it('clears the neural sync effect after the timer expires', async () => {
     vi.useFakeTimers();
     try {
-      const session = useChatAreaSession({
+      const session = useChatPaneSession({
         chatIdentityKey: computed(() => 'chat-1:leaf-1'),
       });
 
@@ -59,7 +59,7 @@ describe('useChatAreaSession', () => {
   });
 
   it('captures the viewport message when opening the outline and clears it when closing', () => {
-    const session = useChatAreaSession({
+    const session = useChatPaneSession({
       chatIdentityKey: computed(() => 'chat-1:leaf-1'),
     });
 

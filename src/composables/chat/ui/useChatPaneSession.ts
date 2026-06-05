@@ -2,7 +2,7 @@ import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
 
 type OutlineVisibility = 'hidden' | 'visible';
 
-export function useChatAreaSession({
+export function useChatPaneSession({
   chatIdentityKey,
 }: {
   chatIdentityKey: Readonly<Ref<string>>;

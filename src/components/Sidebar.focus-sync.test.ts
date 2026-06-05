@@ -3,7 +3,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, ref, computed, reactive, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import Sidebar from './Sidebar.vue';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import { useLayout } from '@/composables/useLayout';
 import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/models/types';
 
@@ -120,11 +120,11 @@ vi.mock('vuedraggable', () => ({
 }));
 
 const TestHarness = defineComponent({
-  components: { Sidebar, ChatArea },
+  components: { Sidebar, CurrentChatPane },
   template: `\
     <div>
       <Sidebar />
-      <ChatArea />
+      <CurrentChatPane />
     </div>
   `
 });
@@ -190,7 +190,7 @@ describe('Sidebar Focus Sync', () => {
     vi.useRealTimers();
   });
 
-  it('re-activates chat focus on ChatArea click and can scroll a hidden selected chat', async () => {
+  it('re-activates chat focus on CurrentChatPane click and can scroll a hidden selected chat', async () => {
     wrapper = mount(TestHarness, {
       global: {
         plugins: [router],
@@ -209,7 +209,7 @@ describe('Sidebar Focus Sync', () => {
     await vi.runAllTimersAsync();
     mockScrollIntoViewSafe.mockClear();
 
-    await wrapper.getComponent(ChatArea).trigger('click');
+    await wrapper.getComponent(CurrentChatPane).trigger('click');
     await nextTick();
     await vi.runAllTimersAsync();
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, reactive, nextTick, computed } from 'vue';
-import ChatArea from './ChatArea.vue';
+import ChatPane from './ChatPane.vue';
 import ModelSelector from './ModelSelector.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
@@ -14,6 +14,7 @@ import type { Attachment, LmParameters } from '@/models/types';
 // --- Mocks ---
 
 const mockCurrentChat = ref<any>(null);
+const mockCurrentChatGroup = ref(null);
 const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref<any>(null);
 const mockInheritedSettings = ref<any>(null);
@@ -80,17 +81,11 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
-  useCurrentChatState: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    currentChatGroup: computed(() => {
-      const groupId = mockCurrentChat.value?.groupId;
-      if (!groupId) {
-        return null;
-      }
-      return mockChatGroups.value.find(({ id }) => id === groupId) ?? null;
-    }),
-    currentChatId: computed(() => mockCurrentChat.value?.id),
+
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockCurrentChat.value),
+    chatGroup: computed(() => mockCurrentChatGroup.value),
     activeMessages: computed(() => mockActiveMessages.value),
     allMessages: computed(() => mockActiveMessages.value),
     resolvedSettings: computed(() => mockResolvedSettings.value),
@@ -99,34 +94,30 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => []),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => mockChatGroups.value),
-  }),
-}));
 
-vi.mock('../composables/chat/chat-activity-queries', () => ({
-  isChatProcessing: () => false,
-  getChatContextCompactProgress: () => ({ phase: 'idle' }),
-  isChatGeneratingTitle: () => false,
-}));
+function mountChatPane({
+  props,
+  attachTo,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  attachTo?: Element | string;
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    attachTo,
+    global,
+  });
+}
 
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
@@ -270,7 +261,7 @@ const router = createRouter({
   routes: [{ path: '/', component: { template: 'div' } }],
 });
 
-describe('ChatArea Group Inheritance UI', () => {
+describe('ChatPane Group Inheritance UI', () => {
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -294,7 +285,7 @@ describe('ChatArea Group Inheritance UI', () => {
   });
 
   it('displays "Model (Global)" when inheriting from global settings', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
     await nextTick();
@@ -317,7 +308,7 @@ describe('ChatArea Group Inheritance UI', () => {
       sources: { modelId: 'chat_group' }
     };
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
     await nextTick();
@@ -338,7 +329,7 @@ describe('ChatArea Group Inheritance UI', () => {
       sources: { modelId: 'global' }
     };
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
     await nextTick();
@@ -355,7 +346,7 @@ describe('ChatArea Group Inheritance UI', () => {
   });
 
   it('updates labels immediately when inherited settings change (e.g. moving between groups)', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
     await nextTick();
@@ -419,7 +410,7 @@ describe('ChatArea Group Inheritance UI', () => {
       sources: { modelId: 'global' }
     };
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
     });
     await nextTick();

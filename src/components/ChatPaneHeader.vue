@@ -10,7 +10,7 @@ import type { MediaShelfVisibility } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
-import type { ChatAreaHeaderMoreAction } from '@/services/context-compact';
+import type { ChatPaneHeaderMoreAction } from '@/services/context-compact';
 
 type HeaderChat = {
   readonly id: string;
@@ -26,9 +26,9 @@ type HeaderChatGroup = {
 };
 
 defineProps<{
-  currentChat: HeaderChat | null;
+  chat: HeaderChat | null;
   chatGroups: readonly HeaderChatGroup[];
-  currentChatGroupBadge: HeaderChatGroup | undefined;
+  chatGroupBadge: HeaderChatGroup | undefined;
   activeMessageCount: number;
   modelLabel: string;
   hasOverrides: boolean;
@@ -83,7 +83,7 @@ function emitMoveToGroup({ groupId }: { groupId: string | null }) {
 }
 
 function emitMoreAction({ action }: {
-  action: ChatAreaHeaderMoreAction;
+  action: ChatPaneHeaderMoreAction;
 }) {
   switch (action) {
   case 'print':
@@ -135,10 +135,10 @@ defineExpose({
   <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-1.5 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
     <div class="flex items-center gap-3 overflow-hidden min-h-[34px]">
       <div class="flex flex-col overflow-hidden">
-        <template v-if="currentChat">
+        <template v-if="chat">
           <div class="flex items-center gap-2">
             <button
-              v-if="currentChat.originChatId"
+              v-if="chat.originChatId"
               @click="emit('jump-origin')"
               class="p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400 hover:text-blue-600 transition-colors"
               title="Jump to original chat"
@@ -149,18 +149,18 @@ defineExpose({
             <h2
               class="relative text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 tracking-tight truncate"
               :class="{ 'title-header-generating': generatingTitle }"
-              :data-title="currentChat.title || UNTITLED_CHAT_TITLE"
+              :data-title="chat.title || UNTITLED_CHAT_TITLE"
               data-testid="chat-header-title"
             >
               <span class="title-header-base">
-                {{ currentChat.title || UNTITLED_CHAT_TITLE }}
+                {{ chat.title || UNTITLED_CHAT_TITLE }}
               </span>
               <span
                 v-if="generatingTitle"
                 class="title-header-scan"
                 aria-hidden="true"
               >
-                {{ currentChat.title || UNTITLED_CHAT_TITLE }}
+                {{ chat.title || UNTITLED_CHAT_TITLE }}
               </span>
             </h2>
             <button
@@ -175,12 +175,12 @@ defineExpose({
 
           <div class="flex items-center gap-1.5 min-w-0">
             <div
-              v-if="currentChatGroupBadge"
+              v-if="chatGroupBadge"
               class="min-w-0 max-w-[120px] sm:max-w-[180px] px-1.5 py-0.5 rounded-md text-[9px] font-bold transition-colors flex items-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/70 border border-gray-100 dark:border-gray-800"
-              :title="`Group: ${currentChatGroupBadge.name}`"
+              :title="`Group: ${chatGroupBadge.name}`"
               data-testid="chat-group-badge"
             >
-              <span class="truncate">{{ currentChatGroupBadge.name }}</span>
+              <span class="truncate">{{ chatGroupBadge.name }}</span>
             </div>
 
             <button
@@ -213,7 +213,7 @@ defineExpose({
     </div>
 
     <div ref="actionsMenuRoot" class="flex items-center gap-0.5 relative">
-      <div v-if="currentChat" class="flex items-center gap-0.5">
+      <div v-if="chat" class="flex items-center gap-0.5">
         <button
           v-if="activeMessageCount > 0"
           @click="emit('fork-last-message')"
@@ -247,13 +247,13 @@ defineExpose({
                 <button
                   @click="emitMoveToGroup({ groupId: null })"
                   class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
-                  :class="!currentChat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  :class="!chat.groupId ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                 >
                   <div class="flex items-center gap-2">
                     <XIcon class="w-4 h-4 opacity-50" />
                     <span>Top Level</span>
                   </div>
-                  <ChevronRightIcon v-if="!currentChat.groupId" class="w-4 h-4" />
+                  <ChevronRightIcon v-if="!chat.groupId" class="w-4 h-4" />
                 </button>
 
                 <button
@@ -261,13 +261,13 @@ defineExpose({
                   :key="group.id"
                   @click="emitMoveToGroup({ groupId: group.id })"
                   class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
-                  :class="currentChat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                  :class="chat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
                 >
                   <div class="flex items-center gap-2 overflow-hidden">
                     <FolderIcon class="w-4 h-4 opacity-50 shrink-0" />
                     <span class="truncate">{{ group.name }}</span>
                   </div>
-                  <ChevronRightIcon v-if="currentChat.groupId === group.id" class="w-4 h-4" />
+                  <ChevronRightIcon v-if="chat.groupId === group.id" class="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -382,7 +382,7 @@ defineExpose({
           <button
             @click="emitMoreAction({ action: 'toggle_debug' })"
             class="w-full flex items-center gap-3 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider transition-colors"
-            :class="currentChat?.debugEnabled
+            :class="chat?.debugEnabled
               ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20'
               : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-blue-600'
             "
