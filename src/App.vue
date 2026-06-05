@@ -2,7 +2,10 @@
 import { ref, watch, computed, defineAsyncComponent } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
-import { useChat } from './composables/useChat';
+import { useCurrentChatState } from './composables/chat/ui/useCurrentChatState';
+import { useChatLifecycle } from './composables/chat/ui/useChatLifecycle';
+import { useChatListData } from './composables/chat/ui/useChatListData';
+import { useChatOrganization } from './composables/chat/ui/useChatOrganization';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
@@ -39,7 +42,10 @@ const CustomDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import
 const OPFSExplorer = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/OPFSExplorer.vue') });
 const FileExplorerModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/FileExplorerModal.vue') });
 
-const chatStore = useChat();
+const currentChatState = useCurrentChatState();
+const chatLifecycle = useChatLifecycle();
+const chatListData = useChatListData();
+const chatOrganization = useChatOrganization();
 const settingsStore = useSettings();
 const { addRecentChat, toggleRecent } = useRecentChats();
 const { isSidebarOpen, isDebugOpen, isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
@@ -137,7 +143,7 @@ watch(
 // OR if a query parameter 'q' is provided on the landing page
 watch(
   [
-    () => chatStore.chats.value.length,
+    () => chatListData.chats.value.length,
     () => router.currentRoute.value?.path,
     () => router.currentRoute.value?.query?.q,
     () => router.currentRoute.value?.query?.['chat-group'],
@@ -154,9 +160,9 @@ watch(
     if (len === 0 && !q) {
       const { setActiveFocusArea } = useLayout();
       setActiveFocusArea({ area: 'chat' });
-      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-      if (chatStore.currentChat.value) {
-        router.push(`/chat/${chatStore.currentChat.value.id}`);
+      await chatLifecycle.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+      if (currentChatState.currentChat.value) {
+        router.push(`/chat/${currentChatState.currentChat.value.id}`);
       }
       return;
     }
@@ -167,11 +173,11 @@ watch(
     if (q) {
       let targetGroupId: string | undefined = undefined;
       if (typeof chatGroupId === 'string') {
-        const group = chatStore.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
+        const group = currentChatState.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
         if (group) {
           targetGroupId = group.id;
         } else {
-          targetGroupId = await chatStore.createChatGroup({ name: chatGroupId });
+          targetGroupId = await chatOrganization.createChatGroup({ name: chatGroupId, options: undefined });
         }
       }
 
@@ -182,14 +188,14 @@ watch(
 
       const { setActiveFocusArea } = useLayout();
       setActiveFocusArea({ area: 'chat' });
-      await chatStore.createNewChat({
+      await chatLifecycle.createNewChat({
         groupId: targetGroupId,
         modelId: targetModelId,
         systemPrompt
       });
 
-      if (chatStore.currentChat.value) {
-        const id = chatStore.currentChat.value.id;
+      if (currentChatState.currentChat.value) {
+        const id = currentChatState.currentChat.value.id;
         router.push({
           path: `/chat/${id}`,
           query: { q: q.toString() }
@@ -207,13 +213,13 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
     e.preventDefault();
     const { setActiveFocusArea } = useLayout();
     setActiveFocusArea({ area: 'chat' });
-    await chatStore.createNewChat({
+    await chatLifecycle.createNewChat({
       groupId: undefined,
       modelId: undefined,
       systemPrompt: undefined
     });
-    if (chatStore.currentChat.value) {
-      router.push(`/chat/${chatStore.currentChat.value.id}`);
+    if (currentChatState.currentChat.value) {
+      router.push(`/chat/${currentChatState.currentChat.value.id}`);
     }
   }
 

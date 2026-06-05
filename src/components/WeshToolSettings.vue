@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { TerminalIcon } from 'lucide-vue-next';
-import { useChat } from '@/composables/useChat';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 
-const { currentChat } = useChat();
+const { currentChat } = useCurrentChatState();
 const { settings } = useSettings();
 const { isToolEnabled, toggleTool } = useChatTools();
 const { getNaidanSysfsMountSelection, setNaidanSysfsMountSelection } = useChatWeshPreferences();

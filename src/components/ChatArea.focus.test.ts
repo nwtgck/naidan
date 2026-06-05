@@ -22,6 +22,8 @@ const mockCurrentChat = ref<Chat | null>({
 });
 
 const mockActiveMessages = ref<MessageNode[]>([]);
+const mockResolvedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
+const mockInheritedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
 
 const mockActiveFocusArea = ref('chat');
 const mockSetActiveFocusArea = vi.fn(({ area }: { area: FocusArea }) => {
@@ -32,6 +34,11 @@ vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     isSidebarOpen: ref(true),
     activeFocusArea: mockActiveFocusArea,
+    mediaShelfVisibility: ref('hidden'),
+    setMediaShelfVisibility: vi.fn(),
+    toggleMediaShelf: vi.fn(),
+    isChatWeshTerminalOpen: ref(false),
+    toggleChatWeshTerminal: vi.fn(),
     setActiveFocusArea: mockSetActiveFocusArea,
     toggleSidebar: vi.fn(),
   }),
@@ -90,6 +97,43 @@ vi.mock('../composables/useChat', () => ({
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(() => false),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    chatGroups: computed(() => []),
+    sidebarItems: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatAreaData', () => ({
+  useChatAreaData: () => ({
+    updateChatSettings: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    availableModels: computed(() => []),
+    fetchingModels: computed(() => false),
+    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
+    fetchAvailableModels: vi.fn(),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
+    availableChatGroups: computed(() => []),
   }),
 }));
 

@@ -3,8 +3,8 @@ import { generateId } from '@/utils/id';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
-import { useChat } from '@/composables/useChat';
 import { useToast } from '@/composables/useToast';
+import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import type { Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { ChatGroupRecipeSchema } from '@/models/recipe';
@@ -52,7 +52,7 @@ const emit = defineEmits<{
 const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
 const availableModels = computed(() => naturalSort({ values: Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : [] }));
 
-const chatStore = useChat();
+const chatOrganization = useChatOrganization();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
@@ -89,7 +89,7 @@ const hasUnsavedConnectionChanges = computed(() => {
 async function handleImportRecipes({ recipes }: { recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[] }) {
   try {
     for (const item of recipes) {
-      await chatStore.createChatGroup({ name: item.newName, options: {
+      await chatOrganization.createChatGroup({ name: item.newName, options: {
         modelId: item.matchedModelId,
         systemPrompt: item.recipe.systemPrompt,
         lmParameters: item.recipe.lmParameters ? {

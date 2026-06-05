@@ -61,6 +61,8 @@ const mockResolvedSettings = ref<any>({
   modelId: 'm',
   sources: { modelId: 'global' }
 });
+const mockFetchingModels = ref(false);
+const mockAvailableModels = ref<string[]>([]);
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -112,10 +114,162 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => ({ modelId: 'm', sources: { modelId: 'global' } })),
+    chatGroups: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatAreaData', () => ({
+  useChatAreaData: () => ({
+    updateChatSettings: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    availableModels: computed(() => mockAvailableModels.value),
+    fetchingModels: computed(() => mockFetchingModels.value),
+    getSortedImageModels: vi.fn(() => []),
+    fetchAvailableModels: vi.fn(),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: m.role === 'assistant' && !m.content ? 'waiting' : 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(({ item }: { item: { type: string; mode?: string } }) => item.type === 'message' && item.mode === 'waiting'),
+    availableChatGroups: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-activity-queries', () => ({
+  isChatProcessing: () => true,
+  getChatContextCompactProgress: () => ({ phase: 'idle' }),
+  isChatGeneratingTitle: () => false,
+}));
+
+vi.mock('../composables/useChatDisplayFlow', () => ({
+  useChatDisplayFlow: () => ({
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: m.role === 'assistant' && !m.content ? 'waiting' : 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(({ item }: { item: { type: string; mode?: string } }) => item.type === 'message' && item.mode === 'waiting'),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatConversation', () => ({
+  useChatConversation: () => ({
+    sendMessage: vi.fn().mockResolvedValue(true),
+    regenerateMessage: vi.fn(),
+    abort: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
+    availableModels: mockAvailableModels,
+    fetchingModels: computed(() => mockFetchingModels.value),
+    fetchForChat: vi.fn(),
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMounts', () => ({
+  useChatMounts: () => ({
+    getMounts: () => computed(() => []),
+    addMount: vi.fn(),
+    removeMount: vi.fn(),
+    updateMount: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    reasoningEffort: () => computed(() => undefined),
+    updateReasoningEffort: vi.fn(),
+    updateModel: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
+  useChatGeneration: () => ({
+    sendMessage: vi.fn().mockResolvedValue(true),
+    regenerateMessage: vi.fn(),
+    abort: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
+  useChatModelSelection: () => ({
+    availableModels: mockAvailableModels,
+    fetchingModels: computed(() => mockFetchingModels.value),
+    fetchModels: vi.fn().mockResolvedValue([]),
+    updateModel: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatImageGeneration', () => ({
+  useChatImageGeneration: () => ({
+    availableModels: mockAvailableModels,
+    isImageMode: computed(() => false),
+    resolution: computed(() => ({ width: 512, height: 512 })),
+    count: computed(() => 1),
+    persistAs: computed(() => 'original'),
+    steps: computed(() => undefined),
+    seed: computed(() => 'browser_random'),
+    selectedImageModel: computed(() => undefined),
+    toggleImageMode: vi.fn(),
+    updateResolution: vi.fn(),
+    updateCount: vi.fn(),
+    updatePersistAs: vi.fn(),
+    updateSteps: vi.fn(),
+    updateSeed: vi.fn(),
+    setImageModel: vi.fn(),
+    sendImageRequest: vi.fn().mockResolvedValue(true),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatImageProgress', () => ({
+  useChatImageProgress: () => ({
+    progress: computed(() => undefined),
+    currentStep: computed(() => undefined),
+    totalSteps: computed(() => undefined),
+  }),
+}));
+
+vi.mock('../composables/useChatWeshTerminalSessions', () => ({
+  buildWorkerMountsForChat: vi.fn().mockResolvedValue([]),
+  useChatWeshTerminalSessions: vi.fn(() => ({
+    createChatWorkerSession: vi.fn(),
+    ensureActiveSession: vi.fn(),
+    reopenSessionIfNeeded: vi.fn(),
+    closeSession: vi.fn(),
+    closeAllSessions: vi.fn(),
+    sessions: ref([]),
+    activeSessionId: ref(undefined),
+  })),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointType: 'transformers_js' }),
-    availableModels: ref([]),
+    availableModels: mockAvailableModels,
   }),
 }));
 

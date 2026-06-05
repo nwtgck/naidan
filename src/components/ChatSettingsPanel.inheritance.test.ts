@@ -3,15 +3,36 @@ import { mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import ModelSelector from './ModelSelector.vue';
-import { useChat } from '@/composables/useChat';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
+import { useChatModels } from '@/composables/chat/useChatModels';
+const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
+  mockAvailableModelsRef: { value: [] as string[] },
+  mockFetchingModelsRef: { value: false },
+}));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(),
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: vi.fn(),
+    toggleDebug: vi.fn(),
+    updateModel: vi.fn(),
+    updateSettings: vi.fn(),
+    reasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    TEST_ONLY: {},
+  }),
 }));
 
 describe('ChatSettingsPanel Inheritance UI', () => {
@@ -62,12 +83,27 @@ describe('ChatSettingsPanel Inheritance UI', () => {
 
     const mockInheritedSettings = mockResolvedSettings; // In these tests they are same because chat has no overrides
 
-    (useChat as unknown as Mock).mockReturnValue({
-      currentChat: mockCurrentChat,
-      fetchingModels: ref(false),
-      saveChat: vi.fn(),
+    (useCurrentChatState as unknown as Mock).mockReturnValue({
+      currentChatId: computed(() => mockCurrentChat.value?.id),
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatGroup: computed(() => null),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
       resolvedSettings: mockResolvedSettings,
       inheritedSettings: mockInheritedSettings,
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
+    });
+    mockFetchingModelsRef.value = false;
+    mockAvailableModelsRef.value = [];
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: computed(() => mockAvailableModelsRef.value) as unknown as ReturnType<typeof useChatModels>['availableModels'],
+      fetchingModels: computed(() => mockFetchingModelsRef.value),
+      fetchForChat: vi.fn(),
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: vi.fn(),
+      TEST_ONLY: {},
     });
 
     (useSettings as unknown as Mock).mockReturnValue({

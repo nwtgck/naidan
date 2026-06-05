@@ -1,0 +1,66 @@
+import { computed, type ComputedRef } from 'vue';
+import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/models/types';
+import type { Settings } from '@/models/types';
+import { useSettings } from '@/composables/useSettings';
+import { resolveChatSettings } from '@/utils/chat-settings-resolver';
+import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
+import { createChatDerivedState } from '@/composables/chat/chat-derived-state';
+import {
+  currentChatGroupRef,
+  currentChatRef,
+  getLiveChat,
+  liveChatRegistry,
+  rootItems,
+} from '@/composables/chat/global/chat-core-singletons';
+
+export type CurrentChatStateAdapter = {
+  currentChat: ComputedRef<Readonly<Chat> | null>;
+  currentChatGroup: ComputedRef<Readonly<ChatGroup> | null>;
+  currentChatId: ComputedRef<string | undefined>;
+  activeMessages: ComputedRef<MessageNode[]>;
+  allMessages: ComputedRef<MessageNode[]>;
+  resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
+  inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
+  chatGroups: ComputedRef<ChatGroup[]>;
+  sidebarItems: ComputedRef<SidebarItem[]>;
+
+  TEST_ONLY: Record<string, never>;
+};
+
+export function useCurrentChatState(): CurrentChatStateAdapter {
+  const { settings } = useSettings();
+  const chatCurrentBridge = createChatCurrentBridge({
+    currentChatRef,
+    currentChatGroupRef,
+    liveChatRegistry,
+    getLiveChat,
+  });
+  const chatDerivedState = createChatDerivedState({
+    currentChatRef,
+    rootItems,
+    getSettings: () => settings.value as Settings,
+  });
+
+  const currentChat = computed(() => chatCurrentBridge.currentChat.value);
+  const currentChatGroup = computed(() => chatCurrentBridge.currentChatGroup.value);
+  const currentChatId = computed(() => currentChat.value?.id);
+  const activeMessages = computed(() => chatDerivedState.activeMessages.value);
+  const allMessages = computed(() => chatDerivedState.allMessages.value);
+  const resolvedSettings = computed(() => chatDerivedState.resolvedSettings.value);
+  const inheritedSettings = computed(() => chatDerivedState.inheritedSettings.value);
+  const chatGroups = computed(() => chatDerivedState.chatGroups.value);
+  const sidebarItems = computed(() => chatDerivedState.sidebarItems.value);
+
+  return {
+    currentChat,
+    currentChatGroup,
+    currentChatId,
+    activeMessages,
+    allMessages,
+    resolvedSettings,
+    inheritedSettings,
+    chatGroups,
+    sidebarItems,
+    TEST_ONLY: {},
+  };
+}

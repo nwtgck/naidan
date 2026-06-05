@@ -7,6 +7,8 @@ import type { ChatSummary, SidebarItem } from '@/models/types';
 
 const mockChats = ref<ChatSummary[]>([]);
 const mockActiveTasks = reactive(new Set<string>());
+const mockCurrentChat = ref(null);
+const mockCurrentChatGroup = ref(null);
 
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
@@ -19,8 +21,8 @@ vi.mock('../composables/useLayout', () => ({
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
-    currentChat: ref(null),
-    currentChatGroup: ref(null),
+    currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
     chatGroups: ref([]),
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
@@ -31,6 +33,26 @@ vi.mock('../composables/useChat', () => ({
     openChat: vi.fn(),
     openChatGroup: vi.fn(),
   }),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => undefined),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => []),
+    sidebarItems: computed<SidebarItem[]>(() => mockChats.value.map(c => ({ id: `chat:${c.id}`, type: 'chat', chat: c }))),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/chat-activity-queries', () => ({
+  isChatProcessing: ({ chatId }: { chatId: string }) =>
+    Array.from(mockActiveTasks).some(task => task.startsWith('process:') && task.endsWith(`:${chatId}`)),
 }));
 
 vi.mock('../composables/useSettings', () => ({

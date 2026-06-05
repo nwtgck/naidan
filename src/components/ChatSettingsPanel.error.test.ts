@@ -1,19 +1,36 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { computed, ref, nextTick } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import { ref, nextTick } from 'vue';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatModels } from '@/composables/chat/useChatModels';
 
 // --- Mocks ---
+const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
+  mockAvailableModelsRef: { value: [] as string[] },
+  mockFetchingModelsRef: { value: false },
+}));
 
 const mockCurrentChat = ref<any>(null);
 const mockFetchAvailableModels = vi.fn();
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    currentChat: mockCurrentChat,
-    fetchingModels: ref(false),
-    updateChatSettings: vi.fn(),
-    fetchAvailableModels: mockFetchAvailableModels,
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: vi.fn(),
+    toggleDebug: vi.fn(),
+    updateModel: vi.fn(),
+    updateSettings: vi.fn(),
+    reasoningEffort: vi.fn(),
+    updateReasoningEffort: vi.fn(),
+    TEST_ONLY: {},
   }),
 }));
 
@@ -34,6 +51,31 @@ describe('ChatSettingsPanel Error Handling', () => {
       systemPrompt: null,
       lmParameters: {},
     };
+
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      currentChatId: computed(() => mockCurrentChat.value?.id),
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatGroup: computed(() => null),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
+    } as ReturnType<typeof useCurrentChatState>);
+    mockAvailableModelsRef.value = [];
+    mockFetchingModelsRef.value = false;
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: computed(() => mockAvailableModelsRef.value) as unknown as ReturnType<typeof useChatModels>['availableModels'],
+      fetchingModels: computed(() => mockFetchingModelsRef.value),
+      fetchForChat: async ({ chatId }) => {
+        return await mockFetchAvailableModels({ chatId });
+      },
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: vi.fn(),
+      TEST_ONLY: {},
+    });
   });
 
   it('should reset error state when endpoint URL changes', async () => {

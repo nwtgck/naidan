@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
+import { useChatModels } from '@/composables/chat/useChatModels';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import {
   XIcon, Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon
@@ -32,15 +34,11 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const chatStore = useChat();
-const {
-  currentChat,
-  fetchingModels,
-  availableModels,
-  resolvedSettings,
-  inheritedSettings,
-} = chatStore;
-const sortedAvailableModels = computed(() => naturalSort({ values: availableModels?.value || [] }));
+const { currentChatId, currentChat, resolvedSettings, inheritedSettings } = useCurrentChatState();
+const chatMetadata = useChatMetadata({});
+const chatModels = useChatModels({});
+const isFetchingModels = computed(() => chatModels.fetchingModels.value);
+const sortedAvailableModels = computed(() => naturalSort({ values: chatModels.availableModels.value || [] }));
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
@@ -86,7 +84,10 @@ watch(() => currentChat.value?.id, async (newId, oldId) => {
   if (oldId && oldId !== newId) {
     // If we're switching chats while the panel is open, ensure any pending changes in the OLD chat are saved.
     // We use the ID that was active when the changes were made.
-    await chatStore.updateChatSettings({ id: oldId, updates: localSettings.value });
+    await chatMetadata.updateSettings({
+      chatId: oldId,
+      updates: localSettings.value,
+    });
   }
   syncLocalWithCurrent();
 });
@@ -110,7 +111,10 @@ watch(() => props.show, (show) => {
 
 async function saveChanges() {
   if (currentChat.value) {
-    await chatStore.updateChatSettings({ id: currentChat.value.id, updates: localSettings.value });
+    await chatMetadata.updateSettings({
+      chatId: currentChat.value.id,
+      updates: localSettings.value,
+    });
   }
 }
 
@@ -174,10 +178,13 @@ async function removeHeader({ index }: { index: number }) {
 }
 
 async function fetchModels() {
-  if (currentChat.value) {
+  const chatId = currentChatId.value;
+  if (chatId) {
     error.value = null;
     try {
-      const models = await chatStore.fetchAvailableModels({ chatId: currentChat.value.id });
+      const models = await chatModels.fetchForChat({
+        chatId,
+      });
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
       }
@@ -427,7 +434,7 @@ defineExpose({
                   :model-value="localSettings.modelId"
                   @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
                   :models="sortedAvailableModels"
-                  :loading="fetchingModels"
+                  :loading="isFetchingModels"
                   :placeholder="formatLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"
@@ -493,7 +500,7 @@ defineExpose({
                   :model-value="localSettings.titleModelId"
                   @update:model-value="val => { localSettings.titleModelId = val; saveChanges(); }"
                   :models="sortedAvailableModels"
-                  :loading="fetchingModels"
+                  :loading="isFetchingModels"
                   :placeholder="formatLabel({ value: resolvedSettings?.titleModelId, source: resolvedSettings?.sources.titleModelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"

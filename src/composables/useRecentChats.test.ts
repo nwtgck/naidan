@@ -3,17 +3,16 @@ import { ref } from 'vue';
 import { useRecentChats } from './useRecentChats';
 import { useOverlay } from './useOverlay';
 
-// Mock useChat
 const mockChats = ref([
   { id: 'chat1', title: 'Chat 1', updatedAt: 1000 },
   { id: 'chat2', title: 'Chat 2', updatedAt: 2000 },
   { id: 'chat3', title: null, updatedAt: 3000 },
 ]);
 
-vi.mock('./useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/ui/useChatListData', () => ({
+  useChatListData: () => ({
     chats: mockChats,
-    openChat: vi.fn(),
+    TEST_ONLY: {},
   }),
 }));
 

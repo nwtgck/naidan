@@ -5,7 +5,8 @@ import { SearchIcon, XIcon, Loader2Icon, MessageSquareIcon, CornerDownRightIcon,
 import he from 'he';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useChatSearch, type SearchResultItem, type SearchRoleFilter, type SearchScope, type ContentMatch } from '@/composables/useChatSearch';
-import { useChat } from '@/composables/useChat';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
@@ -19,7 +20,8 @@ const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: ()
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
 const { query, isSearching, isScanningContent, results, search, stopSearch } = useChatSearch();
-const { openChat, openChatAtMessage, openChatGroup, chatGroups, currentChat } = useChat();
+const { openChat, openChatAtMessage, openChatGroup } = useChatNavigation();
+const { chatGroups, currentChat } = useCurrentChatState();
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
   searchPreviewMode,
@@ -395,7 +397,7 @@ async function selectItem({ index }: { index: number }) {
   switch (type) {
   case 'chat': {
     const chatItem = target.item;
-    await openChat({ id: chatItem.chatId });
+    await openChat({ chatId: chatItem.chatId });
     router.push(`/chat/${chatItem.chatId}`);
     closeSearch();
     break;
@@ -413,7 +415,7 @@ async function selectItem({ index }: { index: number }) {
   }
   case 'chat_group': {
     const groupItem = target.item;
-    openChatGroup({ id: groupItem.groupId });
+    openChatGroup({ groupId: groupItem.groupId });
     closeSearch();
     break;
   }

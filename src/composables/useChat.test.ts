@@ -45,6 +45,7 @@ vi.mock('../services/storage', () => ({
     loadChatGroup: vi.fn().mockResolvedValue(null),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),
+    getFile: vi.fn().mockResolvedValue(new Blob([])),
     subscribeToChanges: vi.fn().mockImplementation((listener) => {
       mocks.capturedListener = listener;
       return () => {};

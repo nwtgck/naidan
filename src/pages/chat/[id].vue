@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { watch, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { useChat } from '@/composables/useChat';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import ChatArea from '@/components/ChatArea.vue';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
-const chatStore = useChat();
-const { openChat, openChatAtMessage } = chatStore;
+const chatNavigation = useChatNavigation();
 
 const chatId = computed(() => {
   const params = currentRoute.value?.params;
@@ -25,9 +24,9 @@ async function syncChat() {
   const id = chatId.value;
   if (id) {
     if (messageId.value) {
-      await openChatAtMessage({ chatId: id, messageId: messageId.value });
+      await chatNavigation.openChatAtMessage({ chatId: id, messageId: messageId.value });
     } else {
-      await openChat({ id, leafId: leafId.value });
+      await chatNavigation.openChat({ chatId: id, leafId: leafId.value });
     }
   }
 }

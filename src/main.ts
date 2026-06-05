@@ -4,7 +4,7 @@ import App from './App.vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
 import { useSettings } from './composables/useSettings'
-import { useChat } from './composables/useChat'
+import { useChatBootstrap } from './composables/chat/ui/useChatBootstrap'
 import { warmStandaloneWorkerCacheAtIdle } from './services/standalone-worker-cache'
 
 const router = createRouter({
@@ -43,7 +43,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // This prevents race conditions where a child component (like a chat page)
   // tries to load data before the storage provider is correctly initialized.
   const settingsStore = useSettings()
-  const chatStore = useChat()
+  const chatBootstrap = useChatBootstrap()
 
   // Wait for the router to be ready before accessing query parameters.
   // This ensures that the initial URL (even on root path '/') is correctly parsed.
@@ -71,7 +71,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
-  await chatStore.loadChats({})
+  await chatBootstrap.loadChats({})
 
   app.mount('#app')
 

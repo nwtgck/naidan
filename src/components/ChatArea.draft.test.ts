@@ -99,6 +99,162 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    chatGroups: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatAreaData', () => ({
+  useChatAreaData: () => ({
+    updateChatSettings: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    availableModels: computed(() => mockAvailableModels.value),
+    fetchingModels: computed(() => false),
+    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
+    fetchAvailableModels: vi.fn(),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
+    availableChatGroups: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-activity-queries', () => ({
+  isChatProcessing: () => false,
+  getChatContextCompactProgress: () => ({ phase: 'idle' }),
+  isChatGeneratingTitle: () => false,
+}));
+
+vi.mock('../composables/chat/useChatConversation', () => ({
+  useChatConversation: () => ({
+    sendMessage: ({
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    }: {
+      chatId: string;
+      content: string;
+      parentId: string | null | undefined;
+      attachments: unknown[] | undefined;
+      lmParameters: unknown;
+    }) => mockSendMessage({
+      content,
+      parentId,
+      attachments: attachments ?? [],
+      chatTarget: undefined,
+      lmParameters,
+    }),
+    regenerateMessage: vi.fn(),
+    abort: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
+    availableModels: mockAvailableModels,
+    fetchingModels: computed(() => false),
+    fetchForChat: vi.fn(),
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMounts', () => ({
+  useChatMounts: () => ({
+    getMounts: () => computed(() => []),
+    addMount: vi.fn(),
+    removeMount: vi.fn(),
+    updateMount: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    reasoningEffort: () => computed(() => undefined),
+    updateReasoningEffort: vi.fn(),
+    updateModel: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
+  useChatGeneration: () => ({
+    sendMessage: ({
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    }: {
+      content: string;
+      parentId: string | null | undefined;
+      attachments: unknown[] | undefined;
+      lmParameters: unknown;
+    }) => mockSendMessage({
+      content,
+      parentId,
+      attachments: attachments ?? [],
+      chatTarget: undefined,
+      lmParameters,
+    }),
+    regenerateMessage: vi.fn(),
+    abort: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
+  useChatModelSelection: () => ({
+    availableModels: mockAvailableModels,
+    fetchingModels: computed(() => false),
+    fetchModels: vi.fn(),
+    updateModel: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatImageGeneration', () => ({
+  useChatImageGeneration: () => ({
+    availableModels: mockAvailableModels,
+    isImageMode: computed(() => false),
+    resolution: computed(() => ({ width: 512, height: 512 })),
+    count: computed(() => 1),
+    persistAs: computed(() => 'original'),
+    steps: computed(() => undefined),
+    seed: computed(() => 'browser_random'),
+    selectedImageModel: computed(() => undefined),
+    toggleImageMode: vi.fn(),
+    updateResolution: vi.fn(),
+    updateCount: vi.fn(),
+    updatePersistAs: vi.fn(),
+    updateSteps: vi.fn(),
+    updateSeed: vi.fn(),
+    setImageModel: vi.fn(),
+    sendImageRequest: vi.fn().mockResolvedValue(true),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatImageProgress', () => ({
+  useChatImageProgress: () => ({
+    progress: computed(() => undefined),
+    currentStep: computed(() => undefined),
+    totalSteps: computed(() => undefined),
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({ endpointType: 'openai', endpointUrl: 'http://localhost' }),

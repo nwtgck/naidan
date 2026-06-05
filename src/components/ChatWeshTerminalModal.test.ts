@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
   getVolumeDirectoryHandle: vi.fn().mockResolvedValue({} as FileSystemDirectoryHandle),
   getDirectory: vi.fn(),
+  subscribeToChanges: vi.fn(),
   showConfirm: vi.fn(),
   ensureChatTmpDirectory: vi.fn(),
   settingsValue: {
@@ -31,6 +32,7 @@ vi.mock('@/composables/useSettings', () => ({
 vi.mock('@/services/storage', () => ({
   storageService: {
     getVolumeDirectoryHandle: mocks.getVolumeDirectoryHandle,
+    subscribeToChanges: mocks.subscribeToChanges,
   },
 }));
 
@@ -44,8 +46,8 @@ vi.mock('@/composables/useConfirm', () => ({
   }),
 }));
 
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
+vi.mock('@/composables/chat/ui/useChatTmpDirectory', () => ({
+  useChatTmpDirectory: () => ({
     ensureChatTmpDirectory: mocks.ensureChatTmpDirectory,
   }),
 }));

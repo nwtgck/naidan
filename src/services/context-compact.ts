@@ -3,12 +3,16 @@ import type {
   AssistantMessageNode,
   Attachment,
   ChatMessage,
+  EndpointType,
   LmParameters,
   MessageNode,
   MultimodalContent,
   ToolCall,
 } from '@/models/types';
+import { storageService } from '@/services/storage';
+import type { LLMProvider } from '@/services/lm/types';
 import type { ToolExecutionResult } from '@/services/tools/types';
+import { fileToDataUrl } from '@/utils/chat-tree';
 
 export type ContextCompactProgress =
   | { phase: 'idle' }
@@ -203,6 +207,211 @@ export function buildCompactRequestMessages({
       }),
     },
   ];
+}
+
+export async function createProviderForCompact({
+  endpointType,
+  endpointUrl,
+  endpointHttpHeaders,
+}: {
+  endpointType: EndpointType;
+  endpointUrl: string | undefined;
+  endpointHttpHeaders: [string, string][] | undefined;
+}): Promise<LLMProvider> {
+  switch (endpointType) {
+  case 'openai':
+    if (!endpointUrl) {
+      throw new Error('OpenAI compact provider requires an endpoint URL.');
+    }
+    return new (await import('@/services/lm/openai')).OpenAIProvider({
+      endpoint: endpointUrl,
+      headers: endpointHttpHeaders,
+    });
+  case 'ollama':
+    if (!endpointUrl) {
+      throw new Error('Ollama compact provider requires an endpoint URL.');
+    }
+    return new (await import('@/services/lm/ollama')).OllamaProvider({
+      endpoint: endpointUrl,
+      headers: endpointHttpHeaders,
+    });
+  case 'transformers_js':
+    return new (await import('@/services/transformers-js/provider')).TransformersJsProvider();
+  default: {
+    const _ex: never = endpointType;
+    throw new Error(`Unsupported endpoint type: ${_ex}`);
+  }
+  }
+}
+
+export async function createCompactChatMessagesFromPrefix({
+  prefix,
+  promptMode,
+}: {
+  prefix: readonly MessageNode[];
+  promptMode: ContextCompactPromptMode;
+}): Promise<ChatMessage[]> {
+  const result: ChatMessage[] = [];
+
+  for (const node of prefix) {
+    switch (node.role) {
+    case 'tool': {
+      for (const toolResult of node.results) {
+        let toolContent = '';
+        switch (toolResult.status) {
+        case 'success':
+          switch (toolResult.content.type) {
+          case 'text':
+            toolContent = toolResult.content.text;
+            break;
+          case 'binary_object': {
+            const blob = await storageService.getFile({ binaryObjectId: toolResult.content.id });
+            toolContent = blob ? await blob.text() : '[Error: Binary object missing]';
+            break;
+          }
+          default: {
+            const _ex: never = toolResult.content;
+            throw new Error(`Unhandled tool success content type: ${_ex}`);
+          }
+          }
+          break;
+        case 'error':
+          switch (toolResult.error.message.type) {
+          case 'text':
+            toolContent = `Error [${toolResult.error.code}]: ${toolResult.error.message.text}`;
+            break;
+          case 'binary_object': {
+            const blob = await storageService.getFile({ binaryObjectId: toolResult.error.message.id });
+            const detail = blob ? await blob.text() : 'Binary error detail missing';
+            toolContent = `Error [${toolResult.error.code}]: ${detail}`;
+            break;
+          }
+          default: {
+            const _ex: never = toolResult.error.message;
+            throw new Error(`Unhandled tool error content type: ${_ex}`);
+          }
+          }
+          break;
+        case 'executing':
+          toolContent = '[Error: Tool still executing]';
+          break;
+        default: {
+          const _ex: never = toolResult;
+          throw new Error(`Unhandled tool result status: ${_ex}`);
+        }
+        }
+
+        result.push({
+          role: 'tool',
+          tool_call_id: toolResult.toolCallId,
+          content: createCompactToolMessageContent({
+            messageId: node.id,
+            content: toolContent,
+            promptMode,
+          }),
+        });
+      }
+      break;
+    }
+    case 'user': {
+      const baseContent = createCompactConversationMessageContent({
+        node,
+        promptMode,
+      });
+      if (!node.attachments || node.attachments.length === 0) {
+        result.push({ role: 'user', content: baseContent });
+        break;
+      }
+
+      const images: string[] = [];
+      for (const attachment of node.attachments) {
+        let blob: Blob | null = null;
+        switch (attachment.status) {
+        case 'memory':
+          blob = attachment.blob;
+          break;
+        case 'persisted':
+          blob = await storageService.getFile({ binaryObjectId: attachment.binaryObjectId });
+          break;
+        case 'missing':
+          blob = null;
+          break;
+        default: {
+          const _ex: never = attachment;
+          throw new Error(`Unhandled attachment status while compacting: ${_ex}`);
+        }
+        }
+
+        if (blob && attachment.mimeType.startsWith('image/')) {
+          images.push(await fileToDataUrl({ blob }));
+        }
+      }
+
+      result.push({
+        role: 'user',
+        content: createCompactMultimodalContent({
+          text: baseContent,
+          images,
+        }),
+      });
+      break;
+    }
+    case 'assistant':
+      result.push({
+        role: 'assistant',
+        content: createCompactConversationMessageContent({
+          node,
+          promptMode,
+        }),
+        tool_calls: node.toolCalls,
+      });
+      break;
+    case 'system':
+      result.push({
+        role: 'system',
+        content: createCompactConversationMessageContent({
+          node,
+          promptMode,
+        }),
+      });
+      break;
+    default: {
+      const _ex: never = node;
+      throw new Error(`Unhandled compact prefix node role: ${_ex}`);
+    }
+    }
+  }
+
+  return result;
+}
+
+export function createCompactRequestPreview({
+  messages,
+}: {
+  messages: readonly ChatMessage[];
+}): string {
+  return messages.map((message) => {
+    const content = (() => {
+      if (typeof message.content === 'string') {
+        return message.content;
+      }
+
+      return message.content.map((part) => {
+        switch (part.type) {
+        case 'text':
+          return part.text;
+        case 'image_url':
+          return '[image attachment]';
+        default: {
+          const _ex: never = part;
+          throw new Error(`Unhandled compact preview part: ${_ex}`);
+        }
+        }
+      }).join('\n');
+    })();
+
+    return `[${message.role}]\n${content}`;
+  }).join('\n\n');
 }
 
 function cloneToolCalls({

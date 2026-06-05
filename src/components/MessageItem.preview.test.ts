@@ -1,9 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
+import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
 import { storageService } from '@/services/storage';
 import type { MessageNode } from '@/models/types';
+
+const mount: any = (component: unknown, options?: Record<string, unknown>) => {
+  if (component === MessageItem) {
+    const normalizedOptions = options ?? {};
+    const props = (normalizedOptions.props as Record<string, unknown> | undefined) ?? {};
+
+    return baseMount(component, {
+      ...normalizedOptions,
+      props: {
+        chatId: 'chat-1',
+        ...props,
+      },
+    });
+  }
+
+  return baseMount(component, options);
+};
 
 // --- Mocks ---
 

@@ -25,10 +25,10 @@ const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => i
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./MessageDiffModal.vue') });
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AdvancedTextEditorV3.vue') });
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
-import { useChat } from '@/composables/useChat';
-import { useReasoning } from '@/composables/useReasoning';
 import { useLayout } from '@/composables/useLayout';
 import { useSettings } from '@/composables/useSettings';
+import { useChatImageProgress } from '@/composables/chat/useChatImageProgress';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import {
   isImageGenerationPending,
   isImageGenerationProcessed,
@@ -40,7 +40,7 @@ import {
 } from '@/utils/image-generation';
 
 const props = withDefaults(defineProps<{
-  chatId?: string;
+  chatId: string;
   message: MessageNode;
   siblings?: MessageNode[];
   canGenerateImage?: boolean;
@@ -98,12 +98,20 @@ const editImageParams = ref({
 });
 
 const attachmentUrls = ref<Record<string, string>>({});
+const messageChatId = computed(() => props.chatId);
 
 const { openPreview } = useImagePreview();
-const { imageProgressMap, currentChat } = useChat();
-const { getReasoningEffort } = useReasoning();
+const chatMetadata = useChatMetadata({});
+const chatImageProgress = useChatImageProgress({
+  chatId: messageChatId,
+});
+const chatReasoningEffort = chatMetadata.reasoningEffort({
+  chatId: messageChatId,
+});
 const { preferredEditorMode, setPreferredEditorMode } = useLayout();
 const { settings } = useSettings();
+const imageProgressCurrentStep = computed(() => chatImageProgress.currentStep.value);
+const imageProgressTotalSteps = computed(() => chatImageProgress.totalSteps.value);
 
 const editReasoningEffort = ref<Reasoning['effort']>(undefined);
 
@@ -211,8 +219,8 @@ watch(isEditing, (editing) => {
     // Initialize reasoning effort from message if available, otherwise from current chat
     if (props.message.role === 'user' && props.message.lmParameters?.reasoning) {
       editReasoningEffort.value = props.message.lmParameters.reasoning.effort;
-    } else if (currentChat.value) {
-      editReasoningEffort.value = getReasoningEffort({ chatId: currentChat.value.id });
+    } else {
+      editReasoningEffort.value = chatReasoningEffort.value;
     }
 
     // Initialize image generation settings if it's an image request
@@ -674,8 +682,8 @@ defineExpose({
         <ImageConjuringLoader
           v-if="mode === 'content' && isImageGenerationPending({ content: message.content || '' }) && message.role === 'assistant' && !message.error"
           v-bind="getImageGenerationProgress({ content: message.content || '' })"
-          :current-step="isGenerating && chatId ? imageProgressMap[chatId]?.currentStep : undefined"
-          :total-steps="isGenerating && chatId ? imageProgressMap[chatId]?.totalSteps : undefined"
+          :current-step="isGenerating ? imageProgressCurrentStep : undefined"
+          :total-steps="isGenerating ? imageProgressTotalSteps : undefined"
         />
 
         <!-- Loading State (Initial Wait for regular text) -->

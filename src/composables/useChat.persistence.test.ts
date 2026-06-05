@@ -3,66 +3,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const chats = new Map<string, any>();
 let hierarchy = { items: [] as any[] };
 
-// Mock LLM provider
-vi.mock('../services/lm/openai', () => ({
-  OpenAIProvider: class {
-    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Done');
-      return Promise.resolve();
-    });
-    listModels = vi.fn().mockResolvedValue(['gpt-4']);
-  },
-}));
-
-vi.mock('../services/lm/ollama', () => ({
-  OllamaProvider: class {
-    chat = vi.fn();
-    listModels = vi.fn().mockResolvedValue(['gpt-4']);
-  },
-}));
-
-// Mock storage service
-vi.mock('../services/storage', () => ({
-  storageService: {
-    getSidebarStructure: vi.fn().mockResolvedValue([]),
-    saveChat: vi.fn().mockImplementation((chat) => {
-      chats.set(chat.id, chat);
-      return Promise.resolve();
-    }),
-    loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id) ?? null)),
-    loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id) ?? null)),
-    updateChatContent: vi.fn().mockImplementation((id, updater) => {
-      const existing = chats.get(id) || null;
-      const current = existing ? { root: existing.root, currentLeafId: existing.currentLeafId } : null;
-      const updated = updater(current);
-      if (existing) chats.set(id, { ...existing, ...updated });
-      return Promise.resolve(updated);
-    }),
-    updateChatMeta: vi.fn().mockImplementation((id, updater) => {
-      const existing = chats.get(id) || null;
-      const updated = updater(existing);
-      if (updated) chats.set(id, { ...existing, ...updated });
-      return Promise.resolve(updated);
-    }),
-    updateHierarchy: vi.fn().mockImplementation((updater) => {
-      hierarchy = updater(hierarchy);
-      return Promise.resolve(hierarchy);
-    }),
-    loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(hierarchy)),
-    listChats: vi.fn().mockResolvedValue([]),
-    listChatGroups: vi.fn().mockResolvedValue([]),
-    updateSettings: vi.fn().mockResolvedValue({}),
-    loadSettings: vi.fn().mockResolvedValue({}),
-    loadChatGroup: vi.fn().mockResolvedValue(null),
-    getFile: vi.fn().mockResolvedValue(new Blob([])),
-    notify: vi.fn(),
-    subscribeToChanges: vi.fn(),
-    getCurrentType: vi.fn().mockReturnValue('local'),
-    canPersistBinary: false,
-    init: vi.fn().mockResolvedValue(undefined),
-  },
-}));
-
 describe('useChat Persistence Timing', () => {
   let persistMock: any;
   let persistedMock: any;
@@ -70,8 +10,69 @@ describe('useChat Persistence Timing', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
+    vi.unmock('../services/lm/openai');
+    vi.unmock('../services/lm/ollama');
+    vi.unmock('../services/storage');
     chats.clear();
     hierarchy = { items: [] };
+
+    vi.doMock('../services/lm/openai', () => ({
+      OpenAIProvider: class {
+        chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
+          params.onChunk('Done');
+          return Promise.resolve();
+        });
+        listModels = vi.fn().mockResolvedValue(['gpt-4']);
+      },
+    }));
+
+    vi.doMock('../services/lm/ollama', () => ({
+      OllamaProvider: class {
+        chat = vi.fn();
+        listModels = vi.fn().mockResolvedValue(['gpt-4']);
+      },
+    }));
+
+    vi.doMock('../services/storage', () => ({
+      storageService: {
+        getSidebarStructure: vi.fn().mockResolvedValue([]),
+        saveChat: vi.fn().mockImplementation((chat) => {
+          chats.set(chat.id, chat);
+          return Promise.resolve();
+        }),
+        loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id) ?? null)),
+        loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id) ?? null)),
+        updateChatContent: vi.fn().mockImplementation((id, updater) => {
+          const existing = chats.get(id) || null;
+          const current = existing ? { root: existing.root, currentLeafId: existing.currentLeafId } : null;
+          const updated = updater(current);
+          if (existing) chats.set(id, { ...existing, ...updated });
+          return Promise.resolve(updated);
+        }),
+        updateChatMeta: vi.fn().mockImplementation((id, updater) => {
+          const existing = chats.get(id) || null;
+          const updated = updater(existing);
+          if (updated) chats.set(id, { ...existing, ...updated });
+          return Promise.resolve(updated);
+        }),
+        updateHierarchy: vi.fn().mockImplementation((updater) => {
+          hierarchy = updater(hierarchy);
+          return Promise.resolve(hierarchy);
+        }),
+        loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(hierarchy)),
+        listChats: vi.fn().mockResolvedValue([]),
+        listChatGroups: vi.fn().mockResolvedValue([]),
+        updateSettings: vi.fn().mockResolvedValue({}),
+        loadSettings: vi.fn().mockResolvedValue({}),
+        loadChatGroup: vi.fn().mockResolvedValue(null),
+        getFile: vi.fn().mockResolvedValue(new Blob([])),
+        notify: vi.fn(),
+        subscribeToChanges: vi.fn(),
+        getCurrentType: vi.fn().mockReturnValue('local'),
+        canPersistBinary: false,
+        init: vi.fn().mockResolvedValue(undefined),
+      },
+    }));
 
     persistMock = vi.fn().mockResolvedValue(true);
     persistedMock = vi.fn().mockResolvedValue(false);

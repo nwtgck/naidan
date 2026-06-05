@@ -12,6 +12,7 @@ import { setupScrollToMock } from '@/utils/test-utils';
 // Mock useChat singleton
 const mockIsImageMode = ref(false);
 const mockActiveMessages = ref<any[]>([]);
+const mockCurrentChatGroup = ref(null);
 
 const mockChatStore = {
   currentChat: ref({ id: 'chat-1', modelId: 'm1', root: { items: [] } }),
@@ -71,6 +72,149 @@ const mockChatStore = {
 };
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(() => mockChatStore)
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockChatStore.currentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => mockChatStore.currentChat.value?.id),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockChatStore.resolvedSettings.value),
+    inheritedSettings: computed(() => mockChatStore.inheritedSettings.value),
+    chatGroups: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatAreaData', () => ({
+  useChatAreaData: () => ({
+    updateChatSettings: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    availableModels: computed(() => mockChatStore.availableModels.value),
+    fetchingModels: computed(() => false),
+    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
+    fetchAvailableModels: vi.fn(),
+    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
+      type: 'message',
+      node: m,
+      mode: 'content',
+      flow: { position: 'standalone', nesting: 'none' },
+      isFirstInNode: true,
+      isLastInNode: true,
+      isFirstInTurn: true,
+    }))),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
+    availableChatGroups: computed(() => []),
+  }),
+}));
+
+vi.mock('../composables/useChatDisplayFlow', () => ({
+  useChatDisplayFlow: () => ({
+    chatFlow: computed(() => mockChatStore.chatFlow.value),
+    isThinkingActive: vi.fn(() => false),
+    isWaitingResponse: vi.fn(() => false),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
+    availableModels: mockChatStore.availableModels,
+    fetchingModels: computed(() => false),
+    fetchForChat: vi.fn(),
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
+  useChatGeneration: () => ({
+    sendMessage: ({
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    }: {
+      content: string;
+      parentId: string | null | undefined;
+      attachments: unknown[] | undefined;
+      lmParameters: unknown;
+    }) => mockChatStore.sendMessage({
+      content,
+      parentId,
+      attachments: attachments ?? [],
+      chatTarget: undefined,
+      lmParameters,
+    }),
+    regenerateMessage: vi.fn(),
+    abort: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/chat-scoped/useChatModelSelection', () => ({
+  useChatModelSelection: () => ({
+    availableModels: mockChatStore.availableModels,
+    fetchingModels: computed(() => false),
+    fetchModels: vi.fn(),
+    updateModel: mockChatStore.updateChatModel,
+  }),
+}));
+
+vi.mock('../composables/chat/useChatImageProgress', () => ({
+  useChatImageProgress: () => ({
+    progress: computed(() => undefined),
+    currentStep: computed(() => undefined),
+    totalSteps: computed(() => undefined),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatImageGeneration', () => ({
+  useChatImageGeneration: () => ({
+    availableModels: mockChatStore.availableModels,
+    isImageMode: computed(() => mockIsImageMode.value),
+    resolution: computed(() => ({ width: 512, height: 512 })),
+    count: computed(() => mockChatStore.getCount()),
+    persistAs: computed(() => 'original'),
+    steps: computed(() => undefined),
+    seed: computed(() => 'browser_random'),
+    selectedImageModel: computed(() => 'x/z-image-turbo:v1'),
+    toggleImageMode: () => mockChatStore.toggleImageMode(),
+    updateResolution: vi.fn(),
+    updateCount: vi.fn(),
+    updatePersistAs: vi.fn(),
+    updateSteps: vi.fn(),
+    updateSeed: vi.fn(),
+    setImageModel: vi.fn(),
+    sendImageRequest: ({
+      prompt,
+      width,
+      height,
+      count,
+      steps,
+      seed,
+      persistAs,
+      attachments,
+    }: {
+      prompt: string;
+      width: number;
+      height: number;
+      count: number;
+      steps: number | undefined;
+      seed: number | 'browser_random' | undefined;
+      persistAs: 'original' | 'webp' | 'jpeg' | 'png';
+      attachments: unknown[];
+    }) => mockChatStore.sendImageRequest({
+      prompt,
+      width,
+      height,
+      count,
+      steps,
+      seed,
+      persistAs,
+      attachments,
+    }),
+  }),
 }));
 
 // Mock useRouter

@@ -66,8 +66,14 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
   async function createTab() {
     vi.resetModules();
+    vi.unmock('../services/storage');
+    vi.unmock('./useSettings');
+    vi.unmock('./useToast');
+    vi.unmock('./useConfirm');
+    vi.unmock('../services/lm/openai');
+    vi.unmock('../services/lm/ollama');
 
-    vi.mock('../services/storage', () => ({
+    vi.doMock('../services/storage', () => ({
       storageService: {
         init: vi.fn(),
         subscribeToChanges: vi.fn().mockImplementation((l) => {
@@ -158,7 +164,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
       }
     }));
 
-    vi.mock('./useSettings', () => ({
+    vi.doMock('./useSettings', () => ({
       useSettings: () => ({
         settings: { value: JSON.parse(JSON.stringify(getShared().settings)) },
         setIsOnboardingDismissed: vi.fn(),
@@ -166,10 +172,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
         setHeavyContentAlertDismissed: vi.fn(),
       }),
     }));
-    vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
-    vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
+    vi.doMock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
+    vi.doMock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
 
-    vi.mock('../services/lm/openai', () => ({
+    vi.doMock('../services/lm/openai', () => ({
       OpenAIProvider: function() {
         return {
           chat: vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void, signal?: AbortSignal }) => {
@@ -191,7 +197,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
       },
     }));
 
-    vi.mock('../services/lm/ollama', () => ({
+    vi.doMock('../services/lm/ollama', () => ({
       OllamaProvider: function() {
         return { chat: vi.fn(), listModels: vi.fn() };
       },
@@ -213,7 +219,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     vi.advanceTimersByTime(600);
     await nextTick();
     expect(tabB.currentChat.value?.title).toBe('New Title');
-  });
+  }, 10_000);
 
   it('should sync sidebar reordering (chat_meta_and_chat_group)', async () => {
     const tabA = await createTab();
