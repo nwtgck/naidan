@@ -8,7 +8,7 @@ export type ChatTmpDirectoryAdapter = {
     chatId: string;
   }): Promise<ChatTmpDirectoryEntry>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatTmpDirectory(): ChatTmpDirectoryAdapter {

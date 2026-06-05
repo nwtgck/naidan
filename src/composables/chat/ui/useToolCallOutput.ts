@@ -10,7 +10,7 @@ export type ToolCallOutputAdapter = {
     status: 'executing' | 'success' | 'error';
   }): ComputedRef<string | undefined>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useToolCallOutput(): ToolCallOutputAdapter {

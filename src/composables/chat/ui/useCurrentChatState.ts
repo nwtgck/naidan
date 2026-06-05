@@ -24,7 +24,7 @@ export type CurrentChatStateAdapter = {
   chatGroups: ComputedRef<ChatGroup[]>;
   sidebarItems: ComputedRef<SidebarItem[]>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useCurrentChatState(): CurrentChatStateAdapter {

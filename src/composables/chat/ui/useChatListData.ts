@@ -8,7 +8,7 @@ import { currentChatRef, rootItems } from '@/composables/chat/global/chat-core-s
 export type ChatListDataAdapter = {
   chats: ComputedRef<ChatSummary[]>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatListData(): ChatListDataAdapter {

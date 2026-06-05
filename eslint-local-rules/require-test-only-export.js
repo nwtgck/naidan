@@ -1,17 +1,139 @@
 
+function isTestOnlyPropertyName(node) {
+  if (node.type === 'Identifier') {
+    return node.name === 'TEST_ONLY';
+  }
+  if (node.type === 'Literal') {
+    return node.value === 'TEST_ONLY';
+  }
+  return false;
+}
+
+function isNeverRecord(node) {
+  if (node.type !== 'TSTypeReference') {
+    return false;
+  }
+  if (node.typeName.type !== 'Identifier' || node.typeName.name !== 'Record') {
+    return false;
+  }
+  const params = node.typeArguments?.params;
+  if (!params || params.length !== 2) {
+    return false;
+  }
+  return params[0]?.type === 'TSNeverKeyword' && params[1]?.type === 'TSNeverKeyword';
+}
+
+function isOpenEndedRecord(node) {
+  if (node.type !== 'TSTypeReference') {
+    return false;
+  }
+  if (node.typeName.type !== 'Identifier' || node.typeName.name !== 'Record') {
+    return false;
+  }
+  const keyType = node.typeArguments?.params[0];
+  if (!keyType) {
+    return false;
+  }
+
+  switch (keyType.type) {
+  case 'TSStringKeyword':
+  case 'TSNumberKeyword':
+  case 'TSSymbolKeyword':
+  case 'TSAnyKeyword':
+  case 'TSUnknownKeyword':
+    return true;
+  case 'TSTypeReference':
+    return keyType.typeName.type === 'Identifier' && keyType.typeName.name === 'PropertyKey';
+  default:
+    return false;
+  }
+}
+
+function hasOpenEndedIndexSignature(node) {
+  if (node.type !== 'TSTypeLiteral') {
+    return false;
+  }
+
+  return node.members.some((member) => {
+    if (member.type !== 'TSIndexSignature') {
+      return false;
+    }
+
+    return member.parameters.some((parameter) => {
+      if (parameter.type !== 'Identifier') {
+        return false;
+      }
+      const annotation = parameter.typeAnnotation?.typeAnnotation;
+      if (!annotation) {
+        return true;
+      }
+
+      switch (annotation.type) {
+      case 'TSStringKeyword':
+      case 'TSNumberKeyword':
+      case 'TSSymbolKeyword':
+      case 'TSAnyKeyword':
+      case 'TSUnknownKeyword':
+        return true;
+      default:
+        return false;
+      }
+    });
+  });
+}
+
 export const rule = {
   meta: {
-    type: 'suggestion',
+    type: 'problem',
     docs: {
-      description: "Ensure useXxx composables return a TEST_ONLY object for testing internals.",
+      description: "Ensure useXxx composables return a strongly typed TEST_ONLY object for testing internals.",
     },
     fixable: 'code',
     messages: {
       missingTestOnly: "Composable '{{ name }}' must return a 'TEST_ONLY' object for testing purposes.",
+      optionalTestOnly: 'TEST_ONLY must be a required property, not an optional one.',
+      openEndedRecord: 'TEST_ONLY must not use open-ended key types like Record<string, ...>. Use an explicit object type or Record<never, never>.',
+      openEndedIndexSignature: 'TEST_ONLY must not use string/number/symbol index signatures. Use explicit property names or Record<never, never>.',
     },
   },
   create(context) {
     return {
+      TSPropertySignature(node) {
+        if (!isTestOnlyPropertyName(node.key)) {
+          return;
+        }
+
+        if (node.optional) {
+          context.report({
+            node,
+            messageId: 'optionalTestOnly',
+          });
+        }
+
+        const annotation = node.typeAnnotation?.typeAnnotation;
+        if (!annotation) {
+          return;
+        }
+
+        if (isNeverRecord(annotation)) {
+          return;
+        }
+
+        if (isOpenEndedRecord(annotation)) {
+          context.report({
+            node: annotation,
+            messageId: 'openEndedRecord',
+          });
+          return;
+        }
+
+        if (hasOpenEndedIndexSignature(annotation)) {
+          context.report({
+            node: annotation,
+            messageId: 'openEndedIndexSignature',
+          });
+        }
+      },
       ReturnStatement(node) {
         // Get the function scope we are currently in
         let scope = context.sourceCode.getScope(node);
@@ -51,8 +173,7 @@ export const rule = {
         if (node.argument && node.argument.type === 'ObjectExpression') {
           const hasTestOnly = node.argument.properties.some(prop => 
             (prop.type === 'Property' || prop.type === 'MethodDefinition') &&
-            ((prop.key.type === 'Identifier' && prop.key.name === 'TEST_ONLY') ||
-             (prop.key.type === 'Literal' && prop.key.value === 'TEST_ONLY'))
+            isTestOnlyPropertyName(prop.key)
           );
 
           if (!hasTestOnly) {

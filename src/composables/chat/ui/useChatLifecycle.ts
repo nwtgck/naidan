@@ -48,7 +48,7 @@ export type ChatLifecycleAdapter = {
 
   deleteAllChats(_args: Record<never, never>): Promise<void>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatLifecycle(): ChatLifecycleAdapter {

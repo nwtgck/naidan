@@ -31,7 +31,7 @@ export type ChatNavigationAdapter = {
     groupId: string | null;
   }): void;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatNavigation(): ChatNavigationAdapter {
