@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
-import CurrentChatPane from './CurrentChatPane.vue';
+import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -228,6 +228,18 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockCurrentChat.value),
+    chatGroup: computed(() => mockCurrentChatGroup.value),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    chatGroups: computed(() => mockChatGroups.value),
+  }),
+}));
+
 vi.mock('../composables/chat/chat-activity-queries', () => ({
   isChatProcessing: ({ chatId }: { chatId: string }) =>
     !!mockCurrentChat.value && mockCurrentChat.value.id === chatId && (mockStreaming.value || mockActiveGenerations.has(chatId)),
@@ -236,6 +248,30 @@ vi.mock('../composables/chat/chat-activity-queries', () => ({
   isChatGeneratingTitle: ({ chatId }: { chatId: string }) =>
     mockCurrentChat.value?.id === chatId ? mockGeneratingTitle.value : false,
 }));
+
+function mountChatPane({
+  props,
+  attachTo,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  attachTo?: Element | string;
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    attachTo,
+    global,
+  });
+}
 
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
@@ -694,7 +730,7 @@ function resetMocks() {
   });
 }
 
-describe('CurrentChatPane UI States', () => {
+describe('ChatPane UI States', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
@@ -711,7 +747,7 @@ describe('CurrentChatPane UI States', () => {
 
   it('should keep the input textarea enabled during streaming', async () => {
     mockStreaming.value = true;
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -734,7 +770,7 @@ describe('CurrentChatPane UI States', () => {
       groupId: 'group-1',
     };
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -760,7 +796,7 @@ describe('CurrentChatPane UI States', () => {
       groupId: null,
     };
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -777,7 +813,7 @@ describe('CurrentChatPane UI States', () => {
       replies: { items: [] },
     })) as MessageNode[];
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -797,7 +833,7 @@ describe('CurrentChatPane UI States', () => {
       replies: { items: [] },
     })) as MessageNode[];
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -825,7 +861,7 @@ describe('CurrentChatPane UI States', () => {
 Question`,
     };
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -843,7 +879,7 @@ Question`,
         timestamp: index + 1,
         replies: { items: [] },
       })) as MessageNode[];
-      wrapper = mount(CurrentChatPane, {
+      wrapper = mountChatPane( {
         global: { plugins: [router] },
       });
 
@@ -869,7 +905,7 @@ Question`,
   it('does not show the neural sync effect when compact progress becomes complete without a local compact action', async () => {
     vi.useFakeTimers();
     try {
-      wrapper = mount(CurrentChatPane, {
+      wrapper = mountChatPane( {
         global: { plugins: [router] },
       });
 
@@ -886,7 +922,7 @@ Question`,
     }
   });
 
-  it('clears the neural sync effect when switching to another chat', async () => {
+  it('clears the neural sync effect when chatId changes', async () => {
     vi.useFakeTimers();
     try {
       mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => ({
@@ -897,7 +933,7 @@ Question`,
         replies: { items: [] },
       })) as MessageNode[];
 
-      wrapper = mount(CurrentChatPane, {
+      wrapper = mountChatPane( {
         global: { plugins: [router] },
       });
 
@@ -916,7 +952,9 @@ Question`,
         id: 'chat-2',
         title: 'Chat 2',
       };
-      await nextTick();
+      await wrapper.setProps({
+        chatId: 'chat-2',
+      });
 
       expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
     } finally {
@@ -929,7 +967,7 @@ Question`,
     if (mockCurrentChat.value) {
       mockActiveGenerations.set(mockCurrentChat.value.id, { controller: new AbortController(), chat: mockCurrentChat.value });
     }
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -940,7 +978,7 @@ Question`,
   });
 
   it('should display the shortcut text with correct casing (not all uppercase)', () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
@@ -966,7 +1004,7 @@ Question`,
     const testModelName = 'gemma3:1b-lowercase';
     if (mockCurrentChat.value) mockCurrentChat.value.modelId = testModelName;
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
@@ -992,7 +1030,7 @@ Question`,
     if (mockCurrentChat.value) {
       mockActiveGenerations.set(mockCurrentChat.value.id, { controller: new AbortController(), chat: mockCurrentChat.value });
     }
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1013,7 +1051,7 @@ Question`,
       { id: assistantMsgId, role: 'assistant', content: 'generating...', timestamp: 0, replies: { items: [] } }
     ];
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
@@ -1034,7 +1072,7 @@ Question`,
 
   it('should show the send button with shortcut text when not streaming', async () => {
     mockStreaming.value = false;
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1046,7 +1084,7 @@ Question`,
 
   it('should show the chat inspector when debug mode is enabled', async () => {
     if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = true;
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
@@ -1067,7 +1105,7 @@ Question`,
     vi.useFakeTimers();
     try {
       mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-      wrapper = mount(CurrentChatPane, {
+      wrapper = mountChatPane( {
         global: { plugins: [router] },
       });
 
@@ -1090,7 +1128,7 @@ Question`,
   it('should generate a title from the title dialog using the selected global title model', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGenerateChatTitle.mockResolvedValue('Generated Title');
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1107,7 +1145,7 @@ Question`,
 
   it('should keep title model and generated title history hidden until options are opened', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1126,7 +1164,7 @@ Question`,
   it('should show Stop and the title scan animation while title generation is running', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGeneratingTitle.value = true;
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1144,7 +1182,7 @@ Question`,
       if (mockCurrentChat.value) mockCurrentChat.value.title = 'Generated Title';
       return 'Generated Title';
     });
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1168,7 +1206,7 @@ Question`,
         resolve(title);
       };
     }));
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1190,7 +1228,7 @@ Question`,
   it('should apply a generated history title to the input and save it when Use is clicked', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGenerateChatTitle.mockResolvedValue('Generated Title');
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1216,7 +1254,7 @@ Question`,
       ...mockCurrentChat.value!,
       titleModelId: 'model-2',
     };
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1245,7 +1283,7 @@ Question`,
       name: 'Group 1',
       titleModelId: 'model-2',
     };
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1261,7 +1299,7 @@ Question`,
   it('should abort title generation from the title dialog', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGeneratingTitle.value = true;
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1277,7 +1315,7 @@ Question`,
       { id: 'u1', role: 'user', content: 'First long user message to revisit later', timestamp: 0, replies: { items: [] } },
       { id: 'a1', role: 'assistant', content: 'Assistant response with useful details', timestamp: 0, replies: { items: [] } },
     ];
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
       attachTo: document.body,
     });
@@ -1303,7 +1341,7 @@ Question`,
 
   it('should expose Super Edit from the more actions menu', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1357,7 +1395,7 @@ Question`,
       }
     });
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1408,7 +1446,7 @@ Question`,
       updatedAt: Date.now(),
     };
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1422,7 +1460,7 @@ Question`,
 
   it('should pass the shared naidan sysfs selection to the header wesh terminal', async () => {
     mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
@@ -1440,7 +1478,7 @@ Question`,
 
   it('should hide the chat inspector when debug mode is disabled', async () => {
     if (mockCurrentChat.value) mockCurrentChat.value.debugEnabled = false;
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1449,7 +1487,7 @@ Question`,
 
   it('should render header icons (Settings, Outline, More)', async () => {
     mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1460,7 +1498,7 @@ Question`,
 
   it('should show jump to origin button when originChatId is present', async () => {
     if (mockCurrentChat.value) mockCurrentChat.value.originChatId = 'original-id';
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1469,7 +1507,7 @@ Question`,
 
   it('should show move to group menu and call moveChatToGroup when a group is selected', async () => {
     mockChatGroups.value = [{ id: 'group-1', name: 'Group 1' }];
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -1497,7 +1535,7 @@ Question`,
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
         modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
-      wrapper = mount(CurrentChatPane, { global: { plugins: [router] } });
+      wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
     });
 
@@ -1508,7 +1546,7 @@ Question`,
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
         modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
-      wrapper = mount(CurrentChatPane, { global: { plugins: [router] } });
+      wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
     });
 
@@ -1519,7 +1557,7 @@ Question`,
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
         modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
-      wrapper = mount(CurrentChatPane, { global: { plugins: [router] } });
+      wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(true);
     });
 
@@ -1529,13 +1567,13 @@ Question`,
         currentLeafId: undefined, debugEnabled: false, originChatId: undefined,
         modelId: undefined, createdAt: 0, updatedAt: 0
       }) as any;
-      wrapper = mount(CurrentChatPane, { global: { plugins: [router] } });
+      wrapper = mountChatPane( { global: { plugins: [router] } });
       expect(wrapper.find('[data-testid="custom-overrides-indicator"]').exists()).toBe(false);
     });
   });
 });
 
-describe('CurrentChatPane Scrolling Logic', () => {
+describe('ChatPane Scrolling Logic', () => {
   let scrollTopSetterSpy: Mock;
   let scrollIntoViewSpy: Mock;
   let requestAnimationFrameSpy: Mock;
@@ -1610,7 +1648,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   }
 
   it('does not scroll when a new user turn starts without an assistant-visible target yet', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -1638,7 +1676,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 
   it('scrolls to the latest user message on initial open', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -1673,7 +1711,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
     mockActiveMessages.value = [
       { id: 'target-message', role: 'assistant', content: 'Target message', timestamp: Date.now(), replies: { items: [] } },
     ];
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -1697,7 +1735,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 
   it('retries message-id link scrolling after the target message is rendered', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       props: { targetMessageId: 'late-message' },
       attachTo: document.body,
       global: { plugins: [router] },
@@ -1727,7 +1765,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 
   it('reserves response viewport and scrolls the new user turn to the top when an assistant placeholder appears', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -1779,7 +1817,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 
   it('keeps the response viewport reserve stable until the next send or branch change', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -1920,7 +1958,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
       { id: 'old-assistant', role: 'assistant', content: 'before reply', timestamp: Date.now(), replies: { items: [] } },
     ];
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -1996,7 +2034,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 
   it('scrolls again after abort when a new user turn starts', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -2110,7 +2148,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
     } as MessageNode;
     const secondAssistant = { id: 'a2', role: 'assistant', content: 'follow-up', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -2238,7 +2276,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 
   it('scrolls to the bottom on initial open if no user messages are found', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -2267,7 +2305,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 
   it('reserves response viewport and scrolls the latest user turn to the top when a process sequence appears', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -2333,7 +2371,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
       { id: 'a1', role: 'assistant', content: 'reply', timestamp: Date.now(), replies: { items: [] } },
     ];
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -2363,7 +2401,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 
   it('should not scroll to bottom on window resize (resize event suppression)', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -2383,7 +2421,7 @@ describe('CurrentChatPane Scrolling Logic', () => {
   });
 });
 
-describe('CurrentChatPane Focus', () => {
+describe('ChatPane Focus', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
@@ -2399,7 +2437,7 @@ describe('CurrentChatPane Focus', () => {
   });
 
   it('should focus the textarea after sending a message', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2421,7 +2459,7 @@ describe('CurrentChatPane Focus', () => {
   });
 
   it('should focus the textarea when chat is opened', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2433,7 +2471,7 @@ describe('CurrentChatPane Focus', () => {
   });
 });
 
-describe('CurrentChatPane Export Functionality', () => {
+describe('ChatPane Export Functionality', () => {
   // Mock browser APIs for file download
   const mockCreateObjectURL = vi.fn((blob: Blob | MediaSource) => {
     // Mock Blob content access for testing
@@ -2516,7 +2554,7 @@ describe('CurrentChatPane Export Functionality', () => {
       { id: 'msg-2', role: 'assistant', content: 'Hello User', timestamp: Date.now(), replies: { items: [] } },
     ];
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -2555,7 +2593,7 @@ Hello User`);
     mockCurrentChat.value = null;
     mockActiveMessages.value = [];
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -2585,7 +2623,7 @@ Hello User`);
       { id: 'msg-3', role: 'user', content: 'Another message', timestamp: Date.now(), replies: { items: [] } },
     ];
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -2624,7 +2662,7 @@ Another message`);
     };
     mockActiveMessages.value = []; // Empty messages
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -2649,7 +2687,7 @@ Another message`);
     const mockUrl = 'http://localhost/#/?data-zip=mock-base64';
     mockGenerateChatShareURL.mockResolvedValue(mockUrl);
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -2672,7 +2710,7 @@ Another message`);
   });
 });
 
-describe('CurrentChatPane Textarea Sizing', () => {
+describe('ChatPane Textarea Sizing', () => {
   const mockWindowInnerHeight = 1000; // Mock viewport height for 80vh calculation
   let originalGetComputedStyle: any;
 
@@ -2726,7 +2764,7 @@ describe('CurrentChatPane Textarea Sizing', () => {
   });
 
   it('should initialize textarea height to a single line height', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2746,7 +2784,7 @@ describe('CurrentChatPane Textarea Sizing', () => {
   });
 
   it('should disable standard textarea resize handle', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
     const textarea = wrapper.find('[data-testid="chat-input"]');
@@ -2754,7 +2792,7 @@ describe('CurrentChatPane Textarea Sizing', () => {
   });
 
   it('should show maximize button only when content exceeds 6 lines', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2790,7 +2828,7 @@ Line 7`;
   });
 
   it('should expand textarea to 80% viewport height when maximized and stay there even with small input', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2834,7 +2872,7 @@ Line 7`;
   });
 
   it('should reset maximized state after sending a message', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2881,7 +2919,7 @@ Line 7`;
   });
 
   it('should reset height to minimum when handleSend starts even if it was at 6 lines', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2917,7 +2955,7 @@ Line 6`;
   });
 
   it('should reset maximized state IMMEDIATELY when handleSend starts', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2961,7 +2999,7 @@ Line 6`;
   });
 
   it('should hide maximize button when content is deleted below 6 lines', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -2991,7 +3029,7 @@ Line 7`;
   });
 
   it('should scroll to bottom when textarea height increases to keep messages visible', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -3028,7 +3066,7 @@ Line 3`;
   });
 
   it('should not be extremely small when input is empty (reproduce and fix bug)', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -3063,7 +3101,7 @@ Line 6`;
 
   it('should NOT clear input if sendMessage returns false (regression: onboarding)', async () => {
     mockSendMessage.mockResolvedValueOnce(false);
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3081,7 +3119,7 @@ Line 6`;
   it('removes message-id from the URL after sending a new message', async () => {
     await router.push('/?message-id=target-message&leaf=leaf-1');
     const replaceSpy = vi.spyOn(router, 'replace').mockResolvedValue(undefined);
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       props: { targetMessageId: 'target-message' },
       global: { plugins: [router] },
     });
@@ -3103,7 +3141,7 @@ Line 6`;
       return true; //sendMessage returns success immediately after storage commit
     });
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3121,7 +3159,7 @@ Line 6`;
   });
 
   it('should reset maximized state when switching to a different chat', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3137,7 +3175,7 @@ Line 6`;
   });
 
   it('should have touch-visible class on attachment remove buttons', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3159,7 +3197,7 @@ Line 6`;
   });
 
   it('should handle large text paste by showing the maximize button immediately', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -3177,7 +3215,7 @@ Line 6`;
   });
 
   it('should recalculate maximized height on window resize', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -3200,7 +3238,7 @@ Line 6`;
   });
 
   it('should not use transition-all on textarea to avoid height flickering', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
     const textarea = wrapper.find('[data-testid="chat-input"]');
@@ -3209,7 +3247,7 @@ Line 6`;
   });
 
   it('should remain at minimum height for any 1-line content', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router] },
     });
@@ -3243,7 +3281,7 @@ Line 6`;
   });
 });
 
-describe('CurrentChatPane Welcome Screen & Suggestions', () => {
+describe('ChatPane Welcome Screen & Suggestions', () => {
   beforeEach(() => {
     resetMocks();
     document.body.innerHTML = '<div id="app"></div>';
@@ -3259,7 +3297,7 @@ describe('CurrentChatPane Welcome Screen & Suggestions', () => {
   });
 
   it('should show the welcome screen when there are no messages', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: { WelcomeScreen: { template: '<div data-testid="welcome-screen-stub">Welcome</div>' } },
@@ -3270,7 +3308,7 @@ describe('CurrentChatPane Welcome Screen & Suggestions', () => {
   });
 
   it('should fill the input and focus when WelcomeScreen emits select-suggestion', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.body,
       global: {
         plugins: [router],
@@ -3293,7 +3331,7 @@ describe('CurrentChatPane Welcome Screen & Suggestions', () => {
 
   it('should hide the welcome screen when messages are present', async () => {
     mockActiveMessages.value = [{ id: '1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } }];
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: { WelcomeScreen: { template: '<div data-testid="welcome-screen-stub">Welcome</div>' } },
@@ -3304,7 +3342,7 @@ describe('CurrentChatPane Welcome Screen & Suggestions', () => {
   });
 });
 
-describe('CurrentChatPane Model Selection', () => {
+describe('ChatPane Model Selection', () => {
   beforeEach(() => {
     resetMocks();
     mockAvailableModels.value = ['model-1', 'model-2'];
@@ -3322,7 +3360,7 @@ describe('CurrentChatPane Model Selection', () => {
   });
 
   it('should render available models in the dropdown', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3342,7 +3380,7 @@ describe('CurrentChatPane Model Selection', () => {
 
   it('should pass a naturally sorted list of models to ModelSelector', async () => {
     mockAvailableModels.value = ['model-10', 'model-2', 'model-1'];
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3351,7 +3389,7 @@ describe('CurrentChatPane Model Selection', () => {
   });
 
   it('should display the global default model name as placeholder', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3360,7 +3398,7 @@ describe('CurrentChatPane Model Selection', () => {
   });
 
   it('should trigger updateChatModel when a model is selected in ModelSelector', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3381,7 +3419,7 @@ describe('CurrentChatPane Model Selection', () => {
 
   it('should show loader when fetching models', async () => {
     mockFetchingModels.value = true;
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3389,7 +3427,7 @@ describe('CurrentChatPane Model Selection', () => {
   });
 
   it('should trigger fetchAvailableModels on mount if chat exists', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -3397,7 +3435,7 @@ describe('CurrentChatPane Model Selection', () => {
   });
 
   it('should trigger fetchAvailableModels when switching chats', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
     mockFetchAvailableModels.mockClear();
@@ -3423,7 +3461,7 @@ describe('CurrentChatPane Model Selection', () => {
       debugEnabled: false,
     } as Chat;
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       props: {
         autoSendPrompt: 'automatic message'
       },
@@ -3443,7 +3481,7 @@ describe('CurrentChatPane Model Selection', () => {
   });
 
   it('should sync reasoning effort between tools menu and settings panel in real-time', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: { 'Logo': true, 'MessageItem': true, 'WelcomeScreen': true }

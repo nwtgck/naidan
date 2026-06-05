@@ -1,10 +1,11 @@
 import { ref, nextTick, computed } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import CurrentChatPane from './CurrentChatPane.vue';
+import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useSettings } from '@/composables/useSettings';
+import { useChatPaneState } from '@/composables/chat/ui/useChatPaneState';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatDisplayFlow } from '@/composables/useChatDisplayFlow';
 import { setupScrollToMock } from '@/utils/test-utils';
@@ -16,6 +17,9 @@ vi.mock('../composables/useSettings', () => ({
 vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
 }));
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: vi.fn(),
+}));
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: vi.fn(),
 }));
@@ -23,7 +27,7 @@ vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
 }));
 
-describe('CurrentChatPane Design Specifications', () => {
+describe('ChatPane Design Specifications', () => {
   beforeEach(() => {
     setupScrollToMock();
     const mockActiveMessages = ref<any[]>([]);
@@ -49,6 +53,15 @@ describe('CurrentChatPane Design Specifications', () => {
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
     });
+    (useChatPaneState as unknown as Mock).mockReturnValue({
+      chat: computed(() => mockCurrentChat.value),
+      chatGroup: computed(() => null),
+      activeMessages: computed(() => mockActiveMessages.value),
+      allMessages: computed(() => mockActiveMessages.value),
+      resolvedSettings: computed(() => mockResolvedSettings.value),
+      inheritedSettings: computed(() => mockInheritedSettings.value),
+      chatGroups: computed(() => []),
+    });
     (useChatDisplayFlow as unknown as Mock).mockReturnValue({
       chatFlow: computed(() => mockActiveMessages.value.map(m => ({
         type: 'message',
@@ -67,8 +80,24 @@ describe('CurrentChatPane Design Specifications', () => {
     });
   });
 
+  function mountChatPane({
+    global,
+    targetMessageId,
+  }: {
+    global?: Record<string, unknown>;
+    targetMessageId?: string;
+  } = {}) {
+    return mount(ChatPane, {
+      props: {
+        chatId: '1',
+        targetMessageId,
+      },
+      global,
+    });
+  }
+
   it('uses backdrop-blur-md on the header for a glass effect', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const header = wrapper.find('.backdrop-blur-md');
@@ -77,7 +106,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('provides enough bottom padding to account for the floating input', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
@@ -86,7 +115,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('uses a large conditional spacer for the maximized state', async () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
 
@@ -102,7 +131,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('preserves the case of the Model ID (no forced uppercase)', async () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     await nextTick();
@@ -112,7 +141,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('preserves the case of the keyboard shortcut labels (e.g., Cmd + Enter)', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const sendBtn = wrapper.find('[data-testid="send-button"]');
@@ -122,7 +151,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('uses rounded-2xl for the chat input container to match the premium aesthetic', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const container = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
@@ -134,7 +163,7 @@ describe('CurrentChatPane Design Specifications', () => {
     const originalInnerHeight = window.innerHeight;
     Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 1000 });
 
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     await nextTick();
@@ -155,7 +184,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('ensures the textarea and buttons are stacked vertically inside the floating container', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
 
@@ -174,7 +203,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('applies animation classes when toggling maximized state', async () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
 
@@ -200,7 +229,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('uses gray-800 for chat content text to ensure eye comfort', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const title = wrapper.find('h2');
@@ -208,7 +237,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('displays the critical "only for localhost" notice in ChatSettingsPanel', async () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: {
         stubs: {
           Logo: true,
@@ -230,7 +259,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('implements overflow-anchor: none to prevent message jumping during layout changes', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
@@ -238,7 +267,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('uses an opaque background for the input card to ensure readability', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const inputCard = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
@@ -248,7 +277,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('contains a glass-zone-mask for the background blur effect', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const glassZone = wrapper.find('.glass-zone-mask');
@@ -258,7 +287,7 @@ describe('CurrentChatPane Design Specifications', () => {
   });
 
   it('positions the input area as absolute at the bottom to overlap messages', () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     // The Input Layer (Overlay)

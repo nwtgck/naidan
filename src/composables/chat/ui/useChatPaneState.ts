@@ -13,6 +13,7 @@ export type ChatPaneStateAdapter = {
   resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
   inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
   chatGroups: ComputedRef<ChatGroup[]>;
+  TEST_ONLY?: Record<string, never>;
 };
 
 export function useChatPaneState({

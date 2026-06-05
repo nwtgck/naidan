@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import CurrentChatPane from './CurrentChatPane.vue';
+import ChatPane from './ChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, nextTick, computed } from 'vue';
 import { ImageIcon, SendIcon } from 'lucide-vue-next';
@@ -83,7 +83,20 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     allMessages: computed(() => mockActiveMessages.value),
     resolvedSettings: computed(() => mockChatStore.resolvedSettings.value),
     inheritedSettings: computed(() => mockChatStore.inheritedSettings.value),
-    chatGroups: computed(() => []),
+    chatGroups: computed(() => mockChatStore.chatGroups.value),
+  }),
+}));
+
+
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockChatStore.currentChat.value),
+    chatGroup: computed(() => mockCurrentChatGroup.value),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockChatStore.resolvedSettings.value),
+    inheritedSettings: computed(() => mockChatStore.inheritedSettings.value),
+    chatGroups: computed(() => mockChatStore.chatGroups.value),
   }),
 }));
 
@@ -194,6 +207,30 @@ vi.mock('../composables/chat/useChatImageGeneration', () => ({
   }),
 }));
 
+function mountChatPane({
+  props,
+  attachTo,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  attachTo?: Element | string;
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockChatStore.currentChat.value?.id ?? 'chat-1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    attachTo,
+    global,
+  });
+}
+
 // Mock useRouter
 vi.mock('vue-router', () => ({
   useRouter: () => ({
@@ -201,7 +238,7 @@ vi.mock('vue-router', () => ({
   })
 }));
 
-describe('CurrentChatPane Image Generation Integration', () => {
+describe('ChatPane Image Generation Integration', () => {
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -211,7 +248,7 @@ describe('CurrentChatPane Image Generation Integration', () => {
   it('shows the image icon in the send button when in image mode', async () => {
     mockIsImageMode.value = true;
 
-    const wrapper = mount(CurrentChatPane);
+    const wrapper = mountChatPane();
     await flushPromises();
     await vi.dynamicImportSettled();
     await nextTick();
@@ -223,7 +260,7 @@ describe('CurrentChatPane Image Generation Integration', () => {
   it('calls sendImageRequest when sending a message in image mode', async () => {
     mockIsImageMode.value = true;
 
-    const wrapper = mount(CurrentChatPane);
+    const wrapper = mountChatPane();
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -248,7 +285,7 @@ describe('CurrentChatPane Image Generation Integration', () => {
   it('calls sendImageRequest with attachments when images are attached', async () => {
     mockIsImageMode.value = true;
 
-    const wrapper = mount(CurrentChatPane);
+    const wrapper = mountChatPane();
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -282,7 +319,7 @@ describe('CurrentChatPane Image Generation Integration', () => {
   });
 
   it('can toggle image mode from the tools menu', async () => {
-    const wrapper = mount(CurrentChatPane);
+    const wrapper = mountChatPane();
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -303,7 +340,7 @@ describe('CurrentChatPane Image Generation Integration', () => {
   it('switches send icon back to Send when image mode is disabled', async () => {
     // Start in image mode
     mockIsImageMode.value = true;
-    const wrapper = mount(CurrentChatPane);
+    const wrapper = mountChatPane();
     await flushPromises();
     await vi.dynamicImportSettled();
     await nextTick();
@@ -321,7 +358,7 @@ describe('CurrentChatPane Image Generation Integration', () => {
     mockIsImageMode.value = true;
     mockChatStore.getCount.mockReturnValue(3); // User requested 3 images
 
-    const wrapper = mount(CurrentChatPane);
+    const wrapper = mountChatPane();
     await flushPromises();
     await vi.dynamicImportSettled();
 

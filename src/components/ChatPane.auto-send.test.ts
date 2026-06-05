@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import CurrentChatPane from './CurrentChatPane.vue';
+import ChatPane from './ChatPane.vue';
 import { nextTick, ref, reactive, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
@@ -108,12 +108,45 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockCurrentChat.value),
+    chatGroup: computed(() => null),
+    activeMessages: computed(() => mockActiveMessages.value),
+    allMessages: computed(() => mockActiveMessages.value),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    chatGroups: computed(() => mockChatGroups.value),
+  }),
+}));
+
 vi.mock('../composables/chat/chat-activity-queries', () => ({
   isChatProcessing: ({ chatId }: { chatId: string }) =>
     !!mockCurrentChat.value && mockCurrentChat.value.id === chatId && mockStreaming.value,
   getChatContextCompactProgress: () => ({ phase: 'idle' }),
   isChatGeneratingTitle: () => false,
 }));
+
+function mountChatPane({
+  props,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? 'chat-1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    global,
+  });
+}
 
 vi.mock('../composables/chat/useChatConversation', () => ({
   useChatConversation: () => ({
@@ -246,7 +279,7 @@ vi.mock('mermaid', () => ({
   },
 }));
 
-describe('CurrentChatPane Auto-send', () => {
+describe('ChatPane Auto-send', () => {
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -271,7 +304,7 @@ describe('CurrentChatPane Auto-send', () => {
   it('should wait for currentChat to be available before auto-sending', async () => {
     mockCurrentChat.value = null;
 
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       props: {
         autoSendPrompt: 'hello'
       },
@@ -304,7 +337,7 @@ describe('CurrentChatPane Auto-send', () => {
   it('should not clear input if sendMessage fails', async () => {
     mockSendMessage.mockResolvedValue(false);
 
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       props: {
         autoSendPrompt: 'hello'
       },
@@ -325,7 +358,7 @@ describe('CurrentChatPane Auto-send', () => {
     // Simulate fetching models
     mockIsTaskRunningValue.value = true;
 
-    mount(CurrentChatPane, {
+    mountChatPane( {
       props: {
         autoSendPrompt: 'hello'
       },

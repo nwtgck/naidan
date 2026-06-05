@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
-import CurrentChatPane from './CurrentChatPane.vue';
+import ChatPane from './ChatPane.vue';
 import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '@/models/types';
@@ -22,6 +22,8 @@ const mockCurrentChat = ref<Chat | null>({
 });
 
 const mockActiveMessages = ref<MessageNode[]>([]);
+const mockCurrentChatGroup = ref(null);
+const mockChatGroups = ref<any[]>([]);
 const mockResolvedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
 const mockInheritedSettings = ref({ modelId: 'm1', sources: { modelId: 'global', titleModelId: 'global' } });
 
@@ -47,9 +49,10 @@ vi.mock('../composables/useLayout', () => ({
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
-    chatGroups: ref([]),
-    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
-    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    currentChatGroup: mockCurrentChatGroup,
+    chatGroups: mockChatGroups,
+    resolvedSettings: mockResolvedSettings,
+    inheritedSettings: mockInheritedSettings,
     availableModels: ref([]),
     fetchingModels: ref(false),
     generatingTitle: ref(false),
@@ -100,17 +103,16 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
-  useCurrentChatState: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    currentChatGroup: computed(() => null),
-    currentChatId: computed(() => mockCurrentChat.value?.id),
+
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockCurrentChat.value),
+    chatGroup: computed(() => mockCurrentChatGroup.value),
     activeMessages: computed(() => mockActiveMessages.value),
     allMessages: computed(() => mockActiveMessages.value),
     resolvedSettings: computed(() => mockResolvedSettings.value),
     inheritedSettings: computed(() => mockInheritedSettings.value),
-    chatGroups: computed(() => []),
-    sidebarItems: computed(() => []),
+    chatGroups: computed(() => mockChatGroups.value),
   }),
 }));
 
@@ -122,7 +124,31 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-describe('CurrentChatPane Focus Specifications', () => {
+function mountChatPane({
+  props,
+  attachTo,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  attachTo?: Element | string;
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    attachTo,
+    global,
+  });
+}
+
+describe('ChatPane Focus Specifications', () => {
   const router = createRouter({
     history: createWebHistory(),
     routes: [{ path: '/', component: { template: 'div' } }],
@@ -146,7 +172,7 @@ describe('CurrentChatPane Focus Specifications', () => {
   });
 
   it('sets focus area to chat when the container is clicked', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });
 
@@ -156,7 +182,7 @@ describe('CurrentChatPane Focus Specifications', () => {
   });
 
   it('sets focus area to chat when the textarea is focused', async () => {
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });
@@ -169,7 +195,7 @@ describe('CurrentChatPane Focus Specifications', () => {
   it('prevents automatic focus on textarea when focus area is sidebar', async () => {
     mockActiveFocusArea.value = 'sidebar';
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });
@@ -187,7 +213,7 @@ describe('CurrentChatPane Focus Specifications', () => {
   it('automatically focuses textarea when a new chat is created and area is chat', async () => {
     mockActiveFocusArea.value = 'chat';
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });
@@ -206,7 +232,7 @@ describe('CurrentChatPane Focus Specifications', () => {
     // 1. Start with sidebar focus (e.g. user clicked sidebar or a group)
     mockActiveFocusArea.value = 'sidebar';
 
-    wrapper = mount(CurrentChatPane, {
+    wrapper = mountChatPane( {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });

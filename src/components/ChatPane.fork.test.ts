@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import CurrentChatPane from './CurrentChatPane.vue';
+import ChatPane from './ChatPane.vue';
 import { ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
@@ -34,6 +34,9 @@ const mockCurrentChat = ref<{
   modelId: undefined,
 });
 const mockActiveMessages = ref<any[]>([]);
+const mockChatGroups = ref<any[]>([]);
+const mockResolvedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
+const mockInheritedSettings = ref<any>({ modelId: 'm1', sources: { modelId: 'global' } });
 
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
@@ -52,9 +55,9 @@ vi.mock('../composables/useChat', () => ({
     generatingTitle: ref(false),
     generateChatTitle: vi.fn(),
     abortTitleGeneration: vi.fn(),
-    chatGroups: ref([]),
-    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
-    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    chatGroups: mockChatGroups,
+    resolvedSettings: mockResolvedSettings,
+    inheritedSettings: mockInheritedSettings,
     fetchAvailableModels: vi.fn(),
     updateChatModel: vi.fn(),
     forkChat: mockForkChat,
@@ -98,24 +101,43 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
-  useCurrentChatState: () => ({
-    currentChat: computed(() => mockCurrentChat.value),
-    currentChatGroup: computed(() => null),
-    currentChatId: computed(() => mockCurrentChat.value?.id),
+
+vi.mock('../composables/chat/ui/useChatPaneState', () => ({
+  useChatPaneState: () => ({
+    chat: computed(() => mockCurrentChat.value),
+    chatGroup: computed(() => null),
     activeMessages: computed(() => mockActiveMessages.value),
     allMessages: computed(() => mockActiveMessages.value),
-    resolvedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
-    inheritedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
-    chatGroups: computed(() => []),
+    resolvedSettings: computed(() => mockResolvedSettings.value),
+    inheritedSettings: computed(() => mockInheritedSettings.value),
+    chatGroups: computed(() => mockChatGroups.value),
   }),
 }));
 
-vi.mock('../composables/chat/chat-activity-queries', () => ({
-  isChatProcessing: () => false,
-  getChatContextCompactProgress: () => ({ phase: 'idle' }),
-  isChatGeneratingTitle: () => false,
-}));
+
+function mountChatPane({
+  props,
+  attachTo,
+  global,
+}: {
+  props?: {
+    chatId?: string;
+    autoSendPrompt?: string;
+    targetMessageId?: string;
+  };
+  attachTo?: Element | string;
+  global?: Record<string, unknown>;
+} = {}) {
+  return mount(ChatPane, {
+    props: {
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      autoSendPrompt: props?.autoSendPrompt,
+      targetMessageId: props?.targetMessageId,
+    },
+    attachTo,
+    global,
+  });
+}
 
 vi.mock('../composables/useChatDisplayFlow', () => ({
   useChatDisplayFlow: () => ({
@@ -238,7 +260,7 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-describe('CurrentChatPane Fork Functionality', () => {
+describe('ChatPane Fork Functionality', () => {
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -247,7 +269,7 @@ describe('CurrentChatPane Fork Functionality', () => {
   });
 
   it('should not show fork button when there are no messages', async () => {
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -256,7 +278,7 @@ describe('CurrentChatPane Fork Functionality', () => {
 
   it('should show fork button when there are messages', async () => {
     mockActiveMessages.value = [{ id: 'msg-1', role: 'user', content: 'hello' }];
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -270,7 +292,7 @@ describe('CurrentChatPane Fork Functionality', () => {
     ];
     mockForkChat.mockResolvedValue('new-chat-id');
 
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
@@ -282,7 +304,7 @@ describe('CurrentChatPane Fork Functionality', () => {
 
   it('should change jump-to-origin button icon to ArrowUp', async () => {
     mockCurrentChat.value.originChatId = 'parent-id';
-    const wrapper = mount(CurrentChatPane, {
+    const wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
 
