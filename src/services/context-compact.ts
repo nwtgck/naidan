@@ -71,7 +71,7 @@ export type ContextCompactBranchResult = {
   currentLeafId: string;
 };
 
-export type ChatAreaHeaderMoreAction =
+export type ChatPaneHeaderMoreAction =
   | 'print'
   | 'search_chat'
   | 'open_history'

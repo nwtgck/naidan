@@ -10,7 +10,7 @@ import type { MediaShelfVisibility } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
-import type { ChatAreaHeaderMoreAction } from '@/services/context-compact';
+import type { ChatPaneHeaderMoreAction } from '@/services/context-compact';
 
 type HeaderChat = {
   readonly id: string;
@@ -83,7 +83,7 @@ function emitMoveToGroup({ groupId }: { groupId: string | null }) {
 }
 
 function emitMoreAction({ action }: {
-  action: ChatAreaHeaderMoreAction;
+  action: ChatPaneHeaderMoreAction;
 }) {
   switch (action) {
   case 'print':

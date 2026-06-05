@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, isRef, reactive, computed } from 'vue';
 import { useChatDraft } from '@/composables/useChatDraft';
@@ -88,29 +88,6 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     resolvedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
     inheritedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
     chatGroups: computed(() => []),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => []),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => []),
   }),
 }));
 
@@ -273,7 +250,7 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
-describe('ChatArea - Attachment UI', () => {
+describe('CurrentChatPane - Attachment UI', () => {
   beforeEach(() => {
     setupScrollToMock();
     const { clearAllDrafts } = useChatDraft();
@@ -288,7 +265,7 @@ describe('ChatArea - Attachment UI', () => {
     } as any;
     mockActiveMessages.value = [];
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         stubs: {
           'router-link': true,
@@ -331,7 +308,7 @@ describe('ChatArea - Attachment UI', () => {
   });
 
   it('should clear attachments when message is sent', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         stubs: {
           'router-link': true,
@@ -373,7 +350,7 @@ describe('ChatArea - Attachment UI', () => {
   });
 
   it('should remove attachment when remove button is clicked', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         stubs: {
           'router-link': true,
@@ -411,7 +388,7 @@ describe('ChatArea - Attachment UI', () => {
   });
 
   it('should handle image drop', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         stubs: {
           'router-link': true,
@@ -448,7 +425,7 @@ describe('ChatArea - Attachment UI', () => {
   });
 
   it('should show drag overlay when dragging over', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         stubs: {
           'router-link': true,
@@ -477,7 +454,7 @@ describe('ChatArea - Attachment UI', () => {
   });
 
   it('should handle image paste in textarea', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         stubs: {
           'router-link': true,

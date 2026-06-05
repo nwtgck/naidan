@@ -1,7 +1,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { transformersJsService } from '@/services/transformers-js';
@@ -124,29 +124,6 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     resolvedSettings: computed(() => mockResolvedSettings.value),
     inheritedSettings: computed(() => ({ modelId: 'm', sources: { modelId: 'global' } })),
     chatGroups: computed(() => []),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => mockAvailableModels.value),
-    fetchingModels: computed(() => mockFetchingModels.value),
-    getSortedImageModels: vi.fn(() => []),
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: m.role === 'assistant' && !m.content ? 'waiting' : 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(({ item }: { item: { type: string; mode?: string } }) => item.type === 'message' && item.mode === 'waiting'),
-    availableChatGroups: computed(() => []),
   }),
 }));
 
@@ -277,7 +254,7 @@ vi.mock('mermaid', () => ({
   default: { initialize: vi.fn(), run: vi.fn() }
 }));
 
-describe('Transformers.js Loading Flow in ChatArea', () => {
+describe('Transformers.js Loading Flow in CurrentChatPane', () => {
   let wrapper: VueWrapper<any>;
 
   beforeEach(async () => {
@@ -303,7 +280,7 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
       loadingModelId: 'hf.co/SmolLM2'
     });
 
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] }
     });
 
@@ -333,7 +310,7 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
     // 1. Start with loading state
     (transformersJsService as any).__triggerStateChange({ status: 'loading', progress: 99 });
 
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] }
     });
 
@@ -360,7 +337,7 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
     // 1. Engine already ready
     (transformersJsService as any).__triggerStateChange({ status: 'ready', progress: 100 });
 
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] }
     });
 
@@ -386,7 +363,7 @@ describe('Transformers.js Loading Flow in ChatArea', () => {
       sources: { modelId: 'global' }
     };
 
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] }
     });
 

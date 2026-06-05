@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import { nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
@@ -79,7 +79,7 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-describe('ChatArea Streaming DOM Test', () => {
+describe('CurrentChatPane Streaming DOM Test', () => {
   const chatStore = useChat();
   beforeEach(() => {
     setupScrollToMock();
@@ -96,7 +96,7 @@ describe('ChatArea Streaming DOM Test', () => {
       systemPrompt: undefined
     });
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         plugins: [router],
       },

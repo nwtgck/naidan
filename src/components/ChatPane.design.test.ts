@@ -1,7 +1,7 @@
 import { ref, nextTick, computed } from 'vue';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useSettings } from '@/composables/useSettings';
@@ -23,7 +23,7 @@ vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
 }));
 
-describe('ChatArea Design Specifications', () => {
+describe('CurrentChatPane Design Specifications', () => {
   beforeEach(() => {
     setupScrollToMock();
     const mockActiveMessages = ref<any[]>([]);
@@ -68,7 +68,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('uses backdrop-blur-md on the header for a glass effect', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const header = wrapper.find('.backdrop-blur-md');
@@ -77,7 +77,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('provides enough bottom padding to account for the floating input', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
@@ -86,7 +86,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('uses a large conditional spacer for the maximized state', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
 
@@ -102,7 +102,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('preserves the case of the Model ID (no forced uppercase)', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     await nextTick();
@@ -112,7 +112,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('preserves the case of the keyboard shortcut labels (e.g., Cmd + Enter)', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const sendBtn = wrapper.find('[data-testid="send-button"]');
@@ -122,7 +122,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('uses rounded-2xl for the chat input container to match the premium aesthetic', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const container = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
@@ -134,7 +134,7 @@ describe('ChatArea Design Specifications', () => {
     const originalInnerHeight = window.innerHeight;
     Object.defineProperty(window, 'innerHeight', { writable: true, configurable: true, value: 1000 });
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     await nextTick();
@@ -155,7 +155,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('ensures the textarea and buttons are stacked vertically inside the floating container', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
 
@@ -174,7 +174,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('applies animation classes when toggling maximized state', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
 
@@ -200,7 +200,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('uses gray-800 for chat content text to ensure eye comfort', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const title = wrapper.find('h2');
@@ -208,7 +208,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('displays the critical "only for localhost" notice in ChatSettingsPanel', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         stubs: {
           Logo: true,
@@ -230,7 +230,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('implements overflow-anchor: none to prevent message jumping during layout changes', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const scrollContainer = wrapper.find('[data-testid="scroll-container"]');
@@ -238,7 +238,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('uses an opaque background for the input card to ensure readability', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const inputCard = wrapper.find('.max-w-4xl.mx-auto.w-full.pointer-events-auto');
@@ -248,7 +248,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('contains a glass-zone-mask for the background blur effect', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     const glassZone = wrapper.find('.glass-zone-mask');
@@ -258,7 +258,7 @@ describe('ChatArea Design Specifications', () => {
   });
 
   it('positions the input area as absolute at the bottom to overlap messages', () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { stubs: { Logo: true, MessageItem: true, WelcomeScreen: true } },
     });
     // The Input Layer (Overlay)

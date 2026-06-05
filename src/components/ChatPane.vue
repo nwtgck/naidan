@@ -642,7 +642,7 @@ watch(
   { flush: 'post', immediate: true }
 );
 
-// Expose for testing and temporary ChatArea compatibility wrapper.
+// Expose for testing and current chat pane forwarding.
 defineExpose({ scrollToBottom, container, inputVisibility,
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { nextTick, ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
@@ -109,29 +109,6 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     resolvedSettings: computed(() => mockResolvedSettings.value),
     inheritedSettings: computed(() => mockInheritedSettings.value),
     chatGroups: computed(() => []),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => mockAvailableModels.value),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => []),
   }),
 }));
 
@@ -261,7 +238,7 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-describe('ChatArea Draft Maintenance', () => {
+describe('CurrentChatPane Draft Maintenance', () => {
   let wrapper: VueWrapper<any>;
   beforeEach(() => {
     setupScrollToMock();
@@ -293,7 +270,7 @@ describe('ChatArea Draft Maintenance', () => {
   });
 
   it('should maintain input text independently when switching between chats', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
@@ -345,7 +322,7 @@ describe('ChatArea Draft Maintenance', () => {
   });
 
   it('should reset maximized state when switching chats and load respective draft', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
@@ -367,7 +344,7 @@ describe('ChatArea Draft Maintenance', () => {
   });
 
   it('should maintain attachments independently when switching chats', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
@@ -422,7 +399,7 @@ describe('ChatArea Draft Maintenance', () => {
   });
 
   it('should NOT clear the input of the NEW chat if a message from the PREVIOUS chat finishes sending', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
@@ -471,7 +448,7 @@ describe('ChatArea Draft Maintenance', () => {
   });
 
   it('should clear input text only after message is successfully sent', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
@@ -491,7 +468,7 @@ describe('ChatArea Draft Maintenance', () => {
   });
 
   it('should NOT clear input text if message sending fails', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 

@@ -1,19 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import IndexPage from './index.vue';
-import ChatArea from '@/components/ChatArea.vue';
+import CurrentChatPane from '@/components/CurrentChatPane.vue';
 
-// Mock ChatArea as it has many dependencies
-vi.mock('../components/ChatArea.vue', () => ({
+// Mock CurrentChatPane as it has many dependencies
+vi.mock('../components/CurrentChatPane.vue', () => ({
   default: {
-    name: 'ChatArea',
-    template: '<div data-testid="chat-area"></div>',
+    name: 'CurrentChatPane',
+    template: '<div data-testid="current-chat-pane"></div>',
   },
 }));
 
 describe('IndexPage', () => {
-  it('renders ChatArea', () => {
+  it('renders CurrentChatPane', () => {
     const wrapper = mount(IndexPage);
-    expect(wrapper.findComponent(ChatArea).exists()).toBe(true);
+    expect(wrapper.findComponent(CurrentChatPane).exists()).toBe(true);
   });
 });

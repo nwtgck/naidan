@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import { ref, nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '@/models/types';
@@ -114,29 +114,6 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
   }),
 }));
 
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => []),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => []),
-  }),
-}));
-
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({}),
@@ -145,7 +122,7 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-describe('ChatArea Focus Specifications', () => {
+describe('CurrentChatPane Focus Specifications', () => {
   const router = createRouter({
     history: createWebHistory(),
     routes: [{ path: '/', component: { template: 'div' } }],
@@ -169,7 +146,7 @@ describe('ChatArea Focus Specifications', () => {
   });
 
   it('sets focus area to chat when the container is clicked', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });
 
@@ -179,7 +156,7 @@ describe('ChatArea Focus Specifications', () => {
   });
 
   it('sets focus area to chat when the textarea is focused', async () => {
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });
@@ -192,7 +169,7 @@ describe('ChatArea Focus Specifications', () => {
   it('prevents automatic focus on textarea when focus area is sidebar', async () => {
     mockActiveFocusArea.value = 'sidebar';
 
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });
@@ -210,7 +187,7 @@ describe('ChatArea Focus Specifications', () => {
   it('automatically focuses textarea when a new chat is created and area is chat', async () => {
     mockActiveFocusArea.value = 'chat';
 
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });
@@ -229,7 +206,7 @@ describe('ChatArea Focus Specifications', () => {
     // 1. Start with sidebar focus (e.g. user clicked sidebar or a group)
     mockActiveFocusArea.value = 'sidebar';
 
-    wrapper = mount(ChatArea, {
+    wrapper = mount(CurrentChatPane, {
       attachTo: document.getElementById('app')!,
       global: { plugins: [router], stubs: { 'MessageItem': true, 'WelcomeScreen': true, 'ChatSettingsPanel': true, 'Logo': true, 'ModelSelector': true, 'lucide-vue-next': true } },
     });

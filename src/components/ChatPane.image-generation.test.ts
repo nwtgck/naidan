@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import ChatInput from './ChatInput.vue';
 import { ref, nextTick, computed } from 'vue';
 import { ImageIcon, SendIcon } from 'lucide-vue-next';
@@ -84,29 +84,6 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     resolvedSettings: computed(() => mockChatStore.resolvedSettings.value),
     inheritedSettings: computed(() => mockChatStore.inheritedSettings.value),
     chatGroups: computed(() => []),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => mockChatStore.availableModels.value),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => []),
   }),
 }));
 
@@ -224,7 +201,7 @@ vi.mock('vue-router', () => ({
   })
 }));
 
-describe('ChatArea Image Generation Integration', () => {
+describe('CurrentChatPane Image Generation Integration', () => {
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -234,7 +211,7 @@ describe('ChatArea Image Generation Integration', () => {
   it('shows the image icon in the send button when in image mode', async () => {
     mockIsImageMode.value = true;
 
-    const wrapper = mount(ChatArea);
+    const wrapper = mount(CurrentChatPane);
     await flushPromises();
     await vi.dynamicImportSettled();
     await nextTick();
@@ -246,7 +223,7 @@ describe('ChatArea Image Generation Integration', () => {
   it('calls sendImageRequest when sending a message in image mode', async () => {
     mockIsImageMode.value = true;
 
-    const wrapper = mount(ChatArea);
+    const wrapper = mount(CurrentChatPane);
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -271,7 +248,7 @@ describe('ChatArea Image Generation Integration', () => {
   it('calls sendImageRequest with attachments when images are attached', async () => {
     mockIsImageMode.value = true;
 
-    const wrapper = mount(ChatArea);
+    const wrapper = mount(CurrentChatPane);
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -305,7 +282,7 @@ describe('ChatArea Image Generation Integration', () => {
   });
 
   it('can toggle image mode from the tools menu', async () => {
-    const wrapper = mount(ChatArea);
+    const wrapper = mount(CurrentChatPane);
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -326,7 +303,7 @@ describe('ChatArea Image Generation Integration', () => {
   it('switches send icon back to Send when image mode is disabled', async () => {
     // Start in image mode
     mockIsImageMode.value = true;
-    const wrapper = mount(ChatArea);
+    const wrapper = mount(CurrentChatPane);
     await flushPromises();
     await vi.dynamicImportSettled();
     await nextTick();
@@ -344,7 +321,7 @@ describe('ChatArea Image Generation Integration', () => {
     mockIsImageMode.value = true;
     mockChatStore.getCount.mockReturnValue(3); // User requested 3 images
 
-    const wrapper = mount(ChatArea);
+    const wrapper = mount(CurrentChatPane);
     await flushPromises();
     await vi.dynamicImportSettled();
 

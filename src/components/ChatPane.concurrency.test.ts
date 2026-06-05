@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import { nextTick, ref, computed, reactive } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useChat } from '@/composables/useChat';
@@ -89,29 +89,6 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     resolvedSettings: computed(() => ({ lmParameters: { reasoning: { effort: undefined } }, modelId: 'm1', sources: { modelId: 'global' } })),
     inheritedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
     chatGroups: computed(() => []),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => []),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => []),
   }),
 }));
 
@@ -241,7 +218,7 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-describe('ChatArea Concurrency Button State', () => {
+describe('CurrentChatPane Concurrency Button State', () => {
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -263,7 +240,7 @@ describe('ChatArea Concurrency Button State', () => {
       updatedAt: Date.now(),
     };
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         plugins: [router],
         stubs: {
@@ -348,7 +325,7 @@ describe('ChatArea Concurrency Button State', () => {
       isWaitingResponse: vi.fn(() => false),
     } as any);
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: {
         plugins: [router],
         stubs: {

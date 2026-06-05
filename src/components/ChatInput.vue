@@ -429,7 +429,7 @@ async function collectFilesFromDirectoryEntry(
   return results;
 }
 
-// Called by ChatArea when files/directories are dropped onto the chat area.
+// Called by the chat pane when files/directories are dropped onto the chat surface.
 // Phase 1 (synchronous): collect handles/entries while DataTransfer is still valid.
 // Phase 2 (async): process them — directories become host volumes (link) or OPFS copies.
 async function processDropItems({ items }: { items: DataTransferItem[] }) {

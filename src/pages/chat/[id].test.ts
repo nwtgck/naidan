@@ -13,11 +13,11 @@ vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
 }));
 
-vi.mock('../../components/ChatArea.vue', () => ({
+vi.mock('../../components/CurrentChatPane.vue', () => ({
   default: {
-    name: 'ChatArea',
+    name: 'CurrentChatPane',
     props: ['targetMessageId'],
-    template: '<div data-testid="chat-area"></div>',
+    template: '<div data-testid="current-chat-pane"></div>',
   },
 }));
 
@@ -103,7 +103,7 @@ describe('ChatPage', () => {
     expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat-123', messageId: 'message-2' });
   });
 
-  it('passes message-id query parameter to ChatArea as the target message', () => {
+  it('passes message-id query parameter to CurrentChatPane as the target message', () => {
     mockRouter.currentRoute.value = {
       params: { id: 'chat-123' },
       query: { 'message-id': 'message-1' },
@@ -111,7 +111,7 @@ describe('ChatPage', () => {
 
     const wrapper = mount(ChatPage);
 
-    expect(wrapper.findComponent({ name: 'ChatArea' }).props('targetMessageId')).toBe('message-1');
+    expect(wrapper.findComponent({ name: 'CurrentChatPane' }).props('targetMessageId')).toBe('message-1');
   });
 
   it('prefers message-id over leaf when both query parameters are present', () => {

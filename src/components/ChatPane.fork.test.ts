@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import { ref, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
@@ -108,29 +108,6 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     resolvedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
     inheritedSettings: computed(() => ({ modelId: 'm1', sources: { modelId: 'global' } })),
     chatGroups: computed(() => []),
-  }),
-}));
-
-vi.mock('../composables/chat/ui/useChatAreaData', () => ({
-  useChatAreaData: () => ({
-    updateChatSettings: vi.fn(),
-    updateChatGroupMetadata: vi.fn(),
-    availableModels: computed(() => []),
-    fetchingModels: computed(() => false),
-    getSortedImageModels: ({ availableModels }: { availableModels: string[] }) => availableModels,
-    fetchAvailableModels: vi.fn(),
-    chatFlow: computed(() => mockActiveMessages.value.map(m => ({
-      type: 'message',
-      node: m,
-      mode: 'content',
-      flow: { position: 'standalone', nesting: 'none' },
-      isFirstInNode: true,
-      isLastInNode: true,
-      isFirstInTurn: true,
-    }))),
-    isThinkingActive: vi.fn(() => false),
-    isWaitingResponse: vi.fn(() => false),
-    availableChatGroups: computed(() => []),
   }),
 }));
 
@@ -261,7 +238,7 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-describe('ChatArea Fork Functionality', () => {
+describe('CurrentChatPane Fork Functionality', () => {
   beforeEach(() => {
     setupScrollToMock();
     vi.clearAllMocks();
@@ -270,7 +247,7 @@ describe('ChatArea Fork Functionality', () => {
   });
 
   it('should not show fork button when there are no messages', async () => {
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
@@ -279,7 +256,7 @@ describe('ChatArea Fork Functionality', () => {
 
   it('should show fork button when there are messages', async () => {
     mockActiveMessages.value = [{ id: 'msg-1', role: 'user', content: 'hello' }];
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
@@ -293,7 +270,7 @@ describe('ChatArea Fork Functionality', () => {
     ];
     mockForkChat.mockResolvedValue('new-chat-id');
 
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
@@ -305,7 +282,7 @@ describe('ChatArea Fork Functionality', () => {
 
   it('should change jump-to-origin button icon to ArrowUp', async () => {
     mockCurrentChat.value.originChatId = 'parent-id';
-    const wrapper = mount(ChatArea, {
+    const wrapper = mount(CurrentChatPane, {
       global: { plugins: [router] },
     });
 
