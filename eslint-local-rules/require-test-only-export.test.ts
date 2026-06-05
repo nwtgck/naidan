@@ -75,6 +75,7 @@ describe('require-test-only-export rule', () => {
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('TEST_ONLY: {');
     expect(fixedResult.output).toContain('// Export internal state and logic used only for testing here.');
+    expect(fixedResult.output).toContain('// ESLint-required for useXxx return objects.');
   });
 
   it('should report error for arrow function useXxx missing TEST_ONLY', async () => {

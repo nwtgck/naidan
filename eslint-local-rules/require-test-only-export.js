@@ -63,7 +63,10 @@ export const rule = {
               fix(fixer) {
                 const obj = node.argument;
                 const sourceCode = context.sourceCode;
-                const comment = '// Export internal state and logic used only for testing here. Do not reference these in production logic.';
+                const commentLines = [
+                  '// Export internal state and logic used only for testing here. Do not reference these in production logic.',
+                  '// ESLint-required for useXxx return objects.',
+                ];
                 
                 if (obj.properties.length > 0) {
                   const lastProperty = obj.properties[obj.properties.length - 1];
@@ -76,7 +79,8 @@ export const rule = {
                   const indent = indentationMatch ? indentationMatch[0] : '    ';
                   
                   const target = hasTrailingComma ? tokenAfterLastProperty : lastProperty;
-                  const textToInsert = (hasTrailingComma ? '' : ',') + `\n${indent}TEST_ONLY: {\n${indent}  ${comment}\n${indent}},`;
+                  const indentedComment = commentLines.join(`\n${indent}  `);
+                  const textToInsert = (hasTrailingComma ? '' : ',') + `\n${indent}TEST_ONLY: {\n${indent}  ${indentedComment}\n${indent}},`;
                   
                   return fixer.insertTextAfter(target, textToInsert);
                 } else {
@@ -85,8 +89,9 @@ export const rule = {
                   const indentationMatch = lineOfReturn.match(/^\s*/);
                   const indent = indentationMatch ? indentationMatch[0] : '  ';
                   const innerIndent = indent + '  ';
+                  const indentedComment = commentLines.join(`\n${innerIndent}  `);
                   
-                  return fixer.replaceText(obj, `{\n${innerIndent}TEST_ONLY: {\n${innerIndent}  ${comment}\n${innerIndent}},\n${indent}}`);
+                  return fixer.replaceText(obj, `{\n${innerIndent}TEST_ONLY: {\n${innerIndent}  ${indentedComment}\n${innerIndent}},\n${indent}}`);
                 }
               }
             });
