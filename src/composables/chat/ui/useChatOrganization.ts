@@ -62,7 +62,7 @@ export type ChatOrganizationAdapter = {
     chatId: string;
   }): Promise<void>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useChatOrganization(): ChatOrganizationAdapter {

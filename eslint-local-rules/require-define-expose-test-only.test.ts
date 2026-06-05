@@ -89,6 +89,7 @@ describe('require-define-expose-test-only rule', () => {
     const fixedResult = await fix(code);
     expect(fixedResult.output).toMatch(/a: 1,\s+TEST_ONLY: {/);
     expect(fixedResult.output).toContain('// Export internal state and logic used only for testing here.');
+    expect(fixedResult.output).toContain('// ESLint-required for defineExpose.');
   });
 
   it('should handle trailing commas in defineExpose autofix', async () => {

@@ -21,7 +21,7 @@ export type SidebarStructureAdapter = {
     isCollapsed: boolean;
   }): Promise<void>;
 
-  TEST_ONLY: Record<string, never>;
+  TEST_ONLY: Record<never, never>;
 };
 
 export function useSidebarStructure(): SidebarStructureAdapter {
