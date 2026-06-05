@@ -10,7 +10,7 @@ import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatTitle } from '@/composables/chat/useChatTitle';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
-import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatPaneState } from '@/composables/chat/ui/useChatPaneState';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import {
   getChatContextCompactProgress,
@@ -86,7 +86,6 @@ const {
   isChatWeshTerminalOpen,
   toggleChatWeshTerminal,
 } = useLayout();
-const currentChatState = useCurrentChatState();
 const chatConversation = useChatConversation({});
 const chatBranches = useChatBranches({});
 const chatCompaction = useChatCompaction({});
@@ -95,20 +94,30 @@ const chatModels = useChatModels({});
 const chatTitle = useChatTitle({});
 const chatMetadata = useChatMetadata({});
 const { getSortedImageModels } = useImageGeneration();
-const currentChat = currentChatState.currentChat;
-const currentChatGroup = currentChatState.currentChatGroup;
-const activeMessages = currentChatState.activeMessages;
-const allMessages = currentChatState.allMessages;
-const resolvedSettings = currentChatState.resolvedSettings;
-const inheritedSettings = currentChatState.inheritedSettings;
-const availableChatGroups = currentChatState.chatGroups;
+const props = defineProps<{
+  chatId: string
+  autoSendPrompt?: string
+  targetMessageId?: string
+}>();
+
+const emit = defineEmits<{
+  (e: 'auto-sent'): void
+}>();
+
+const chatId = computed(() => props.chatId);
+const chatPaneState = useChatPaneState({
+  chatId,
+});
+const currentChat = chatPaneState.chat;
+const currentChatGroup = chatPaneState.chatGroup;
+const activeMessages = chatPaneState.activeMessages;
+const allMessages = chatPaneState.allMessages;
+const resolvedSettings = chatPaneState.resolvedSettings;
+const inheritedSettings = chatPaneState.inheritedSettings;
+const availableChatGroups = chatPaneState.chatGroups;
 const availableModels = chatModels.availableModels;
 const fetchingModels = chatModels.fetchingModels;
-const isProcessing = computed(() => {
-  const chat = currentChat.value;
-  if (!chat) return false;
-  return isChatProcessing({ chatId: chat.id });
-});
+const isProcessing = computed(() => isChatProcessing({ chatId: props.chatId }));
 const {
   chatFlow,
   isThinkingActive,
@@ -117,21 +126,11 @@ const {
   chat: currentChat,
   isProcessing: ({ chatId }) => isChatProcessing({ chatId }),
 });
-const contextCompactProgress = computed<ContextCompactProgress>(() => {
-  const chat = currentChat.value;
-  if (!chat) {
-    return { phase: 'idle' };
-  }
-  return getChatContextCompactProgress({ chatId: chat.id });
-});
-const isGeneratingTitle = computed(() => {
-  const chat = currentChat.value;
-  if (!chat) return false;
-  return isChatGeneratingTitle({ chatId: chat.id });
-});
+const contextCompactProgress = computed<ContextCompactProgress>(() => getChatContextCompactProgress({ chatId: props.chatId }));
+const isGeneratingTitle = computed(() => isChatGeneratingTitle({ chatId: props.chatId }));
 const isDebugEnabled = computed(() => currentChat.value?.debugEnabled === true);
 const chatIdentityKey = computed(() => {
-  const chatId = currentChat.value?.id ?? 'no-chat';
+  const chatId = props.chatId;
   const leafId = currentChat.value?.currentLeafId ?? 'no-leaf';
   return `${chatId}:${leafId}`;
 });
@@ -155,7 +154,7 @@ const availableImageModels = computed(() => {
 });
 
 const chatAreaNaidanSysfsVisibility = computed(() => {
-  return getNaidanSysfsMountSelection({ chatId: currentChat.value?.id });
+  return getNaidanSysfsMountSelection({ chatId: props.chatId });
 });
 
 const contextCompactPromptMode = computed<ContextCompactPromptMode>(() => {
@@ -224,15 +223,6 @@ const {
   save: saveSettings,
 } = useSettings();
 const router = useRouter();
-
-const props = defineProps<{
-  autoSendPrompt?: string
-  targetMessageId?: string
-}>();
-
-const emit = defineEmits<{
-  (e: 'auto-sent'): void
-}>();
 
 const isCurrentChatStreaming = computed(() => {
   return currentChat.value ? isProcessing.value : false;
@@ -630,7 +620,7 @@ watch(
     }).join('|');
     return {
       messageId: props.targetMessageId,
-      chatId: currentChat.value?.id,
+      chatId: props.chatId,
       leafId: currentChat.value?.currentLeafId,
       flowKey,
     };
@@ -652,8 +642,8 @@ watch(
   { flush: 'post', immediate: true }
 );
 
-// Expose for testing
-defineExpose({ scrollToBottom, container,
+// Expose for testing and temporary ChatArea compatibility wrapper.
+defineExpose({ scrollToBottom, container, inputVisibility,
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   },
@@ -1102,7 +1092,7 @@ watch(
       :is-open="isChatWeshTerminalOpen"
       :chat-mounts="currentChat?.mounts"
       :chat-group-mounts="currentChatGroup?.mounts"
-      :chat-id="currentChat?.id"
+      :chat-id="props.chatId"
       :chat-group-id="currentChat?.groupId ?? undefined"
       :naidan-sysfs-visibility="chatAreaNaidanSysfsVisibility"
       @close="toggleChatWeshTerminal()"
@@ -1134,7 +1124,7 @@ watch(
 
       <ConversationOutlineOverlay
         v-if="currentChat"
-        :chat-id="currentChat!.id"
+        :chat-id="props.chatId"
         :visibility="outlineVisibility"
         :flow-items="chatFlow"
         :initial-message-id="initialOutlineMessageId"
@@ -1148,10 +1138,7 @@ watch(
         style="overflow-anchor: none;"
         :style="{ paddingBottom: inputVisibility === 'submerged' ? '48px' : '300px' }"
       >
-        <div v-if="!currentChat" class="h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
-          Select or create a chat to start
-        </div>
-        <template v-else>
+        <template v-if="currentChat">
           <div v-if="activeMessages.length > 0" class="relative p-2">
             <template v-for="(flowItem, flowIdx) in chatFlow" :key="flowItem.type === 'process_sequence' ? flowItem.id : (flowItem.type === 'message' ? `${flowItem.node.id}-${flowItem.mode}` : flowItem.id)">
               <!-- AI Process Sequence (Collapsible Group) -->
@@ -1191,7 +1178,7 @@ watch(
                     <MessageItem
                       v-if="subItem.type === 'message' && isExpanded"
                       :id="'message-' + subItem.node.id"
-                      :chat-id="currentChat!.id"
+                      :chat-id="props.chatId"
                       :message="subItem.node"
                       :siblings="getCurrentChatSiblings({ messageId: subItem.node.id })"
                       :can-generate-image="canGenerateImage && hasImageModel"
@@ -1225,7 +1212,7 @@ watch(
               <MessageItem
                 v-else-if="flowItem.type === 'message'"
                 :id="'message-' + flowItem.node.id"
-                :chat-id="currentChat!.id"
+                :chat-id="props.chatId"
                 :message="flowItem.node"
                 :siblings="getCurrentChatSiblings({ messageId: flowItem.node.id })"
                 :can-generate-image="canGenerateImage && hasImageModel"

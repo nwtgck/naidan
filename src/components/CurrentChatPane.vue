@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import CurrentChatPane from './CurrentChatPane.vue';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import ChatPane from './ChatPane.vue';
+import UnselectedChatPane from './UnselectedChatPane.vue';
 
 const props = defineProps<{
   autoSendPrompt?: string;
@@ -11,7 +13,8 @@ const emit = defineEmits<{
   (e: 'auto-sent'): void;
 }>();
 
-const chatPaneRef = ref<InstanceType<typeof CurrentChatPane> | null>(null);
+const { currentChatId } = useCurrentChatState();
+const chatPaneRef = ref<InstanceType<typeof ChatPane> | null>(null);
 
 const inputVisibility = computed(() => chatPaneRef.value?.inputVisibility);
 const container = computed(() => chatPaneRef.value?.container);
@@ -36,13 +39,16 @@ defineExpose({
   scrollToBottom,
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 
 <template>
-  <CurrentChatPane
+  <UnselectedChatPane v-if="!currentChatId" />
+  <ChatPane
+    v-else
     ref="chatPaneRef"
+    :chat-id="currentChatId"
     :auto-send-prompt="props.autoSendPrompt"
     :target-message-id="props.targetMessageId"
     @auto-sent="handleAutoSent({})"
