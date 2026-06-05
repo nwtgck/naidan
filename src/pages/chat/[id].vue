@@ -2,7 +2,7 @@
 import { watch, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
-import ChatArea from '@/components/ChatArea.vue';
+import CurrentChatPane from '@/components/CurrentChatPane.vue';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
@@ -49,7 +49,7 @@ defineExpose({
 </script>
 
 <template>
-  <ChatArea
+  <CurrentChatPane
     v-if="chatId"
     :auto-send-prompt="currentRoute?.query?.q?.toString()"
     :target-message-id="messageId"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import ChatArea from '@/components/ChatArea.vue';
+import CurrentChatPane from '@/components/CurrentChatPane.vue';
 
 
 defineExpose({
@@ -10,5 +10,5 @@ defineExpose({
 </script>
 
 <template>
-  <ChatArea />
+  <CurrentChatPane />
 </template>
