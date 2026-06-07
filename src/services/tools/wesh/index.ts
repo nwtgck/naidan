@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Tool, ToolExecutionEvent } from './types';
+import type { Tool, ToolExecutionEvent } from '@/services/tools/types';
 import type { WeshMount } from '@/services/wesh/types';
 import type { WeshWorkerClient } from '@/services/wesh/worker/types';
 

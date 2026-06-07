@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createWeshTool } from './wesh'
+import { createWeshTool } from '.'
 import type { WeshWorkerClient } from '@/services/wesh/worker/types'
 
 describe('createWeshTool', () => {

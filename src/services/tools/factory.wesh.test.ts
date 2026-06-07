@@ -17,7 +17,7 @@ vi.mock('@/services/storage', () => ({
   },
 }))
 
-vi.mock('./volume-extension-cache', () => ({
+vi.mock('./wesh/volume-extension-cache', () => ({
   abortOngoingScans: mockAbortOngoingScans,
   getVolumeExtensions: mockGetVolumeExtensions,
   isVolumeScanned: mockIsVolumeScanned,

@@ -7,8 +7,8 @@ import { storageService } from '@/services/storage';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import type { NaidanSysfsMountSelection, WeshMount } from '@/services/wesh/types';
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
-import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
-import { buildShellDescription } from './shell-description';
+import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './wesh/volume-extension-cache';
+import { buildShellDescription } from './wesh/shell-description';
 
 /**
  * Dynamically creates and returns a list of enabled tools based on settings.
