@@ -74,6 +74,13 @@ defineExpose({
         />
       </div>
     </button>
+    <div
+      v-if="isWikipediaEnabled"
+      class="px-2 pt-1 pb-2 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400"
+      data-testid="tool-wikipedia-note"
+    >
+      Search keywords are sent to Wikipedia without additional user approval.
+    </div>
     <WeshToolSettings />
   </div>
 </template>

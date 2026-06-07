@@ -93,6 +93,20 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-testid="tool-wikipedia-toggle"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="tool-wikipedia-note"]').exists()).toBe(false);
+  });
+
+  it('shows the wikipedia note only when both wikipedia tools are enabled', async () => {
+    mockIsFeatureEnabled.mockReturnValue(true);
+    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
+      name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
+
+    const wrapper = mount(LmToolsSettings);
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="tool-wikipedia-note"]').text()).toBe(
+      'Search keywords are sent to Wikipedia without additional user approval.',
+    );
   });
 
   it('enables both wikipedia tools from the toggle', async () => {
