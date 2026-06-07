@@ -35,6 +35,14 @@ export async function getEnabledTools({
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
+  const canExposeWikipediaTools = canExposeWikipediaToolsForGeneration({
+    enabledNames,
+    settings,
+    chatId,
+    chatGroupId,
+    naidanSysfsVisibility,
+    tmpHandle,
+  })
 
   for (const name of enabledNames) {
     switch (name) {
@@ -43,10 +51,16 @@ export async function getEnabledTools({
       break;
 
     case 'wikipedia_search':
+      if (!canExposeWikipediaTools) {
+        break
+      }
       tools.push(new WikipediaSearchTool());
       break;
 
     case 'wikipedia_get_page':
+      if (!canExposeWikipediaTools) {
+        break
+      }
       tools.push(new WikipediaGetPageTool());
       break;
 
@@ -140,4 +154,81 @@ export async function getEnabledTools({
   }
 
   return tools;
+}
+
+function canCreateShellTool({
+  settings,
+  tmpHandle,
+}: {
+  settings: Settings;
+  tmpHandle: FileSystemDirectoryHandle | undefined;
+}): boolean {
+  const shouldMountTmp = shouldIncludeWritableTmpMount({ storageType: settings.storageType })
+  if (shouldMountTmp && tmpHandle === undefined) {
+    return false
+  }
+  return true
+}
+
+function hasEnabledNaidanSysfsMount({
+  settings,
+  chatId,
+  chatGroupId,
+  naidanSysfsVisibility,
+}: {
+  settings: Settings;
+  chatId: string | undefined;
+  chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
+}): boolean {
+  switch (naidanSysfsVisibility) {
+  case 'none':
+    return false
+  case 'current_chat_only':
+  case 'current_chat_with_chat_group':
+  case 'all_chats':
+    return createNaidanSysfsMount({
+      storageType: settings.storageType,
+      visibility: naidanSysfsVisibility,
+      binaryObjectAccess: 'data',
+      currentChatId: chatId,
+      currentChatGroupId: chatGroupId,
+    }) !== undefined
+  default: {
+    const _ex: never = naidanSysfsVisibility
+    throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`)
+  }
+  }
+}
+
+function canExposeWikipediaToolsForGeneration({
+  enabledNames,
+  settings,
+  chatId,
+  chatGroupId,
+  naidanSysfsVisibility,
+  tmpHandle,
+}: {
+  enabledNames: string[];
+  settings: Settings;
+  chatId: string | undefined;
+  chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
+  tmpHandle: FileSystemDirectoryHandle | undefined;
+}): boolean {
+  if (!enabledNames.includes('shell_execute')) {
+    return false
+  }
+  if (!canCreateShellTool({ settings, tmpHandle })) {
+    return false
+  }
+  if (!hasEnabledNaidanSysfsMount({
+    settings,
+    chatId,
+    chatGroupId,
+    naidanSysfsVisibility,
+  })) {
+    return false
+  }
+  return true
 }

@@ -2,13 +2,18 @@
 import { computed } from 'vue';
 import { BookOpenIcon, CalculatorIcon, InfoIcon } from 'lucide-vue-next';
 import { useChatTools } from '@/composables/useChatTools';
+import { useToolDependencyActions } from '@/composables/useToolDependencyActions';
 import {
   WIKIPEDIA_GET_PAGE_TOOL_NAME,
   WIKIPEDIA_SEARCH_TOOL_NAME,
 } from '@/services/tools/wikipedia';
 import WeshToolSettings from './WeshToolSettings.vue';
 
-const { isToolEnabled, setToolEnabled, toggleTool } = useChatTools();
+const { isToolEnabled, toggleTool } = useChatTools();
+const {
+  enableWikipediaToolsForCurrentChat,
+  disableWikipediaToolsForCurrentChat,
+} = useToolDependencyActions();
 
 const isWikipediaEnabled = computed(() => {
   return isToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME })
@@ -16,9 +21,11 @@ const isWikipediaEnabled = computed(() => {
 });
 
 function toggleWikipedia(_args: Record<never, never>): void {
-  const enabled = !isWikipediaEnabled.value;
-  setToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled });
-  setToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled });
+  if (isWikipediaEnabled.value) {
+    disableWikipediaToolsForCurrentChat({});
+    return;
+  }
+  enableWikipediaToolsForCurrentChat({});
 }
 
 defineExpose({
@@ -84,6 +91,9 @@ defineExpose({
           </div>
           <div class="text-[10px] font-medium leading-tight truncate mt-0.5" :class="isWikipediaEnabled ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">
             Access global knowledge
+          </div>
+          <div class="text-[9px] leading-tight truncate mt-1 text-gray-400 dark:text-gray-500">
+            Uses sysfs Naidan for page text
           </div>
         </div>
       </button>

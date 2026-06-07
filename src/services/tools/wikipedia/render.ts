@@ -29,12 +29,30 @@ export function renderWikipediaPageMarkdown({
 }: {
   page: WikipediaPageResult;
 }): string {
-  return `\
+  switch (page.kind) {
+  case 'inline':
+    return `\
 lang: ${page.lang}
 pageId: ${page.pageId}
 title: ${page.title}
 
 BEGIN CONTENT
 ${page.content}
-END CONTENT`;
+END CONTENT`
+  case 'binary_object':
+    return `\
+lang: ${page.lang}
+pageId: ${page.pageId}
+title: ${page.title}
+
+Wikipedia page text was saved to sysfs Naidan:
+${page.sysfsNaidanDataFilePath}
+
+lines: ${page.lineCount}
+bytes: ${page.byteLength}`
+  default: {
+    const neverPage: never = page
+    throw new Error(`Unhandled Wikipedia page result: ${String(neverPage)}`)
+  }
+  }
 }

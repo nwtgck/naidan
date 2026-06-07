@@ -239,6 +239,94 @@ Mounted directories:
     }))
   })
 
+  it('does not expose wikipedia tools when shell_execute is disabled', async () => {
+    const { getEnabledTools } = await import('./factory')
+
+    const tools = await getEnabledTools({
+      enabledNames: ['wikipedia_search', 'wikipedia_get_page'],
+      tmpHandle: { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
+      settings: {
+        storageType: 'opfs',
+        mounts: [],
+      } as never,
+    })
+
+    expect(tools).toHaveLength(0)
+  })
+
+  it('does not expose wikipedia tools when sysfs Naidan is disabled', async () => {
+    const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle
+    const { getEnabledTools } = await import('./factory')
+
+    const tools = await getEnabledTools({
+      enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
+      tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'none',
+      settings: {
+        storageType: 'opfs',
+        mounts: [],
+      } as never,
+    })
+
+    expect(tools.map(({ name }) => name)).toEqual(['shell_execute'])
+  })
+
+  it('does not expose wikipedia tools when shell_execute cannot be created', async () => {
+    const { getEnabledTools } = await import('./factory')
+
+    const tools = await getEnabledTools({
+      enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
+      tmpHandle: undefined,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
+      settings: {
+        storageType: 'opfs',
+        mounts: [],
+      } as never,
+    })
+
+    expect(tools).toHaveLength(0)
+  })
+
+  it('exposes wikipedia tools only when shell_execute and sysfs Naidan are both usable', async () => {
+    const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle
+    mockCreateClient.mockResolvedValue({
+      startExecution: vi.fn(),
+      awaitExecution: vi.fn(),
+      interruptExecution: vi.fn(),
+      cancelExecution: vi.fn(),
+      disposeExecution: vi.fn(),
+      execute: vi.fn(),
+      interrupt: vi.fn(),
+      dispose: vi.fn(),
+    })
+    const { getEnabledTools } = await import('./factory')
+
+    const tools = await getEnabledTools({
+      enabledNames: ['wikipedia_search', 'shell_execute', 'wikipedia_get_page'],
+      tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
+      settings: {
+        storageType: 'opfs',
+        mounts: [],
+      } as never,
+    })
+
+    expect(tools.map(({ name }) => name)).toEqual([
+      'wikipedia_search',
+      'shell_execute',
+      'wikipedia_get_page',
+    ])
+  })
+
   it('creates a local-storage naidan sysfs mount when selected', async () => {
     const volumeHandle = { kind: 'directory', name: 'vol-local' } as FileSystemDirectoryHandle
 

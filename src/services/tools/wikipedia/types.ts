@@ -20,8 +20,17 @@ export type WikipediaSearchResult = {
 };
 
 export type WikipediaPageResult = {
+  kind: 'inline';
   lang: WikipediaLanguageCode;
   pageId: number;
   title: string;
   content: string;
+} | {
+  kind: 'binary_object';
+  lang: WikipediaLanguageCode;
+  pageId: number;
+  title: string;
+  lineCount: number;
+  byteLength: number;
+  sysfsNaidanDataFilePath: string;
 };

@@ -74,6 +74,7 @@ describe('renderWikipediaPageMarkdown', () => {
   it('renders page metadata and content markers', () => {
     const result = renderWikipediaPageMarkdown({
       page: {
+        kind: 'inline',
         lang: 'en',
         pageId: 25220,
         title: 'Quantum computing',
@@ -91,6 +92,7 @@ describe('renderWikipediaPageMarkdown', () => {
   it('does not include unsupported metadata', () => {
     const result = renderWikipediaPageMarkdown({
       page: {
+        kind: 'inline',
         lang: 'en',
         pageId: 25220,
         title: 'Quantum computing',
@@ -100,5 +102,27 @@ describe('renderWikipediaPageMarkdown', () => {
 
     expect(result).not.toContain('url');
     expect(result).not.toContain('wikidataId');
+  });
+
+  it('renders binary object references without inline content', () => {
+    const result = renderWikipediaPageMarkdown({
+      page: {
+        kind: 'binary_object',
+        lang: 'ja',
+        pageId: 894134,
+        title: '量子コンピュータ',
+        lineCount: 1234,
+        byteLength: 456789,
+        sysfsNaidanDataFilePath: '/sys/fs/naidan/binary-objects/by-id/bin-1/data',
+      },
+    });
+
+    expect(result).toContain('Wikipedia page text was saved to sysfs Naidan:');
+    expect(result).toContain('/sys/fs/naidan/binary-objects/by-id/bin-1/data');
+    expect(result).toContain('lines: 1234');
+    expect(result).toContain('bytes: 456789');
+    expect(result).not.toContain('BEGIN CONTENT');
+    expect(result).not.toContain('metadata.json');
+    expect(result).not.toContain('metadata.md');
   });
 });

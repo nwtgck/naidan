@@ -72,7 +72,8 @@ export class WikipediaGetPageTool implements Tool {
 Get the plain-text extract of a Wikipedia page by pageId.
 
 Use pageId and lang from wikipedia_search results.
-This tool returns the available plain-text extract, not rendered HTML or wikitext.`;
+This tool returns the available plain-text page.
+Long page text may be saved to sysfs Naidan instead of being returned inline.`;
   parametersSchema = WikipediaGetPageArgsSchema;
 
   async execute({

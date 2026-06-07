@@ -13,8 +13,9 @@ const mockSettings = ref({
   mounts: [],
 });
 const mockIsToolEnabled = vi.fn();
-const mockSetToolEnabled = vi.fn();
 const mockToggleTool = vi.fn();
+const mockEnableWikipediaToolsForCurrentChat = vi.fn();
+const mockDisableWikipediaToolsForCurrentChat = vi.fn();
 
 vi.mock('@/composables/useFeatureFlags', () => ({
   useFeatureFlags: () => ({
@@ -25,21 +26,14 @@ vi.mock('@/composables/useFeatureFlags', () => ({
 vi.mock('@/composables/useChatTools', () => ({
   useChatTools: () => ({
     isToolEnabled: mockIsToolEnabled,
-    setToolEnabled: mockSetToolEnabled,
     toggleTool: mockToggleTool,
   }),
 }));
 
-vi.mock('@/composables/useChatWeshPreferences', () => ({
-  useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
-    setNaidanSysfsMountSelection: vi.fn(),
-  }),
-}));
-
-vi.mock('@/composables/useChat', () => ({
-  useChat: () => ({
-    currentChat: ref({ id: 'chat-1' }),
+vi.mock('@/composables/useToolDependencyActions', () => ({
+  useToolDependencyActions: () => ({
+    enableWikipediaToolsForCurrentChat: mockEnableWikipediaToolsForCurrentChat,
+    disableWikipediaToolsForCurrentChat: mockDisableWikipediaToolsForCurrentChat,
   }),
 }));
 
@@ -60,8 +54,9 @@ describe('LmToolsSettings.vue', () => {
   beforeEach(() => {
     mockIsFeatureEnabled.mockReset();
     mockIsToolEnabled.mockReset();
-    mockSetToolEnabled.mockReset();
     mockToggleTool.mockReset();
+    mockEnableWikipediaToolsForCurrentChat.mockReset();
+    mockDisableWikipediaToolsForCurrentChat.mockReset();
     mockSettings.value = {
       storageType: 'opfs',
       mounts: [],
@@ -110,18 +105,17 @@ describe('LmToolsSettings.vue', () => {
     );
   });
 
-  it('enables both wikipedia tools from the toggle', async () => {
+  it('enables wikipedia through dependency actions from the toggle', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
 
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: true });
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: true });
+    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
   });
 
-  it('disables both wikipedia tools from the toggle', async () => {
+  it('disables wikipedia through dependency actions from the toggle', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
     mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
       name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
@@ -130,8 +124,7 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: false });
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: false });
+    expect(mockDisableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
   });
 
   it('shows wikipedia as enabled only when both tools are enabled', async () => {
@@ -153,8 +146,7 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: true });
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: true });
+    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
   });
 
   it('keeps calculator toggle behavior unchanged', async () => {
@@ -165,5 +157,14 @@ describe('LmToolsSettings.vue', () => {
     await wrapper.find('[data-testid="tool-calculator-toggle"]').trigger('click');
 
     expect(mockToggleTool).toHaveBeenCalledWith({ name: 'calculator' });
+  });
+
+  it('shows the sysfs usage note in the wikipedia card', async () => {
+    mockIsFeatureEnabled.mockReturnValue(true);
+
+    const wrapper = mount(LmToolsSettings);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Uses sysfs Naidan for page text');
   });
 });

@@ -5,6 +5,7 @@ import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
+import { useToolDependencyActions } from '@/composables/useToolDependencyActions';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
@@ -13,6 +14,7 @@ const { currentChat } = useCurrentChatState();
 const { settings } = useSettings();
 const { isToolEnabled, toggleTool } = useChatTools();
 const { getNaidanSysfsMountSelection, setNaidanSysfsMountSelection } = useChatWeshPreferences();
+const { disableNaidanSysfsForCurrentChat } = useToolDependencyActions();
 const { isFeatureEnabled } = useFeatureFlags();
 const isWeshToolFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'wesh_tool' }));
 const naidanSysfsMountSelection = computed(() => getNaidanSysfsMountSelection({ chatId: currentChat.value?.id }));
@@ -28,9 +30,13 @@ function handleShellToolToggle(_args: Record<never, never>) {
 }
 
 function handleNaidanSysfsToggle(_args: Record<never, never>) {
+  if (isNaidanSysfsMounted.value) {
+    disableNaidanSysfsForCurrentChat({})
+    return
+  }
   setNaidanSysfsMountSelection({
     chatId: currentChat.value?.id,
-    selection: isNaidanSysfsMounted.value ? 'none' : 'current_chat_only',
+    selection: 'current_chat_only',
   });
 }
 
