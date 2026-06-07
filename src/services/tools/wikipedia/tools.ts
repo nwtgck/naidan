@@ -48,7 +48,7 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
         query: validated.data.query,
         contextLanguage: undefined,
         signal,
-        fetchImpl: fetch,
+        requestJsonImpl: undefined,
       });
       return {
         status: 'success',
@@ -102,7 +102,7 @@ Long page text may be saved to sysfs Naidan instead of being returned inline.`;
         lang: validated.data.lang,
         pageId: validated.data.pageId,
         signal,
-        fetchImpl: fetch,
+        requestJsonImpl: undefined,
       });
       return {
         status: 'success',
