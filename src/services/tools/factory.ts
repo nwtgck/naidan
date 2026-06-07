@@ -1,6 +1,7 @@
 import type { Tool } from './types';
 import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
+import { WikipediaGetPageTool, WikipediaSearchTool } from './wikipedia';
 import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import { storageService } from '@/services/storage';
@@ -39,6 +40,14 @@ export async function getEnabledTools({
     switch (name) {
     case 'calculator':
       tools.push(new CalculatorTool());
+      break;
+
+    case 'wikipedia_search':
+      tools.push(new WikipediaSearchTool());
+      break;
+
+    case 'wikipedia_get_page':
+      tools.push(new WikipediaGetPageTool());
       break;
 
     case 'shell_execute': {
