@@ -131,6 +131,7 @@ async function handleRequestMessage({
         type: 'response',
         requestId: message.requestId,
         ok: true,
+        responseOk: response.ok,
         url: response.url,
         status: response.status,
         statusText: response.statusText,

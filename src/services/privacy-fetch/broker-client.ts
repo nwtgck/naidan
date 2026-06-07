@@ -68,7 +68,6 @@ function createBrokerIframe({
   const iframe = documentObject.createElement('iframe')
   iframe.referrerPolicy = 'no-referrer'
   iframe.setAttribute('sandbox', 'allow-scripts')
-  iframe.sandbox?.add('allow-scripts')
   iframe.style.display = 'none'
   iframe.setAttribute('aria-hidden', 'true')
   iframe.tabIndex = -1
@@ -138,7 +137,7 @@ export function createPrivacyFetchBrokerClient({
             url: message.url,
             status: message.status,
             statusText: message.statusText,
-            ok: message.ok,
+            ok: message.responseOk,
             redirected: message.redirected,
             responseType: message.responseType,
             headers: message.headers,

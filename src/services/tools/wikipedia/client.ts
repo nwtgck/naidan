@@ -41,9 +41,13 @@ async function requestWikipediaResponse({
     const response = await privacyFetch({
       url: url.toString(),
       signal,
-    });
+    })
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`.trim())
+    }
+
     const text = new TextDecoder().decode(response.body);
-    return JSON.parse(text) as unknown;
+    return JSON.parse(text) as unknown
   } catch (error) {
     throw new Error(`Wikipedia request failed: ${error instanceof Error ? error.message : String(error)}`);
   }

@@ -157,6 +157,22 @@ describe('searchWikipedia', () => {
       requestResponseImpl,
     })).rejects.toThrow(/validation failed/i)
   })
+
+  it('throws when privacy fetch returns an HTTP error status', async () => {
+    const requestResponseImpl = createRequestResponseImpl({
+      impl: () => {
+        throw new Error('Wikipedia request failed: HTTP 404 Not Found')
+      },
+    })
+
+    await expect(searchWikipedia({
+      lang: 'en',
+      query: 'quantum computer',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl,
+    })).rejects.toThrow(/HTTP 404 Not Found/i)
+  })
 })
 
 describe('getWikipediaPage', () => {

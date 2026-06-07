@@ -43,4 +43,13 @@ describe('validateWikipediaPrivacyFetchUrl', () => {
       code: 'invalid_query_parameter',
     })
   })
+
+  it('rejects srsearch values longer than 120 characters', () => {
+    expect(validateWikipediaPrivacyFetchUrl({
+      url: new URL(`https://en.wikipedia.org/w/api.php?origin=*&action=query&format=json&formatversion=2&list=search&srsearch=${'a'.repeat(121)}&srlimit=30&srnamespace=0&srprop=&srinfo=`),
+    })).toMatchObject({
+      ok: false,
+      code: 'invalid_query_parameter_value',
+    })
+  })
 })

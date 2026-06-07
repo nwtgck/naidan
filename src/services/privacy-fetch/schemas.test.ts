@@ -33,6 +33,7 @@ describe('privacy fetch schemas', () => {
       type: 'response',
       requestId: 'req-1',
       ok: true,
+      responseOk: true,
       url: 'https://en.wikipedia.org/w/api.php?origin=*',
       status: 200,
       statusText: 'OK',

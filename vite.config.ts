@@ -71,6 +71,10 @@ function setCrossOriginModuleHeaders({ res }: {
   res.setHeader('Access-Control-Allow-Origin', '*')
 }
 
+function normalizeModulePathForChunkRouting(modulePath: string): string {
+  return modulePath.replaceAll('\\', '/')
+}
+
 function isPrivacyFetchBrokerChunk(chunkInfo: {
   name: string
   facadeModuleId?: string | null
@@ -80,14 +84,20 @@ function isPrivacyFetchBrokerChunk(chunkInfo: {
     return true
   }
 
-  if (chunkInfo.facadeModuleId?.includes('/src/services/privacy-fetch/')) {
-    return true
+  if (chunkInfo.facadeModuleId !== undefined && chunkInfo.facadeModuleId !== null) {
+    const normalizedFacadeModuleId = normalizeModulePathForChunkRouting(chunkInfo.facadeModuleId)
+    if (normalizedFacadeModuleId.includes('/src/services/privacy-fetch/')) {
+      return true
+    }
   }
 
-  return chunkInfo.moduleIds?.some((moduleId) => (
-    moduleId.includes('/src/services/privacy-fetch/')
-    || moduleId.includes('/node_modules/zod/')
-  )) ?? false
+  // Keep zod-backed validation chunks alongside the broker bundle so shared
+  // dependencies still stay inside the broker asset subtree for auditing.
+  return chunkInfo.moduleIds?.some((moduleId) => {
+    const normalizedModuleId = normalizeModulePathForChunkRouting(moduleId)
+    return normalizedModuleId.includes('/src/services/privacy-fetch/')
+      || normalizedModuleId.includes('/node_modules/zod/')
+  }) ?? false
 }
 
 // Dev-server-only HTML cleanup for the privacy fetch broker page.

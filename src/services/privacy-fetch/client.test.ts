@@ -127,6 +127,148 @@ describe('createPrivacyFetchBrokerClient', () => {
     client.dispose()
   })
 
+  it('posts a request after ready and resolves response messages', async () => {
+    const {
+      brokerWindow,
+      client,
+      dispatchBrokerMessage,
+    } = createClientHarness()
+    mockGenerateId.mockReturnValue('req-success')
+
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'ready',
+        capabilities: {
+          responseBody: 'arrayBuffer',
+          transferArrayBuffer: true,
+          headers: 'entries',
+        },
+      },
+    })
+
+    const responsePromise = client.fetch({
+      url: 'https://en.wikipedia.org/w/api.php?origin=*',
+      signal: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(brokerWindow.postMessage).toHaveBeenCalledWith({
+      protocol: PRIVACY_FETCH_PROTOCOL,
+      type: 'request',
+      requestId: 'req-success',
+      url: 'https://en.wikipedia.org/w/api.php?origin=*',
+    }, '*')
+
+    const body = new TextEncoder().encode('{"ok":true}').buffer
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'response',
+        requestId: 'req-success',
+        ok: true,
+        responseOk: true,
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        status: 200,
+        statusText: 'OK',
+        redirected: false,
+        responseType: 'cors',
+        headers: [['content-type', 'application/json']],
+        body,
+        bodyByteLength: body.byteLength,
+        validationResult: {
+          ok: true,
+          policyName: 'wikipedia_api',
+          normalizedUrl: 'https://en.wikipedia.org/w/api.php?origin=*',
+        },
+      },
+    })
+
+    await expect(responsePromise).resolves.toEqual({
+      url: 'https://en.wikipedia.org/w/api.php?origin=*',
+      status: 200,
+      statusText: 'OK',
+      ok: true,
+      redirected: false,
+      responseType: 'cors',
+      headers: [['content-type', 'application/json']],
+      body,
+      bodyByteLength: body.byteLength,
+      policyName: 'wikipedia_api',
+    })
+
+    client.dispose()
+  })
+
+  it('maps responseOk false to PrivacyFetchResponse.ok false', async () => {
+    const {
+      brokerWindow,
+      client,
+      dispatchBrokerMessage,
+    } = createClientHarness()
+    mockGenerateId.mockReturnValue('req-http-false')
+
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'ready',
+        capabilities: {
+          responseBody: 'arrayBuffer',
+          transferArrayBuffer: true,
+          headers: 'entries',
+        },
+      },
+    })
+
+    const responsePromise = client.fetch({
+      url: 'https://en.wikipedia.org/w/api.php?origin=*',
+      signal: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'response',
+        requestId: 'req-http-false',
+        ok: true,
+        responseOk: false,
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        status: 404,
+        statusText: 'Not Found',
+        redirected: false,
+        responseType: 'cors',
+        headers: [['content-type', 'application/json']],
+        body: new ArrayBuffer(0),
+        bodyByteLength: 0,
+        validationResult: {
+          ok: true,
+          policyName: 'wikipedia_api',
+          normalizedUrl: 'https://en.wikipedia.org/w/api.php?origin=*',
+        },
+      },
+    })
+
+    await expect(responsePromise).resolves.toMatchObject({
+      ok: false,
+      status: 404,
+    })
+
+    client.dispose()
+  })
+
   it('ignores messages from a different source window', async () => {
     const {
       brokerWindow,
@@ -160,6 +302,7 @@ describe('createPrivacyFetchBrokerClient', () => {
         type: 'response',
         requestId: 'req-2',
         ok: true,
+        responseOk: true,
         url: 'https://en.wikipedia.org/w/api.php?origin=*',
         status: 200,
         statusText: 'OK',
@@ -198,6 +341,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness()
+    mockGenerateId.mockReturnValue('req-3')
 
     const controller = new AbortController()
     const responsePromise = client.fetch({
@@ -217,10 +361,112 @@ describe('createPrivacyFetchBrokerClient', () => {
       },
     })
     await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
 
     controller.abort()
 
     await expect(responsePromise).rejects.toThrow(/aborted/i)
+    expect(brokerWindow.postMessage).toHaveBeenLastCalledWith({
+      protocol: PRIVACY_FETCH_PROTOCOL,
+      type: 'cancel',
+      requestId: 'req-3',
+    }, '*')
+
+    client.dispose()
+  })
+
+  it('rejects on rejected messages', async () => {
+    const {
+      brokerWindow,
+      client,
+      dispatchBrokerMessage,
+    } = createClientHarness()
+    mockGenerateId.mockReturnValue('req-rejected')
+
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'ready',
+        capabilities: {
+          responseBody: 'arrayBuffer',
+          transferArrayBuffer: true,
+          headers: 'entries',
+        },
+      },
+    })
+
+    const responsePromise = client.fetch({
+      url: 'https://en.wikipedia.org/w/api.php?origin=*',
+      signal: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'rejected',
+        requestId: 'req-rejected',
+        ok: false,
+        validationResult: {
+          ok: false,
+          code: 'invalid_hostname',
+          message: 'Unsupported hostname',
+        },
+      },
+    })
+
+    await expect(responsePromise).rejects.toThrow(/rejected/i)
+
+    client.dispose()
+  })
+
+  it('rejects on error messages', async () => {
+    const {
+      brokerWindow,
+      client,
+      dispatchBrokerMessage,
+    } = createClientHarness()
+    mockGenerateId.mockReturnValue('req-error')
+
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'ready',
+        capabilities: {
+          responseBody: 'arrayBuffer',
+          transferArrayBuffer: true,
+          headers: 'entries',
+        },
+      },
+    })
+
+    const responsePromise = client.fetch({
+      url: 'https://en.wikipedia.org/w/api.php?origin=*',
+      signal: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    dispatchBrokerMessage({
+      source: brokerWindow,
+      data: {
+        protocol: PRIVACY_FETCH_PROTOCOL,
+        type: 'error',
+        requestId: 'req-error',
+        ok: false,
+        code: 'fetch_failed',
+        message: 'Network error',
+      },
+    })
+
+    await expect(responsePromise).rejects.toThrow(/fetch failed/i)
 
     client.dispose()
   })

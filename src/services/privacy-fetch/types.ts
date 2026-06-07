@@ -77,6 +77,7 @@ export type PrivacyFetchResponseMessage = {
   type: 'response';
   requestId: string;
   ok: true;
+  responseOk: boolean;
   url: string;
   status: number;
   statusText: string;

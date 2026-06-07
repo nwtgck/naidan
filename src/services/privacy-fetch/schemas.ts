@@ -65,6 +65,7 @@ export const privacyFetchResponseMessageSchema = z.object({
   type: z.literal('response'),
   requestId: z.string().min(1),
   ok: z.literal(true),
+  responseOk: z.boolean(),
   url: z.string().url(),
   status: z.number().int().nonnegative(),
   statusText: z.string(),

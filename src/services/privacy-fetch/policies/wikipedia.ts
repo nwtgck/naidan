@@ -7,6 +7,7 @@ import type {
 
 const WIKIPEDIA_POLICY_NAME = 'wikipedia_api'
 const WIKIPEDIA_MAX_SEARCH_LIMIT = 30
+const WIKIPEDIA_MAX_SEARCH_QUERY_LENGTH = 120
 const WIKIPEDIA_LANGUAGE_LABEL_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
 
 function createRejectedResult({
@@ -168,6 +169,12 @@ function validateWikipediaSearchQuery({
     return createRejectedResult({
       code: 'invalid_query_parameter_value',
       message: 'srsearch must be a non-empty string',
+    })
+  }
+  if (searchQuery.length > WIKIPEDIA_MAX_SEARCH_QUERY_LENGTH) {
+    return createRejectedResult({
+      code: 'invalid_query_parameter_value',
+      message: `srsearch must be ${WIKIPEDIA_MAX_SEARCH_QUERY_LENGTH} characters or less`,
     })
   }
 
