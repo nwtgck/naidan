@@ -93,15 +93,18 @@ describe('ChatToolsMenu', () => {
   it('closes when the close button is clicked', async () => {
     wrapper = mount(ChatToolsMenu, {
       props: defaultProps,
-      attachTo: document.body
+      attachTo: document.body,
     });
     await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
     await flushPromises();
     await vi.dynamicImportSettled();
 
-    const closeButton = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent?.trim() === 'Close');
-    closeButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const closeButton = document.body.querySelector('[data-testid="chat-tools-footer-close"]') as HTMLElement;
+    closeButton.click();
+
+    // Wait for Vue to process the state change
     await nextTick();
+    // Wait for Transition to finish
     await flushPromises();
 
     expect(document.body.querySelector('[data-testid="chat-tools-dropdown"]')).toBeFalsy();

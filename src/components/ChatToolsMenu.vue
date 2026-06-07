@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { Settings2Icon } from 'lucide-vue-next';
+import { Settings2Icon, ChevronDownIcon } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { useWindowSize } from '@vueuse/core';
 import { useChatTools } from '@/composables/useChatTools';
@@ -167,14 +167,15 @@ defineExpose({
               </div>
             </div>
 
-            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border-t dark:border-gray-700 flex justify-end">
-              <button
-                @click="showMenu = false"
-                class="px-4 py-1.5 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-              >
-                Close
-              </button>
-            </div>
+            <!-- Full-width Dismiss Footer -->
+            <button
+              @click="showMenu = false"
+              class="w-full py-4 bg-gray-50/50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700 flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all group active:bg-gray-200 dark:active:bg-gray-700/50"
+              data-testid="chat-tools-footer-close"
+            >
+              <span class="text-[11px] font-bold text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors uppercase tracking-wider">Close Menu</span>
+              <ChevronDownIcon class="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-y-0.5 transition-all" />
+            </button>
           </div>
         </div>
       </Transition>
