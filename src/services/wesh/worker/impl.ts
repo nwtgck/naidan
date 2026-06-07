@@ -125,6 +125,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
             provider: new NaidanSysfsProvider({
               reader,
               visibility: mount.visibility,
+              binaryObjectAccess: mount.binaryObjectAccess,
               currentChatId: mount.currentChatId,
               currentChatGroupId: mount.currentChatGroupId,
             }),

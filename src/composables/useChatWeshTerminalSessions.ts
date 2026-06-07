@@ -46,6 +46,7 @@ export async function buildWorkerMountsForChat({
     const naidanSysfsMount = createNaidanSysfsMount({
       storageType: settings.value.storageType,
       visibility: naidanSysfsVisibility,
+      binaryObjectAccess: 'data',
       currentChatId: chatId,
       currentChatGroupId: chatGroupId,
     });

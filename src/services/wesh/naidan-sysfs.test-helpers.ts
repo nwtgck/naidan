@@ -54,6 +54,20 @@ function createReaderStub({
     async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
       return chatGroups.find(({ id }) => id === chatGroupId)
     },
+    async *listBinaryObjects(_args: Record<never, never>) {
+      void _args
+      for (const object of [] as never[]) {
+        yield object
+      }
+    },
+    async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
+      void binaryObjectId
+      return undefined
+    },
+    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
+      void binaryObjectId
+      return undefined
+    },
   }
 }
 
@@ -379,6 +393,7 @@ export async function createMountedNaidanSysfsWeshWithCurrentChat({
         },
       }),
       visibility,
+      binaryObjectAccess: 'data',
       currentChatId,
       currentChatGroupId,
     }),

@@ -1,18 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ChatContent, ChatGroup, ChatMeta } from '@/models/types'
+import type { BinaryObject, ChatContent, ChatGroup, ChatMeta } from '@/models/types'
 import type { NaidanSysfsStorageReader } from './types'
 import { NaidanSysfsProvider } from './provider'
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from './constants'
+import { createNaidanSysfsBinaryObject } from './binary-object-metadata'
 
 function createReaderStub({
   metadata,
   content,
   chatGroup,
+  binaryObjects,
+  binaryObjectBlobs,
 }: {
   metadata?: ChatMeta;
   content?: ChatContent;
   chatGroup?: ChatGroup;
+  binaryObjects?: BinaryObject[];
+  binaryObjectBlobs?: Record<string, Blob>;
 }): NaidanSysfsStorageReader {
+  const objects = new Map((binaryObjects ?? []).map(object => [object.id, createNaidanSysfsBinaryObject({ object })]))
   return {
     async loadHierarchy(_args: Record<never, never>) {
       return { items: [] }
@@ -66,6 +72,17 @@ function createReaderStub({
         return undefined
       }
       return chatGroup
+    },
+    async *listBinaryObjects(_args: Record<never, never>) {
+      for (const object of objects.values()) {
+        yield object
+      }
+    },
+    async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
+      return objects.get(binaryObjectId)
+    },
+    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
+      return binaryObjectBlobs?.[binaryObjectId]
     },
   }
 }
@@ -313,11 +330,39 @@ const sampleChatGroup: ChatGroup = {
   ],
 }
 
+const sampleBinaryObject: BinaryObject = {
+  id: 'bin-1',
+  name: 'note.pdf',
+  mimeType: 'application/pdf',
+  size: 4,
+  createdAt: 999,
+}
+
+const sampleBinaryObjectBytes = new Uint8Array([0x41, 0x42, 0x43, 0x44])
+const sampleBinaryObjectBlob = createBlobStub({ bytes: sampleBinaryObjectBytes }) as unknown as Blob
+
+function createBlobStub({
+  bytes,
+}: {
+  bytes: Uint8Array;
+}) {
+  return {
+    size: bytes.length,
+    slice(start?: number, end?: number) {
+      const sliced = bytes.slice(start ?? 0, end ?? bytes.length)
+      return {
+        arrayBuffer: async () => sliced.buffer.slice(sliced.byteOffset, sliced.byteOffset + sliced.byteLength),
+      }
+    },
+  }
+}
+
 describe('NaidanSysfsProvider', () => {
   it('lists version at the sysfs root', async () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ chatGroup: sampleChatGroup }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -332,6 +377,7 @@ describe('NaidanSysfsProvider', () => {
       { name: 'current-chat', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat` },
       { name: 'chats', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chats` },
       { name: 'hierarchy', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy` },
+      { name: 'binary-objects', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects` },
       { name: 'current-chat-group', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat-group` },
       { name: 'chat-groups', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups` },
     ])
@@ -341,6 +387,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleIndividualChatMetadata, chatGroup: sampleChatGroup }),
       visibility: 'all_chats',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-3',
       currentChatGroupId: undefined,
     })
@@ -355,6 +402,7 @@ describe('NaidanSysfsProvider', () => {
       { name: 'current-chat', type: 'symlink', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/current-chat` },
       { name: 'chats', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chats` },
       { name: 'hierarchy', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/hierarchy` },
+      { name: 'binary-objects', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects` },
       { name: 'chat-groups', type: 'directory', fullPath: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups` },
     ])
   })
@@ -363,6 +411,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ chatGroup: sampleChatGroup }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -382,6 +431,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ chatGroup: sampleChatGroup }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -399,6 +449,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader,
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -409,14 +460,116 @@ describe('NaidanSysfsProvider', () => {
       entries.push(entry)
     }
 
-    expect(entries).toHaveLength(6)
+    expect(entries).toHaveLength(7)
     expect(loadHierarchy).not.toHaveBeenCalled()
+  })
+
+  it('hides binary-objects when binaryObjectAccess is none', async () => {
+    const provider = new NaidanSysfsProvider({
+      reader: createReaderStub({ chatGroup: sampleChatGroup }),
+      visibility: 'current_chat_only',
+      binaryObjectAccess: 'none',
+      currentChatId: 'chat-1',
+      currentChatGroupId: 'chat-group-1',
+    })
+
+    const entries = []
+    for await (const entry of provider.readDir({ path: NAIDAN_SYSFS_ROOT_PATH })) {
+      entries.push(entry.name)
+    }
+
+    expect(entries).not.toContain('binary-objects')
+    await expect(async () => {
+      for await (const _entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects` })) {
+        void _entry
+      }
+    }).rejects.toThrow(/Path not found/i)
+  })
+
+  it('lists binary objects and renders metadata when binaryObjectAccess is metadata_only', async () => {
+    const provider = new NaidanSysfsProvider({
+      reader: createReaderStub({
+        binaryObjects: [sampleBinaryObject],
+      }),
+      visibility: 'current_chat_only',
+      binaryObjectAccess: 'metadata_only',
+      currentChatId: 'chat-1',
+      currentChatGroupId: 'chat-group-1',
+    })
+
+    const rootEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects` })) {
+      rootEntries.push(entry.name)
+    }
+    expect(rootEntries).toEqual(['by-id'])
+
+    const byIdEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects/by-id` })) {
+      byIdEntries.push(entry.name)
+    }
+    expect(byIdEntries).toEqual(['bin-1'])
+
+    const objectEntries = []
+    for await (const entry of provider.readDir({ path: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects/by-id/bin-1` })) {
+      objectEntries.push(entry.name)
+    }
+    expect(objectEntries).toEqual(['metadata.json', 'metadata.md'])
+
+    const handle = await provider.open({
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects/by-id/bin-1/metadata.json`,
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+      mode: undefined,
+    })
+    const buffer = new Uint8Array(1024)
+    const result = await handle.read({ buffer })
+    const text = new TextDecoder().decode(buffer.subarray(0, result.bytesRead))
+
+    expect(text).toContain('"id": "bin-1"')
+    expect(text).toContain('"name": "note.pdf"')
+    expect(text).not.toContain('paths')
+
+    await expect(provider.open({
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects/by-id/bin-1/data`,
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+      mode: undefined,
+    })).rejects.toThrow(/Path not found/i)
+  })
+
+  it('reads binary object data when binaryObjectAccess is data', async () => {
+    const provider = new NaidanSysfsProvider({
+      reader: createReaderStub({
+        binaryObjects: [sampleBinaryObject],
+        binaryObjectBlobs: { 'bin-1': sampleBinaryObjectBlob },
+      }),
+      visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
+      currentChatId: 'chat-1',
+      currentChatGroupId: 'chat-group-1',
+    })
+
+    const handle = await provider.open({
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/binary-objects/by-id/bin-1/data`,
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+      mode: undefined,
+    })
+
+    const partialBuffer = new Uint8Array(2)
+    const partial = await handle.read({ buffer: partialBuffer, position: 1 })
+    expect(partial.bytesRead).toBe(2)
+    expect(Array.from(partialBuffer)).toEqual([0x42, 0x43])
+
+    const stat = await handle.stat()
+    expect(stat.size).toBe(4)
+
+    await expect(handle.write({ buffer: new Uint8Array(0) })).rejects.toThrow('File is read-only')
+    await expect(handle.truncate({ size: 1 })).rejects.toThrow('File is read-only')
   })
 
   it('resolves current-chat to the current chat directory', async () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -437,6 +590,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -460,6 +614,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -483,6 +638,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata, content: sampleContent }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -513,6 +669,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata, content: sampleContent }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -545,6 +702,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata, content: sampleContent }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -566,6 +724,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata, content: branchingContent }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -646,6 +805,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata, chatGroup: sampleChatGroup }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -674,6 +834,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata, chatGroup: sampleChatGroup }),
       visibility: 'current_chat_with_chat_group',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -699,6 +860,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata, chatGroup: sampleChatGroup }),
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -721,6 +883,7 @@ describe('NaidanSysfsProvider', () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleMetadata, chatGroup: sampleChatGroup }),
       visibility: 'current_chat_with_chat_group',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })

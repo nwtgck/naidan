@@ -1,6 +1,7 @@
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
 import {
+  NAIDAN_SYSFS_BINARY_OBJECTS_DIRECTORY_NAME,
   NAIDAN_SYSFS_CHAT_GROUPS_DIRECTORY_NAME,
   NAIDAN_SYSFS_CHATS_DIRECTORY_NAME,
   NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME,
@@ -10,6 +11,11 @@ import {
   NAIDAN_SYSFS_VERSION_FILE_NAME,
   NAIDAN_SYSFS_VERSION_TEXT,
 } from '@/services/wesh/naidan-sysfs/constants'
+import {
+  createBinaryObjectsDirectoryEntry,
+  isBinaryObjectsDirectoryName,
+  shouldExposeBinaryObjectsDirectory,
+} from '@/services/wesh/naidan-sysfs/entries/binary-objects'
 import { createChatGroupsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
 import { listVisibleChatGroupIds } from '@/services/wesh/naidan-sysfs/entries/chat-groups'
 import { createChatsDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chats'
@@ -121,6 +127,13 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
         type: 'directory',
         fullPath: `${path}/${NAIDAN_SYSFS_HIERARCHY_DIRECTORY_NAME}`,
       }
+      if (shouldExposeBinaryObjectsDirectory({ context })) {
+        yield {
+          name: NAIDAN_SYSFS_BINARY_OBJECTS_DIRECTORY_NAME,
+          type: 'directory',
+          fullPath: `${path}/${NAIDAN_SYSFS_BINARY_OBJECTS_DIRECTORY_NAME}`,
+        }
+      }
       if (context.currentChatGroupId !== undefined) {
         yield {
           name: NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME,
@@ -155,6 +168,10 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
         return createChatsDirectoryEntry({})
       case NAIDAN_SYSFS_HIERARCHY_DIRECTORY_NAME:
         return createHierarchyDirectoryEntry({})
+      case NAIDAN_SYSFS_BINARY_OBJECTS_DIRECTORY_NAME:
+        return shouldExposeBinaryObjectsDirectory({ context })
+          ? createBinaryObjectsDirectoryEntry({})
+          : undefined
       case NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME:
         return context.currentChatGroupId === undefined
           ? undefined
@@ -162,6 +179,11 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
       case NAIDAN_SYSFS_CHAT_GROUPS_DIRECTORY_NAME:
         return createChatGroupsDirectoryEntry({})
       default:
+        if (isBinaryObjectsDirectoryName({ name })) {
+          return shouldExposeBinaryObjectsDirectory({ context })
+            ? createBinaryObjectsDirectoryEntry({})
+            : undefined
+        }
         return undefined
       }
     },

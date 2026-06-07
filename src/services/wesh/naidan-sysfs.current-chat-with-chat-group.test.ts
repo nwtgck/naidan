@@ -17,6 +17,7 @@ describe('naidan sysfs current_chat_with_chat_group', () => {
   it('supports ls, cat, and readlink across the naidan sysfs mount', async () => {
     const lsRoot = await executeInWesh({ wesh, script: 'ls -1 /sys/fs/naidan' })
     expect(lsRoot.stdout.text).toBe(`\
+binary-objects
 chat-groups
 chats
 current-chat

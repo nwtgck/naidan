@@ -1,14 +1,16 @@
 import type { StorageType } from '@/models/types'
-import { NAIDAN_SYSFS_MOUNT_PATH, type NaidanSysfsVisibility, type WeshMount } from '@/services/wesh/types'
+import { NAIDAN_SYSFS_MOUNT_PATH, type NaidanSysfsBinaryObjectAccess, type NaidanSysfsVisibility, type WeshMount } from '@/services/wesh/types'
 
 export function createNaidanSysfsMount({
   storageType,
   visibility,
+  binaryObjectAccess,
   currentChatId,
   currentChatGroupId,
 }: {
   storageType: StorageType;
   visibility: NaidanSysfsVisibility;
+  binaryObjectAccess: NaidanSysfsBinaryObjectAccess;
   currentChatId: string | undefined;
   currentChatGroupId: string | undefined;
 }): WeshMount | undefined {
@@ -26,6 +28,7 @@ export function createNaidanSysfsMount({
       readOnly: true,
       storageType,
       visibility,
+      binaryObjectAccess,
       currentChatId,
       currentChatGroupId,
     }

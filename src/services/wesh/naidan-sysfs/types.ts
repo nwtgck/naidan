@@ -1,6 +1,14 @@
 import type { EmptyArgs, Chat, ChatContent, ChatGroup, ChatMeta, ChatSummary, Hierarchy, SidebarItem } from '@/models/types'
 import type { ChatContentDto, ChatGroupDto, ChatMetaDto } from '@/models/dto'
-import type { NaidanSysfsVisibility, WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
+import type { NaidanSysfsBinaryObjectAccess, NaidanSysfsVisibility, WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
+
+export interface NaidanSysfsBinaryObject {
+  id: string;
+  name: string | null;
+  mimeType: string;
+  size: number;
+  createdAt: number;
+}
 
 export interface NaidanSysfsStorageReader {
   loadHierarchy(_args: EmptyArgs): Promise<Hierarchy>;
@@ -11,6 +19,9 @@ export interface NaidanSysfsStorageReader {
   loadChatContent({ chatId }: { chatId: string }): Promise<ChatContent | undefined>;
   loadChat({ chatId }: { chatId: string }): Promise<Chat | undefined>;
   loadChatGroup({ chatGroupId }: { chatGroupId: string }): Promise<ChatGroup | undefined>;
+  listBinaryObjects(_args: EmptyArgs): AsyncIterable<NaidanSysfsBinaryObject>;
+  getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<NaidanSysfsBinaryObject | undefined>;
+  getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | undefined>;
 }
 
 export interface NaidanSysfsRemoteChatMetaPayload {
@@ -45,11 +56,15 @@ export interface NaidanSysfsRemoteReader {
   loadChatMeta({ chatId }: { chatId: string }): Promise<NaidanSysfsRemoteChatMetaPayload | undefined>;
   loadChatContent({ chatId }: { chatId: string }): Promise<ChatContentDto | undefined>;
   loadChatGroup({ chatGroupId }: { chatGroupId: string }): Promise<NaidanSysfsRemoteChatGroupPayload | undefined>;
+  listBinaryObjects(_args: EmptyArgs): Promise<NaidanSysfsBinaryObject[]>;
+  getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<NaidanSysfsBinaryObject | undefined>;
+  getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | undefined>;
 }
 
 export interface NaidanSysfsContext {
   reader: NaidanSysfsStorageReader;
   visibility: NaidanSysfsVisibility;
+  binaryObjectAccess: NaidanSysfsBinaryObjectAccess;
   currentChatId: string;
   currentChatGroupId: string | undefined;
 }

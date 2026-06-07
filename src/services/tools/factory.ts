@@ -71,6 +71,7 @@ export async function getEnabledTools({
         const naidanSysfsMount = createNaidanSysfsMount({
           storageType: settings.storageType,
           visibility: naidanSysfsVisibility,
+          binaryObjectAccess: 'data',
           currentChatId: chatId,
           currentChatGroupId: chatGroupId,
         });

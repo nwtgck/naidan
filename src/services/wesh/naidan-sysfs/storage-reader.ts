@@ -13,13 +13,16 @@ import { storageService } from '@/services/storage'
 import { OPFSStorageProvider } from '@/services/storage/opfs-storage'
 import type { WeshMount } from '@/services/wesh/types'
 import {
+  naidanSysfsRemoteBinaryObjectSchema,
   naidanSysfsRemoteChatContentPayloadSchema,
   naidanSysfsRemoteChatGroupPayloadSchema,
   naidanSysfsRemoteChatMetaPayloadSchema,
   naidanSysfsRemoteChatSummarySchema,
   naidanSysfsRemoteSidebarItemSchema,
 } from './remote-reader-schema'
+import { createNaidanSysfsBinaryObject } from './binary-object-metadata'
 import type {
+  NaidanSysfsBinaryObject,
   NaidanSysfsRemoteChatGroupPayload,
   NaidanSysfsRemoteChatSidebarItem,
   NaidanSysfsRemoteReader,
@@ -101,6 +104,18 @@ export async function createOpfsNaidanSysfsStorageReader(
     async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
       return (await provider.loadChatGroup({ id: chatGroupId })) ?? undefined
     },
+    async *listBinaryObjects(_args: EmptyArgs) {
+      for await (const object of provider.listBinaryObjects()) {
+        yield createNaidanSysfsBinaryObject({ object })
+      }
+    },
+    async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
+      const object = await provider.getBinaryObject({ binaryObjectId })
+      return object === null ? undefined : createNaidanSysfsBinaryObject({ object })
+    },
+    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
+      return (await provider.getFile({ binaryObjectId })) ?? undefined
+    },
   }
 }
 
@@ -153,6 +168,26 @@ export function createNaidanSysfsRemoteReader({
         return undefined
       }
       return naidanSysfsRemoteChatGroupPayloadSchema.parse(createRemoteChatGroupPayload({ chatGroup }))
+    },
+    async listBinaryObjects(_args: EmptyArgs) {
+      assertStorageTypeMatches({ expectedStorageType: storageType })
+      const objects: NaidanSysfsBinaryObject[] = []
+      for await (const object of storageService.listBinaryObjects()) {
+        objects.push(naidanSysfsRemoteBinaryObjectSchema.parse(createNaidanSysfsBinaryObject({ object })))
+      }
+      return objects
+    },
+    async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
+      assertStorageTypeMatches({ expectedStorageType: storageType })
+      const object = await storageService.getBinaryObject({ binaryObjectId })
+      if (object === null) {
+        return undefined
+      }
+      return naidanSysfsRemoteBinaryObjectSchema.parse(createNaidanSysfsBinaryObject({ object }))
+    },
+    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
+      assertStorageTypeMatches({ expectedStorageType: storageType })
+      return (await storageService.getFile({ binaryObjectId })) ?? undefined
     },
   }
 }
@@ -395,6 +430,22 @@ export function createRemoteNaidanSysfsStorageReader({
       return remoteChatGroupPayloadToDomain({
         payload: naidanSysfsRemoteChatGroupPayloadSchema.parse(chatGroup),
       })
+    },
+    async *listBinaryObjects(_args: EmptyArgs) {
+      const objects = await remoteReader.listBinaryObjects({})
+      for (const object of objects) {
+        yield naidanSysfsRemoteBinaryObjectSchema.parse(object)
+      }
+    },
+    async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
+      const object = await remoteReader.getBinaryObject({ binaryObjectId })
+      if (object === undefined) {
+        return undefined
+      }
+      return naidanSysfsRemoteBinaryObjectSchema.parse(object)
+    },
+    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
+      return await remoteReader.getBinaryObjectBlob({ binaryObjectId })
     },
   }
 }

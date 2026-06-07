@@ -10,15 +10,23 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
   constructor({
     reader,
     visibility,
+    binaryObjectAccess,
     currentChatId,
     currentChatGroupId,
   }: {
     reader: NaidanSysfsStorageReader;
     visibility: import('@/services/wesh/types').NaidanSysfsVisibility;
+    binaryObjectAccess: import('@/services/wesh/types').NaidanSysfsBinaryObjectAccess;
     currentChatId: string;
     currentChatGroupId: string | undefined;
   }) {
-    this.context = { reader, visibility, currentChatId, currentChatGroupId }
+    this.context = {
+      reader,
+      visibility,
+      binaryObjectAccess,
+      currentChatId,
+      currentChatGroupId,
+    }
     this.rootEntry = createRootEntry({})
   }
 

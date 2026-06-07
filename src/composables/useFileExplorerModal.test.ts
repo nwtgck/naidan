@@ -30,6 +30,7 @@ describe('useFileExplorerModal', () => {
         readOnly: true,
         storageType: 'opfs',
         visibility: 'current_chat_with_chat_group',
+        binaryObjectAccess: 'data',
         currentChatId: 'chat-1',
         currentChatGroupId: 'chat-group-1',
       }],

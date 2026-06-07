@@ -6,6 +6,7 @@ describe('createNaidanSysfsMount', () => {
     expect(createNaidanSysfsMount({
       storageType: 'opfs',
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })).toEqual({
@@ -14,6 +15,7 @@ describe('createNaidanSysfsMount', () => {
       readOnly: true,
       storageType: 'opfs',
       visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: 'chat-group-1',
     })
@@ -23,6 +25,7 @@ describe('createNaidanSysfsMount', () => {
     expect(createNaidanSysfsMount({
       storageType: 'opfs',
       visibility: 'current_chat_with_chat_group',
+      binaryObjectAccess: 'data',
       currentChatId: undefined,
       currentChatGroupId: 'chat-group-1',
     })).toBeUndefined()
@@ -32,6 +35,7 @@ describe('createNaidanSysfsMount', () => {
     expect(createNaidanSysfsMount({
       storageType: 'local',
       visibility: 'all_chats',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
     })).toEqual({
@@ -40,6 +44,7 @@ describe('createNaidanSysfsMount', () => {
       readOnly: true,
       storageType: 'local',
       visibility: 'all_chats',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
     })
@@ -49,6 +54,7 @@ describe('createNaidanSysfsMount', () => {
     expect(createNaidanSysfsMount({
       storageType: 'memory',
       visibility: 'all_chats',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
     })).toEqual({
@@ -57,6 +63,7 @@ describe('createNaidanSysfsMount', () => {
       readOnly: true,
       storageType: 'memory',
       visibility: 'all_chats',
+      binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
     })

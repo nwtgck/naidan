@@ -12,6 +12,12 @@ export const NAIDAN_SYSFS_ROOT_PATH = NAIDAN_SYSFS_MOUNT_PATH
 //   version
 //   current-chat -> /sys/fs/naidan/chats/<chat-id>
 //   current-chat-group -> /sys/fs/naidan/chat-groups/<chat-group-id>
+//   binary-objects/
+//     by-id/
+//       <binary-object-id>/
+//         metadata.json
+//         metadata.md
+//         data
 //   chats/
 //     <chat-id>/
 //       metadata.md
@@ -49,6 +55,9 @@ export const NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME = 'current-chat-group'
 export const NAIDAN_SYSFS_CHATS_DIRECTORY_NAME = 'chats'
 export const NAIDAN_SYSFS_CHAT_GROUPS_DIRECTORY_NAME = 'chat-groups'
 export const NAIDAN_SYSFS_HIERARCHY_DIRECTORY_NAME = 'hierarchy'
+export const NAIDAN_SYSFS_BINARY_OBJECTS_DIRECTORY_NAME = 'binary-objects'
+export const NAIDAN_SYSFS_BINARY_OBJECTS_BY_ID_DIRECTORY_NAME = 'by-id'
+export const NAIDAN_SYSFS_BINARY_OBJECT_DATA_FILE_NAME = 'data'
 export const NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME = 'metadata.md'
 export const NAIDAN_SYSFS_METADATA_JSON_FILE_NAME = 'metadata.json'
 export const NAIDAN_SYSFS_CONTENT_MARKDOWN_DIRECTORY_NAME = 'content-md'

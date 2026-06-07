@@ -296,6 +296,7 @@ describe('file-explorer.worker.impl', () => {
             readOnly: true,
             storageType: 'opfs',
             visibility: 'current_chat_with_chat_group',
+            binaryObjectAccess: 'data',
             currentChatId: 'chat-1',
             currentChatGroupId: 'chat-group-1',
           }],
@@ -322,6 +323,7 @@ describe('file-explorer.worker.impl', () => {
       'current-chat',
       'chats',
       'hierarchy',
+      'binary-objects',
       'current-chat-group',
       'chat-groups',
     ])
@@ -430,6 +432,7 @@ describe('file-explorer.worker.impl', () => {
             readOnly: true,
             storageType: 'local',
             visibility: 'current_chat_only',
+            binaryObjectAccess: 'data',
             currentChatId: 'chat-1',
             currentChatGroupId: 'chat-group-1',
           }],
@@ -489,6 +492,15 @@ describe('file-explorer.worker.impl', () => {
                   })),
                 }
                 : undefined
+            },
+            async listBinaryObjects() {
+              return []
+            },
+            async getBinaryObject() {
+              return undefined
+            },
+            async getBinaryObjectBlob() {
+              return undefined
             },
           },
         },

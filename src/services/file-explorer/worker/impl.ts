@@ -178,6 +178,7 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
           provider: new NaidanSysfsProvider({
             reader,
             visibility: mount.visibility,
+            binaryObjectAccess: mount.binaryObjectAccess,
             currentChatId: mount.currentChatId,
             currentChatGroupId: mount.currentChatGroupId,
           }),

@@ -13,6 +13,7 @@ describe('naidan sysfs all_chats', () => {
   it('lists hierarchy entries and allows access to all visible chats', async () => {
     const rootEntries = await executeInWesh({ wesh, script: 'ls -1 /sys/fs/naidan' })
     expect(rootEntries.stdout.text).toBe(`\
+binary-objects
 chat-groups
 chats
 current-chat
@@ -72,6 +73,7 @@ chat-group-1
 
     const rootEntries = await executeInWesh({ wesh: individualWesh, script: 'ls -1 /sys/fs/naidan' })
     expect(rootEntries.stdout.text).toBe(`\
+binary-objects
 chat-groups
 chats
 current-chat

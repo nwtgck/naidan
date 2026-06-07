@@ -23,6 +23,11 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
     'current_chat_with_chat_group',
     'all_chats',
   ]),
+  binaryObjectAccess: z.enum([
+    'none',
+    'metadata_only',
+    'data',
+  ]),
   currentChatId: z.string().min(1),
   currentChatGroupId: z.union([z.string().min(1), z.undefined()]),
 })
@@ -142,6 +147,7 @@ export function mapWeshMountsToWorkerMounts({ mounts }: {
         readOnly: true,
         storageType: mount.storageType,
         visibility: mount.visibility,
+        binaryObjectAccess: mount.binaryObjectAccess,
         currentChatId: mount.currentChatId,
         currentChatGroupId: mount.currentChatGroupId,
       }

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+  BinaryObjectSchemaDto,
   ChatContentSchemaDto,
   ChatGroupSchemaDto,
   ChatMetaSchemaDto,
@@ -52,3 +53,7 @@ export const naidanSysfsRemoteChatMetaPayloadSchema = z.object({
 })
 
 export const naidanSysfsRemoteChatContentPayloadSchema = ChatContentSchemaDto
+
+export const naidanSysfsRemoteBinaryObjectSchema = BinaryObjectSchemaDto.extend({
+  name: z.union([z.string(), z.null()]),
+})

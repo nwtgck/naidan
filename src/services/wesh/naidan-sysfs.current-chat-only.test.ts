@@ -13,6 +13,7 @@ describe('naidan sysfs current_chat_only', () => {
   it('exposes the current chat paths but denies sibling chat traversal', async () => {
     const lsRoot = await executeInWesh({ wesh, script: 'ls -1 /sys/fs/naidan' })
     expect(lsRoot.stdout.text).toBe(`\
+binary-objects
 chat-groups
 chats
 current-chat

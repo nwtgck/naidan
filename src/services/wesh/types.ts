@@ -233,6 +233,11 @@ export type NaidanSysfsVisibility =
   | 'current_chat_with_chat_group'
   | 'all_chats';
 
+export type NaidanSysfsBinaryObjectAccess =
+  | 'none'
+  | 'metadata_only'
+  | 'data';
+
 export type NaidanSysfsMountSelection =
   | NaidanSysfsVisibility
   | 'none';
@@ -252,6 +257,7 @@ export interface WeshNaidanSysfsMount {
   readOnly: true;
   storageType: 'local' | 'opfs' | 'memory';
   visibility: NaidanSysfsVisibility;
+  binaryObjectAccess: NaidanSysfsBinaryObjectAccess;
   currentChatId: string;
   currentChatGroupId: string | undefined;
 }
