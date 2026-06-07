@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, type CSSProperties } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { Settings2Icon } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-import { useElementBounding, useWindowSize } from '@vueuse/core';
+import { useWindowSize } from '@vueuse/core';
 import { useChatTools } from '@/composables/useChatTools';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
@@ -45,100 +45,41 @@ const { enabledToolNames } = useChatTools();
 const hasActiveTools = computed(() => enabledToolNames.value.length > 0);
 
 const showMenu = ref(false);
-const containerRef = ref<HTMLElement | null>(null);
-const dropdownRef = ref<HTMLElement | null>(null);
+const triggerRef = ref<HTMLElement | null>(null);
+const sheetRef = ref<HTMLElement | null>(null);
+const teleportTarget = ref<HTMLElement | null>(null);
 
-const { width: windowWidth, height: windowHeight } = useWindowSize();
-const triggerBounding = useElementBounding(containerRef);
+const { width: windowWidth } = useWindowSize();
 
-const floatingStyle = computed((): CSSProperties => {
-  if (!showMenu.value || !containerRef.value) return {};
-
-  const rect = triggerBounding;
-  const margin = 8;
-  const menuWidth = 256; // Matching w-64
-
-  // Horizontal alignment: try to align left with the button, but push left if it goes off-screen
-  let left = rect.left.value;
-  if (left + menuWidth > windowWidth.value - 16) {
-    left = windowWidth.value - menuWidth - 16;
-  }
-  if (left < 16) left = 16;
-
-  const verticalStyle = (() => {
-    switch (props.direction) {
-    case 'up':
-      return {
-        bottom: `${windowHeight.value - rect.top.value + margin}px`,
-        top: 'auto',
-      };
-    case 'down':
-      return {
-        top: `${rect.bottom.value + margin}px`,
-        bottom: 'auto',
-      };
-    default: {
-      const _ex: never = props.direction;
-      throw new Error(`Unhandled direction: ${_ex}`);
-    }
-    }
-  })();
-
-  return {
-    position: 'fixed',
-    ...verticalStyle,
-    left: `${left}px`,
-    width: `${menuWidth}px`,
-    maxHeight: `${windowHeight.value - 32}px`,
-    overflowY: 'auto',
-    zIndex: 9999,
-  };
+onMounted(() => {
+  teleportTarget.value = triggerRef.value?.closest('.chat-pane') as HTMLElement || document.body;
 });
 
 function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as Node;
   if (!showMenu.value) return;
 
-  // 1. Check if the click is inside the trigger button
-  if (containerRef.value?.contains(target)) return;
+  if (triggerRef.value?.contains(target)) return;
+  if (sheetRef.value?.contains(target)) return;
 
-  // 2. Check if the click is inside the dropdown itself
-  if (dropdownRef.value?.contains(target)) return;
-
-  // 3. Check if the click is on a teleported dropdown (like ModelSelector inside this menu)
   let current: HTMLElement | null = target as HTMLElement;
   while (current && current !== document.body) {
     if (current instanceof HTMLElement) {
       const style = window.getComputedStyle(current);
       if (style.position === 'fixed' && style.zIndex === '9999') {
-        return; // It's inside a teleported dropdown
+        return;
       }
     }
     current = current.parentElement;
   }
 
-  // 4. Otherwise, it's a true outside click
   showMenu.value = false;
 }
 
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
-// Close on window width resize to prevent floating detached dropdown
 watch(windowWidth, () => {
   if (showMenu.value) showMenu.value = false;
-});
-
-const enterTransform = computed(() => {
-  switch (props.direction) {
-  case 'up':
-    return 'scale(0.95) translateY(10px)';
-  case 'down':
-    return 'scale(0.95) translateY(-10px)';
-  default: {
-    const _ex: never = props.direction;
-    return `scale(0.95) translateY(${_ex})`;
-  }
-  }
 });
 
 defineExpose({
@@ -149,7 +90,7 @@ defineExpose({
 </script>
 
 <template>
-  <div class="relative" ref="containerRef">
+  <div class="relative" ref="triggerRef">
     <button
       @click="showMenu = !showMenu"
       class="p-2 rounded-xl transition-colors"
@@ -163,46 +104,78 @@ defineExpose({
       <Settings2Icon class="w-5 h-5" />
     </button>
 
-    <Teleport to="body">
-      <Transition name="dropdown">
+    <Teleport :to="teleportTarget" v-if="teleportTarget">
+      <Transition name="sheet">
         <div
           v-if="showMenu"
-          ref="dropdownRef"
-          class="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-2xl py-1.5 overflow-hidden custom-scrollbar"
-          :style="floatingStyle"
-          :class="[
-            direction === 'up' ? 'origin-bottom' : 'origin-top'
-          ]"
-          data-testid="chat-tools-dropdown"
+          class="absolute inset-0 z-[10000] flex flex-col justify-end pointer-events-none"
         >
-          <div class="px-3 py-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b dark:border-gray-700 mb-1">
-            Options/Tools
+          <div
+            class="sheet-backdrop absolute inset-0 bg-black/10 dark:bg-black/40 pointer-events-auto"
+            data-testid="chat-tools-backdrop"
+            @click="showMenu = false"
+          ></div>
+
+          <div
+            ref="sheetRef"
+            class="relative w-full max-w-4xl mx-auto bg-white dark:bg-gray-800 border-t border-x border-gray-100 dark:border-gray-700 rounded-t-2xl shadow-[0_-8px_30px_rgb(0,0,0,0.1)] pointer-events-auto overflow-hidden flex flex-col max-h-[80vh]"
+            data-testid="chat-tools-dropdown"
+          >
+            <div class="flex flex-col items-center pt-2 pb-1 bg-white dark:bg-gray-800 shrink-0">
+              <div class="w-12 h-1 bg-gray-200 dark:bg-gray-700 rounded-full mb-1"></div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto custom-scrollbar bg-white dark:bg-gray-800">
+              <div class="px-4 py-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.18em] border-b border-gray-100 dark:border-gray-700 mb-1">
+                Options/Tools
+              </div>
+
+              <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                <ReasoningSettings
+                  :selected-effort="selectedReasoningEffort"
+                  @update:effort="e => emit('update:reasoning-effort', e)"
+                  class="!p-0 !border-none"
+                />
+              </div>
+
+              <div class="px-3 py-3 border-b border-gray-100 dark:border-gray-700">
+                <LmToolsSettings />
+              </div>
+
+              <div class="px-3 py-3">
+                <ImageGenerationSettings
+                  :can-generate-image="canGenerateImage"
+                  :is-processing="isProcessing"
+                  :is-image-mode="isImageMode"
+                  :selected-width="selectedWidth"
+                  :selected-height="selectedHeight"
+                  :selected-count="selectedCount"
+                  :selected-steps="selectedSteps"
+                  :selected-seed="selectedSeed"
+                  :selected-persist-as="selectedPersistAs"
+                  :available-image-models="availableImageModels"
+                  :selected-image-model="selectedImageModel"
+                  @toggle-image-mode="emit('toggle-image-mode')"
+                  @update:resolution="(w, h) => emit('update:resolution', w, h)"
+                  @update:count="c => emit('update:count', c)"
+                  @update:steps="s => emit('update:steps', s)"
+                  @update:seed="s => emit('update:seed', s)"
+                  @update:persist-as="f => emit('update:persist-as', f)"
+                  @update:model="m => emit('update:model', m)"
+                  class="!p-0 !border-none"
+                />
+              </div>
+            </div>
+
+            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-900/50 border-t dark:border-gray-700 flex justify-end">
+              <button
+                @click="showMenu = false"
+                class="px-4 py-1.5 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
-          <ReasoningSettings
-            :selected-effort="selectedReasoningEffort"
-            @update:effort="e => emit('update:reasoning-effort', e)"
-          />
-          <LmToolsSettings />
-          <ImageGenerationSettings
-            :can-generate-image="canGenerateImage"
-            :is-processing="isProcessing"
-            :is-image-mode="isImageMode"
-            :selected-width="selectedWidth"
-            :selected-height="selectedHeight"
-            :selected-count="selectedCount"
-            :selected-steps="selectedSteps"
-            :selected-seed="selectedSeed"
-            :selected-persist-as="selectedPersistAs"
-            :available-image-models="availableImageModels"
-            :selected-image-model="selectedImageModel"
-            @toggle-image-mode="emit('toggle-image-mode')"
-            @update:resolution="(w, h) => emit('update:resolution', w, h)"
-            @update:count="c => emit('update:count', c)"
-            @update:steps="s => emit('update:steps', s)"
-            @update:seed="s => emit('update:seed', s)"
-            @update:persist-as="f => emit('update:persist-as', f)"
-            @update:model="m => emit('update:model', m)"
-          />
         </div>
       </Transition>
     </Teleport>
@@ -224,14 +197,44 @@ defineExpose({
   background: rgba(156, 163, 175, 0.5);
 }
 
-.dropdown-enter-active,
-.dropdown-leave-active {
-  transition: all 0.2s ease;
+.sheet-enter-active,
+.sheet-leave-active {
+  transition: opacity 0.3s ease;
 }
 
-.dropdown-enter-from,
-.dropdown-leave-to {
+.sheet-enter-from,
+.sheet-leave-to {
   opacity: 0;
-  transform: v-bind(enterTransform);
+}
+
+.sheet-enter-active .relative.mx-auto,
+.sheet-leave-active .relative.mx-auto {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sheet-enter-from .relative.mx-auto,
+.sheet-leave-to .relative.mx-auto {
+  transform: translateY(100%);
+}
+
+.sheet-backdrop {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 1;
+  transition: backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease, opacity 0.3s ease;
+}
+
+.sheet-enter-from .sheet-backdrop,
+.sheet-leave-to .sheet-backdrop {
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  opacity: 0;
+}
+
+.sheet-enter-to .sheet-backdrop,
+.sheet-leave-from .sheet-backdrop {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 1;
 }
 </style>

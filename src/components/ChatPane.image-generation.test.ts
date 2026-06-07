@@ -319,7 +319,7 @@ describe('ChatPane Image Generation Integration', () => {
   });
 
   it('can toggle image mode from the tools menu', async () => {
-    const wrapper = mountChatPane();
+    const wrapper = mountChatPane({ attachTo: document.body });
     await flushPromises();
     await vi.dynamicImportSettled();
 
@@ -330,7 +330,11 @@ describe('ChatPane Image Generation Integration', () => {
     await vi.dynamicImportSettled();
 
     // Click toggle image mode
-    const toggleButton = document.body.querySelector('[data-testid="toggle-image-mode-button"]') as HTMLElement;
+    const chatPane = wrapper.get('.chat-pane');
+    const toggleButton = chatPane.element.querySelector('[data-testid="toggle-image-mode-button"]') as HTMLElement | null;
+    if (toggleButton === null) {
+      throw new Error('toggle-image-mode-button not found');
+    }
     toggleButton.click();
 
     expect(mockChatStore.toggleImageMode).toHaveBeenCalled();

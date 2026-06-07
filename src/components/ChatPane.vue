@@ -1001,7 +1001,7 @@ watch(
 
 <template>
   <div
-    class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
+    class="chat-pane flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative"
     @dragover="handleDragOver({ event: $event })"
     @dragleave="handleDragLeave({ event: $event })"
     @drop="handleDrop({ event: $event })"

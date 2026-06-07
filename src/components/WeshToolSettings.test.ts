@@ -49,6 +49,7 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('lucide-vue-next', () => ({
   TerminalIcon: { template: '<span>Terminal</span>' },
+  InfoIcon: { template: '<span>Info</span>' },
 }));
 
 describe('WeshToolSettings.vue', () => {

@@ -53,6 +53,7 @@ vi.mock('lucide-vue-next', () => ({
   CalculatorIcon: { template: '<span>Calculator</span>' },
   BookOpenIcon: { template: '<span>Wikipedia</span>' },
   TerminalIcon: { template: '<span>Terminal</span>' },
+  InfoIcon: { template: '<span>Info</span>' },
 }));
 
 describe('LmToolsSettings.vue', () => {
@@ -104,11 +105,8 @@ describe('LmToolsSettings.vue', () => {
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
 
-    expect(wrapper.get('[data-testid="tool-wikipedia-note"]').text()).toBe(
-      'Search keywords are sent to Wikipedia without additional user approval.',
-    );
-    expect(wrapper.get('[data-testid="tool-wikipedia-note"] span').text()).toBe(
-      'without additional user approval',
+    expect(wrapper.get('[data-testid="tool-wikipedia-note"]').text()).toContain(
+      'Wikipedia search keywords are sent to the external service without additional user approval.',
     );
   });
 
