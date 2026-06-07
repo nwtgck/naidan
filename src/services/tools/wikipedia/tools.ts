@@ -3,12 +3,15 @@ import { WikipediaGetPageArgsSchema, WikipediaSearchArgsSchema } from './schemas
 import { getWikipediaPage, searchWikipedia } from './client';
 import { renderWikipediaPageMarkdown, renderWikipediaSearchMarkdown } from './render';
 
+export const WIKIPEDIA_SEARCH_TOOL_NAME = 'wikipedia_search';
+export const WIKIPEDIA_GET_PAGE_TOOL_NAME = 'wikipedia_get_page';
+
 function toExecutionErrorMessage({ error }: { error: unknown }) {
   return error instanceof Error ? error.message : String(error);
 }
 
 export class WikipediaSearchTool implements Tool {
-  name = 'wikipedia_search';
+  name = WIKIPEDIA_SEARCH_TOOL_NAME;
   description = `\
 Search Wikipedia pages.
 
@@ -65,7 +68,7 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
 }
 
 export class WikipediaGetPageTool implements Tool {
-  name = 'wikipedia_get_page';
+  name = WIKIPEDIA_GET_PAGE_TOOL_NAME;
   description = `\
 Get the introductory text of a Wikipedia page by pageId.
 

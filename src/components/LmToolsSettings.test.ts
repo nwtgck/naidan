@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import LmToolsSettings from './LmToolsSettings.vue';
+import {
+  WIKIPEDIA_GET_PAGE_TOOL_NAME,
+  WIKIPEDIA_SEARCH_TOOL_NAME,
+} from '@/services/tools/wikipedia';
 
 const mockIsFeatureEnabled = vi.fn();
 const mockSettings = ref({
@@ -82,6 +86,15 @@ describe('LmToolsSettings.vue', () => {
     expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(true);
   });
 
+  it('shows the wikipedia toggle', async () => {
+    mockIsFeatureEnabled.mockReturnValue(true);
+
+    const wrapper = mount(LmToolsSettings);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="tool-wikipedia-toggle"]').exists()).toBe(true);
+  });
+
   it('enables both wikipedia tools from the toggle', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
 
@@ -89,27 +102,27 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: 'wikipedia_search', enabled: true });
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: 'wikipedia_get_page', enabled: true });
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: true });
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: true });
   });
 
   it('disables both wikipedia tools from the toggle', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
     mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
-      name === 'wikipedia_search' || name === 'wikipedia_get_page');
+      name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
 
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: 'wikipedia_search', enabled: false });
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: 'wikipedia_get_page', enabled: false });
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: false });
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: false });
   });
 
   it('shows wikipedia as enabled only when both tools are enabled', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
     mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
-      name === 'wikipedia_search' || name === 'wikipedia_get_page');
+      name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
 
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
@@ -119,13 +132,23 @@ describe('LmToolsSettings.vue', () => {
 
   it('repairs a broken partial wikipedia state on toggle', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) => name === 'wikipedia_search');
+    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) => name === WIKIPEDIA_SEARCH_TOOL_NAME);
 
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: 'wikipedia_search', enabled: true });
-    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: 'wikipedia_get_page', enabled: true });
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: true });
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: true });
+  });
+
+  it('keeps calculator toggle behavior unchanged', async () => {
+    mockIsFeatureEnabled.mockReturnValue(true);
+
+    const wrapper = mount(LmToolsSettings);
+    await flushPromises();
+    await wrapper.find('[data-testid="tool-calculator-toggle"]').trigger('click');
+
+    expect(mockToggleTool).toHaveBeenCalledWith({ name: 'calculator' });
   });
 });
