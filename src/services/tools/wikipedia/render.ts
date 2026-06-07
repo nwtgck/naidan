@@ -5,23 +5,23 @@ export function renderWikipediaSearchMarkdown({
 }: {
   groups: WikipediaSearchGroup[];
 }): string {
-  return groups.map((group) => {
-    const lines = [`lang: ${group.lang}`, ''];
-    if (group.items.length === 0) {
-      lines.push('No results.');
-      return lines.join('\n');
+  const lines = ['lang\tpageId\ttitle'];
+
+  for (const group of groups) {
+    for (const item of group.items) {
+      lines.push(`${group.lang}\t${item.pageId}\t${sanitizeWikipediaSearchTsvField({ value: item.title })}`);
     }
+  }
 
-    group.items.forEach((item, index) => {
-      lines.push(`${index + 1}. title: ${item.title}`);
-      lines.push(`   pageId: ${item.pageId}`);
-      if (index < group.items.length - 1) {
-        lines.push('');
-      }
-    });
+  return lines.join('\n');
+}
 
-    return lines.join('\n');
-  }).join('\n\n');
+function sanitizeWikipediaSearchTsvField({
+  value,
+}: {
+  value: string;
+}): string {
+  return value.replace(/[\t\r\n]+/g, ' ');
 }
 
 export function renderWikipediaPageMarkdown({

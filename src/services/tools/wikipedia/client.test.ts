@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getWikipediaPage, searchWikipedia } from './client';
+import { getWikipediaPage, searchWikipedia, WIKIPEDIA_SEARCH_LIMIT } from './client';
 import { WIKIPEDIA_INLINE_CONTENT_MAX_LINES } from './binary-object';
 
 const { mockSaveWikipediaPageTextAsBinaryObject } = vi.hoisted(() => ({
@@ -92,6 +92,7 @@ describe('searchWikipedia', () => {
     const url = fetchImpl.mock.calls[0]?.[0] as URL;
     expect(url.searchParams.get('srprop')).toBe('');
     expect(url.searchParams.get('srinfo')).toBe('');
+    expect(url.searchParams.get('srlimit')).toBe(String(WIKIPEDIA_SEARCH_LIMIT));
   });
 
   it('normalizes only title and pageid from the response', async () => {

@@ -15,6 +15,8 @@ import type {
   WikipediaSearchResult,
 } from './types';
 
+export const WIKIPEDIA_SEARCH_LIMIT = 30;
+
 function createWikipediaApiUrl({ lang }: { lang: string }) {
   return new URL(`https://${lang}.wikipedia.org/w/api.php`);
 }
@@ -63,7 +65,7 @@ async function searchWikipediaLanguage({
   url.searchParams.set('formatversion', '2');
   url.searchParams.set('list', 'search');
   url.searchParams.set('srsearch', query);
-  url.searchParams.set('srlimit', '5');
+  url.searchParams.set('srlimit', String(WIKIPEDIA_SEARCH_LIMIT));
   url.searchParams.set('srnamespace', '0');
   url.searchParams.set('srprop', '');
   url.searchParams.set('srinfo', '');

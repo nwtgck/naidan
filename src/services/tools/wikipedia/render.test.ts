@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderWikipediaPageMarkdown, renderWikipediaSearchMarkdown } from './render';
 
 describe('renderWikipediaSearchMarkdown', () => {
-  it('renders lang once per group', () => {
+  it('renders TSV with a header row', () => {
     const result = renderWikipediaSearchMarkdown({
       groups: [{
         lang: 'en',
@@ -13,19 +13,21 @@ describe('renderWikipediaSearchMarkdown', () => {
       }],
     });
 
-    expect(result).toContain('lang: en');
-    expect(result.match(/lang: en/g)).toHaveLength(1);
+    expect(result.split('\n')[0]).toBe('lang\tpageId\ttitle');
+    expect(result).toContain('en\t25220\tQuantum computing');
+    expect(result).toContain('en\t12345\tQuantum computer');
   });
 
-  it('does not repeat lang on each item', () => {
+  it('renders one TSV row per candidate', () => {
     const result = renderWikipediaSearchMarkdown({
-      groups: [{
-        lang: 'en',
-        items: [{ title: 'Quantum computing', pageId: 25220 }],
-      }],
+      groups: [
+        { lang: 'ja', items: [{ title: '量子コンピュータ', pageId: 894134 }] },
+        { lang: 'en', items: [{ title: 'Quantum computing', pageId: 25220 }] },
+      ],
     });
 
-    expect(result).not.toContain('1. lang: en');
+    expect(result).toContain('ja\t894134\t量子コンピュータ');
+    expect(result).toContain('en\t25220\tQuantum computing');
   });
 
   it('does not include url or snippet metadata', () => {
@@ -42,31 +44,23 @@ describe('renderWikipediaSearchMarkdown', () => {
     expect(result).not.toContain('wordcount');
   });
 
-  it('renders multiple language groups', () => {
+  it('replaces tab and line breaks in titles with spaces', () => {
     const result = renderWikipediaSearchMarkdown({
-      groups: [
-        {
-          lang: 'en',
-          items: [{ title: 'Quantum computing', pageId: 25220 }],
-        },
-        {
-          lang: 'ja',
-          items: [{ title: '量子コンピュータ', pageId: 54321 }],
-        },
-      ],
+      groups: [{
+        lang: 'en',
+        items: [{ title: 'Quantum\tcomputing\r\nnotes', pageId: 25220 }],
+      }],
     });
 
-    expect(result).toContain('lang: en');
-    expect(result).toContain('lang: ja');
-    expect(result).toContain('title: 量子コンピュータ');
+    expect(result).toContain('en\t25220\tQuantum computing notes');
   });
 
-  it('renders empty groups as No results', () => {
+  it('renders only the header when there are no results', () => {
     const result = renderWikipediaSearchMarkdown({
       groups: [{ lang: 'en', items: [] }],
     });
 
-    expect(result).toContain('No results.');
+    expect(result).toBe('lang\tpageId\ttitle');
   });
 });
 
