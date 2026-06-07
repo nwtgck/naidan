@@ -3,6 +3,11 @@ import {
   MediaWikiExtractApiResponseSchema,
   MediaWikiSearchApiResponseSchema,
 } from './schemas';
+import {
+  countLines,
+  saveWikipediaPageTextAsBinaryObject,
+  WIKIPEDIA_INLINE_CONTENT_MAX_LINES,
+} from './binary-object'
 import type {
   WikipediaLanguageCode,
   WikipediaPageResult,
@@ -10,20 +15,10 @@ import type {
   WikipediaSearchResult,
 } from './types';
 
+export const WIKIPEDIA_SEARCH_LIMIT = 30;
+
 function createWikipediaApiUrl({ lang }: { lang: string }) {
   return new URL(`https://${lang}.wikipedia.org/w/api.php`);
-}
-
-function normalizeWikipediaExtractText({
-  text,
-}: {
-  text: string;
-}): string {
-  return text
-    .replace(/\r\n/g, '\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }
 
 async function fetchWikipediaJson({
@@ -70,7 +65,7 @@ async function searchWikipediaLanguage({
   url.searchParams.set('formatversion', '2');
   url.searchParams.set('list', 'search');
   url.searchParams.set('srsearch', query);
-  url.searchParams.set('srlimit', '5');
+  url.searchParams.set('srlimit', String(WIKIPEDIA_SEARCH_LIMIT));
   url.searchParams.set('srnamespace', '0');
   url.searchParams.set('srprop', '');
   url.searchParams.set('srinfo', '');
@@ -165,10 +160,33 @@ export async function getWikipediaPage({
     throw new Error(`Wikipedia page not found for pageId ${pageId}`);
   }
 
-  return {
+  const content = page.extract
+  const lineCount = countLines({ text: content })
+  if (lineCount <= WIKIPEDIA_INLINE_CONTENT_MAX_LINES) {
+    return {
+      kind: 'inline',
+      lang,
+      pageId: page.pageid,
+      title: page.title,
+      content,
+    }
+  }
+
+  const saved = await saveWikipediaPageTextAsBinaryObject({
     lang,
     pageId: page.pageid,
     title: page.title,
-    content: normalizeWikipediaExtractText({ text: page.extract }),
-  };
+    content,
+    lineCount,
+  })
+
+  return {
+    kind: 'binary_object',
+    lang,
+    pageId: page.pageid,
+    title: page.title,
+    lineCount: saved.lineCount,
+    byteLength: saved.byteLength,
+    sysfsNaidanDataFilePath: saved.sysfsNaidanDataFilePath,
+  }
 }

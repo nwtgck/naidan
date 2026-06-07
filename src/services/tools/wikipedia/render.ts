@@ -5,23 +5,23 @@ export function renderWikipediaSearchMarkdown({
 }: {
   groups: WikipediaSearchGroup[];
 }): string {
-  return groups.map((group) => {
-    const lines = [`lang: ${group.lang}`, ''];
-    if (group.items.length === 0) {
-      lines.push('No results.');
-      return lines.join('\n');
+  const lines = ['lang\tpageId\ttitle'];
+
+  for (const group of groups) {
+    for (const item of group.items) {
+      lines.push(`${group.lang}\t${item.pageId}\t${sanitizeWikipediaSearchTsvField({ value: item.title })}`);
     }
+  }
 
-    group.items.forEach((item, index) => {
-      lines.push(`${index + 1}. title: ${item.title}`);
-      lines.push(`   pageId: ${item.pageId}`);
-      if (index < group.items.length - 1) {
-        lines.push('');
-      }
-    });
+  return lines.join('\n');
+}
 
-    return lines.join('\n');
-  }).join('\n\n');
+function sanitizeWikipediaSearchTsvField({
+  value,
+}: {
+  value: string;
+}): string {
+  return value.replace(/[\t\r\n]+/g, ' ');
 }
 
 export function renderWikipediaPageMarkdown({
@@ -29,12 +29,34 @@ export function renderWikipediaPageMarkdown({
 }: {
   page: WikipediaPageResult;
 }): string {
-  return `\
+  switch (page.kind) {
+  case 'inline':
+    return `\
 lang: ${page.lang}
 pageId: ${page.pageId}
 title: ${page.title}
 
 BEGIN CONTENT
 ${page.content}
-END CONTENT`;
+END CONTENT`
+  case 'binary_object':
+    return `\
+lang: ${page.lang}
+pageId: ${page.pageId}
+title: ${page.title}
+
+Wikipedia page text was saved to sysfs Naidan:
+${page.sysfsNaidanDataFilePath}
+
+lines: ${page.lineCount}
+bytes: ${page.byteLength}
+
+Command hints for reducing context:
+grep -nF -C 20 'keyword' <path>
+awk 'NR>80{exit}{print NR":"$0}' <path>`
+  default: {
+    const neverPage: never = page
+    throw new Error(`Unhandled Wikipedia page result: ${String(neverPage)}`)
+  }
+  }
 }

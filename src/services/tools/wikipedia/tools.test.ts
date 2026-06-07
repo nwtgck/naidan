@@ -96,6 +96,7 @@ describe('WikipediaGetPageTool', () => {
 
   it('delegates to client and render', async () => {
     mockGetWikipediaPage.mockResolvedValue({
+      kind: 'inline',
       lang: 'en',
       pageId: 25220,
       title: 'Quantum computing',
@@ -116,6 +117,7 @@ describe('WikipediaGetPageTool', () => {
     });
     expect(mockRenderWikipediaPageMarkdown).toHaveBeenCalledWith({
       page: {
+        kind: 'inline',
         lang: 'en',
         pageId: 25220,
         title: 'Quantum computing',

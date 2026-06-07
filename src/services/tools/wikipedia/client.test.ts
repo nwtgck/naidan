@@ -1,5 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
-import { getWikipediaPage, searchWikipedia } from './client';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getWikipediaPage, searchWikipedia, WIKIPEDIA_SEARCH_LIMIT } from './client';
+import { WIKIPEDIA_INLINE_CONTENT_MAX_LINES } from './binary-object';
+
+const { mockSaveWikipediaPageTextAsBinaryObject } = vi.hoisted(() => ({
+  mockSaveWikipediaPageTextAsBinaryObject: vi.fn(),
+}));
+
+vi.mock('./binary-object', async () => {
+  const actual = await vi.importActual<typeof import('./binary-object')>('./binary-object');
+  return {
+    ...actual,
+    saveWikipediaPageTextAsBinaryObject: mockSaveWikipediaPageTextAsBinaryObject,
+  };
+});
 
 function createJsonResponse({ body }: { body: unknown }) {
   return new Response(JSON.stringify(body), {
@@ -9,6 +22,10 @@ function createJsonResponse({ body }: { body: unknown }) {
 }
 
 describe('searchWikipedia', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('requests only the specified language', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(createJsonResponse({
       body: {
@@ -75,6 +92,7 @@ describe('searchWikipedia', () => {
     const url = fetchImpl.mock.calls[0]?.[0] as URL;
     expect(url.searchParams.get('srprop')).toBe('');
     expect(url.searchParams.get('srinfo')).toBe('');
+    expect(url.searchParams.get('srlimit')).toBe(String(WIKIPEDIA_SEARCH_LIMIT));
   });
 
   it('normalizes only title and pageid from the response', async () => {
@@ -141,6 +159,10 @@ describe('searchWikipedia', () => {
 });
 
 describe('getWikipediaPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('uses pageids and not titles', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(createJsonResponse({
       body: {
@@ -210,6 +232,7 @@ describe('getWikipediaPage', () => {
     });
 
     expect(result).toEqual({
+      kind: 'inline',
       lang: 'en',
       pageId: 25220,
       title: 'Quantum computing',
@@ -217,7 +240,7 @@ describe('getWikipediaPage', () => {
     });
   });
 
-  it('normalizes repeated blank lines and trailing spaces in extracts', async () => {
+  it('returns inline content when the line count is within the threshold', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(createJsonResponse({
       body: {
         query: {
@@ -226,12 +249,8 @@ describe('getWikipediaPage', () => {
             ns: 0,
             title: 'Quantum computing',
             extract: `\
-Line one   
-
-
-
-Line two	
-`,
+Line 1
+Line 2`,
           }],
         },
       },
@@ -244,10 +263,61 @@ Line two
       fetchImpl,
     });
 
-    expect(result.content).toBe(`\
-Line one
+    expect(result).toEqual({
+      kind: 'inline',
+      lang: 'en',
+      pageId: 25220,
+      title: 'Quantum computing',
+      content: `\
+Line 1
+Line 2`,
+    });
+    expect(mockSaveWikipediaPageTextAsBinaryObject).not.toHaveBeenCalled();
+  });
 
-Line two`);
+  it('saves long pages as binary objects instead of returning inline content', async () => {
+    mockSaveWikipediaPageTextAsBinaryObject.mockResolvedValue({
+      lineCount: WIKIPEDIA_INLINE_CONTENT_MAX_LINES + 1,
+      byteLength: 4096,
+      sysfsNaidanDataFilePath: '/sys/fs/naidan/binary-objects/by-id/bin-1/data',
+    });
+    const extract = `${'line\n'.repeat(WIKIPEDIA_INLINE_CONTENT_MAX_LINES)}overflow`;
+    const fetchImpl = vi.fn().mockResolvedValue(createJsonResponse({
+      body: {
+        query: {
+          pages: [{
+            pageid: 25220,
+            ns: 0,
+            title: 'Quantum computing',
+            extract,
+          }],
+        },
+      },
+    }));
+
+    const result = await getWikipediaPage({
+      lang: 'en',
+      pageId: 25220,
+      signal: undefined,
+      fetchImpl,
+    });
+
+    expect(mockSaveWikipediaPageTextAsBinaryObject).toHaveBeenCalledWith({
+      lang: 'en',
+      pageId: 25220,
+      title: 'Quantum computing',
+      content: extract,
+      lineCount: WIKIPEDIA_INLINE_CONTENT_MAX_LINES + 1,
+    });
+    expect(result).toEqual({
+      kind: 'binary_object',
+      lang: 'en',
+      pageId: 25220,
+      title: 'Quantum computing',
+      lineCount: WIKIPEDIA_INLINE_CONTENT_MAX_LINES + 1,
+      byteLength: 4096,
+      sysfsNaidanDataFilePath: '/sys/fs/naidan/binary-objects/by-id/bin-1/data',
+    });
   });
 
   it('throws on invalid API response', async () => {

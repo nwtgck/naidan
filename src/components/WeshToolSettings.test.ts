@@ -16,6 +16,8 @@ const mockSetToolEnabled = vi.fn();
 const mockToggleTool = vi.fn();
 const mockGetNaidanSysfsMountSelection = vi.fn();
 const mockSetNaidanSysfsMountSelection = vi.fn();
+const mockDisableNaidanSysfsForCurrentChat = vi.fn();
+const mockDisableShellToolForCurrentChat = vi.fn();
 const mockCurrentChat = ref<{ id: string } | null>({ id: 'chat-1' });
 const mockSettings = ref({
   storageType: 'opfs' as 'opfs' | 'local' | 'memory',
@@ -34,6 +36,13 @@ vi.mock('@/composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
     getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
     setNaidanSysfsMountSelection: mockSetNaidanSysfsMountSelection,
+  }),
+}));
+
+vi.mock('@/composables/useToolDependencyActions', () => ({
+  useToolDependencyActions: () => ({
+    disableNaidanSysfsForCurrentChat: mockDisableNaidanSysfsForCurrentChat,
+    disableShellToolForCurrentChat: mockDisableShellToolForCurrentChat,
   }),
 }));
 
@@ -60,6 +69,8 @@ describe('WeshToolSettings.vue', () => {
     mockToggleTool.mockReset();
     mockGetNaidanSysfsMountSelection.mockReset();
     mockSetNaidanSysfsMountSelection.mockReset();
+    mockDisableNaidanSysfsForCurrentChat.mockReset();
+    mockDisableShellToolForCurrentChat.mockReset();
     mockCurrentChat.value = { id: 'chat-1' };
     mockSettings.value = {
       storageType: 'opfs',
@@ -130,6 +141,15 @@ describe('WeshToolSettings.vue', () => {
     expect(mockSetNaidanSysfsMountSelection).toHaveBeenCalledWith({ chatId: 'chat-1', selection: 'current_chat_only' });
   });
 
+  it('disables wikipedia tools when shell in browser is turned off', async () => {
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="tool-wesh-toggle"]').trigger('click');
+
+    expect(mockDisableShellToolForCurrentChat).toHaveBeenCalledWith({});
+  });
+
   it('defaults sysfs mount enabling to current_chat_only', async () => {
     const wrapper = mount(WeshToolSettings);
     await flushPromises();
@@ -170,5 +190,16 @@ describe('WeshToolSettings.vue', () => {
 
     expect(mockToggleTool).toHaveBeenCalledWith({ name: 'shell_execute' });
     expect(mockSetNaidanSysfsMountSelection).not.toHaveBeenCalledWith({ chatId: 'chat-1', selection: 'current_chat_only' });
+  });
+
+  it('disables wikipedia tools when sysfs is turned off', async () => {
+    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+
+    const wrapper = mount(WeshToolSettings);
+    await flushPromises();
+
+    await wrapper.find('[data-testid="naidan-sysfs-toggle"]').trigger('click');
+
+    expect(mockDisableNaidanSysfsForCurrentChat).toHaveBeenCalledWith({});
   });
 });
