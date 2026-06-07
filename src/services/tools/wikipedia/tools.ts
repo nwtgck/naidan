@@ -70,10 +70,10 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
 export class WikipediaGetPageTool implements Tool {
   name = WIKIPEDIA_GET_PAGE_TOOL_NAME;
   description = `\
-Get the introductory text of a Wikipedia page by pageId.
+Get the plain-text extract of a Wikipedia page by pageId.
 
 Use pageId and lang from wikipedia_search results.
-This tool returns a short introductory excerpt only.`;
+This tool returns the available plain-text extract, not rendered HTML or wikitext.`;
   parametersSchema = WikipediaGetPageArgsSchema;
 
   async execute({

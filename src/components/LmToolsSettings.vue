@@ -79,7 +79,8 @@ defineExpose({
       class="px-2 pt-1 pb-2 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400"
       data-testid="tool-wikipedia-note"
     >
-      Search keywords are sent to Wikipedia without additional user approval.
+      Search keywords are sent to Wikipedia
+      <span class="text-gray-900 dark:text-white" style="font-weight: 700;">without additional user approval</span>.
     </div>
     <WeshToolSettings />
   </div>

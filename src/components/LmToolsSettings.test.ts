@@ -107,6 +107,9 @@ describe('LmToolsSettings.vue', () => {
     expect(wrapper.get('[data-testid="tool-wikipedia-note"]').text()).toBe(
       'Search keywords are sent to Wikipedia without additional user approval.',
     );
+    expect(wrapper.get('[data-testid="tool-wikipedia-note"] span').text()).toBe(
+      'without additional user approval',
+    );
   });
 
   it('enables both wikipedia tools from the toggle', async () => {

@@ -14,6 +14,18 @@ function createWikipediaApiUrl({ lang }: { lang: string }) {
   return new URL(`https://${lang}.wikipedia.org/w/api.php`);
 }
 
+function normalizeWikipediaExtractText({
+  text,
+}: {
+  text: string;
+}): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function fetchWikipediaJson({
   url,
   signal,
@@ -133,8 +145,7 @@ export async function getWikipediaPage({
   url.searchParams.set('formatversion', '2');
   url.searchParams.set('prop', 'extracts');
   url.searchParams.set('explaintext', '1');
-  url.searchParams.set('exintro', '1');
-  url.searchParams.set('exchars', '800');
+  url.searchParams.set('exsectionformat', 'plain');
   url.searchParams.set('pageids', String(pageId));
 
   const raw = await fetchWikipediaJson({
@@ -156,6 +167,6 @@ export async function getWikipediaPage({
     lang,
     pageId: page.pageid,
     title: page.title,
-    content: page.extract,
+    content: normalizeWikipediaExtractText({ text: page.extract }),
   };
 }
