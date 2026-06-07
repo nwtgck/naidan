@@ -39,6 +39,8 @@ function normalizeSupportedWikipediaLanguage({
   lang: string | undefined;
 }): WikipediaLanguageCode | undefined {
   if (lang === undefined) {
+    // This currently has no tool-driven callers because wikipedia_search requires lang,
+    // but keep the router fallback behavior for future internal use.
     return undefined;
   }
 

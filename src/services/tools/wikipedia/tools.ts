@@ -17,8 +17,7 @@ Search Wikipedia pages.
 
 Use a concise search query. Do not include private text, logs, URLs, emails, IDs, secrets, or unnecessarily long user text.
 
-If lang is provided, search that Wikipedia language edition only.
-If lang is omitted, Naidan selects up to two likely Wikipedia language editions internally.
+Specify lang explicitly and search that Wikipedia language edition only.
 The result contains only title and pageId. Use wikipedia_get_page to read a page.`;
   parametersSchema = WikipediaSearchArgsSchema;
 

@@ -37,7 +37,7 @@ describe('WikipediaSearchTool', () => {
     const tool = new WikipediaSearchTool();
 
     const result = await tool.execute({
-      args: { query: '' },
+      args: { query: 'quantum computer' },
     });
 
     expect(result.status).toBe('error');

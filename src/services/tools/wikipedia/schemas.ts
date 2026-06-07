@@ -44,8 +44,8 @@ export const WikipediaLanguageCodeSchema = z.union([
 ]);
 
 export const WikipediaSearchArgsSchema = z.object({
-  lang: WikipediaLanguageCodeSchema.optional().describe(
-    'Optional Wikipedia language code. Known examples: en, ja, zh, ko, de, fr, es, it, pt, ru, ar, hi, id, tr, vi, th, pl, nl, uk, he. Other Wikipedia language codes are also accepted.',
+  lang: WikipediaLanguageCodeSchema.describe(
+    'Wikipedia language code. Known examples: en, ja, zh, ko, de, fr, es, it, pt, ru, ar, hi, id, tr, vi, th, pl, nl, uk, he. Other Wikipedia language codes are also accepted.',
   ),
   query: z.string().min(1).max(120).describe(
     'Search query for Wikipedia.',

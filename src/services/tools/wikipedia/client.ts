@@ -107,6 +107,8 @@ export async function searchWikipedia({
   signal: AbortSignal | undefined;
   fetchImpl: typeof fetch;
 }): Promise<WikipediaSearchResult> {
+  // Tools currently require lang explicitly, so the undefined branch is unused today.
+  // Keep the internal router fallback for future call sites that may want heuristic language selection.
   const languages = lang !== undefined
     ? [lang]
     : resolveWikipediaSearchLanguages({
