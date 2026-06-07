@@ -121,6 +121,9 @@ describe('renderWikipediaPageMarkdown', () => {
     expect(result).toContain('/sys/fs/naidan/binary-objects/by-id/bin-1/data');
     expect(result).toContain('lines: 1234');
     expect(result).toContain('bytes: 456789');
+    expect(result).toContain('Command hints for reducing context:');
+    expect(result).toContain(`grep -nF -C 20 'keyword' <path>`);
+    expect(result).toContain(`awk 'NR>80{exit}{print NR":"$0}' <path>`);
     expect(result).not.toContain('BEGIN CONTENT');
     expect(result).not.toContain('metadata.json');
     expect(result).not.toContain('metadata.md');

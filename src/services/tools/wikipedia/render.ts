@@ -49,7 +49,11 @@ Wikipedia page text was saved to sysfs Naidan:
 ${page.sysfsNaidanDataFilePath}
 
 lines: ${page.lineCount}
-bytes: ${page.byteLength}`
+bytes: ${page.byteLength}
+
+Command hints for reducing context:
+grep -nF -C 20 'keyword' <path>
+awk 'NR>80{exit}{print NR":"$0}' <path>`
   default: {
     const neverPage: never = page
     throw new Error(`Unhandled Wikipedia page result: ${String(neverPage)}`)
