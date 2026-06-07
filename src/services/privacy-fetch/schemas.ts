@@ -92,10 +92,7 @@ export const privacyFetchErrorMessageSchema = z.object({
   code: z.enum([
     'fetch_failed',
     'aborted',
-    'response_read_failed',
-    'timeout',
-    'broker_not_ready',
-    'invalid_response',
+    'duplicate_request_id',
   ]),
   message: z.string().min(1),
 }).strict()

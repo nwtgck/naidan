@@ -14,7 +14,7 @@ vi.mock('./binary-object', async () => {
   }
 })
 
-function createRequestJsonImpl({
+function createRequestResponseImpl({
   impl,
 }: {
   impl: (url: URL) => unknown;
@@ -32,7 +32,7 @@ describe('searchWikipedia', () => {
   })
 
   it('requests only the specified language', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({
         query: {
           search: [{ ns: 0, title: 'Quantum computing', pageid: 25220 }],
@@ -45,11 +45,11 @@ describe('searchWikipedia', () => {
       query: 'quantum computer',
       contextLanguage: undefined,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
-    expect(requestJsonImpl).toHaveBeenCalledTimes(1)
-    expect(String(requestJsonImpl.mock.calls[0]?.[0]?.url)).toContain('https://en.wikipedia.org/w/api.php')
+    expect(requestResponseImpl).toHaveBeenCalledTimes(1)
+    expect(String(requestResponseImpl.mock.calls[0]?.[0]?.url)).toContain('https://en.wikipedia.org/w/api.php')
     expect(result).toEqual({
       groups: [{
         lang: 'en',
@@ -59,7 +59,7 @@ describe('searchWikipedia', () => {
   })
 
   it('requests routed languages when lang is omitted', async () => {
-    const requestJsonImpl = vi.fn()
+    const requestResponseImpl = vi.fn()
       .mockResolvedValueOnce({ query: { search: [{ ns: 0, title: '量子コンピュータ', pageid: 100 }] } })
       .mockResolvedValueOnce({ query: { search: [{ ns: 0, title: 'Quantum computing', pageid: 25220 }] } })
 
@@ -68,17 +68,17 @@ describe('searchWikipedia', () => {
       query: '量子コンピュータ',
       contextLanguage: undefined,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
-    expect(requestJsonImpl).toHaveBeenCalledTimes(2)
-    expect(String(requestJsonImpl.mock.calls[0]?.[0]?.url)).toContain('https://ja.wikipedia.org/w/api.php')
-    expect(String(requestJsonImpl.mock.calls[1]?.[0]?.url)).toContain('https://en.wikipedia.org/w/api.php')
+    expect(requestResponseImpl).toHaveBeenCalledTimes(2)
+    expect(String(requestResponseImpl.mock.calls[0]?.[0]?.url)).toContain('https://ja.wikipedia.org/w/api.php')
+    expect(String(requestResponseImpl.mock.calls[1]?.[0]?.url)).toContain('https://en.wikipedia.org/w/api.php')
     expect(result.groups).toHaveLength(2)
   })
 
   it('includes srprop and srinfo parameters', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({ query: { search: [] } }),
     })
 
@@ -87,17 +87,17 @@ describe('searchWikipedia', () => {
       query: 'quantum computer',
       contextLanguage: undefined,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
-    const url = requestJsonImpl.mock.calls[0]?.[0]?.url as URL
+    const url = requestResponseImpl.mock.calls[0]?.[0]?.url as URL
     expect(url.searchParams.get('srprop')).toBe('')
     expect(url.searchParams.get('srinfo')).toBe('')
     expect(url.searchParams.get('srlimit')).toBe(String(WIKIPEDIA_SEARCH_LIMIT))
   })
 
   it('normalizes only title and pageid from the response', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({
         query: {
           search: [{
@@ -116,7 +116,7 @@ describe('searchWikipedia', () => {
       query: 'quantum computer',
       contextLanguage: undefined,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
     expect(result.groups[0]).toEqual({
@@ -126,7 +126,7 @@ describe('searchWikipedia', () => {
   })
 
   it('ignores continue fields', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({
         continue: { sroffset: 5, continue: '-||' },
         query: { search: [] },
@@ -138,14 +138,14 @@ describe('searchWikipedia', () => {
       query: 'quantum computer',
       contextLanguage: undefined,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
     expect(result).toEqual({ groups: [{ lang: 'en', items: [] }] })
   })
 
   it('throws on invalid API response', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({ query: { wrong: [] } }),
     })
 
@@ -154,7 +154,7 @@ describe('searchWikipedia', () => {
       query: 'quantum computer',
       contextLanguage: undefined,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })).rejects.toThrow(/validation failed/i)
   })
 })
@@ -165,7 +165,7 @@ describe('getWikipediaPage', () => {
   })
 
   it('uses pageids and not titles', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({
         query: {
           pages: [{ pageid: 25220, ns: 0, title: 'Quantum computing', extract: 'Intro' }],
@@ -177,16 +177,16 @@ describe('getWikipediaPage', () => {
       lang: 'en',
       pageId: 25220,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
-    const url = requestJsonImpl.mock.calls[0]?.[0]?.url as URL
+    const url = requestResponseImpl.mock.calls[0]?.[0]?.url as URL
     expect(url.searchParams.get('pageids')).toBe('25220')
     expect(url.searchParams.has('titles')).toBe(false)
   })
 
   it('requests plain-text extracts without intro or char limits', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({
         query: {
           pages: [{ pageid: 25220, ns: 0, title: 'Quantum computing', extract: 'Intro' }],
@@ -198,10 +198,10 @@ describe('getWikipediaPage', () => {
       lang: 'en',
       pageId: 25220,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
-    const url = requestJsonImpl.mock.calls[0]?.[0]?.url as URL
+    const url = requestResponseImpl.mock.calls[0]?.[0]?.url as URL
     expect(url.searchParams.get('prop')).toBe('extracts')
     expect(url.searchParams.get('explaintext')).toBe('1')
     expect(url.searchParams.get('exsectionformat')).toBe('plain')
@@ -211,7 +211,7 @@ describe('getWikipediaPage', () => {
   })
 
   it('normalizes only pageid title and extract', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({
         query: {
           pages: [{
@@ -229,7 +229,7 @@ describe('getWikipediaPage', () => {
       lang: 'en',
       pageId: 25220,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
     expect(result).toEqual({
@@ -242,7 +242,7 @@ describe('getWikipediaPage', () => {
   })
 
   it('returns inline content when the line count is within the threshold', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({
         query: {
           pages: [{
@@ -261,7 +261,7 @@ Line 2`,
       lang: 'en',
       pageId: 25220,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
     expect(result).toEqual({
@@ -283,7 +283,7 @@ Line 2`,
       sysfsNaidanDataFilePath: '/sys/fs/naidan/binary-objects/by-id/bin-1/data',
     })
     const extract = `${'line\n'.repeat(WIKIPEDIA_INLINE_CONTENT_MAX_LINES)}overflow`
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({
         query: {
           pages: [{
@@ -300,7 +300,7 @@ Line 2`,
       lang: 'en',
       pageId: 25220,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })
 
     expect(mockSaveWikipediaPageTextAsBinaryObject).toHaveBeenCalledWith({
@@ -322,7 +322,7 @@ Line 2`,
   })
 
   it('throws on invalid API response', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({ query: { pages: [{ title: 'Missing pageid' }] } }),
     })
 
@@ -330,12 +330,12 @@ Line 2`,
       lang: 'en',
       pageId: 25220,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })).rejects.toThrow(/validation failed/i)
   })
 
   it('throws when the page is not found', async () => {
-    const requestJsonImpl = createRequestJsonImpl({
+    const requestResponseImpl = createRequestResponseImpl({
       impl: () => ({ query: { pages: [] } }),
     })
 
@@ -343,7 +343,7 @@ Line 2`,
       lang: 'en',
       pageId: 25220,
       signal: undefined,
-      requestJsonImpl,
+      requestResponseImpl,
     })).rejects.toThrow(/not found/i)
   })
 })

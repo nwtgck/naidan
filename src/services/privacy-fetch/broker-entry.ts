@@ -87,6 +87,15 @@ async function handleRequestMessage({
 }: {
   message: PrivacyFetchRequestMessage;
 }): Promise<void> {
+  if (activeRequests.has(message.requestId)) {
+    sendErrorMessage({
+      requestId: message.requestId,
+      code: 'duplicate_request_id',
+      message: `Privacy fetch requestId is already active: ${message.requestId}`,
+    })
+    return
+  }
+
   const validationResult = validatePrivacyFetchUrl({
     urlText: message.url,
   })
@@ -147,6 +156,10 @@ async function handleRequestMessage({
 }
 
 window.addEventListener('message', (event) => {
+  if (event.source !== window.parent) {
+    return
+  }
+
   const parsedRequest = privacyFetchRequestMessageSchema.safeParse(event.data)
   if (parsedRequest.success) {
     void handleRequestMessage({

@@ -7,6 +7,7 @@ import type {
 
 const WIKIPEDIA_POLICY_NAME = 'wikipedia_api'
 const WIKIPEDIA_MAX_SEARCH_LIMIT = 30
+const WIKIPEDIA_LANGUAGE_LABEL_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i
 
 function createRejectedResult({
   code,
@@ -49,7 +50,7 @@ function isValidWikipediaHostname({
     return false
   }
 
-  return lang !== undefined && /^[a-z0-9-]+$/i.test(lang)
+  return lang !== undefined && WIKIPEDIA_LANGUAGE_LABEL_PATTERN.test(lang)
 }
 
 function rejectIfDuplicateQueryParameter({

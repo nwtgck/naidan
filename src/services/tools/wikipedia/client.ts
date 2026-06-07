@@ -1,5 +1,5 @@
 import { resolveWikipediaSearchLanguages } from './language-routing';
-import { privacyFetchJson } from '@/services/privacy-fetch';
+import { privacyFetch } from '@/services/privacy-fetch';
 import {
   MediaWikiExtractApiResponseSchema,
   MediaWikiSearchApiResponseSchema,
@@ -18,7 +18,7 @@ import type {
 
 export const WIKIPEDIA_SEARCH_LIMIT = 30;
 
-type RequestWikipediaJsonImpl = ({
+type RequestWikipediaResponseImpl = ({
   url,
   signal,
 }: {
@@ -30,7 +30,7 @@ function createWikipediaApiUrl({ lang }: { lang: string }) {
   return new URL(`https://${lang}.wikipedia.org/w/api.php`);
 }
 
-async function requestWikipediaJson({
+async function requestWikipediaResponse({
   url,
   signal,
 }: {
@@ -38,11 +38,12 @@ async function requestWikipediaJson({
   signal: AbortSignal | undefined;
 }): Promise<unknown> {
   try {
-    return await privacyFetchJson({
+    const response = await privacyFetch({
       url: url.toString(),
       signal,
-      timeoutMs: undefined,
     });
+    const text = new TextDecoder().decode(response.body);
+    return JSON.parse(text) as unknown;
   } catch (error) {
     throw new Error(`Wikipedia request failed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -52,12 +53,12 @@ async function searchWikipediaLanguage({
   lang,
   query,
   signal,
-  requestJsonImpl,
+  requestResponseImpl,
 }: {
   lang: WikipediaLanguageCode;
   query: string;
   signal: AbortSignal | undefined;
-  requestJsonImpl: RequestWikipediaJsonImpl | undefined;
+  requestResponseImpl: RequestWikipediaResponseImpl | undefined;
 }): Promise<WikipediaSearchGroup> {
   const url = createWikipediaApiUrl({ lang });
   url.searchParams.set('origin', '*');
@@ -71,7 +72,7 @@ async function searchWikipediaLanguage({
   url.searchParams.set('srprop', '');
   url.searchParams.set('srinfo', '');
 
-  const raw = await (requestJsonImpl ?? requestWikipediaJson)({
+  const raw = await (requestResponseImpl ?? requestWikipediaResponse)({
     url,
     signal,
   });
@@ -94,13 +95,13 @@ export async function searchWikipedia({
   query,
   contextLanguage,
   signal,
-  requestJsonImpl,
+  requestResponseImpl,
 }: {
   lang: string | undefined;
   query: string;
   contextLanguage: string | undefined;
   signal: AbortSignal | undefined;
-  requestJsonImpl: RequestWikipediaJsonImpl | undefined;
+  requestResponseImpl: RequestWikipediaResponseImpl | undefined;
 }): Promise<WikipediaSearchResult> {
   // Tools currently require lang explicitly, so the undefined branch is unused today.
   // Keep the internal router fallback for future call sites that may want heuristic language selection.
@@ -117,7 +118,7 @@ export async function searchWikipedia({
       lang: searchLang,
       query,
       signal,
-      requestJsonImpl,
+      requestResponseImpl,
     }));
   }
 
@@ -128,12 +129,12 @@ export async function getWikipediaPage({
   lang,
   pageId,
   signal,
-  requestJsonImpl,
+  requestResponseImpl,
 }: {
   lang: string;
   pageId: number;
   signal: AbortSignal | undefined;
-  requestJsonImpl: RequestWikipediaJsonImpl | undefined;
+  requestResponseImpl: RequestWikipediaResponseImpl | undefined;
 }): Promise<WikipediaPageResult> {
   const url = createWikipediaApiUrl({ lang });
   url.searchParams.set('origin', '*');
@@ -145,7 +146,7 @@ export async function getWikipediaPage({
   url.searchParams.set('exsectionformat', 'plain');
   url.searchParams.set('pageids', String(pageId));
 
-  const raw = await (requestJsonImpl ?? requestWikipediaJson)({
+  const raw = await (requestResponseImpl ?? requestWikipediaResponse)({
     url,
     signal,
   });

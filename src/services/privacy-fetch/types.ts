@@ -2,8 +2,7 @@ import type { PRIVACY_FETCH_PROTOCOL } from './protocol'
 
 export type PrivacyFetchRequest = {
   url: string;
-  signal: AbortSignal | undefined;
-  timeoutMs: number | undefined;
+  signal?: AbortSignal;
 }
 
 export type PrivacyFetchHeaderEntries = Array<[string, string]>
@@ -100,10 +99,7 @@ export type PrivacyFetchRejectedMessage = {
 export type PrivacyFetchErrorCode =
   | 'fetch_failed'
   | 'aborted'
-  | 'response_read_failed'
-  | 'timeout'
-  | 'broker_not_ready'
-  | 'invalid_response'
+  | 'duplicate_request_id'
 
 export type PrivacyFetchErrorMessage = {
   protocol: typeof PRIVACY_FETCH_PROTOCOL;

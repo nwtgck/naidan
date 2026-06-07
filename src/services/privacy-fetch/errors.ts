@@ -1,5 +1,3 @@
-export const PRIVACY_FETCH_DEFAULT_TIMEOUT_MS = 30_000
-
 export function createPrivacyFetchError({
   message,
 }: {

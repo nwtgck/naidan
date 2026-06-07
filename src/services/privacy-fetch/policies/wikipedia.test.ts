@@ -20,6 +20,21 @@ describe('validateWikipediaPrivacyFetchUrl', () => {
     })
   })
 
+  it('rejects malformed language labels', () => {
+    for (const hostname of [
+      '-.wikipedia.org',
+      'en-.wikipedia.org',
+      '-en.wikipedia.org',
+    ]) {
+      expect(validateWikipediaPrivacyFetchUrl({
+        url: new URL(`https://${hostname}/w/api.php?origin=*&action=query&format=json&formatversion=2&list=search&srsearch=quantum&srlimit=30&srnamespace=0&srprop=&srinfo=`),
+      })).toMatchObject({
+        ok: false,
+        code: 'invalid_hostname',
+      })
+    }
+  })
+
   it('rejects unsupported query parameters like callback', () => {
     expect(validateWikipediaPrivacyFetchUrl({
       url: new URL('https://en.wikipedia.org/w/api.php?origin=*&action=query&format=json&formatversion=2&prop=extracts&explaintext=1&exsectionformat=plain&pageids=25220&callback=x'),
