@@ -3,21 +3,17 @@ import { computed } from 'vue';
 import { BookOpenIcon, CalculatorIcon, InfoIcon } from 'lucide-vue-next';
 import { useChatTools } from '@/composables/useChatTools';
 import { useToolDependencyActions } from '@/composables/useToolDependencyActions';
-import {
-  WIKIPEDIA_GET_PAGE_TOOL_NAME,
-  WIKIPEDIA_SEARCH_TOOL_NAME,
-} from '@/services/tools/wikipedia';
 import WeshToolSettings from './WeshToolSettings.vue';
 
 const { isToolEnabled, toggleTool } = useChatTools();
 const {
+  isWikipediaEffectivelyEnabledForCurrentChat,
   enableWikipediaToolsForCurrentChat,
   disableWikipediaToolsForCurrentChat,
 } = useToolDependencyActions();
 
 const isWikipediaEnabled = computed(() => {
-  return isToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME })
-    && isToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME });
+  return isWikipediaEffectivelyEnabledForCurrentChat({});
 });
 
 function toggleWikipedia(_args: Record<never, never>): void {

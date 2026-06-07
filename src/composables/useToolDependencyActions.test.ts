@@ -8,12 +8,14 @@ import {
 } from '@/services/tools/wikipedia'
 
 const mockSetToolEnabled = vi.fn()
+const mockIsToolEnabled = vi.fn()
 const mockGetNaidanSysfsMountSelection = vi.fn()
 const mockSetNaidanSysfsMountSelection = vi.fn()
 const mockCurrentChat = ref<{ id: string } | null>({ id: 'chat-1' })
 
 vi.mock('@/composables/useChatTools', () => ({
   useChatTools: () => ({
+    isToolEnabled: mockIsToolEnabled,
     setToolEnabled: mockSetToolEnabled,
   }),
 }))
@@ -34,6 +36,7 @@ describe('useToolDependencyActions', () => {
     vi.clearAllMocks()
     mockCurrentChat.value = { id: 'chat-1' }
     mockGetNaidanSysfsMountSelection.mockReturnValue('none')
+    mockIsToolEnabled.mockReturnValue(false)
     vi.mocked(useCurrentChatState).mockReturnValue({
       currentChat: computed(() => mockCurrentChat.value),
       currentChatGroup: computed(() => null),
@@ -71,6 +74,29 @@ describe('useToolDependencyActions', () => {
     expect(mockSetNaidanSysfsMountSelection).not.toHaveBeenCalled()
   })
 
+  it('reports wikipedia as effectively enabled only when shell, sysfs, and both tools are enabled', () => {
+    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only')
+    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
+      name === 'shell_execute'
+      || name === WIKIPEDIA_SEARCH_TOOL_NAME
+      || name === WIKIPEDIA_GET_PAGE_TOOL_NAME)
+
+    const { isWikipediaEffectivelyEnabledForCurrentChat } = useToolDependencyActions()
+
+    expect(isWikipediaEffectivelyEnabledForCurrentChat({})).toBe(true)
+  })
+
+  it('reports wikipedia as effectively disabled when shell is off', () => {
+    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only')
+    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
+      name === WIKIPEDIA_SEARCH_TOOL_NAME
+      || name === WIKIPEDIA_GET_PAGE_TOOL_NAME)
+
+    const { isWikipediaEffectivelyEnabledForCurrentChat } = useToolDependencyActions()
+
+    expect(isWikipediaEffectivelyEnabledForCurrentChat({})).toBe(false)
+  })
+
   it('disables only wikipedia tools when turning wikipedia off', () => {
     const { disableWikipediaToolsForCurrentChat } = useToolDependencyActions()
 
@@ -79,6 +105,16 @@ describe('useToolDependencyActions', () => {
     expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: false })
     expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: false })
     expect(mockSetToolEnabled).not.toHaveBeenCalledWith({ name: 'shell_execute', enabled: false })
+  })
+
+  it('disables shell and wikipedia tools together when shell is turned off', () => {
+    const { disableShellToolForCurrentChat } = useToolDependencyActions()
+
+    disableShellToolForCurrentChat({})
+
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(1, { name: 'shell_execute', enabled: false })
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(2, { name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: false })
+    expect(mockSetToolEnabled).toHaveBeenNthCalledWith(3, { name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: false })
   })
 
   it('disables sysfs and wikipedia tools without disabling shell', () => {

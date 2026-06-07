@@ -14,6 +14,7 @@ const mockSettings = ref({
 });
 const mockIsToolEnabled = vi.fn();
 const mockToggleTool = vi.fn();
+const mockIsWikipediaEffectivelyEnabledForCurrentChat = vi.fn();
 const mockEnableWikipediaToolsForCurrentChat = vi.fn();
 const mockDisableWikipediaToolsForCurrentChat = vi.fn();
 
@@ -32,6 +33,7 @@ vi.mock('@/composables/useChatTools', () => ({
 
 vi.mock('@/composables/useToolDependencyActions', () => ({
   useToolDependencyActions: () => ({
+    isWikipediaEffectivelyEnabledForCurrentChat: mockIsWikipediaEffectivelyEnabledForCurrentChat,
     enableWikipediaToolsForCurrentChat: mockEnableWikipediaToolsForCurrentChat,
     disableWikipediaToolsForCurrentChat: mockDisableWikipediaToolsForCurrentChat,
   }),
@@ -55,6 +57,7 @@ describe('LmToolsSettings.vue', () => {
     mockIsFeatureEnabled.mockReset();
     mockIsToolEnabled.mockReset();
     mockToggleTool.mockReset();
+    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReset();
     mockEnableWikipediaToolsForCurrentChat.mockReset();
     mockDisableWikipediaToolsForCurrentChat.mockReset();
     mockSettings.value = {
@@ -62,6 +65,7 @@ describe('LmToolsSettings.vue', () => {
       mounts: [],
     };
     mockIsToolEnabled.mockReturnValue(false);
+    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(false);
   });
 
   it('hides shell in browser when the feature flag is disabled', async () => {
@@ -94,8 +98,7 @@ describe('LmToolsSettings.vue', () => {
 
   it('shows the wikipedia note only when both wikipedia tools are enabled', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
-      name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
+    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(true);
 
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
@@ -117,8 +120,7 @@ describe('LmToolsSettings.vue', () => {
 
   it('disables wikipedia through dependency actions from the toggle', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
-      name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
+    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(true);
 
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
@@ -129,8 +131,7 @@ describe('LmToolsSettings.vue', () => {
 
   it('shows wikipedia as enabled only when both tools are enabled', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
-      name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
+    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(true);
 
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
@@ -140,13 +141,25 @@ describe('LmToolsSettings.vue', () => {
 
   it('repairs a broken partial wikipedia state on toggle', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) => name === WIKIPEDIA_SEARCH_TOOL_NAME);
 
     const wrapper = mount(LmToolsSettings);
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
     expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
+  });
+
+  it('shows wikipedia as disabled when shell is off even if wikipedia tool flags remain enabled', async () => {
+    mockIsFeatureEnabled.mockReturnValue(true);
+    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
+      name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
+    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(false);
+
+    const wrapper = mount(LmToolsSettings);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="tool-wikipedia-toggle"]').classes().join(' ')).not.toContain('bg-blue-50');
+    expect(wrapper.find('[data-testid="tool-wikipedia-note"]').exists()).toBe(false);
   });
 
   it('keeps calculator toggle behavior unchanged', async () => {

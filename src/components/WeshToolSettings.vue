@@ -14,7 +14,10 @@ const { currentChat } = useCurrentChatState();
 const { settings } = useSettings();
 const { isToolEnabled, toggleTool } = useChatTools();
 const { getNaidanSysfsMountSelection, setNaidanSysfsMountSelection } = useChatWeshPreferences();
-const { disableNaidanSysfsForCurrentChat } = useToolDependencyActions();
+const {
+  disableNaidanSysfsForCurrentChat,
+  disableShellToolForCurrentChat,
+} = useToolDependencyActions();
 const { isFeatureEnabled } = useFeatureFlags();
 const isWeshToolFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'wesh_tool' }));
 const naidanSysfsMountSelection = computed(() => getNaidanSysfsMountSelection({ chatId: currentChat.value?.id }));
@@ -23,6 +26,11 @@ const hasWritableTmp = computed(() => shouldIncludeWritableTmpMount({ storageTyp
 
 function handleShellToolToggle(_args: Record<never, never>) {
   const enablingShellExecute = !isToolEnabled({ name: 'shell_execute' });
+  if (!enablingShellExecute) {
+    disableShellToolForCurrentChat({})
+    return
+  }
+
   toggleTool({ name: 'shell_execute' });
   if (enablingShellExecute && naidanSysfsMountSelection.value === 'none') {
     setNaidanSysfsMountSelection({ chatId: currentChat.value?.id, selection: 'current_chat_only' });
