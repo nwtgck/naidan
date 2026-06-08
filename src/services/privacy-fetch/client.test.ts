@@ -192,18 +192,20 @@ describe('createPrivacyFetchBrokerClient', () => {
       },
     })
 
-    await expect(responsePromise).resolves.toEqual({
+    const response = await responsePromise
+    expect(response).toMatchObject({
       url: 'https://en.wikipedia.org/w/api.php?origin=*',
       status: 200,
       statusText: 'OK',
       ok: true,
       redirected: false,
       responseType: 'cors',
-      headers: [['content-type', 'application/json']],
       body,
       bodyByteLength: body.byteLength,
       policyName: 'wikipedia_api',
     })
+    expect(response.headers).toBeInstanceOf(Headers)
+    expect(response.headers.get('content-type')).toBe('application/json')
 
     client.dispose()
   })
@@ -261,10 +263,13 @@ describe('createPrivacyFetchBrokerClient', () => {
       },
     })
 
-    await expect(responsePromise).resolves.toMatchObject({
+    const response = await responsePromise
+    expect(response).toMatchObject({
       ok: false,
       status: 404,
     })
+    expect(response.headers).toBeInstanceOf(Headers)
+    expect(response.headers.get('content-type')).toBe('application/json')
 
     client.dispose()
   })

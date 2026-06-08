@@ -43,7 +43,7 @@ export type PrivacyFetchResponse = {
   ok: boolean;
   redirected: boolean;
   responseType: string;
-  headers: PrivacyFetchHeaderEntries;
+  headers: Headers;
   body: ArrayBuffer;
   bodyByteLength: number;
   policyName: string;

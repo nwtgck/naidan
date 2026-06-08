@@ -140,7 +140,7 @@ export function createPrivacyFetchBrokerClient({
             ok: message.responseOk,
             redirected: message.redirected,
             responseType: message.responseType,
-            headers: message.headers,
+            headers: new Headers(message.headers),
             body: message.body,
             bodyByteLength: message.bodyByteLength,
             policyName: message.validationResult.policyName,
