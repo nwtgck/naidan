@@ -264,7 +264,7 @@ jobs:
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CURATED_CLOUDFLARE_API_TOKEN }}
-          projectName: naidan-curated
+          projectName: naidan-test
           directory: dist/hosted
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
