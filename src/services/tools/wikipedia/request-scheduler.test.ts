@@ -93,7 +93,7 @@ describe('runWikipediaApiRequest', () => {
     await expect(secondPromise).resolves.toBe('second-result')
   })
 
-  it('keeps at least 500ms between request start times', async () => {
+  it('keeps at least 1000ms between request start times', async () => {
     const firstRequest = createDeferred<string>()
     const startTimes: number[] = []
 
@@ -194,7 +194,88 @@ describe('runWikipediaApiRequest', () => {
 
     expect(secondStarted).not.toHaveBeenCalled()
     await expect(firstPromise).resolves.toBe('first-result')
-    await expect(secondPromise).rejects.toThrow(/aborted/i)
+    await expect(secondPromise).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+  })
+
+  it('does not start a queued request that is aborted before it begins waiting', async () => {
+    const firstRequest = createDeferred<string>()
+    const secondStarted = vi.fn()
+    const secondController = new AbortController()
+
+    const firstPromise = runWikipediaApiRequest({
+      signal: undefined,
+      request: async () => firstRequest.promise,
+    })
+    const secondPromise = runWikipediaApiRequest({
+      signal: secondController.signal,
+      request: async () => {
+        secondStarted()
+        return 'second-result'
+      },
+    })
+    void secondPromise.catch(() => undefined)
+
+    secondController.abort()
+    await flushMicrotasks({
+      _testOnly: undefined,
+    })
+    firstRequest.resolve('first-result')
+    await flushMicrotasks({
+      _testOnly: undefined,
+    })
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS)
+    await flushMicrotasks({
+      _testOnly: undefined,
+    })
+
+    expect(secondStarted).not.toHaveBeenCalled()
+    await expect(firstPromise).resolves.toBe('first-result')
+    await expect(secondPromise).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+  })
+
+  it('cancels the waiting timer when a waiting request is aborted', async () => {
+    const firstRequest = createDeferred<string>()
+    const secondStarted = vi.fn()
+    const secondController = new AbortController()
+
+    const firstPromise = runWikipediaApiRequest({
+      signal: undefined,
+      request: async () => firstRequest.promise,
+    })
+    const secondPromise = runWikipediaApiRequest({
+      signal: secondController.signal,
+      request: async () => {
+        secondStarted()
+        return 'second-result'
+      },
+    })
+    void secondPromise.catch(() => undefined)
+
+    await flushMicrotasks({
+      _testOnly: undefined,
+    })
+    firstRequest.resolve('first-result')
+    await flushMicrotasks({
+      _testOnly: undefined,
+    })
+    secondController.abort()
+    await flushMicrotasks({
+      _testOnly: undefined,
+    })
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS)
+    await flushMicrotasks({
+      _testOnly: undefined,
+    })
+
+    expect(secondStarted).not.toHaveBeenCalled()
+    await expect(firstPromise).resolves.toBe('first-result')
+    await expect(secondPromise).rejects.toMatchObject({
+      name: 'AbortError',
+    })
   })
 
   it('starts the next queued request after a running request resolves', async () => {
@@ -231,5 +312,38 @@ describe('runWikipediaApiRequest', () => {
     expect(startedRequests).toEqual(['first', 'second'])
     await expect(firstPromise).resolves.toBe('first-result')
     await expect(secondPromise).resolves.toBe('second-result')
+  })
+
+  it('throws if reset is called while a request is running', async () => {
+    const firstRequest = createDeferred<string>()
+
+    const firstPromise = runWikipediaApiRequest({
+      signal: undefined,
+      request: async () => firstRequest.promise,
+    })
+
+    await flushMicrotasks({
+      _testOnly: undefined,
+    })
+
+    expect(() => TEST_ONLY_resetWikipediaApiRequestScheduler({
+      _testOnly: undefined,
+    })).toThrow(/while a request is running/i)
+
+    firstRequest.resolve('first-result')
+    await expect(firstPromise).resolves.toBe('first-result')
+  })
+
+  it('allows reset while idle and leaves the next test run clean', async () => {
+    TEST_ONLY_resetWikipediaApiRequestScheduler({
+      _testOnly: undefined,
+    })
+
+    const promise = runWikipediaApiRequest({
+      signal: undefined,
+      request: async () => 'ok',
+    })
+
+    await expect(promise).resolves.toBe('ok')
   })
 })

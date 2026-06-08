@@ -1,4 +1,4 @@
-export const WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS = 500
+export const WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS = 1000
 
 type ScheduledWikipediaApiRequest = {
   reject: (reason: unknown) => void;
@@ -15,7 +15,9 @@ let isWikipediaApiRequestRunning = false
 let nextWikipediaApiRequestStartAt = 0
 
 function createWikipediaApiAbortError(): Error {
-  return new Error('Wikipedia API request was aborted')
+  const error = new Error('Wikipedia API request was aborted')
+  error.name = 'AbortError'
+  return error
 }
 
 function settleScheduledWikipediaApiRequest({
@@ -97,8 +99,9 @@ async function processScheduledWikipediaApiRequests(): Promise<void> {
       switch (task.stage) {
       case 'queued':
       case 'waiting':
-      case 'running':
         break
+      case 'running':
+        throw new Error('Wikipedia API request scheduler found a running task in the queue')
       case 'settled':
         continue
       default: {
@@ -211,6 +214,10 @@ export function TEST_ONLY_resetWikipediaApiRequestScheduler({
 }): void {
   void _testOnly
 
+  if (isWikipediaApiRequestRunning) {
+    throw new Error('Cannot reset Wikipedia API request scheduler while a request is running')
+  }
+
   for (const task of scheduledWikipediaApiRequests.splice(0)) {
     settleScheduledWikipediaApiRequest({
       task,
@@ -220,6 +227,5 @@ export function TEST_ONLY_resetWikipediaApiRequestScheduler({
     })
   }
 
-  isWikipediaApiRequestRunning = false
   nextWikipediaApiRequestStartAt = 0
 }
