@@ -62,7 +62,7 @@ describe('WikipediaSearchTool', () => {
       query: 'quantum computer',
       contextLanguage: undefined,
       signal: undefined,
-      fetchImpl: fetch,
+      requestResponseImpl: undefined,
     });
     expect(mockRenderWikipediaSearchMarkdown).toHaveBeenCalledWith({
       groups: [{ lang: 'en', items: [{ title: 'Quantum computing', pageId: 25220 }] }],
@@ -113,7 +113,7 @@ describe('WikipediaGetPageTool', () => {
       lang: 'en',
       pageId: 25220,
       signal: undefined,
-      fetchImpl: fetch,
+      requestResponseImpl: undefined,
     });
     expect(mockRenderWikipediaPageMarkdown).toHaveBeenCalledWith({
       page: {
