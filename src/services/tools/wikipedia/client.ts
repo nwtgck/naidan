@@ -9,6 +9,7 @@ import {
   saveWikipediaPageTextAsBinaryObject,
   WIKIPEDIA_INLINE_CONTENT_MAX_LINES,
 } from './binary-object'
+import { runWikipediaApiRequest } from './request-scheduler'
 import type {
   WikipediaLanguageCode,
   WikipediaPageResult,
@@ -38,9 +39,12 @@ async function requestWikipediaResponse({
   signal: AbortSignal | undefined;
 }): Promise<unknown> {
   try {
-    const response = await privacyFetch({
-      url: url.toString(),
+    const response = await runWikipediaApiRequest({
       signal,
+      request: async () => privacyFetch({
+        url: url.toString(),
+        signal,
+      }),
     })
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} ${response.statusText}`.trim())
