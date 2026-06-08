@@ -233,6 +233,11 @@ jobs:
           # Safari may not treat script-src 'self' as sufficient for module
           # scripts loaded inside an opaque-origin sandbox iframe, so keep the
           # explicit naidan-curated origins in script-src.
+          # Cloudflare Pages may redirect /privacy-fetch-broker.html to the
+          # extensionless /privacy-fetch-broker URL. Under COEP: require-corp,
+          # the final sandboxed subdocument response also needs CORP, so keep
+          # both broker document rules. Do not fix this by adding
+          # allow-same-origin to the iframe.
           # The sandboxed broker module graph needs CORP + ACAO, but only
           # under /assets/privacy-fetch-broker/*. Do not make all app assets
           # CORS-readable.
@@ -248,6 +253,9 @@ jobs:
             Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://naidan-curated.pages.dev https://*.naidan-curated.pages.dev; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*.wikipedia.org https://*.wikimedia.org; frame-src 'self'; child-src 'self'; worker-src 'self' blob:; frame-ancestors 'self'; form-action 'none'; manifest-src 'self'
 
           /privacy-fetch-broker.html
+            Cross-Origin-Resource-Policy: cross-origin
+
+          /privacy-fetch-broker
             Cross-Origin-Resource-Policy: cross-origin
 
           /assets/privacy-fetch-broker/*
