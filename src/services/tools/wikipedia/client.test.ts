@@ -11,14 +11,15 @@ import {
   WIKIPEDIA_SEARCH_LIMIT,
 } from './client'
 import { WIKIPEDIA_INLINE_CONTENT_MAX_LINES } from './binary-object'
+import {
+  TEST_ONLY_resetWikipediaApiRequestScheduler,
+} from './request-scheduler'
 
 const {
   mockPrivacyFetch,
-  mockRunWikipediaApiRequest,
   mockSaveWikipediaPageTextAsBinaryObject,
 } = vi.hoisted(() => ({
   mockPrivacyFetch: vi.fn(),
-  mockRunWikipediaApiRequest: vi.fn(),
   mockSaveWikipediaPageTextAsBinaryObject: vi.fn(),
 }))
 
@@ -27,14 +28,6 @@ vi.mock('@/services/privacy-fetch', async () => {
   return {
     ...actual,
     privacyFetch: mockPrivacyFetch,
-  }
-})
-
-vi.mock('./request-scheduler', async () => {
-  const actual = await vi.importActual<typeof import('./request-scheduler')>('./request-scheduler')
-  return {
-    ...actual,
-    runWikipediaApiRequest: mockRunWikipediaApiRequest,
   }
 })
 
@@ -101,6 +94,16 @@ function createPrivacyFetchResponse({
 describe('Retry-After helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    TEST_ONLY_resetWikipediaApiRequestScheduler({
+      _testOnly: undefined,
+    })
+  })
+
+  afterEach(() => {
+    TEST_ONLY_resetWikipediaApiRequestScheduler({
+      _testOnly: undefined,
+    })
+    vi.useRealTimers()
   })
 
   it('looks up Retry-After headers case-insensitively through Headers', () => {
@@ -265,14 +268,15 @@ describe('searchWikipedia', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useRealTimers()
-    mockRunWikipediaApiRequest.mockImplementation(async ({
-      request,
-    }: {
-      request: () => Promise<unknown>;
-    }) => request())
+    TEST_ONLY_resetWikipediaApiRequestScheduler({
+      _testOnly: undefined,
+    })
   })
 
   afterEach(() => {
+    TEST_ONLY_resetWikipediaApiRequestScheduler({
+      _testOnly: undefined,
+    })
     vi.useRealTimers()
   })
 
@@ -430,7 +434,6 @@ describe('searchWikipedia', () => {
     })
 
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
-    expect(mockRunWikipediaApiRequest).toHaveBeenCalledTimes(2)
     expect(result.groups).toEqual([{
       lang: 'en',
       items: [{ title: 'Quantum computing', pageId: 25220 }],
@@ -464,7 +467,6 @@ describe('searchWikipedia', () => {
     })
 
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
-    expect(mockRunWikipediaApiRequest).toHaveBeenCalledTimes(2)
     expect(result.groups[0]?.items[0]).toEqual({
       title: 'Quantum computing',
       pageId: 25220,
@@ -557,7 +559,6 @@ describe('searchWikipedia', () => {
     })).rejects.toThrow(/HTTP 429.*Retried 2 times/i)
 
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(3)
-    expect(mockRunWikipediaApiRequest).toHaveBeenCalledTimes(3)
   })
 
   it('aborts while waiting for the Retry-After delay', async () => {
@@ -624,17 +625,101 @@ describe('searchWikipedia', () => {
 
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps other logical calls blocked while Retry-After wait is in progress', async () => {
+    vi.useFakeTimers()
+
+    mockPrivacyFetch
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: [['Retry-After', '5']],
+        json: { error: 'rate limited' },
+      }))
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 200,
+        statusText: 'OK',
+        json: {
+          query: {
+            search: [{ ns: 0, title: 'Quantum computing', pageid: 25220 }],
+          },
+        },
+      }))
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 200,
+        statusText: 'OK',
+        json: {
+          query: {
+            search: [{ ns: 0, title: 'Quantum information', pageid: 123456 }],
+          },
+        },
+      }))
+
+    const firstPromise = searchWikipedia({
+      lang: 'en',
+      query: 'quantum computer',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const secondPromise = searchWikipedia({
+      lang: 'en',
+      query: 'quantum information',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(5000)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
+
+    const firstResult = await firstPromise
+    expect(firstResult.groups[0]?.items[0]).toEqual({
+      title: 'Quantum computing',
+      pageId: 25220,
+    })
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(3)
+    await expect(secondPromise).resolves.toEqual({
+      groups: [{
+        lang: 'en',
+        items: [{
+          title: 'Quantum information',
+          pageId: 123456,
+        }],
+      }],
+    })
+  })
 })
 
 describe('getWikipediaPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useRealTimers()
-    mockRunWikipediaApiRequest.mockImplementation(async ({
-      request,
-    }: {
-      request: () => Promise<unknown>;
-    }) => request())
+    TEST_ONLY_resetWikipediaApiRequestScheduler({
+      _testOnly: undefined,
+    })
+  })
+
+  afterEach(() => {
+    TEST_ONLY_resetWikipediaApiRequestScheduler({
+      _testOnly: undefined,
+    })
   })
 
   it('uses pageids and not titles', async () => {

@@ -1,18 +1,16 @@
 export const WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS = 1000
 
-type ScheduledWikipediaApiRequest = {
+type QueuedWikipediaApiSlot = {
+  onAbort: (() => void) | undefined;
   reject: (reason: unknown) => void;
-  request: () => Promise<unknown>;
-  resolve: (value: unknown) => void;
+  resolve: () => void;
   signal: AbortSignal | undefined;
-  stage: 'queued' | 'waiting' | 'running' | 'settled';
-  waitAbortResolver: (() => void) | undefined;
 }
 
-const scheduledWikipediaApiRequests: ScheduledWikipediaApiRequest[] = []
+const wikipediaApiSlotQueue: QueuedWikipediaApiSlot[] = []
 
-let isWikipediaApiRequestRunning = false
-let nextWikipediaApiRequestStartAt = 0
+let isWikipediaApiSlotLocked = false
+let nextWikipediaApiAttemptStartAt = 0
 
 function createWikipediaApiAbortError(): Error {
   const error = new Error('Wikipedia API request was aborted')
@@ -20,133 +18,111 @@ function createWikipediaApiAbortError(): Error {
   return error
 }
 
-function settleScheduledWikipediaApiRequest({
-  task,
-  callback,
+function removeQueuedWikipediaApiSlot({
+  slot,
 }: {
-  task: ScheduledWikipediaApiRequest;
-  callback: () => void;
+  slot: QueuedWikipediaApiSlot;
 }): void {
-  switch (task.stage) {
-  case 'queued':
-  case 'waiting':
-  case 'running':
-    break
-  case 'settled':
-    return
-  default: {
-    const neverStage: never = task.stage
-    throw new Error(`Unhandled Wikipedia API request stage: ${String(neverStage)}`)
-  }
-  }
-
-  task.stage = 'settled'
-  task.waitAbortResolver?.()
-  task.waitAbortResolver = undefined
-  callback()
-}
-
-function removeScheduledWikipediaApiRequest({
-  task,
-}: {
-  task: ScheduledWikipediaApiRequest;
-}): void {
-  const taskIndex = scheduledWikipediaApiRequests.indexOf(task)
-  if (taskIndex >= 0) {
-    scheduledWikipediaApiRequests.splice(taskIndex, 1)
+  const slotIndex = wikipediaApiSlotQueue.indexOf(slot)
+  if (slotIndex >= 0) {
+    wikipediaApiSlotQueue.splice(slotIndex, 1)
   }
 }
 
-async function waitForWikipediaApiRequestWindow({
-  task,
-  waitMs,
+async function acquireWikipediaApiSlot({
+  signal,
 }: {
-  task: ScheduledWikipediaApiRequest;
-  waitMs: number;
+  signal: AbortSignal | undefined;
 }): Promise<void> {
-  if (waitMs <= 0) {
+  if (signal?.aborted) {
+    throw createWikipediaApiAbortError()
+  }
+
+  if (!isWikipediaApiSlotLocked) {
+    isWikipediaApiSlotLocked = true
     return
   }
 
-  await new Promise<void>((resolve) => {
-    const timeoutId = setTimeout(() => {
-      task.waitAbortResolver = undefined
-      resolve()
-    }, waitMs)
-
-    task.waitAbortResolver = () => {
-      clearTimeout(timeoutId)
-      task.waitAbortResolver = undefined
-      resolve()
+  await new Promise<void>((resolve, reject) => {
+    const slot: QueuedWikipediaApiSlot = {
+      onAbort: undefined,
+      reject,
+      resolve: () => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve()
+      },
+      signal,
     }
+
+    const onAbort = () => {
+      signal?.removeEventListener('abort', onAbort)
+      removeQueuedWikipediaApiSlot({
+        slot,
+      })
+      reject(createWikipediaApiAbortError())
+    }
+
+    slot.onAbort = onAbort
+    signal?.addEventListener('abort', onAbort, { once: true })
+    wikipediaApiSlotQueue.push(slot)
   })
 }
 
-async function processScheduledWikipediaApiRequests(): Promise<void> {
-  if (isWikipediaApiRequestRunning) {
+function releaseWikipediaApiSlot(): void {
+  while (wikipediaApiSlotQueue.length > 0) {
+    const nextSlot = wikipediaApiSlotQueue.shift()
+    if (nextSlot === undefined) {
+      continue
+    }
+
+    if (nextSlot.onAbort !== undefined) {
+      nextSlot.signal?.removeEventListener('abort', nextSlot.onAbort)
+    }
+    if (nextSlot.signal?.aborted) {
+      nextSlot.reject(createWikipediaApiAbortError())
+      continue
+    }
+
+    isWikipediaApiSlotLocked = true
+    nextSlot.resolve()
     return
   }
 
-  isWikipediaApiRequestRunning = true
+  isWikipediaApiSlotLocked = false
+}
 
-  try {
-    while (scheduledWikipediaApiRequests.length > 0) {
-      const task = scheduledWikipediaApiRequests.shift()
-      if (task === undefined) {
-        continue
-      }
-
-      switch (task.stage) {
-      case 'queued':
-      case 'waiting':
-        break
-      case 'running':
-        throw new Error('Wikipedia API request scheduler found a running task in the queue')
-      case 'settled':
-        continue
-      default: {
-        const neverStage: never = task.stage
-        throw new Error(`Unhandled Wikipedia API request stage: ${String(neverStage)}`)
-      }
-      }
-
-      task.stage = 'waiting'
-      const waitMs = Math.max(0, nextWikipediaApiRequestStartAt - Date.now())
-      await waitForWikipediaApiRequestWindow({
-        task,
-        waitMs,
-      })
-
-      if (task.stage !== 'waiting') {
-        continue
-      }
-
-      task.stage = 'running'
-      nextWikipediaApiRequestStartAt = Date.now() + WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS
-
-      try {
-        const result = await task.request()
-        settleScheduledWikipediaApiRequest({
-          task,
-          callback: () => {
-            task.resolve(result)
-          },
-        })
-      } catch (error) {
-        settleScheduledWikipediaApiRequest({
-          task,
-          callback: () => {
-            task.reject(error)
-          },
-        })
-      }
-    }
-  } finally {
-    isWikipediaApiRequestRunning = false
-    if (scheduledWikipediaApiRequests.length > 0) {
-      void processScheduledWikipediaApiRequests()
-    }
+export async function waitForWikipediaApiAttemptWindow({
+  signal,
+}: {
+  signal: AbortSignal | undefined;
+}): Promise<void> {
+  if (signal?.aborted) {
+    throw createWikipediaApiAbortError()
   }
+
+  const waitMs = Math.max(0, nextWikipediaApiAttemptStartAt - Date.now())
+  if (waitMs > 0) {
+    await new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve()
+      }, waitMs)
+
+      const onAbort = () => {
+        clearTimeout(timeoutId)
+        signal?.removeEventListener('abort', onAbort)
+        reject(createWikipediaApiAbortError())
+      }
+
+      signal?.addEventListener('abort', onAbort, { once: true })
+    })
+  }
+
+  if (signal?.aborted) {
+    throw createWikipediaApiAbortError()
+  }
+
+  nextWikipediaApiAttemptStartAt = Date.now() + WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS
 }
 
 export async function runWikipediaApiRequest<T>({
@@ -156,55 +132,15 @@ export async function runWikipediaApiRequest<T>({
   signal: AbortSignal | undefined;
   request: () => Promise<T>;
 }): Promise<T> {
-  if (signal?.aborted) {
-    throw createWikipediaApiAbortError()
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    const task: ScheduledWikipediaApiRequest = {
-      reject,
-      request,
-      resolve: (value) => {
-        resolve(value as T)
-      },
-      signal,
-      stage: 'queued',
-      waitAbortResolver: undefined,
-    }
-
-    const onAbort = () => {
-      if (task.stage === 'running' || task.stage === 'settled') {
-        return
-      }
-
-      removeScheduledWikipediaApiRequest({
-        task,
-      })
-      settleScheduledWikipediaApiRequest({
-        task,
-        callback: () => {
-          reject(createWikipediaApiAbortError())
-        },
-      })
-    }
-
-    signal?.addEventListener('abort', onAbort, { once: true })
-
-    const originalResolve = task.resolve
-    task.resolve = (value) => {
-      signal?.removeEventListener('abort', onAbort)
-      originalResolve(value)
-    }
-
-    const originalReject = task.reject
-    task.reject = (reason) => {
-      signal?.removeEventListener('abort', onAbort)
-      originalReject(reason)
-    }
-
-    scheduledWikipediaApiRequests.push(task)
-    void processScheduledWikipediaApiRequests()
+  await acquireWikipediaApiSlot({
+    signal,
   })
+
+  try {
+    return await request()
+  } finally {
+    releaseWikipediaApiSlot()
+  }
 }
 
 export function TEST_ONLY_resetWikipediaApiRequestScheduler({
@@ -214,18 +150,16 @@ export function TEST_ONLY_resetWikipediaApiRequestScheduler({
 }): void {
   void _testOnly
 
-  if (isWikipediaApiRequestRunning) {
+  if (isWikipediaApiSlotLocked) {
     throw new Error('Cannot reset Wikipedia API request scheduler while a request is running')
   }
 
-  for (const task of scheduledWikipediaApiRequests.splice(0)) {
-    settleScheduledWikipediaApiRequest({
-      task,
-      callback: () => {
-        task.reject(new Error('Wikipedia API request scheduler was reset during a test'))
-      },
-    })
+  for (const slot of wikipediaApiSlotQueue.splice(0)) {
+    if (slot.onAbort !== undefined) {
+      slot.signal?.removeEventListener('abort', slot.onAbort)
+    }
+    slot.reject(new Error('Wikipedia API request scheduler was reset during a test'))
   }
 
-  nextWikipediaApiRequestStartAt = 0
+  nextWikipediaApiAttemptStartAt = 0
 }

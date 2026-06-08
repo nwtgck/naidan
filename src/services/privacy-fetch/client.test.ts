@@ -181,7 +181,10 @@ describe('createPrivacyFetchBrokerClient', () => {
         statusText: 'OK',
         redirected: false,
         responseType: 'cors',
-        headers: [['content-type', 'application/json']],
+        headers: [
+          ['content-type', 'application/json'],
+          ['RETRY-AFTER', '5'],
+        ],
         body,
         bodyByteLength: body.byteLength,
         validationResult: {
@@ -206,6 +209,7 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
     expect(response.headers).toBeInstanceOf(Headers)
     expect(response.headers.get('content-type')).toBe('application/json')
+    expect(response.headers.get('retry-after')).toBe('5')
 
     client.dispose()
   })

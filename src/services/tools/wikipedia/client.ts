@@ -6,7 +6,10 @@ import {
   WIKIPEDIA_INLINE_CONTENT_MAX_LINES,
 } from './binary-object'
 import { resolveWikipediaSearchLanguages } from './language-routing'
-import { runWikipediaApiRequest } from './request-scheduler'
+import {
+  runWikipediaApiRequest,
+  waitForWikipediaApiAttemptWindow,
+} from './request-scheduler'
 import {
   MediaWikiExtractApiResponseSchema,
   MediaWikiSearchApiResponseSchema,
@@ -248,7 +251,7 @@ export async function waitForRetryAfterDelay({
   })
 }
 
-async function requestWikipediaResponse({
+async function requestWikipediaResponseWithRetry({
   url,
   signal,
 }: {
@@ -259,12 +262,12 @@ async function requestWikipediaResponse({
 
   try {
     while (true) {
-      const response = await runWikipediaApiRequest({
+      await waitForWikipediaApiAttemptWindow({
         signal,
-        request: async () => privacyFetch({
-          url: url.toString(),
-          signal,
-        }),
+      })
+      const response = await privacyFetch({
+        url: url.toString(),
+        signal,
       })
 
       if (response.ok) {
@@ -297,6 +300,30 @@ async function requestWikipediaResponse({
       }
       }
     }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error
+    }
+
+    throw error
+  }
+}
+
+async function requestWikipediaResponse({
+  url,
+  signal,
+}: {
+  url: URL;
+  signal: AbortSignal | undefined;
+}): Promise<unknown> {
+  try {
+    return await runWikipediaApiRequest({
+      signal,
+      request: async () => requestWikipediaResponseWithRetry({
+        url,
+        signal,
+      }),
+    })
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw error
