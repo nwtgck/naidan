@@ -56,6 +56,7 @@ function ensureIframeParentNode({
   }
 
   throw createPrivacyFetchError({
+    code: 'broker_unavailable',
     message: 'Privacy fetch broker iframe could not find a parent node',
   })
 }
@@ -140,7 +141,7 @@ export function createPrivacyFetchBrokerClient({
             ok: message.responseOk,
             redirected: message.redirected,
             responseType: message.responseType,
-            headers: message.headers,
+            headers: new Headers(message.headers),
             body: message.body,
             bodyByteLength: message.bodyByteLength,
             policyName: message.validationResult.policyName,
@@ -153,6 +154,7 @@ export function createPrivacyFetchBrokerClient({
         requestId: message.requestId,
         callback: (pendingRequest) => {
           pendingRequest.reject(createPrivacyFetchError({
+            code: 'rejected',
             message: `Privacy fetch rejected [${message.validationResult.code}]: ${message.validationResult.message}`,
           }))
         },
@@ -163,6 +165,7 @@ export function createPrivacyFetchBrokerClient({
         requestId: message.requestId,
         callback: (pendingRequest) => {
           pendingRequest.reject(createPrivacyFetchError({
+            code: message.code,
             message: `Privacy fetch failed [${message.code}]: ${message.message}`,
           }))
         },
@@ -171,6 +174,7 @@ export function createPrivacyFetchBrokerClient({
     default: {
       const neverMessage: never = message
       throw createPrivacyFetchError({
+        code: 'unknown',
         message: `Unhandled privacy fetch broker message: ${String(neverMessage)}`,
       })
     }
@@ -190,12 +194,14 @@ export function createPrivacyFetchBrokerClient({
     windowObject.removeEventListener('message', handleMessage)
     if (!readyResolved) {
       readyDeferred.reject(createPrivacyFetchError({
+        code: 'broker_disposed',
         message: 'Privacy fetch broker client was disposed before broker ready',
       }))
     }
     for (const [requestId, pendingRequest] of pendingRequests) {
       pendingRequest.cleanup()
       pendingRequest.reject(createPrivacyFetchError({
+        code: 'broker_disposed',
         message: `Privacy fetch request was disposed before completion: ${requestId}`,
       }))
     }
@@ -216,6 +222,7 @@ export function createPrivacyFetchBrokerClient({
 
     if (signal.aborted) {
       throw createPrivacyFetchError({
+        code: 'aborted',
         message: 'Privacy fetch was aborted',
       })
     }
@@ -224,6 +231,7 @@ export function createPrivacyFetchBrokerClient({
       const onAbort = () => {
         signal.removeEventListener('abort', onAbort)
         reject(createPrivacyFetchError({
+          code: 'aborted',
           message: 'Privacy fetch was aborted',
         }))
       }
@@ -247,12 +255,14 @@ export function createPrivacyFetchBrokerClient({
     async fetch(request: PrivacyFetchRequest): Promise<PrivacyFetchResponse> {
       if (disposed) {
         throw createPrivacyFetchError({
+          code: 'broker_disposed',
           message: 'Privacy fetch broker client has been disposed',
         })
       }
 
       if (request.signal?.aborted) {
         throw createPrivacyFetchError({
+          code: 'aborted',
           message: 'Privacy fetch was aborted',
         })
       }
@@ -263,6 +273,7 @@ export function createPrivacyFetchBrokerClient({
       const contentWindow = iframe?.contentWindow
       if (contentWindow === null || contentWindow === undefined) {
         throw createPrivacyFetchError({
+          code: 'broker_unavailable',
           message: 'Privacy fetch broker iframe is not available',
         })
       }
@@ -300,6 +311,7 @@ export function createPrivacyFetchBrokerClient({
               cleanup()
               pendingRequests.delete(requestId)
               reject(createPrivacyFetchError({
+                code: 'aborted',
                 message: 'Privacy fetch was aborted',
               }))
             },
