@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { isPrivacyFetchError } from './errors'
 import { PRIVACY_FETCH_PROTOCOL } from './protocol'
 import { createPrivacyFetchBrokerClient } from './broker-client'
 
@@ -375,7 +376,10 @@ describe('createPrivacyFetchBrokerClient', () => {
 
     controller.abort()
 
-    await expect(responsePromise).rejects.toThrow(/aborted/i)
+    await expect(responsePromise).rejects.toMatchObject({
+      name: 'AbortError',
+      code: 'aborted',
+    })
     expect(brokerWindow.postMessage).toHaveBeenLastCalledWith({
       protocol: PRIVACY_FETCH_PROTOCOL,
       type: 'cancel',
@@ -429,7 +433,11 @@ describe('createPrivacyFetchBrokerClient', () => {
       },
     })
 
-    await expect(responsePromise).rejects.toThrow(/rejected/i)
+    await expect(responsePromise).rejects.toSatisfy((error: unknown) => {
+      return isPrivacyFetchError(error)
+        && error.code === 'rejected'
+        && error.message.includes('rejected')
+    })
 
     client.dispose()
   })
@@ -475,7 +483,11 @@ describe('createPrivacyFetchBrokerClient', () => {
       },
     })
 
-    await expect(responsePromise).rejects.toThrow(/fetch failed/i)
+    await expect(responsePromise).rejects.toSatisfy((error: unknown) => {
+      return isPrivacyFetchError(error)
+        && error.code === 'fetch_failed'
+        && error.message.includes('fetch failed')
+    })
 
     client.dispose()
   })
@@ -488,7 +500,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     await expect(client.fetch({
       url: 'https://en.wikipedia.org/w/api.php?origin=*',
       signal: controller.signal,
-    })).rejects.toThrow(/aborted/i)
+    })).rejects.toMatchObject({
+      name: 'AbortError',
+      code: 'aborted',
+    })
 
     client.dispose()
   })
@@ -504,7 +519,10 @@ describe('createPrivacyFetchBrokerClient', () => {
 
     controller.abort()
 
-    await expect(responsePromise).rejects.toThrow(/aborted/i)
+    await expect(responsePromise).rejects.toMatchObject({
+      name: 'AbortError',
+      code: 'aborted',
+    })
 
     client.dispose()
   })

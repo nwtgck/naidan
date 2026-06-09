@@ -1,12 +1,15 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import type { PrivacyFetchResponse } from '@/services/privacy-fetch'
+import { createPrivacyFetchError } from '@/services/privacy-fetch/errors'
 import {
   createRetryAfterRetryDecision,
+  createWikipediaFetchFailureRetryDecision,
   getRetryAfterHeaderValue,
   getWikipediaPage,
   parseRetryAfterMs,
   searchWikipedia,
   waitForRetryAfterDelay,
+  WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS,
   WIKIPEDIA_API_MAX_RETRY_AFTER_RETRY_COUNT,
   WIKIPEDIA_SEARCH_LIMIT,
 } from './client'
@@ -182,8 +185,9 @@ describe('Retry-After helpers', () => {
     })).toBeUndefined()
   })
 
-  it('gives up when Retry-After is missing invalid too long or exhausted', () => {
+  it('uses visible 429 fallback or gives up when Retry-After is not retryable', () => {
     expect(createRetryAfterRetryDecision({
+      fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 429,
         statusText: 'Too Many Requests',
@@ -192,13 +196,15 @@ describe('Retry-After helpers', () => {
       retryCount: 0,
       nowMs: 0,
     })).toEqual({
-      action: 'give_up',
-      reason: 'missing_retry_after',
-      retryAfterMs: undefined,
+      action: 'retry',
+      delayMs: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
+      delaySource: 'fallback_429',
+      retryAfterMs: 0,
       retryAfterValue: undefined,
     })
 
     expect(createRetryAfterRetryDecision({
+      fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 503,
         statusText: 'Service Unavailable',
@@ -215,6 +221,25 @@ describe('Retry-After helpers', () => {
     })
 
     expect(createRetryAfterRetryDecision({
+      fallbackRetryCount: 0,
+      response: createPrivacyFetchResponse({
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: [['Retry-After', 'abc']],
+        json: {},
+      }),
+      retryCount: 0,
+      nowMs: 0,
+    })).toEqual({
+      action: 'retry',
+      delayMs: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
+      delaySource: 'fallback_429',
+      retryAfterMs: 0,
+      retryAfterValue: 'abc',
+    })
+
+    expect(createRetryAfterRetryDecision({
+      fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 503,
         statusText: 'Service Unavailable',
@@ -231,6 +256,7 @@ describe('Retry-After helpers', () => {
     })
 
     expect(createRetryAfterRetryDecision({
+      fallbackRetryCount: 0,
       response: createPrivacyFetchResponse({
         status: 429,
         statusText: 'Too Many Requests',
@@ -244,6 +270,58 @@ describe('Retry-After helpers', () => {
       reason: 'retry_count_exhausted',
       retryAfterMs: 0,
       retryAfterValue: '0',
+    })
+
+    expect(createRetryAfterRetryDecision({
+      fallbackRetryCount: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length,
+      response: createPrivacyFetchResponse({
+        status: 429,
+        statusText: 'Too Many Requests',
+        json: {},
+      }),
+      retryCount: 0,
+      nowMs: 0,
+    })).toEqual({
+      action: 'give_up',
+      reason: 'fallback_429_retry_count_exhausted',
+      retryAfterMs: undefined,
+      retryAfterValue: undefined,
+    })
+  })
+
+  it('creates fetch failure retry decisions for fetch_failed and non-retryable errors', () => {
+    expect(createWikipediaFetchFailureRetryDecision({
+      error: createPrivacyFetchError({
+        code: 'fetch_failed',
+        message: 'NetworkError',
+      }),
+      retryCount: 0,
+    })).toEqual({
+      action: 'retry',
+      delayMs: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0],
+      delaySource: 'cors_hidden_rate_limit_fallback',
+    })
+
+    expect(createWikipediaFetchFailureRetryDecision({
+      error: createPrivacyFetchError({
+        code: 'fetch_failed',
+        message: 'NetworkError',
+      }),
+      retryCount: WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length,
+    })).toEqual({
+      action: 'give_up',
+      reason: 'cors_hidden_rate_limit_retry_count_exhausted',
+    })
+
+    expect(createWikipediaFetchFailureRetryDecision({
+      error: createPrivacyFetchError({
+        code: 'rejected',
+        message: 'Rejected',
+      }),
+      retryCount: 0,
+    })).toEqual({
+      action: 'give_up',
+      reason: 'non_retryable_fetch_error',
     })
   })
 
@@ -473,25 +551,94 @@ describe('searchWikipedia', () => {
     })
   })
 
-  it('does not retry a 429 response without Retry-After', async () => {
-    mockPrivacyFetch.mockResolvedValueOnce(createPrivacyFetchResponse({
-      status: 429,
-      statusText: 'Too Many Requests',
-      json: { error: 'rate limited' },
-    }))
+  it('retries a visible 429 response without Retry-After and then succeeds', async () => {
+    vi.useFakeTimers()
 
-    await expect(searchWikipedia({
+    mockPrivacyFetch
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 429,
+        statusText: 'Too Many Requests',
+        json: { error: 'rate limited' },
+      }))
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 200,
+        statusText: 'OK',
+        json: {
+          query: {
+            search: [{ ns: 0, title: 'Quantum computing', pageid: 25220 }],
+          },
+        },
+      }))
+
+    const resultPromise = searchWikipedia({
       lang: 'en',
       query: 'quantum computer',
       contextLanguage: undefined,
       signal: undefined,
       requestResponseImpl: undefined,
-    })).rejects.toThrow(/HTTP 429.*No valid Retry-After/i)
+    })
 
+    await Promise.resolve()
+    await Promise.resolve()
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0])
+
+    await expect(resultPromise).resolves.toEqual({
+      groups: [{
+        lang: 'en',
+        items: [{ title: 'Quantum computing', pageId: 25220 }],
+      }],
+    })
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
   })
 
-  it('does not retry an invalid Retry-After value', async () => {
+  it('retries a 429 response with an invalid Retry-After value and then succeeds', async () => {
+    vi.useFakeTimers()
+
+    mockPrivacyFetch
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: [['RETRY-AFTER', 'abc']],
+        json: { error: 'rate limited' },
+      }))
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 200,
+        statusText: 'OK',
+        json: {
+          query: {
+            search: [{ ns: 0, title: 'Quantum computing', pageid: 25220 }],
+          },
+        },
+      }))
+
+    const resultPromise = searchWikipedia({
+      lang: 'en',
+      query: 'quantum computer',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0])
+
+    await expect(resultPromise).resolves.toEqual({
+      groups: [{
+        lang: 'en',
+        items: [{ title: 'Quantum computing', pageId: 25220 }],
+      }],
+    })
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry an invalid Retry-After value for non-429 responses', async () => {
     mockPrivacyFetch.mockResolvedValueOnce(createPrivacyFetchResponse({
       status: 503,
       statusText: 'Service Unavailable',
@@ -604,6 +751,195 @@ describe('searchWikipedia', () => {
       signal: undefined,
       requestResponseImpl: undefined,
     })).rejects.toThrow(/^Wikipedia request failed: Wikipedia API server error: HTTP 503/i)
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a fetch_failed privacy fetch as a CORS-hidden rate limit candidate and then succeeds', async () => {
+    vi.useFakeTimers()
+
+    mockPrivacyFetch
+      .mockRejectedValueOnce(createPrivacyFetchError({
+        code: 'fetch_failed',
+        message: 'NetworkError when attempting to fetch resource.',
+      }))
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 200,
+        statusText: 'OK',
+        json: {
+          query: {
+            search: [{ ns: 0, title: 'Quantum computing', pageid: 25220 }],
+          },
+        },
+      }))
+
+    const resultPromise = searchWikipedia({
+      lang: 'en',
+      query: 'quantum computer',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0])
+
+    await expect(resultPromise).resolves.toEqual({
+      groups: [{
+        lang: 'en',
+        items: [{ title: 'Quantum computing', pageId: 25220 }],
+      }],
+    })
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps other logical calls blocked while fetch_failed fallback wait is in progress', async () => {
+    vi.useFakeTimers()
+
+    mockPrivacyFetch
+      .mockRejectedValueOnce(createPrivacyFetchError({
+        code: 'fetch_failed',
+        message: 'NetworkError when attempting to fetch resource.',
+      }))
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 200,
+        statusText: 'OK',
+        json: {
+          query: {
+            search: [{ ns: 0, title: 'Quantum computing', pageid: 25220 }],
+          },
+        },
+      }))
+      .mockResolvedValueOnce(createPrivacyFetchResponse({
+        status: 200,
+        statusText: 'OK',
+        json: {
+          query: {
+            search: [{ ns: 0, title: 'Quantum information', pageid: 123456 }],
+          },
+        },
+      }))
+
+    const firstPromise = searchWikipedia({
+      lang: 'en',
+      query: 'alpha',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const secondPromise = searchWikipedia({
+      lang: 'en',
+      query: 'beta',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS[0])
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
+    await expect(firstPromise).resolves.toEqual({
+      groups: [{
+        lang: 'en',
+        items: [{
+          title: 'Quantum computing',
+          pageId: 25220,
+        }],
+      }],
+    })
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(3)
+    await expect(secondPromise).resolves.toEqual({
+      groups: [{
+        lang: 'en',
+        items: [{
+          title: 'Quantum information',
+          pageId: 123456,
+        }],
+      }],
+    })
+  })
+
+  it('gives up after bounded fetch_failed retries are exhausted', async () => {
+    vi.useFakeTimers()
+
+    mockPrivacyFetch.mockRejectedValue(createPrivacyFetchError({
+      code: 'fetch_failed',
+      message: 'NetworkError when attempting to fetch resource.',
+    }))
+
+    const resultPromise = searchWikipedia({
+      lang: 'en',
+      query: 'quantum computer',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })
+    void resultPromise.catch(() => undefined)
+
+    for (const delayMs of WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS) {
+      await Promise.resolve()
+      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(delayMs)
+    }
+
+    await expect(resultPromise).rejects.toThrow(/CORS-hidden.*Access-Control-Allow-Origin.*Retried 4 times.*2s, 4s, 8s, and 16s/i)
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(
+      WIKIPEDIA_API_CORS_HIDDEN_RATE_LIMIT_RETRY_DELAYS_MS.length + 1,
+    )
+  })
+
+  it('does not retry aborted privacy fetch failures', async () => {
+    mockPrivacyFetch.mockRejectedValueOnce(createPrivacyFetchError({
+      code: 'aborted',
+      message: 'Privacy fetch was aborted',
+    }))
+
+    await expect(searchWikipedia({
+      lang: 'en',
+      query: 'quantum computer',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })).rejects.toMatchObject({
+      name: 'AbortError',
+    })
+
+    expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not retry rejected privacy fetch failures', async () => {
+    mockPrivacyFetch.mockRejectedValueOnce(createPrivacyFetchError({
+      code: 'rejected',
+      message: 'Privacy fetch rejected [invalid_hostname]: Unsupported hostname',
+    }))
+
+    await expect(searchWikipedia({
+      lang: 'en',
+      query: 'quantum computer',
+      contextLanguage: undefined,
+      signal: undefined,
+      requestResponseImpl: undefined,
+    })).rejects.toThrow(/privacy fetch failure that is not retried automatically/i)
 
     expect(mockPrivacyFetch).toHaveBeenCalledTimes(1)
   })
