@@ -1,12 +1,29 @@
 import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode, UserMessageNode, AssistantMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { CheckIcon } from 'lucide-vue-next';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
+
+const mount: any = (component: unknown, options?: Record<string, unknown>) => {
+  if (component === MessageItem) {
+    const normalizedOptions = options ?? {};
+    const props = (normalizedOptions.props as Record<string, unknown> | undefined) ?? {};
+
+    return baseMount(component, {
+      ...normalizedOptions,
+      props: {
+        chatId: 'chat-1',
+        ...props,
+      },
+    });
+  }
+
+  return baseMount(component, options);
+};
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
@@ -566,7 +583,7 @@ describe('MessageItem Attachment Rendering', () => {
 
     const img = wrapper.find('img');
     expect(img.exists()).toBe(true);
-    expect(storageService.getFile).toHaveBeenCalledWith('binary-id-123');
+    expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: 'binary-id-123' });
   });
 
   it('renders a fallback for missing attachments', async () => {

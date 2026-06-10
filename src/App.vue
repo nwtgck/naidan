@@ -2,7 +2,10 @@
 import { ref, watch, computed, defineAsyncComponent } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
-import { useChat } from './composables/useChat';
+import { useCurrentChatState } from './composables/chat/ui/useCurrentChatState';
+import { useChatLifecycle } from './composables/chat/ui/useChatLifecycle';
+import { useChatListData } from './composables/chat/ui/useChatListData';
+import { useChatOrganization } from './composables/chat/ui/useChatOrganization';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
@@ -27,19 +30,22 @@ import type { EndpointType } from './models/types';
 
 // PWA manager (only for hosted mode)
 const PWAManager = __BUILD_MODE_IS_HOSTED__
-  ? defineAsyncComponentAndLoadOnMounted(() => import('./components/PWAManager.vue'))
+  ? defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/PWAManager.vue') })
   : undefined;
 // Lazily load components that are not visible on initial mount, but prefetch them when idle.
-const SettingsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/SettingsModal.vue'));
-const DebugWeshTerminalModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugWeshTerminalModal.vue'));
-const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/GlobalSearchModal.vue'));
-const RecentChatsModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/RecentChatsModal.vue'));
-const DebugPanel = defineAsyncComponentAndLoadOnMounted(() => import('./components/DebugPanel.vue'));
-const CustomDialog = defineAsyncComponentAndLoadOnMounted(() => import('./components/CustomDialog.vue'));
-const OPFSExplorer = defineAsyncComponentAndLoadOnMounted(() => import('./components/OPFSExplorer.vue'));
-const FileExplorerModal = defineAsyncComponentAndLoadOnMounted(() => import('./components/FileExplorerModal.vue'));
+const SettingsModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/SettingsModal.vue') });
+const DebugWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/DebugWeshTerminalModal.vue') });
+const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/GlobalSearchModal.vue') });
+const RecentChatsModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/RecentChatsModal.vue') });
+const DebugPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/DebugPanel.vue') });
+const CustomDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/CustomDialog.vue') });
+const OPFSExplorer = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/OPFSExplorer.vue') });
+const FileExplorerModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/FileExplorerModal.vue') });
 
-const chatStore = useChat();
+const currentChatState = useCurrentChatState();
+const chatLifecycle = useChatLifecycle();
+const chatListData = useChatListData();
+const chatOrganization = useChatOrganization();
 const settingsStore = useSettings();
 const { addRecentChat, toggleRecent } = useRecentChats();
 const { isSidebarOpen, isDebugOpen, isWeshTerminalOpen, toggleWeshTerminal } = useLayout();
@@ -127,7 +133,7 @@ watch(
   async ([modelId, initialized]) => {
     if (!initialized) return;
     if (typeof modelId === 'string') {
-      await settingsStore.updateGlobalModel(modelId);
+      await settingsStore.updateGlobalModel({ modelId });
     }
   },
   { immediate: true }
@@ -137,7 +143,7 @@ watch(
 // OR if a query parameter 'q' is provided on the landing page
 watch(
   [
-    () => chatStore.chats.value.length,
+    () => chatListData.chats.value.length,
     () => router.currentRoute.value?.path,
     () => router.currentRoute.value?.query?.q,
     () => router.currentRoute.value?.query?.['chat-group'],
@@ -153,10 +159,10 @@ watch(
     // This ignores URL parameters and just ensures the user has something to interact with.
     if (len === 0 && !q) {
       const { setActiveFocusArea } = useLayout();
-      setActiveFocusArea('chat');
-      await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-      if (chatStore.currentChat.value) {
-        router.push(`/chat/${chatStore.currentChat.value.id}`);
+      setActiveFocusArea({ area: 'chat' });
+      await chatLifecycle.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
+      if (currentChatState.currentChat.value) {
+        router.push(`/chat/${currentChatState.currentChat.value.id}`);
       }
       return;
     }
@@ -167,11 +173,11 @@ watch(
     if (q) {
       let targetGroupId: string | undefined = undefined;
       if (typeof chatGroupId === 'string') {
-        const group = chatStore.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
+        const group = currentChatState.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
         if (group) {
           targetGroupId = group.id;
         } else {
-          targetGroupId = await chatStore.createChatGroup(chatGroupId);
+          targetGroupId = await chatOrganization.createChatGroup({ name: chatGroupId, options: undefined });
         }
       }
 
@@ -181,15 +187,15 @@ watch(
         : undefined;
 
       const { setActiveFocusArea } = useLayout();
-      setActiveFocusArea('chat');
-      await chatStore.createNewChat({
+      setActiveFocusArea({ area: 'chat' });
+      await chatLifecycle.createNewChat({
         groupId: targetGroupId,
         modelId: targetModelId,
         systemPrompt
       });
 
-      if (chatStore.currentChat.value) {
-        const id = chatStore.currentChat.value.id;
+      if (currentChatState.currentChat.value) {
+        const id = currentChatState.currentChat.value.id;
         router.push({
           path: `/chat/${id}`,
           query: { q: q.toString() }
@@ -206,14 +212,14 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'o' || e.key === 'O')) {
     e.preventDefault();
     const { setActiveFocusArea } = useLayout();
-    setActiveFocusArea('chat');
-    await chatStore.createNewChat({
+    setActiveFocusArea({ area: 'chat' });
+    await chatLifecycle.createNewChat({
       groupId: undefined,
       modelId: undefined,
       systemPrompt: undefined
     });
-    if (chatStore.currentChat.value) {
-      router.push(`/chat/${chatStore.currentChat.value.id}`);
+    if (currentChatState.currentChat.value) {
+      router.push(`/chat/${currentChatState.currentChat.value.id}`);
     }
   }
 

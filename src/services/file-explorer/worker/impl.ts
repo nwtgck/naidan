@@ -1,5 +1,10 @@
 import type { EmptyArgs } from '@/models/types'
 import { WeshVFS } from '@/services/wesh/vfs'
+import { NaidanSysfsProvider } from '@/services/wesh/naidan-sysfs/provider'
+import {
+  createOpfsNaidanSysfsStorageReader,
+  createRemoteNaidanSysfsStorageReader,
+} from '@/services/wesh/naidan-sysfs/storage-reader'
 import { EXTENSION_LANGUAGE_MAP, MEDIA_PREVIEW_SIZE_LIMIT, TEXT_PREVIEW_SIZE_LIMIT } from '@/components/file-explorer/constants'
 import { getFileExtension, getMimeCategory } from '@/components/file-explorer/utils'
 import {
@@ -54,11 +59,19 @@ type ResolvedDirectory =
   }
 
 type ResolvedFile = {
-  kind: 'file'
+  kind: 'native-file'
   name: string
   path: string
   handle: FileSystemFileHandle
   readOnly: boolean
+}
+
+type ResolvedVirtualFile = {
+  kind: 'virtual-file'
+  name: string
+  path: string
+  readOnly: boolean
+  vfs: WeshVFS
 }
 
 const sessions = new Map<string, FileExplorerSession>()
@@ -131,11 +144,52 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
   case 'wesh-mounts': {
     const vfs = new WeshVFS({ rootHandle: undefined })
     for (const mount of root.mounts) {
-      await vfs.mount({
-        path: mount.path,
-        handle: mount.handle,
-        readOnly: mount.readOnly,
-      })
+      switch (mount.type) {
+      case 'directory':
+        await vfs.mount({
+          path: mount.path,
+          handle: mount.handle,
+          readOnly: mount.readOnly,
+        })
+        break
+      case 'naidan_sysfs': {
+        const reader = await (() => {
+          switch (mount.storageType) {
+          case 'opfs':
+            return createOpfsNaidanSysfsStorageReader({})
+          case 'local':
+          case 'memory':
+            if (root.naidanSysfsRemoteReader === undefined) {
+              throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`)
+            }
+            return createRemoteNaidanSysfsStorageReader({
+              remoteReader: root.naidanSysfsRemoteReader,
+            })
+          default: {
+            const _exhaustiveCheck: never = mount.storageType
+            throw new Error(`Unhandled naidan sysfs storage type: ${String(_exhaustiveCheck)}`)
+          }
+          }
+        })()
+
+        vfs.mountVirtual({
+          path: mount.path,
+          readOnly: mount.readOnly,
+          provider: new NaidanSysfsProvider({
+            reader,
+            visibility: mount.visibility,
+            binaryObjectAccess: mount.binaryObjectAccess,
+            currentChatId: mount.currentChatId,
+            currentChatGroupId: mount.currentChatGroupId,
+          }),
+        })
+        break
+      }
+      default: {
+        const _exhaustiveCheck: never = mount
+        throw new Error(`Unhandled wesh mount: ${String(_exhaustiveCheck)}`)
+      }
+      }
     }
     return {
       kind: 'wesh-mounts',
@@ -259,7 +313,7 @@ async function resolveFile({
 }: {
   session: FileExplorerSession
   path: string
-}): Promise<ResolvedFile> {
+}): Promise<ResolvedFile | ResolvedVirtualFile> {
   const normalizedPath = normalizeExplorerPath({ path })
   const name = getBaseNameFromPath({
     path: normalizedPath,
@@ -274,7 +328,7 @@ async function resolveFile({
     })
     const handle = await parentHandle.getFileHandle(name)
     return {
-      kind: 'file',
+      kind: 'native-file',
       name,
       path: normalizedPath,
       handle,
@@ -283,15 +337,27 @@ async function resolveFile({
   }
   case 'wesh-mounts': {
     const nativeHandle = await session.vfs.getNativeHandle({ path: normalizedPath })
-    if (nativeHandle === null || nativeHandle.kind !== 'file') {
+    if (nativeHandle !== null && nativeHandle.kind === 'file') {
+      return {
+        kind: 'native-file',
+        name,
+        path: normalizedPath,
+        handle: nativeHandle as FileSystemFileHandle,
+        readOnly: session.vfs.getReadOnlyForPath({ path: normalizedPath }),
+      }
+    }
+
+    const stat = await session.vfs.stat({ path: normalizedPath }).catch(() => null)
+    if (stat === null || stat.type !== 'file') {
       throw new Error(`File not found: ${normalizedPath}`)
     }
+
     return {
-      kind: 'file',
+      kind: 'virtual-file',
       name,
       path: normalizedPath,
-      handle: nativeHandle as FileSystemFileHandle,
       readOnly: session.vfs.getReadOnlyForPath({ path: normalizedPath }),
+      vfs: session.vfs,
     }
   }
   default: {
@@ -299,6 +365,63 @@ async function resolveFile({
     throw new Error(`Unhandled file explorer session: ${String(_exhaustiveCheck)}`)
   }
   }
+}
+
+async function readAllBytesFromVirtualFile({
+  vfs,
+  path,
+}: {
+  vfs: WeshVFS
+  path: string
+}): Promise<Uint8Array> {
+  const handle = await vfs.open({
+    path,
+    flags: {
+      access: 'read',
+      creation: 'never',
+      truncate: 'preserve',
+      append: 'preserve',
+    },
+    mode: undefined,
+  })
+
+  try {
+    const chunks: Uint8Array[] = []
+    while (true) {
+      const buffer = new Uint8Array(64 * 1024)
+      const { bytesRead } = await handle.read({ buffer })
+      if (bytesRead === 0) {
+        break
+      }
+      chunks.push(buffer.subarray(0, bytesRead))
+    }
+
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
+    const merged = new Uint8Array(totalLength)
+    let offset = 0
+    for (const chunk of chunks) {
+      merged.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return merged
+  } finally {
+    await handle.close()
+  }
+}
+
+async function readBlobText({ blob }: { blob: Blob }): Promise<string> {
+  if (typeof blob.text === 'function') {
+    return blob.text()
+  }
+  if (typeof blob.arrayBuffer !== 'function') {
+    throw new Error('Blob text reading is not supported in this environment')
+  }
+  const buffer = await blob.arrayBuffer()
+  return new TextDecoder().decode(buffer)
+}
+
+function uint8ArrayToBlobPart({ bytes }: { bytes: Uint8Array }): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
 }
 
 function assertDirectoryIsWritable({ directory }: {
@@ -435,36 +558,101 @@ async function listWeshVirtualDirectoryEntries({
 
   for await (const entry of vfs.readDir({ path: directoryPath })) {
     switch (entry.type) {
-    case 'directory':
+    case 'directory': {
+      const nativeHandle = await vfs.getNativeHandle({ path: entry.fullPath })
+      const readOnly = nativeHandle !== null && nativeHandle.kind === 'directory'
+        ? vfs.getReadOnlyForPath({ path: entry.fullPath })
+        : true
+
+      entries.push({
+        path: normalizeExplorerPath({ path: entry.fullPath }),
+        name: entry.name,
+        kind: 'directory',
+        size: undefined,
+        lastModified: undefined,
+        extension: '',
+        mimeCategory: 'binary',
+        readOnly,
+        canNavigate: true,
+        canMutate: false,
+      })
       break
-    case 'file':
+    }
+    case 'file': {
+      const nativeHandle = await vfs.getNativeHandle({ path: entry.fullPath })
+      const extension = getFileExtension({ name: entry.name })
+      const mimeCategory = getMimeCategory({ extension })
+      const stat = await vfs.stat({ path: entry.fullPath })
+
+      entries.push({
+        path: normalizeExplorerPath({ path: entry.fullPath }),
+        name: entry.name,
+        kind: 'file',
+        size: stat.size,
+        lastModified: stat.mtime || undefined,
+        extension,
+        mimeCategory,
+        readOnly: nativeHandle !== null && nativeHandle.kind === 'file'
+          ? vfs.getReadOnlyForPath({ path: entry.fullPath })
+          : true,
+        canNavigate: false,
+        canMutate: false,
+      })
+      break
+    }
+    case 'symlink': {
+      const resolved = await vfs.resolve({ path: entry.fullPath })
+      const extension = getFileExtension({ name: entry.name })
+      const mimeCategory = getMimeCategory({ extension })
+
+      switch (resolved.stat.type) {
+      case 'directory':
+        entries.push({
+          path: normalizeExplorerPath({ path: entry.fullPath }),
+          name: entry.name,
+          kind: 'directory',
+          size: undefined,
+          lastModified: resolved.stat.mtime || undefined,
+          extension: '',
+          mimeCategory: 'binary',
+          readOnly: true,
+          canNavigate: true,
+          canMutate: false,
+        })
+        break
+      case 'file':
+        entries.push({
+          path: normalizeExplorerPath({ path: entry.fullPath }),
+          name: entry.name,
+          kind: 'file',
+          size: resolved.stat.size,
+          lastModified: resolved.stat.mtime || undefined,
+          extension,
+          mimeCategory,
+          readOnly: true,
+          canNavigate: false,
+          canMutate: false,
+        })
+        break
+      case 'fifo':
+      case 'chardev':
+      case 'symlink':
+        break
+      default: {
+        const _exhaustiveCheck: never = resolved.stat.type
+        throw new Error(`Unhandled resolved VFS entry type: ${String(_exhaustiveCheck)}`)
+      }
+      }
+      break
+    }
     case 'fifo':
     case 'chardev':
-    case 'symlink':
-      continue
+      break
     default: {
       const _exhaustiveCheck: never = entry.type
       throw new Error(`Unhandled VFS entry type: ${String(_exhaustiveCheck)}`)
     }
     }
-
-    const nativeHandle = await vfs.getNativeHandle({ path: entry.fullPath })
-    const readOnly = nativeHandle !== null && nativeHandle.kind === 'directory'
-      ? vfs.getReadOnlyForPath({ path: entry.fullPath })
-      : true
-
-    entries.push({
-      path: normalizeExplorerPath({ path: entry.fullPath }),
-      name: entry.name,
-      kind: 'directory',
-      size: undefined,
-      lastModified: undefined,
-      extension: '',
-      mimeCategory: 'binary',
-      readOnly,
-      canNavigate: true,
-      canMutate: false,
-    })
   }
 
   return entries
@@ -610,13 +798,40 @@ export function createFileExplorerWorker(_args: EmptyArgs): IFileExplorerWorker 
       }
 
       const resolvedFile = await resolveFile({ session, path: normalizedPath })
-      const file = await resolvedFile.handle.getFile()
+      const nativeFile = await (() => {
+        switch (resolvedFile.kind) {
+        case 'native-file':
+          return resolvedFile.handle.getFile()
+        case 'virtual-file':
+          return Promise.resolve(undefined)
+        default: {
+          const _exhaustiveCheck: never = resolvedFile
+          throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`)
+        }
+        }
+      })()
+      const virtualBytes = await (() => {
+        switch (resolvedFile.kind) {
+        case 'native-file':
+          return Promise.resolve(undefined)
+        case 'virtual-file':
+          return readAllBytesFromVirtualFile({
+            vfs: resolvedFile.vfs,
+            path: resolvedFile.path,
+          })
+        default: {
+          const _exhaustiveCheck: never = resolvedFile
+          throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`)
+        }
+        }
+      })()
       const extension = getFileExtension({ name: resolvedFile.name })
       const mimeCategory = getMimeCategory({ extension })
+      const fileSize = nativeFile?.size ?? virtualBytes?.byteLength ?? 0
 
       switch (mimeCategory) {
       case 'text': {
-        if (validated.mode === 'bounded' && file.size > TEXT_PREVIEW_SIZE_LIMIT) {
+        if (validated.mode === 'bounded' && fileSize > TEXT_PREVIEW_SIZE_LIMIT) {
           return fileExplorerReadPreviewResponseSchema.parse({
             kind: 'text',
             rawText: '',
@@ -626,7 +841,9 @@ export function createFileExplorerWorker(_args: EmptyArgs): IFileExplorerWorker 
           })
         }
 
-        const rawText = await file.text()
+        const rawText = nativeFile !== undefined
+          ? await readBlobText({ blob: nativeFile })
+          : new TextDecoder().decode(virtualBytes ?? new Uint8Array())
         let displayText = rawText
         if (extension === '.json' || extension === '.jsonl') {
           try {
@@ -646,20 +863,20 @@ export function createFileExplorerWorker(_args: EmptyArgs): IFileExplorerWorker 
       case 'image':
       case 'video':
       case 'audio':
-        if (validated.mode === 'bounded' && file.size > MEDIA_PREVIEW_SIZE_LIMIT) {
+        if (validated.mode === 'bounded' && fileSize > MEDIA_PREVIEW_SIZE_LIMIT) {
           return fileExplorerReadPreviewResponseSchema.parse({
             kind: 'media',
             mediaKind: mimeCategory,
             blob: new Blob([]),
-            mimeType: file.type,
+            mimeType: nativeFile?.type ?? '',
             oversized: true,
           })
         }
         return fileExplorerReadPreviewResponseSchema.parse({
           kind: 'media',
           mediaKind: mimeCategory,
-          blob: file,
-          mimeType: file.type,
+          blob: nativeFile ?? new Blob(virtualBytes === undefined ? [] : [uint8ArrayToBlobPart({ bytes: virtualBytes })]),
+          mimeType: nativeFile?.type ?? '',
           oversized: false,
         })
       case 'binary':
@@ -681,9 +898,25 @@ export function createFileExplorerWorker(_args: EmptyArgs): IFileExplorerWorker 
         session,
         path: validated.path,
       })
-      return fileExplorerReadFileResponseSchema.parse({
-        blob: await resolvedFile.handle.getFile(),
-      })
+      switch (resolvedFile.kind) {
+      case 'native-file':
+        return fileExplorerReadFileResponseSchema.parse({
+          blob: await resolvedFile.handle.getFile(),
+        })
+      case 'virtual-file':
+        return fileExplorerReadFileResponseSchema.parse({
+          blob: new Blob([uint8ArrayToBlobPart({
+            bytes: await readAllBytesFromVirtualFile({
+              vfs: resolvedFile.vfs,
+              path: resolvedFile.path,
+            }),
+          })]),
+        })
+      default: {
+        const _exhaustiveCheck: never = resolvedFile
+        throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`)
+      }
+      }
     },
 
     async createFile({ request }) {
@@ -787,10 +1020,20 @@ export function createFileExplorerWorker(_args: EmptyArgs): IFileExplorerWorker 
         const normalizedSourcePath = normalizeExplorerPath({ path: sourcePath })
         try {
           const sourceFile = await resolveFile({ session, path: normalizedSourcePath })
-          await copyFileHandleToDirectory({
-            sourceHandle: sourceFile.handle,
-            targetDirectoryHandle: writableTargetDirectory,
-          })
+          switch (sourceFile.kind) {
+          case 'native-file':
+            await copyFileHandleToDirectory({
+              sourceHandle: sourceFile.handle,
+              targetDirectoryHandle: writableTargetDirectory,
+            })
+            break
+          case 'virtual-file':
+            throw new Error(`Cannot copy virtual file: ${normalizedSourcePath}`)
+          default: {
+            const _exhaustiveCheck: never = sourceFile
+            throw new Error(`Unhandled resolved file: ${String(_exhaustiveCheck)}`)
+          }
+          }
           continue
         } catch {
           const sourceDirectory = await resolveDirectory({

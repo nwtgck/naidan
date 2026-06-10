@@ -3,7 +3,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, ref, computed, reactive, nextTick } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import Sidebar from './Sidebar.vue';
-import ChatArea from './ChatArea.vue';
+import CurrentChatPane from './CurrentChatPane.vue';
 import { useLayout } from '@/composables/useLayout';
 import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/models/types';
 
@@ -78,6 +78,26 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: mockActiveMessages,
+    allMessages: ref([]),
+    resolvedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    inheritedSettings: ref({ modelId: 'm1', sources: { modelId: 'global' } }),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      return items;
+    }),
+    TEST_ONLY: {},
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref({}),
@@ -100,11 +120,11 @@ vi.mock('vuedraggable', () => ({
 }));
 
 const TestHarness = defineComponent({
-  components: { Sidebar, ChatArea },
+  components: { Sidebar, CurrentChatPane },
   template: `\
     <div>
       <Sidebar />
-      <ChatArea />
+      <CurrentChatPane />
     </div>
   `
 });
@@ -170,7 +190,7 @@ describe('Sidebar Focus Sync', () => {
     vi.useRealTimers();
   });
 
-  it('re-activates chat focus on ChatArea click and can scroll a hidden selected chat', async () => {
+  it('re-activates chat focus on CurrentChatPane click and can scroll a hidden selected chat', async () => {
     wrapper = mount(TestHarness, {
       global: {
         plugins: [router],
@@ -189,7 +209,7 @@ describe('Sidebar Focus Sync', () => {
     await vi.runAllTimersAsync();
     mockScrollIntoViewSafe.mockClear();
 
-    await wrapper.getComponent(ChatArea).trigger('click');
+    await wrapper.getComponent(CurrentChatPane).trigger('click');
     await nextTick();
     await vi.runAllTimersAsync();
 
@@ -226,7 +246,7 @@ describe('Sidebar Focus Sync', () => {
     await vi.runAllTimersAsync();
     mockScrollIntoViewSafe.mockClear();
 
-    layout.setActiveFocusArea('chat');
+    layout.setActiveFocusArea({ area: 'chat' });
     await nextTick();
     await vi.runAllTimersAsync();
 

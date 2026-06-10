@@ -6,10 +6,15 @@ import Sidebar from './Sidebar.vue';
 import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
 vi.mock('../composables/useChat');
 vi.mock('../composables/useSettings');
 vi.mock('../composables/useLayout');
+vi.mock('../composables/chat/ui/useCurrentChatState');
+vi.mock('@/utils/dom', () => ({
+  scrollIntoViewSafe: vi.fn(),
+}));
 vi.mock('vuedraggable', () => ({
   default: {
     name: 'draggable',
@@ -23,7 +28,7 @@ vi.mock('vuedraggable', () => ({
     props: [
       'modelValue', 'itemKey', 'ghostClass', 'swapThreshold', 'invertSwap',
       'scroll', 'scrollSensitivity', 'scrollSpeed', 'forceFallback', 'fallbackClass',
-      'tag', 'animation', 'delay', 'delayOnTouchOnly', 'componentData'
+      'tag', 'animation', 'delay', 'delayOnTouchOnly', 'componentData', 'move'
     ],
   }
 }));
@@ -33,9 +38,17 @@ const router = createRouter({
   routes: [{ path: '/', component: { template: '<div></div>' } }, { path: '/chat/:id', component: { template: '<div></div>' } }, { path: '/chat-group/:id', component: { template: '<div></div>' } }],
 });
 
-describe('Sidebar DND Improvements', () => {
-  let mockChatStore: any;
+let mockChatStore: any;
 
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: mockChatStore.persistSidebarStructure,
+    setChatGroupCollapsed: mockChatStore.setChatGroupCollapsed,
+    TEST_ONLY: {},
+  }),
+}));
+
+describe('Sidebar DND Improvements', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Individually defined mocks for scrolling as requested
@@ -62,6 +75,18 @@ describe('Sidebar DND Improvements', () => {
       persistSidebarStructure: vi.fn(),
     };
     (useChat as any).mockReturnValue(mockChatStore);
+    (useCurrentChatState as any).mockReturnValue({
+      currentChat: mockChatStore.currentChat,
+      currentChatGroup: mockChatStore.currentChatGroup,
+      currentChatId: ref(undefined),
+      activeMessages: ref([]),
+      allMessages: ref([]),
+      resolvedSettings: ref(null),
+      inheritedSettings: ref(null),
+      chatGroups: mockChatStore.chatGroups,
+      sidebarItems: mockChatStore.sidebarItems,
+      TEST_ONLY: {},
+    });
     (useSettings as any).mockReturnValue({ settings: ref({}), isFetchingModels: ref(false) });
     (useLayout as any).mockReturnValue({
       isSidebarOpen: ref(true),
@@ -96,10 +121,12 @@ describe('Sidebar DND Improvements', () => {
     nestedTarget.classList.add('nested-draggable');
 
     const result = (wrapper.vm as any).checkMove({
-      draggedContext: {
-        element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
+      evt: {
+        draggedContext: {
+          element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
+        },
+        to: nestedTarget,
       },
-      to: nestedTarget,
     });
 
     expect(result).toBe(true);
@@ -112,13 +139,33 @@ describe('Sidebar DND Improvements', () => {
     nestedTarget.classList.add('nested-draggable');
 
     const result = (wrapper.vm as any).checkMove({
+      evt: {
+        draggedContext: {
+          element: { type: 'chat_group', id: 'g2', chatGroup: { id: 'g2', name: 'Group 2', items: [], isCollapsed: false, updatedAt: 0 } },
+        },
+        to: nestedTarget,
+      },
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it('uses the draggable move callback with the raw Sortable event shape', async () => {
+    const wrapper = mount(Sidebar, { global: { plugins: [router] } });
+    await nextTick();
+    const nestedTarget = document.createElement('div');
+    nestedTarget.classList.add('nested-draggable');
+
+    const draggable = wrapper.findComponent({ name: 'draggable' });
+    const move = draggable.props('move') as (evt: unknown) => boolean;
+    const result = move({
       draggedContext: {
-        element: { type: 'chat_group', id: 'g2', chatGroup: { id: 'g2', name: 'Group 2', items: [], isCollapsed: false, updatedAt: 0 } },
+        element: { type: 'chat', id: 'c1', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } },
       },
       to: nestedTarget,
     });
 
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
   it('implements group expansion using CSS Grid for stability', async () => {
@@ -152,7 +199,7 @@ describe('Sidebar DND Improvements', () => {
     // Simulate "Show more" expansion (internal state expandedGroupIds)
     // We can't easily trigger the function from outside without export or component access,
     // but we can verify the binding.
-    (wrapper.vm as any).toggleGroupCompactExpansion('g1');
+    (wrapper.vm as any).toggleGroupCompactExpansion({ groupId: 'g1' });
     await nextTick();
     expect(showMoreWrapper.attributes('style')).toContain('max-height: 2000px');
   });

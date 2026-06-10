@@ -12,7 +12,7 @@ describe('useSettings - Search Volatile State', () => {
   beforeEach(() => {
     // Reset to defaults manually as useSettings uses global state
     setSearchPreviewMode({ mode: 'always' });
-    setSearchContextSize(2);
+    setSearchContextSize({ size: 2 });
   });
 
   it('should update searchPreviewMode', () => {
@@ -25,9 +25,9 @@ describe('useSettings - Search Volatile State', () => {
 
   it('should update searchContextSize', () => {
     expect(searchContextSize.value).toBe(2);
-    setSearchContextSize(5);
+    setSearchContextSize({ size: 5 });
     expect(searchContextSize.value).toBe(5);
-    setSearchContextSize(Infinity);
+    setSearchContextSize({ size: Infinity });
     expect(searchContextSize.value).toBe(Infinity);
   });
 });

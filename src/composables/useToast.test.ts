@@ -15,7 +15,7 @@ describe('useToast', () => {
     expect(toasts.value).toHaveLength(1);
     expect(toasts.value[0]?.message).toBe('Hello');
 
-    removeToast(id);
+    removeToast({ id });
     expect(toasts.value).toHaveLength(0);
   });
 

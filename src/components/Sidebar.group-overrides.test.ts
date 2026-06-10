@@ -8,12 +8,16 @@ import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChatGroup = ref<ChatGroup | null>(null);
-const mockOpenChatGroup = vi.fn((id: string | null) => {
+const mockCurrentChat = ref<{ id: string; groupId?: string | null } | null>(null);
+const mockOpenChatGroup = vi.fn(({ id }: { id: string | null }) => {
   if (id === null) {
     mockCurrentChatGroup.value = null; return;
   }
   const group = mockChatGroups.value.find(g => g.id === id);
   if (group) mockCurrentChatGroup.value = group;
+});
+const mockOpenChat = vi.fn((_args?: { id: string }) => {
+  mockCurrentChatGroup.value = null;
 });
 const mockSetChatGroupCollapsed = vi.fn();
 
@@ -45,6 +49,68 @@ vi.mock('../composables/useChat', () => ({
     isProcessing: vi.fn().mockReturnValue(false),
     abortChat: vi.fn(),
     __testOnlySetCurrentChatGroup: (val: any) => mockCurrentChatGroup.value = val,
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      return items;
+    }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: ({ chatId }: { chatId: string; leafId?: string }) => {
+      mockOpenChat({ id: chatId });
+    },
+    openChatAtMessage: vi.fn(),
+    openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: vi.fn(),
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+      mockSetChatGroupCollapsed({ groupId, isCollapsed }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: vi.fn(),
+    deleteChat: vi.fn(),
+    deleteAllChats: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
   }),
 }));
 
@@ -95,6 +161,7 @@ describe('Sidebar Group Overrides', () => {
     ];
     mockChats.value = [];
     mockCurrentChatGroup.value = null;
+    mockCurrentChat.value = null;
     vi.clearAllMocks();
   });
 
@@ -113,7 +180,7 @@ describe('Sidebar Group Overrides', () => {
     expect(groupItem.exists()).toBe(true);
     await groupItem.trigger('click');
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
   });
 
   it('calls setChatGroupCollapsed when clicking the expansion icon', async () => {
@@ -148,6 +215,7 @@ describe('Sidebar Group Overrides', () => {
   it('clears currentChatGroup when a chat item is clicked', async () => {
     mockChats.value = [{ id: 'c1', title: 'Chat 1', updatedAt: 0 }];
     mockCurrentChatGroup.value = mockChatGroups.value[0]!;
+    mockCurrentChat.value = { id: 'c1' };
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: globalStubs },

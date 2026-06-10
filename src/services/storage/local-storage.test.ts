@@ -55,7 +55,7 @@ describe('LocalStorageProvider', () => {
 
     await provider.saveChatContent(mockChat.id, mockChat);
     await provider.saveChatMeta(mockChat);
-    const loaded = await provider.loadChat(mockChat.id);
+    const loaded = await provider.loadChat({ id: mockChat.id });
     expect(loaded).toEqual(expect.objectContaining(mockChat));
   });
 
@@ -91,8 +91,8 @@ describe('LocalStorageProvider', () => {
 
     await provider.saveChatContent(mockChat.id, mockChat);
     await provider.saveChatMeta(mockChat);
-    await provider.deleteChat(mockChat.id);
-    const loaded = await provider.loadChat(mockChat.id);
+    await provider.deleteChat({ id: mockChat.id });
+    const loaded = await provider.loadChat({ id: mockChat.id });
     expect(loaded).toBeNull();
   });
 

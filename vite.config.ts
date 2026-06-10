@@ -58,6 +58,116 @@ interface EmbeddedWorkerManifestEntry {
   size: number
 }
 
+function setCrossOriginResourcePolicy({ res }: {
+  res: import('node:http').ServerResponse,
+}): void {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+}
+
+function setCrossOriginModuleHeaders({ res }: {
+  res: import('node:http').ServerResponse,
+}): void {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+  res.setHeader('Access-Control-Allow-Origin', '*')
+}
+
+function normalizeModulePathForChunkRouting(modulePath: string): string {
+  return modulePath.replaceAll('\\', '/')
+}
+
+function isPrivacyFetchBrokerChunk(chunkInfo: {
+  name: string
+  facadeModuleId?: string | null
+  moduleIds?: string[]
+}): boolean {
+  if (chunkInfo.name.includes('privacy-fetch')) {
+    return true
+  }
+
+  if (chunkInfo.facadeModuleId !== undefined && chunkInfo.facadeModuleId !== null) {
+    const normalizedFacadeModuleId = normalizeModulePathForChunkRouting(chunkInfo.facadeModuleId)
+    if (normalizedFacadeModuleId.includes('/src/services/privacy-fetch/')) {
+      return true
+    }
+  }
+
+  // Keep zod-backed validation chunks alongside the broker bundle so shared
+  // dependencies still stay inside the broker asset subtree for auditing.
+  return chunkInfo.moduleIds?.some((moduleId) => {
+    const normalizedModuleId = normalizeModulePathForChunkRouting(moduleId)
+    return normalizedModuleId.includes('/src/services/privacy-fetch/')
+      || normalizedModuleId.includes('/node_modules/zod/')
+  }) ?? false
+}
+
+// Dev-server-only HTML cleanup for the privacy fetch broker page.
+// This targets only /privacy-fetch-broker.html, which runs inside a sandboxed
+// iframe without allow-same-origin so the broker fetch path keeps Origin: null.
+// Vite / Vue DevTools / Vue Inspector dev-injected scripts can execute inside that
+// sandbox and throw on localStorage or related same-origin APIs. We must not add
+// allow-same-origin because that breaks the Origin: null goal, so we strip only
+// those injected script elements from the HTML itself. Use jsdom here instead of
+// regex so removal is done at the script-element level.
+function stripPrivacyFetchBrokerDevInjectedScriptsPlugin(): import('vite').Plugin {
+  return {
+    name: 'strip-privacy-fetch-broker-dev-injected-scripts',
+    apply: 'serve',
+    enforce: 'post',
+    transformIndexHtml(html, context) {
+      if (context.path !== '/privacy-fetch-broker.html') {
+        return html
+      }
+
+      const dom = new JSDOM(html)
+      const { document } = dom.window
+      const devInjectedScriptSourceMarkers = [
+        '/@vite/client',
+        'virtual:vue-devtools-path',
+        'virtual:vue-inspector-path',
+        '/@id/virtual:vue-devtools-path',
+        '/@id/virtual:vue-inspector-path',
+      ]
+
+      for (const script of document.querySelectorAll('script[src]')) {
+        const src = script.getAttribute('src') ?? ''
+        if (devInjectedScriptSourceMarkers.some((marker) => src.includes(marker))) {
+          script.remove()
+        }
+      }
+
+      if (!html.includes('privacy-fetch-dev-injected-scripts-stripped') && document.body) {
+        document.body.appendChild(document.createComment(' privacy-fetch-dev-injected-scripts-stripped '))
+      }
+
+      return dom.serialize()
+    },
+  }
+}
+
+const privacyFetchBrokerDevHeadersPlugin = () => ({
+  name: 'privacy-fetch-broker-dev-headers',
+  configureServer(server: import('vite').ViteDevServer) {
+    server.middlewares.use((req, res, next) => {
+      const url = req.url ?? ''
+
+      if (url === '/privacy-fetch-broker.html') {
+        setCrossOriginResourcePolicy({ res })
+      }
+
+      if (
+        url.startsWith('/src/services/privacy-fetch/')
+        || url.startsWith('/node_modules/')
+        || url.startsWith('/@vite/')
+        || url.startsWith('/@id/')
+      ) {
+        setCrossOriginModuleHeaders({ res })
+      }
+
+      next()
+    })
+  },
+})
+
 function ensureExistingPath(relativePath: string): string {
   const absolutePath = path.resolve(__dirname, relativePath)
   if (!fs.existsSync(absolutePath)) {
@@ -117,6 +227,14 @@ export default defineConfig(({ mode }) => {
   const isHosted = mode === 'hosted'
   // Use nested directories in dist/ to keep things organized
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted'
+  const rollupInput: Record<string, string> = isStandalone
+    ? {
+      app: path.resolve(__dirname, 'index.html'),
+    }
+    : {
+      app: path.resolve(__dirname, 'index.html'),
+      privacyFetchBroker: path.resolve(__dirname, 'privacy-fetch-broker.html'),
+    }
   const embeddedWorkers: EmbeddedWorkerSpec[] = [
     {
       entry: 'src/services/worker-hub-standalone.worker.ts',
@@ -164,6 +282,8 @@ export default defineConfig(({ mode }) => {
       }),
       VueDevTools(),
       vue(),
+      stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
+      privacyFetchBrokerDevHeadersPlugin(),
       !isStandalone && viteStaticCopy({
         targets: [
           {
@@ -261,8 +381,21 @@ export default defineConfig(({ mode }) => {
       // the complex module loading system that standard ES modules do.
       // For standard web hosting, we use 'es' modules.
       rollupOptions: {
+        input: rollupInput,
         output: {
           format: isStandalone ? 'iife' : 'es',
+          entryFileNames: (chunkInfo) => {
+            if (isPrivacyFetchBrokerChunk(chunkInfo)) {
+              return 'assets/privacy-fetch-broker/[name]-[hash].js'
+            }
+            return 'assets/[name]-[hash].js'
+          },
+          chunkFileNames: (chunkInfo) => {
+            if (isPrivacyFetchBrokerChunk(chunkInfo)) {
+              return 'assets/privacy-fetch-broker/[name]-[hash].js'
+            }
+            return 'assets/[name]-[hash].js'
+          },
         },
       },
     },

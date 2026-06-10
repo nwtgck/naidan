@@ -10,7 +10,7 @@ describe('recipe-matcher', () => {
       const models: RecipeModel[] = [
         { type: 'regex', pattern: 'gpt-4', flags: ['i'] }
       ];
-      const result = matchRecipeModels(models, availableModels);
+      const result = matchRecipeModels({ recipeModels: models, availableModelIds: availableModels });
       expect(result.modelId).toBe('gpt-4o');
     });
 
@@ -19,7 +19,7 @@ describe('recipe-matcher', () => {
         { type: 'regex', pattern: 'llama3:70b', flags: ['i'] },
         { type: 'regex', pattern: 'llama3', flags: ['i'] }
       ];
-      const result = matchRecipeModels(models, availableModels);
+      const result = matchRecipeModels({ recipeModels: models, availableModelIds: availableModels });
       expect(result.modelId).toBe('llama3:70b');
     });
 
@@ -27,7 +27,7 @@ describe('recipe-matcher', () => {
       const models: RecipeModel[] = [
         { type: 'regex', pattern: 'claude', flags: ['i'] }
       ];
-      const result = matchRecipeModels(models, availableModels);
+      const result = matchRecipeModels({ recipeModels: models, availableModelIds: availableModels });
       expect(result.modelId).toBeUndefined();
     });
 
@@ -35,7 +35,7 @@ describe('recipe-matcher', () => {
       const models: RecipeModel[] = [
         { type: 'regex', pattern: '[', flags: ['i'] }
       ];
-      const result = matchRecipeModels(models, availableModels);
+      const result = matchRecipeModels({ recipeModels: models, availableModelIds: availableModels });
       expect(result.error).toContain('Invalid regex');
     });
   });
@@ -46,7 +46,7 @@ describe('recipe-matcher', () => {
         { type: 'regex', pattern: 'llama3', flags: ['i'] },
         { type: 'regex', pattern: 'gpt', flags: ['i'] }
       ];
-      const result = getAllMatchingModels(models, availableModels);
+      const result = getAllMatchingModels({ recipeModels: models, availableModelIds: availableModels });
       expect(result.matches).toContain('llama3:8b');
       expect(result.matches).toContain('llama3:70b');
       expect(result.matches).toContain('gpt-4o');
@@ -59,7 +59,7 @@ describe('recipe-matcher', () => {
         { type: 'regex', pattern: 'llama3', flags: ['i'] },
         { type: 'regex', pattern: 'llama3:8b', flags: ['i'] }
       ];
-      const result = getAllMatchingModels(models, availableModels);
+      const result = getAllMatchingModels({ recipeModels: models, availableModelIds: availableModels });
       expect(result.matches).toContain('llama3:8b');
       expect(result.matches).toContain('llama3:70b');
       expect(result.matches).toHaveLength(2);
@@ -68,7 +68,7 @@ describe('recipe-matcher', () => {
 
   describe('generateDefaultModelPatterns', () => {
     it('should generate hierarchical patterns for a simple model ID', () => {
-      const patterns = generateDefaultModelPatterns('llama3:8b');
+      const patterns = generateDefaultModelPatterns({ modelId: 'llama3:8b' });
       expect(patterns).toContain('^llama3:8b$');
       expect(patterns).toContain('^llama3$');
       expect(patterns).toContain('^llama3:.*');
@@ -76,7 +76,7 @@ describe('recipe-matcher', () => {
     });
 
     it('should handle Hugging Face style paths', () => {
-      const patterns = generateDefaultModelPatterns('mradermacher/model-GGUF');
+      const patterns = generateDefaultModelPatterns({ modelId: 'mradermacher/model-GGUF' });
       expect(patterns).toContain('^mradermacher/model-GGUF$');
       expect(patterns).toContain('^model-GGUF$');
       expect(patterns).toContain('^model$');
@@ -84,20 +84,20 @@ describe('recipe-matcher', () => {
     });
 
     it('should strip common quantization suffixes', () => {
-      const patterns = generateDefaultModelPatterns('bartowski/Llama-3-8B-Instruct-GGUF');
+      const patterns = generateDefaultModelPatterns({ modelId: 'bartowski/Llama-3-8B-Instruct-GGUF' });
       expect(patterns).toContain('^Llama-3-8B-Instruct$');
       expect(patterns).toContain('^Llama-3-8B-Instruct.*');
     });
 
     it('should strip Ollama tags and generate prefix matches', () => {
-      const patterns = generateDefaultModelPatterns('qwen2.5:7b-instruct-q4_K_M');
+      const patterns = generateDefaultModelPatterns({ modelId: 'qwen2.5:7b-instruct-q4_K_M' });
       expect(patterns).toContain('^qwen2\\.5$');
       expect(patterns).toContain('^qwen2\\.5:.*');
       expect(patterns).toContain('^qwen2\\.5.*');
     });
 
     it('should return empty array for empty input', () => {
-      expect(generateDefaultModelPatterns('')).toEqual([]);
+      expect(generateDefaultModelPatterns({ modelId: '' })).toEqual([]);
     });
   });
 });

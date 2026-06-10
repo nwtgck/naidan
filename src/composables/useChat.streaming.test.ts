@@ -73,7 +73,7 @@ describe('useChat Streaming State Logic', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
   });
 
   it('should correctly set streaming state when generation starts and ends', async () => {

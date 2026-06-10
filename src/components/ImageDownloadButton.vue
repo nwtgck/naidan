@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import { DownloadIcon, ChevronDownIcon } from 'lucide-vue-next';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
   /** Download action handler */
@@ -14,30 +15,24 @@ const props = defineProps<{
 const isOpen = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
 
-function toggleDropdown(e: Event) {
-  e.stopPropagation();
+function toggleDropdown({ event }: { event: Event }) {
+  event.stopPropagation();
   isOpen.value = !isOpen.value;
 }
 
-function handleDownload(meta: boolean, e: Event) {
-  e.stopPropagation();
-  props.onDownload({ withMetadata: meta });
+function handleDownload({ withMetadata, event }: { withMetadata: boolean; event: Event }) {
+  event.stopPropagation();
+  props.onDownload({ withMetadata });
   isOpen.value = false;
 }
 
-function handleClickOutside(event: MouseEvent) {
+function handleClickOutside({ event }: { event: MouseEvent }) {
   if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
     isOpen.value = false;
   }
 }
 
-onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 
 defineExpose({
@@ -54,7 +49,7 @@ defineExpose({
   >
     <!-- Main Button (Standard Download) -->
     <button
-      @click="handleDownload(false, $event)"
+      @click="handleDownload({ withMetadata: false, event: $event })"
       class="flex items-center justify-center p-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-l-lg"
       title="Download image"
       data-testid="download-gen-image-button"
@@ -64,7 +59,7 @@ defineExpose({
 
     <!-- Split Divider & Dropdown Toggle -->
     <button
-      @click="toggleDropdown"
+      @click="toggleDropdown({ event: $event })"
       class="px-1 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 border-l border-gray-200 dark:border-gray-700 transition-colors rounded-r-lg flex items-center justify-center"
       title="More options"
       data-testid="download-gen-image-dropdown-toggle"
@@ -79,7 +74,7 @@ defineExpose({
       :class="align === 'left' ? 'left-0' : 'right-0'"
     >
       <button
-        @click="isSupported !== false ? handleDownload(true, $event) : null"
+        @click="isSupported !== false ? handleDownload({ withMetadata: true, event: $event }) : null"
         class="w-full flex flex-col px-3 py-2 text-left transition-colors"
         :class="isSupported !== false ? 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200' : 'opacity-50 cursor-not-allowed text-gray-400'"
         :disabled="isSupported === false"

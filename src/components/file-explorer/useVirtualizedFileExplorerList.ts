@@ -1,5 +1,6 @@
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { Ref } from 'vue';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import type { FileExplorerEntry } from './types';
 
 export function useVirtualizedFileExplorerList({
@@ -119,14 +120,14 @@ export function useVirtualizedFileExplorerList({
     { deep: false },
   );
 
+  useEventTargetListener(window, 'resize', updateViewportMetrics);
+
   onMounted(() => {
     attachContainer({ nextContainer: containerRef.value, previousContainer: undefined });
-    window.addEventListener('resize', updateViewportMetrics);
   });
 
-  onBeforeUnmount(() => {
+  onUnmounted(() => {
     containerRef.value?.removeEventListener('scroll', handleScroll);
-    window.removeEventListener('resize', updateViewportMetrics);
   });
 
   return {

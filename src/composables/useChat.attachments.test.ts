@@ -38,7 +38,7 @@ vi.mock('../services/storage', () => ({
       chats.set(id, merged);
       return Promise.resolve();
     }),
-    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id))),
+    loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id))),
     updateChatContent: vi.fn().mockImplementation((id, updater) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
       const updated = updater({ root: existing.root, currentLeafId: existing.currentLeafId });
@@ -51,7 +51,7 @@ vi.mock('../services/storage', () => ({
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(hierarchy)),
-    loadChat: vi.fn().mockImplementation((id) => {
+    loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => {
       const chat = chats.get(id);
       if (!chat) return Promise.resolve(null);
       return Promise.resolve(chat);
@@ -123,8 +123,8 @@ describe('useChat - Attachment & Migration Logic', () => {
       settings,
       isOnboardingDismissed: ref(true),
       onboardingDraft: ref({}),
-      setHeavyContentAlertDismissed: (val: boolean) => {
-        settings.value.heavyContentAlertDismissed = val;
+      setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => {
+        settings.value.heavyContentAlertDismissed = dismissed;
       },
       setOnboardingDraft: vi.fn(),
       setIsOnboardingDismissed: vi.fn(),
@@ -135,7 +135,7 @@ describe('useChat - Attachment & Migration Logic', () => {
   it('should keep attachments in memory status when using LocalStorage', async () => {
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    const chatObj = await openChat(newChat!.id);
+    const chatObj = await openChat({ id: newChat!.id });
 
     const mockAttachment: Attachment = {
       id: '550e8400-e29b-41d4-a716-446655440000',
@@ -150,7 +150,7 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     await sendMessage({ content: 'Hello', parentId: null, attachments: [mockAttachment], chatTarget: chatObj! });
 
-    const chat = await storageService.loadChat(newChat!.id);
+    const chat = await storageService.loadChat({ id: newChat!.id });
     const message = chat?.root.items[0];
     expect(message?.attachments).toHaveLength(1);
     const attachments = message!.attachments!;
@@ -164,7 +164,7 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    const chatObj = await openChat(newChat!.id);
+    const chatObj = await openChat({ id: newChat!.id });
 
     const mockAttachment: Attachment = {
       id: '550e8400-e29b-41d4-a716-446655440001',
@@ -179,7 +179,7 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     await sendMessage({ content: 'Hello', parentId: null, attachments: [mockAttachment], chatTarget: chatObj! });
 
-    const chat = await storageService.loadChat(newChat!.id);
+    const chat = await storageService.loadChat({ id: newChat!.id });
     const message = chat?.root.items[0];
     expect(message?.attachments).toBeDefined();
     if (message?.attachments) {
@@ -201,8 +201,8 @@ describe('useChat - Attachment & Migration Logic', () => {
       debugEnabled: false,
       modelId: 'm1'
     }) as any;
-    __testOnlySetCurrentChat(chatObj);
-    registerLiveInstance(chatObj);
+    __testOnlySetCurrentChat({ chat: chatObj });
+    registerLiveInstance({ chat: chatObj });
 
     const mockBlob = new Blob(['binary data'], { type: 'image/png' });
     const mockAttachment: Attachment = {
@@ -250,7 +250,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       }
     });
 
-    await storageService.switchProvider('opfs');
+    await storageService.switchProvider({ type: 'opfs' });
 
     // 3. Verify rescue occurred
     expect(storageService.saveFile).toHaveBeenCalledWith(
@@ -259,7 +259,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       'to-migrate.png'
     );
 
-    const chat = await storageService.loadChat('rescue-chat');
+    const chat = await storageService.loadChat({ id: 'rescue-chat' });
     const finalMsg = chat!.root.items[0];
     expect(finalMsg?.attachments).toBeDefined();
     const finalAtts = finalMsg!.attachments!;

@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import RecentChatsModal from './RecentChatsModal.vue';
-import { ref, nextTick } from 'vue';
+import { computed, ref, nextTick } from 'vue';
 import type { ChatSummary } from '@/models/types';
 import { setupScrollToMock } from '@/utils/test-utils';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
 // --- Mocks ---
 
@@ -20,11 +22,12 @@ vi.mock('../composables/useRecentChats', () => ({
 }));
 
 const mockOpenChat = vi.fn();
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    openChat: mockOpenChat,
-    chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
-  }),
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: vi.fn(),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -90,6 +93,26 @@ describe('RecentChatsModal Component', () => {
       { id: 'c2', title: null, accessedAt: Date.now() - 1000, updatedAt: Date.now() - 1000 },
     ];
     vi.clearAllMocks();
+    vi.mocked(useChatNavigation).mockReturnValue({
+      openChat: vi.fn().mockImplementation(async ({ chatId }) => {
+        await mockOpenChat({ id: chatId });
+      }),
+      openChatAtMessage: vi.fn(),
+      openChatGroup: vi.fn(),
+      TEST_ONLY: {},
+    });
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      currentChat: computed(() => null),
+      currentChatGroup: computed(() => null),
+      currentChatId: computed(() => undefined),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      chatGroups: computed(() => [{ id: 'g1', name: 'Group 1' }]),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
+    } as unknown as ReturnType<typeof useCurrentChatState>);
   });
 
   it('should render when open', () => {
@@ -132,7 +155,7 @@ describe('RecentChatsModal Component', () => {
 
     await input.trigger('keydown', { key: 'Enter' });
 
-    expect(mockOpenChat).toHaveBeenCalledWith('c1');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c1' });
     expect(mockPush).toHaveBeenCalledWith('/chat/c1');
     expect(mockCloseRecent).toHaveBeenCalled();
   });
@@ -145,7 +168,7 @@ describe('RecentChatsModal Component', () => {
 
     await secondItem.trigger('click');
 
-    expect(mockOpenChat).toHaveBeenCalledWith('c2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c2' });
     expect(mockPush).toHaveBeenCalledWith('/chat/c2');
     expect(mockCloseRecent).toHaveBeenCalled();
   });
@@ -169,10 +192,10 @@ describe('RecentChatsModal Component', () => {
 
     mockIsRecentOpen.value = true;
     await nextTick();
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('search');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'search' });
 
     mockIsRecentOpen.value = false;
     await nextTick();
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
   });
 });

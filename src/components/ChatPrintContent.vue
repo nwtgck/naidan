@@ -4,14 +4,27 @@
  * It uses the existing theme styles and colors.
  */
 import { computed, onMounted } from 'vue';
-import { useChat } from '@/composables/useChat';
+import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { usePrint } from '@/composables/usePrint';
 import MessageItem from './MessageItem.vue';
 
-const chatStore = useChat();
+const { currentChat, currentChatId, activeMessages } = useCurrentChatState();
 const { markPrintReady } = usePrint();
-const { currentChat, activeMessages } = chatStore;
 const chatTitle = computed(() => currentChat.value?.title || 'Chat History');
+
+function getCurrentChatSiblings({ messageId }: { messageId: string }) {
+  const chat = currentChat.value;
+  const chatId = currentChatId.value;
+  if (chatId === undefined || chat === null) {
+    return [];
+  }
+
+  return [...getSiblingsInChatBranch({
+    root: chat.root,
+    messageId,
+  })];
+}
 
 onMounted(() => {
   markPrintReady();
@@ -37,8 +50,9 @@ defineExpose({
       <MessageItem
         v-for="msg in activeMessages"
         :key="msg.id"
+        :chat-id="currentChat.id"
         :message="msg"
-        :siblings="chatStore.getSiblings(msg.id)"
+        :siblings="getCurrentChatSiblings({ messageId: msg.id })"
         class="chat-print-message-item"
       />
     </div>

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: {
@@ -58,8 +58,9 @@ vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', templa
 const mockOpenFileExplorer = vi.fn();
 const mockEnsureChatTmpDirectory = vi.fn();
 const mockGetChatTmpDirectory = vi.fn();
+const mockGetNaidanSysfsMountSelection = vi.fn();
 
-const mockSettings = ref<any>({ mounts: [] });
+const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: mockSettings,
@@ -70,6 +71,11 @@ vi.mock('../composables/useSettings', () => ({
 vi.mock('../composables/useChatTools', () => ({
   useChatTools: () => ({
     setToolEnabled: vi.fn(),
+  }),
+}));
+vi.mock('../composables/useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
+    getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
   }),
 }));
 vi.mock('../composables/useToast', () => ({
@@ -93,6 +99,7 @@ vi.mock('../services/storage', () => ({
     createVolumeFromFiles: vi.fn(),
     createVolume: vi.fn(),
     getVolumeDirectoryHandle: vi.fn(),
+    getFile: vi.fn().mockResolvedValue(new Blob([])),
     listVolumes: vi.fn(),
   },
 }));
@@ -100,9 +107,99 @@ vi.mock('../services/storage/opfs-detection', () => ({
   checkFileSystemAccessSupport: vi.fn(() => false),
 }));
 
+vi.mock('../composables/useChatWeshTerminalSessions', () => ({
+  buildWorkerMountsForChat: vi.fn(async ({
+    chatMounts,
+    chatGroupMounts,
+    chatId,
+    naidanSysfsVisibility,
+  }: {
+    chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
+    chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
+    chatId: string | undefined;
+    chatGroupId: string | undefined;
+    naidanSysfsVisibility: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'all_chats';
+  }) => {
+    const { storageService } = await import('../services/storage');
+    const mounts: Array<{ type: string; path: string; readOnly?: boolean; visibility?: string }> = [];
+
+    if (chatId !== undefined && mockSettings.value.storageType === 'opfs') {
+      const tmp = await mockEnsureChatTmpDirectory({ chatId });
+      mounts.push({ type: 'directory', path: tmp.mountPath, readOnly: false });
+    }
+
+    if (naidanSysfsVisibility !== 'none') {
+      mounts.push({
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        visibility: naidanSysfsVisibility,
+      });
+    }
+
+    for (const mount of mockSettings.value.mounts ?? []) {
+      if (mount.type !== 'volume') {
+        continue;
+      }
+      if (mount.volumeId === undefined) {
+        continue;
+      }
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      if (handle !== undefined) {
+        mounts.push({ type: 'directory', path: mount.mountPath, readOnly: mount.readOnly });
+      }
+    }
+
+    for (const mount of chatGroupMounts ?? []) {
+      if (mount.type !== 'volume') {
+        continue;
+      }
+      if (mount.volumeId === undefined) {
+        continue;
+      }
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      if (handle === undefined) {
+        continue;
+      }
+      const existingIndex = mounts.findIndex(({ path }) => path === mount.mountPath);
+      const entry = { type: 'directory', path: mount.mountPath, readOnly: mount.readOnly };
+      if (existingIndex >= 0) {
+        mounts[existingIndex] = entry;
+      } else {
+        mounts.push(entry);
+      }
+    }
+
+    for (const mount of chatMounts) {
+      if (mount.type !== 'volume') {
+        continue;
+      }
+      if (mount.volumeId === undefined) {
+        continue;
+      }
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      if (handle === undefined) {
+        continue;
+      }
+      const existingIndex = mounts.findIndex(({ path }) => path === mount.mountPath);
+      const entry = { type: 'directory', path: mount.mountPath, readOnly: mount.readOnly };
+      if (existingIndex >= 0) {
+        mounts[existingIndex] = entry;
+      } else {
+        mounts.push(entry);
+      }
+    }
+
+    return mounts;
+  }),
+}));
+
 // Mock composables
 const mockCurrentChat = ref<any>({ id: 'chat-1', modelId: 'model-1' });
+const mockCurrentChatGroup = ref<any>(null);
 const mockSendMessage = vi.fn();
+const mockSendMessageForChat = vi.fn();
+const mockRegenerateMessageForChat = vi.fn();
+const mockAbortChat = vi.fn();
 const mockUpdateChatSettings = vi.fn();
 
 const mockReasoningStore = {
@@ -130,6 +227,7 @@ vi.mock('../composables/useReasoning', () => ({
 vi.mock('../composables/useChat', () => ({
   useChat: () => ({
     currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
     availableModels: ref([]),
     inheritedSettings: ref(null),
     fetchingModels: ref(false),
@@ -149,6 +247,9 @@ vi.mock('../composables/useChat', () => ({
     getSelectedImageModel: vi.fn(),
     fetchAvailableModels: vi.fn(),
     sendMessage: mockSendMessage,
+    sendMessageForChat: mockSendMessageForChat,
+    regenerateMessageForChat: mockRegenerateMessageForChat,
+    abortChat: mockAbortChat,
     updateChatSettings: mockUpdateChatSettings,
     getLiveChat: vi.fn().mockImplementation((c) => {
       if (mockCurrentChat.value?.id === (c.id || c)) return mockCurrentChat.value;
@@ -175,6 +276,7 @@ const mockSetPreferredEditorMode = vi.fn();
 
 const mockChatStore = {
   currentChat: mockCurrentChat,
+  currentChatGroup: mockCurrentChatGroup,
   availableModels: ref([]),
   inheritedSettings: ref(null),
   fetchingModels: ref(false),
@@ -194,6 +296,9 @@ const mockChatStore = {
   getSelectedImageModel: vi.fn(),
   fetchAvailableModels: vi.fn(),
   sendMessage: mockSendMessage,
+  sendMessageForChat: mockSendMessageForChat,
+  regenerateMessageForChat: mockRegenerateMessageForChat,
+  abortChat: mockAbortChat,
   updateChatSettings: mockUpdateChatSettings,
   getReasoningEffort: vi.fn(({ chatId }) => {
     if (mockCurrentChat.value?.id === chatId) {
@@ -225,6 +330,99 @@ vi.mock('../composables/useChat', () => ({
   useChat: () => mockChatStore,
 }));
 
+vi.mock('../composables/chat/useChatConversation', () => ({
+  useChatConversation: () => ({
+    sendMessage: ({ chatId, content, parentId, attachments, lmParameters }: {
+      chatId: string;
+      content: string;
+      parentId: string | null | undefined;
+      attachments: unknown[] | undefined;
+      lmParameters: unknown;
+    }) => mockSendMessageForChat({
+      chatId,
+      content,
+      parentId,
+      attachments,
+      lmParameters,
+    }),
+    regenerateMessage: ({ chatId, failedMessageId }: { chatId: string; failedMessageId: string }) =>
+      mockRegenerateMessageForChat({
+        chatId,
+        failedMessageId,
+      }),
+    abort: ({ chatId }: { chatId: string }) => mockAbortChat({ chatId }),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatImageGeneration', () => ({
+  useChatImageGeneration: () => ({
+    availableModels: computed(() => mockChatStore.availableModels.value),
+    isImageMode: computed(() => mockIsImageMode.value),
+    resolution: computed(() => mockChatStore.getResolution()),
+    count: computed(() => mockChatStore.getCount()),
+    persistAs: computed(() => mockChatStore.getPersistAs()),
+    steps: computed(() => mockChatStore.getSteps()),
+    seed: computed(() => mockChatStore.getSeed()),
+    selectedImageModel: computed(() => mockChatStore.getSelectedImageModel()),
+    toggleImageMode: () => mockChatStore.toggleImageMode(),
+    updateResolution: ({ width, height }: { width: number; height: number }) => mockChatStore.updateResolution({ width, height }),
+    updateCount: ({ count }: { count: number }) => mockChatStore.updateCount({ count }),
+    updatePersistAs: ({ format }: { format: 'original' | 'webp' | 'jpeg' | 'png' }) => mockChatStore.updatePersistAs({ format }),
+    updateSteps: ({ steps }: { steps: number | undefined }) => mockChatStore.updateSteps({ steps }),
+    updateSeed: ({ seed }: { seed: number | 'browser_random' | undefined }) => mockChatStore.updateSeed({ seed }),
+    setImageModel: ({ modelId }: { modelId: string }) => mockChatStore.setImageModel({ modelId }),
+    sendImageRequest: vi.fn().mockResolvedValue(true),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: () => ({
+    rename: vi.fn(),
+    toggleDebug: vi.fn(),
+    updateModel: vi.fn(),
+    updateSettings: vi.fn(),
+    reasoningEffort: ({ chatId }: { chatId: { value: string } }) =>
+      computed(() => {
+        if (mockCurrentChat.value?.id === chatId.value) {
+          return mockCurrentChat.value?.lmParameters?.reasoning?.effort;
+        }
+        return undefined;
+      }),
+    updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
+      mockReasoningStore.updateReasoningEffort({
+        chatId,
+        effort,
+      });
+    },
+  }),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: () => ({
+    availableModels: mockChatStore.availableModels,
+    fetchingModels: mockChatStore.fetchingModels,
+    fetchForChat: ({ chatId }: { chatId: string }) => mockChatStore.fetchAvailableModels({ chatId }),
+    fetchForGlobalEndpoint: vi.fn(),
+    fetchForEndpoint: vi.fn(),
+  }),
+}));
+
+vi.mock('../composables/chat/useChatMounts', () => ({
+  useChatMounts: () => ({
+    getMounts: ({ chatId }: { chatId: { value: string } }) => computed(() => {
+      if (chatId.value !== mockCurrentChat.value?.id) {
+        return [];
+      }
+
+      return mockCurrentChat.value?.mounts ?? [];
+    }),
+    addMount: vi.fn(),
+    removeMount: vi.fn(),
+    updateMount: vi.fn(),
+  }),
+}));
+
 vi.mock('../composables/useLayout', () => ({
   useLayout: () => ({
     activeFocusArea: ref('chat'),
@@ -247,14 +445,24 @@ describe('ChatInput Integration', () => {
     vi.clearAllMocks();
     mockRouter.currentRoute.value = { query: {} };
     mockCurrentChat.value = { id: 'chat-1', modelId: 'model-1' };
-    mockSettings.value = { mounts: [] };
+    mockCurrentChatGroup.value = null;
+    mockSettings.value = { storageType: 'opfs', mounts: [] };
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
+    mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+    mockSendMessageForChat.mockResolvedValue(true);
   });
 
   const getWrapper = () => mount(ChatInput, {
     props: {
+      chatId: 'chat-1',
+      chat: mockCurrentChat.value!,
+      chatGroup: mockCurrentChatGroup.value,
+      resolvedLmParameters: undefined,
+      inheritedModelId: undefined,
+      inheritedModelSource: undefined,
       visibility: 'active',
+      aboveInputVisibility: 'hidden',
       isStreaming: false,
       canGenerateImage: true,
       hasImageModel: true,
@@ -320,11 +528,15 @@ describe('ChatInput Integration', () => {
     expect(wrapper.find('[data-testid="image-editor"]').exists()).toBe(true);
   });
 
-  it('mount explorer includes tmp while opening from a volume badge', async () => {
+  it('mount explorer includes tmp while opening from a volume badge for opfs', async () => {
     mockCurrentChat.value = {
       id: 'chat-1',
       modelId: 'model-1',
       mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true }],
+    };
+    mockSettings.value = {
+      storageType: 'opfs',
+      mounts: [],
     };
 
     const { storageService } = await import('../services/storage');
@@ -337,12 +549,40 @@ describe('ChatInput Integration', () => {
     await flushPromises();
 
     expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
-    expect(mockOpenFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
       initialPath: ['home', 'user', 'work'],
       title: 'Files',
-    }));
+    }) });
+  });
+
+  it('mount explorer omits tmp for local storage', async () => {
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: true }],
+    };
+    mockSettings.value = {
+      storageType: 'local',
+      mounts: [],
+    };
+
+    const { storageService } = await import('../services/storage');
+    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
+
+    const wrapper = getWrapper();
+    await nextTick();
+
+    await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
+    await flushPromises();
+
+    expect(mockEnsureChatTmpDirectory).not.toHaveBeenCalled();
+    expect(mockOpenFileExplorer).toHaveBeenCalledTimes(1);
+    const [{ options }] = mockOpenFileExplorer.mock.calls[0] as [{ options: {
+      mounts: Array<{ path: string }>;
+    } }];
+    expect(options.mounts.some(({ path }) => path === '/tmp')).toBe(false);
   });
 
   it('mount explorer includes global settings mounts alongside chat mounts', async () => {
@@ -352,6 +592,7 @@ describe('ChatInput Integration', () => {
       mounts: [{ type: 'volume', volumeId: 'vol-chat', mountPath: '/home/user/chat-vol', readOnly: false }],
     };
     mockSettings.value = {
+      storageType: 'opfs',
       mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
     };
 
@@ -367,11 +608,50 @@ describe('ChatInput Integration', () => {
     // Called once for chat mount and once for global mount
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-chat' });
     expect(vi.mocked(storageService.getVolumeDirectoryHandle)).toHaveBeenCalledWith({ volumeId: 'vol-global' });
-    expect(mockOpenFileExplorer).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
       title: 'Files',
-    }));
+    }) });
+  });
+
+  it('mount explorer reuses shared naidan sysfs mount selection', async () => {
+    mockCurrentChat.value = {
+      id: 'chat-1',
+      modelId: 'model-1',
+      groupId: 'group-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-chat', mountPath: '/home/user/chat-vol', readOnly: false }],
+    };
+    mockCurrentChatGroup.value = {
+      id: 'group-1',
+      mounts: [{ type: 'volume', volumeId: 'vol-group', mountPath: '/home/user/group-vol', readOnly: true }],
+    };
+    mockSettings.value = {
+      storageType: 'opfs',
+      mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
+    };
+    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+
+    const { storageService } = await import('../services/storage');
+    vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
+
+    const wrapper = getWrapper();
+    await nextTick();
+
+    await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
+    await flushPromises();
+
+    expect(mockOpenFileExplorer).toHaveBeenCalledTimes(1);
+    const [{ options }] = mockOpenFileExplorer.mock.calls[0] as [{ options: {
+      mounts: Array<{ type: string; path: string; visibility?: string }>;
+    } }];
+    expect(options.mounts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'naidan_sysfs',
+        path: '/sys/fs/naidan',
+        visibility: 'current_chat_only',
+      }),
+    ]));
   });
 
   it('mount badges do not include global settings mounts', async () => {
@@ -446,7 +726,7 @@ describe('ChatInput Integration', () => {
   });
 
   it('should clear attachments after successful message send', async () => {
-    mockSendMessage.mockResolvedValue(true);
+    mockSendMessageForChat.mockResolvedValue(true);
     const wrapper = getWrapper();
     wrapper.vm.input = 'test message';
     wrapper.vm.TEST_ONLY.attachments.value = [
@@ -458,7 +738,7 @@ describe('ChatInput Integration', () => {
     await sendBtn.trigger('click');
     await flushPromises();
 
-    expect(mockSendMessage).toHaveBeenCalled();
+    expect(mockSendMessageForChat).toHaveBeenCalled();
     expect(wrapper.vm.input).toBe('');
     expect(wrapper.vm.TEST_ONLY.attachments.value.length).toBe(0);
   });
@@ -488,7 +768,7 @@ describe('ChatInput Integration', () => {
     const toolsMenu = wrapper.findComponent({ name: 'ChatToolsMenu' });
     expect(toolsMenu.exists()).toBe(true);
 
-    // Update currentChat to have initial lmParameters
+    // Update the chat to have initial lmParameters
     mockCurrentChat.value = {
       id: 'chat-1',
       modelId: 'model-1',
@@ -523,6 +803,7 @@ describe('ChatInput Integration', () => {
       id: 'chat-2',
       lmParameters: { reasoning: { effort: 'high' } }
     };
+    await wrapper.setProps({ chatId: 'chat-2' });
     await nextTick();
 
     // Verify it reflects the NEW chat's state

@@ -111,7 +111,7 @@ export function useImageGeneration() {
     chatId: string,
     availableModels: string[]
   }) => {
-    const allImageModels = getImageGenerationModels(availableModels);
+    const allImageModels = getImageGenerationModels({ models: availableModels });
     const overridden = imageModelOverrideMap.value[chatId];
     if (overridden && allImageModels.includes(overridden)) {
       return overridden;
@@ -122,7 +122,7 @@ export function useImageGeneration() {
   const getSortedImageModels = ({ availableModels }: {
     availableModels: string[]
   }) => {
-    return naturalSort(getImageGenerationModels(availableModels));
+    return naturalSort({ values: getImageGenerationModels({ models: availableModels }) });
   };
 
   const performBase64Generation = async ({ prompt, model, width, height, steps, seed, images, endpointUrl, endpointHttpHeaders, onProgress, signal }: {
@@ -135,7 +135,7 @@ export function useImageGeneration() {
     images: { blob: Blob }[],
     endpointUrl: string,
     endpointHttpHeaders: [string, string][] | undefined,
-    onProgress: (params: { currentStep: number, totalSteps: number }) => void,
+    onProgress: ({ currentStep, totalSteps }: { currentStep: number, totalSteps: number }) => void,
     signal: AbortSignal | undefined
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
     const provider = new OllamaProvider({
@@ -204,7 +204,7 @@ export function useImageGeneration() {
     const target = getLiveChat({ chat: { id: chatId } as Chat });
     if (!target) return;
     const mutableChat = target;
-    const assistantNode = findNodeInBranch(mutableChat.root.items, assistantId);
+    const assistantNode = findNodeInBranch({ items: mutableChat.root.items, targetId: assistantId });
     if (!assistantNode) return;
     switch (assistantNode.role) {
     case 'assistant':

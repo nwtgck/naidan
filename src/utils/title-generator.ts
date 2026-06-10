@@ -118,14 +118,14 @@ const SYSTEM_PROMPTS: Record<SupportedLanguage, string> = {
 /**
  * Gets the system prompt for title generation based on the language.
  */
-export function getTitleSystemPrompt(lang: SupportedLanguage): string {
-  return SYSTEM_PROMPTS[lang] || SYSTEM_PROMPTS['en'];
+export function getTitleSystemPrompt({ language }: { language: SupportedLanguage }): string {
+  return SYSTEM_PROMPTS[language] || SYSTEM_PROMPTS['en'];
 }
 
 /**
  * Cleans the generated title by removing common prefixes and quotes.
  */
-export function cleanGeneratedTitle(title: string): string {
+export function cleanGeneratedTitle({ title }: { title: string }): string {
   return title
     .replace(/<think>[\s\S]*?<\/think>/gi, '') // Remove <think>...</think> blocks
     .replace(/<think>|<\/think>/gi, '') // Remove leftover tags

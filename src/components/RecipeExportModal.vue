@@ -29,7 +29,7 @@ const recipeForm = ref({
 
 function initForm() {
   const modelPatterns = props.initialModelId
-    ? generateDefaultModelPatterns(props.initialModelId).map(p => ({ id: generateId(), pattern: p, caseSensitive: false }))
+    ? generateDefaultModelPatterns({ modelId: props.initialModelId }).map(p => ({ id: generateId(), pattern: p, caseSensitive: false }))
     : [];
 
   recipeForm.value = {
@@ -74,14 +74,14 @@ function addModelPattern() {
   recipeForm.value.models.push({ id: generateId(), pattern: '', caseSensitive: false });
 }
 
-function removeModelPattern(id: string) {
+function removeModelPattern({ id }: { id: string }) {
   const index = recipeForm.value.models.findIndex(m => m.id === id);
   if (index !== -1) {
     recipeForm.value.models.splice(index, 1);
   }
 }
 
-function isRegexValid(pattern: string): boolean {
+function isRegexValid({ pattern }: { pattern: string }): boolean {
   if (!pattern) return true;
   try {
     new RegExp(pattern);
@@ -224,7 +224,7 @@ defineExpose({
                   <div class="flex gap-2 items-center">
                     <div
                       class="flex-1 bg-gray-50 dark:bg-gray-800 border rounded-xl flex overflow-hidden transition-colors"
-                      :class="isRegexValid(m.pattern) ? 'border-gray-100 dark:border-gray-700' : 'border-red-300 dark:border-red-900/50'"
+                      :class="isRegexValid({ pattern: m.pattern }) ? 'border-gray-100 dark:border-gray-700' : 'border-red-300 dark:border-red-900/50'"
                     >
                       <div class="bg-gray-100 dark:bg-gray-700 px-3 py-3 text-[10px] font-bold text-gray-400 flex items-center border-r border-gray-200 dark:border-gray-600 uppercase tracking-tighter">Regex</div>
                       <input
@@ -242,11 +242,11 @@ defineExpose({
                         Aa
                       </button>
                     </div>
-                    <button @click="removeModelPattern(m.id)" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                    <button @click="removeModelPattern({ id: m.id })" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
                       <Trash2Icon class="w-4 h-4" />
                     </button>
                   </div>
-                  <div v-if="!isRegexValid(m.pattern)" class="flex items-center gap-1.5 ml-1 text-red-500">
+                  <div v-if="!isRegexValid({ pattern: m.pattern })" class="flex items-center gap-1.5 ml-1 text-red-500">
                     <AlertCircleIcon class="w-3 h-3" />
                     <span class="text-[9px] font-bold uppercase tracking-wide">Invalid Regular Expression</span>
                   </div>

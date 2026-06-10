@@ -1,13 +1,15 @@
 import type { Tool } from './types';
 import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
+import { WikipediaGetPageTool, WikipediaSearchTool } from './wikipedia';
 import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import { storageService } from '@/services/storage';
-import { checkOPFSSupport } from '@/services/storage/opfs-detection';
-import type { WeshMount } from '@/services/wesh/types';
-import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './volume-extension-cache';
-import { buildShellDescription } from './shell-description';
+import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
+import type { NaidanSysfsMountSelection, WeshMount } from '@/services/wesh/types';
+import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
+import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './wesh/volume-extension-cache';
+import { buildShellDescription } from './wesh/shell-description';
 
 /**
  * Dynamically creates and returns a list of enabled tools based on settings.
@@ -18,15 +20,29 @@ export async function getEnabledTools({
   settings,
   chatGroupMounts,
   chatMounts,
+  chatId,
+  chatGroupId,
+  naidanSysfsVisibility,
   tmpHandle,
 }: {
   enabledNames: string[];
   settings: Settings;
   chatGroupMounts?: Mount[];
   chatMounts?: Mount[];
+  chatId: string | undefined;
+  chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
+  const canExposeWikipediaTools = canExposeWikipediaToolsForGeneration({
+    enabledNames,
+    settings,
+    chatId,
+    chatGroupId,
+    naidanSysfsVisibility,
+    tmpHandle,
+  })
 
   for (const name of enabledNames) {
     switch (name) {
@@ -34,26 +50,61 @@ export async function getEnabledTools({
       tools.push(new CalculatorTool());
       break;
 
-    case 'shell_execute': {
-      const opfsSupported = await checkOPFSSupport();
-      if (!opfsSupported) {
-        break;
+    case 'wikipedia_search':
+      if (!canExposeWikipediaTools) {
+        break
       }
+      tools.push(new WikipediaSearchTool());
+      break;
 
-      if (!tmpHandle) {
+    case 'wikipedia_get_page':
+      if (!canExposeWikipediaTools) {
+        break
+      }
+      tools.push(new WikipediaGetPageTool());
+      break;
+
+    case 'shell_execute': {
+      const shouldMountTmp = shouldIncludeWritableTmpMount({ storageType: settings.storageType });
+      if (shouldMountTmp && !tmpHandle) {
         break;
       }
 
       // Resolve mounts: global → chat group → chat (later entries win on path conflict)
       const allMounts = [...settings.mounts, ...(chatGroupMounts ?? []), ...(chatMounts ?? [])];
-      const resolvedMounts: WeshMount[] = [
-        { path: '/tmp', handle: tmpHandle, readOnly: false },
-      ];
+      const resolvedMounts: WeshMount[] = [];
+      if (shouldMountTmp) {
+        resolvedMounts.push({ type: 'directory', path: '/tmp', handle: tmpHandle!, readOnly: false });
+      }
+      switch (naidanSysfsVisibility) {
+      case 'none':
+        break
+      case 'current_chat_only':
+      case 'current_chat_with_chat_group':
+      case 'all_chats': {
+        const naidanSysfsMount = createNaidanSysfsMount({
+          storageType: settings.storageType,
+          visibility: naidanSysfsVisibility,
+          binaryObjectAccess: 'data',
+          currentChatId: chatId,
+          currentChatGroupId: chatGroupId,
+        });
+        if (naidanSysfsMount !== undefined) {
+          resolvedMounts.push(naidanSysfsMount)
+        }
+        break
+      }
+      default: {
+        const _ex: never = naidanSysfsVisibility
+        throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`)
+      }
+      }
       const volumeHandles = new Map<string, FileSystemDirectoryHandle>();
       for (const m of allMounts) {
         const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
         if (handle) {
           resolvedMounts.push({
+            type: 'directory',
             path: m.mountPath,
             handle,
             readOnly: m.readOnly,
@@ -103,4 +154,81 @@ export async function getEnabledTools({
   }
 
   return tools;
+}
+
+function canCreateShellTool({
+  settings,
+  tmpHandle,
+}: {
+  settings: Settings;
+  tmpHandle: FileSystemDirectoryHandle | undefined;
+}): boolean {
+  const shouldMountTmp = shouldIncludeWritableTmpMount({ storageType: settings.storageType })
+  if (shouldMountTmp && tmpHandle === undefined) {
+    return false
+  }
+  return true
+}
+
+function hasEnabledNaidanSysfsMount({
+  settings,
+  chatId,
+  chatGroupId,
+  naidanSysfsVisibility,
+}: {
+  settings: Settings;
+  chatId: string | undefined;
+  chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
+}): boolean {
+  switch (naidanSysfsVisibility) {
+  case 'none':
+    return false
+  case 'current_chat_only':
+  case 'current_chat_with_chat_group':
+  case 'all_chats':
+    return createNaidanSysfsMount({
+      storageType: settings.storageType,
+      visibility: naidanSysfsVisibility,
+      binaryObjectAccess: 'data',
+      currentChatId: chatId,
+      currentChatGroupId: chatGroupId,
+    }) !== undefined
+  default: {
+    const _ex: never = naidanSysfsVisibility
+    throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`)
+  }
+  }
+}
+
+function canExposeWikipediaToolsForGeneration({
+  enabledNames,
+  settings,
+  chatId,
+  chatGroupId,
+  naidanSysfsVisibility,
+  tmpHandle,
+}: {
+  enabledNames: string[];
+  settings: Settings;
+  chatId: string | undefined;
+  chatGroupId: string | undefined;
+  naidanSysfsVisibility: NaidanSysfsMountSelection;
+  tmpHandle: FileSystemDirectoryHandle | undefined;
+}): boolean {
+  if (!enabledNames.includes('shell_execute')) {
+    return false
+  }
+  if (!canCreateShellTool({ settings, tmpHandle })) {
+    return false
+  }
+  if (!hasEnabledNaidanSysfsMount({
+    settings,
+    chatId,
+    chatGroupId,
+    naidanSysfsVisibility,
+  })) {
+    return false
+  }
+  return true
 }

@@ -40,7 +40,7 @@ describe('useChat Group Collapse', () => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
     rootItems.value = [];
-    __testOnlySetCurrentChatGroup(null);
+    __testOnlySetCurrentChatGroup({ group: null });
 
     vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
   });
@@ -49,7 +49,7 @@ describe('useChat Group Collapse', () => {
     const group: ChatGroup = { id: 'g1', name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
 
-    await chatStore.loadChats();
+    await chatStore.loadChats({});
     const item = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
     expect(item).toBeDefined();
     expect(item.type).toBe('chat_group');
@@ -83,8 +83,8 @@ describe('useChat Group Collapse', () => {
     const group: ChatGroup = reactive({ id: 'g1', name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 });
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
 
-    await chatStore.loadChats();
-    __testOnlySetCurrentChatGroup(group);
+    await chatStore.loadChats({});
+    __testOnlySetCurrentChatGroup({ group });
 
     // Act
     await setChatGroupCollapsed({ groupId: 'g1', isCollapsed: true });
@@ -100,8 +100,8 @@ describe('useChat Group Collapse', () => {
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 });
     mockRootItems.push({ id: 'chat_group:g2', type: 'chat_group', chatGroup: group2 });
 
-    await chatStore.loadChats();
-    __testOnlySetCurrentChatGroup(group1);
+    await chatStore.loadChats({});
+    __testOnlySetCurrentChatGroup({ group: group1 });
 
     // Act: Toggle group 2 while group 1 is selected
     await setChatGroupCollapsed({ groupId: 'g2', isCollapsed: true });
@@ -122,7 +122,7 @@ describe('useChat Group Collapse', () => {
     const group: ChatGroup = reactive({ id: 'g1', name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 });
     // Don't add to mockRootItems
 
-    __testOnlySetCurrentChatGroup(group);
+    __testOnlySetCurrentChatGroup({ group });
 
     // Act
     await setChatGroupCollapsed({ groupId: 'g1', isCollapsed: true });

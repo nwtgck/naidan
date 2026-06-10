@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, nextTick, computed, toRaw, onUnmounted } from 'vue';
+import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
-import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 // IMPORTANT: Logo is part of the initial sidebar layout and should not flicker.
@@ -11,7 +10,7 @@ import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the initial sidebar layout and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import PWAUpdateNotification from './PWAUpdateNotification.vue';
-const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted(() => import('./SidebarDebugControls.vue'));
+const SidebarDebugControls = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SidebarDebugControls.vue') });
 import type { ChatGroup, SidebarItem, ChatSidebarItem } from '@/models/types';
 import {
   Trash2Icon, SettingsIcon,
@@ -21,20 +20,142 @@ import {
   SearchIcon, GhostIcon, MessageSquarePlusIcon
 } from 'lucide-vue-next';
 
-const ChatGroupActions = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupActions.vue'));
+const ChatGroupActions = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupActions.vue') });
 import { useLayout } from '@/composables/useLayout';
 import { useConfirm } from '@/composables/useConfirm';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { naturalSort } from '@/utils/string';
 import { scrollIntoViewSafe } from '@/utils/dom';
+import { isChatProcessing } from '@/composables/chat/chat-activity-queries';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
+import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 
-const chatStore = useChat();
-const {
-  currentChat, currentChatGroup, isProcessing,
-} = chatStore;
+const currentChatState = useCurrentChatState();
+const chatLifecycle = useChatLifecycle();
+const chatNavigation = useChatNavigation();
+const chatOrganization = useChatOrganization();
+const chatMetadata = useChatMetadata({});
+const sidebarStructure = useSidebarStructure();
+const currentChat = currentChatState.currentChat;
+const currentChatGroup = currentChatState.currentChatGroup;
+const sidebarItems = currentChatState.sidebarItems;
+const chatGroups = currentChatState.chatGroups;
+
+function isProcessing({
+  chatId,
+}: {
+  chatId: string;
+}) {
+  return isChatProcessing({ chatId });
+}
+
+const persistSidebarStructure = sidebarStructure.persistSidebarStructure;
+
+function setChatGroupCollapsed({
+  groupId,
+  isCollapsed,
+}: {
+  groupId: string;
+  isCollapsed: boolean;
+}) {
+  void sidebarStructure.setChatGroupCollapsed({
+    groupId,
+    isCollapsed,
+  });
+}
+
+function createChatGroup({
+  name,
+}: {
+  name: string;
+}) {
+  return chatOrganization.createChatGroup({
+    name,
+    options: undefined,
+  });
+}
+
+function deleteChatGroup({
+  id,
+}: {
+  id: string;
+}) {
+  return chatOrganization.deleteChatGroup({
+    id,
+  });
+}
+
+function createNewChat({
+  groupId,
+  modelId,
+  systemPrompt,
+}: {
+  groupId: string | undefined;
+  modelId: string | undefined;
+  systemPrompt: ChatGroup['systemPrompt'];
+}) {
+  return chatLifecycle.createNewChat({
+    groupId,
+    modelId,
+    systemPrompt,
+  });
+}
+
+function openChat({
+  id,
+}: {
+  id: string;
+}) {
+  return chatNavigation.openChat({
+    chatId: id,
+    leafId: undefined,
+  });
+}
+
+function openChatGroup({
+  id,
+}: {
+  id: string;
+}) {
+  chatNavigation.openChatGroup({
+    groupId: id,
+  });
+}
+
+function deleteChat({
+  id,
+}: {
+  id: string;
+}) {
+  return chatLifecycle.deleteChat({
+    id,
+    injectAddToast: undefined,
+  });
+}
+
+function renameChat({
+  id,
+  newTitle,
+}: {
+  id: string;
+  newTitle: string;
+}) {
+  return chatMetadata.rename({
+    chatId: id,
+    title: newTitle,
+  });
+}
+
+const renameChatGroup = chatOrganization.renameChatGroup;
+const duplicateChatGroup = chatOrganization.duplicateChatGroup;
 
 const { settings, isFetchingModels, availableModels, updateGlobalModel } = useSettings();
-const sortedModels = computed(() => naturalSort(availableModels.value || []));
+const sortedModels = computed(() => naturalSort({ values: availableModels.value || [] }));
 const layout = useLayout();
 const { isSidebarOpen, activeFocusArea, setActiveFocusArea, toggleSidebar } = layout;
 const activeFocusAreaVersion = 'activeFocusAreaVersion' in layout ? layout.activeFocusAreaVersion : ref(0);
@@ -72,7 +193,7 @@ const navContainer = ref<HTMLElement | null>(null);
 
 const visibleItems = computed(() => {
   const result: { type: 'chat' | 'chat_group' | 'expand_button'; id: string; groupId?: string }[] = [];
-  function collect(list: SidebarItem[]) {
+  function collect({ list }: { list: SidebarItem[] }) {
     for (const item of list) {
       switch (item.type) {
       case 'chat':
@@ -82,12 +203,12 @@ const visibleItems = computed(() => {
         result.push({ type: 'chat_group', id: item.chatGroup.id });
         if (!item.chatGroup.isCollapsed) {
           const items = item.chatGroup.items;
-          const isExpanded = isGroupCompactExpanded(item.chatGroup.id);
+          const isExpanded = isGroupCompactExpanded({ groupId: item.chatGroup.id });
           const shownItems = (isExpanded || items.length <= COMPACT_THRESHOLD)
             ? items
             : items.slice(0, COMPACT_THRESHOLD);
 
-          collect(shownItems);
+          collect({ list: shownItems });
 
           if (items.length > COMPACT_THRESHOLD) {
             result.push({
@@ -105,7 +226,7 @@ const visibleItems = computed(() => {
       }
     }
   }
-  collect(sidebarItemsLocal.value);
+  collect({ list: sidebarItemsLocal.value });
   return result;
 });
 
@@ -277,11 +398,11 @@ watch(activeFocusAreaVersion, () => {
   });
 });
 
-function isGroupCompactExpanded(groupId: string) {
+function isGroupCompactExpanded({ groupId }: { groupId: string }) {
   return expandedGroupIds.value.has(groupId);
 }
 
-function toggleGroupCompactExpansion(groupId: string) {
+function toggleGroupCompactExpansion({ groupId }: { groupId: string }) {
   if (expandedGroupIds.value.has(groupId)) {
     collapsingGroupIds.value.add(groupId);
     expandedGroupIds.value.delete(groupId);
@@ -303,16 +424,16 @@ const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navig
 const newChatShortcutText = isMac ? '⌘⇧O' : 'Ctrl+Shift+O';
 const appVersion = __APP_VERSION__;
 
-function handleClickOutside(event: MouseEvent) {
+function handleClickOutside({ event }: { event: MouseEvent }) {
   const target = event.target as HTMLElement;
   if (activeActionGroupId.value && !target.closest('.group-action-container')) {
     activeActionGroupId.value = null;
   }
 }
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 onMounted(() => {
   syncLocalItems();
-  document.addEventListener('mousedown', handleClickOutside);
   if (currentChat.value?.id) {
     void scheduleSidebarItemScroll({
       itemType: 'chat',
@@ -327,10 +448,6 @@ onMounted(() => {
     id: currentChatGroup.value?.id,
     onlyWhenOutOfView: true
   });
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
 });
 
 function captureSidebarItemRects() {
@@ -403,12 +520,12 @@ function syncLocalItems() {
   if (isDragging.value || isInternalUpdate) return;
   const previousRects = captureSidebarItemRects();
   // Use JSON.parse/stringify for robust deep cloning of reactive objects in test environments
-  sidebarItemsLocal.value = JSON.parse(JSON.stringify(chatStore.sidebarItems.value));
+  sidebarItemsLocal.value = JSON.parse(JSON.stringify(sidebarItems.value));
   animateSidebarItemMoves({ previousRects });
 }
 
 // Watch for external sidebar changes (new chats, deletions, reordering) to sync local list
-watch(() => chatStore.sidebarItems.value, () => {
+watch(() => sidebarItems.value, () => {
   syncLocalItems();
 }, { deep: true });
 
@@ -426,7 +543,7 @@ async function onDragEnd() {
     dragHoverTimeout = null;
   }
   // Sync the UI structure to storage
-  await chatStore.persistSidebarStructure(sidebarItemsLocal.value);
+  await persistSidebarStructure({ topLevelItems: sidebarItemsLocal.value });
 
   // Wait for DOM and Sortable cleanup
   await nextTick();
@@ -436,7 +553,7 @@ async function onDragEnd() {
   }, 100);
 }
 
-function onDragOverGroup(groupId: string) {
+function onDragOverGroup({ groupId }: { groupId: string }) {
   if (!isDragging.value) return;
   if (dragHoverGroup.value === groupId) return;
 
@@ -444,9 +561,9 @@ function onDragOverGroup(groupId: string) {
   if (dragHoverTimeout) clearTimeout(dragHoverTimeout);
 
   dragHoverTimeout = setTimeout(() => {
-    const group = chatStore.chatGroups.value.find(g => g.id === groupId);
+    const group = chatGroups.value.find(g => g.id === groupId);
     if (group && group.isCollapsed) {
-      chatStore.setChatGroupCollapsed({ groupId, isCollapsed: false });
+      setChatGroupCollapsed({ groupId, isCollapsed: false });
     }
   }, 600); // 600ms hover to expand
 }
@@ -463,7 +580,7 @@ function onDragLeaveGroup() {
  * Move callback to prevent invalid nesting.
  * Only chats can be moved into chat groups. Chat groups cannot be nested.
  */
-function checkMove(evt: { draggedContext: { element: SidebarItem }; to: HTMLElement }) {
+function checkMove({ evt }: { evt: { draggedContext: { element: SidebarItem }; to: HTMLElement } }) {
   const draggedItem = evt.draggedContext.element;
   // If dragging into a nested list (a chat group's items)
   if (evt.to.classList.contains('nested-draggable')) {
@@ -491,7 +608,7 @@ async function handleCreateChatGroup() {
     return;
   }
   skipLeaveAnimation.value = true;
-  await chatStore.createChatGroup(name);
+  await createChatGroup({ name });
   newChatGroupName.value = '';
   isCreatingChatGroup.value = false;
   // Reset flag after transition would have finished
@@ -513,7 +630,7 @@ function cancelCreateChatGroup() {
   newChatGroupName.value = '';
 }
 
-async function handleDeleteChatGroup(group: ChatGroup) {
+async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
   const hasItems = group.items && group.items.length > 0;
   const hasCustomSettings = !!(group.systemPrompt || group.modelId || group.endpoint || group.lmParameters);
 
@@ -528,12 +645,12 @@ async function handleDeleteChatGroup(group: ChatGroup) {
     if (!confirmed) return;
   }
 
-  await chatStore.deleteChatGroup(group.id);
+  await deleteChatGroup({ id: group.id });
 }
 
-async function handleNewChat(groupId: string | undefined = undefined) {
-  setActiveFocusArea('chat');
-  await chatStore.createNewChat({
+async function handleNewChat({ groupId }: { groupId: string | undefined }) {
+  setActiveFocusArea({ area: 'chat' });
+  await createNewChat({
     groupId,
     modelId: undefined,
     systemPrompt: undefined
@@ -543,13 +660,13 @@ async function handleNewChat(groupId: string | undefined = undefined) {
   }
 }
 
-async function handleOpenChat(id: string) {
-  await chatStore.openChat(id);
+async function handleOpenChat({ id }: { id: string }) {
+  await openChat({ id });
   router.push(`/chat/${id}`);
 }
 
-async function handleOpenChatGroup(id: string) {
-  chatStore.openChatGroup(id);
+async function handleOpenChatGroup({ id }: { id: string }) {
+  openChatGroup({ id });
   router.push(`/chat-group/${id}`);
 }
 
@@ -560,53 +677,53 @@ watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId,
   }
 });
 
-async function handleDeleteChat(id: string) {
+async function handleDeleteChat({ id }: { id: string }) {
   const isCurrent = currentChat.value?.id === id;
-  await chatStore.deleteChat(id);
+  await deleteChat({ id });
   if (isCurrent) router.push('/');
 }
 
-function startEditing(id: string, title: string | null) {
+function startEditing({ id, title }: { id: string; title: string | null }) {
   editingId.value = id;
   editingTitle.value = title || '';
 }
 
 async function saveRename() {
   if (editingId.value && editingTitle.value.trim()) {
-    await chatStore.renameChat(editingId.value, editingTitle.value.trim());
+    await renameChat({ id: editingId.value, newTitle: editingTitle.value.trim() });
   }
   editingId.value = null;
 }
 
-function startEditingChatGroup(chatGroup: ChatGroup) {
+function startEditingChatGroup({ chatGroup }: { chatGroup: ChatGroup }) {
   editingChatGroupId.value = chatGroup.id;
   editingChatGroupName.value = chatGroup.name;
 }
 
 async function saveChatGroupRename() {
   if (editingChatGroupId.value && editingChatGroupName.value.trim()) {
-    await chatStore.renameChatGroup(editingChatGroupId.value, editingChatGroupName.value.trim());
+    await renameChatGroup({ groupId: editingChatGroupId.value, newName: editingChatGroupName.value.trim() });
   }
   editingChatGroupId.value = null;
 }
 
-async function handleGlobalModelChange(newModelId: string | undefined) {
+async function handleGlobalModelChange({ newModelId }: { newModelId: string | undefined }) {
   if (!newModelId) return;
-  await updateGlobalModel(newModelId);
+  await updateGlobalModel({ modelId: newModelId });
 }
 
-function getGroupItems(groupId: string) {
+function getGroupItems({ groupId }: { groupId: string }) {
   const group = sidebarItemsLocal.value.find(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
   if (!group || group.type !== 'chat_group') return [];
 
   const items = group.chatGroup.items;
-  if (isGroupCompactExpanded(groupId) || collapsingGroupIds.value.has(groupId) || items.length <= COMPACT_THRESHOLD) {
+  if (isGroupCompactExpanded({ groupId }) || collapsingGroupIds.value.has(groupId) || items.length <= COMPACT_THRESHOLD) {
     return items;
   }
   return items.slice(0, COMPACT_THRESHOLD);
 }
 
-function updateGroupItems(groupId: string, newItems: ChatSidebarItem[]) {
+function updateGroupItems({ groupId, newItems }: { groupId: string; newItems: ChatSidebarItem[] }) {
   const groupIndex = sidebarItemsLocal.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
   if (groupIndex === -1) return;
 
@@ -614,7 +731,7 @@ function updateGroupItems(groupId: string, newItems: ChatSidebarItem[]) {
   if (!group || group.type !== 'chat_group') return;
 
   const fullList = group.chatGroup.items;
-  if (isGroupCompactExpanded(groupId) || collapsingGroupIds.value.has(groupId) || fullList.length <= COMPACT_THRESHOLD) {
+  if (isGroupCompactExpanded({ groupId }) || collapsingGroupIds.value.has(groupId) || fullList.length <= COMPACT_THRESHOLD) {
     group.chatGroup.items = newItems;
   } else {
     const hiddenItems = fullList.slice(COMPACT_THRESHOLD);
@@ -622,14 +739,14 @@ function updateGroupItems(groupId: string, newItems: ChatSidebarItem[]) {
   }
 }
 
-function useGroupItemsModel(groupId: string) {
+function useGroupItemsModel({ groupId }: { groupId: string }) {
   return computed({
-    get: () => getGroupItems(groupId),
-    set: (val) => updateGroupItems(groupId, val)
+    get: () => getGroupItems({ groupId }),
+    set: (val) => updateGroupItems({ groupId, newItems: val })
   });
 }
 
-function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
+function handleToggleChatGroupCollapse({ chatGroup }: { chatGroup: ChatGroup }) {
   // Toggle locally for instant, flicker-free feedback
   chatGroup.isCollapsed = !chatGroup.isCollapsed;
 
@@ -639,7 +756,7 @@ function handleToggleChatGroupCollapse(chatGroup: ChatGroup) {
   }
 
   // Persist to store
-  chatStore.setChatGroupCollapsed({
+  setChatGroupCollapsed({
     groupId: chatGroup.id,
     isCollapsed: chatGroup.isCollapsed
   });
@@ -697,10 +814,10 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
         const type = item.type;
         switch (type) {
         case 'chat':
-          handleOpenChat(item.id);
+          handleOpenChat({ id: item.id });
           break;
         case 'chat_group':
-          handleOpenChatGroup(item.id);
+          handleOpenChatGroup({ id: item.id });
           break;
         case 'expand_button':
           break;
@@ -721,10 +838,10 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
         const type = item.type;
         switch (type) {
         case 'chat':
-          handleOpenChat(item.id);
+          handleOpenChat({ id: item.id });
           break;
         case 'chat_group':
-          handleOpenChatGroup(item.id);
+          handleOpenChatGroup({ id: item.id });
           break;
         case 'expand_button':
           break;
@@ -739,35 +856,35 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
     const currentItem = currentIndex !== -1 ? visibleItems.value[currentIndex] : null;
 
     if (currentItem?.type === 'expand_button' && currentItem.groupId) {
-      if (e.key === 'ArrowRight' && !isGroupCompactExpanded(currentItem.groupId)) {
+      if (e.key === 'ArrowRight' && !isGroupCompactExpanded({ groupId: currentItem.groupId })) {
         e.preventDefault();
-        toggleGroupCompactExpansion(currentItem.groupId);
+        toggleGroupCompactExpansion({ groupId: currentItem.groupId });
         // After expansion, select the first newly revealed item (the 6th item, which is at currentIndex)
         // Wait for next tick so visibleItems updates
         nextTick(() => {
           const itemAfterExpansion = visibleItems.value[currentIndex];
           if (itemAfterExpansion && itemAfterExpansion.type === 'chat') {
             lastNavigatedId.value = itemAfterExpansion.id;
-            handleOpenChat(itemAfterExpansion.id);
+            handleOpenChat({ id: itemAfterExpansion.id });
           }
         });
-      } else if (e.key === 'ArrowLeft' && isGroupCompactExpanded(currentItem.groupId)) {
+      } else if (e.key === 'ArrowLeft' && isGroupCompactExpanded({ groupId: currentItem.groupId })) {
         e.preventDefault();
-        toggleGroupCompactExpansion(currentItem.groupId);
+        toggleGroupCompactExpansion({ groupId: currentItem.groupId });
       }
       return;
     }
 
     const groupId = currentChatGroup.value?.id;
     if (groupId) {
-      const group = chatStore.chatGroups.value.find(g => g.id === groupId);
+      const group = chatGroups.value.find(g => g.id === groupId);
       if (group) {
         if (e.key === 'ArrowRight' && group.isCollapsed) {
           e.preventDefault();
-          handleToggleChatGroupCollapse(group);
+          handleToggleChatGroupCollapse({ chatGroup: group });
         } else if (e.key === 'ArrowLeft' && !group.isCollapsed) {
           e.preventDefault();
-          handleToggleChatGroupCollapse(group);
+          handleToggleChatGroupCollapse({ chatGroup: group });
         }
       }
     // eslint-disable-next-line local-rules-switch/force-switch-for-union
@@ -777,7 +894,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       if (rawChat?.groupId) {
         e.preventDefault();
         lastNavigatedId.value = rawChat.groupId;
-        handleOpenChatGroup(rawChat.groupId);
+        handleOpenChatGroup({ id: rawChat.groupId });
       }
     }
   }
@@ -832,7 +949,7 @@ defineExpose({
     <div class="py-2 space-y-2" :class="isSidebarOpen ? 'px-4' : 'px-1'">
       <div class="flex gap-2" :class="{ 'flex-col items-center': !isSidebarOpen }">
         <button
-          @click="handleNewChat(undefined)"
+          @click="handleNewChat({ groupId: undefined })"
           class="flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
           :class="isSidebarOpen ? 'flex-1 px-3 py-2 text-xs' : 'w-8 h-8'"
           data-testid="new-chat-button"
@@ -846,7 +963,7 @@ defineExpose({
         </button>
         <button
           v-if="!isSidebarOpen && (currentChatGroup?.id || currentChat?.groupId)"
-          @click="handleNewChat((currentChatGroup?.id || currentChat?.groupId) ?? undefined)"
+          @click="handleNewChat({ groupId: (currentChatGroup?.id || currentChat?.groupId) ?? undefined })"
           class="flex items-center justify-center bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-all shadow-sm w-8 h-8"
           data-testid="new-chat-in-group-button"
           :title="`New Chat in ${currentChatGroup?.name || 'current group'}`"
@@ -854,7 +971,7 @@ defineExpose({
           <MessageSquarePlusIcon class="w-4 h-4 shrink-0" />
         </button>
         <button
-          @click="useGlobalSearch().openSearch()"
+          @click="useGlobalSearch().openSearch({})"
           class="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl border border-gray-100 dark:border-gray-700 transition-colors shadow-sm"
           :class="isSidebarOpen ? 'p-2' : 'w-8 h-8 flex items-center justify-center p-0'"
           title="Search (Cmd+K)"
@@ -880,8 +997,8 @@ defineExpose({
       :class="{ 'is-dragging': isDragging }"
       data-testid="sidebar-nav"
       tabindex="0"
-      @focus="setActiveFocusArea('sidebar')"
-      @click="setActiveFocusArea('sidebar')"
+      @focus="setActiveFocusArea({ area: 'sidebar' })"
+      @click="setActiveFocusArea({ area: 'sidebar' })"
     >
       <template v-if="isSidebarOpen">
         <Transition name="chat-group-new">
@@ -916,7 +1033,7 @@ defineExpose({
           handle=".handle"
           tag="div"
           :group="{ name: 'sidebar' }"
-          :move="checkMove"
+          :move="(evt: { draggedContext: { element: SidebarItem }; to: HTMLElement }) => checkMove({ evt })"
           :animation="0"
           :delay="200"
           :delay-on-touch-only="true"
@@ -937,8 +1054,8 @@ defineExpose({
               <!-- Chat Group Item -->
               <div v-if="element.type === 'chat_group'" class="space-y-1">
                 <div
-                  @click="handleOpenChatGroup(element.chatGroup.id)"
-                  @dragover="onDragOverGroup(element.chatGroup.id)"
+                  @click="handleOpenChatGroup({ id: element.chatGroup.id })"
+                  @dragover="onDragOverGroup({ groupId: element.chatGroup.id })"
                   @dragleave="onDragLeaveGroup"
                   class="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer text-gray-500 dark:text-gray-400 group/folder relative handle"
                   :class="{
@@ -950,7 +1067,7 @@ defineExpose({
                 >
                   <div class="flex items-center gap-2 overflow-hidden flex-1 pointer-events-none">
                     <button
-                      @click.stop="handleToggleChatGroupCollapse(element.chatGroup)"
+                      @click.stop="handleToggleChatGroupCollapse({ chatGroup: element.chatGroup })"
                       class="p-1 -ml-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg pointer-events-auto transition-colors"
                     >
                       <component :is="element.chatGroup.isCollapsed ? ChevronRightIcon : ChevronDownIcon" class="w-3 h-3 flex-shrink-0" />
@@ -972,14 +1089,14 @@ defineExpose({
                   </div>
 
                   <div class="flex items-center group-action-container touch-visible" :class="activeActionGroupId === element.chatGroup.id ? 'opacity-100' : 'opacity-0 group-hover/folder:opacity-100 transition-opacity'">
-                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup(element.chatGroup)" class="p-1 hover:text-blue-600 dark:hover:text-white" title="Rename Group"><PencilIcon class="w-3 h-3" /></button>
+                    <button v-if="editingChatGroupId !== element.chatGroup.id" @click.stop="startEditingChatGroup({ chatGroup: element.chatGroup })" class="p-1 hover:text-blue-600 dark:hover:text-white" title="Rename Group"><PencilIcon class="w-3 h-3" /></button>
 
                     <ChatGroupActions
                       :chat-group="element.chatGroup"
                       :is-open="activeActionGroupId === element.chatGroup.id"
                       @toggle="activeActionGroupId = activeActionGroupId === element.chatGroup.id ? null : element.chatGroup.id"
-                      @duplicate="() => { chatStore.duplicateChatGroup(element.chatGroup.id); activeActionGroupId = null; }"
-                      @delete="() => { handleDeleteChatGroup(element.chatGroup); activeActionGroupId = null; }"
+                      @duplicate="() => { duplicateChatGroup({ groupId: element.chatGroup.id }); activeActionGroupId = null; }"
+                      @delete="() => { handleDeleteChatGroup({ group: element.chatGroup }); activeActionGroupId = null; }"
                       @search="() => { useGlobalSearch().openSearch({ groupIds: [element.chatGroup.id] }); activeActionGroupId = null; }"
                     />
                   </div>
@@ -989,7 +1106,7 @@ defineExpose({
                 <div class="grid transition-all duration-200 ease-in-out" :style="{ gridTemplateRows: element.chatGroup.isCollapsed ? '0fr' : '1fr' }">
                   <div class="ml-4 pl-2 border-l border-gray-100 dark:border-gray-800 mt-1 space-y-0.5 overflow-hidden min-h-0">
                     <button
-                      @click.stop="handleNewChat(element.chatGroup.id)"
+                      @click.stop="handleNewChat({ groupId: element.chatGroup.id })"
                       class="w-full flex items-center gap-2 text-[10px] text-gray-400 hover:text-blue-600 p-2 transition-colors font-medium"
                     >
                       <MessageSquarePlusIcon class="w-3 h-3" /> Add Chat
@@ -998,10 +1115,10 @@ defineExpose({
                     <!-- Smooth height for Show more/less -->
                     <div
                       class="transition-[max-height] duration-400 ease-in-out overflow-hidden"
-                      :style="{ maxHeight: isGroupCompactExpanded(element.chatGroup.id) ? '2000px' : '250px' }"
+                      :style="{ maxHeight: isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? '2000px' : '250px' }"
                     >
                       <draggable
-                        v-model="useGroupItemsModel(element.chatGroup.id).value"
+                        v-model="useGroupItemsModel({ groupId: element.chatGroup.id }).value"
                         :group="{ name: 'sidebar' }"
                         item-key="id"
                         handle=".handle"
@@ -1024,7 +1141,7 @@ defineExpose({
                       >
                         <template #item="{ element: nestedItem }">
                           <div
-                            @click="handleOpenChat(nestedItem.chat.id)"
+                            @click="handleOpenChat({ id: nestedItem.chat.id })"
                             class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
                             :class="focusedId === nestedItem.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
                             :data-testid="'sidebar-chat-item-' + nestedItem.chat.id"
@@ -1045,10 +1162,10 @@ defineExpose({
                               <span v-else class="truncate text-sm">{{ nestedItem.chat.title || 'New Chat' }}</span>
                             </div>
                             <div class="flex items-center gap-1">
-                              <Loader2Icon v-if="isProcessing(nestedItem.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                              <Loader2Icon v-if="isProcessing({ chatId: nestedItem.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                               <div v-if="editingId !== nestedItem.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                                <button @click.stop="startEditing(nestedItem.chat.id, nestedItem.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
-                                <button @click.stop="handleDeleteChat(nestedItem.chat.id)" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>
+                                <button @click.stop="startEditing({ id: nestedItem.chat.id, title: nestedItem.chat.title })" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
+                                <button @click.stop="handleDeleteChat({ id: nestedItem.chat.id })" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>
                               </div>
                             </div>
                           </div>
@@ -1059,21 +1176,21 @@ defineExpose({
                     <!-- Compact View: Show More/Less Button -->
                     <button
                       v-if="element.chatGroup.items.length > COMPACT_THRESHOLD"
-                      @click.stop="toggleGroupCompactExpansion(element.chatGroup.id)"
+                      @click.stop="toggleGroupCompactExpansion({ groupId: element.chatGroup.id })"
                       class="w-full flex items-center justify-between p-2 rounded-xl text-[10px] font-bold focus:outline-none transition-all"
                       :class="[
                         focusedId === `expand-${element.chatGroup.id}`
                           ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm'
                           : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50',
-                        !isGroupCompactExpanded(element.chatGroup.id) ? 'bg-gradient-to-b from-transparent to-gray-50/30 dark:to-gray-800/20' : ''
+                        !isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? 'bg-gradient-to-b from-transparent to-gray-50/30 dark:to-gray-800/20' : ''
                       ]"
                       data-testid="show-more-button"
                     >
                       <span class="ml-1 flex items-center gap-1.5">
-                        <MoreHorizontalIcon v-if="!isGroupCompactExpanded(element.chatGroup.id)" class="w-3 h-3 opacity-60" />
-                        {{ isGroupCompactExpanded(element.chatGroup.id) ? 'Show less' : `Show ${element.chatGroup.items.length - COMPACT_THRESHOLD} more` }}
+                        <MoreHorizontalIcon v-if="!isGroupCompactExpanded({ groupId: element.chatGroup.id })" class="w-3 h-3 opacity-60" />
+                        {{ isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? 'Show less' : `Show ${element.chatGroup.items.length - COMPACT_THRESHOLD} more` }}
                       </span>
-                      <component :is="isGroupCompactExpanded(element.chatGroup.id) ? ChevronUpIcon : ChevronDownIcon" class="w-3 h-3" />
+                      <component :is="isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? ChevronUpIcon : ChevronDownIcon" class="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -1082,7 +1199,7 @@ defineExpose({
               <!-- Top-level Individual Chat -->
               <div
                 v-else
-                @click="handleOpenChat(element.chat.id)"
+                @click="handleOpenChat({ id: element.chat.id })"
                 class="group/chat flex items-center justify-between p-2 rounded-xl cursor-pointer handle sidebar-chat-item"
                 :class="focusedId === element.chat.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:text-gray-800 dark:hover:text-gray-200'"
                 :data-testid="'sidebar-chat-item-' + element.chat.id"
@@ -1103,10 +1220,10 @@ defineExpose({
                   <span v-else class="truncate text-sm">{{ element.chat.title || 'New Chat' }}</span>
                 </div>
                 <div class="flex items-center gap-1">
-                  <Loader2Icon v-if="isProcessing(element.chat.id)" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
+                  <Loader2Icon v-if="isProcessing({ chatId: element.chat.id })" class="w-3 h-3 text-blue-500 animate-spin mr-1 shrink-0" />
                   <div v-if="editingId !== element.chat.id" class="flex items-center touch-visible opacity-0 group-hover/chat:opacity-100 transition-opacity">
-                    <button @click.stop="startEditing(element.chat.id, element.chat.title)" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
-                    <button @click.stop="handleDeleteChat(element.chat.id)" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>
+                    <button @click.stop="startEditing({ id: element.chat.id, title: element.chat.title })" class="p-1 hover:text-blue-600 dark:hover:text-blue-400"><PencilIcon class="w-3 h-3" /></button>
+                    <button @click.stop="handleDeleteChat({ id: element.chat.id })" class="p-1 hover:text-red-500"><Trash2Icon class="w-3 h-3" /></button>
                   </div>
                 </div>
               </div>
@@ -1129,7 +1246,7 @@ defineExpose({
           :model-value="settings.defaultModelId || ''"
           :models="sortedModels"
           :loading="isFetchingModels"
-          @update:model-value="handleGlobalModelChange"
+          @update:model-value="newModelId => handleGlobalModelChange({ newModelId })"
           placeholder="Select default model"
         />
       </div>

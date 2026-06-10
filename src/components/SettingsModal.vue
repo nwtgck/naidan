@@ -3,8 +3,8 @@ import { generateId } from '@/utils/id';
 import { ref, watch, computed, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
-import { useChat } from '@/composables/useChat';
 import { useToast } from '@/composables/useToast';
+import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import type { Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { ChatGroupRecipeSchema } from '@/models/recipe';
@@ -23,14 +23,14 @@ import {
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load tabs that are not visible by default, but prefetch them when idle.
-const RecipeImportTab = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeImportTab.vue'));
-const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted(() => import('./ProviderProfilesTab.vue'));
-const TransformersJsManager = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsManager.vue'));
-const StorageTab = defineAsyncComponentAndLoadOnMounted(() => import('./StorageTab.vue'));
-const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted(() => import('./BinaryObjectsTab.vue'));
-const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted(() => import('./VolumeSettingsTab.vue'));
-const DeveloperTab = defineAsyncComponentAndLoadOnMounted(() => import('./DeveloperTab.vue'));
-const AboutTab = defineAsyncComponentAndLoadOnMounted(() => import('./AboutTab.vue'));
+const RecipeImportTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeImportTab.vue') });
+const ProviderProfilesTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilesTab.vue') });
+const TransformersJsManager = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsManager.vue') });
+const StorageTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./StorageTab.vue') });
+const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectsTab.vue') });
+const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./VolumeSettingsTab.vue') });
+const DeveloperTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./DeveloperTab.vue') });
+const AboutTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AboutTab.vue') });
 
 // IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';
@@ -50,9 +50,9 @@ const emit = defineEmits<{
 }>();
 
 const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
-const availableModels = computed(() => naturalSort(Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : []));
+const availableModels = computed(() => naturalSort({ values: Array.isArray(rawAvailableModels.value) ? rawAvailableModels.value : [] }));
 
-const chatStore = useChat();
+const chatOrganization = useChatOrganization();
 const { addToast } = useToast();
 const { showConfirm } = useConfirm(); // Initialize useConfirm
 const { setActiveFocusArea } = useLayout();
@@ -64,32 +64,32 @@ const isHostedMode = __BUILD_MODE_IS_HOSTED__;
 const appVersion = __APP_VERSION__;
 
 const form = ref<Settings>(JSON.parse(JSON.stringify(settings.value)));
-const initialFormState = ref(JSON.stringify(pickConnectionFields(form.value)));
+const initialFormState = ref(JSON.stringify(pickConnectionFields({ settings: form.value })));
 const connectionTabRef = ref<InstanceType<typeof ConnectionTab> | null>(null);
 
-function pickConnectionFields(s: Settings) {
+function pickConnectionFields({ settings }: { settings: Settings }) {
   return {
-    endpointType: s.endpointType,
-    endpointUrl: s.endpointUrl,
-    endpointHttpHeaders: JSON.stringify(s.endpointHttpHeaders),
-    defaultModelId: s.defaultModelId,
-    titleModelId: s.titleModelId,
-    autoTitleEnabled: s.autoTitleEnabled,
-    systemPrompt: s.systemPrompt,
-    lmParameters: JSON.stringify(s.lmParameters),
+    endpointType: settings.endpointType,
+    endpointUrl: settings.endpointUrl,
+    endpointHttpHeaders: JSON.stringify(settings.endpointHttpHeaders),
+    defaultModelId: settings.defaultModelId,
+    titleModelId: settings.titleModelId,
+    autoTitleEnabled: settings.autoTitleEnabled,
+    systemPrompt: settings.systemPrompt,
+    lmParameters: JSON.stringify(settings.lmParameters),
   };
 }
 
 const hasUnsavedConnectionChanges = computed(() => {
-  const current = pickConnectionFields(form.value);
+  const current = pickConnectionFields({ settings: form.value });
   const initial = JSON.parse(initialFormState.value || '{}');
   return JSON.stringify(current) !== JSON.stringify(initial);
 });
 
-async function handleImportRecipes(recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[]) {
+async function handleImportRecipes({ recipes }: { recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[] }) {
   try {
     for (const item of recipes) {
-      await chatStore.createChatGroup(item.newName, {
+      await chatOrganization.createChatGroup({ name: item.newName, options: {
         modelId: item.matchedModelId,
         systemPrompt: item.recipe.systemPrompt,
         lmParameters: item.recipe.lmParameters ? {
@@ -97,7 +97,7 @@ async function handleImportRecipes(recipes: { newName: string; matchedModelId?: 
           ...item.recipe.lmParameters,
           reasoning: { effort: item.recipe.lmParameters.reasoning?.effort }
         } : EMPTY_LM_PARAMETERS,
-      });
+      } });
     }
 
     addToast({
@@ -187,7 +187,7 @@ function handleAnalyzeRecipes() {
   }
 
   recipeAnalysisError.value = null;
-  const parseResults = parseConcatenatedJson(trimmed);
+  const parseResults = parseConcatenatedJson({ input: trimmed });
   const newAnalyzed: AnalyzedRecipe[] = [];
 
   for (const result of parseResults) {
@@ -203,7 +203,7 @@ function handleAnalyzeRecipes() {
     }
 
     const recipe = validation.data;
-    const match = matchRecipeModels(recipe.models, availableModels.value);
+    const match = matchRecipeModels({ recipeModels: recipe.models, availableModelIds: availableModels.value });
 
     newAnalyzed.push({
       id: generateId(),
@@ -230,16 +230,16 @@ watch(recipeJsonInput, () => {
 // Watch for modal open to reset form
 watch(() => props.isOpen, async (open) => {
   if (open) {
-    setActiveFocusArea('settings');
+    setActiveFocusArea({ area: 'settings' });
     form.value = JSON.parse(JSON.stringify(settings.value)) as Settings;
-    initialFormState.value = JSON.stringify(pickConnectionFields(form.value));
+    initialFormState.value = JSON.stringify(pickConnectionFields({ settings: form.value }));
 
     await nextTick();
     if (connectionTabRef.value) {
       connectionTabRef.value.fetchModels();
     }
   } else {
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
   }
 });
 
@@ -391,7 +391,7 @@ defineExpose({
             :available-models="availableModels"
             :is-fetching-models="isFetchingModels"
             :has-unsaved-changes="hasUnsavedConnectionChanges"
-            @save="initialFormState = JSON.stringify(pickConnectionFields(form))"
+            @save="initialFormState = JSON.stringify(pickConnectionFields({ settings: form }))"
             @go-to-profiles="activeTab = 'profiles'"
             @go-to-transformers-js="activeTab = 'transformers_js'"
           />
@@ -414,7 +414,7 @@ defineExpose({
               <RecipeImportTab
                 v-if="activeTab === 'recipes'"
                 :available-models="availableModels"
-                @import="handleImportRecipes"
+                @import="handleImportRecipes({ recipes: $event })"
                 @toast="(msg: string, dur?: number) => addToast({ message: msg, duration: dur })"
               />
 

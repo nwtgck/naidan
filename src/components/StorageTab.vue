@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettings } from '@/composables/useSettings';
-import { useChat } from '@/composables/useChat';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
@@ -17,7 +17,7 @@ import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
-const ImportExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./ImportExportModal.vue'));
+const ImportExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImportExportModal.vue') });
 
 const props = defineProps<{
   storageType: 'local' | 'opfs' | 'memory';
@@ -29,7 +29,7 @@ const emit = defineEmits<{
 }>();
 
 const { save } = useSettings();
-const chatStore = useChat();
+const chatLifecycle = useChatLifecycle();
 const { showConfirm } = useConfirm();
 const { addToast } = useToast();
 const router = useRouter();
@@ -89,7 +89,7 @@ async function handleEnablePersistence() {
   }
 }
 
-async function handleStorageChange(targetType: 'local' | 'opfs' | 'memory') {
+async function handleStorageChange({ targetType }: { targetType: 'local' | 'opfs' | 'memory' }) {
   if (targetType === props.storageType) return;
 
   const currentProviderType = storageService.getCurrentType();
@@ -132,7 +132,7 @@ async function handleStorageChange(targetType: 'local' | 'opfs' | 'memory') {
 
   try {
     // Only pass storageType to save as a patch
-    await save({ storageType: targetType });
+    await save({ patch: { storageType: targetType } });
     emit('update:storageType', targetType);
   } catch (err) {
     console.error('Failed to migrate storage:', err);
@@ -153,7 +153,7 @@ async function handleDeleteAllHistory() {
   });
 
   if (confirmed) {
-    await chatStore.deleteAllChats();
+    await chatLifecycle.deleteAllChats({});
     emit('close');
     router.push('/');
   }
@@ -305,7 +305,7 @@ defineExpose({
         <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Active Storage Provider</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <button
-            @click="handleStorageChange('opfs')"
+            @click="handleStorageChange({ targetType: 'opfs' })"
             type="button"
             :disabled="!isOPFSSupported"
             class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
@@ -328,7 +328,7 @@ defineExpose({
             </div>
           </button>
           <button
-            @click="handleStorageChange('local')"
+            @click="handleStorageChange({ targetType: 'local' })"
             type="button"
             class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
             :class="storageType === 'local' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"
@@ -345,7 +345,7 @@ defineExpose({
             </div>
           </button>
           <button
-            @click="handleStorageChange('memory')"
+            @click="handleStorageChange({ targetType: 'memory' })"
             type="button"
             class="text-left border-2 rounded-2xl p-6 transition-all shadow-sm flex flex-col gap-3"
             :class="storageType === 'memory' ? 'border-purple-500 bg-purple-50/50 dark:bg-purple-900/20' : 'border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700'"

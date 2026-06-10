@@ -4,13 +4,6 @@ import ChatToolsMenu from './ChatToolsMenu.vue';
 import { ref, nextTick } from 'vue';
 import type { Reasoning } from '@/models/types';
 
-// Mock @vueuse/core for positioning tests
-const mockBounding = {
-  top: ref(100),
-  bottom: ref(140),
-  left: ref(100),
-  width: ref(40),
-};
 const mockWindowSize = {
   width: ref(1024),
   height: ref(768),
@@ -20,7 +13,6 @@ vi.mock('@vueuse/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@vueuse/core')>();
   return {
     ...actual,
-    useElementBounding: vi.fn(() => mockBounding),
     useWindowSize: vi.fn(() => mockWindowSize),
   };
 });
@@ -46,10 +38,6 @@ describe('ChatToolsMenu', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockBounding.top.value = 100;
-    mockBounding.bottom.value = 140;
-    mockBounding.left.value = 100;
-    mockBounding.width.value = 40;
     mockWindowSize.width.value = 1024;
     mockWindowSize.height.value = 768;
     document.body.innerHTML = '';
@@ -78,11 +66,47 @@ describe('ChatToolsMenu', () => {
     await flushPromises();
     await vi.dynamicImportSettled();
 
-    // Teleported to body
     expect(document.body.textContent).toContain('Options/Tools');
+    expect(document.body.querySelector('[data-testid="chat-tools-backdrop"]')).toBeTruthy();
 
     await button.trigger('click');
     await flushPromises();
+    expect(document.body.querySelector('[data-testid="chat-tools-dropdown"]')).toBeFalsy();
+  });
+
+  it('closes when the backdrop is clicked', async () => {
+    wrapper = mount(ChatToolsMenu, {
+      props: defaultProps,
+      attachTo: document.body
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    const backdrop = document.body.querySelector('[data-testid="chat-tools-backdrop"]') as HTMLElement;
+    backdrop.click();
+    await flushPromises();
+
+    expect(document.body.querySelector('[data-testid="chat-tools-dropdown"]')).toBeFalsy();
+  });
+
+  it('closes when the close button is clicked', async () => {
+    wrapper = mount(ChatToolsMenu, {
+      props: defaultProps,
+      attachTo: document.body,
+    });
+    await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
+    await flushPromises();
+    await vi.dynamicImportSettled();
+
+    const closeButton = document.body.querySelector('[data-testid="chat-tools-footer-close"]') as HTMLElement;
+    closeButton.click();
+
+    // Wait for Vue to process the state change
+    await nextTick();
+    // Wait for Transition to finish
+    await flushPromises();
+
     expect(document.body.querySelector('[data-testid="chat-tools-dropdown"]')).toBeFalsy();
   });
 
@@ -289,83 +313,7 @@ describe('ChatToolsMenu', () => {
     });
   });
 
-  describe('Adaptive Positioning Features', () => {
-    it('shifts left if the menu would overflow the right edge', async () => {
-      // Trigger near the right edge (window width 1024, menu width 256)
-      mockBounding.left.value = 900;
-      mockWindowSize.width.value = 1024;
-
-      wrapper = mount(ChatToolsMenu, {
-        props: defaultProps,
-        attachTo: document.body
-      });
-      await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
-      await flushPromises();
-
-      const dropdown = document.body.querySelector('[data-testid="chat-tools-dropdown"]') as HTMLElement;
-      const leftValue = parseFloat(dropdown.style.left);
-      const menuWidth = 256;
-
-      // Should be shifted left to stay on screen (1024 - 256 - 16 = 752)
-      expect(leftValue).toBeLessThan(900);
-      expect(leftValue + menuWidth).toBeLessThanOrEqual(mockWindowSize.width.value - 16);
-      expect(leftValue).toBe(1024 - 256 - 16);
-    });
-
-    it('respects the 16px left margin', async () => {
-      // Trigger near the left edge
-      mockBounding.left.value = 5;
-
-      wrapper = mount(ChatToolsMenu, {
-        props: defaultProps,
-        attachTo: document.body
-      });
-      await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
-      await flushPromises();
-
-      const dropdown = document.body.querySelector('[data-testid="chat-tools-dropdown"]') as HTMLElement;
-      const leftValue = parseFloat(dropdown.style.left);
-
-      expect(leftValue).toBe(16);
-    });
-
-    it('positions upward when direction is up', async () => {
-      mockBounding.top.value = 500;
-      mockWindowSize.height.value = 768;
-
-      wrapper = mount(ChatToolsMenu, {
-        props: { ...defaultProps, direction: 'up' },
-        attachTo: document.body
-      });
-      await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
-      await flushPromises();
-
-      const dropdown = document.body.querySelector('[data-testid="chat-tools-dropdown"]') as HTMLElement;
-      expect(dropdown.style.bottom).not.toBe('auto');
-      expect(dropdown.style.top).toBe('auto');
-
-      // bottom = windowHeight - rect.top + margin = 768 - 500 + 8 = 276
-      expect(parseFloat(dropdown.style.bottom)).toBe(276);
-    });
-
-    it('positions downward when direction is down', async () => {
-      mockBounding.bottom.value = 140;
-
-      wrapper = mount(ChatToolsMenu, {
-        props: { ...defaultProps, direction: 'down' },
-        attachTo: document.body
-      });
-      await wrapper.find('[data-testid="chat-tools-button"]').trigger('click');
-      await flushPromises();
-
-      const dropdown = document.body.querySelector('[data-testid="chat-tools-dropdown"]') as HTMLElement;
-      expect(dropdown.style.top).not.toBe('auto');
-      expect(dropdown.style.bottom).toBe('auto');
-
-      // top = rect.bottom + margin = 140 + 8 = 148
-      expect(parseFloat(dropdown.style.top)).toBe(148);
-    });
-
+  describe('Sheet Behavior', () => {
     it('closes on window width resize', async () => {
       wrapper = mount(ChatToolsMenu, {
         props: defaultProps,
@@ -376,7 +324,6 @@ describe('ChatToolsMenu', () => {
 
       expect(document.body.querySelector('[data-testid="chat-tools-dropdown"]')).toBeTruthy();
 
-      // Width change
       mockWindowSize.width.value = 800;
       await nextTick();
       await flushPromises();

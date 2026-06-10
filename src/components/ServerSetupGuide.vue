@@ -39,7 +39,7 @@ OLLAMA_ORIGINS="*" ollama serve`;
   return base;
 });
 
-const copyToClipboard = async (text: string, id: string) => {
+const copyToClipboard = async ({ text, id }: { text: string; id: string }) => {
   await navigator.clipboard.writeText(text);
   copiedCommand.value = id;
   setTimeout(() => {
@@ -153,7 +153,7 @@ defineExpose({
                 <div v-else-if="guides.ollama[activeOs].installCommand" class="relative group">
                   <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].installCommand }}</code></pre>
                   <button
-                    @click="copyToClipboard(guides.ollama[activeOs].installCommand!, 'ollama-install')"
+                    @click="copyToClipboard({ text: guides.ollama[activeOs].installCommand!, id: 'ollama-install' })"
                     class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                   >
                     <CheckIcon v-if="copiedCommand === 'ollama-install'" class="w-3 h-3 text-white" />
@@ -175,7 +175,7 @@ defineExpose({
                   <div class="relative group">
                     <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ ollamaServeCommand }}</code></pre>
                     <button
-                      @click="copyToClipboard(ollamaServeCommand, 'ollama-serve')"
+                      @click="copyToClipboard({ text: ollamaServeCommand, id: 'ollama-serve' })"
                       class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                     >
                       <CheckIcon v-if="copiedCommand === 'ollama-serve'" class="w-3 h-3 text-white" />
@@ -190,7 +190,7 @@ defineExpose({
                   <div class="relative group">
                     <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides.ollama[activeOs].runCommand }}</code></pre>
                     <button
-                      @click="copyToClipboard(guides.ollama[activeOs].runCommand, 'ollama-run')"
+                      @click="copyToClipboard({ text: guides.ollama[activeOs].runCommand, id: 'ollama-run' })"
                       class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                     >
                       <CheckIcon v-if="copiedCommand === 'ollama-run'" class="w-3 h-3 text-white" />
@@ -236,7 +236,7 @@ defineExpose({
               <div class="relative group">
                 <pre class="bg-gray-900 text-gray-300 p-2 rounded-lg text-[10px] overflow-x-auto whitespace-pre border border-gray-800 scrollbar-none"><code>{{ guides['llama-server'].all.runCommand }}</code></pre>
                 <button
-                  @click="copyToClipboard(guides['llama-server'].all.runCommand, 'llama-run')"
+                  @click="copyToClipboard({ text: guides['llama-server'].all.runCommand, id: 'llama-run' })"
                   class="absolute top-1 right-1 p-1 text-gray-400 hover:text-white transition-colors bg-gray-900/80 rounded"
                 >
                   <CheckIcon v-if="copiedCommand === 'llama-run'" class="w-3 h-3 text-white" />

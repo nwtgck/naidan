@@ -8,7 +8,7 @@ const chatGroupIds = ref<string[]>([]);
 const chatId = ref<string | undefined>(undefined);
 
 export function useGlobalSearch() {
-  const openSearch = ({ groupIds, chatId: cid }: { groupIds?: string[], chatId?: string } = {}) => {
+  const openSearch = ({ groupIds, chatId: cid }: { groupIds?: string[], chatId?: string }) => {
     chatGroupIds.value = groupIds || [];
     chatId.value = cid;
     _openOverlay({ type: 'search' });

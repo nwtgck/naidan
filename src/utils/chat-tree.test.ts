@@ -10,7 +10,7 @@ describe('chat-tree utils', () => {
         { role: 'user', content: 'How are you?' }
       ];
 
-      const nodes = createBranchFromMessages(messages);
+      const nodes = createBranchFromMessages({ messages });
 
       expect(nodes.length).toBe(3);
 
@@ -34,7 +34,7 @@ describe('chat-tree utils', () => {
     });
 
     it('should return empty array for empty input', () => {
-      const nodes = createBranchFromMessages([]);
+      const nodes = createBranchFromMessages({ messages: [] });
       expect(nodes).toEqual([]);
     });
 
@@ -47,7 +47,7 @@ describe('chat-tree utils', () => {
         }
       ];
 
-      const nodes = createBranchFromMessages(messages);
+      const nodes = createBranchFromMessages({ messages });
       expect(nodes[0]!.thinking).toBe('Inner thoughts');
     });
 
@@ -60,7 +60,7 @@ describe('chat-tree utils', () => {
         }
       ];
 
-      const nodes = createBranchFromMessages(messages);
+      const nodes = createBranchFromMessages({ messages });
       expect(nodes[0]!.attachments?.[0]!.id).toBe('1');
     });
   });

@@ -2,17 +2,31 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref, reactive, toRef, nextTick, computed } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
-import { useChat } from '@/composables/useChat';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
+import { useChatModels } from '@/composables/chat/useChatModels';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 
 // --- Mocks ---
+const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
+  mockAvailableModelsRef: { value: [] as string[] },
+  mockFetchingModelsRef: { value: false },
+}));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(),
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({
   useSettings: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatModels', () => ({
+  useChatModels: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatMetadata', () => ({
+  useChatMetadata: vi.fn(),
 }));
 
 const mockSetActiveFocusArea = vi.fn();
@@ -25,7 +39,7 @@ vi.mock('../composables/useLayout', () => ({
 
 describe('ChatSettingsPanel.vue', () => {
   const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
-  const mockUpdateChatSettings = vi.fn().mockImplementation((id, updates) => {
+  const mockUpdateChatSettings = vi.fn().mockImplementation(({ id, updates }) => {
     if (mockCurrentChat.value?.id === id) {
       Object.assign(mockCurrentChat.value, updates);
     }
@@ -115,13 +129,42 @@ describe('ChatSettingsPanel.vue', () => {
       };
     });
 
-    (useChat as unknown as Mock).mockReturnValue({
-      currentChat: mockCurrentChat,
-      availableModels: ref(['model-1', 'model-2']),
-      fetchingModels: ref(false),
-      fetchAvailableModels: mockFetchAvailableModels,
-      updateChatSettings: mockUpdateChatSettings,
+    (useCurrentChatState as unknown as Mock).mockReturnValue({
+      currentChatId: computed(() => mockCurrentChat.value?.id),
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatGroup: computed(() => null),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
       resolvedSettings: mockResolvedSettings,
+      inheritedSettings: mockResolvedSettings,
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
+    });
+
+    mockAvailableModelsRef.value = ['model-1', 'model-2'];
+    mockFetchingModelsRef.value = false;
+    vi.mocked(useChatMetadata).mockReturnValue({
+      rename: vi.fn(),
+      toggleDebug: vi.fn(),
+      updateModel: vi.fn(),
+      updateGroupOverride: vi.fn(),
+      updateSettings: async ({ chatId, updates }) => {
+        await mockUpdateChatSettings({ id: chatId, updates });
+      },
+      reasoningEffort: vi.fn(),
+      updateReasoningEffort: vi.fn(),
+      TEST_ONLY: {},
+    });
+    vi.mocked(useChatModels).mockReturnValue({
+      availableModels: computed(() => mockAvailableModelsRef.value) as unknown as ReturnType<typeof useChatModels>['availableModels'],
+      fetchingModels: computed(() => mockFetchingModelsRef.value),
+      fetchForChat: async ({ chatId }) => {
+        return await mockFetchAvailableModels({ chatId });
+      },
+      fetchForGlobalEndpoint: vi.fn(),
+      fetchForEndpoint: vi.fn(),
+      TEST_ONLY: {},
     });
 
     (useSettings as unknown as Mock).mockReturnValue({
@@ -260,9 +303,9 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.setValue('http://persisted-url:1234');
       await urlInput.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointUrl: 'http://persisted-url:1234'
-      }));
+      }) });
     });
 
     it('triggers updateChatSettings when model override changes', async () => {
@@ -275,9 +318,9 @@ describe('ChatSettingsPanel.vue', () => {
 
       await selector.vm.$emit('update:modelValue', 'model-1');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         modelId: 'model-1'
-      }));
+      }) });
     });
 
     it('triggers updateChatSettings when a preset is applied', async () => {
@@ -290,10 +333,10 @@ describe('ChatSettingsPanel.vue', () => {
 
       await ollamaBtn?.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'ollama',
         endpointUrl: 'http://localhost:11434'
-      }));
+      }) });
     });
 
     it('triggers updateChatSettings when a provider profile is applied', async () => {
@@ -307,10 +350,10 @@ describe('ChatSettingsPanel.vue', () => {
       await select.setValue('profile-1');
       await select.trigger('change');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'ollama',
         endpointUrl: 'http://ollama:11434'
-      }));
+      }) });
     });
   });
 
@@ -356,9 +399,9 @@ describe('ChatSettingsPanel.vue', () => {
       await select.setValue('p-h');
       await select.trigger('change');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointHttpHeaders: [['X-Header', 'Value']]
-      }));
+      }) });
     });
   });
 
@@ -381,17 +424,17 @@ describe('ChatSettingsPanel.vue', () => {
       await inputs[2]?.setValue('Val-Manual');
       await inputs[2]?.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointHttpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']])
-      }));
+      }) });
 
       // Remove
       const removeBtn = wrapper.findAll('button').find(b => b.html().includes('lucide-trash2') || b.findComponent({ name: 'Trash2' }).exists());
       await removeBtn?.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointHttpHeaders: []
-      }));
+      }) });
     });
   });
 
@@ -406,10 +449,10 @@ describe('ChatSettingsPanel.vue', () => {
 
       await ollamaBtn?.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'ollama',
         endpointUrl: 'http://localhost:11434'
-      }));
+      }) });
     });
 
     it('applies LM Studio preset when clicked', async () => {
@@ -422,10 +465,10 @@ describe('ChatSettingsPanel.vue', () => {
 
       await lmStudioBtn?.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'openai',
         endpointUrl: 'http://localhost:1234/v1'
-      }));
+      }) });
     });
   });
 
@@ -440,9 +483,9 @@ describe('ChatSettingsPanel.vue', () => {
 
       await typeSelect!.setValue('ollama');
       await typeSelect!.trigger('change');
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'ollama'
-      }));
+      }) });
     });
 
     it('updates currentChat endpointUrl through text input', async () => {
@@ -455,9 +498,9 @@ describe('ChatSettingsPanel.vue', () => {
 
       await urlInput.setValue('http://custom-api:8000');
       await urlInput.trigger('blur');
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointUrl: 'http://custom-api:8000'
-      }));
+      }) });
     });
 
     it('does not affect other chats when overriding settings', async () => {
@@ -472,9 +515,9 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.setValue('http://changed:8888');
       await urlInput.trigger('blur');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointUrl: 'http://changed:8888'
-      }));
+      }) });
     });
 
     it('does not affect global settings when overriding chat settings', async () => {
@@ -515,9 +558,9 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
       await flushPromises();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointUrl: 'http://new-url-for-A'
-      }));
+      }) });
     });
 
     it('saves settings when the modal is closed via props even if blur hasn\'t fired yet', async () => {
@@ -534,9 +577,9 @@ describe('ChatSettingsPanel.vue', () => {
       await wrapper.setProps({ show: false });
       await nextTick();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointUrl: 'http://closing-save'
-      }));
+      }) });
     });
 
     it('synchronizes settings from the current chat when the modal is reopened', async () => {
@@ -586,10 +629,10 @@ describe('ChatSettingsPanel.vue', () => {
 
       await restoreBtn.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: undefined,
         endpointUrl: undefined
-      }));
+      }) });
     });
 
     it('triggers updateChatSettings when restoring to global settings', async () => {
@@ -603,9 +646,9 @@ describe('ChatSettingsPanel.vue', () => {
 
       await restoreBtn.trigger('click');
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: undefined
-      }));
+      }) });
     });
   });
 
@@ -673,9 +716,9 @@ describe('ChatSettingsPanel.vue', () => {
       await flushPromises();
 
       // Verify updateChatSettings was called with undefined for systemPrompt
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         systemPrompt: undefined
-      }));
+      }) });
 
       // Verify UI state: textarea should be gone, and inherited notice shown
       expect(wrapper.find('[data-testid="chat-setting-system-prompt-textarea"]').exists()).toBe(false);
@@ -762,14 +805,8 @@ describe('ChatSettingsPanel.vue', () => {
     });
 
     it('shows loading state during model fetch', async () => {
-      (useChat as unknown as Mock).mockReturnValue({
-        currentChat: mockCurrentChat,
-        availableModels: ref([]),
-        fetchingModels: ref(true),
-        fetchAvailableModels: mockFetchAvailableModels,
-        updateChatSettings: mockUpdateChatSettings,
-        resolvedSettings: ref({ sources: {} }),
-      });
+      mockFetchingModelsRef.value = true;
+      mockAvailableModelsRef.value = [];
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
@@ -813,14 +850,8 @@ describe('ChatSettingsPanel.vue', () => {
     });
 
     it('passes a naturally sorted list of models to ModelSelector', async () => {
-      (useChat as unknown as Mock).mockReturnValue({
-        currentChat: mockCurrentChat,
-        availableModels: ref(['model-10', 'model-2', 'model-1']),
-        fetchingModels: ref(false),
-        fetchAvailableModels: mockFetchAvailableModels,
-        updateChatSettings: mockUpdateChatSettings,
-        resolvedSettings: ref({ sources: {} }),
-      });
+      mockFetchingModelsRef.value = false;
+      mockAvailableModelsRef.value = ['model-10', 'model-2', 'model-1'];
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
@@ -846,9 +877,9 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.setValue('http://localhost:11434');
       await flushPromises();
 
-      expect(mockUpdateChatSettings).toHaveBeenCalledWith('chat-1', expect.objectContaining({
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         modelId: undefined
-      }));
+      }) });
     });
   });
 
@@ -861,10 +892,10 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
 
       await wrapper.setProps({ show: true });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat-settings');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat-settings' });
 
       await wrapper.setProps({ show: false });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
 });

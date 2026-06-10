@@ -1,24 +1,27 @@
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { SearchIcon, XIcon, Loader2Icon, MessageSquareIcon, CornerDownRightIcon, ClockIcon, GitBranchIcon, FolderIcon, FilterIcon, CheckIcon, EyeIcon } from 'lucide-vue-next';
 import he from 'he';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useChatSearch, type SearchResultItem, type SearchRoleFilter, type SearchScope, type ContentMatch } from '@/composables/useChatSearch';
-import { useChat } from '@/composables/useChat';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
-const SearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./SearchPreview.vue'));
-const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted(() => import('./ChatGroupSearchPreview.vue'));
+const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
+const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupSearchPreview.vue') });
 
 const router = useRouter();
 const { isSearchOpen, closeSearch, chatGroupIds, chatId } = useGlobalSearch();
 const { query, isSearching, isScanningContent, results, search, stopSearch } = useChatSearch();
-const { openChat, openChatAtMessage, openChatGroup, chatGroups, currentChat } = useChat();
+const { openChat, openChatAtMessage, openChatGroup } = useChatNavigation();
+const { chatGroups, currentChat } = useCurrentChatState();
 const { setActiveFocusArea, activeFocusArea } = useLayout();
 const {
   searchPreviewMode,
@@ -119,20 +122,14 @@ watch(query, () => {
   updateHighlightState();
 }, { immediate: true });
 
-const handleClickOutsideGroupSelector = (event: MouseEvent) => {
+const handleClickOutsideGroupSelector = ({ event }: { event: MouseEvent }) => {
   const target = event.target as HTMLElement;
   if (showGroupSelector.value && !target.closest('.relative.shrink-0')) {
     showGroupSelector.value = false;
   }
 };
 
-onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutsideGroupSelector);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutsideGroupSelector);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutsideGroupSelector({ event }));
 
 const selectedGroups = computed(() => {
   return chatGroups.value.filter(g => chatGroupIds.value.includes(g.id));
@@ -239,8 +236,8 @@ const performSearch = ({ val }: { val: string }) => {
   selectedIndex.value = 0;
 };
 
-const handleInput = (e: Event) => {
-  const val = (e.target as HTMLInputElement).value;
+const handleInput = ({ event }: { event: Event }) => {
+  const val = (event.target as HTMLInputElement).value;
   // Performance & Stability Note: Synchronize the query state immediately to prevent
   // the input field from jumping or losing characters during rapid typing.
   query.value = val;
@@ -280,13 +277,13 @@ watch([searchScope, searchRoleFilter, chatGroupIds, chatId], () => {
   }
 }, { deep: true });
 
-const handleKeydown = (e: KeyboardEvent) => {
-  if (isEnterForImeComposition({ event: e })) {
+const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
+  if (isEnterForImeComposition({ event })) {
     return;
   }
 
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
     const pane = activePane.value;
     switch (pane) {
     case 'preview':
@@ -303,8 +300,8 @@ const handleKeydown = (e: KeyboardEvent) => {
       throw new Error(`Unhandled pane: ${_ex}`);
     }
     }
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
     const pane = activePane.value;
     switch (pane) {
     case 'preview':
@@ -321,17 +318,17 @@ const handleKeydown = (e: KeyboardEvent) => {
       throw new Error(`Unhandled pane: ${_ex}`);
     }
     }
-  } else if (e.key === 'ArrowRight') {
+  } else if (event.key === 'ArrowRight') {
     // If we are on a result item, focus the preview pane
     if (activePane.value === 'results' && currentSelectedItem.value) {
-      e.preventDefault();
+      event.preventDefault();
       activePane.value = 'preview';
     }
-  } else if (e.key === 'ArrowLeft') {
+  } else if (event.key === 'ArrowLeft') {
     const pane = activePane.value;
     switch (pane) {
     case 'preview':
-      e.preventDefault();
+      event.preventDefault();
       activePane.value = 'results';
       nextTick(() => {
         searchInput.value?.focus();
@@ -345,15 +342,15 @@ const handleKeydown = (e: KeyboardEvent) => {
       throw new Error(`Unhandled pane: ${_ex}`);
     }
     }
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
     if (activePane.value === 'preview' && groupPreviewRef.value) {
       groupPreviewRef.value.handleEnter();
     } else {
       selectItem({ index: selectedIndex.value });
     }
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
     closeSearch();
   }
 };
@@ -400,7 +397,7 @@ async function selectItem({ index }: { index: number }) {
   switch (type) {
   case 'chat': {
     const chatItem = target.item;
-    await openChat(chatItem.chatId);
+    await openChat({ chatId: chatItem.chatId });
     router.push(`/chat/${chatItem.chatId}`);
     closeSearch();
     break;
@@ -418,7 +415,7 @@ async function selectItem({ index }: { index: number }) {
   }
   case 'chat_group': {
     const groupItem = target.item;
-    openChatGroup(groupItem.groupId);
+    openChatGroup({ groupId: groupItem.groupId });
     closeSearch();
     break;
   }
@@ -434,7 +431,7 @@ const previousFocusArea = ref<import('../composables/useLayout').FocusArea | und
 watch(isSearchOpen, (isOpen) => {
   if (isOpen) {
     previousFocusArea.value = activeFocusArea.value;
-    setActiveFocusArea('search');
+    setActiveFocusArea({ area: 'search' });
     nextTick(() => {
       if (searchInput.value) {
         searchInput.value.focus();
@@ -447,10 +444,10 @@ watch(isSearchOpen, (isOpen) => {
   } else {
     stopSearch();
     if (previousFocusArea.value) {
-      setActiveFocusArea(previousFocusArea.value);
+      setActiveFocusArea({ area: previousFocusArea.value });
       previousFocusArea.value = undefined;
     } else {
-      setActiveFocusArea('chat');
+      setActiveFocusArea({ area: 'chat' });
     }
   }
 });
@@ -477,8 +474,8 @@ defineExpose({
           <input
             ref="searchInput"
             :value="query"
-            @input="handleInput"
-            @keydown="handleKeydown"
+            @input="handleInput({ event: $event })"
+            @keydown="handleKeydown({ event: $event })"
             type="text"
             class="flex-1 bg-transparent border-none outline-none text-lg text-gray-900 dark:text-gray-100 placeholder-gray-400"
             placeholder="Search chats and messages..."
@@ -622,7 +619,7 @@ defineExpose({
                 <span>CONTEXT</span>
                 <select
                   :value="searchContextSize === Infinity ? 'max' : searchContextSize"
-                  @change="e => setSearchContextSize((e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value))"
+                  @change="e => setSearchContextSize({ size: (e.target as HTMLSelectElement).value === 'max' ? Infinity : parseInt((e.target as HTMLSelectElement).value) })"
                   class="bg-transparent border-none outline-none text-gray-600 dark:text-gray-300 font-black cursor-pointer"
                 >
                   <option :value="1">1</option>

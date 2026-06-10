@@ -4,7 +4,7 @@ import { FolderIcon, MessageSquareIcon, Loader2Icon, ChevronRightIcon } from 'lu
 import { storageService, type ChatSummary } from '@/services/storage';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import type { SearchResultItem } from '@/composables/useChatSearch';
-import { useChat } from '@/composables/useChat';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useRouter } from 'vue-router';
 import { scrollIntoViewSafe } from '@/utils/dom';
@@ -16,7 +16,7 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
-const { openChat } = useChat();
+const { openChat } = useChatNavigation();
 const { closeSearch } = useGlobalSearch();
 
 const chats = ref<ChatSummary[]>([]);
@@ -26,8 +26,8 @@ const chatListContainer = ref<HTMLElement | null>(null);
 
 const selectedChat = computed(() => chats.value.find(c => c.id === selectedChatId.value) || null);
 
-async function selectAndNavigate(chatId: string) {
-  await openChat(chatId);
+async function selectAndNavigate({ chatId }: { chatId: string }) {
+  await openChat({ chatId });
   router.push(`/chat/${chatId}`);
   closeSearch();
 }
@@ -36,11 +36,11 @@ const timeFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short', day: 'numeric'
 });
 
-function formatTime(timestamp: number) {
+function formatTime({ timestamp }: { timestamp: number }) {
   return timeFormatter.format(new Date(timestamp));
 }
 
-function navigate(direction: 'up' | 'down') {
+function navigate({ direction }: { direction: 'up' | 'down' }) {
   if (chats.value.length === 0) return;
   const currentIndex = chats.value.findIndex(c => c.id === selectedChatId.value);
   let nextIndex = currentIndex;
@@ -79,7 +79,7 @@ function navigate(direction: 'up' | 'down') {
 
 function handleEnter() {
   if (selectedChatId.value) {
-    selectAndNavigate(selectedChatId.value);
+    selectAndNavigate({ chatId: selectedChatId.value });
   }
 }
 
@@ -176,12 +176,12 @@ watch(() => props.groupId, loadChats, { immediate: true });
               <span class="text-[11px] font-bold truncate" :class="selectedChatId === chat.id ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'">
                 {{ chat.title || UNTITLED_CHAT_TITLE }}
               </span>
-              <span class="text-[8px] text-gray-400 font-medium truncate">{{ formatTime(chat.updatedAt) }}</span>
+              <span class="text-[8px] text-gray-400 font-medium truncate">{{ formatTime({ timestamp: chat.updatedAt }) }}</span>
             </div>
 
             <!-- Action Button (Doesn't change layout height) -->
             <button
-              @click.stop="selectAndNavigate(chat.id)"
+              @click.stop="selectAndNavigate({ chatId: chat.id })"
               class="shrink-0 p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm hover:text-blue-600 dark:hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
               title="Open Chat"
             >

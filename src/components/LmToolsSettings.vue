@@ -1,86 +1,111 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { computedAsync } from '@vueuse/core';
-import { CalculatorIcon, TerminalIcon } from 'lucide-vue-next';
+import { BookOpenIcon, CalculatorIcon, InfoIcon } from 'lucide-vue-next';
 import { useChatTools } from '@/composables/useChatTools';
-import { useFeatureFlags } from '@/composables/useFeatureFlags';
-import { checkOPFSSupport } from '@/services/storage/opfs-detection';
+import { useToolDependencyActions } from '@/composables/useToolDependencyActions';
+import WeshToolSettings from './WeshToolSettings.vue';
 
-const { isToolEnabled, setToolEnabled, toggleTool } = useChatTools();
-const { isFeatureEnabled } = useFeatureFlags();
-const isShellToolSupported = computedAsync(
-  async () => checkOPFSSupport(),
-  true
-);
-const isWeshToolFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'wesh_tool' }));
+const { isToolEnabled, toggleTool } = useChatTools();
+const {
+  isWikipediaEffectivelyEnabledForCurrentChat,
+  enableWikipediaToolsForCurrentChat,
+  disableWikipediaToolsForCurrentChat,
+} = useToolDependencyActions();
 
-const handleShellToolToggle = () => {
-  if (!isShellToolSupported.value) {
-    setToolEnabled({ name: 'shell_execute', enabled: false });
+const isWikipediaEnabled = computed(() => {
+  return isWikipediaEffectivelyEnabledForCurrentChat({});
+});
+
+function toggleWikipedia(_args: Record<never, never>): void {
+  if (isWikipediaEnabled.value) {
+    disableWikipediaToolsForCurrentChat({});
     return;
   }
-  toggleTool({ name: 'shell_execute' });
-};
-
+  enableWikipediaToolsForCurrentChat({});
+}
 
 defineExpose({
   TEST_ONLY: {
-    // Export internal state and logic used only for testing here. Do not reference these in production logic.
+    isWikipediaEnabled,
+    toggleWikipedia,
   }
 });
 </script>
 
 <template>
-  <div class="px-3 py-1 border-b dark:border-gray-700 pb-2 mb-2">
-    <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-      Experimental Tools
+  <div class="space-y-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <button
+        @click="toggleTool({ name: 'calculator' })"
+        class="relative flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 text-left border overflow-hidden group active:scale-[0.98]"
+        :class="isToolEnabled({ name: 'calculator' })
+          ? 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/30 shadow-sm'
+          : 'bg-transparent border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-700'"
+        data-testid="tool-calculator-toggle"
+      >
+        <div
+          class="p-1.5 rounded-lg transition-all duration-300 shrink-0"
+          :class="isToolEnabled({ name: 'calculator' })
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'bg-gray-50 dark:bg-gray-900 text-gray-400 opacity-60'"
+        >
+          <CalculatorIcon class="w-3.5 h-3.5" />
+        </div>
+
+        <div class="flex-1 min-w-0" :class="{ 'opacity-80': !isToolEnabled({ name: 'calculator' }) }">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-bold tracking-tight" :class="isToolEnabled({ name: 'calculator' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'">Calculator</span>
+            <div v-if="isToolEnabled({ name: 'calculator' })" class="w-1 h-1 bg-blue-500 rounded-full"></div>
+          </div>
+          <div class="text-[10px] font-medium leading-tight truncate mt-0.5" :class="isToolEnabled({ name: 'calculator' }) ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">
+            Solve math expressions
+          </div>
+        </div>
+      </button>
+
+      <button
+        @click="toggleWikipedia({})"
+        class="relative flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 text-left border overflow-hidden group active:scale-[0.98]"
+        :class="isWikipediaEnabled
+          ? 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/30 shadow-sm'
+          : 'bg-transparent border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-700'"
+        data-testid="tool-wikipedia-toggle"
+      >
+        <div
+          class="p-1.5 rounded-lg transition-all duration-300 shrink-0"
+          :class="isWikipediaEnabled
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'bg-gray-50 dark:bg-gray-900 text-gray-400 opacity-60'"
+        >
+          <BookOpenIcon class="w-3.5 h-3.5" />
+        </div>
+
+        <div class="flex-1 min-w-0" :class="{ 'opacity-80': !isWikipediaEnabled }">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-bold tracking-tight" :class="isWikipediaEnabled ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'">Wikipedia</span>
+            <div v-if="isWikipediaEnabled" class="w-1 h-1 bg-blue-500 rounded-full"></div>
+          </div>
+          <div class="text-[10px] font-medium leading-tight truncate mt-0.5" :class="isWikipediaEnabled ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">
+            Access global knowledge
+          </div>
+          <div class="text-[9px] leading-tight truncate mt-1 text-gray-400 dark:text-gray-500">
+            Uses sysfs Naidan for page text
+          </div>
+        </div>
+      </button>
+
+      <WeshToolSettings />
     </div>
-    <button
-      @click="toggleTool({ name: 'calculator' })"
-      class="w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 text-left group"
-      :class="isToolEnabled({ name: 'calculator' }) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'text-gray-600 dark:text-gray-300'"
-      data-testid="tool-calculator-toggle"
+
+    <div
+      v-if="isWikipediaEnabled"
+      class="flex items-start gap-3 px-4 py-2.5 bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100/50 dark:border-amber-900/20 rounded-xl"
+      data-testid="tool-wikipedia-note"
     >
-      <div class="flex items-center gap-2">
-        <CalculatorIcon class="w-4 h-4" :class="isToolEnabled({ name: 'calculator' }) ? 'text-blue-500' : 'text-gray-400'" />
-        <span class="text-xs font-medium">Calculator</span>
+      <InfoIcon class="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+      <div class="text-[10px] leading-relaxed text-amber-800/80 dark:text-amber-300/80 italic font-medium">
+        Wikipedia search keywords are sent to the external service without additional user approval.
       </div>
-      <div
-        class="w-8 h-4 rounded-full relative transition-colors duration-200"
-        :class="isToolEnabled({ name: 'calculator' }) ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'"
-      >
-        <div
-          class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200"
-          :class="isToolEnabled({ name: 'calculator' }) ? 'translate-x-4' : 'translate-x-0'"
-        />
-      </div>
-    </button>
-    <button
-      v-if="isWeshToolFeatureEnabled"
-      @click="handleShellToolToggle"
-      :disabled="!isShellToolSupported"
-      class="w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 text-left group"
-      :class="[
-        isToolEnabled({ name: 'shell_execute' }) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'text-gray-600 dark:text-gray-300',
-        !isShellToolSupported ? 'opacity-50 cursor-not-allowed' : '',
-      ]"
-      data-testid="tool-shell-toggle"
-    >
-      <div class="flex items-center gap-2">
-        <TerminalIcon class="w-4 h-4" :class="isToolEnabled({ name: 'shell_execute' }) ? 'text-blue-500' : 'text-gray-400'" />
-        <span class="text-xs font-medium">
-          Shell in browser{{ isShellToolSupported ? '' : ' (OPFS required)' }}
-        </span>
-      </div>
-      <div
-        class="w-8 h-4 rounded-full relative transition-colors duration-200"
-        :class="isToolEnabled({ name: 'shell_execute' }) ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'"
-      >
-        <div
-          class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform duration-200"
-          :class="isToolEnabled({ name: 'shell_execute' }) ? 'translate-x-4' : 'translate-x-0'"
-        />
-      </div>
-    </button>
+    </div>
   </div>
 </template>

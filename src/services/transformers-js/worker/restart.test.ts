@@ -65,7 +65,7 @@ describe('transformersJsService worker restart', () => {
 
     // 3. Act
     try {
-      await transformersJsService.loadModel('some-model');
+      await transformersJsService.loadModel({ modelId: 'some-model' });
     } catch (e) {
       // Expected error
     }
@@ -86,7 +86,7 @@ describe('transformersJsService worker restart', () => {
     const countBefore = MockWorker.constructorCount;
 
     try {
-      await transformersJsService.loadModel('some-model');
+      await transformersJsService.loadModel({ modelId: 'some-model' });
     } catch (e) { /* Expected */ }
 
     expect(MockWorker.constructorCount).toBeGreaterThan(countBefore);
@@ -106,7 +106,7 @@ describe('transformersJsService worker restart', () => {
     const { transformersJsService } = await import('../index');
 
     // 3. Initial load success
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
     const countAfterLoad = MockWorker.constructorCount;
 
     // 4. Act
@@ -131,7 +131,7 @@ describe('transformersJsService worker restart', () => {
     });
 
     const { transformersJsService } = await import('../index');
-    await transformersJsService.loadModel('some-model');
+    await transformersJsService.loadModel({ modelId: 'some-model' });
     const countAfterLoad = MockWorker.constructorCount;
 
     try {

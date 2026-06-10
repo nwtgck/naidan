@@ -93,16 +93,16 @@ describe('StorageService Synchronization Wrapper', () => {
     mockProvider.init.mockResolvedValue(undefined);
 
     service = new StorageService();
-    await service.init('local');
+    await service.init({ type: 'local' });
   });
 
   it('should wrap deleteChat with lock and notify after success', async () => {
-    await service.deleteChat('c1');
+    await service.deleteChat({ id: 'c1' });
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
       lockKey: LOCK_METADATA,
     }));
-    expect(mockProvider.deleteChat).toHaveBeenCalledWith('c1');
+    expect(mockProvider.deleteChat).toHaveBeenCalledWith({ id: 'c1' });
     expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'c1');
   });
 
@@ -120,12 +120,12 @@ describe('StorageService Synchronization Wrapper', () => {
   });
 
   it('should wrap deleteChatGroup with lock and notify after success', async () => {
-    await service.deleteChatGroup('g1');
+    await service.deleteChatGroup({ id: 'g1' });
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
       lockKey: LOCK_METADATA,
     }));
-    expect(mockProvider.deleteChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockProvider.deleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
     expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'g1');
   });
 
@@ -192,7 +192,7 @@ describe('StorageService Synchronization Wrapper', () => {
   it('should notify migration after switchProvider with custom lock options', async () => {
     mockProvider.dump.mockImplementation(async function* () {});
 
-    await service.switchProvider('opfs');
+    await service.switchProvider({ type: 'opfs' });
 
     expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
       notifyLockWaitAfterMs: 5000,

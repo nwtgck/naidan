@@ -37,11 +37,12 @@ vi.mock('../composables/useSettings', () => ({
   })),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(() => ({
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: vi.fn(() => ({
     deleteAllChats: vi.fn(),
-    createChatGroup: vi.fn(),
-    resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+    createNewChat: vi.fn(),
+    deleteChat: vi.fn(),
+    TEST_ONLY: {},
   })),
 }));
 
@@ -160,7 +161,7 @@ describe('StorageTab.vue Tests', () => {
 
     vi.mocked(storageService.getCurrentType).mockReturnValue('local');
 
-    mockSave.mockImplementation(async (patch) => {
+    mockSave.mockImplementation(async ({ patch }) => {
       const currentType = storageService.getCurrentType();
       if (patch.storageType && patch.storageType !== currentType) {
         await storageService.switchProvider(patch.storageType);

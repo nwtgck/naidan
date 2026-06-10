@@ -4,7 +4,7 @@ import { parseConcatenatedJson } from './json-stream-parser';
 describe('parseConcatenatedJson', () => {
   it('should parse a single JSON object', () => {
     const input = '{"name": "test"}';
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(1);
     const r0 = results[0]!;
     expect(r0.success).toBe(true);
@@ -15,7 +15,7 @@ describe('parseConcatenatedJson', () => {
 
   it('should parse multiple concatenated JSON objects', () => {
     const input = '{"a": 1}{"b": 2}';
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
     const r0 = results[0]!;
     const r1 = results[1]!;
@@ -30,7 +30,7 @@ describe('parseConcatenatedJson', () => {
 {
   "b": 2
 }`;
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
     const r0 = results[0]!;
     const r1 = results[1]!;
@@ -40,7 +40,7 @@ describe('parseConcatenatedJson', () => {
 
   it('should handle nested objects', () => {
     const input = '{"outer": {"inner": 1}}{"simple": true}';
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
     const r0 = results[0]!;
     const r1 = results[1]!;
@@ -50,7 +50,7 @@ describe('parseConcatenatedJson', () => {
 
   it('should handle strings containing braces', () => {
     const input = '{"text": "contains { braces }"}';
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(1);
     const r0 = results[0]!;
     if (r0.success) expect(r0.data).toEqual({ text: 'contains { braces }' });
@@ -58,7 +58,7 @@ describe('parseConcatenatedJson', () => {
 
   it('should handle escaped quotes in strings', () => {
     const input = '{"text": "quoted \\"word\\""}';
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(1);
     const r0 = results[0]!;
     expect(r0.success).toBe(true);
@@ -69,7 +69,7 @@ describe('parseConcatenatedJson', () => {
 
   it('should report errors for invalid JSON segments', () => {
     const input = '{"valid": true}{"invalid": }';
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
     const r0 = results[0]!;
     const r1 = results[1]!;
@@ -82,7 +82,7 @@ describe('parseConcatenatedJson', () => {
 
   it('should handle unclosed objects at the end', () => {
     const input = '{"valid": true}{"unclosed": ';
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
     const r0 = results[0]!;
     const r1 = results[1]!;
@@ -95,7 +95,7 @@ describe('parseConcatenatedJson', () => {
 
   it('should handle complex nested objects and arrays', () => {
     const input = '{"a": [1, 2, {"b": 3}]}{"c": {"d": [4]}}';
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
     if (results[0]?.success) expect(results[0].data).toEqual({ a: [1, 2, { b: 3 }] });
     if (results[1]?.success) expect(results[1].data).toEqual({ c: { d: [4] } });
@@ -109,7 +109,7 @@ describe('parseConcatenatedJson', () => {
   {"a": 1}  
 
   {"b": 2}  `;
-    const results = parseConcatenatedJson(input);
+    const results = parseConcatenatedJson({ input });
     expect(results).toHaveLength(2);
     if (results[0]?.success) expect(results[0].data).toEqual({ a: 1 });
     if (results[1]?.success) expect(results[1].data).toEqual({ b: 2 });

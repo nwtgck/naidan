@@ -27,7 +27,7 @@ defineExpose({
     </div>
 
     <button
-      @click="setTheme('light')"
+      @click="setTheme({ mode: 'light' })"
       class="relative z-10 flex-1 flex justify-center py-1.5 rounded-lg transition-colors duration-300"
       :class="themeMode === 'light' ? 'text-blue-600 dark:text-yellow-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
       title="Light Mode"
@@ -35,7 +35,7 @@ defineExpose({
       <SunIcon class="w-3.5 h-3.5" />
     </button>
     <button
-      @click="setTheme('dark')"
+      @click="setTheme({ mode: 'dark' })"
       class="relative z-10 flex-1 flex justify-center py-1.5 rounded-lg transition-colors duration-300"
       :class="themeMode === 'dark' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
       title="Dark Mode"
@@ -43,7 +43,7 @@ defineExpose({
       <MoonIcon class="w-3.5 h-3.5" />
     </button>
     <button
-      @click="setTheme('system')"
+      @click="setTheme({ mode: 'system' })"
       class="relative z-10 flex-1 flex justify-center py-1.5 rounded-lg transition-colors duration-300"
       :class="themeMode === 'system' ? 'text-blue-600 dark:text-green-400' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'"
       title="System Mode"

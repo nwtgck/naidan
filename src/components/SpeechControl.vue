@@ -18,7 +18,7 @@ const isPaused = computed(() => isThisMessageActive.value && webSpeechService.st
 const isSpeechActive = computed(() => isThisMessageActive.value && webSpeechService.state.status !== 'inactive');
 
 const isHidden = computed(() => {
-  return isImageGenerationProcessed(props.content) || isImageGenerationPending(props.content);
+  return isImageGenerationProcessed({ content: props.content }) || isImageGenerationPending({ content: props.content });
 });
 
 function handleToggleSpeech() {

@@ -7,6 +7,7 @@ import {
 } from 'lucide-vue-next';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { computedAsync } from '@vueuse/core';
 
@@ -67,7 +68,7 @@ const refreshLocalModels = async () => {
   cachedModels.value = await transformersJsService.listCachedModels();
 };
 
-const formatSize = (bytes: number) => {
+const formatSize = ({ bytes }: { bytes: number }) => {
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
@@ -75,7 +76,7 @@ const formatSize = (bytes: number) => {
   return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
 };
 
-const formatDate = (timestamp: number) => {
+const formatDate = ({ timestamp }: { timestamp: number }) => {
   if (!timestamp) return 'Unknown';
   return new Date(timestamp).toLocaleDateString(undefined, {
     month: 'short',
@@ -111,20 +112,21 @@ const filteredCachedModels = computed(() => {
   return models.sort((a, b) => collator.compare(a.id, b.id));
 });
 
-const selectModelId = (id: string) => {
+const selectModelId = ({ id }: { id: string }) => {
   searchQuery.value = id;
   isDropdownOpen.value = false;
 };
 
-const handleClickOutside = (event: MouseEvent) => {
+const handleClickOutside = ({ event }: { event: MouseEvent }) => {
   if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
     isDropdownOpen.value = false;
   }
 };
 
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
+
 onMounted(async () => {
   searchQuery.value = '';
-  document.addEventListener('mousedown', handleClickOutside);
   await refreshLocalModels();
   unsubscribe = transformersJsService.subscribe((s, p, e, c, l, items) => {
     status.value = s;
@@ -145,16 +147,15 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
   if (unsubscribe) unsubscribe();
   if (unsubscribeList) unsubscribeList();
 });
 
-const loadModel = async (modelId: string) => {
+const loadModel = async ({ modelId }: { modelId: string }) => {
   if (!modelId || isStandalone) return;
   lastDownloadError.value = null; // Clear previous download error when starting a fresh load
   try {
-    await transformersJsService.loadModel(modelId);
+    await transformersJsService.loadModel({ modelId });
     emit('modelLoaded', modelId);
   } catch (e) {
     // Error is handled via subscription
@@ -201,18 +202,18 @@ const downloadModel = async () => {
   }
 
   try {
-    await transformersJsService.downloadModel(modelId);
+    await transformersJsService.downloadModel({ modelId });
     await refreshLocalModels();
     addToast({ message: `Successfully downloaded: ${modelId}` });
 
     // Auto-load after download
-    await loadModel(modelId);
+    await loadModel({ modelId });
   } catch (e) {
     lastDownloadError.value = e instanceof Error ? e.message : String(e);
   }
 };
 
-const deleteModel = async (modelId: string) => {
+const deleteModel = async ({ modelId }: { modelId: string }) => {
   const confirmed = await showConfirm({
     title: 'Delete Downloaded Model',
     message: `Are you sure you want to delete "${modelId}"? This will remove all associated files from the browser's local storage.`,
@@ -223,7 +224,7 @@ const deleteModel = async (modelId: string) => {
   if (!confirmed) return;
 
   try {
-    await transformersJsService.deleteModel(modelId);
+    await transformersJsService.deleteModel({ modelId });
     addToast({ message: `Deleted model: ${modelId}` });
     await refreshLocalModels();
   } catch (err) {
@@ -232,7 +233,7 @@ const deleteModel = async (modelId: string) => {
   }
 };
 
-const handleImportLocalModel = async (event: Event) => {
+const handleImportLocalModel = async ({ event }: { event: Event }) => {
   const input = event.target as HTMLInputElement;
   if (!input.files || input.files.length === 0) return;
 
@@ -382,7 +383,7 @@ defineExpose({
                       <!-- Use Custom ID Option -->
                       <div v-if="filteredPresets.showCustom">
                         <button
-                          @click="selectModelId(searchQuery)"
+                          @click="selectModelId({ id: searchQuery })"
                           class="w-full text-left px-4 py-3 rounded-2xl text-xs font-bold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 flex items-center gap-2 border border-dashed border-purple-200 dark:border-purple-800/50 mb-2"
                         >
                           <PlusIcon class="w-4 h-4" />
@@ -396,7 +397,7 @@ defineExpose({
                         <button
                           v-for="m in filteredPresets.recommended"
                           :key="m"
-                          @click="selectModelId(m)"
+                          @click="selectModelId({ id: m })"
                           class="w-full text-left px-4 py-3 rounded-2xl text-xs font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                           :class="{ 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-bold': searchQuery === m }"
                         >
@@ -443,7 +444,7 @@ defineExpose({
                   <div class="flex flex-col items-end">
                     <span class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ progress }}%</span>
                     <span v-if="totalLoadedAmount > 0" class="text-[8px] text-gray-400 font-bold uppercase tabular-nums">
-                      {{ formatSize(totalLoadedAmount) }} / {{ formatSize(totalSizeAmount) }}
+                      {{ formatSize({ bytes: totalLoadedAmount }) }} / {{ formatSize({ bytes: totalSizeAmount }) }}
                     </span>
                   </div>
                 </div>
@@ -468,7 +469,7 @@ defineExpose({
                           <div class="flex flex-col min-w-0">
                             <span class="text-gray-500 truncate" :title="String(fileName)">{{ fileName }}</span>
                             <span v-if="info.loaded !== undefined" class="text-[7px] text-gray-400 font-bold uppercase tabular-nums">
-                              {{ formatSize(info.loaded) }} / {{ info.total ? formatSize(info.total) : '??' }}
+                              {{ formatSize({ bytes: info.loaded }) }} / {{ info.total ? formatSize({ bytes: info.total }) : '??' }}
                             </span>
                           </div>
                           <span class="text-purple-500/70 shrink-0 self-start">{{ Math.round(info.progress) }}%</span>
@@ -505,7 +506,7 @@ defineExpose({
                 type="file"
                 class="hidden"
                 webkitdirectory
-                @change="handleImportLocalModel"
+                @change="handleImportLocalModel({ event: $event })"
                 :disabled="isImporting || status === 'loading'"
               />
             </label>
@@ -625,14 +626,14 @@ defineExpose({
                   <div class="flex items-center gap-3 text-[9px] text-gray-400 font-bold uppercase tracking-tight">
                     <span class="flex items-center gap-1">
                       <HardDriveDownloadIcon class="w-2.5 h-2.5" />
-                      {{ formatSize(model.size) }}
+                      {{ formatSize({ bytes: model.size }) }}
                     </span>
                     <span class="flex items-center gap-1">
                       <FileCodeIcon class="w-2.5 h-2.5" />
                       {{ model.fileCount }}
                     </span>
                     <span v-if="model.lastModified">
-                      {{ formatDate(model.lastModified) }}
+                      {{ formatDate({ timestamp: model.lastModified }) }}
                     </span>
                   </div>
                 </div>
@@ -641,14 +642,14 @@ defineExpose({
                     Incomplete
                   </span>
                   <button
-                    @click="loadModel(model.id)"
+                    @click="loadModel({ modelId: model.id })"
                     :disabled="status === 'loading' || activeModelId === model.id"
                     class="px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-lg text-[10px] font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-all disabled:opacity-50"
                   >
                     {{ activeModelId === model.id ? 'Active' : (model.isComplete ? 'Load' : 'Resume') }}
                   </button>
                   <button
-                    @click="deleteModel(model.id)"
+                    @click="deleteModel({ modelId: model.id })"
                     class="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                     title="Delete model"
                   >

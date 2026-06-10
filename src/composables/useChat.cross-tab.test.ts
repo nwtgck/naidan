@@ -24,9 +24,9 @@ vi.mock('../services/storage', () => ({
       return () => {};
     }),
     listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockChatStorage.values()).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId })))),
-    loadChat: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
+    loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
     saveChat: vi.fn(),
-    loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
+    loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
     updateChatMeta: vi.fn().mockImplementation(async  (id, updater) => {
       const current = mocks.mockChatStorage.get(id) || null;
       const updated = await updater(current);
@@ -47,7 +47,7 @@ vi.mock('../services/storage', () => ({
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(mocks.mockHierarchy)),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mocks.mockRootItems])),
-    deleteChat: vi.fn().mockImplementation((id) => {
+    deleteChat: vi.fn().mockImplementation(({ id }: { id: string }) => {
       mocks.mockChatStorage.delete(id);
       return Promise.resolve();
     }),
@@ -59,7 +59,7 @@ vi.mock('../services/storage', () => ({
     }),
     listChatGroups: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockGroupStorage.values()))),
     loadChatGroup: vi.fn().mockResolvedValue(null),
-    deleteChatGroup: vi.fn().mockImplementation((id) => {
+    deleteChatGroup: vi.fn().mockImplementation(({ id }: { id: string }) => {
       mocks.mockGroupStorage.delete(id);
       return Promise.resolve();
     }),
@@ -145,7 +145,7 @@ describe('useChat Cross-Tab Synchronization', () => {
 
   it('should reflect sidebar changes when reordered in another tab', async () => {
     const { rootItems, loadChats } = chatStore;
-    await loadChats();
+    await loadChats({});
     const newItem: SidebarItem = { id: 'chat:chat-1', type: 'chat', chat: { id: 'chat-1', title: 'C1', updatedAt: Date.now(), groupId: null } };
     mocks.mockRootItems.push(newItem);
     vi.advanceTimersByTime(1000); // Reset throttle state by aging the last reload
@@ -252,7 +252,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     await Promise.resolve();
 
     expect(chatStore.currentChat.value?.groupId).toBe('group-x');
-    await (updateChatMeta as any)(chatId, () => chat as any);
+    await (updateChatMeta as any)({ id: chatId, updater: () => chat as any });
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('group-x');
     activeGenerations.delete(chatId);
   });
@@ -281,7 +281,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     await Promise.resolve();
 
     expect(chatStore.currentChat.value?.groupId).toBe('ge');
-    await (updateChatMeta as any)(chatId, () => chatStore.currentChat.value! as any);
+    await (updateChatMeta as any)({ id: chatId, updater: () => chatStore.currentChat.value! as any });
     expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('ge');
     activeGenerations.delete(chatId);
   });
@@ -289,9 +289,9 @@ describe('useChat Cross-Tab Synchronization', () => {
   it('should update current group view when renamed in another tab', async () => {
     const { createChatGroup, currentChatGroup, TEST_ONLY } = chatStore;
     const { __testOnlySetCurrentChatGroup } = TEST_ONLY;
-    const groupId = await createChatGroup('Old');
+    const groupId = await createChatGroup({ name: 'Old' });
     const group = Array.from(mocks.mockGroupStorage.values())[0];
-    __testOnlySetCurrentChatGroup(reactive(group));
+    __testOnlySetCurrentChatGroup({ group: reactive(group) });
     const renamed = { ...group, name: 'New' };
     mocks.mockGroupStorage.set(groupId, renamed);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: groupId });

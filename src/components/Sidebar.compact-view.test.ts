@@ -61,6 +61,66 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => null),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed<SidebarItem[]>(() => {
+      const items: SidebarItem[] = [];
+      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      return items;
+    }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: ({ chatId }: { chatId: string; leafId?: string }) => mockOpenChat({ id: chatId }),
+    openChatAtMessage: vi.fn(),
+    openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: mockPersistSidebarStructure,
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+      mockSetChatGroupCollapsed({ groupId, isCollapsed }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: vi.fn(),
+    deleteChat: vi.fn(),
+    deleteAllChats: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: () => ({
+    createChatGroup: vi.fn(),
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
 vi.mock('../composables/useSettings', () => ({
   useSettings: () => ({
     settings: ref(mockSettings),
@@ -326,12 +386,12 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     // Collapse group
     // @ts-expect-error - internal method
-    wrapper.vm.handleToggleChatGroupCollapse(group);
+    wrapper.vm.handleToggleChatGroupCollapse({ chatGroup: group });
     await nextTick();
 
     // Open group again
     // @ts-expect-error - internal method
-    wrapper.vm.handleToggleChatGroupCollapse(group);
+    wrapper.vm.handleToggleChatGroupCollapse({ chatGroup: group });
     await nextTick();
 
     // Should be back to compact view
@@ -363,7 +423,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     // Set focus area to sidebar
     // @ts-expect-error - internal method
-    wrapper.vm.setActiveFocusArea('sidebar');
+    wrapper.vm.setActiveFocusArea({ area: 'sidebar' });
 
     // Simulate selecting the expand button via lastNavigatedId
     // @ts-expect-error - internal state
@@ -381,7 +441,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     expect(wrapper.findAll('.sidebar-chat-item')).toHaveLength(7);
 
     // Should have navigated to 6th item (c5)
-    expect(mockOpenChat).toHaveBeenCalledWith('c5');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c5' });
   });
 
   it('handles keyboard navigation: ArrowLeft on chat item jumps to group header', async () => {
@@ -411,7 +471,7 @@ describe('Sidebar Compact View & DND Integrity', () => {
     await nextTick();
 
     // @ts-expect-error - internal method
-    wrapper.vm.setActiveFocusArea('sidebar');
+    wrapper.vm.setActiveFocusArea({ area: 'sidebar' });
 
     // Trigger ArrowLeft
     const event = new KeyboardEvent('keydown', { key: 'ArrowLeft' });
@@ -419,6 +479,6 @@ describe('Sidebar Compact View & DND Integrity', () => {
 
     await nextTick();
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
   });
 });

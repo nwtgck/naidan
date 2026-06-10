@@ -4,7 +4,7 @@ import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
 
-function renderVisibleAscii(char: string): string {
+function renderVisibleAscii({ char }: { char: string }): string {
   if (char === '\t') return char;
 
   const code = char.charCodeAt(0);
@@ -177,7 +177,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
             let processedLine = line;
             if (showTabs) processedLine = processedLine.replace(/\t/g, '^I');
             if (showNonPrinting) {
-              processedLine = Array.from(processedLine, renderVisibleAscii).join('');
+              processedLine = Array.from(processedLine, char => renderVisibleAscii({ char })).join('');
             }
             if (showEnds) processedLine += '$';
 
@@ -198,7 +198,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
             let processedLine = buffer;
             if (showTabs) processedLine = processedLine.replace(/\t/g, '^I');
             if (showNonPrinting) {
-              processedLine = Array.from(processedLine, renderVisibleAscii).join('');
+              processedLine = Array.from(processedLine, char => renderVisibleAscii({ char })).join('');
             }
             if (showEnds) processedLine += '$';
 

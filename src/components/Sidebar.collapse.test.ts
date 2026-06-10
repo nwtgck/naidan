@@ -2,8 +2,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
-import { ref, nextTick, reactive } from 'vue';
+import { ref, nextTick, reactive, computed } from 'vue';
 import { useLayout } from '@/composables/useLayout';
+import type { ChatGroup, SidebarItem } from '@/models/types';
+
+vi.mock('@/utils/dom', () => ({
+  scrollIntoViewSafe: vi.fn(),
+}));
+
+const mockCurrentChat = ref<{ id: string; groupId?: string | null } | null>(null);
+const mockCurrentChatGroup = ref<{ id: string } | null>(null);
+const mockChatGroups = ref<ChatGroup[]>([]);
+const mockSidebarItems = ref<SidebarItem[]>([
+  { id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat', updatedAt: 0 } },
+]);
+const mockOpenChat = vi.fn();
+const mockOpenChatGroup = vi.fn();
+const mockCreateNewChat = vi.fn();
+const mockSetChatGroupCollapsed = vi.fn();
 
 vi.mock('vuedraggable', () => ({
   default: {
@@ -24,21 +40,65 @@ vi.mock('../composables/useLayout', () => ({
 
 vi.mock('../composables/useChat', () => ({
   useChat: vi.fn(() => ({
-    currentChat: ref(null),
-    currentChatGroup: ref(null),
+    currentChat: mockCurrentChat,
+    currentChatGroup: mockCurrentChatGroup,
     streaming: ref(false),
     activeGenerations: reactive(new Map()),
-    chatGroups: ref([]),
-    chats: ref([{ id: '1', title: 'Test Chat' }]),
-    sidebarItems: ref([{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat' } }]),
+    chatGroups: mockChatGroups,
+    chats: ref([{ id: '1', title: 'Test Chat', updatedAt: 0 }]),
+    sidebarItems: mockSidebarItems,
     loadChats: vi.fn(),
-    openChat: vi.fn(),
-    openChatGroup: vi.fn(),
-    createNewChat: vi.fn(),
+    openChat: mockOpenChat,
+    openChatGroup: mockOpenChatGroup,
+    createNewChat: mockCreateNewChat,
+    setChatGroupCollapsed: mockSetChatGroupCollapsed,
+    persistSidebarStructure: vi.fn(),
     isTaskRunning: vi.fn().mockReturnValue(false),
     isProcessing: vi.fn().mockReturnValue(false),
     abortChat: vi.fn(),
   })),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
+    currentChatGroup: computed(() => mockCurrentChatGroup.value),
+    currentChatId: computed(() => mockCurrentChat.value?.id),
+    activeMessages: computed(() => []),
+    allMessages: computed(() => []),
+    resolvedSettings: computed(() => null),
+    inheritedSettings: computed(() => null),
+    chatGroups: computed(() => mockChatGroups.value),
+    sidebarItems: computed(() => mockSidebarItems.value),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: () => ({
+    openChat: ({ chatId }: { chatId: string; leafId?: string }) => mockOpenChat({ id: chatId }),
+    openChatAtMessage: vi.fn(),
+    openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: () => ({
+    createNewChat: mockCreateNewChat,
+    deleteChat: vi.fn(),
+    deleteAllChats: vi.fn(),
+    TEST_ONLY: {},
+  }),
+}));
+
+vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
+  useSidebarStructure: () => ({
+    persistSidebarStructure: vi.fn(),
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+      mockSetChatGroupCollapsed({ groupId, isCollapsed }),
+    TEST_ONLY: {},
+  }),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -68,6 +128,13 @@ describe('Sidebar Collapse Functionality', () => {
 
   beforeEach(() => {
     isSidebarOpen.value = true;
+    mockCurrentChat.value = null;
+    mockCurrentChatGroup.value = null;
+    mockChatGroups.value = [];
+    mockSidebarItems.value = [
+      { id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat', updatedAt: 0 } },
+    ];
+    vi.clearAllMocks();
     (useLayout as any).mockReturnValue({
       isSidebarOpen,
       activeFocusArea: ref('chat'),
@@ -154,26 +221,9 @@ describe('Sidebar Collapse Functionality', () => {
 
   it('shows "New Chat in Group" button when collapsed and a group is active', async () => {
     isSidebarOpen.value = false;
-    const currentChat = ref({ id: '1', groupId: 'group1' });
-    const currentChatGroup = ref(null);
-
-    // Mock useChat for this specific test
-    const { useChat } = await import('../composables/useChat');
-    (useChat as any).mockReturnValue({
-      currentChat,
-      currentChatGroup,
-      streaming: ref(false),
-      activeGenerations: reactive(new Map()),
-      chatGroups: ref([{ id: 'group1', name: 'Test Group' }]),
-      chats: ref([{ id: '1', title: 'Test Chat', groupId: 'group1' }]),
-      sidebarItems: ref([]),
-      loadChats: vi.fn(),
-      createNewChat: vi.fn(),
-      openChat: vi.fn(),
-      openChatGroup: vi.fn(),
-      isTaskRunning: vi.fn().mockReturnValue(false),
-      isProcessing: vi.fn().mockReturnValue(false),
-    });
+    mockCurrentChat.value = { id: '1', groupId: 'group1' };
+    mockCurrentChatGroup.value = null;
+    mockChatGroups.value = [{ id: 'group1', name: 'Test Group', isCollapsed: false, updatedAt: 0, items: [] }];
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: { 'lucide-vue-next': true, 'Logo': true } },
@@ -184,30 +234,14 @@ describe('Sidebar Collapse Functionality', () => {
     expect(groupBtn.exists()).toBe(true);
 
     await groupBtn.trigger('click');
-    const { createNewChat } = useChat();
-    expect(createNewChat).toHaveBeenCalledWith(expect.objectContaining({ groupId: 'group1' }));
+    expect(mockCreateNewChat).toHaveBeenCalledWith(expect.objectContaining({ groupId: 'group1' }));
   });
 
   it('hides "New Chat in Group" button when sidebar is open', async () => {
     isSidebarOpen.value = true;
-    const currentChat = ref({ id: '1', groupId: 'group1' });
-
-    const { useChat } = await import('../composables/useChat');
-    (useChat as any).mockReturnValue({
-      currentChat,
-      currentChatGroup: ref(null),
-      streaming: ref(false),
-      activeGenerations: reactive(new Map()),
-      chatGroups: ref([{ id: 'group1', name: 'Test Group' }]),
-      chats: ref([{ id: '1', title: 'Test Chat', groupId: 'group1' }]),
-      sidebarItems: ref([]),
-      loadChats: vi.fn(),
-      createNewChat: vi.fn(),
-      openChat: vi.fn(),
-      openChatGroup: vi.fn(),
-      isTaskRunning: vi.fn().mockReturnValue(false),
-      isProcessing: vi.fn().mockReturnValue(false),
-    });
+    mockCurrentChat.value = { id: '1', groupId: 'group1' };
+    mockCurrentChatGroup.value = null;
+    mockChatGroups.value = [{ id: 'group1', name: 'Test Group', isCollapsed: false, updatedAt: 0, items: [] }];
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: { 'lucide-vue-next': true, 'Logo': true } },

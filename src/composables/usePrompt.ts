@@ -21,14 +21,14 @@ const promptBodyComponent = shallowRef<Component | any | null>(null);
 let resolvePromptPromise: ((value: string | null) => void) | undefined;
 
 export function usePrompt() {
-  const showPrompt = (options: PromptOptions): Promise<string | null> => {
+  const showPrompt = ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {
     return new Promise((resolve) => {
-      promptTitle.value = options.title || 'Prompt';
-      promptMessage.value = options.message || '';
-      promptConfirmButtonText.value = options.confirmButtonText || 'Confirm';
-      promptCancelButtonText.value = options.cancelButtonText || 'Cancel';
-      promptInputValue.value = options.defaultValue || '';
-      promptBodyComponent.value = options.bodyComponent || null;
+      promptTitle.value = title || 'Prompt';
+      promptMessage.value = message || '';
+      promptConfirmButtonText.value = confirmButtonText || 'Confirm';
+      promptCancelButtonText.value = cancelButtonText || 'Cancel';
+      promptInputValue.value = defaultValue || '';
+      promptBodyComponent.value = bodyComponent || null;
       isPromptOpen.value = true;
       resolvePromptPromise = resolve;
     });

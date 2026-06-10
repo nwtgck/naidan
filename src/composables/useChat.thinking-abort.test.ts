@@ -56,7 +56,7 @@ describe('useChat Thinking Abort', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry({});
   });
 
   it('should close thinking tag and process thinking when aborted during thinking', async () => {
@@ -70,7 +70,7 @@ describe('useChat Thinking Abort', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
 
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;

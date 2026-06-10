@@ -76,7 +76,7 @@ describe('useChat Delete Undo Logic', () => {
     } as any);
 
     // 3. Trigger delete
-    await deleteChat(chatId);
+    await deleteChat({ id: chatId });
 
     // VERIFY: Toast was shown and returned truthy ID
     expect(mockAddToast).toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe('useChat Delete Undo Logic', () => {
 
     // VERIFY: Now cleanup is executed
     expect(mockAbort).toHaveBeenCalled();
-    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith(chatId);
+    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith({ id: chatId });
     expect(activeGenerations.has(chatId)).toBe(false);
   });
 
@@ -111,7 +111,7 @@ describe('useChat Delete Undo Logic', () => {
       root: { items: [] }
     } as any);
 
-    await deleteChat(chatId);
+    await deleteChat({ id: chatId });
 
     // 4. Simulate Undo click (reason: action)
     if (capturedOnClose) await capturedOnClose('action');

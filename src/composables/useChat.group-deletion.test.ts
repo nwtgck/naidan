@@ -45,7 +45,7 @@ describe('useChat Group Deletion', () => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
     rootItems.value = [];
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
   });
 
   it('should delete a chat group and all its contained chats', async () => {
@@ -63,22 +63,22 @@ describe('useChat Group Deletion', () => {
     mockRootItems.push(groupItem);
 
     // Mock loadChat behavior for deleteChat's verification steps
-    vi.mocked(storageService.loadChat).mockImplementation(async (id) => {
+    vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
       if (id === 'c1') return chat1;
       if (id === 'c2') return chat2;
       return null;
     });
 
-    await chatStore.loadChats();
+    await chatStore.loadChats({});
     expect(rootItems.value).toHaveLength(1);
 
     // Act
-    await deleteChatGroup('g1');
+    await deleteChatGroup({ id: 'g1' });
 
     // Assert
-    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith('c1');
-    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith('c2');
-    expect(vi.mocked(storageService.deleteChatGroup)).toHaveBeenCalledWith('g1');
+    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith({ id: 'c1' });
+    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith({ id: 'c2' });
+    expect(vi.mocked(storageService.deleteChatGroup)).toHaveBeenCalledWith({ id: 'g1' });
   });
 
   it('should NOT delete chats that are outside the group', async () => {
@@ -91,21 +91,21 @@ describe('useChat Group Deletion', () => {
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
     mockRootItems.push({ id: 'chat:c_out', type: 'chat', chat: chatOut });
 
-    vi.mocked(storageService.loadChat).mockImplementation(async (id) => {
+    vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
       if (id === 'c_in') return chatInGroup;
       if (id === 'c_out') return chatOut;
       return null;
     });
 
-    await chatStore.loadChats();
+    await chatStore.loadChats({});
 
     // Act
-    await deleteChatGroup('g1');
+    await deleteChatGroup({ id: 'g1' });
 
     // Assert
-    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith('c_in');
-    expect(vi.mocked(storageService.deleteChat)).not.toHaveBeenCalledWith('c_out');
-    expect(vi.mocked(storageService.deleteChatGroup)).toHaveBeenCalledWith('g1');
+    expect(vi.mocked(storageService.deleteChat)).toHaveBeenCalledWith({ id: 'c_in' });
+    expect(vi.mocked(storageService.deleteChat)).not.toHaveBeenCalledWith({ id: 'c_out' });
+    expect(vi.mocked(storageService.deleteChatGroup)).toHaveBeenCalledWith({ id: 'g1' });
   });
 
   it('should clear currentChat if the active chat was in the deleted group', async () => {
@@ -117,10 +117,10 @@ describe('useChat Group Deletion', () => {
 
     vi.mocked(storageService.loadChat).mockResolvedValue(chat1);
 
-    await chatStore.loadChats();
-    __testOnlySetCurrentChat(reactive(chat1) as any);
+    await chatStore.loadChats({});
+    __testOnlySetCurrentChat({ chat: reactive(chat1) as any });
 
-    await deleteChatGroup('g1');
+    await deleteChatGroup({ id: 'g1' });
 
     expect(currentChat.value).toBeNull();
   });
@@ -134,10 +134,10 @@ describe('useChat Group Deletion', () => {
 
     vi.mocked(storageService.loadChat).mockResolvedValue(chatOut);
 
-    await chatStore.loadChats();
-    __testOnlySetCurrentChat(reactive(chatOut) as any);
+    await chatStore.loadChats({});
+    __testOnlySetCurrentChat({ chat: reactive(chatOut) as any });
 
-    await deleteChatGroup('g1');
+    await deleteChatGroup({ id: 'g1' });
 
     expect(currentChat.value).not.toBeNull();
     expect(currentChat.value?.id).toBe('c_out');

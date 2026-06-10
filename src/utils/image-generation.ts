@@ -48,7 +48,7 @@ export type ImageResponseParams = z.infer<typeof ImageResponseParamsSchema>;
  * Finds all image generation models from a list of available models.
  * Currently looks for any model starting with 'x/z-image-turbo:'.
  */
-export function getImageGenerationModels(models: string[]): string[] {
+export function getImageGenerationModels({ models }: { models: string[] }): string[] {
   return models.filter(m => m.startsWith('x/z-image-turbo:') || m.startsWith('x/flux2-klein:'));
 }
 
@@ -71,21 +71,21 @@ export function createImageResponseMarker({ count }: ImageResponseParams): strin
 /**
  * Checks if the content contains an image generation request.
  */
-export function isImageRequest(content: string): boolean {
+export function isImageRequest({ content }: { content: string }): boolean {
   return content.includes(SENTINEL_IMAGE_REQUEST_PREFIX);
 }
 
 /**
  * Checks if the content contains an image generation response metadata.
  */
-export function isImageResponse(content: string): boolean {
+export function isImageResponse({ content }: { content: string }): boolean {
   return content.includes(SENTINEL_IMAGE_RESPONSE_PREFIX);
 }
 
 /**
  * Parses the image request parameters from the content.
  */
-export function parseImageRequest(content: string): ImageRequestParams | null {
+export function parseImageRequest({ content }: { content: string }): ImageRequestParams | null {
   const match = content.match(/<!-- naidan_experimental_image_request (\{.*?\}) -->/);
   if (!match) return null;
   try {
@@ -113,7 +113,7 @@ export function parseImageRequest(content: string): ImageRequestParams | null {
 /**
  * Parses the image response parameters from the content.
  */
-export function parseImageResponse(content: string): ImageResponseParams | null {
+export function parseImageResponse({ content }: { content: string }): ImageResponseParams | null {
   const match = content.match(/<!-- naidan_experimental_image_response (\{.*?\}) -->/);
   if (!match) return null;
   try {
@@ -136,28 +136,28 @@ export function parseImageResponse(content: string): ImageResponseParams | null 
  * Removes all naidan-specific technical comments from the content.
  * Also removes a trailing newline if it immediately follows a sentinel.
  */
-export function stripNaidanSentinels(content: string): string {
+export function stripNaidanSentinels({ content }: { content: string }): string {
   return content.replace(/<!-- naidan_.*? -->\n?/g, '');
 }
 
 /**
  * Checks if the content indicates a pending image generation.
  */
-export function isImageGenerationPending(content: string): boolean {
+export function isImageGenerationPending({ content }: { content: string }): boolean {
   return content.includes('<!-- naidan_experimental_image_generation_pending');
 }
 
 /**
  * Checks if the content indicates a processed image generation.
  */
-export function isImageGenerationProcessed(content: string): boolean {
+export function isImageGenerationProcessed({ content }: { content: string }): boolean {
   return content.includes(SENTINEL_IMAGE_PROCESSED);
 }
 
 /**
  * Counts the number of generated image blocks in the content.
  */
-export function countGeneratedImages(content: string): number {
+export function countGeneratedImages({ content }: { content: string }): number {
   const codeBlockRegex = new RegExp('```' + IMAGE_BLOCK_LANG, 'g');
   return (content.match(codeBlockRegex) || []).length;
 }
@@ -187,12 +187,12 @@ export function getDisplayDimensions({ width, height, displayWidth, displayHeigh
 /**
  * Gets statistics about generated images in the content.
  */
-export function getImageStats(content: string): {
+export function getImageStats({ content }: { content: string }): {
   generatedCount: number,
   totalCount: number | undefined
 } {
-  const response = parseImageResponse(content);
-  const generatedCount = countGeneratedImages(content);
+  const response = parseImageResponse({ content });
+  const generatedCount = countGeneratedImages({ content });
   return {
     generatedCount,
     totalCount: response?.count
@@ -203,13 +203,13 @@ export function getImageStats(content: string): {
  * Calculates the progress of image generation from the content.
  * Returns total count, remaining count, and current step within the active generation.
  */
-export function getImageGenerationProgress(content: string): {
+export function getImageGenerationProgress({ content }: { content: string }): {
   totalCount: number | undefined,
   remainingCount: number | undefined,
   currentStep: number | undefined,
   totalSteps: number | undefined
 } {
-  const response = parseImageResponse(content);
+  const response = parseImageResponse({ content });
 
   // Extract progress info from the pending sentinel if present
   // Format: <!-- naidan_experimental_image_generation_pending {"currentStep":1,"totalSteps":10} -->
@@ -230,7 +230,7 @@ export function getImageGenerationProgress(content: string): {
   const totalCount = response.count ?? 1;
 
   // Count already generated images in both OPFS (Markdown block) and local (img tag) modes
-  const processedCount = countGeneratedImages(content) + (content.match(/<img/g) || []).length;
+  const processedCount = countGeneratedImages({ content }) + (content.match(/<img/g) || []).length;
 
   return {
     totalCount,

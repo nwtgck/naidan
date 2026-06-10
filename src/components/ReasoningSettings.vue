@@ -32,7 +32,7 @@ const sliderStyle = ref({
   transitionDuration: '0ms'
 });
 
-function updateSlider(immediate = false) {
+function updateSlider({ immediate }: { immediate?: boolean }) {
   const index = effortOptions.findIndex(o => o.value === props.selectedEffort);
   const el = buttonRefs.value[index];
   if (el) {
@@ -51,7 +51,7 @@ function setEffort({ effort }: { effort: Reasoning['effort'] }) {
 
 onMounted(() => {
   // First measurement: immediate without animation
-  updateSlider(true);
+  updateSlider({ immediate: true });
 
   // Mark as initialized after a short delay to ensure next changes are animated
   setTimeout(() => {
@@ -61,7 +61,7 @@ onMounted(() => {
 
 // Monitor for selection changes or potential layout updates (e.g., resizing)
 watch(() => props.selectedEffort, () => {
-  nextTick(() => updateSlider());
+  nextTick(() => updateSlider({}));
 });
 
 

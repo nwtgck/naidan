@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import ChatPrintContent from './ChatPrintContent.vue';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { useChatBranches } from '@/composables/chat/useChatBranches';
 
 // Mock dependencies
 const mockMarkPrintReady = vi.fn();
@@ -13,19 +15,20 @@ vi.mock('../composables/usePrint', () => ({
 
 const mockCurrentChat = ref<any>({
   id: 'chat_123',
-  title: 'Test Chat Title'
+  title: 'Test Chat Title',
+  root: { items: [] },
 });
 const mockActiveMessages = ref<any[]>([
   { id: 'msg_1', role: 'user', content: 'Hello' },
   { id: 'msg_2', role: 'assistant', content: 'World' }
 ]);
 
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    currentChat: mockCurrentChat,
-    activeMessages: mockActiveMessages,
-    getSiblings: vi.fn(() => [])
-  }),
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
+}));
+
+vi.mock('../composables/chat/useChatBranches', () => ({
+  useChatBranches: vi.fn(),
 }));
 
 // Mock MessageItem to avoid complex rendering
@@ -40,6 +43,25 @@ vi.mock('./MessageItem.vue', () => ({
 describe('ChatPrintContent component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      currentChat: computed(() => mockCurrentChat.value),
+      currentChatId: computed(() => mockCurrentChat.value?.id),
+      activeMessages: computed(() => mockActiveMessages.value),
+      currentChatGroup: computed(() => null),
+      allMessages: computed(() => mockActiveMessages.value),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
+    } as ReturnType<typeof useCurrentChatState>);
+    vi.mocked(useChatBranches).mockReturnValue({
+      editMessage: vi.fn(),
+      switchVersion: vi.fn(),
+      forkChat: vi.fn(),
+      getSiblings: vi.fn(() => []),
+      TEST_ONLY: {},
+    } as unknown as ReturnType<typeof useChatBranches>);
   });
 
   it('should call markPrintReady when mounted', () => {

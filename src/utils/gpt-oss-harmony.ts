@@ -88,7 +88,7 @@ export class HarmonyStreamParser {
     };
   }
 
-  private _closeMessage(reason: "end" | "return" | "call"): HarmonyDelta {
+  private _closeMessage({ reason }: { reason: "end" | "return" | "call" }): HarmonyDelta {
     const msg = this._current;
     if (msg) {
       msg.content = msg.content.trimEnd();
@@ -104,7 +104,7 @@ export class HarmonyStreamParser {
     };
   }
 
-  private _extractRecipient(text: string): string {
+  private _extractRecipient({ text }: { text: string }): string {
     const match = text.match(/\bto=(\S+)/);
     if (match && this._current) {
       this._current.recipient = match[1];
@@ -113,7 +113,7 @@ export class HarmonyStreamParser {
     return text.trim();
   }
 
-  push(token: string): HarmonyDelta | null {
+  push({ token }: { token: string }): HarmonyDelta | null {
     if (this._done) return null;
 
     switch (token) {
@@ -144,27 +144,27 @@ export class HarmonyStreamParser {
       return null;
 
     case SPECIAL_TOKENS.END:
-      return this._closeMessage("end");
+      return this._closeMessage({ reason: "end" });
 
     case SPECIAL_TOKENS.RETURN:
       this._done = true;
-      return this._closeMessage("return");
+      return this._closeMessage({ reason: "return" });
 
     case SPECIAL_TOKENS.CALL:
-      return this._closeMessage("call");
+      return this._closeMessage({ reason: "call" });
     }
 
     switch (this._state) {
     case State.HEADER_ROLE: {
       this._buf += token;
-      const cleaned = this._extractRecipient(this._buf);
+      const cleaned = this._extractRecipient({ text: this._buf });
       if (this._current) this._current.role = cleaned;
       return null;
     }
 
     case State.HEADER_CHANNEL: {
       this._buf += token;
-      const cleaned = this._extractRecipient(this._buf);
+      const cleaned = this._extractRecipient({ text: this._buf });
       if (this._current) this._current.channel = cleaned;
       return null;
     }
@@ -191,10 +191,10 @@ export class HarmonyStreamParser {
     }
   }
 
-  pushMany(tokens: string[]): HarmonyDelta[] {
+  pushMany({ tokens }: { tokens: string[] }): HarmonyDelta[] {
     const deltas: HarmonyDelta[] = [];
     for (const token of tokens) {
-      const d = this.push(token);
+      const d = this.push({ token });
       if (d) deltas.push(d);
     }
     return deltas;

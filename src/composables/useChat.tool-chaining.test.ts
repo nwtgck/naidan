@@ -91,6 +91,12 @@ vi.mock('./useChatTools', () => ({
   }),
 }));
 
+vi.mock('./useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
+    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
+  }),
+}));
+
 
 describe('useChat Tool Chaining', () => {
   const chatStore = useChat();
@@ -103,7 +109,7 @@ describe('useChat Tool Chaining', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
     chatStore.rootItems.value = [];
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
@@ -129,7 +135,7 @@ describe('useChat Tool Chaining', () => {
       endpointUrl: 'http://localhost',
       modelId: 'gpt-4',
     });
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
 
     // Mock LLM to return two tool calls
     mockLlmChat.mockImplementation(async (params) => {
@@ -214,7 +220,7 @@ describe('useChat Tool Chaining', () => {
       endpointUrl: 'http://localhost',
       modelId: 'gpt-4',
     });
-    __testOnlySetCurrentChat(chat);
+    __testOnlySetCurrentChat({ chat });
 
     // Add first root item
     await sendMessage({ content: 'Message 1' });

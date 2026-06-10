@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
 import { useOPFSExplorer } from '@/composables/useOPFSExplorer';
 import { useLayout } from '@/composables/useLayout';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {
   TerminalIcon, Trash2Icon, AlertCircleIcon, XIcon, SkullIcon,
   InfoIcon, AlertTriangleIcon, BugIcon, MoreVerticalIcon, HardDriveIcon,
@@ -38,11 +39,11 @@ function triggerTestInfo() {
   isMenuOpen.value = false;
 }
 
-function formatTime(ts: number) {
-  return new Date(ts).toLocaleTimeString();
+function formatTime({ timestamp }: { timestamp: number }) {
+  return new Date(timestamp).toLocaleTimeString();
 }
 
-function stringifyDetails(details: unknown): string {
+function stringifyDetails({ details }: { details: unknown }): string {
   if (details === undefined || details === null) return '';
   try {
     return JSON.stringify(details, (_key, value) => {
@@ -56,7 +57,7 @@ function stringifyDetails(details: unknown): string {
   }
 }
 
-function getEventStyle(type: GlobalEvent['type']) {
+function getEventStyle({ type }: { type: GlobalEvent['type'] }) {
   switch (type) {
   case 'error': return 'border-red-500 bg-red-500/5 text-red-400';
   case 'warn':  return 'border-yellow-500 bg-yellow-500/5 text-yellow-400';
@@ -65,7 +66,7 @@ function getEventStyle(type: GlobalEvent['type']) {
   }
 }
 
-function getEventIcon(type: GlobalEvent['type']) {
+function getEventIcon({ type }: { type: GlobalEvent['type'] }) {
   switch (type) {
   case 'error': return AlertCircleIcon;
   case 'warn':  return AlertTriangleIcon;
@@ -75,19 +76,13 @@ function getEventIcon(type: GlobalEvent['type']) {
 }
 
 // Click away listener for the menu
-function handleClickOutside(event: MouseEvent) {
+function handleClickOutside({ event }: { event: MouseEvent }) {
   if (menuRef.value && !menuRef.value.contains(event.target as Node)) {
     isMenuOpen.value = false;
   }
 }
 
-onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 
 defineExpose({
@@ -205,17 +200,17 @@ defineExpose({
         v-for="event in events"
         :key="event.id"
         class="border-l-2 p-2 rounded-r-xl flex gap-3 group transition-colors shadow-sm"
-        :class="getEventStyle(event.type)"
+        :class="getEventStyle({ type: event.type })"
         data-testid="event-item"
       >
-        <span class="text-[10px] font-bold opacity-40 shrink-0">[{{ formatTime(event.timestamp) }}]</span>
+        <span class="text-[10px] font-bold opacity-40 shrink-0">[{{ formatTime({ timestamp: event.timestamp }) }}]</span>
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 mb-1">
-            <component :is="getEventIcon(event.type)" class="w-3 h-3" />
+            <component :is="getEventIcon({ type: event.type })" class="w-3 h-3" />
             <span class="text-[10px] font-bold bg-white/20 dark:bg-white/5 px-1.5 py-0.5 rounded-lg border border-white/20 tracking-tighter">{{ event.source }}</span>
             <span class="text-xs font-bold truncate opacity-90">{{ event.message }}</span>
           </div>
-          <pre v-if="event.details" class="bg-black/5 dark:bg-black/50 p-3 rounded-xl text-[10px] text-gray-500 dark:text-gray-400 overflow-x-auto border border-gray-100/50 dark:border-gray-800">{{ stringifyDetails(event.details as any) }}</pre>
+          <pre v-if="event.details" class="bg-black/5 dark:bg-black/50 p-3 rounded-xl text-[10px] text-gray-500 dark:text-gray-400 overflow-x-auto border border-gray-100/50 dark:border-gray-800">{{ stringifyDetails({ details: event.details as any }) }}</pre>
         </div>
       </div>
     </div>

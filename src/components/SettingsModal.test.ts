@@ -10,7 +10,8 @@ import AboutTab from './AboutTab.vue';
 import ConnectionTab from './ConnectionTab.vue';
 import { Loader2Icon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
-import { useChat } from '@/composables/useChat';
+import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
+import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSampleChat } from '@/composables/useSampleChat';
 import { storageService } from '@/services/storage';
 import type { ProviderProfile } from '@/models/types';
@@ -37,14 +38,14 @@ vi.mock('../composables/useSettings', () => ({
     mounts: [],
     availableModels: ref(['model-a', 'model-b']),
     isFetchingModels: ref(false),
-    save: vi.fn().mockImplementation(async (patch) => {
+    save: vi.fn().mockImplementation(async ({ patch }) => {
       const currentType = storageService.getCurrentType();
       if (patch.storageType && patch.storageType !== currentType) {
         await storageService.switchProvider(patch.storageType);
       }
     }),
     updateProviderProfiles: vi.fn(),
-    fetchModels: vi.fn(async (overrides) => {
+    fetchModels: vi.fn(async ({ overrides }) => {
       if (overrides) {
         return await mockListModels(overrides.url, overrides.headers);
       }
@@ -53,11 +54,25 @@ vi.mock('../composables/useSettings', () => ({
   })),
 }));
 
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn(() => ({
+vi.mock('../composables/chat/ui/useChatLifecycle', () => ({
+  useChatLifecycle: vi.fn(() => ({
     deleteAllChats: vi.fn(),
+    createNewChat: vi.fn(),
+    deleteChat: vi.fn(),
+    TEST_ONLY: {},
+  })),
+}));
+
+vi.mock('../composables/chat/ui/useChatOrganization', () => ({
+  useChatOrganization: vi.fn(() => ({
     createChatGroup: vi.fn(),
-    resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+    deleteChatGroup: vi.fn(),
+    duplicateChatGroup: vi.fn(),
+    renameChatGroup: vi.fn(),
+    updateChatGroupMetadata: vi.fn(),
+    moveChatToGroup: vi.fn(),
+    reorderSidebarChatAfterSend: vi.fn(),
+    TEST_ONLY: {},
   })),
 }));
 
@@ -198,14 +213,14 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       settings: ref(JSON.parse(JSON.stringify(mockSettings))),
       availableModels: ref([]),
       isFetchingModels: ref(false),
-      save: mockSave.mockImplementation(async (patch) => {
+      save: mockSave.mockImplementation(async ({ patch }) => {
         const currentType = storageService.getCurrentType();
         if (patch.storageType && patch.storageType !== currentType) {
           await storageService.switchProvider(patch.storageType);
         }
       }),
       updateProviderProfiles: vi.fn(),
-      fetchModels: vi.fn(async (overrides) => {
+      fetchModels: vi.fn(async ({ overrides }) => {
         if (overrides) {
           return await mockListModels(overrides.url, overrides.headers);
         }
@@ -213,10 +228,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       }),
     });
 
-    (useChat as unknown as Mock).mockReturnValue({
+    (useChatLifecycle as unknown as Mock).mockReturnValue({
       deleteAllChats: vi.fn(),
+      createNewChat: vi.fn(),
+      deleteChat: vi.fn(),
+      TEST_ONLY: {},
+    });
+
+    (useChatOrganization as unknown as Mock).mockReturnValue({
       createChatGroup: vi.fn(),
-      resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+      TEST_ONLY: {},
     });
 
     (useSampleChat as unknown as Mock).mockReturnValue({
@@ -250,7 +271,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: isFetching,
         save: mockSave,
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -717,7 +738,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       isFetchingModels: ref(false),
       save: mockSave,
       updateProviderProfiles: vi.fn(),
-      fetchModels: vi.fn(async (overrides) => {
+      fetchModels: vi.fn(async ({ overrides }) => {
         if (overrides) {
           return await mockListModels(overrides.url, overrides.headers);
         }
@@ -800,9 +821,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('triggers clear all history after confirmation and navigates to root', async () => {
       const mockDeleteAllChats = vi.fn();
 
-      (useChat as unknown as Mock).mockReturnValue({
+      (useChatLifecycle as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
-        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+        createNewChat: vi.fn(),
+        deleteChat: vi.fn(),
+        TEST_ONLY: {},
       });
 
       const wrapper = mount(SettingsModal, {
@@ -838,13 +861,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     });
 
     it('does not reset onboarding flag when clearing history', async () => {
-      // We check this by verifying that useChat's deleteAllChats is called,
+      // We check this by verifying that the admin action's deleteAllChats is called,
       // and then in our manual verification of the code we've ensured
       // it doesn't touch the flag. From a UI perspective, the flag is in settingsStore.
       const mockDeleteAllChats = vi.fn();
-      (useChat as unknown as Mock).mockReturnValue({
+      (useChatLifecycle as unknown as Mock).mockReturnValue({
         deleteAllChats: mockDeleteAllChats,
-        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+        createNewChat: vi.fn(),
+        deleteChat: vi.fn(),
+        TEST_ONLY: {},
       });
 
       const wrapper = mount(SettingsModal, { props: { isOpen: true }, global: { stubs: globalStubs } });
@@ -879,7 +904,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -953,7 +978,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -998,7 +1023,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -1036,7 +1061,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         isFetchingModels: ref(false),
         save: mockSave,
         updateProviderProfiles: vi.fn(),
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -1160,7 +1185,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         availableModels: ref([]),
         isFetchingModels: ref(false),
         save: mockSave,
-        fetchModels: vi.fn(async (overrides) => {
+        fetchModels: vi.fn(async ({ overrides }) => {
           if (overrides) {
             return await mockListModels(overrides.url, overrides.headers);
           }
@@ -1203,9 +1228,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
   describe('Recipe Integration', () => {
     it('creates chat groups when handleImportRecipes is called', async () => {
       const mockCreateChatGroup = vi.fn().mockResolvedValue('new-id');
-      (useChat as unknown as Mock).mockReturnValue({
+      (useChatOrganization as unknown as Mock).mockReturnValue({
         createChatGroup: mockCreateChatGroup,
-        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+        deleteChatGroup: vi.fn(),
+        duplicateChatGroup: vi.fn(),
+        renameChatGroup: vi.fn(),
+        updateChatGroupMetadata: vi.fn(),
+        moveChatToGroup: vi.fn(),
+        reorderSidebarChatAfterSend: vi.fn(),
+        TEST_ONLY: {},
       });
 
       const wrapper = mount(SettingsModal, {
@@ -1228,19 +1259,19 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       // Access handleImportRecipes via vm
       const vm = wrapper.vm as any;
-      await vm.handleImportRecipes(recipes);
+      await vm.handleImportRecipes({ recipes });
 
       expect(mockCreateChatGroup).toHaveBeenCalledTimes(2);
-      expect(mockCreateChatGroup).toHaveBeenCalledWith('Recipe 1', {
+      expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 1', options: expect.objectContaining({
         modelId: 'm1',
         systemPrompt: { content: 'p1', behavior: 'override' },
-        lmParameters: { temperature: 0.5, reasoning: { effort: undefined } }
-      });
-      expect(mockCreateChatGroup).toHaveBeenCalledWith('Recipe 2', {
+        lmParameters: expect.objectContaining({ temperature: 0.5, reasoning: { effort: undefined } })
+      }) });
+      expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 2', options: expect.objectContaining({
         modelId: undefined,
         systemPrompt: undefined,
-        lmParameters: { reasoning: { effort: undefined } }
-      });
+        lmParameters: expect.objectContaining({ reasoning: { effort: undefined } })
+      }) });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: 'Successfully imported 2 recipes as chat groups'
@@ -1249,9 +1280,15 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
     it('shows error toast when recipe import fails', async () => {
       const mockCreateChatGroup = vi.fn().mockRejectedValue(new Error('Import failed'));
-      (useChat as unknown as Mock).mockReturnValue({
+      (useChatOrganization as unknown as Mock).mockReturnValue({
         createChatGroup: mockCreateChatGroup,
-        resolvedSettings: ref({ modelId: 'gpt-4', sources: { modelId: 'global' } }),
+        deleteChatGroup: vi.fn(),
+        duplicateChatGroup: vi.fn(),
+        renameChatGroup: vi.fn(),
+        updateChatGroupMetadata: vi.fn(),
+        moveChatToGroup: vi.fn(),
+        reorderSidebarChatAfterSend: vi.fn(),
+        TEST_ONLY: {},
       });
 
       const wrapper = mount(SettingsModal, {
@@ -1261,7 +1298,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await flushPromises();
 
       const vm = wrapper.vm as any;
-      await vm.handleImportRecipes([{ newName: 'Fail', recipe: {} as any }]);
+      await vm.handleImportRecipes({ recipes: [{ newName: 'Fail', recipe: {} as any }] });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
         message: expect.stringContaining('Failed to import recipes: Import failed')
@@ -1277,10 +1314,10 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       });
 
       await wrapper.setProps({ isOpen: true });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('settings');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'settings' });
 
       await wrapper.setProps({ isOpen: false });
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
 });

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockCreateClient = vi.fn()
-const mockCheckOPFSSupport = vi.fn()
 const mockGetVolumeDirectoryHandle = vi.fn()
 const mockAbortOngoingScans = vi.fn()
 const mockGetVolumeExtensions = vi.fn()
@@ -12,17 +11,13 @@ vi.mock('@/services/wesh/worker/client', () => ({
   createFileProtocolCompatibleWeshWorkerClient: mockCreateClient,
 }))
 
-vi.mock('@/services/storage/opfs-detection', () => ({
-  checkOPFSSupport: mockCheckOPFSSupport,
-}))
-
 vi.mock('@/services/storage', () => ({
   storageService: {
     getVolumeDirectoryHandle: mockGetVolumeDirectoryHandle,
   },
 }))
 
-vi.mock('./volume-extension-cache', () => ({
+vi.mock('./wesh/volume-extension-cache', () => ({
   abortOngoingScans: mockAbortOngoingScans,
   getVolumeExtensions: mockGetVolumeExtensions,
   isVolumeScanned: mockIsVolumeScanned,
@@ -34,7 +29,6 @@ function setupStandardMocks({
 }: {
   volumeHandle: FileSystemDirectoryHandle
 }) {
-  mockCheckOPFSSupport.mockResolvedValue(true)
   mockGetVolumeDirectoryHandle.mockResolvedValueOnce(volumeHandle)
   mockCreateClient.mockResolvedValue({
     startExecution: vi.fn(),
@@ -61,7 +55,6 @@ describe('getEnabledTools shell_execute', () => {
     const volumeHandleA = { kind: 'directory', name: 'vol-a' } as FileSystemDirectoryHandle
     const volumeHandleB = { kind: 'directory', name: 'vol-b' } as FileSystemDirectoryHandle
 
-    mockCheckOPFSSupport.mockResolvedValue(true)
     mockGetVolumeDirectoryHandle
       .mockResolvedValueOnce(volumeHandleA)
       .mockResolvedValueOnce(volumeHandleB)
@@ -81,14 +74,22 @@ describe('getEnabledTools shell_execute', () => {
     const [toolA] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleA,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'a', mountPath: '/mnt/a', readOnly: false }],
       } as never,
     })
     const [toolB] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleB,
+      chatId: 'chat-2',
+      chatGroupId: undefined,
+      naidanSysfsVisibility: 'all_chats',
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'b', mountPath: '/mnt/b', readOnly: true }],
       } as never,
     })
@@ -96,8 +97,18 @@ describe('getEnabledTools shell_execute', () => {
     expect(mockCreateClient).toHaveBeenNthCalledWith(1, {
       rootHandle: 'readonly',
       mounts: [
-        { path: '/tmp', handle: tmpHandleA, readOnly: false },
-        { path: '/mnt/a', handle: volumeHandleA, readOnly: false },
+        { type: 'directory', path: '/tmp', handle: tmpHandleA, readOnly: false },
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'opfs',
+          visibility: 'current_chat_only',
+          binaryObjectAccess: 'data',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        },
+        { type: 'directory', path: '/mnt/a', handle: volumeHandleA, readOnly: false },
       ],
       user: 'user',
       initialEnv: {},
@@ -106,8 +117,18 @@ describe('getEnabledTools shell_execute', () => {
     expect(mockCreateClient).toHaveBeenNthCalledWith(2, {
       rootHandle: 'readonly',
       mounts: [
-        { path: '/tmp', handle: tmpHandleB, readOnly: false },
-        { path: '/mnt/b', handle: volumeHandleB, readOnly: true },
+        { type: 'directory', path: '/tmp', handle: tmpHandleB, readOnly: false },
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'opfs',
+          visibility: 'all_chats',
+          binaryObjectAccess: 'data',
+          currentChatId: 'chat-2',
+          currentChatGroupId: undefined,
+        },
+        { type: 'directory', path: '/mnt/b', handle: volumeHandleB, readOnly: true },
       ],
       user: 'user',
       initialEnv: {},
@@ -120,12 +141,14 @@ Execute shell scripts to perform file operations, system exploration, and data p
 
 Mounted directories:
 - /tmp (read-write)
+- /sys/fs/naidan (read-only)
 - /mnt/a (read-write)`)
     expect(toolB?.description).toEqual(`\
 Execute shell scripts to perform file operations, system exploration, and data processing. You can use standard Unix-like commands (ls, cat, grep, etc.). Run \`help\` to see available utilities.
 
 Mounted directories:
 - /tmp (read-write)
+- /sys/fs/naidan (read-only)
 - /mnt/b (read-only)`)
   }, 15000)
 
@@ -140,7 +163,11 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: undefined,
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'x', mountPath: '/home/user/myproject', readOnly: false }],
       } as never,
     })
@@ -150,20 +177,190 @@ Mounted directories:
     }))
   })
 
-  it('does not create the shell tool when OPFS is unavailable', async () => {
-    mockCheckOPFSSupport.mockResolvedValue(false)
-
+  it('creates the shell tool for local storage without /tmp', async () => {
+    const volumeHandle = { kind: 'directory', name: 'vol-local-only' } as FileSystemDirectoryHandle
+    setupStandardMocks({ volumeHandle })
     const { getEnabledTools } = await import('./factory')
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: undefined,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
       settings: {
+        storageType: 'local',
+        mounts: [{ type: 'volume', volumeId: 'vol-local-only', mountPath: '/mnt/local-only', readOnly: true }],
+      } as never,
+    })
+
+    expect(tools).toHaveLength(1)
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      mounts: [
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'local',
+          visibility: 'current_chat_only',
+          binaryObjectAccess: 'data',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        },
+        { type: 'directory', path: '/mnt/local-only', handle: volumeHandle, readOnly: true },
+      ],
+    }))
+  })
+
+  it('does not add a naidan sysfs mount when selection is none', async () => {
+    const tmpHandle = { kind: 'directory', name: 'chat-1-id-none' } as FileSystemDirectoryHandle
+    const volumeHandle = { kind: 'directory', name: 'vol-none' } as FileSystemDirectoryHandle
+
+    setupStandardMocks({ volumeHandle })
+
+    const { getEnabledTools } = await import('./factory')
+
+    await getEnabledTools({
+      enabledNames: ['shell_execute'],
+      tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'none',
+      settings: {
+        storageType: 'opfs',
+        mounts: [{ type: 'volume', volumeId: 'vol-none', mountPath: '/mnt/none', readOnly: true }],
+      } as never,
+    })
+
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      mounts: [
+        { type: 'directory', path: '/tmp', handle: tmpHandle, readOnly: false },
+        { type: 'directory', path: '/mnt/none', handle: volumeHandle, readOnly: true },
+      ],
+    }))
+  })
+
+  it('does not expose wikipedia tools when shell_execute is disabled', async () => {
+    const { getEnabledTools } = await import('./factory')
+
+    const tools = await getEnabledTools({
+      enabledNames: ['wikipedia_search', 'wikipedia_get_page'],
+      tmpHandle: { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
+      settings: {
+        storageType: 'opfs',
         mounts: [],
       } as never,
     })
 
-    expect(tools).toEqual([])
-    expect(mockCreateClient).not.toHaveBeenCalled()
+    expect(tools).toHaveLength(0)
+  })
+
+  it('does not expose wikipedia tools when sysfs Naidan is disabled', async () => {
+    const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle
+    const { getEnabledTools } = await import('./factory')
+
+    const tools = await getEnabledTools({
+      enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
+      tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'none',
+      settings: {
+        storageType: 'opfs',
+        mounts: [],
+      } as never,
+    })
+
+    expect(tools.map(({ name }) => name)).toEqual(['shell_execute'])
+  })
+
+  it('does not expose wikipedia tools when shell_execute cannot be created', async () => {
+    const { getEnabledTools } = await import('./factory')
+
+    const tools = await getEnabledTools({
+      enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
+      tmpHandle: undefined,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
+      settings: {
+        storageType: 'opfs',
+        mounts: [],
+      } as never,
+    })
+
+    expect(tools).toHaveLength(0)
+  })
+
+  it('exposes wikipedia tools only when shell_execute and sysfs Naidan are both usable', async () => {
+    const tmpHandle = { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle
+    mockCreateClient.mockResolvedValue({
+      startExecution: vi.fn(),
+      awaitExecution: vi.fn(),
+      interruptExecution: vi.fn(),
+      cancelExecution: vi.fn(),
+      disposeExecution: vi.fn(),
+      execute: vi.fn(),
+      interrupt: vi.fn(),
+      dispose: vi.fn(),
+    })
+    const { getEnabledTools } = await import('./factory')
+
+    const tools = await getEnabledTools({
+      enabledNames: ['wikipedia_search', 'shell_execute', 'wikipedia_get_page'],
+      tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_only',
+      settings: {
+        storageType: 'opfs',
+        mounts: [],
+      } as never,
+    })
+
+    expect(tools.map(({ name }) => name)).toEqual([
+      'wikipedia_search',
+      'shell_execute',
+      'wikipedia_get_page',
+    ])
+  })
+
+  it('creates a local-storage naidan sysfs mount when selected', async () => {
+    const volumeHandle = { kind: 'directory', name: 'vol-local' } as FileSystemDirectoryHandle
+
+    setupStandardMocks({ volumeHandle })
+
+    const { getEnabledTools } = await import('./factory')
+
+    await getEnabledTools({
+      enabledNames: ['shell_execute'],
+      tmpHandle: undefined,
+      chatId: 'chat-1',
+      chatGroupId: 'chat-group-1',
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
+      settings: {
+        storageType: 'local',
+        mounts: [{ type: 'volume', volumeId: 'vol-local', mountPath: '/mnt/local', readOnly: true }],
+      } as never,
+    })
+
+    expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      mounts: [
+        {
+          type: 'naidan_sysfs',
+          path: '/sys/fs/naidan',
+          readOnly: true,
+          storageType: 'local',
+          visibility: 'current_chat_with_chat_group',
+          binaryObjectAccess: 'data',
+          currentChatId: 'chat-1',
+          currentChatGroupId: 'chat-group-1',
+        },
+        { type: 'directory', path: '/mnt/local', handle: volumeHandle, readOnly: true },
+      ],
+    }))
   })
 
   it('starts a background scan for volumes not yet scanned', async () => {
@@ -178,7 +375,11 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: undefined,
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-s', mountPath: '/mnt/s', readOnly: true }],
       } as never,
     })
@@ -201,7 +402,11 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: undefined,
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-r', mountPath: '/mnt/r', readOnly: true }],
       } as never,
     })
@@ -221,7 +426,11 @@ Mounted directories:
     const [tool] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      chatId: 'chat-1',
+      chatGroupId: undefined,
+      naidanSysfsVisibility: 'current_chat_with_chat_group',
       settings: {
+        storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-d', mountPath: '/mnt/d', readOnly: true }],
       } as never,
     })

@@ -45,7 +45,7 @@ import type {
   Mount,
 } from './types';
 
-const mountToDomain = (dto: MountDto): Mount => {
+const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
   const type = dto.type;
   switch (type) {
   case 'volume':
@@ -57,7 +57,7 @@ const mountToDomain = (dto: MountDto): Mount => {
   }
 };
 
-const mountToDto = (domain: Mount): MountDto => {
+const mountToDto = ({ domain }: { domain: Mount }): MountDto => {
   const type = domain.type;
   switch (type) {
   case 'volume':
@@ -69,7 +69,7 @@ const mountToDto = (domain: Mount): MountDto => {
   }
 };
 
-export const roleToDomain = (dto: RoleDto): Role => {
+export const roleToDomain = ({ dto }: { dto: RoleDto }): Role => {
   switch (dto) {
   case 'user': return 'user';
   case 'assistant': return 'assistant';
@@ -82,7 +82,7 @@ export const roleToDomain = (dto: RoleDto): Role => {
 /**
  * Hierarchy Mappers
  */
-export const hierarchyToDomain = (dto: HierarchyDto): Hierarchy => ({
+export const hierarchyToDomain = ({ dto }: { dto: HierarchyDto }): Hierarchy => ({
   items: dto.items.map(item => {
     switch (item.type) {
     case 'chat':
@@ -97,7 +97,7 @@ export const hierarchyToDomain = (dto: HierarchyDto): Hierarchy => ({
   }),
 });
 
-export const hierarchyToDto = (domain: Hierarchy): HierarchyDto => ({
+export const hierarchyToDto = ({ domain }: { domain: Hierarchy }): HierarchyDto => ({
   items: domain.items.map(item => {
     switch (item.type) {
     case 'chat':
@@ -112,7 +112,7 @@ export const hierarchyToDto = (domain: Hierarchy): HierarchyDto => ({
   }),
 });
 
-export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
+export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
   id: dto.id,
   title: dto.title,
   createdAt: dto.createdAt,
@@ -142,13 +142,13 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
     }
   })() : undefined,
   systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
-  lmParameters: lmParametersToDomain(dto.lmParameters),
+  lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
   autoTitleEnabled: dto.autoTitleEnabled,
   titleModelId: dto.titleModelId,
   currentLeafId: dto.currentLeafId,
   originChatId: dto.originChatId,
   originMessageId: dto.originMessageId,
-  mounts: dto.mounts?.map(mountToDomain),
+  mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
 });
 
 /**
@@ -156,9 +156,7 @@ export const chatMetaToDomain = (dto: ChatMetaDto): ChatMeta => ({
  * Resolves nested items using the hierarchy and provided chat metadata.
  */
 export const chatGroupToDomain = (
-  dto: ChatGroupDto,
-  hierarchy: Hierarchy,
-  chatMetas: ChatMeta[]
+  { dto, hierarchy, chatMetas }: { dto: ChatGroupDto, hierarchy: Hierarchy, chatMetas: ChatMeta[] }
 ): ChatGroup => {
   const node = hierarchy.items.find(
     i => i.type === 'chat_group' && i.id === dto.id
@@ -212,27 +210,27 @@ export const chatGroupToDomain = (
     autoTitleEnabled: dto.autoTitleEnabled,
     titleModelId: dto.titleModelId,
     systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
-    lmParameters: lmParametersToDomain(dto.lmParameters),
-    mounts: dto.mounts?.map(mountToDomain),
+    lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
+    mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
   };
 };
 
-export const chatGroupToDto = (domain: ChatGroup): ChatGroupDto => ({
+export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto => ({
   id: domain.id,
   name: domain.name,
   isCollapsed: domain.isCollapsed,
   updatedAt: domain.updatedAt,
-  endpoint: domain.endpoint ? endpointToDto(domain.endpoint) : undefined,
+  endpoint: domain.endpoint ? endpointToDto({ endpoint: domain.endpoint }) : undefined,
   modelId: domain.modelId,
   autoTitleEnabled: domain.autoTitleEnabled,
   titleModelId: domain.titleModelId,
   systemPrompt: domain.systemPrompt,
-  lmParameters: lmParametersToDto(domain.lmParameters),
-  mounts: domain.mounts?.map(mountToDto),
+  lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
+  mounts: domain.mounts?.map(domain => mountToDto({ domain })),
 });
 
 export const lmParametersToDomain = (
-  dto: LmParametersDto | undefined
+  { dto }: { dto: LmParametersDto | undefined }
 ): LmParameters => {
   if (!dto) {
     return {
@@ -259,7 +257,7 @@ export const lmParametersToDomain = (
 };
 
 export const lmParametersToDto = (
-  domain: LmParameters | undefined
+  { domain }: { domain: LmParameters | undefined }
 ): LmParametersDto | undefined => {
   if (!domain) return undefined;
   return {
@@ -275,7 +273,7 @@ export const lmParametersToDto = (
   };
 };
 
-export const endpointToDto = (endpoint: Endpoint): EndpointDto => {
+export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
   const type = endpoint.type;
   switch (type) {
   case 'openai':
@@ -296,7 +294,7 @@ export const endpointToDto = (endpoint: Endpoint): EndpointDto => {
   }
 };
 
-const attachmentToDomain = (dto: AttachmentDto): Attachment => {
+const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
   if ('binaryObjectId' in dto) {
     // V2
     const base = {
@@ -343,7 +341,7 @@ const attachmentToDomain = (dto: AttachmentDto): Attachment => {
   }
 };
 
-const attachmentToDto = (domain: Attachment): AttachmentDto => {
+const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
   // Always output V2
   return {
     id: domain.id,
@@ -353,13 +351,13 @@ const attachmentToDto = (domain: Attachment): AttachmentDto => {
   };
 };
 
-export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
+export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNode => {
   const common = {
     id: dto.id,
     content: dto.content,
     timestamp: dto.timestamp,
     replies: {
-      items: dto.replies.items.map(messageNodeToDomain),
+      items: dto.replies.items.map(dto => messageNodeToDomain({ dto })),
     },
   };
 
@@ -369,11 +367,11 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       ...common,
       role: 'user',
       content: dto.content,
-      attachments: dto.attachments?.map(attachmentToDomain),
+      attachments: dto.attachments?.map(dto => attachmentToDomain({ dto })),
       thinking: undefined,
       error: undefined,
       modelId: undefined,
-      lmParameters: lmParametersToDomain(dto.lmParameters),
+      lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
       toolCalls: undefined,
       results: undefined,
     };
@@ -386,7 +384,7 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
       thinking: dto.thinking,
       error: undefined,
       modelId: dto.modelId,
-      lmParameters: lmParametersToDomain(dto.lmParameters),
+      lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
       toolCalls: dto.toolCalls,
       results: undefined,
     };
@@ -423,13 +421,13 @@ export const messageNodeToDomain = (dto: MessageNodeDto): MessageNode => {
   }
 };
 
-export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
+export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNodeDto => {
   const common = {
     id: domain.id,
     content: domain.content,
     timestamp: domain.timestamp,
     replies: {
-      items: domain.replies.items.map(messageNodeToDto),
+      items: domain.replies.items.map(domain => messageNodeToDto({ domain })),
     },
   };
 
@@ -439,10 +437,10 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       ...common,
       role: 'user',
       content: domain.content,
-      attachments: domain.attachments?.map(attachmentToDto),
+      attachments: domain.attachments?.map(domain => attachmentToDto({ domain })),
       thinking: undefined,
       modelId: undefined,
-      lmParameters: lmParametersToDto(domain.lmParameters),
+      lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
       toolCalls: undefined,
       results: undefined,
     };
@@ -454,7 +452,7 @@ export const messageNodeToDto = (domain: MessageNode): MessageNodeDto => {
       attachments: undefined,
       thinking: domain.thinking,
       modelId: domain.modelId,
-      lmParameters: lmParametersToDto(domain.lmParameters),
+      lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
       toolCalls: domain.toolCalls,
       results: undefined,
     };
@@ -498,7 +496,7 @@ interface LegacyMessage {
   modelId?: string;
 }
 
-function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
+function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): MessageBranch {
   if (!messages || messages.length === 0) return { items: [] };
   const legacyMsgs = messages as LegacyMessage[];
   const nodes: MessageNode[] = legacyMsgs.map(m => {
@@ -579,17 +577,17 @@ function migrateFlatMessagesToTree(messages: unknown[]): MessageBranch {
   return { items: nodes[0] ? [nodes[0]] : [] };
 }
 
-export const chatToDomain = (dto: ChatDto): Chat => {
+export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
   let root: MessageBranch = { items: [] };
 
   if (dto.root && dto.root.items && dto.root.items.length > 0) {
-    root = { items: (dto.root.items as MessageNodeDto[]).map(messageNodeToDomain) };
+    root = { items: (dto.root.items as MessageNodeDto[]).map(dto => messageNodeToDomain({ dto })) };
   } else if (dto.messages && dto.messages.length > 0) {
     // Priority to legacy flat messages if tree is empty
-    root = migrateFlatMessagesToTree(dto.messages);
+    root = migrateFlatMessagesToTree({ messages: dto.messages });
   } else if (dto.root && !('items' in dto.root)) {
     // Handle edge case where root might be a single node
-    root = { items: [messageNodeToDomain(dto.root as MessageNodeDto)] };
+    root = { items: [messageNodeToDomain({ dto: dto.root as MessageNodeDto })] };
   }
 
   const {
@@ -639,46 +637,46 @@ export const chatToDomain = (dto: ChatDto): Chat => {
     originChatId,
     originMessageId,
     systemPrompt: systemPrompt as SystemPrompt | undefined,
-    lmParameters: lmParametersToDomain(lmParameters),
-    mounts: dto.mounts?.map(mountToDomain),
+    lmParameters: lmParametersToDomain({ dto: lmParameters }),
+    mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
   };
 };
 
-export const chatMetaToSummary = (domain: ChatMeta): ChatSummary => ({
+export const chatMetaToSummary = ({ domain }: { domain: ChatMeta }): ChatSummary => ({
   id: domain.id,
   title: domain.title,
   updatedAt: domain.updatedAt,
 });
 
-export const chatMetaToDto = (domain: ChatMeta): ChatMetaDto => ({
+export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => ({
   id: domain.id,
   title: domain.title,
   createdAt: domain.createdAt,
   updatedAt: domain.updatedAt,
   debugEnabled: domain.debugEnabled,
-  endpoint: domain.endpoint ? endpointToDto(domain.endpoint) : undefined,
+  endpoint: domain.endpoint ? endpointToDto({ endpoint: domain.endpoint }) : undefined,
   modelId: domain.modelId,
   autoTitleEnabled: domain.autoTitleEnabled,
   titleModelId: domain.titleModelId,
   originChatId: domain.originChatId,
   originMessageId: domain.originMessageId,
   systemPrompt: domain.systemPrompt,
-  lmParameters: lmParametersToDto(domain.lmParameters),
+  lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
   currentLeafId: domain.currentLeafId,
-  mounts: domain.mounts?.map(mountToDto),
+  mounts: domain.mounts?.map(domain => mountToDto({ domain })),
 });
 
-export const chatContentToDto = (domain: ChatContent): ChatContentDto => ({
-  root: { items: domain.root.items.map(messageNodeToDto) },
+export const chatContentToDto = ({ domain }: { domain: ChatContent }): ChatContentDto => ({
+  root: { items: domain.root.items.map(domain => messageNodeToDto({ domain })) },
   currentLeafId: domain.currentLeafId,
 });
 
-export const chatContentToDomain = (dto: ChatContentDto): ChatContent => ({
-  root: { items: dto.root.items.map(messageNodeToDomain) },
+export const chatContentToDomain = ({ dto }: { dto: ChatContentDto }): ChatContent => ({
+  root: { items: dto.root.items.map(dto => messageNodeToDomain({ dto })) },
   currentLeafId: dto.currentLeafId,
 });
 
-export const chatToDto = (domain: Chat): ChatDto => {
+export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
   const {
     id, title, root, currentLeafId, createdAt, updatedAt,
     debugEnabled, endpointType, endpointUrl, endpointHttpHeaders,
@@ -688,24 +686,24 @@ export const chatToDto = (domain: Chat): ChatDto => {
   return {
     id,
     title,
-    root: { items: root.items.map(messageNodeToDto) },
+    root: { items: root.items.map(domain => messageNodeToDto({ domain })) },
     currentLeafId,
     createdAt,
     updatedAt,
     debugEnabled,
-    endpoint: endpointType ? endpointToDto({
+    endpoint: endpointType ? endpointToDto({ endpoint: {
       type: endpointType,
       url: endpointUrl,
       httpHeaders: endpointHttpHeaders,
-    }) : undefined,
+    } }) : undefined,
     modelId,
     autoTitleEnabled: domain.autoTitleEnabled,
     titleModelId: domain.titleModelId,
     originChatId,
     originMessageId,
     systemPrompt,
-    lmParameters: lmParametersToDto(lmParameters),
-    mounts: domain.mounts?.map(mountToDto),
+    lmParameters: lmParametersToDto({ domain: lmParameters }),
+    mounts: domain.mounts?.map(domain => mountToDto({ domain })),
     messages: undefined,
   };
 };
@@ -715,9 +713,7 @@ export const chatToDto = (domain: Chat): ChatDto => {
  * Uses Hierarchy as the structural template.
  */
 export const buildSidebarItemsFromHierarchy = (
-  hierarchy: Hierarchy,
-  chatMetas: ChatMeta[],
-  chatGroups: Omit<ChatGroup, 'items'>[]
+  { hierarchy, chatMetas, chatGroups }: { hierarchy: Hierarchy, chatMetas: ChatMeta[], chatGroups: Omit<ChatGroup, 'items'>[] }
 ): SidebarItem[] => {
   const metaMap = new Map(chatMetas.map(m => [m.id, m]));
   const groupMap = new Map(chatGroups.map(g => [g.id, g]));
@@ -730,7 +726,7 @@ export const buildSidebarItemsFromHierarchy = (
       return {
         id: `chat:${node.id}`,
         type: 'chat',
-        chat: { ...chatMetaToSummary(meta), groupId: null }
+        chat: { ...chatMetaToSummary({ domain: meta }), groupId: null }
       };
     }
     case 'chat_group': {
@@ -744,7 +740,7 @@ export const buildSidebarItemsFromHierarchy = (
           return {
             id: `chat:${cid}`,
             type: 'chat' as const,
-            chat: { ...chatMetaToSummary(m), groupId: groupMeta.id }
+            chat: { ...chatMetaToSummary({ domain: m }), groupId: groupMeta.id }
           } as ChatSidebarItem;
         })
         .filter((i): i is ChatSidebarItem => i !== null);
@@ -767,7 +763,7 @@ export const buildSidebarItemsFromHierarchy = (
     .filter((i): i is SidebarItem => i !== null);
 };
 
-export const settingsToDomain = (dto: SettingsDto): Settings => {
+export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
   const { endpoint, providerProfiles, storageType, ...rest } = dto;
 
   const endpointInfo = (() => {
@@ -826,25 +822,25 @@ export const settingsToDomain = (dto: SettingsDto): Settings => {
       return {
         ...pRest,
         ...pEndpointInfo,
-        lmParameters: lmParametersToDomain(pRest.lmParameters),
+        lmParameters: lmParametersToDomain({ dto: pRest.lmParameters }),
       };
     }) ?? [],
-    lmParameters: lmParametersToDomain(rest.lmParameters),
+    lmParameters: lmParametersToDomain({ dto: rest.lmParameters }),
   };
 };
 
-export const settingsToDto = (domain: Settings): SettingsDto => {
+export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => {
   const {
     endpointType, endpointUrl, endpointHttpHeaders,
     storageType, providerProfiles, ...rest
   } = domain;
 
   return {
-    endpoint: endpointToDto({
+    endpoint: endpointToDto({ endpoint: {
       type: endpointType,
       url: endpointUrl,
       httpHeaders: endpointHttpHeaders,
-    }),
+    } }),
     defaultModelId: rest.defaultModelId,
     titleModelId: rest.titleModelId,
     autoTitleEnabled: rest.autoTitleEnabled,
@@ -858,20 +854,20 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
       return {
         id: pRest.id,
         name: pRest.name,
-        endpoint: endpointToDto({
+        endpoint: endpointToDto({ endpoint: {
           type: pType,
           url: pUrl,
           httpHeaders: pHeaders,
-        }),
+        } }),
         defaultModelId: pRest.defaultModelId,
         titleModelId: pRest.titleModelId,
         systemPrompt: pRest.systemPrompt,
-        lmParameters: lmParametersToDto(pRest.lmParameters),
+        lmParameters: lmParametersToDto({ domain: pRest.lmParameters }),
       };
     }),
     heavyContentAlertDismissed: rest.heavyContentAlertDismissed,
     systemPrompt: rest.systemPrompt,
-    lmParameters: lmParametersToDto(rest.lmParameters),
+    lmParameters: lmParametersToDto({ domain: rest.lmParameters }),
     experimental: {
       markdownRendering: rest.experimental?.markdownRendering,
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
@@ -895,7 +891,7 @@ export const settingsToDto = (domain: Settings): SettingsDto => {
   };
 };
 
-export const binaryObjectToDomain = (dto: BinaryObjectDto): BinaryObject => ({
+export const binaryObjectToDomain = ({ dto }: { dto: BinaryObjectDto }): BinaryObject => ({
   id: dto.id,
   mimeType: dto.mimeType,
   size: dto.size,
@@ -903,7 +899,7 @@ export const binaryObjectToDomain = (dto: BinaryObjectDto): BinaryObject => ({
   name: dto.name,
 });
 
-export const binaryObjectToDto = (domain: BinaryObject): BinaryObjectDto => ({
+export const binaryObjectToDto = ({ domain }: { domain: BinaryObject }): BinaryObjectDto => ({
   id: domain.id,
   mimeType: domain.mimeType,
   size: domain.size,
@@ -914,14 +910,14 @@ export const binaryObjectToDto = (domain: BinaryObject): BinaryObjectDto => ({
 import type { Volume } from '@/models/types';
 import type { VolumeDto } from '@/models/dto';
 
-export const volumeToDomain = (dto: VolumeDto): Volume => ({
+export const volumeToDomain = ({ dto }: { dto: VolumeDto }): Volume => ({
   id: dto.id,
   name: dto.name,
   type: dto.type,
   createdAt: dto.createdAt,
 });
 
-export const volumeToDto = (domain: Volume): VolumeDto => {
+export const volumeToDto = ({ domain }: { domain: Volume }): VolumeDto => {
   switch (domain.type) {
   case 'opfs':
     return {

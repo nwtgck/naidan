@@ -138,13 +138,13 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     await w.close();
 
     // Attempt to get file should return null because marker is missing
-    const result = await provider.getFile(id);
+    const result = await provider.getFile({ binaryObjectId: id });
     expect(result).toBeNull();
 
     // Now add the marker
     await shardDir.getFileHandle(`.${id}.bin.complete`, { create: true });
 
-    const resultAfterMarker = await provider.getFile(id);
+    const resultAfterMarker = await provider.getFile({ binaryObjectId: id });
     expect(resultAfterMarker).not.toBeNull();
     expect(await resultAfterMarker!.text()).toBe('DATA');
   });

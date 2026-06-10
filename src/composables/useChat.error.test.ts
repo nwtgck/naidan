@@ -52,7 +52,7 @@ describe('useChat Error Handling', () => {
     mockChat.mockReset();
     mockListModels.mockResolvedValue(['gpt-4']);
 
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       endpointType: 'openai',
       endpointUrl: 'https://api.openai.com',
       defaultModelId: 'gpt-4',
@@ -61,7 +61,7 @@ describe('useChat Error Handling', () => {
       providerProfiles: [],
       mounts: [],
       heavyContentAlertDismissed: true,
-    });
+    } });
   });
 
   it('should set error state on assistant node when generation fails', async () => {
@@ -101,7 +101,7 @@ describe('useChat Error Handling', () => {
       params.onChunk('Success');
     });
 
-    await regenerateMessage(failedMsg!.id);
+    await regenerateMessage({ failedMessageId: failedMsg!.id });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for success retry
 
     // Should have a NEW assistant message at the end

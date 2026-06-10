@@ -1,6 +1,11 @@
 import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
 import { Wesh } from '@/services/wesh'
+import { NaidanSysfsProvider } from '@/services/wesh/naidan-sysfs/provider'
+import {
+  createOpfsNaidanSysfsStorageReader,
+  createRemoteNaidanSysfsStorageReader,
+} from '@/services/wesh/naidan-sysfs/storage-reader'
 import { ReadonlyDirectoryHandle } from '@/services/wesh/readonly-directory-handle'
 import { createTestReadHandleFromText } from '@/services/wesh/utils/test-stream'
 import { createWriteHandleFromStream } from '@/services/wesh/utils/stream'
@@ -63,8 +68,18 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
   }>()
 
   return {
-    async init({ request }) {
-      const validated = weshWorkerInitRequestSchema.parse(request)
+    async init(requestOrOptions, naidanSysfsRemoteReader) {
+      const normalizedRequest = (() => {
+        if (
+          typeof requestOrOptions === 'object'
+          && requestOrOptions !== null
+          && 'request' in requestOrOptions
+        ) {
+          return requestOrOptions.request
+        }
+        return requestOrOptions
+      })()
+      const validated = weshWorkerInitRequestSchema.parse(normalizedRequest)
       const rootHandle = validated.rootHandle === 'readonly'
         ? new ReadonlyDirectoryHandle()
         : validated.rootHandle
@@ -77,11 +92,51 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       })
 
       for (const mount of validated.mounts) {
-        await wesh.vfs.mount({
-          path: mount.path,
-          handle: mount.handle,
-          readOnly: mount.readOnly,
-        })
+        switch (mount.type) {
+        case 'directory':
+          await wesh.vfs.mount({
+            path: mount.path,
+            handle: mount.handle,
+            readOnly: mount.readOnly,
+          })
+          break
+        case 'naidan_sysfs': {
+          const reader = await (() => {
+            switch (mount.storageType) {
+            case 'opfs':
+              return createOpfsNaidanSysfsStorageReader({})
+            case 'local':
+            case 'memory':
+              if (naidanSysfsRemoteReader === undefined) {
+                throw new Error(`Naidan sysfs remote reader is required for ${mount.storageType} storage`)
+              }
+              return createRemoteNaidanSysfsStorageReader({
+                remoteReader: naidanSysfsRemoteReader,
+              })
+            default: {
+              const _ex: never = mount.storageType
+              throw new Error(`Unsupported naidan sysfs storage type: ${String(_ex)}`)
+            }
+            }
+          })()
+          wesh.vfs.mountVirtual({
+            path: mount.path,
+            readOnly: mount.readOnly,
+            provider: new NaidanSysfsProvider({
+              reader,
+              visibility: mount.visibility,
+              binaryObjectAccess: mount.binaryObjectAccess,
+              currentChatId: mount.currentChatId,
+              currentChatGroupId: mount.currentChatGroupId,
+            }),
+          })
+          break
+        }
+        default: {
+          const _ex: never = mount
+          throw new Error(`Unhandled Wesh worker mount type: ${String(_ex)}`)
+        }
+        }
       }
     },
 

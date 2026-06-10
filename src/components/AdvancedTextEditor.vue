@@ -19,6 +19,7 @@ import {
   WrapTextIcon,
   BarChart2Icon,
 } from 'lucide-vue-next';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
   initialValue: string;
@@ -498,8 +499,8 @@ function handleClose() {
   emit('close');
 }
 
-function handleBackdropClick(e: MouseEvent) {
-  if (e.target === e.currentTarget) {
+function handleBackdropClick({ event }: { event: MouseEvent }) {
+  if (event.target === event.currentTarget) {
     handleClose();
   }
 }
@@ -528,11 +529,11 @@ function toggleWrap() {
 }
 
 // Shortcuts
-function handleKeyDown(e: KeyboardEvent) {
-  const isMod = e.ctrlKey || e.metaKey;
+function handleKeyDown({ event }: { event: KeyboardEvent }) {
+  const isMod = event.ctrlKey || event.metaKey;
 
-  if (isMod && e.key === 'f') {
-    e.preventDefault();
+  if (isMod && event.key === 'f') {
+    event.preventDefault();
     const selection = window.getSelection()?.toString();
     if (selection) {
       findText.value = selection;
@@ -545,16 +546,16 @@ function handleKeyDown(e: KeyboardEvent) {
       if (selection) findInput?.select();
     });
   }
-  if (isMod && e.key === 'd') {
-    e.preventDefault();
+  if (isMod && event.key === 'd') {
+    event.preventDefault();
     handleCmdD();
   }
-  if (isMod && e.key === 'z') {
-    e.preventDefault();
-    if (e.shiftKey) handleRedo();
+  if (isMod && event.key === 'z') {
+    event.preventDefault();
+    if (event.shiftKey) handleRedo();
     else handleUndo();
   }
-  if (e.key === 'Escape') {
+  if (event.key === 'Escape') {
     if (isMultiEditMode.value) {
       exitMultiEdit();
       return;
@@ -576,9 +577,14 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 }
 
+function handleWindowKeyDown(event: KeyboardEvent) {
+  handleKeyDown({ event });
+}
+
+useEventTargetListener(window, 'keydown', handleWindowKeyDown);
+useEventTargetListener(window, 'resize', calculateLineHeights);
+
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown);
-  window.addEventListener('resize', calculateLineHeights);
   nextTick(() => {
     textareaRef.value?.focus();
     syncScroll();
@@ -587,8 +593,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
-  window.removeEventListener('resize', calculateLineHeights);
   if (historyTimeout) clearTimeout(historyTimeout);
   if (lineHeightDebounceTimer) clearTimeout(lineHeightDebounceTimer);
   if (ghostElement && ghostElement.parentNode) {
@@ -613,7 +617,7 @@ defineExpose({
   <!-- Backdrop Container (Minimal blur and darkness) -->
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/5 backdrop-blur-[0.2px] p-4 md:p-8 transition-opacity"
-    @click="handleBackdropClick"
+    @click="handleBackdropClick({ event: $event })"
     data-testid="editor-backdrop"
   >    <!-- Editor Container (Lighter Slate-900 background) -->
     <div

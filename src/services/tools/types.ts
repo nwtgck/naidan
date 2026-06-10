@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ToolApprovalContext } from '@/services/approval';
 
 /**
  * Error codes for tool execution failures.
@@ -60,7 +61,12 @@ export interface Tool {
    * Execute the tool with the given arguments.
    * The arguments are guaranteed to be validated against the parametersSchema before execution.
    */
-  execute(params: { args: unknown; signal?: AbortSignal; onEvent?: (event: ToolExecutionEvent) => void | Promise<void> }): Promise<
+  execute(params: {
+    args: unknown;
+    signal?: AbortSignal;
+    onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    approvalContext?: ToolApprovalContext;
+  }): Promise<
     | { status: 'success'; content: string }
     | { status: 'error'; code: ToolExecutionErrorCode; message: string }
   >;

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import { InfoIcon, CopyIcon, CheckIcon } from 'lucide-vue-next';
+import { useEventTargetListener } from '@/composables/useEventTargetListener';
 
 const props = defineProps<{
   /** The generation prompt */
@@ -22,20 +23,20 @@ const containerRef = ref<HTMLElement | null>(null);
 const copiedPrompt = ref(false);
 const copiedSeed = ref(false);
 
-function toggle(e: Event) {
-  e.stopPropagation();
+function toggle({ event }: { event: Event }) {
+  event.stopPropagation();
   isOpen.value = !isOpen.value;
 }
 
-async function copyPrompt(e: Event) {
-  e.stopPropagation();
+async function copyPrompt({ event }: { event: Event }) {
+  event.stopPropagation();
   await navigator.clipboard.writeText(props.prompt);
   copiedPrompt.value = true;
   setTimeout(() => copiedPrompt.value = false, 2000);
 }
 
-async function copySeed(e: Event) {
-  e.stopPropagation();
+async function copySeed({ event }: { event: Event }) {
+  event.stopPropagation();
   if (props.seed !== undefined) {
     await navigator.clipboard.writeText(String(props.seed));
     copiedSeed.value = true;
@@ -43,19 +44,13 @@ async function copySeed(e: Event) {
   }
 }
 
-function handleClickOutside(event: MouseEvent) {
+function handleClickOutside({ event }: { event: MouseEvent }) {
   if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
     isOpen.value = false;
   }
 }
 
-onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('mousedown', handleClickOutside);
-});
+useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
 
 defineExpose({
   TEST_ONLY: {
@@ -69,7 +64,7 @@ defineExpose({
 <template>
   <div class="relative inline-flex z-30 overflow-visible" ref="containerRef">
     <button
-      @click="toggle"
+      @click="toggle({ event: $event })"
       class="flex items-center justify-center p-1.5 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
       title="Image Info"
       data-testid="image-info-button"
@@ -87,7 +82,7 @@ defineExpose({
         <div class="flex flex-col gap-1">
           <div class="flex items-center justify-between">
             <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Prompt</span>
-            <button @click="copyPrompt" class="text-gray-400 hover:text-blue-500 transition-colors" title="Copy Prompt">
+            <button @click="copyPrompt({ event: $event })" class="text-gray-400 hover:text-blue-500 transition-colors" title="Copy Prompt">
               <CheckIcon v-if="copiedPrompt" class="w-3 h-3 text-green-500" />
               <CopyIcon v-else class="w-3 h-3" />
             </button>
@@ -110,7 +105,7 @@ defineExpose({
           <div v-if="seed !== undefined" class="flex flex-col col-span-2">
             <div class="flex items-center justify-between">
               <span class="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Seed</span>
-              <button @click="copySeed" class="text-gray-400 hover:text-blue-500 transition-colors" title="Copy Seed">
+              <button @click="copySeed({ event: $event })" class="text-gray-400 hover:text-blue-500 transition-colors" title="Copy Seed">
                 <CheckIcon v-if="copiedSeed" class="w-2.5 h-2.5 text-green-500" />
                 <CopyIcon v-else class="w-2.5 h-2.5" />
               </button>

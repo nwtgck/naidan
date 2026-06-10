@@ -162,10 +162,10 @@ async function initEditor() {
 /**
  * Handle Zoom with Mouse Wheel
  */
-function handleWheel(e: WheelEvent) {
-  e.preventDefault();
+function handleWheel({ event }: { event: WheelEvent }) {
+  event.preventDefault();
   const zoomFactor = 1.1;
-  const delta = -e.deltaY;
+  const delta = -event.deltaY;
   const oldZoom = zoom.value;
   const newZoom = delta > 0 ? oldZoom * zoomFactor : oldZoom / zoomFactor;
   const clampedZoom = Math.min(Math.max(newZoom, 0.1), 10);
@@ -174,8 +174,8 @@ function handleWheel(e: WheelEvent) {
 
   if (!containerRef.value) return;
   const rect = containerRef.value.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
+  const mouseX = event.clientX - rect.left;
+  const mouseY = event.clientY - rect.top;
 
   const relativeX = mouseX - rect.width / 2 - panOffset.value.x;
   const relativeY = mouseY - rect.height / 2 - panOffset.value.y;
@@ -193,33 +193,34 @@ function handleWheel(e: WheelEvent) {
   }
 }
 
-function startPanning(e: MouseEvent) {
+function startPanning({ event }: { event: MouseEvent }) {
   // Pan with middle click or if space/alt is pressed (detected by checking e.button === 1 or modifiers)
-  if (e.button === 1 || (e.button === 0 && (e.altKey || e.shiftKey))) {
-    e.preventDefault();
+  if (event.button === 1 || (event.button === 0 && (event.altKey || event.shiftKey))) {
+    event.preventDefault();
     isPanning.value = true;
-    lastMousePos.value = { x: e.clientX, y: e.clientY };
-    window.addEventListener('mousemove', onPanning);
+    lastMousePos.value = { x: event.clientX, y: event.clientY };
+    window.addEventListener('mousemove', handlePanMouseMove);
     window.addEventListener('mouseup', stopPanning);
     return true;
   }
   return false;
 }
 
-function onPanning(e: MouseEvent) {
+function onPanning({ event }: { event: MouseEvent }) {
   if (!isPanning.value) return;
-  const dx = e.clientX - lastMousePos.value.x;
-  const dy = e.clientY - lastMousePos.value.y;
+  const dx = event.clientX - lastMousePos.value.x;
+  const dy = event.clientY - lastMousePos.value.y;
   panOffset.value = {
     x: panOffset.value.x + dx,
     y: panOffset.value.y + dy
   };
-  lastMousePos.value = { x: e.clientX, y: e.clientY };
+  lastMousePos.value = { x: event.clientX, y: event.clientY };
 }
+const handlePanMouseMove = (event: MouseEvent) => onPanning({ event });
 
 function stopPanning() {
   isPanning.value = false;
-  window.removeEventListener('mousemove', onPanning);
+  window.removeEventListener('mousemove', handlePanMouseMove);
   window.removeEventListener('mouseup', stopPanning);
 }
 
@@ -428,7 +429,7 @@ function executeAction({ action }: { action: ActionType }) {
   /**
    * Helper to create path based on current shape
    */
-  const createSelectionPath = (context: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => {
+  const createSelectionPath = ({ context, x, y, w, h }: { context: CanvasRenderingContext2D; x: number; y: number; w: number; h: number }) => {
     context.beginPath();
     switch (shape) {
     case 'rectangle':
@@ -483,7 +484,7 @@ function executeAction({ action }: { action: ActionType }) {
     switch (action) {
     case 'mask-inside':
       if (isTransparent) ctx.globalCompositeOperation = 'destination-out';
-      createSelectionPath(ctx, sx, sy, sw, sh);
+      createSelectionPath({ context: ctx, x: sx, y: sy, w: sw, h: sh });
       ctx.fill();
       break;
     case 'mask-outside': {
@@ -498,7 +499,7 @@ function executeAction({ action }: { action: ActionType }) {
         tctx.fillRect(0, 0, canvas.width, canvas.height);
         // "Punch a hole" for the selection
         tctx.globalCompositeOperation = 'destination-out';
-        createSelectionPath(tctx, sx, sy, sw, sh);
+        createSelectionPath({ context: tctx, x: sx, y: sy, w: sw, h: sh });
         tctx.fill();
 
         // Draw the mask onto the main canvas
@@ -547,8 +548,8 @@ function pickColor({ event }: { event: MouseEvent }) {
   if (a === 0) {
     selectedFill.value = TRANSPARENT;
   } else {
-    const toHex = (v: number) => v.toString(16).padStart(2, '0');
-    selectedFill.value = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    const toHex = ({ v }: { v: number }) => v.toString(16).padStart(2, '0');
+    selectedFill.value = `#${toHex({ v: r })}${toHex({ v: g })}${toHex({ v: b })}`;
   }
   isPickingColor.value = false;
 }
@@ -587,7 +588,7 @@ function startNewSelection({ event }: { event: MouseEvent }) {
     pickColor({ event });
     return;
   }
-  if (startPanning(event)) return;
+  if (startPanning({ event })) return;
 
   event.preventDefault();
   if (!canvasRef.value) return;
@@ -602,7 +603,7 @@ function startNewSelection({ event }: { event: MouseEvent }) {
   selection.value.rect = { x, y, w: 0, h: 0 };
   initialCrop.value = { ...selection.value.rect };
 
-  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mousemove', handleSelectionMouseMove);
   window.addEventListener('mouseup', onMouseUp);
 }
 
@@ -614,16 +615,16 @@ function startDragging({ event, handle }: { event: MouseEvent; handle: string })
   dragStart.value = { x: event.clientX, y: event.clientY };
   initialCrop.value = { ...selection.value.rect };
 
-  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mousemove', handleSelectionMouseMove);
   window.addEventListener('mouseup', onMouseUp);
 }
 
-function onMouseMove(e: MouseEvent) {
+function onMouseMove({ event }: { event: MouseEvent }) {
   if (editorMode.value === 'idle' || !canvasRef.value) return;
 
   const totalScale = displayScale.value * zoom.value;
-  const dx = (e.clientX - dragStart.value.x) / (canvasRef.value.width * totalScale);
-  const dy = (e.clientY - dragStart.value.y) / (canvasRef.value.height * totalScale);
+  const dx = (event.clientX - dragStart.value.x) / (canvasRef.value.width * totalScale);
+  const dy = (event.clientY - dragStart.value.y) / (canvasRef.value.height * totalScale);
 
   let { x, y, w, h } = initialCrop.value;
 
@@ -677,6 +678,7 @@ function onMouseMove(e: MouseEvent) {
   }
   selection.value.rect = { x, y, w, h };
 }
+const handleSelectionMouseMove = (event: MouseEvent) => onMouseMove({ event });
 
 function onMouseUp() {
   const mode = editorMode.value;
@@ -698,7 +700,7 @@ function onMouseUp() {
 
   editorMode.value = 'idle';
   activeHandle.value = undefined;
-  window.removeEventListener('mousemove', onMouseMove);
+  window.removeEventListener('mousemove', handleSelectionMouseMove);
   window.removeEventListener('mouseup', onMouseUp);
 }
 
@@ -819,7 +821,7 @@ defineExpose({
         class="flex-1 relative bg-gray-900 rounded-2xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center select-none transition-all duration-300"
         :class="isPickingColor ? 'cursor-pointer' : 'cursor-crosshair'"
         @mousedown="startNewSelection({ event: $event })"
-        @wheel="handleWheel"
+        @wheel="handleWheel({ event: $event })"
       >
         <div
           class="relative border border-white/10 bg-transparency-grid transition-transform duration-75 ease-out"

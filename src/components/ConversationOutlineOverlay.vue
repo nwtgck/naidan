@@ -11,6 +11,7 @@ type OutlineRole = MessageNode['role'];
 type ScrollHintVisibility = 'hidden' | 'visible';
 
 const props = defineProps<{
+  chatId: string;
   visibility: OutlineVisibility;
   flowItems: ChatFlowItem[];
   initialMessageId?: string;
@@ -234,6 +235,7 @@ defineExpose({
                   data-testid="conversation-outline-peek"
                 >
                   <MessageItem
+                    :chat-id="props.chatId"
                     :message="item.node"
                     :part-content="item.partContent"
                     :flow="{ position: 'standalone', nesting: 'none' }"

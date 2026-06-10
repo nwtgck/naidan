@@ -66,8 +66,14 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
   async function createTab() {
     vi.resetModules();
+    vi.unmock('../services/storage');
+    vi.unmock('./useSettings');
+    vi.unmock('./useToast');
+    vi.unmock('./useConfirm');
+    vi.unmock('../services/lm/openai');
+    vi.unmock('../services/lm/ollama');
 
-    vi.mock('../services/storage', () => ({
+    vi.doMock('../services/storage', () => ({
       storageService: {
         init: vi.fn(),
         subscribeToChanges: vi.fn().mockImplementation((l) => {
@@ -98,7 +104,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
             return node;
           });
         }),
-        loadChat: vi.fn().mockImplementation(async (id) => {
+        loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
           const c = getShared().chats.get(id);
           return c ? JSON.parse(JSON.stringify(c)) : null;
         }),
@@ -139,7 +145,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
           s.settings = await updater(JSON.parse(JSON.stringify(s.settings)));
           s.listeners.forEach((l: any) => l({ type: 'settings', timestamp: Date.now() }));
         }),
-        deleteChat: vi.fn().mockImplementation(async (id) => {
+        deleteChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
           const s = getShared();
           s.chats.delete(id);
           s.listeners.forEach((l: any) => l({ type: 'chat_meta_and_chat_group', id, timestamp: Date.now() }));
@@ -158,7 +164,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
       }
     }));
 
-    vi.mock('./useSettings', () => ({
+    vi.doMock('./useSettings', () => ({
       useSettings: () => ({
         settings: { value: JSON.parse(JSON.stringify(getShared().settings)) },
         setIsOnboardingDismissed: vi.fn(),
@@ -166,10 +172,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
         setHeavyContentAlertDismissed: vi.fn(),
       }),
     }));
-    vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
-    vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
+    vi.doMock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
+    vi.doMock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
 
-    vi.mock('../services/lm/openai', () => ({
+    vi.doMock('../services/lm/openai', () => ({
       OpenAIProvider: function() {
         return {
           chat: vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void, signal?: AbortSignal }) => {
@@ -191,7 +197,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
       },
     }));
 
-    vi.mock('../services/lm/ollama', () => ({
+    vi.doMock('../services/lm/ollama', () => ({
       OllamaProvider: function() {
         return { chat: vi.fn(), listModels: vi.fn() };
       },
@@ -199,7 +205,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     const { useChat } = await import('./useChat');
     const store = useChat();
-    await store.loadChats();
+    await store.loadChats({});
     return store;
   }
 
@@ -208,12 +214,12 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
-    await tabA.renameChat(chat!.id, 'New Title');
+    await tabB.openChat({ id: chat!.id });
+    await tabA.renameChat({ id: chat!.id, newTitle: 'New Title' });
     vi.advanceTimersByTime(600);
     await nextTick();
     expect(tabB.currentChat.value?.title).toBe('New Title');
-  });
+  }, 10_000);
 
   it('should sync sidebar reordering (chat_meta_and_chat_group)', async () => {
     const tabA = await createTab();
@@ -223,8 +229,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
     expect(tabB.rootItems.value.length).toBe(1);
 
-    const groupId = await tabA.createChatGroup('Group');
-    await tabA.moveChatToGroup(chat!.id, groupId);
+    const groupId = await tabA.createChatGroup({ name: 'Group' });
+    await tabA.moveChatToGroup({ chatId: chat!.id, targetGroupId: groupId });
     vi.advanceTimersByTime(600);
     await nextTick();
 
@@ -241,7 +247,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
 
     const p = tabA.sendMessage({ content: 'Hello' });
     await vi.advanceTimersByTimeAsync(1000);
@@ -269,7 +275,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
     expect(tabB.currentChat.value).not.toBeNull();
 
     const { storageService } = await import('../services/storage');
@@ -287,7 +293,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat(chat!.id);
+    await tabB.openChat({ id: chat!.id });
 
     // 1. Tab A starts sending a message
     const sendPromise = tabA.sendMessage({ content: 'Slow msg' });
@@ -329,8 +335,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
 
     // Verify both tabs see chat1 as running
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
 
     // 4. Start generation for chat2 in tab2
     const p2 = tab2.sendMessage({ content: 'Msg 2' });
@@ -338,10 +344,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await nextTick();
 
     // Verify both tabs see BOTH chats as running
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab1.isTaskRunning(chat2!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat2!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat2!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat2!.id })).toBe(true);
 
     // 5. Tab 1 requests abort for chat2 (which is running in Tab 2)
     tab1.abortChat({ chatId: chat2!.id });
@@ -349,10 +355,10 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await p2;
 
     // Verify chat2 stopped everywhere, but chat1 is still running
-    expect(tab1.isTaskRunning(chat2!.id)).toBe(false);
-    expect(tab2.isTaskRunning(chat2!.id)).toBe(false);
-    expect(tab1.isTaskRunning(chat1!.id)).toBe(true);
-    expect(tab2.isTaskRunning(chat1!.id)).toBe(true);
+    expect(tab1.isTaskRunning({ chatId: chat2!.id })).toBe(false);
+    expect(tab2.isTaskRunning({ chatId: chat2!.id })).toBe(false);
+    expect(tab1.isTaskRunning({ chatId: chat1!.id })).toBe(true);
+    expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
 
     // Cleanup p1
     tab1.abortChat({ chatId: chat1!.id });

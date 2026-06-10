@@ -100,11 +100,11 @@ describe('Transformers.js Onboarding Integration', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       fetchModels: vi.fn(),
-      setIsOnboardingDismissed: (val: boolean) => {
-        mockIsOnboardingDismissed.value = val;
+      setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => {
+        mockIsOnboardingDismissed.value = dismissed;
       },
-      setOnboardingDraft: (val: any) => {
-        mockOnboardingDraft.value = val;
+      setOnboardingDraft: ({ draft }: { draft: any }) => {
+        mockOnboardingDraft.value = draft;
       },
     });
 
@@ -230,7 +230,7 @@ describe('Transformers.js Onboarding Integration', () => {
     await flushPromises();
     await nextTick();
 
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith('new-model');
+    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'new-model' });
   });
 
   it('updates selectedModel when TransformersJsManager emits model-loaded', async () => {
@@ -266,10 +266,10 @@ describe('Transformers.js Onboarding Integration', () => {
     await getStartedBtn?.trigger('click');
     await flushPromises();
 
-    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
       endpointType: 'transformers_js',
       defaultModelId: 'downloaded-model'
-    }));
+    }) });
   });
 
   it('automatically loads model after successful download in TransformersJsManager (Integrated flow)', async () => {
@@ -290,12 +290,12 @@ describe('Transformers.js Onboarding Integration', () => {
     const downloadBtn = manager.findAll('button').find(b => b.text().includes('Download Model'));
     await downloadBtn?.trigger('click');
 
-    expect(transformersJsService.downloadModel).toHaveBeenCalledWith('new-download-model');
+    expect(transformersJsService.downloadModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
 
     // Wait for download to finish
     await flushPromises();
 
     // Should have automatically called loadModel (logic is inside TransformersJsManager)
-    expect(transformersJsService.loadModel).toHaveBeenCalledWith('new-download-model');
+    expect(transformersJsService.loadModel).toHaveBeenCalledWith({ modelId: 'new-download-model' });
   });
 });

@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import ChatGroupSearchPreview from './ChatGroupSearchPreview.vue';
 import { nextTick } from 'vue';
 import { storageService } from '@/services/storage';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 
 // --- Mocks ---
 
@@ -28,10 +29,8 @@ vi.mock('../composables/useGlobalSearch', () => ({
 }));
 
 const mockOpenChat = vi.fn();
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    openChat: mockOpenChat,
-  }),
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: vi.fn(),
 }));
 
 // Mock Lucide icons
@@ -55,6 +54,14 @@ describe('ChatGroupSearchPreview Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useChatNavigation).mockReturnValue({
+      openChat: vi.fn().mockImplementation(async ({ chatId }) => {
+        await mockOpenChat({ id: chatId });
+      }),
+      openChatAtMessage: vi.fn(),
+      openChatGroup: vi.fn(),
+      TEST_ONLY: {},
+    });
     vi.mocked(storageService.listChats).mockResolvedValue([
       { id: 'c1', title: 'Chat 1', groupId: 'g1', updatedAt: 100 },
       { id: 'c2', title: 'Chat 2', groupId: 'g1', updatedAt: 200 },
@@ -100,7 +107,7 @@ describe('ChatGroupSearchPreview Component', () => {
     const openButton = wrapper.find('button[title="Open Chat"]');
     await openButton.trigger('click');
 
-    expect(mockOpenChat).toHaveBeenCalledWith('c2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'c2' });
     expect(mockPush).toHaveBeenCalledWith('/chat/c2');
     expect(mockCloseSearch).toHaveBeenCalled();
   });

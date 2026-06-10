@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { useChatGroups } from '@/composables/chat/useChatGroups';
+import { useChatModels } from '@/composables/chat/useChatModels';
+import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import {
   Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon,
@@ -21,34 +24,32 @@ import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
-const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
+const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 // Lazily load modals that are only shown on-demand
-const RecipeExportModal = defineAsyncComponentAndLoadOnMounted(() => import('./RecipeExportModal.vue'));
+const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeExportModal.vue') });
 // Lazily load upsell UI
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
 
 import { ENDPOINT_PRESETS } from '@/models/constants';
 import type { ChatGroup } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { naturalSort } from '@/utils/string';
 import { hasGroupOverrides } from '@/utils/chat-settings-resolver';
+import type { WeshMount } from '@/services/wesh/types';
 
-const chatStore = useChat();
-const {
-  currentChatGroup,
-  fetchingModels,
-  addMountToChatGroup,
-  removeMountFromChatGroup,
-  updateChatGroupMount,
-} = chatStore;
+const { currentChatGroup } = useCurrentChatState();
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
+const chatGroups = useChatGroups({});
+const chatModels = useChatModels({});
 const { openFileExplorer } = useFileExplorerModal();
+const chatGroupMountsActions = useChatGroupMounts({});
+const isFetchingModels = computed(() => chatModels.fetchingModels.value);
 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
 const groupModels = ref<string[]>([]);
-const sortedGroupModels = computed(() => naturalSort(groupModels.value || []));
+const sortedGroupModels = computed(() => naturalSort({ values: groupModels.value || [] }));
 
 const effectiveEndpointType = computed(() => {
   return localSettings.value.endpoint?.type || settings.value.endpointType;
@@ -65,33 +66,37 @@ const chatGroupMounts = computed<readonly Mount[]>(() => currentChatGroup.value?
 const existingChatGroupMountPaths = computed(() => chatGroupMounts.value.map(m => m.mountPath));
 
 async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
-  if (!currentChatGroup.value) return;
-  await addMountToChatGroup({
-    groupId: currentChatGroup.value.id,
+  const chatGroupId = currentChatGroup.value?.id;
+  if (!chatGroupId) return;
+  await chatGroupMountsActions.addMount({
+    chatGroupId,
     mount: { type: 'volume', volumeId, mountPath, readOnly },
   });
 }
 
 async function handleChatGroupMountRemove({ volumeId }: { volumeId: string }) {
-  if (!currentChatGroup.value) return;
-  await removeMountFromChatGroup({ groupId: currentChatGroup.value.id, volumeId });
+  const chatGroupId = currentChatGroup.value?.id;
+  if (!chatGroupId) return;
+  await chatGroupMountsActions.removeMount({ chatGroupId, volumeId });
 }
 
 async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
-  if (!currentChatGroup.value) return;
+  const chatGroupId = currentChatGroup.value?.id;
+  if (!chatGroupId) return;
   const mount = chatGroupMounts.value.find(m => m.volumeId === volumeId);
   if (!mount) return;
-  await updateChatGroupMount({ groupId: currentChatGroup.value.id, volumeId, mountPath: mount.mountPath, readOnly });
+  await chatGroupMountsActions.updateMount({ chatGroupId, volumeId, mountPath: mount.mountPath, readOnly });
 }
 
 async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {
   const mounts = chatGroupMounts.value;
   if (mounts.length === 0) return;
-  const workerMounts = [];
+  const workerMounts: WeshMount[] = [];
   for (const m of mounts) {
     const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
     if (!handle) continue;
     workerMounts.push({
+      type: 'directory',
       path: m.mountPath,
       handle,
       readOnly: m.readOnly,
@@ -99,13 +104,13 @@ async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string
   }
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
   const initialPath = clickedMount?.mountPath.split('/').filter(Boolean);
-  openFileExplorer({
+  openFileExplorer({ options: {
     kind: 'wesh-mounts',
     title: 'Folders',
     rootName: 'Files',
     mounts: workerMounts,
     initialPath,
-  });
+  } });
 }
 
 function handleCreateRecipe() {
@@ -130,7 +135,7 @@ onMounted(() => {
   if (currentChatGroup.value) {
     const url = localSettings.value.endpoint?.url || settings.value.endpointUrl;
     const type = localSettings.value.endpoint?.type || settings.value.endpointType;
-    if (type === 'transformers_js' || isLocalhost(url)) {
+    if (type === 'transformers_js' || isLocalhost({ url })) {
       fetchModels();
     }
   }
@@ -152,16 +157,19 @@ const hasActiveOverrides = computed(() => {
 
 async function saveChanges() {
   if (currentChatGroup.value) {
-    await chatStore.updateChatGroupMetadata(currentChatGroup.value.id, localSettings.value);
+    await chatGroups.updateChatGroupMetadata({
+      chatGroupId: currentChatGroup.value.id,
+      updates: localSettings.value,
+    });
   }
 }
 
-function isLocalhost(url: string | undefined) {
+function isLocalhost({ url }: { url: string | undefined }) {
   if (!url) return false;
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
-async function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   localSettings.value.endpoint = { type: preset.type, url: preset.url };
   error.value = null;
   await saveChanges();
@@ -192,7 +200,7 @@ async function addHeader() {
   localSettings.value.endpoint.httpHeaders.push(['', '']);
 }
 
-async function removeHeader(index: number) {
+async function removeHeader({ index }: { index: number }) {
   if (localSettings.value.endpoint?.httpHeaders) {
     localSettings.value.endpoint.httpHeaders.splice(index, 1);
     await saveChanges();
@@ -212,8 +220,13 @@ async function fetchModels() {
     }
 
     try {
-      const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      const models = await chatStore.fetchAvailableModels({ chatId: undefined, customEndpoint: { type, url, headers: mutableHeaders } });
+      const models = await chatModels.fetchForEndpoint({
+        customEndpoint: {
+          type,
+          url,
+          headers: headers ? JSON.parse(JSON.stringify(headers)) : undefined,
+        },
+      });
       groupModels.value = models;
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
@@ -236,13 +249,13 @@ watch([
   () => localSettings.value.endpoint?.type,
 ], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
+  if (type === 'transformers_js' || (url && isLocalhost({ url: url as string }))) {
     fetchModels();
   }
 });
 
 /*
-async function updateSystemPromptContent(content: string) {
+async function updateSystemPromptContent({ content }: { content: string }) {
   if (!content && (!localSettings.value.systemPrompt || localSettings.value.systemPrompt.behavior === 'override')) {
     localSettings.value.systemPrompt = undefined;
   } else if (!localSettings.value.systemPrompt) {
@@ -253,7 +266,7 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inherit', isClear = false) {
+async function updateSystemPromptBehavior({ behavior, isClear = false }: { behavior: 'override' | 'append' | 'inherit'; isClear?: boolean }) {
   switch (behavior) {
   case 'inherit':
     localSettings.value.systemPrompt = undefined;
@@ -294,7 +307,17 @@ async function setGroupNameFromModelId() {
   if (!modelId || !currentChatGroup.value) return;
 
   const newName = modelId.split('/').pop() || modelId;
-  await chatStore.updateChatGroupMetadata(currentChatGroup.value.id, { name: newName });
+  await storageService.updateChatGroup(currentChatGroup.value.id, (current) => {
+    if (current === null) {
+      throw new Error('Chat group not found');
+    }
+
+    return {
+      ...current,
+      name: newName,
+      updatedAt: Date.now(),
+    };
+  });
 }
 
 
@@ -310,8 +333,8 @@ defineExpose({
     v-if="currentChatGroup"
     class="flex flex-col h-full bg-[#fcfcfd] dark:bg-gray-900 transition-colors relative overflow-hidden focus:outline-none"
     tabindex="-1"
-    @click="setActiveFocusArea('chat-group-settings')"
-    @focusin="setActiveFocusArea('chat-group-settings')"
+    @click="setActiveFocusArea({ area: 'chat-group-settings' })"
+    @focusin="setActiveFocusArea({ area: 'chat-group-settings' })"
   >
     <!-- Header -->
     <div class="border-b border-gray-100 dark:border-gray-800 px-4 sm:px-6 py-3 flex items-center justify-between bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm z-20">
@@ -403,7 +426,7 @@ defineExpose({
                 <button
                   v-for="preset in ENDPOINT_PRESETS"
                   :key="preset.name"
-                  @click="applyPreset(preset)"
+                  @click="applyPreset({ preset })"
                   type="button"
                   class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
                   :class="localSettings.endpoint?.url === preset.url && localSettings.endpoint?.type === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
@@ -494,7 +517,7 @@ defineExpose({
                   placeholder="Value"
                 />
                 <button
-                  @click="removeHeader(index)"
+                  @click="removeHeader({ index })"
                   class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                 >
                   <Trash2Icon class="w-3.5 h-3.5" />
@@ -521,7 +544,7 @@ defineExpose({
               <ModelSelector
                 :model-value="localSettings.modelId"
                 @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
-                :loading="fetchingModels"
+                :loading="isFetchingModels"
                 :models="sortedGroupModels"
                 :placeholder="'Global (' + (settings.defaultModelId || 'None') + ')'"
                 :allow-clear="true"
@@ -588,7 +611,7 @@ defineExpose({
                 :model-value="localSettings.titleModelId"
                 @update:model-value="val => { localSettings.titleModelId = val; saveChanges(); }"
                 :models="sortedGroupModels"
-                :loading="fetchingModels"
+                :loading="isFetchingModels"
                 :placeholder="'Global (' + (settings.titleModelId || 'None') + ')'"
                 :allow-clear="true"
                 @refresh="fetchModels"
@@ -648,28 +671,28 @@ defineExpose({
 
                 <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                   <button
-                    @click="updateSystemPromptBehavior('inherit')"
+                    @click="updateSystemPromptBehavior({ behavior: 'inherit' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Inherit
                   </button>
                   <button
-                    @click="updateSystemPromptBehavior('override', true)"
+                    @click="updateSystemPromptBehavior({ behavior: 'override', isClear: true })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Clear
                   </button>
                   <button
-                    @click="updateSystemPromptBehavior('override')"
+                    @click="updateSystemPromptBehavior({ behavior: 'override' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >
                     Override
                   </button>
                   <button
-                    @click="updateSystemPromptBehavior('append')"
+                    @click="updateSystemPromptBehavior({ behavior: 'append' })"
                     class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                     :class="localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                   >

@@ -61,7 +61,7 @@ const copyContent = async () => {
 };
 
 // JSON Processing (Escaping + Optional Highlighting + Sanitization)
-const processJsonOutput = (json: string) => {
+const processJsonOutput = ({ json }: { json: string }) => {
   // 1. First, encode everything as plain text by escaping HTML special chars
   const escaped = json
     .replace(/&/g, '&amp;')
@@ -100,7 +100,7 @@ const processJsonOutput = (json: string) => {
 const jsonOutput = computed(() => {
   const cleanNode = { ...props.node, replies: undefined };
   const json = JSON.stringify(cleanNode, null, 2);
-  return processJsonOutput(json);
+  return processJsonOutput({ json });
 });
 
 const isoTimestamp = computed(() => {
@@ -152,7 +152,7 @@ const inlineImages = computed(() => {
 
 const cleanContentCompact = computed(() => {
   if (!props.node.content) return '';
-  const stripped = stripNaidanSentinels(props.node.content).trim();
+  const stripped = stripNaidanSentinels({ content: props.node.content }).trim();
   return stripped.slice(0, 50) + (stripped.length > 50 ? '...' : '');
 });
 
@@ -162,7 +162,7 @@ async function loadThumbnails() {
     for (const att of props.node.attachments) {
       if (att.mimeType.startsWith('image/') && !thumbnailUrls.value[att.binaryObjectId]) {
         try {
-          const blob = await storageService.getFile(att.binaryObjectId);
+          const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
           if (blob) {
             thumbnailUrls.value[att.binaryObjectId] = URL.createObjectURL(blob);
           }
@@ -177,7 +177,7 @@ async function loadThumbnails() {
   for (const img of inlineImages.value) {
     if (!thumbnailUrls.value[img.binaryObjectId]) {
       try {
-        const blob = await storageService.getFile(img.binaryObjectId);
+        const blob = await storageService.getFile({ binaryObjectId: img.binaryObjectId });
         if (blob) {
           thumbnailUrls.value[img.binaryObjectId] = URL.createObjectURL(blob);
         }

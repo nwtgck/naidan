@@ -113,7 +113,7 @@ const activePreset = computed(() => {
   return 'custom';
 });
 
-function applyPreset(preset: 'append' | 'replace') {
+function applyPreset({ preset }: { preset: 'append' | 'replace' }) {
   switch (preset) {
   case 'append':
     importConfig.value = JSON.parse(JSON.stringify(APPEND_DEFAULT_CONFIG));
@@ -176,7 +176,7 @@ async function handleExport() {
   }
 }
 
-async function handleFileSelect(event: Event) {
+async function handleFileSelect({ event }: { event: Event }) {
   const target = event.target as HTMLInputElement;
   const files = target.files;
   if (!files || files.length === 0) return;
@@ -211,11 +211,11 @@ async function handleImportExecute() {
 
   try {
     // 1. Verify before destructive restore
-    await service.verify(file, importConfig.value);
+    await service.verify({ zipFile: file, config: importConfig.value });
 
     // 2. Execute
     processingMessage.value = 'Importing data...';
-    await service.executeImport(file, importConfig.value);
+    await service.executeImport({ zipFile: file, config: importConfig.value });
 
     addToast({ message: 'Import successful!', duration: 3000 });
 
@@ -293,7 +293,7 @@ defineExpose({
 
             <!-- Import Card -->
             <label class="p-6 rounded-3xl border-2 border-gray-100 dark:border-gray-800 hover:border-green-500 dark:hover:border-green-500 hover:bg-green-50/10 dark:hover:bg-green-900/5 transition-all cursor-pointer group flex flex-col gap-4 relative">
-              <input type="file" accept=".zip" class="hidden" @change="handleFileSelect" />
+              <input type="file" accept=".zip" class="hidden" @change="handleFileSelect({ event: $event })" />
               <div class="p-3 bg-green-100 dark:bg-green-900/30 rounded-2xl w-fit text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform">
                 <component :is="ImportIcon" class="w-6 h-6" />
               </div>
@@ -404,7 +404,7 @@ defineExpose({
                 </h3>
                 <div class="flex gap-2">
                   <button v-if="activePreset === 'custom'"
-                          @click="applyPreset(importConfig.data.mode)"
+                          @click="applyPreset({ preset: importConfig.data.mode })"
                           class="text-[9px] font-black uppercase tracking-widest bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800/50 hover:bg-amber-200 transition-colors">
                     Custom (Click to Reset)
                   </button>
@@ -421,7 +421,7 @@ defineExpose({
                     <div class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
                       <CopyPlusIcon class="w-4 h-4" /> Append (Merge)
                     </div>
-                    <input type="radio" :checked="activePreset === 'append'" @change="applyPreset('append')" class="w-4 h-4 accent-blue-600" />
+                    <input type="radio" :checked="activePreset === 'append'" @change="applyPreset({ preset: 'append' })" class="w-4 h-4 accent-blue-600" />
                   </div>
                   <p class="text-xs text-gray-500 dark:text-gray-400">Add new items from the ZIP file while keeping your current data intact.</p>
                 </label>
@@ -432,7 +432,7 @@ defineExpose({
                     <div class="font-bold text-gray-800 dark:text-white flex items-center gap-2">
                       <RefreshCwIcon class="w-4 h-4" /> Replace (Restore)
                     </div>
-                    <input type="radio" :checked="activePreset === 'replace'" @change="applyPreset('replace')" class="w-4 h-4 accent-blue-600" />
+                    <input type="radio" :checked="activePreset === 'replace'" @change="applyPreset({ preset: 'replace' })" class="w-4 h-4 accent-blue-600" />
                   </div>
                   <p class="text-xs text-gray-500 dark:text-gray-400">Clear current data and restore state from the ZIP file.</p>
                 </label>

@@ -55,7 +55,7 @@ const isOpen = ref(false);
 const options = shallowRef<FileExplorerModalOptions>({ kind: 'opfs-root' });
 
 export function useFileExplorerModal() {
-  function openFileExplorer(opts?: FileExplorerModalOptions): void {
+  function openFileExplorer({ options: opts }: { options?: FileExplorerModalOptions }): void {
     options.value = opts ?? { kind: 'opfs-root' };
     isOpen.value = true;
   }

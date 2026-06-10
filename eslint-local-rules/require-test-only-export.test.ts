@@ -75,6 +75,7 @@ describe('require-test-only-export rule', () => {
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('TEST_ONLY: {');
     expect(fixedResult.output).toContain('// Export internal state and logic used only for testing here.');
+    expect(fixedResult.output).toContain('// ESLint-required for useXxx return objects.');
   });
 
   it('should report error for arrow function useXxx missing TEST_ONLY', async () => {
@@ -172,5 +173,88 @@ describe('require-test-only-export rule', () => {
     const result = await fix(code);
     expect(result.output).toContain('x: 1,');
     expect(result.output).toContain('TEST_ONLY: {');
+  });
+
+  it('should report Record<string, never> on TEST_ONLY type annotations', async () => {
+    const result = await lint(`
+      type ExampleAdapter = {
+        TEST_ONLY: Record<string, never>;
+      };
+    `);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.message).toContain('Record<string, ...>');
+  });
+
+  it('should report optional Record<string, never> on TEST_ONLY type annotations', async () => {
+    const result = await lint(`
+      type ExampleAdapter = {
+        TEST_ONLY?: Record<string, never>;
+      };
+    `);
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages.some((message) => message.message.includes('required property'))).toBe(true);
+  });
+
+  it('should report optional Record<never, never> on TEST_ONLY type annotations', async () => {
+    const result = await lint(`
+      type ExampleAdapter = {
+        TEST_ONLY?: Record<never, never>;
+      };
+    `);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.message).toContain('required property');
+  });
+
+  it('should allow Record<never, never> on TEST_ONLY type annotations', async () => {
+    const result = await lint(`
+      type ExampleAdapter = {
+        TEST_ONLY: Record<never, never>;
+      };
+    `);
+
+    expect(result.messages).toHaveLength(0);
+  });
+
+  it('should allow explicit object types on TEST_ONLY type annotations', async () => {
+    const result = await lint(`
+      type ExampleAdapter = {
+        TEST_ONLY: {
+          reset({}: Record<never, never>): void;
+          count: number;
+        };
+      };
+    `);
+
+    expect(result.messages).toHaveLength(0);
+  });
+
+  it('should allow named type references on TEST_ONLY type annotations', async () => {
+    const result = await lint(`
+      type TestOnlyApi = {
+        reset({}: Record<never, never>): void;
+      };
+
+      type ExampleAdapter = {
+        TEST_ONLY: TestOnlyApi;
+      };
+    `);
+
+    expect(result.messages).toHaveLength(0);
+  });
+
+  it('should report string index signatures inside TEST_ONLY object types', async () => {
+    const result = await lint(`
+      type ExampleAdapter = {
+        TEST_ONLY: {
+          [key: string]: unknown;
+        };
+      };
+    `);
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]?.message).toContain('index signatures');
   });
 });

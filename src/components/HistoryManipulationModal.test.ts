@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import HistoryManipulationModal from './HistoryManipulationModal.vue';
-import { useChat } from '@/composables/useChat';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { storageService } from '@/services/storage';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
+import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
 
 // Mock vuedraggable
 vi.mock('vuedraggable', () => ({
@@ -14,9 +15,12 @@ vi.mock('vuedraggable', () => ({
   }
 }));
 
-// Mock useChat
-vi.mock('../composables/useChat', () => ({
-  useChat: vi.fn()
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
+}));
+
+vi.mock('../composables/chat/chat-scoped/chat-history-flow', () => ({
+  commitFullHistoryManipulationForChat: vi.fn(),
 }));
 
 // Mock useLayout
@@ -39,12 +43,19 @@ describe('HistoryManipulationModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useChat as any).mockReturnValue({
-      currentChat: mockCurrentChat,
-      activeMessages: mockActiveMessages,
-      inheritedSettings: mockInheritedSettings,
-      commitFullHistoryManipulation: mockCommit
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      currentChatId: computed(() => 'chat-1'),
+      currentChat: computed(() => mockCurrentChat.value as any),
+      currentChatGroup: computed(() => null),
+      activeMessages: computed(() => mockActiveMessages.value),
+      allMessages: computed(() => mockActiveMessages.value),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => mockInheritedSettings.value as any),
+      chatGroups: computed(() => []),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
     });
+    vi.mocked(commitFullHistoryManipulationForChat).mockImplementation(mockCommit);
     mockActiveMessages.value = [
       { id: '1', role: 'user', content: 'Msg 1', replies: { items: [] } },
       { id: '2', role: 'assistant', content: 'Msg 2', replies: { items: [] } }
@@ -176,10 +187,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = buttons.find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Msg 2' }),
-      expect.objectContaining({ content: 'Msg 1' })
-    ], undefined);
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Msg 2' }),
+        expect.objectContaining({ content: 'Msg 1' })
+      ],
+      systemPrompt: undefined
+    });
   });
 
   it('calls commitFullHistoryManipulation on save', async () => {
@@ -192,10 +207,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = buttons.find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Updated Msg 1' }),
-      expect.objectContaining({ content: 'Msg 2' })
-    ], undefined);
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Updated Msg 1' }),
+        expect.objectContaining({ content: 'Msg 2' })
+      ],
+      systemPrompt: undefined
+    });
     expect(wrapper.emitted().close).toBeTruthy();
   });
 
@@ -215,10 +234,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = wrapper.findAll('button').find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Msg 1' }),
-      expect.objectContaining({ content: 'Msg 2' })
-    ], { behavior: 'override', content: 'New System Prompt' });
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Msg 1' }),
+        expect.objectContaining({ content: 'Msg 2' })
+      ],
+      systemPrompt: { behavior: 'override', content: 'New System Prompt' }
+    });
   });
 
   it('commits system prompt CLEAR behavior', async () => {
@@ -231,10 +254,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = wrapper.findAll('button').find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Msg 1' }),
-      expect.objectContaining({ content: 'Msg 2' })
-    ], { behavior: 'override', content: null });
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Msg 1' }),
+        expect.objectContaining({ content: 'Msg 2' })
+      ],
+      systemPrompt: { behavior: 'override', content: null }
+    });
   });
 
   it('commits system prompt INHERIT behavior', async () => {
@@ -248,10 +275,14 @@ describe('HistoryManipulationModal', () => {
     const saveButton = wrapper.findAll('button').find(b => b.text().includes('Apply Changes'));
     await saveButton?.trigger('click');
 
-    expect(mockCommit).toHaveBeenCalledWith('chat-1', [
-      expect.objectContaining({ content: 'Msg 1' }),
-      expect.objectContaining({ content: 'Msg 2' })
-    ], undefined);
+    expect(mockCommit).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      messages: [
+        expect.objectContaining({ content: 'Msg 1' }),
+        expect.objectContaining({ content: 'Msg 2' })
+      ],
+      systemPrompt: undefined
+    });
   });
 
   it('emits close on discard', async () => {

@@ -113,14 +113,14 @@ export abstract class IStorageProvider {
    */
   abstract saveChatContent(id: string, content: ChatContent): Promise<void>;
 
-  abstract loadChat(id: string): Promise<Chat | null>;
-  abstract loadChatMeta(id: string): Promise<ChatMeta | null>;
-  abstract loadChatContent(id: string): Promise<ChatContent | null>;
-  abstract deleteChat(id: string): Promise<void>;
+  abstract loadChat({ id }: { id: string }): Promise<Chat | null>;
+  abstract loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null>;
+  abstract loadChatContent({ id }: { id: string }): Promise<ChatContent | null>;
+  abstract deleteChat({ id }: { id: string }): Promise<void>;
 
   abstract saveChatGroup(chatGroup: ChatGroup): Promise<void>;
-  abstract loadChatGroup(id: string): Promise<ChatGroup | null>;
-  abstract deleteChatGroup(id: string): Promise<void>;
+  abstract loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null>;
+  abstract deleteChatGroup({ id }: { id: string }): Promise<void>;
 
   abstract saveSettings(settings: Settings): Promise<void>;
   abstract loadSettings(): Promise<Settings | null>;
@@ -137,9 +137,9 @@ export abstract class IStorageProvider {
     name: string;
     mimeType: string | undefined;
   }): Promise<void>;
-  abstract getFile(binaryObjectId: string): Promise<Blob | null>;
+  abstract getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null>;
   abstract getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null>;
   abstract hasAttachments(): Promise<boolean>;
   abstract listBinaryObjects(): AsyncIterable<BinaryObject>;
-  abstract deleteBinaryObject(binaryObjectId: string): Promise<void>;
+  abstract deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void>;
 }

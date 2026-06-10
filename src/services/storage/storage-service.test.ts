@@ -76,21 +76,21 @@ describe('StorageService Initialization Defaults', () => {
   it('should use opfs when requested and supported', async () => {
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
 
-    await storageService.init('opfs');
+    await storageService.init({ type: 'opfs' });
     expect(storageService.getCurrentType()).toBe('opfs');
   });
 
   it('should use local when requested even if opfs is supported', async () => {
     (navigator.storage.getDirectory as any).mockResolvedValue(mockDirectoryHandle);
 
-    await storageService.init('local');
+    await storageService.init({ type: 'local' });
     expect(storageService.getCurrentType()).toBe('local');
   });
 
   it('should fallback to "local" if "opfs" was requested but is no longer supported', async () => {
     (navigator.storage.getDirectory as any).mockRejectedValue(new Error('No OPFS'));
 
-    await storageService.init('opfs');
+    await storageService.init({ type: 'opfs' });
     expect(storageService.getCurrentType()).toBe('local');
   });
 });
@@ -129,7 +129,7 @@ describe('StorageService Migration', () => {
 
   it('should migrate data when switching from local to opfs', async () => {
     // Act
-    await storageService.switchProvider('opfs');
+    await storageService.switchProvider({ type: 'opfs' });
 
     // Assert
     expect(mockLocalProvider.dump).toHaveBeenCalled();
@@ -143,7 +143,7 @@ describe('StorageService Migration', () => {
     mockOpfsProvider.restore.mockRejectedValue(error);
 
     // Act & Assert
-    await expect(storageService.switchProvider('opfs')).rejects.toThrow(error);
+    await expect(storageService.switchProvider({ type: 'opfs' })).rejects.toThrow(error);
 
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       source: 'StorageService:switchProvider',
@@ -198,7 +198,7 @@ describe('StorageService Migration', () => {
       }
     });
 
-    await storageService.switchProvider('opfs');
+    await storageService.switchProvider({ type: 'opfs' });
 
     // Should have rescued the attachment
     const binaryChunk = receivedChunks.find(c => c.type === 'binary_object');
@@ -260,7 +260,7 @@ describe('StorageService Migration', () => {
       }
     });
 
-    await storageService.switchProvider('opfs');
+    await storageService.switchProvider({ type: 'opfs' });
 
     const binaryChunk = receivedChunks.find(c => c.type === 'binary_object');
     expect(binaryChunk).toBeDefined();

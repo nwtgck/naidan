@@ -43,10 +43,10 @@ describe('useBinaryActions', () => {
     });
     mockShowConfirm.mockResolvedValue(true);
 
-    const result = await deleteBinaryObject('bin-1');
+    const result = await deleteBinaryObject({ id: 'bin-1' });
 
     expect(result).toBe(true);
-    expect(storageService.deleteBinaryObject).toHaveBeenCalledWith('bin-1');
+    expect(storageService.deleteBinaryObject).toHaveBeenCalledWith({ binaryObjectId: 'bin-1' });
     expect(mockClosePreview).toHaveBeenCalled();
   });
 
@@ -55,7 +55,7 @@ describe('useBinaryActions', () => {
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({ id: 'bin-1' } as any);
     mockShowConfirm.mockResolvedValue(false);
 
-    const result = await deleteBinaryObject('bin-1');
+    const result = await deleteBinaryObject({ id: 'bin-1' });
 
     expect(result).toBe(false);
     expect(storageService.deleteBinaryObject).not.toHaveBeenCalled();
@@ -76,9 +76,9 @@ describe('useBinaryActions', () => {
     vi.spyOn(document.body, 'appendChild').mockImplementation(() => mockAnchor as any);
     vi.spyOn(document.body, 'removeChild').mockImplementation(() => mockAnchor as any);
 
-    await downloadBinaryObject({ id: 'bin-1', name: 'test.png' });
+    await downloadBinaryObject({ obj: { id: 'bin-1', name: 'test.png' } });
 
-    expect(storageService.getFile).toHaveBeenCalledWith('bin-1');
+    expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: 'bin-1' });
     expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
     expect(mockAnchor.download).toBe('test.png');
     expect(mockAnchor.click).toHaveBeenCalled();

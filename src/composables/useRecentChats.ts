@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import { useChat } from './useChat';
+import { useChatListData } from '@/composables/chat/ui/useChatListData';
 import { useOverlay } from './useOverlay';
 import type { ChatSummary } from '@/models/types';
 
@@ -18,7 +18,7 @@ const recentChatEntries = ref<RecentChatEntry[]>([]);
 const MAX_RECENT_CHATS = 32;
 
 export function useRecentChats() {
-  const { chats } = useChat();
+  const { chats } = useChatListData();
 
   const openRecent = () => {
     _openOverlay({ type: 'recent' });

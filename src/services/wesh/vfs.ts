@@ -11,6 +11,7 @@ import type {
   WeshOpenFlags,
   WeshEfficientBlobReadResult,
   WeshEfficientFileWriteResult,
+  WeshVirtualMountProvider,
 } from './types';
 import {
   WeshBrokenPipeError,
@@ -37,7 +38,7 @@ interface RegistryEntry {
 
 // --- Mappers ---
 
-function mapDtoToDomain(dto: WeshRegistryEntryDto): RegistryEntry {
+function mapDtoToDomain({ dto }: { dto: WeshRegistryEntryDto }): RegistryEntry {
   switch (dto.type) {
   case 'symlink':
     return {
@@ -71,7 +72,7 @@ function mapDtoToDomain(dto: WeshRegistryEntryDto): RegistryEntry {
   }
 }
 
-function mapDomainToDto(entry: RegistryEntry): WeshRegistryEntryDto {
+function mapDomainToDto({ entry }: { entry: RegistryEntry }): WeshRegistryEntryDto {
   switch (entry.type) {
   case 'symlink':
     return {
@@ -357,15 +358,25 @@ class DevZeroHandle implements WeshFileHandle {
 
 // --- VFS Implementation ---
 
-interface MountEntry {
+interface DirectoryMountEntry {
+  type: 'directory';
   path: string;
   handle: FileSystemDirectoryHandle;
   readOnly: boolean;
   registryCache: Map<string, RegistryEntry>;
 }
 
+interface VirtualMountEntry {
+  type: 'virtual';
+  path: string;
+  readOnly: boolean;
+  provider: WeshVirtualMountProvider;
+}
+
+type MountEntry = DirectoryMountEntry | VirtualMountEntry;
+
 interface RegistryResolution {
-  mount: MountEntry;
+  mount: DirectoryMountEntry;
   relPath: string;
   entry: RegistryEntry;
 }
@@ -424,7 +435,27 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       // No metadata dir
     }
 
-    this.mounts.push({ path: normalizedPath, handle, readOnly: !!readOnly, registryCache });
+    this.mounts.push({ type: 'directory', path: normalizedPath, handle, readOnly: !!readOnly, registryCache });
+    this.mounts.sort((a, b) => b.path.length - a.path.length);
+  }
+
+  mountVirtual({
+    path,
+    readOnly,
+    provider,
+  }: {
+    path: string;
+    readOnly: boolean;
+    provider: WeshVirtualMountProvider;
+  }): void {
+    const normalizedPath = this.normalizePath({ path });
+    this.mounts = this.mounts.filter((m) => m.path !== normalizedPath);
+    this.mounts.push({
+      type: 'virtual',
+      path: normalizedPath,
+      readOnly,
+      provider,
+    });
     this.mounts.sort((a, b) => b.path.length - a.path.length);
   }
 
@@ -442,7 +473,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
           const text = await file.text();
           const json = JSON.parse(text);
           const dto = WeshRegistryEntrySchemaDto.parse(json);
-          cache.set(itemPath, mapDtoToDomain(dto));
+          cache.set(itemPath, mapDtoToDomain({ dto }));
         } catch (e) {
           console.warn(`Failed to parse registry entry ${itemPath}:`, e);
         }
@@ -475,6 +506,14 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle> {
     const normalized = this.normalizePath({ path: options.path });
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      return virtualMount.provider.open({
+        path: normalized,
+        flags: options.flags,
+        mode: options.mode,
+      });
+    }
     const create = options.flags.creation !== 'never';
     const truncate = options.flags.truncate === 'truncate';
     let resolved: ResolvedNode;
@@ -573,6 +612,11 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async stat(options: { path: string }): Promise<WeshStat> {
+    const normalized = this.normalizePath({ path: options.path });
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      return virtualMount.provider.stat({ path: normalized });
+    }
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'follow',
@@ -582,6 +626,11 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async lstat(options: { path: string }): Promise<WeshStat> {
+    const normalized = this.normalizePath({ path: options.path });
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      return virtualMount.provider.lstat({ path: normalized });
+    }
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'no-follow',
@@ -591,6 +640,11 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async readlink(options: { path: string }): Promise<string> {
+    const normalized = this.normalizePath({ path: options.path });
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      return virtualMount.provider.readlink({ path: normalized });
+    }
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'no-follow',
@@ -621,6 +675,14 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
+    const normalized = this.normalizePath({ path: options.path });
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      return {
+        fullPath: normalized,
+        stat: await virtualMount.provider.stat({ path: normalized }),
+      };
+    }
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'follow',
@@ -633,6 +695,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult> {
+    const normalized = this.normalizePath({ path: options.path });
+    if (this.findVirtualMount({ path: normalized }) !== undefined) {
+      return {
+        kind: 'fallback-required',
+        reason: WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED,
+      };
+    }
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'follow',
@@ -681,6 +750,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     path: string;
     mode: 'truncate' | 'append';
   }): Promise<WeshEfficientFileWriteResult> {
+    const normalized = this.normalizePath({ path: options.path });
+    if (this.findVirtualMount({ path: normalized }) !== undefined) {
+      throw new Error(`Read-only filesystem: ${normalized}`);
+    }
     let resolved: ResolvedNode;
     try {
       resolved = await this.resolveNode({
@@ -783,6 +856,14 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
 
   async *readDir(options: { path: string }): AsyncIterable<WeshDirEntry> {
+    const normalized = this.normalizePath({ path: options.path });
+    const virtualMount = this.findVirtualMount({ path: normalized });
+    if (virtualMount !== undefined) {
+      for await (const entry of virtualMount.provider.readDir({ path: normalized })) {
+        yield entry;
+      }
+      return;
+    }
     const resolved = await this.resolveNode({
       path: options.path,
       finalSymlinkTreatment: 'follow',
@@ -828,13 +909,23 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         }
         }
 
-        if (mount) {
+        switch (mount?.type) {
+        case 'directory': {
           const childPath = resolved.fullPath === '/' ? `/${name}` : `${resolved.fullPath}/${name}`;
           const relPath = this.getRelativePath({ path: childPath, mount });
           const regEntry = mount.registryCache.get(relPath);
           if (regEntry) {
             type = regEntry.type;
           }
+          break;
+        }
+        case 'virtual':
+        case undefined:
+          break;
+        default: {
+          const _ex: never = mount;
+          throw new Error(`Unhandled mount entry: ${_ex}`);
+        }
         }
         seen.add(name);
         const fullPath = resolved.fullPath === '/' ? `/${name}` : `${resolved.fullPath}/${name}`;
@@ -867,6 +958,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
     const normalized = this.normalizePath({ path: options.path });
+    if (this.findVirtualMount({ path: normalized }) !== undefined) {
+      throw new Error(`Read-only filesystem: ${normalized}`);
+    }
     const parts = normalized.split('/').filter(p => p);
 
     let currentPath = '';
@@ -918,8 +1012,21 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void> {
     const normalized = this.normalizePath({ path: options.path });
+    if (this.findVirtualMount({ path: normalized }) !== undefined) {
+      throw new Error(`Read-only filesystem: ${normalized}`);
+    }
     const mount = this.findMount({ path: normalized });
-    if (!mount) throw new Error(`No mount point for ${normalized}`);
+    switch (mount?.type) {
+    case 'directory':
+      break;
+    case 'virtual':
+    case undefined:
+      throw new Error(`No mount point for ${normalized}`);
+    default: {
+      const _ex: never = mount;
+      throw new Error(`Unhandled mount entry: ${_ex}`);
+    }
+    }
     if (mount.readOnly) throw new Error('Read-only filesystem');
 
     const existing = await this.tryResolveNode({
@@ -954,6 +1061,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   async unlink(options: { path: string }): Promise<void> {
     const normalized = this.normalizePath({ path: options.path });
+    if (this.findVirtualMount({ path: normalized }) !== undefined) {
+      throw new Error(`Read-only filesystem: ${normalized}`);
+    }
     if (this.isMountPoint({ path: normalized })) {
       throw new Error(`Cannot unlink mount point: ${normalized}`);
     }
@@ -1010,6 +1120,9 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   }
   async rmdir(options: { path: string }): Promise<void> {
     const normalized = this.normalizePath({ path: options.path });
+    if (this.findVirtualMount({ path: normalized }) !== undefined) {
+      throw new Error(`Read-only filesystem: ${normalized}`);
+    }
     if (this.isMountPoint({ path: normalized })) {
       throw new Error(`Cannot remove mount point: ${normalized}`);
     }
@@ -1059,7 +1172,17 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   async mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void> {
     const normalized = this.normalizePath({ path: options.path });
     const mount = this.findMount({ path: normalized });
-    if (!mount) throw new Error(`No mount point for ${normalized}`);
+    switch (mount?.type) {
+    case 'directory':
+      break;
+    case 'virtual':
+    case undefined:
+      throw new Error(`No mount point for ${normalized}`);
+    default: {
+      const _ex: never = mount;
+      throw new Error(`Unhandled mount entry: ${_ex}`);
+    }
+    }
     if (mount.readOnly) throw new Error(`Read-only filesystem`);
 
     const relPath = this.getRelativePath({ path: normalized, mount });
@@ -1148,7 +1271,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const newMount = this.findMount({ path: newNormalized });
     const oldRelPath = oldMount ? this.getRelativePath({ path: oldNormalized, mount: oldMount }) : undefined;
     const newRelPath = newMount ? this.getRelativePath({ path: newNormalized, mount: newMount }) : undefined;
-    const oldRegistryEntry = oldMount && oldRelPath ? oldMount.registryCache.get(oldRelPath) : undefined;
+    const oldRegistryEntry = oldMount?.type === 'directory' && oldRelPath ? oldMount.registryCache.get(oldRelPath) : undefined;
 
     let sourceHandle: FileSystemHandle;
     switch (oldResolved.kind) {
@@ -1205,7 +1328,13 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
     }
 
-    if (oldRegistryEntry !== undefined && oldMount !== undefined && oldRelPath !== undefined && newMount !== undefined && newRelPath !== undefined) {
+    if (
+      oldRegistryEntry !== undefined
+      && oldMount?.type === 'directory'
+      && oldRelPath !== undefined
+      && newMount?.type === 'directory'
+      && newRelPath !== undefined
+    ) {
       oldMount.registryCache.delete(oldRelPath);
       await this.deleteRegistryEntry(oldMount, oldRelPath);
       newMount.registryCache.set(newRelPath, oldRegistryEntry);
@@ -1215,7 +1344,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
   // --- Registry Persistence Helpers ---
 
-  private async saveRegistryEntry(mount: MountEntry, relPath: string, entry: RegistryEntry) {
+  private async saveRegistryEntry(mount: DirectoryMountEntry, relPath: string, entry: RegistryEntry) {
     if (mount.readOnly) return;
 
     const systemDir = await mount.handle.getDirectoryHandle(WESH_SYSTEM_DIR, { create: true });
@@ -1230,12 +1359,12 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
     const fileHandle = await currentDir.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
-    const dto = mapDomainToDto(entry);
+    const dto = mapDomainToDto({ entry });
     await writable.write(JSON.stringify(dto));
     await writable.close();
   }
 
-  private async deleteRegistryEntry(mount: MountEntry, relPath: string) {
+  private async deleteRegistryEntry(mount: DirectoryMountEntry, relPath: string) {
     if (mount.readOnly) return;
     try {
       const systemDir = await mount.handle.getDirectoryHandle(WESH_SYSTEM_DIR);
@@ -1262,6 +1391,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
    */
   async getNativeHandle({ path }: { path: string }): Promise<FileSystemHandle | null> {
     try {
+      const normalized = this.normalizePath({ path });
+      if (this.findVirtualMount({ path: normalized }) !== undefined) {
+        return null;
+      }
       const resolved = await this.resolveNode({
         path,
         finalSymlinkTreatment: 'follow',
@@ -1314,7 +1447,22 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     });
   }
 
-  private getRelativePath({ path, mount }: { path: string; mount: MountEntry }): string {
+  private findVirtualMount({ path }: { path: string }): VirtualMountEntry | undefined {
+    const mount = this.findMount({ path });
+    switch (mount?.type) {
+    case 'virtual':
+      return mount;
+    case 'directory':
+    case undefined:
+      return undefined;
+    default: {
+      const _ex: never = mount;
+      throw new Error(`Unhandled mount entry: ${_ex}`);
+    }
+    }
+  }
+
+  private getRelativePath({ path, mount }: { path: string; mount: DirectoryMountEntry | VirtualMountEntry }): string {
     if (path === mount.path) return '.';
     const prefix = mount.path.endsWith('/') ? mount.path : mount.path + '/';
     return path.substring(prefix.length);
@@ -1403,7 +1551,17 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private async _resolvePhysical({ path }: { path: string }): Promise<{ handle: FileSystemHandle; readOnly: boolean; fullPath: string }> {
     const normalized = this.normalizePath({ path });
     const mount = this.findMount({ path: normalized });
-    if (!mount) throw new Error(`Path not found: ${path}`);
+    switch (mount?.type) {
+    case 'directory':
+      break;
+    case 'virtual':
+    case undefined:
+      throw new Error(`Path not found: ${path}`);
+    default: {
+      const _ex: never = mount;
+      throw new Error(`Unhandled mount entry: ${_ex}`);
+    }
+    }
     const relativePath = this.getRelativePath({ path: normalized, mount });
     if (relativePath === '.') {
       return { handle: mount.handle, readOnly: mount.readOnly, fullPath: normalized };
@@ -1454,7 +1612,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
   private getRegistryResolution({ path }: { path: string }): RegistryResolution | undefined {
     const normalized = this.normalizePath({ path });
     const mount = this.findMount({ path: normalized });
-    if (!mount) {
+    if (!mount || mount.type !== 'directory') {
       return undefined;
     }
     const relPath = this.getRelativePath({ path: normalized, mount });

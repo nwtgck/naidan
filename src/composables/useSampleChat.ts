@@ -2,7 +2,7 @@ import { generateId } from '@/utils/id';
 import type { Chat, MessageNode } from '@/models/types';
 import { storageService } from '@/services/storage';
 import sampleContent from '@/assets/sample-showcase.md?raw';
-import { useChat } from './useChat';
+import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
 import { processThinking } from '@/utils/chat-tree';
 
 const longSampleTopics = [
@@ -87,8 +87,8 @@ function longMessageContent({ turnIndex, role }: {
 
 async function persistSampleChat({ chat, loadChats, openChat }: {
   chat: Chat;
-  loadChats: () => Promise<void>;
-  openChat: (chatId: string) => Promise<unknown>;
+  loadChats: (_params: Record<string, never>) => Promise<void>;
+  openChat: ({ id }: { id: string }) => Promise<unknown>;
 }) {
   await storageService.updateChatContent(chat.id, () => ({
     root: chat.root,
@@ -100,12 +100,12 @@ async function persistSampleChat({ chat, loadChats, openChat }: {
     return curr;
   });
 
-  await loadChats();
-  await openChat(chat.id);
+  await loadChats({});
+  await openChat({ id: chat.id });
 }
 
 export function useSampleChat() {
-  const { loadChats, openChat } = useChat();
+  const { loadChats, openChat } = useChatBootstrap();
 
   const createSampleChat = async () => {
     const now = Date.now();
@@ -116,7 +116,7 @@ export function useSampleChat() {
       timestamp: now,
       replies: { items: [] },
     };
-    processThinking(m2);
+    processThinking({ node: m2 });
 
     const m3: MessageNode = {
       id: generateId(),
@@ -147,7 +147,7 @@ export function useSampleChat() {
     await persistSampleChat({
       chat: sampleChatObj,
       loadChats,
-      openChat,
+      openChat: ({ id }) => openChat({ chatId: id }),
     });
   };
 
@@ -183,7 +183,7 @@ export function useSampleChat() {
     await persistSampleChat({
       chat: longSampleChatObj,
       loadChats,
-      openChat,
+      openChat: ({ id }) => openChat({ chatId: id }),
     });
   };
 

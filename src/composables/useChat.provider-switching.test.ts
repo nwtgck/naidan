@@ -59,7 +59,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     vi.clearAllMocks();
 
     // Reset Settings
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       endpointType: 'openai',
       endpointUrl: 'http://localhost:1234/v1',
       defaultModelId: 'gpt-4',
@@ -67,7 +67,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
-    });
+    } });
 
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);
     mockOllamaModels.mockResolvedValue(['llama3', 'mistral']);
@@ -75,7 +75,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Response'));
     mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Response'));
 
-    __testOnlySetCurrentChat(null);
+    __testOnlySetCurrentChat({ chat: null });
   });
 
   it('Scenario: Full lifecycle of a chat through multiple provider and model changes', async () => {
@@ -87,7 +87,7 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
       updatedAt: Date.now(),
       debugEnabled: false,
     }) as any;
-    __testOnlySetCurrentChat(chatObj);
+    __testOnlySetCurrentChat({ chat: chatObj });
 
     // 1. OpenAI (gpt-4-showcase -> resolves to gpt-4)
     await sendMessage({ content: 'M1' });
@@ -95,33 +95,33 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOpenAIChat.mock.calls[0]![0].model).toBe('gpt-4');
 
     // 2. Ollama (gpt-4-showcase -> resolves to llama3)
-    __testOnlySetSettings({ ...JSON.parse(JSON.stringify(settings.value)), endpointType: 'ollama' });
+    __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), endpointType: 'ollama' } });
     await sendMessage({ content: 'M2' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('llama3');
 
     // 3. Custom Override (gpt-3.5-turbo)
-    await updateChatSettings(chatObj.id, { endpointType: 'openai' });
-    await updateChatModel(chatObj.id, 'gpt-3.5-turbo');
+    await updateChatSettings({ id: chatObj.id, updates: { endpointType: 'openai' } });
+    await updateChatModel({ id: chatObj.id, modelId: 'gpt-3.5-turbo' });
     await sendMessage({ content: 'M3' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat.mock.calls[1]![0].model).toBe('gpt-3.5-turbo');
   });
 
   it('should fallback to first available model if defaultModelId is also missing', async () => {
-    __testOnlySetSettings({
+    __testOnlySetSettings({ newSettings: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpointType: 'ollama',
       defaultModelId: 'missing-default',
-    });
+    } });
     mockOllamaModels.mockResolvedValue(['first-available', 'second']);
 
-    __testOnlySetCurrentChat(reactive({
+    __testOnlySetCurrentChat({ chat: reactive({
       id: 'fallback-test',
       title: 'Fallback Test',
       root: { items: [] },
       createdAt: 0, updatedAt: 0, debugEnabled: false,
-    }) as any);
+    }) as any });
 
     await sendMessage({ content: 'Test' });
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('first-available');

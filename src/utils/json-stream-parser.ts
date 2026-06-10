@@ -8,7 +8,7 @@ export type JsonParseResult =
  *
  * This parser handles newlines and tracks brace depth to identify potential JSON objects.
  */
-export function parseConcatenatedJson(input: string): JsonParseResult[] {
+export function parseConcatenatedJson({ input }: { input: string }): JsonParseResult[] {
   const results: JsonParseResult[] = [];
   let depth = 0;
   let start = -1;

@@ -54,7 +54,7 @@ describe('TransformersJsProvider', () => {
       onChunk: vi.fn(),
     });
 
-    expect(mockService.loadModel).toHaveBeenCalledWith('some-model');
+    expect(mockService.loadModel).toHaveBeenCalledWith({ modelId: 'some-model' });
     expect(mockService.generateText).toHaveBeenCalledOnce();
     expect(mockService.generateText.mock.calls[0]![0]).toEqual([{ role: 'user', content: 'hello' }]);
   });

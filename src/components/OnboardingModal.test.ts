@@ -69,11 +69,11 @@ describe('OnboardingModal.vue', () => {
       availableModels: ref([]),
       isFetchingModels: ref(false),
       fetchModels: vi.fn(),
-      setIsOnboardingDismissed: (val: boolean) => {
-        mockIsOnboardingDismissed.value = val;
+      setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => {
+        mockIsOnboardingDismissed.value = dismissed;
       },
-      setOnboardingDraft: (val: any) => {
-        mockOnboardingDraft.value = val;
+      setOnboardingDraft: ({ draft }: { draft: any }) => {
+        mockOnboardingDraft.value = draft;
       },
     });
 
@@ -198,11 +198,11 @@ describe('OnboardingModal.vue', () => {
     await wrapper.find('[data-testid="onboarding-finish-button"]').trigger('click'); // "Get Started" button
     await flushPromises();
 
-    expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
       endpointUrl: 'http://api.openai.com',
       defaultModelId: 'model-1',
       titleModelId: 'model-1',
-    }));
+    }) });
     expect(mockOnboardingDraft.value).toBe(null); // Draft cleared on success
     expect(mockIsOnboardingDismissed.value).toBe(true);
   });
@@ -399,17 +399,17 @@ describe('OnboardingModal.vue', () => {
       mockIsOnboardingDismissed.value = true;
       mount(OnboardingModal);
       await flushPromises();
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
 
       mockSetActiveFocusArea.mockClear();
       mockIsOnboardingDismissed.value = false;
       await flushPromises();
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('onboarding');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'onboarding' });
 
       mockSetActiveFocusArea.mockClear();
       mockIsOnboardingDismissed.value = true;
       await flushPromises();
-      expect(mockSetActiveFocusArea).toHaveBeenCalledWith('chat');
+      expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'chat' });
     });
   });
 
@@ -488,11 +488,11 @@ describe('OnboardingModal.vue', () => {
       await finishBtn?.trigger('click');
       await flushPromises();
 
-      expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({
+      expect(mockSave).toHaveBeenCalledWith({ patch: expect.objectContaining({
         endpointType: 'transformers_js',
         defaultModelId: 'Xenova/gpt2',
         titleModelId: undefined,
-      }));
+      }) });
     });
   });
 });

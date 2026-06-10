@@ -516,7 +516,7 @@ describe('ImportExportService', () => {
       };
 
       mockStorage.loadSettings.mockResolvedValue(null);
-      await service.executeImport(zipBlob, config);
+      await service.executeImport({ zipFile: zipBlob, config });
 
       expect(mockStorage.clearAll).toHaveBeenCalled();
       expect(mockStorage.restore).toHaveBeenCalledWith(expect.anything());
@@ -534,7 +534,7 @@ describe('ImportExportService', () => {
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      await service.executeImport(zipBlob, { data: { mode: 'append' }, settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } });
+      await service.executeImport({ zipFile: zipBlob, config: { data: { mode: 'append' }, settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } } });
 
       const calls = mockStorage.restore.mock.calls;
       const snapshot = calls[0]![0] as StorageSnapshot;
@@ -585,10 +585,10 @@ describe('ImportExportService', () => {
         }
       }));
 
-      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+      await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
-      });
+      } });
 
       const calls = mockStorage.restore.mock.calls;
       const snapshot = calls[0]![0] as StorageSnapshot;
@@ -640,10 +640,10 @@ describe('ImportExportService', () => {
         }
       }));
 
-      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+      await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
-      });
+      } });
 
       const calls = mockStorage.restore.mock.calls;
       const snapshot = calls[0]![0] as StorageSnapshot;
@@ -690,10 +690,10 @@ describe('ImportExportService', () => {
       };
       zip.folder('chat-contents')!.file(`${ORIGINAL_CHAT_ID}.json`, JSON.stringify(content));
 
-      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+      await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
-      });
+      } });
 
       const calls = mockStorage.restore.mock.calls;
       const snapshot = calls[0]![0] as StorageSnapshot;
@@ -735,10 +735,10 @@ describe('ImportExportService', () => {
       zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] }, currentLeafId: undefined }));
 
-      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+      await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append', chatTitlePrefix: '[Chat] ', chatGroupNamePrefix: '[Group] ' },
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
-      });
+      } });
 
       const calls = mockStorage.restore.mock.calls;
       const snapshot = calls[0]![0] as StorageSnapshot;
@@ -761,10 +761,10 @@ describe('ImportExportService', () => {
       const existingHierarchy = { items: [{ type: 'chat', id: 'existing-chat' }] };
       mockStorage.loadHierarchy.mockResolvedValue(existingHierarchy as any);
 
-      await service.executeImport(zipBlob, {
+      await service.executeImport({ zipFile: zipBlob, config: {
         data: { mode: 'append' },
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
-      });
+      } });
 
       expect(mockStorage.clearAll).not.toHaveBeenCalled();
 
@@ -780,10 +780,10 @@ describe('ImportExportService', () => {
       zip.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat_group', id: UUID_G1, chat_ids: [] }] }));
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'Empty Group', updatedAt: 1000, isCollapsed: false }));
 
-      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+      await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
-      });
+      } });
 
       const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
       expect(snapshot.structure.chatGroups).toHaveLength(1);
@@ -801,10 +801,10 @@ describe('ImportExportService', () => {
       zip.file('chat-metas.json', JSON.stringify({ entries: [chatMeta] }));
       zip.folder('chat-contents')!.file(`${UUID_C1}.json`, JSON.stringify({ root: { items: [] } }));
 
-      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+      await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'append' },
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
-      });
+      } });
 
       const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
       expect(snapshot.structure.chatMetas[0]!.systemPrompt).toEqual({
@@ -841,7 +841,7 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'replace', providerProfiles: 'none' }
       };
 
-      await service.executeImport(zipBlob, config);
+      await service.executeImport({ zipFile: zipBlob, config });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
       const updater = mockStorage.updateSettings.mock.calls[0]![0];
@@ -875,7 +875,7 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'replace', providerProfiles: 'none' }
       };
 
-      await service.executeImport(zipBlob, config);
+      await service.executeImport({ zipFile: zipBlob, config });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
       const updater = mockStorage.updateSettings.mock.calls[0]![0];
@@ -902,7 +902,7 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'replace', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
       };
 
-      await service.executeImport(zipBlob, config);
+      await service.executeImport({ zipFile: zipBlob, config });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
       const updater = mockStorage.updateSettings.mock.calls[0]![0];
@@ -925,10 +925,10 @@ describe('ImportExportService', () => {
         providerProfiles: [{ id: '018d476a-7b3a-73fd-8000-000000000009', name: 'Existing', endpointType: 'openai', endpointUrl: '' }]
       } as any);
 
-      await service.executeImport(await zip.generateAsync({ type: 'blob' }), {
+      await service.executeImport({ zipFile: await zip.generateAsync({ type: 'blob' }), config: {
         data: { mode: 'replace' },
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'append' }
-      });
+      } });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
       const updater = mockStorage.updateSettings.mock.calls[0]![0];

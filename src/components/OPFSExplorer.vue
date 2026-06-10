@@ -28,19 +28,19 @@ const TEXT_EXTENSIONS = [
   '.xml', '.yaml', '.yml', '.svg', '.gitignore', '.env', '.jsonl'
 ];
 
-function isTextFile(filename: string): boolean {
+function isTextFile({ filename }: { filename: string }): boolean {
   const ext = filename.toLowerCase().substring(filename.lastIndexOf('.'));
   return TEXT_EXTENSIONS.includes(ext) || !filename.includes('.');
 }
 
-function formatSize(bytes?: number): string {
+function formatSize({ bytes }: { bytes?: number }): string {
   if (bytes === undefined) return '';
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function formatDate(timestamp?: number): string {
+function formatDate({ timestamp }: { timestamp?: number }): string {
   if (!timestamp) return '';
   return new Date(timestamp).toLocaleString();
 }
@@ -55,7 +55,7 @@ const isFormatted = ref(false);
 const isPreviewDisabled = ref(false);
 const error = ref<string | null>(null);
 
-async function loadDirectory(handle: FileSystemDirectoryHandle) {
+async function loadDirectory({ handle }: { handle: FileSystemDirectoryHandle }) {
   try {
     error.value = null;
     const newEntries: OPFSEntry[] = [];
@@ -111,20 +111,20 @@ async function loadDirectory(handle: FileSystemDirectoryHandle) {
   }
 }
 
-async function navigateTo(entry: OPFSEntry) {
+async function navigateTo({ entry }: { entry: OPFSEntry }) {
   switch (entry.kind) {
   case 'directory':
     pathStack.value.push(currentHandle.value!);
-    await loadDirectory(entry.handle as FileSystemDirectoryHandle);
+    await loadDirectory({ handle: entry.handle as FileSystemDirectoryHandle });
     break;
   case 'file':
     if (!isPreviewDisabled.value) {
-      await viewFile(entry);
+      await viewFile({ entry });
     } else {
       selectedFile.value = {
         name: entry.name,
         size: entry.size || 0,
-        isText: isTextFile(entry.name),
+        isText: isTextFile({ filename: entry.name }),
         lastModified: entry.lastModified
       };
     }
@@ -139,29 +139,29 @@ async function navigateTo(entry: OPFSEntry) {
 async function goUp() {
   const parent = pathStack.value.pop();
   if (parent) {
-    await loadDirectory(parent);
+    await loadDirectory({ handle: parent });
   }
 }
 
-async function jumpToBreadcrumb(index: number) {
+async function jumpToBreadcrumb({ index }: { index: number }) {
   const target = pathStack.value[index];
   if (target) {
     pathStack.value = pathStack.value.slice(0, index);
-    await loadDirectory(target);
+    await loadDirectory({ handle: target });
   }
 }
 
 async function refresh() {
   if (currentHandle.value) {
-    await loadDirectory(currentHandle.value);
+    await loadDirectory({ handle: currentHandle.value });
   }
 }
 
-async function viewFile(entry: OPFSEntry) {
+async function viewFile({ entry }: { entry: OPFSEntry }) {
   try {
     const handle = entry.handle as FileSystemFileHandle;
     const file = await handle.getFile();
-    const isText = isTextFile(entry.name);
+    const isText = isTextFile({ filename: entry.name });
 
     selectedFile.value = {
       name: entry.name,
@@ -215,7 +215,7 @@ function toggleFormat() {
 
 const { showConfirm } = useConfirm();
 
-async function deleteEntry(entry: OPFSEntry) {
+async function deleteEntry({ entry }: { entry: OPFSEntry }) {
   const confirmed = await showConfirm({
     title: 'Delete Entry',
     message: `Are you sure you want to delete "${entry.name}"? Deleting data from OPFS might cause corruption or data loss if not handled carefully.`,
@@ -228,7 +228,7 @@ async function deleteEntry(entry: OPFSEntry) {
 
   try {
     await currentHandle.value!.removeEntry(entry.name, { recursive: true });
-    await loadDirectory(currentHandle.value!);
+    await loadDirectory({ handle: currentHandle.value! });
   } catch (e) {
     error.value = `Failed to delete: ${e}`;
   }
@@ -236,7 +236,7 @@ async function deleteEntry(entry: OPFSEntry) {
 
 async function init() {
   const root = await navigator.storage.getDirectory();
-  await loadDirectory(root);
+  await loadDirectory({ handle: root });
 }
 
 watch(() => props.modelValue, (newVal) => {
@@ -292,7 +292,7 @@ defineExpose({
           <div class="flex items-center text-[11px] text-gray-500 dark:text-gray-400 truncate" data-testid="opfs-breadcrumbs">
             <template v-for="(h, i) in pathStack" :key="i">
               <button
-                @click="jumpToBreadcrumb(i)"
+                @click="jumpToBreadcrumb({ index: i })"
                 class="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                 data-testid="breadcrumb-item"
               >
@@ -343,7 +343,7 @@ defineExpose({
             <div
               v-for="entry in entries"
               :key="entry.name"
-              @click="navigateTo(entry)"
+              @click="navigateTo({ entry })"
               class="group flex items-center justify-between p-2 rounded-lg cursor-pointer hover:bg-white dark:hover:bg-gray-800 hover:shadow-sm border border-transparent hover:border-gray-100 dark:hover:border-gray-700 transition-all"
               data-testid="opfs-entry"
             >
@@ -357,14 +357,14 @@ defineExpose({
                     {{ entry.name }}
                   </span>
                   <span v-if="entry.kind === 'file'" class="text-[9px] text-gray-400 font-bold uppercase tracking-tighter flex gap-2">
-                    <span>{{ formatSize(entry.size) }}</span>
+                    <span>{{ formatSize({ bytes: entry.size }) }}</span>
                     <span v-if="entry.lastModified" class="opacity-60">•</span>
-                    <span v-if="entry.lastModified">{{ formatDate(entry.lastModified) }}</span>
+                    <span v-if="entry.lastModified">{{ formatDate({ timestamp: entry.lastModified }) }}</span>
                   </span>
                 </div>
               </div>
               <button
-                @click.stop="deleteEntry(entry)"
+                @click.stop="deleteEntry({ entry })"
                 class="p-1.5 opacity-0 group-hover:opacity-100 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-all"
               >
                 <Trash2Icon class="w-3.5 h-3.5" />
@@ -386,9 +386,9 @@ defineExpose({
                 <div class="flex flex-col">
                   <span class="text-xs font-bold text-gray-600 dark:text-gray-400 leading-none">{{ selectedFile.name }}</span>
                   <div class="flex items-center gap-2 mt-1">
-                    <span class="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{{ formatSize(selectedFile.size) }}</span>
+                    <span class="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{{ formatSize({ bytes: selectedFile.size }) }}</span>
                     <span v-if="selectedFile.lastModified" class="text-[9px] text-gray-400 font-bold uppercase tracking-widest opacity-60">•</span>
-                    <span v-if="selectedFile.lastModified" class="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{{ formatDate(selectedFile.lastModified) }}</span>
+                    <span v-if="selectedFile.lastModified" class="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{{ formatDate({ timestamp: selectedFile.lastModified }) }}</span>
                   </div>
                 </div>
               </div>
@@ -415,7 +415,7 @@ defineExpose({
               <p class="text-sm font-bold text-gray-600 dark:text-gray-400 mb-1">Binary File</p>
               <p class="text-[10px] uppercase tracking-widest opacity-50 font-bold">Preview not available for this file type</p>
               <div class="mt-6 px-4 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl">
-                <span class="text-[10px] font-bold font-mono">Size: {{ formatSize(selectedFile.size) }} ({{ selectedFile.size }} bytes)</span>
+                <span class="text-[10px] font-bold font-mono">Size: {{ formatSize({ bytes: selectedFile.size }) }} ({{ selectedFile.size }} bytes)</span>
               </div>
             </div>
           </div>

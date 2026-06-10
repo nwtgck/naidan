@@ -59,7 +59,7 @@ describe('useChat Fork Insertion Logic', () => {
     vi.clearAllMocks();
     const chat = useChat();
     chat.rootItems.value = [];
-    chat.TEST_ONLY.__testOnlySetCurrentChat(null);
+    chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
   });
 
   it('should insert fork at the top of the chat block when not in a chat group', async () => {
@@ -76,17 +76,17 @@ describe('useChat Fork Insertion Logic', () => {
       currentLeafId: 'm1'
     });
 
-    chat.TEST_ONLY.__testOnlySetCurrentChat({
+    chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: {
       id: 'a', title: 'A', root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1'
-    } as any);
+    } as any });
 
     vi.spyOn(storageService, 'getSidebarStructure').mockImplementation(async () => {
       return chat.rootItems.value;
     });
 
-    await chat.forkChat('m1');
+    await chat.forkChat({ messageId: 'm1' });
 
     // Expected: Chat Group, Fork, Chat A
     expect(chat.rootItems.value[0]?.type).toBe('chat_group');
@@ -129,18 +129,18 @@ describe('useChat Fork Insertion Logic', () => {
       currentLeafId: 'm1'
     });
 
-    chat.TEST_ONLY.__testOnlySetCurrentChat({
+    chat.TEST_ONLY.__testOnlySetCurrentChat({ chat: {
       id: 'a', title: 'A', groupId: 'g1',
       root: { items: [{ id: 'm1', role: 'user', content: 'hi', replies: { items: [] } }] },
       updatedAt: 0, createdAt: 0, modelId: '', debugEnabled: false,
       currentLeafId: 'm1'
-    } as any);
+    } as any });
 
     vi.spyOn(storageService, 'getSidebarStructure').mockImplementation(async () => {
       return chat.rootItems.value;
     });
 
-    await chat.forkChat('m1');
+    await chat.forkChat({ messageId: 'm1' });
 
     // Expected: Chat Group with [Fork, Chat A]
     const groupItem = chat.rootItems.value[0];

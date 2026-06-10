@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { useChat } from '@/composables/useChat';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import ChatGroupSettingsPanel from '@/components/ChatGroupSettingsPanel.vue';
 
 const route = useRoute();
-const chatStore = useChat();
+const chatNavigation = useChatNavigation();
 
 interface RouteParams {
   id: string;
@@ -15,7 +15,7 @@ async function syncGroup() {
   const params = route.params as unknown as RouteParams;
   const id = params.id;
   if (id) {
-    chatStore.openChatGroup(id);
+    chatNavigation.openChatGroup({ groupId: id });
   }
 }
 

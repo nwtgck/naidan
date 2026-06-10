@@ -1,6 +1,7 @@
 import * as Comlink from 'comlink'
 import type { EmptyArgs } from '@/models/types'
 import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
+import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
   fileExplorerPrepareSessionResponseSchema,
   fileExplorerReadDirectoryResponseSchema,
@@ -17,10 +18,45 @@ export async function createFileExplorerWorkerClient({
 }: {
   root: FileExplorerRootDescriptor
 }): Promise<FileExplorerWorkerClient> {
+  const naidanSysfsRemoteReader = (() => {
+    switch (root.kind) {
+    case 'native-directory':
+    case 'opfs-root':
+      return undefined
+    case 'wesh-mounts':
+      return createNaidanSysfsRemoteReaderForMounts({ mounts: root.mounts })
+    default: {
+      const _ex: never = root
+      throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`)
+    }
+    }
+  })()
   const worker = await createFileProtocolCompatibleStandaloneWorkerHub({})
   const remote = Comlink.wrap<IWorkerHub>(worker)
   const fileExplorer = await remote.fileExplorer as Comlink.Remote<IFileExplorerWorker>
-  const prepareResponse = await fileExplorer.prepareSession({ request: { root } })
+  const requestRoot = (() => {
+    switch (root.kind) {
+    case 'native-directory':
+    case 'opfs-root':
+      return root
+    case 'wesh-mounts':
+      return {
+        ...root,
+        naidanSysfsRemoteReader: naidanSysfsRemoteReader
+          ? Comlink.proxy(naidanSysfsRemoteReader)
+          : undefined,
+      }
+    default: {
+      const _ex: never = root
+      throw new Error(`Unhandled file explorer root kind: ${String(_ex)}`)
+    }
+    }
+  })()
+  const prepareResponse = await fileExplorer.prepareSession({
+    request: {
+      root: requestRoot,
+    },
+  })
   const sessionId = fileExplorerPrepareSessionResponseSchema.parse(prepareResponse).sessionId
 
   return {

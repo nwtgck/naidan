@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GlobalSearchModal from './GlobalSearchModal.vue';
-import { ref, nextTick } from 'vue';
+import { computed, ref, nextTick } from 'vue';
 import { setupScrollToMock } from '@/utils/test-utils';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 
 // --- Mocks ---
 
@@ -59,14 +61,12 @@ vi.mock('../composables/useChatSearch', () => ({
 const mockOpenChat = vi.fn();
 const mockOpenChatAtMessage = vi.fn();
 const mockOpenChatGroup = vi.fn();
-vi.mock('../composables/useChat', () => ({
-  useChat: () => ({
-    openChat: mockOpenChat,
-    openChatAtMessage: mockOpenChatAtMessage,
-    openChatGroup: mockOpenChatGroup,
-    chatGroups: ref([{ id: 'g1', name: 'Group 1' }]),
-    currentChat: ref(null),
-  }),
+vi.mock('../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: vi.fn(),
+}));
+
+vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: vi.fn(),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -115,6 +115,30 @@ describe('GlobalSearchModal Component', () => {
     mockChatId.value = undefined;
     mockResults.value = [];
     vi.clearAllMocks();
+    vi.mocked(useChatNavigation).mockReturnValue({
+      openChat: vi.fn().mockImplementation(async ({ chatId }) => {
+        await mockOpenChat({ id: chatId });
+      }),
+      openChatAtMessage: vi.fn().mockImplementation(async ({ chatId, messageId }) => {
+        await mockOpenChatAtMessage({ chatId, messageId });
+      }),
+      openChatGroup: vi.fn().mockImplementation(({ groupId }) => {
+        mockOpenChatGroup({ id: groupId });
+      }),
+      TEST_ONLY: {},
+    });
+    vi.mocked(useCurrentChatState).mockReturnValue({
+      chatGroups: computed(() => [{ id: 'g1', name: 'Group 1' }]),
+      currentChat: computed(() => null),
+      currentChatGroup: computed(() => null),
+      currentChatId: computed(() => undefined),
+      activeMessages: computed(() => []),
+      allMessages: computed(() => []),
+      resolvedSettings: computed(() => null),
+      inheritedSettings: computed(() => null),
+      sidebarItems: computed(() => []),
+      TEST_ONLY: {},
+    } as unknown as ReturnType<typeof useCurrentChatState>);
   });
 
   it('should render when open', () => {
@@ -201,7 +225,7 @@ describe('GlobalSearchModal Component', () => {
     // Enter to select the item
     await wrapper.get('[data-testid="search-input"]').trigger('keydown', { key: 'Enter' });
 
-    expect(mockOpenChat).toHaveBeenCalledWith('chat2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'chat2' });
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
@@ -234,7 +258,7 @@ describe('GlobalSearchModal Component', () => {
 
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
-    expect(mockOpenChat).toHaveBeenCalledWith('chat1');
+    expect(mockOpenChat).toHaveBeenCalledWith({ id: 'chat1' });
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
@@ -265,7 +289,7 @@ describe('GlobalSearchModal Component', () => {
 
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
-    expect(mockOpenChatGroup).toHaveBeenCalledWith('g1');
+    expect(mockOpenChatGroup).toHaveBeenCalledWith({ id: 'g1' });
     expect(mockCloseSearch).toHaveBeenCalled();
   });
 
@@ -294,7 +318,7 @@ describe('GlobalSearchModal Component', () => {
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
     expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat1', messageId: 'message-1' });
-    expect(mockOpenChat).not.toHaveBeenCalledWith('chat1', 'leaf-1');
+    expect(mockOpenChat).not.toHaveBeenCalledWith({ id: 'chat1', leafId: 'leaf-1' });
     expect(mockPush).toHaveBeenCalledWith({
       path: '/chat/chat1',
       query: { 'message-id': 'message-1' },
@@ -322,12 +346,12 @@ describe('GlobalSearchModal Component', () => {
 
     mockIsSearchOpen.value = true;
     await nextTick();
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('search');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'search' });
 
     mockIsSearchOpen.value = false;
     await nextTick();
     // Should restore to previous ('sidebar')
-    expect(mockSetActiveFocusArea).toHaveBeenCalledWith('sidebar');
+    expect(mockSetActiveFocusArea).toHaveBeenCalledWith({ area: 'sidebar' });
   });
 
   it('should switch between results and preview panes with ArrowRight/Left', async () => {

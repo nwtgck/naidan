@@ -1,16 +1,12 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { useSampleChat } from './useSampleChat';
-import { useChat } from './useChat';
+import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
 import { storageService } from '@/services/storage';
 
 // Mock dependencies
-vi.mock('./useChat', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return {
-    ...actual,
-    useChat: vi.fn(),
-  };
-});
+vi.mock('@/composables/chat/ui/useChatBootstrap', () => ({
+  useChatBootstrap: vi.fn(),
+}));
 
 vi.mock('../services/storage', () => ({
   storageService: {
@@ -28,9 +24,10 @@ describe('useSampleChat', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useChat as unknown as Mock).mockReturnValue({
+    (useChatBootstrap as unknown as Mock).mockReturnValue({
       loadChats: mockLoadChats,
       openChat: mockOpenChat,
+      TEST_ONLY: {},
     });
     // Mock updateHierarchy to just call the callback
     vi.mocked(storageService.updateHierarchy).mockImplementation(async (updater) => {
@@ -87,7 +84,7 @@ describe('useSampleChat', () => {
     expect(m3.content).toContain('arrows');
 
     expect(mockLoadChats).toHaveBeenCalled();
-    expect(mockOpenChat).toHaveBeenCalledWith(chatId);
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId });
   });
 
   it('creates a long sample chat for navigation stress testing without large fixtures', async () => {
@@ -120,6 +117,6 @@ describe('useSampleChat', () => {
     expect(messages[1]?.content?.length).toBeGreaterThan(900);
     expect(content.currentLeafId).toBe(messages[messages.length - 1]?.id);
     expect(mockLoadChats).toHaveBeenCalled();
-    expect(mockOpenChat).toHaveBeenCalledWith(chatId);
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId });
   });
 });

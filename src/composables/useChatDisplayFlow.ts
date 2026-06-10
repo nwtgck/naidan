@@ -59,7 +59,7 @@ export function useChatDisplayFlow({
   isProcessing
 }: {
   chat: ComputedRef<Chat | null>,
-  isProcessing: (chatId: string) => boolean
+  isProcessing: ({ chatId }: { chatId: string }) => boolean
 }) {
 
   /**
@@ -124,7 +124,7 @@ export function useChatDisplayFlow({
         const lastOpen = remaining.lastIndexOf('<think>');
         const lastClose = remaining.lastIndexOf('</think>');
         const chatVal = chat.value;
-        const isActiveThinking = lastOpen > -1 && lastClose < lastOpen && chatVal && isProcessing(chatVal.id);
+        const isActiveThinking = lastOpen > -1 && lastClose < lastOpen && chatVal && isProcessing({ chatId: chatVal.id });
 
         if (isActiveThinking) {
           const bodyBefore = remaining.slice(0, lastOpen).trim();
@@ -134,7 +134,7 @@ export function useChatDisplayFlow({
           const activeThink = remaining.slice(lastOpen + 7).trim();
           nodeAtoms.push({ type: 'thinking', node, content: activeThink, isCompleted: false, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         } else {
-          const cleanBody = stripNaidanSentinels(remaining).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+          const cleanBody = stripNaidanSentinels({ content: remaining }).replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
           if (cleanBody) {
             nodeAtoms.push({ type: 'content', node, content: cleanBody, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
           }
@@ -146,7 +146,7 @@ export function useChatDisplayFlow({
         }
 
         // 4. Waiting indicator
-        if (nodeAtoms.length === 0 && chatVal && isProcessing(chatVal.id) && nodeIdx === nodeArray.length - 1) {
+        if (nodeAtoms.length === 0 && chatVal && isProcessing({ chatId: chatVal.id }) && nodeIdx === nodeArray.length - 1) {
           nodeAtoms.push({ type: 'waiting', node, isFirstInNode: false, isLastInNode: false, isFirstInTurn: false });
         }
 
@@ -363,13 +363,13 @@ export function useChatDisplayFlow({
     return items.map((item, idx) => {
       const prev = items[idx - 1] || null;
       const next = items[idx + 1] || null;
-      const isAI = (i: ChatFlowItem | null) => i?.type === 'process_sequence' || i?.type === 'tool_group' || (i?.type === 'message' && i.node.role === 'assistant');
+      const isAI = ({ item: i }: { item: ChatFlowItem | null }) => i?.type === 'process_sequence' || i?.type === 'tool_group' || (i?.type === 'message' && i.node.role === 'assistant');
 
       let position: SequencePosition = 'standalone';
-      if (isAI(item)) {
-        if (isAI(prev) && isAI(next)) position = 'middle';
-        else if (isAI(prev)) position = 'end';
-        else if (isAI(next)) position = 'start';
+      if (isAI({ item })) {
+        if (isAI({ item: prev }) && isAI({ item: next })) position = 'middle';
+        else if (isAI({ item: prev })) position = 'end';
+        else if (isAI({ item: next })) position = 'start';
       }
       return { ...item, flow: { position, nesting: 'none' } };
     });

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue';
-import { useChat } from '@/composables/useChat';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
+import { useChatMetadata } from '@/composables/chat/useChatMetadata';
+import { useChatModels } from '@/composables/chat/useChatModels';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import {
   XIcon, Settings2Icon,
   MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon
@@ -14,9 +16,9 @@ import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
-const LmParametersEditor = defineAsyncComponentAndLoadOnMounted(() => import('./LmParametersEditor.vue'));
+const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 // Lazily load upsell UI
-const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted(() => import('./TransformersJsUpsell.vue'));
+const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
 
 import { ENDPOINT_PRESETS } from '@/models/constants';
 import type { Chat } from '@/models/types';
@@ -32,15 +34,11 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>();
 
-const chatStore = useChat();
-const {
-  currentChat,
-  fetchingModels,
-  availableModels,
-  resolvedSettings,
-  inheritedSettings,
-} = chatStore;
-const sortedAvailableModels = computed(() => naturalSort(availableModels?.value || []));
+const { currentChatId, currentChat, resolvedSettings, inheritedSettings } = useCurrentChatState();
+const chatMetadata = useChatMetadata({});
+const chatModels = useChatModels({});
+const isFetchingModels = computed(() => chatModels.fetchingModels.value);
+const sortedAvailableModels = computed(() => naturalSort({ values: chatModels.availableModels.value || [] }));
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
@@ -75,7 +73,7 @@ onMounted(() => {
   if (currentChat.value) {
     const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
     const type = currentChat.value.endpointType || settings.value.endpointType;
-    if (type === 'transformers_js' || isLocalhost(url)) {
+    if (type === 'transformers_js' || isLocalhost({ url })) {
       fetchModels();
     }
   }
@@ -86,7 +84,10 @@ watch(() => currentChat.value?.id, async (newId, oldId) => {
   if (oldId && oldId !== newId) {
     // If we're switching chats while the panel is open, ensure any pending changes in the OLD chat are saved.
     // We use the ID that was active when the changes were made.
-    await chatStore.updateChatSettings(oldId, localSettings.value);
+    await chatMetadata.updateSettings({
+      chatId: oldId,
+      updates: localSettings.value,
+    });
   }
   syncLocalWithCurrent();
 });
@@ -101,20 +102,23 @@ watch(() => currentChat.value?.lmParameters, (newParams) => {
 watch(() => props.show, (show) => {
   if (show) {
     syncLocalWithCurrent();
-    setActiveFocusArea('chat-settings');
+    setActiveFocusArea({ area: 'chat-settings' });
   } else {
-    setActiveFocusArea('chat');
+    setActiveFocusArea({ area: 'chat' });
     saveChanges();
   }
 });
 
 async function saveChanges() {
   if (currentChat.value) {
-    await chatStore.updateChatSettings(currentChat.value.id, localSettings.value);
+    await chatMetadata.updateSettings({
+      chatId: currentChat.value.id,
+      updates: localSettings.value,
+    });
   }
 }
 
-function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined) {
+function formatLabel({ value, source }: { value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined }) {
   if (!value) return 'Default';
   switch (source) {
   case 'chat_group':
@@ -134,12 +138,12 @@ function formatLabel(value: string | undefined, source: 'chat' | 'chat_group' | 
 const selectedProviderProfileId = ref('');
 const error = ref<string | null>(null);
 
-function isLocalhost(url: string | undefined) {
+function isLocalhost({ url }: { url: string | undefined }) {
   if (!url) return false;
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
-async function applyPreset(preset: typeof ENDPOINT_PRESETS[number]) {
+async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   localSettings.value.endpointType = preset.type;
   localSettings.value.endpointUrl = preset.url;
   error.value = null;
@@ -166,7 +170,7 @@ async function addHeader() {
   localSettings.value.endpointHttpHeaders.push(['', '']);
 }
 
-async function removeHeader(index: number) {
+async function removeHeader({ index }: { index: number }) {
   if (localSettings.value.endpointHttpHeaders) {
     localSettings.value.endpointHttpHeaders.splice(index, 1);
     await saveChanges();
@@ -174,10 +178,13 @@ async function removeHeader(index: number) {
 }
 
 async function fetchModels() {
-  if (currentChat.value) {
+  const chatId = currentChatId.value;
+  if (chatId) {
     error.value = null;
     try {
-      const models = await chatStore.fetchAvailableModels({ chatId: currentChat.value.id });
+      const models = await chatModels.fetchForChat({
+        chatId,
+      });
       if (models.length === 0) {
         error.value = 'No models found at this endpoint.';
       }
@@ -199,7 +206,7 @@ watch([
   () => localSettings.value.endpointType,
 ], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || (url && isLocalhost(url as string))) {
+  if (type === 'transformers_js' || (url && isLocalhost({ url: url as string }))) {
     fetchModels();
   }
 });
@@ -216,7 +223,7 @@ async function updateSystemPromptContent(content: string) {
 }
 */
 
-async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inherit', isClear = false) {
+async function updateSystemPromptBehavior({ behavior, isClear = false }: { behavior: 'override' | 'append' | 'inherit'; isClear?: boolean }) {
   switch (behavior) {
   case 'inherit':
     localSettings.value.systemPrompt = undefined;
@@ -240,7 +247,7 @@ async function updateSystemPromptBehavior(behavior: 'override' | 'append' | 'inh
   await saveChanges();
 }
 
-async function updateSystemPromptContent(content: string) {
+async function updateSystemPromptContent({ content }: { content: string }) {
   if (localSettings.value.systemPrompt) {
     localSettings.value.systemPrompt.content = content;
   } else {
@@ -327,7 +334,7 @@ defineExpose({
                   <button
                     v-for="preset in ENDPOINT_PRESETS"
                     :key="preset.name"
-                    @click="applyPreset(preset)"
+                    @click="applyPreset({ preset })"
                     type="button"
                     class="px-4 py-2 text-[10px] font-bold rounded-xl border transition-all shadow-sm"
                     :class="localSettings.endpointUrl === preset.url && localSettings.endpointType === preset.type ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-500 hover:border-blue-200 dark:hover:border-gray-600'"
@@ -352,7 +359,7 @@ defineExpose({
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
               >
-                <option value="global">{{ formatLabel(resolvedSettings?.endpointType === 'transformers_js' ? 'Transformers.js' : resolvedSettings?.endpointType, resolvedSettings?.sources.endpointType) }}</option>
+                <option value="global">{{ formatLabel({ value: resolvedSettings?.endpointType === 'transformers_js' ? 'Transformers.js' : resolvedSettings?.endpointType, source: resolvedSettings?.sources.endpointType }) }}</option>
                 <option value="openai">OpenAI Compatible</option>
                 <option value="ollama">Ollama</option>
                 <option value="transformers_js">Transformers.js (Experimental)</option>
@@ -368,7 +375,7 @@ defineExpose({
                 @input="error = null"
                 type="text"
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
-                :placeholder="formatLabel(resolvedSettings?.endpointUrl, resolvedSettings?.sources.endpointUrl)"
+                :placeholder="formatLabel({ value: resolvedSettings?.endpointUrl, source: resolvedSettings?.sources.endpointUrl })"
                 data-testid="chat-setting-url-input"
               />
               <div v-if="error" class="mt-2">
@@ -410,7 +417,7 @@ defineExpose({
                     placeholder="Value"
                   />
                   <button
-                    @click="removeHeader(index)"
+                    @click="removeHeader({ index })"
                     class="p-2 text-gray-400 hover:text-red-500 transition-colors"
                   >
                     <Trash2Icon class="w-3.5 h-3.5" />
@@ -427,8 +434,8 @@ defineExpose({
                   :model-value="localSettings.modelId"
                   @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
                   :models="sortedAvailableModels"
-                  :loading="fetchingModels"
-                  :placeholder="formatLabel(resolvedSettings?.modelId, resolvedSettings?.sources.modelId)"
+                  :loading="isFetchingModels"
+                  :placeholder="formatLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"
                   data-testid="chat-setting-model-select"
@@ -493,8 +500,8 @@ defineExpose({
                   :model-value="localSettings.titleModelId"
                   @update:model-value="val => { localSettings.titleModelId = val; saveChanges(); }"
                   :models="sortedAvailableModels"
-                  :loading="fetchingModels"
-                  :placeholder="formatLabel(resolvedSettings?.titleModelId, resolvedSettings?.sources.titleModelId)"
+                  :loading="isFetchingModels"
+                  :placeholder="formatLabel({ value: resolvedSettings?.titleModelId, source: resolvedSettings?.sources.titleModelId })"
                   :allow-clear="true"
                   @refresh="fetchModels"
                   data-testid="chat-setting-title-model-select"
@@ -553,28 +560,28 @@ defineExpose({
 
                   <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                     <button
-                      @click="updateSystemPromptBehavior('inherit')"
+                      @click="updateSystemPromptBehavior({ behavior: 'inherit' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="!localSettings.systemPrompt ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Inherit
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior('override', true)"
+                      @click="updateSystemPromptBehavior({ behavior: 'override', isClear: true })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Clear
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior('override')"
+                      @click="updateSystemPromptBehavior({ behavior: 'override' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Override
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior('append')"
+                      @click="updateSystemPromptBehavior({ behavior: 'append' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'append' ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
@@ -595,7 +602,7 @@ defineExpose({
                 <textarea
                   v-else
                   :value="localSettings.systemPrompt?.content || ''"
-                  @input="e => updateSystemPromptContent((e.target as HTMLTextAreaElement).value)"
+                  @input="e => updateSystemPromptContent({ content: (e.target as HTMLTextAreaElement).value })"
                   @blur="saveChanges"
                   rows="4"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"

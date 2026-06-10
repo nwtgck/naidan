@@ -110,12 +110,12 @@ function onContextMenu({ entry, event }: { entry: FileExplorerEntry; event: Mous
   });
 }
 
-function onBackgroundContextMenu(event: MouseEvent): void {
+function onBackgroundContextMenu({ event }: { event: MouseEvent }): void {
   ctx.applySelection({ action: { type: 'clear' } });
   ctx.showContextMenu({ event, target: { kind: 'background' } });
 }
 
-function onBackgroundClick(event: MouseEvent): void {
+function onBackgroundClick({ event }: { event: MouseEvent }): void {
   if ((event.target as HTMLElement).dataset.listBackground) {
     ctx.applySelection({ action: { type: 'clear' } });
   }
@@ -123,13 +123,13 @@ function onBackgroundClick(event: MouseEvent): void {
 
 const isExternalDragOver = ref(false);
 
-function onExternalDragOver(event: DragEvent): void {
+function onExternalDragOver({ event }: { event: DragEvent }): void {
   if (event.dataTransfer?.types.includes('Files')) {
     isExternalDragOver.value = true;
   }
 }
 
-async function onExternalDrop(event: DragEvent): Promise<void> {
+async function onExternalDrop({ event }: { event: DragEvent }): Promise<void> {
   isExternalDragOver.value = false;
   const files = event.dataTransfer?.files;
   if (files && files.length > 0) {
@@ -149,8 +149,8 @@ defineExpose({
   <div
     class="flex flex-col flex-1 overflow-hidden"
     data-testid="list-view"
-    @contextmenu.self="onBackgroundContextMenu"
-    @click="onBackgroundClick"
+    @contextmenu.self="onBackgroundContextMenu({ event: $event })"
+    @click="onBackgroundClick({ event: $event })"
   >
     <!-- Column Headers -->
     <div class="flex items-center gap-3 px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80 flex-shrink-0">
@@ -179,10 +179,10 @@ defineExpose({
       :class="isExternalDragOver ? 'ring-2 ring-blue-400 ring-inset bg-blue-50/30 dark:bg-blue-900/10' : ''"
       data-list-background="true"
       data-testid="list-scroll-container"
-      @contextmenu.self="onBackgroundContextMenu"
-      @dragover.prevent="onExternalDragOver"
+      @contextmenu.self="onBackgroundContextMenu({ event: $event })"
+      @dragover.prevent="onExternalDragOver({ event: $event })"
       @dragleave="isExternalDragOver = false"
-      @drop.prevent="onExternalDrop"
+      @drop.prevent="onExternalDrop({ event: $event })"
     >
       <FileExplorerEmptyState
         v-if="ctx.sortedFilteredEntries.length === 0 && !ctx.isLoading"

@@ -56,7 +56,7 @@ describe('useChat Reactivity', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearLiveChatRegistry({});
   });
 
   it('should reflect streamed chunks in activeMessages immediately', async () => {

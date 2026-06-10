@@ -2,22 +2,22 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import ChatPage from './[id].vue';
-import { useChat } from '@/composables/useChat';
+import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useRouter } from 'vue-router';
 
-vi.mock('../../composables/useChat', () => ({
-  useChat: vi.fn(),
+vi.mock('../../composables/chat/ui/useChatNavigation', () => ({
+  useChatNavigation: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
   useRouter: vi.fn(),
 }));
 
-vi.mock('../../components/ChatArea.vue', () => ({
+vi.mock('../../components/CurrentChatPane.vue', () => ({
   default: {
-    name: 'ChatArea',
+    name: 'CurrentChatPane',
     props: ['targetMessageId'],
-    template: '<div data-testid="chat-area"></div>',
+    template: '<div data-testid="current-chat-pane"></div>',
   },
 }));
 
@@ -34,7 +34,7 @@ describe('ChatPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (useChat as unknown as Mock).mockReturnValue({
+    (useChatNavigation as unknown as Mock).mockReturnValue({
       openChat: mockOpenChat,
       openChatAtMessage: mockOpenChatAtMessage,
     });
@@ -48,7 +48,7 @@ describe('ChatPage', () => {
     };
 
     mount(ChatPage);
-    expect(mockOpenChat).toHaveBeenCalledWith('chat-123', undefined);
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-123', leafId: undefined });
   });
 
   it('watches route.params.id and calls openChat', async () => {
@@ -58,14 +58,14 @@ describe('ChatPage', () => {
     };
 
     mount(ChatPage);
-    expect(mockOpenChat).toHaveBeenCalledWith('chat-123', undefined);
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-123', leafId: undefined });
 
     mockRouter.currentRoute.value = {
       params: { id: 'chat-456' },
       query: {},
     };
     await nextTick();
-    expect(mockOpenChat).toHaveBeenCalledWith('chat-456', undefined);
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-456', leafId: undefined });
   });
 
   it('watches leaf query parameter and calls openChat', async () => {
@@ -75,14 +75,14 @@ describe('ChatPage', () => {
     };
 
     mount(ChatPage);
-    expect(mockOpenChat).toHaveBeenCalledWith('chat-123', 'leaf-1');
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-123', leafId: 'leaf-1' });
 
     mockRouter.currentRoute.value = {
       params: { id: 'chat-123' },
       query: { leaf: 'leaf-2' },
     };
     await nextTick();
-    expect(mockOpenChat).toHaveBeenCalledWith('chat-123', 'leaf-2');
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-123', leafId: 'leaf-2' });
   });
 
   it('watches message-id query parameter and opens at that message', async () => {
@@ -103,7 +103,7 @@ describe('ChatPage', () => {
     expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat-123', messageId: 'message-2' });
   });
 
-  it('passes message-id query parameter to ChatArea as the target message', () => {
+  it('passes message-id query parameter to CurrentChatPane as the target message', () => {
     mockRouter.currentRoute.value = {
       params: { id: 'chat-123' },
       query: { 'message-id': 'message-1' },
@@ -111,7 +111,7 @@ describe('ChatPage', () => {
 
     const wrapper = mount(ChatPage);
 
-    expect(wrapper.findComponent({ name: 'ChatArea' }).props('targetMessageId')).toBe('message-1');
+    expect(wrapper.findComponent({ name: 'CurrentChatPane' }).props('targetMessageId')).toBe('message-1');
   });
 
   it('prefers message-id over leaf when both query parameters are present', () => {

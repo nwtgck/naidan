@@ -52,7 +52,7 @@ async function loadImage() {
   error.value = undefined;
 
   try {
-    const blob = await storageService.getFile(parsed.value.binaryObjectId);
+    const blob = await storageService.getFile({ binaryObjectId: parsed.value.binaryObjectId });
     if (blob) {
       if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
       imageUrl.value = URL.createObjectURL(blob);

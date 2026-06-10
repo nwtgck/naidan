@@ -22,7 +22,7 @@ describe('MemoryStorageProvider', () => {
 
     await provider.saveChatContent(mockChat.id, mockChat);
     await provider.saveChatMeta(mockChat);
-    const loaded = await provider.loadChat(mockChat.id);
+    const loaded = await provider.loadChat({ id: mockChat.id });
     expect(loaded).toEqual(expect.objectContaining(mockChat));
   });
 
@@ -58,8 +58,8 @@ describe('MemoryStorageProvider', () => {
 
     await provider.saveChatContent(mockChat.id, mockChat);
     await provider.saveChatMeta(mockChat);
-    await provider.deleteChat(mockChat.id);
-    const loaded = await provider.loadChat(mockChat.id);
+    await provider.deleteChat({ id: mockChat.id });
+    const loaded = await provider.loadChat({ id: mockChat.id });
     expect(loaded).toBeNull();
   });
 
@@ -69,7 +69,7 @@ describe('MemoryStorageProvider', () => {
     const name = 'test.txt';
 
     await provider.saveFile(blob, binaryObjectId, name);
-    const loadedBlob = await provider.getFile(binaryObjectId);
+    const loadedBlob = await provider.getFile({ binaryObjectId });
     expect(loadedBlob).not.toBeNull();
     expect(loadedBlob?.size).toBe(blob.size);
     expect(loadedBlob?.type).toBe(blob.type);

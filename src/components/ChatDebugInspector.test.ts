@@ -354,7 +354,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     await wrapper.findAll('button').find(b => b.text().includes('Tree'))?.trigger('click');
     await nextTick();
-    await (wrapper.vm as any).handleSelectNode(nodeB);
+    await (wrapper.vm as any).handleSelectNode({ node: nodeB });
     await nextTick();
 
     await wrapper.findAll('button').find(b => b.text().includes('Open at this message'))?.trigger('click');
@@ -453,7 +453,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     await nextTick();
 
     // Directly trigger select-node on the inspector instance to update selectedNode
-    await (wrapper.vm as any).handleSelectNode(nodeB);
+    await (wrapper.vm as any).handleSelectNode({ node: nodeB });
     await nextTick();
 
     // Now find the node B in the detail panel to trigger preview

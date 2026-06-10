@@ -32,10 +32,10 @@ async function confirmPathEdit(): Promise<void> {
   }
 }
 
-function onPathKeyDown(e: KeyboardEvent): void {
-  if (e.key === 'Enter') {
+function onPathKeyDown({ event }: { event: KeyboardEvent }): void {
+  if (event.key === 'Enter') {
     confirmPathEdit();
-  } else if (e.key === 'Escape') {
+  } else if (event.key === 'Escape') {
     cancelPathEdit();
   }
 }
@@ -67,7 +67,7 @@ defineExpose({
       v-model="editPathValue"
       class="flex-1 px-2 py-1 text-xs bg-white dark:bg-gray-800 border border-blue-500 rounded-lg outline-none focus:ring-2 focus:ring-blue-500/20 text-gray-800 dark:text-gray-200"
       data-testid="path-input"
-      @keydown="onPathKeyDown"
+      @keydown="onPathKeyDown({ event: $event })"
       @blur="cancelPathEdit"
     />
 

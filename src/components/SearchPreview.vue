@@ -31,7 +31,7 @@ async function loadContext() {
 
   isLoading.value = true;
   try {
-    const fullChat = await storageService.loadChat(chatId);
+    const fullChat = await storageService.loadChat({ id: chatId });
     if (fullChat) {
       // If we have a match, use its leaf. Otherwise use the chat's current leaf.
       const targetLeafId = props.match?.targetLeafId || fullChat.currentLeafId;
@@ -68,6 +68,8 @@ const visibleMessages = computed(() => {
   const end = Math.min(branchMessages.value.length, matchedIndex.value + CONTEXT_SIZE.value + 1);
   return branchMessages.value.slice(start, end);
 });
+
+const previewChatId = computed(() => props.match?.chatId || props.chat?.chatId);
 
 // Dummy handlers for MessageItem
 const handleDummy = () => {};
@@ -122,6 +124,7 @@ defineExpose({
         <div v-for="msg in visibleMessages" :key="msg.id" class="relative">
           <div v-if="match && msg.id === match.messageId" class="absolute inset-0 bg-yellow-50/30 dark:bg-yellow-900/5 border-y-2 border-yellow-200/50 dark:border-yellow-900/20 pointer-events-none z-0"></div>
           <MessageItem
+            :chat-id="previewChatId!"
             :message="msg"
             class="relative z-10"
             :class="{ 'opacity-50 grayscale-[0.5]': match && msg.id !== match.messageId }"
