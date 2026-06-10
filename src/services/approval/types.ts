@@ -7,14 +7,16 @@ export type ApprovalAction = {
   label: string;
 };
 
-export type ApprovalPreviewLine = {
-  label: string;
-  value: string;
-};
-
-export type ApprovalPreview = {
-  lines: ApprovalPreviewLine[];
-};
+export type ApprovalPreview =
+  | {
+      type: 'wikipedia_search';
+      keyword: string;
+    }
+  | {
+      type: 'wikipedia_get_page';
+      title: string | undefined;
+      pageId: string;
+    };
 
 export type ApprovalUiDecision =
   | 'allow_once'

@@ -84,10 +84,8 @@ describe('WikipediaSearchTool', () => {
         label: 'Search Wikipedia',
       },
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'quantum computer',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'quantum computer',
       },
       signal: undefined,
     }]);
@@ -157,10 +155,9 @@ describe('WikipediaGetPageTool', () => {
         label: 'Get Wikipedia page',
       },
       preview: {
-        lines: [{
-          label: 'Page ID',
-          value: '25220',
-        }],
+        type: 'wikipedia_get_page',
+        title: undefined,
+        pageId: '25220',
       },
       signal: undefined,
     }]);
@@ -216,16 +213,9 @@ describe('WikipediaGetPageTool', () => {
         label: 'Get Wikipedia page',
       },
       preview: {
-        lines: [
-          {
-            label: 'Title',
-            value: 'Quantum computing',
-          },
-          {
-            label: 'Page ID',
-            value: '25220',
-          },
-        ],
+        type: 'wikipedia_get_page',
+        title: 'Quantum computing',
+        pageId: '25220',
       },
       signal: undefined,
     }]);

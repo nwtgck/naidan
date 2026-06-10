@@ -58,10 +58,8 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
       chatId: approvalContext.chatId,
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: validated.data.query,
-        }],
+        type: 'wikipedia_search',
+        keyword: validated.data.query,
       },
       signal,
     });
@@ -161,21 +159,9 @@ Long page text may be saved to sysfs Naidan instead of being returned inline.`;
       chatId: approvalContext.chatId,
       action: APPROVAL_ACTIONS.toolWikipediaGetPage,
       preview: {
-        lines: rememberedTitle === undefined
-          ? [{
-            label: 'Page ID',
-            value: String(validated.data.pageId),
-          }]
-          : [
-            {
-              label: 'Title',
-              value: rememberedTitle,
-            },
-            {
-              label: 'Page ID',
-              value: String(validated.data.pageId),
-            },
-          ],
+        type: 'wikipedia_get_page',
+        title: rememberedTitle,
+        pageId: String(validated.data.pageId),
       },
       signal,
     });

@@ -34,7 +34,7 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
-import ChatApprovalPanel from './ChatApprovalPanel.vue';
+import ChatApprovalPanel from './chat-approval/ChatApprovalPanel.vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';

@@ -20,10 +20,8 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'quantum computer',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'quantum computer',
       },
     });
 
@@ -34,10 +32,8 @@ describe('useApproval', () => {
       chatId: 'chat-a',
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'quantum computer',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'quantum computer',
       },
     });
     expect(activeRequest?.requestId).toEqual(expect.any(String));
@@ -61,10 +57,8 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'first keyword',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'first keyword',
       },
     });
 
@@ -83,10 +77,8 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'second keyword',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'second keyword',
       },
     })).resolves.toEqual({ status: 'approved' });
 
@@ -95,10 +87,8 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'other chat keyword',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'other chat keyword',
       },
     });
 
@@ -119,10 +109,9 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaGetPage,
       signal: undefined,
       preview: {
-        lines: [{
-          label: 'Page ID',
-          value: '123',
-        }],
+        type: 'wikipedia_get_page',
+        title: undefined,
+        pageId: '123',
       },
     });
 
@@ -141,10 +130,9 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaGetPage,
       signal: undefined,
       preview: {
-        lines: [{
-          label: 'Page ID',
-          value: '456',
-        }],
+        type: 'wikipedia_get_page',
+        title: undefined,
+        pageId: '456',
       },
     })).resolves.toEqual({ status: 'approved' });
     expect(approval.getActiveApprovalRequest({ chatId: 'chat-b' }).value).toBeUndefined();
@@ -156,10 +144,8 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'first keyword',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'first keyword',
       },
     });
     const secondResultPromise = approval.ensureApproval({
@@ -167,17 +153,18 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'second keyword',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'second keyword',
       },
     });
 
     await flushApprovalQueue({});
 
     const firstRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
-    expect(firstRequest?.preview?.lines[0]?.value).toBe('first keyword');
+    expect(firstRequest?.preview).toEqual({
+      type: 'wikipedia_search',
+      keyword: 'first keyword',
+    });
 
     approval.resolveApprovalRequest({
       requestId: firstRequest!.requestId,
@@ -196,10 +183,8 @@ describe('useApproval', () => {
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: controller.signal,
       preview: {
-        lines: [{
-          label: 'Keyword',
-          value: 'abort keyword',
-        }],
+        type: 'wikipedia_search',
+        keyword: 'abort keyword',
       },
     });
 

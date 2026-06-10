@@ -6,7 +6,6 @@ export type {
   ApprovalEnsureRequest,
   ApprovalEnsureResult,
   ApprovalPreview,
-  ApprovalPreviewLine,
   ApprovalStoredStatus,
   ApprovalUiDecision,
   EnsureApproval,
