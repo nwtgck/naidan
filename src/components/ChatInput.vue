@@ -54,6 +54,7 @@ const props = defineProps<{
   inheritedModelSource: SettingsSource | undefined;
   autoSendPrompt?: string;
   visibility: 'submerged' | 'peeking' | 'active';
+  aboveInputVisibility: 'visible' | 'hidden';
   isStreaming: boolean;
   canGenerateImage: boolean;
   hasImageModel: boolean;
@@ -1040,6 +1041,14 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
   >
     <!-- Glass Zone behind the input card (Full width blur) -->
     <div class="absolute inset-0 -z-10 glass-zone-mask" :class="{ 'opacity-0': visibility === 'submerged' }"></div>
+
+    <div
+      v-if="props.aboveInputVisibility === 'visible'"
+      class="mx-auto mb-2 w-full max-w-4xl pointer-events-auto"
+      data-testid="chat-input-above-slot"
+    >
+      <slot name="above-input"></slot>
+    </div>
 
     <div
       class="max-w-4xl mx-auto w-full pointer-events-auto relative group border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all duration-300 flex flex-col"

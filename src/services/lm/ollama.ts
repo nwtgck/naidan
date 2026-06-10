@@ -13,6 +13,7 @@ import { zodToJsonSchema } from '@/utils/llm-tools';
 import type { LmParameters, ChatMessage, MultimodalContent } from '@/models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { Tool } from '@/services/tools/types';
+import type { ToolApprovalContext } from '@/services/approval';
 import { type LLMProvider, UNKNOWN_STEPS } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
@@ -107,6 +108,7 @@ export class OllamaProvider implements LLMProvider {
     onChunk: (chunk: string) => void;
     parameters?: LmParameters;
     tools?: Tool[];
+    toolApprovalContext?: ToolApprovalContext;
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
     onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
     onToolResult?: (params: {
@@ -116,7 +118,7 @@ export class OllamaProvider implements LLMProvider {
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
+    const { messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
 
@@ -435,6 +437,7 @@ export class OllamaProvider implements LLMProvider {
                 onEvent: async (event) => {
                   onToolEvent?.({ id: tc.id, event });
                 },
+                approvalContext: toolApprovalContext,
               });
 
               if (signal?.aborted) throw new Error('Generation aborted');

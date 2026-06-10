@@ -3,6 +3,7 @@ import type { LLMProvider } from '@/services/lm/types';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { transformersJsService } from './index';
 import type { Tool } from '@/services/tools/types';
+import type { ToolApprovalContext } from '@/services/approval';
 import type { WorkerToolDefinition } from './types';
 import { zodToJsonSchema } from '@/utils/llm-tools';
 
@@ -13,6 +14,7 @@ export class TransformersJsProvider implements LLMProvider {
     onChunk: (chunk: string) => void;
     parameters?: LmParameters;
     tools?: Tool[];
+    toolApprovalContext?: ToolApprovalContext;
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
     onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
     onToolResult?: (params: {
@@ -22,7 +24,7 @@ export class TransformersJsProvider implements LLMProvider {
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
+    const { messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
 
     // Auto-load if needed
     const state = transformersJsService.getState();
@@ -127,6 +129,7 @@ export class TransformersJsProvider implements LLMProvider {
               onEvent: async (event) => {
                 onToolEvent?.({ id: tc.id, event });
               },
+              approvalContext: toolApprovalContext,
             });
             if (signal?.aborted) throw new Error('Generation aborted');
             onToolResult?.({ id: tc.id, result: executionResult });

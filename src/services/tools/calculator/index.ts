@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { evaluate } from 'mathjs';
-import type { Tool } from '@/services/tools/types';
+import type { Tool, ToolExecutionEvent } from '@/services/tools/types';
+import type { ToolApprovalContext } from '@/services/approval';
 
 const CalculatorArgsSchema = z.object({
   expression: z.string().describe('The mathematical expression to evaluate (e.g., "2 + 3 * 4", "sqrt(16)", "cos(pi / 2)")'),
@@ -11,7 +12,17 @@ export class CalculatorTool implements Tool {
   description = 'Evaluate mathematical expressions using mathjs.';
   parametersSchema = CalculatorArgsSchema;
 
-  async execute({ args, signal }: { args: unknown; signal?: AbortSignal }): Promise<
+  async execute({
+    args,
+    signal,
+    onEvent: _onEvent,
+    approvalContext: _approvalContext,
+  }: {
+    args: unknown;
+    signal?: AbortSignal;
+    onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    approvalContext?: ToolApprovalContext;
+  }): Promise<
     | { status: 'success'; content: string }
     | { status: 'error'; code: import('../types').ToolExecutionErrorCode; message: string }
   > {
