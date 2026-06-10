@@ -462,6 +462,7 @@ describe('ChatInput Integration', () => {
       inheritedModelId: undefined,
       inheritedModelSource: undefined,
       visibility: 'active',
+      aboveInputVisibility: 'hidden',
       isStreaming: false,
       canGenerateImage: true,
       hasImageModel: true,

@@ -1,5 +1,6 @@
 import type { ChatMessage, LmParameters } from '@/models/types';
 import type { Tool, ToolExecutionEvent } from '@/services/tools/types';
+import type { ToolApprovalContext } from '@/services/approval';
 
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
 
@@ -10,6 +11,7 @@ export interface LLMProvider {
     onChunk: (chunk: string) => void;
     parameters?: LmParameters;
     tools?: Tool[];
+    toolApprovalContext?: ToolApprovalContext;
     onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
     onToolEvent?: (params: { id: string; event: ToolExecutionEvent }) => void;
     onToolResult?: (params: {

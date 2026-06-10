@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Tool, ToolExecutionEvent } from '@/services/tools/types';
+import type { ToolApprovalContext } from '@/services/approval';
 import type { WeshMount } from '@/services/wesh/types';
 import type { WeshWorkerClient } from '@/services/wesh/worker/types';
 
@@ -63,7 +64,17 @@ export function createWeshTool({
       await client.dispose({});
     },
 
-    async execute({ args, signal, onEvent }: { args: unknown; signal?: AbortSignal; onEvent?: (event: ToolExecutionEvent) => void | Promise<void> }) {
+    async execute({
+      args,
+      signal,
+      onEvent,
+      approvalContext: _approvalContext,
+    }: {
+      args: unknown;
+      signal?: AbortSignal;
+      onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+      approvalContext?: ToolApprovalContext;
+    }) {
       let abortHandler: (() => void) | undefined;
       let abortPromiseCleanup: (() => void) | undefined;
       let executionId: string | undefined;
@@ -71,6 +82,7 @@ export function createWeshTool({
       try {
         if (signal?.aborted) throw new Error('Generation aborted');
         const validated = WeshArgsSchema.parse(args);
+
         let stdoutText = '';
         let stderrText = '';
         let pendingCancellation = false;

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WikipediaGetPageTool, WikipediaSearchTool } from './tools';
+import type { ToolApprovalContext } from '@/services/approval';
+import { clearRememberedWikipediaPageTitles, getRememberedWikipediaPageTitle, rememberWikipediaPageTitle } from './page-title-cache';
 
 const {
   mockSearchWikipedia,
@@ -23,9 +25,25 @@ vi.mock('./render', () => ({
   renderWikipediaPageMarkdown: mockRenderWikipediaPageMarkdown,
 }));
 
+
+function createApprovalContext({
+  calls,
+}: {
+  calls: unknown[];
+}): ToolApprovalContext {
+  return {
+    chatId: 'chat-approval-test',
+    ensureApproval: vi.fn(async (request) => {
+      calls.push(request);
+      return { status: 'approved' as const };
+    }),
+  };
+}
+
 describe('WikipediaSearchTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearRememberedWikipediaPageTitles({});
   });
 
   it('accepts lang and query in parametersSchema', () => {
@@ -52,11 +70,27 @@ describe('WikipediaSearchTool', () => {
     });
     mockRenderWikipediaSearchMarkdown.mockReturnValue('markdown');
 
+    const approvalCalls: unknown[] = [];
     const tool = new WikipediaSearchTool();
     const result = await tool.execute({
       args: { lang: 'en', query: 'quantum computer' },
+      approvalContext: createApprovalContext({ calls: approvalCalls }),
     });
 
+    expect(approvalCalls).toEqual([{
+      chatId: 'chat-approval-test',
+      action: {
+        id: 'tool.wikipedia.search',
+        label: 'Search Wikipedia',
+      },
+      preview: {
+        lines: [{
+          label: 'Keyword',
+          value: 'quantum computer',
+        }],
+      },
+      signal: undefined,
+    }]);
     expect(mockSearchWikipedia).toHaveBeenCalledWith({
       lang: 'en',
       query: 'quantum computer',
@@ -67,6 +101,10 @@ describe('WikipediaSearchTool', () => {
     expect(mockRenderWikipediaSearchMarkdown).toHaveBeenCalledWith({
       groups: [{ lang: 'en', items: [{ title: 'Quantum computing', pageId: 25220 }] }],
     });
+    expect(getRememberedWikipediaPageTitle({
+      lang: 'en',
+      pageId: 25220,
+    })).toBe('Quantum computing');
     expect(result).toEqual({ status: 'success', content: 'markdown' });
   });
 });
@@ -74,6 +112,7 @@ describe('WikipediaSearchTool', () => {
 describe('WikipediaGetPageTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearRememberedWikipediaPageTitles({});
   });
 
   it('accepts lang and pageId in parametersSchema', () => {
@@ -104,11 +143,27 @@ describe('WikipediaGetPageTool', () => {
     });
     mockRenderWikipediaPageMarkdown.mockReturnValue('markdown');
 
+    const approvalCalls: unknown[] = [];
     const tool = new WikipediaGetPageTool();
     const result = await tool.execute({
       args: { lang: 'en', pageId: 25220 },
+      approvalContext: createApprovalContext({ calls: approvalCalls }),
     });
 
+    expect(approvalCalls).toEqual([{
+      chatId: 'chat-approval-test',
+      action: {
+        id: 'tool.wikipedia.get_page',
+        label: 'Get Wikipedia page',
+      },
+      preview: {
+        lines: [{
+          label: 'Page ID',
+          value: '25220',
+        }],
+      },
+      signal: undefined,
+    }]);
     expect(mockGetWikipediaPage).toHaveBeenCalledWith({
       lang: 'en',
       pageId: 25220,
@@ -126,4 +181,55 @@ describe('WikipediaGetPageTool', () => {
     });
     expect(result).toEqual({ status: 'success', content: 'markdown' });
   });
+
+  it('uses a remembered search title in get page approval preview', async () => {
+    rememberWikipediaPageTitle({
+      lang: 'en',
+      pageId: 25220,
+      title: 'Quantum computing',
+    });
+    rememberWikipediaPageTitle({
+      lang: 'ja',
+      pageId: 25220,
+      title: '量子コンピュータ',
+    });
+    mockGetWikipediaPage.mockResolvedValue({
+      kind: 'inline',
+      lang: 'en',
+      pageId: 25220,
+      title: 'Quantum computing',
+      content: 'Intro',
+    });
+    mockRenderWikipediaPageMarkdown.mockReturnValue('markdown');
+
+    const approvalCalls: unknown[] = [];
+    const tool = new WikipediaGetPageTool();
+    const result = await tool.execute({
+      args: { lang: 'en', pageId: 25220 },
+      approvalContext: createApprovalContext({ calls: approvalCalls }),
+    });
+
+    expect(approvalCalls).toEqual([{
+      chatId: 'chat-approval-test',
+      action: {
+        id: 'tool.wikipedia.get_page',
+        label: 'Get Wikipedia page',
+      },
+      preview: {
+        lines: [
+          {
+            label: 'Title',
+            value: 'Quantum computing',
+          },
+          {
+            label: 'Page ID',
+            value: '25220',
+          },
+        ],
+      },
+      signal: undefined,
+    }]);
+    expect(result).toEqual({ status: 'success', content: 'markdown' });
+  });
+
 });

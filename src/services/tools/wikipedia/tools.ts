@@ -1,7 +1,11 @@
 import type { Tool, ToolExecutionErrorCode, ToolExecutionEvent } from '@/services/tools/types';
+import type { ToolApprovalContext } from '@/services/approval';
+import { APPROVAL_ACTIONS } from '@/services/approval';
+import { createApprovalDeniedToolError, createMissingApprovalContextToolError } from '@/services/tools/approval-errors';
 import { WikipediaGetPageArgsSchema, WikipediaSearchArgsSchema } from './schemas';
 import { getWikipediaPage, searchWikipedia } from './client';
 import { renderWikipediaPageMarkdown, renderWikipediaSearchMarkdown } from './render';
+import { getRememberedWikipediaPageTitle, rememberWikipediaPageTitle } from './page-title-cache';
 
 export const WIKIPEDIA_SEARCH_TOOL_NAME = 'wikipedia_search';
 export const WIKIPEDIA_GET_PAGE_TOOL_NAME = 'wikipedia_get_page';
@@ -25,10 +29,12 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
     args,
     signal,
     onEvent: _onEvent,
+    approvalContext,
   }: {
     args: unknown;
     signal?: AbortSignal;
     onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    approvalContext?: ToolApprovalContext;
   }): Promise<
     | { status: 'success'; content: string }
     | { status: 'error'; code: ToolExecutionErrorCode; message: string }
@@ -42,6 +48,37 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
       };
     }
 
+    if (approvalContext === undefined) {
+      return createMissingApprovalContextToolError({
+        action: APPROVAL_ACTIONS.toolWikipediaSearch,
+      });
+    }
+
+    const approval = await approvalContext.ensureApproval({
+      chatId: approvalContext.chatId,
+      action: APPROVAL_ACTIONS.toolWikipediaSearch,
+      preview: {
+        lines: [{
+          label: 'Keyword',
+          value: validated.data.query,
+        }],
+      },
+      signal,
+    });
+
+    switch (approval.status) {
+    case 'approved':
+      break;
+    case 'denied':
+      return createApprovalDeniedToolError({
+        action: APPROVAL_ACTIONS.toolWikipediaSearch,
+      });
+    default: {
+      const _ex: never = approval;
+      throw new Error(`Unhandled approval status: ${String(_ex)}`);
+    }
+    }
+
     try {
       const result = await searchWikipedia({
         lang: validated.data.lang,
@@ -50,6 +87,17 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
         signal,
         requestResponseImpl: undefined,
       });
+
+      for (const group of result.groups) {
+        for (const item of group.items) {
+          rememberWikipediaPageTitle({
+            lang: group.lang,
+            pageId: item.pageId,
+            title: item.title,
+          });
+        }
+      }
+
       return {
         status: 'success',
         content: renderWikipediaSearchMarkdown({
@@ -80,10 +128,12 @@ Long page text may be saved to sysfs Naidan instead of being returned inline.`;
     args,
     signal,
     onEvent: _onEvent,
+    approvalContext,
   }: {
     args: unknown;
     signal?: AbortSignal;
     onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    approvalContext?: ToolApprovalContext;
   }): Promise<
     | { status: 'success'; content: string }
     | { status: 'error'; code: ToolExecutionErrorCode; message: string }
@@ -95,6 +145,52 @@ Long page text may be saved to sysfs Naidan instead of being returned inline.`;
         code: 'invalid_arguments',
         message: `Invalid arguments: ${validated.error.message}`,
       };
+    }
+
+    if (approvalContext === undefined) {
+      return createMissingApprovalContextToolError({
+        action: APPROVAL_ACTIONS.toolWikipediaGetPage,
+      });
+    }
+
+    const rememberedTitle = getRememberedWikipediaPageTitle({
+      lang: validated.data.lang,
+      pageId: validated.data.pageId,
+    });
+    const approval = await approvalContext.ensureApproval({
+      chatId: approvalContext.chatId,
+      action: APPROVAL_ACTIONS.toolWikipediaGetPage,
+      preview: {
+        lines: rememberedTitle === undefined
+          ? [{
+            label: 'Page ID',
+            value: String(validated.data.pageId),
+          }]
+          : [
+            {
+              label: 'Title',
+              value: rememberedTitle,
+            },
+            {
+              label: 'Page ID',
+              value: String(validated.data.pageId),
+            },
+          ],
+      },
+      signal,
+    });
+
+    switch (approval.status) {
+    case 'approved':
+      break;
+    case 'denied':
+      return createApprovalDeniedToolError({
+        action: APPROVAL_ACTIONS.toolWikipediaGetPage,
+      });
+    default: {
+      const _ex: never = approval;
+      throw new Error(`Unhandled approval status: ${String(_ex)}`);
+    }
     }
 
     try {

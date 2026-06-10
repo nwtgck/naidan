@@ -48,6 +48,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useToast } from '@/composables/useToast';
 import { useChatTools } from '@/composables/useChatTools';
+import { useApproval } from '@/composables/useApproval';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import {
   availableModels,
@@ -453,10 +454,15 @@ export async function generateResponseForAssistant({
 
     try {
       signalReady();
+      const { ensureApproval } = useApproval({});
       await provider.chat({
         messages: finalMessages,
         model: resolvedModel,
         tools: enabledTools.length > 0 ? enabledTools : undefined,
+        toolApprovalContext: {
+          chatId: mutableChat.id,
+          ensureApproval,
+        },
         onAssistantMessageStart: () => {
           generationState.currentToolNode = null;
 

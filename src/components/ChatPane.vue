@@ -34,6 +34,7 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 // IMPORTANT: WelcomeScreen is the first thing users see in a new chat. We import it synchronously for an instant landing.
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
+import ChatApprovalPanel from './ChatApprovalPanel.vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
@@ -73,6 +74,8 @@ import { generateChatShareURL } from '@/services/import-export/chat-url-share';
 import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
 import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/services/context-compact';
+import { useApproval } from '@/composables/useApproval';
+import type { ApprovalUiDecision } from '@/services/approval';
 
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
@@ -86,6 +89,7 @@ const {
   isChatWeshTerminalOpen,
   toggleChatWeshTerminal,
 } = useLayout();
+const approval = useApproval({});
 const chatConversation = useChatConversation({});
 const chatBranches = useChatBranches({});
 const chatCompaction = useChatCompaction({});
@@ -127,6 +131,7 @@ const {
   isProcessing: ({ chatId }) => isChatProcessing({ chatId }),
 });
 const contextCompactProgress = computed<ContextCompactProgress>(() => getChatContextCompactProgress({ chatId: props.chatId }));
+const activeApprovalRequest = computed(() => approval.getActiveApprovalRequest({ chatId: props.chatId }).value);
 const isGeneratingTitle = computed(() => isChatGeneratingTitle({ chatId: props.chatId }));
 const isDebugEnabled = computed(() => chat.value?.debugEnabled === true);
 const chatIdentityKey = computed(() => {
@@ -915,6 +920,22 @@ function handleRefreshModels(_args: Record<never, never>) {
   });
 }
 
+
+function handleApprovalDecision({
+  decision,
+}: {
+  decision: ApprovalUiDecision;
+}): void {
+  const request = activeApprovalRequest.value;
+  if (request === undefined) {
+    return;
+  }
+  approval.resolveApprovalRequest({
+    requestId: request.requestId,
+    decision,
+  });
+}
+
 function handleAbortGeneration(_args: Record<never, never>) {
   const chatValue = chat.value;
   if (!chatValue) return;
@@ -1301,6 +1322,7 @@ watch(
       :inherited-model-source="inheritedSettings?.sources.modelId"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
+      :above-input-visibility="activeApprovalRequest !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
       :can-generate-image="canGenerateImage"
       :has-image-model="hasImageModel"
@@ -1309,7 +1331,15 @@ watch(
       @auto-sent="emit('auto-sent')"
       @sent="clearTargetMessageQuery"
       @scroll-to-bottom="(force) => scrollToBottom({ scrollForce: force ? 'force' : 'if-near-bottom', behavior: 'smooth' })"
-    />
+    >
+      <template #above-input>
+        <ChatApprovalPanel
+          v-if="activeApprovalRequest !== undefined"
+          :request="activeApprovalRequest"
+          @decide="decision => handleApprovalDecision({ decision })"
+        />
+      </template>
+    </ChatInput>
 
     <!-- Preview Modal -->
     <BinaryObjectPreviewModal
