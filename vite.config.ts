@@ -2,6 +2,7 @@
 import VueRouter from 'unplugin-vue-router/vite'
 import { defineConfig } from 'vitest/config'
 import { build as viteBuild } from 'vite'
+import type { Alias } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import VueDevTools from 'vite-plugin-vue-devtools'
 import fs from 'node:fs'
@@ -229,12 +230,17 @@ export default defineConfig(({ mode }) => {
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted'
   const rollupInput: Record<string, string> = isStandalone
     ? {
-      app: path.resolve(__dirname, 'index.html'),
+      index: path.resolve(__dirname, 'index.html'),
     }
     : {
       app: path.resolve(__dirname, 'index.html'),
       privacyFetchBroker: path.resolve(__dirname, 'privacy-fetch-broker.html'),
     }
+  const standaloneAliases: Alias[] = isStandalone
+    ? createStandaloneWorkerClientAliases({
+      resolvePath: ensureExistingPath,
+    }) as unknown as Alias[]
+    : []
   const embeddedWorkers: EmbeddedWorkerSpec[] = [
     {
       entry: 'src/services/worker-hub-standalone.worker.ts',
@@ -267,14 +273,13 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
-      alias: {
-        ...(isStandalone
-          ? createStandaloneWorkerClientAliases({
-            resolvePath: ensureExistingPath,
-          })
-          : {}),
-        '@': path.resolve(__dirname, 'src'),
-      },
+      alias: [
+        ...standaloneAliases,
+        {
+          find: '@',
+          replacement: path.resolve(__dirname, 'src'),
+        },
+      ],
     },
     plugins: [
       VueRouter({
@@ -385,13 +390,13 @@ export default defineConfig(({ mode }) => {
         output: {
           format: isStandalone ? 'iife' : 'es',
           entryFileNames: (chunkInfo) => {
-            if (isPrivacyFetchBrokerChunk(chunkInfo)) {
+            if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
               return 'assets/privacy-fetch-broker/[name]-[hash].js'
             }
             return 'assets/[name]-[hash].js'
           },
           chunkFileNames: (chunkInfo) => {
-            if (isPrivacyFetchBrokerChunk(chunkInfo)) {
+            if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
               return 'assets/privacy-fetch-broker/[name]-[hash].js'
             }
             return 'assets/[name]-[hash].js'
@@ -463,10 +468,25 @@ const copyZipPlugin = () => ({
 
 /**
  * Custom Vite plugin to finalize the standalone index.html.
- * For standalone builds, preserve file:/// compatibility by replacing the
- * generated module entry with a classic external script entry.
- * This keeps the main bundle out of index.html while avoiding module loading
- * restrictions on local files.
+ *
+ * Standalone output is opened directly through file:// without an HTTP server:
+ *
+ *   naidan-standalone-<version>/
+ *     index.html
+ *     assets/index-<hash>.js
+ *     ...
+ *
+ *   index.html:
+ *     <link rel="icon" href="./favicon.svg">
+ *     <script src="./assets/index-<hash>.js"></script>
+ *     <script id="file-protocol-compatible-standalone-worker-hub"
+ *             type="text/x-naidan-worker">...</script>
+ *
+ * The main app entry must stay a relative classic script, not an
+ * HTTP-served module entry such as:
+ *
+ *     <script type="module" crossorigin src="/assets/index-<hash>.js"></script>
+ *
  * Worker sources remain embedded because their blob/object-url flow depends
  * on in-document access to the source text.
  */
@@ -528,7 +548,7 @@ async function finalizeStandaloneIndexHtml({ outDir }: { outDir: string }) {
   const scripts = Array.from(document.querySelectorAll('script')) as HTMLScriptElement[]
   for (const script of scripts) {
     const src = script.getAttribute('src')
-    if (src && src.includes('assets/index-')) {
+    if (src !== null && /^(\.\/)?assets\/index-[^/]+\.js$/.test(src)) {
       script.removeAttribute('type')
       script.removeAttribute('crossorigin')
     }

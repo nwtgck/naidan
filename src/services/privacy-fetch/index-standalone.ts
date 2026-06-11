@@ -1,4 +1,4 @@
-export { privacyFetch } from './index-hosted'
+export { privacyFetch } from './client-standalone'
 export type {
   PrivacyFetchHeaderEntries,
   PrivacyFetchRequest,
