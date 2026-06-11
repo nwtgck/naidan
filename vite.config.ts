@@ -2,6 +2,7 @@
 import VueRouter from 'unplugin-vue-router/vite'
 import { defineConfig } from 'vitest/config'
 import { build as viteBuild } from 'vite'
+import type { Alias } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import VueDevTools from 'vite-plugin-vue-devtools'
 import fs from 'node:fs'
@@ -13,7 +14,7 @@ import { createHash } from 'node:crypto'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
-import { createStandaloneWorkerClientAliases } from './build/standalone-worker-facades.js'
+import { createStandaloneFacadeAliases } from './build/standalone-facades.js'
 import {
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
   STANDALONE_WORKER_MANIFEST_SCRIPT_ID,
@@ -71,6 +72,11 @@ function setCrossOriginModuleHeaders({ res }: {
   res.setHeader('Access-Control-Allow-Origin', '*')
 }
 
+const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch'
+const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/services/privacy-fetch/'
+const ZOD_MODULE_PATH_SEGMENT = '/node_modules/zod/'
+const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker'
+
 function normalizeModulePathForChunkRouting(modulePath: string): string {
   return modulePath.replaceAll('\\', '/')
 }
@@ -80,13 +86,13 @@ function isPrivacyFetchBrokerChunk(chunkInfo: {
   facadeModuleId?: string | null
   moduleIds?: string[]
 }): boolean {
-  if (chunkInfo.name.includes('privacy-fetch')) {
+  if (chunkInfo.name.includes(PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER)) {
     return true
   }
 
   if (chunkInfo.facadeModuleId !== undefined && chunkInfo.facadeModuleId !== null) {
     const normalizedFacadeModuleId = normalizeModulePathForChunkRouting(chunkInfo.facadeModuleId)
-    if (normalizedFacadeModuleId.includes('/src/services/privacy-fetch/')) {
+    if (normalizedFacadeModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)) {
       return true
     }
   }
@@ -95,8 +101,8 @@ function isPrivacyFetchBrokerChunk(chunkInfo: {
   // dependencies still stay inside the broker asset subtree for auditing.
   return chunkInfo.moduleIds?.some((moduleId) => {
     const normalizedModuleId = normalizeModulePathForChunkRouting(moduleId)
-    return normalizedModuleId.includes('/src/services/privacy-fetch/')
-      || normalizedModuleId.includes('/node_modules/zod/')
+    return normalizedModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)
+      || normalizedModuleId.includes(ZOD_MODULE_PATH_SEGMENT)
   }) ?? false
 }
 
@@ -229,12 +235,17 @@ export default defineConfig(({ mode }) => {
   const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted'
   const rollupInput: Record<string, string> = isStandalone
     ? {
-      app: path.resolve(__dirname, 'index.html'),
+      index: path.resolve(__dirname, 'index.html'),
     }
     : {
       app: path.resolve(__dirname, 'index.html'),
       privacyFetchBroker: path.resolve(__dirname, 'privacy-fetch-broker.html'),
     }
+  const standaloneAliases: Alias[] = isStandalone
+    ? createStandaloneFacadeAliases({
+      resolvePath: ensureExistingPath,
+    })
+    : []
   const embeddedWorkers: EmbeddedWorkerSpec[] = [
     {
       entry: 'src/services/worker-hub-standalone.worker.ts',
@@ -267,14 +278,13 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
-      alias: {
-        ...(isStandalone
-          ? createStandaloneWorkerClientAliases({
-            resolvePath: ensureExistingPath,
-          })
-          : {}),
-        '@': path.resolve(__dirname, 'src'),
-      },
+      alias: [
+        ...standaloneAliases,
+        {
+          find: '@',
+          replacement: path.resolve(__dirname, 'src'),
+        },
+      ],
     },
     plugins: [
       VueRouter({
@@ -385,14 +395,14 @@ export default defineConfig(({ mode }) => {
         output: {
           format: isStandalone ? 'iife' : 'es',
           entryFileNames: (chunkInfo) => {
-            if (isPrivacyFetchBrokerChunk(chunkInfo)) {
-              return 'assets/privacy-fetch-broker/[name]-[hash].js'
+            if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
+              return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`
             }
             return 'assets/[name]-[hash].js'
           },
           chunkFileNames: (chunkInfo) => {
-            if (isPrivacyFetchBrokerChunk(chunkInfo)) {
-              return 'assets/privacy-fetch-broker/[name]-[hash].js'
+            if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
+              return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`
             }
             return 'assets/[name]-[hash].js'
           },
@@ -463,10 +473,25 @@ const copyZipPlugin = () => ({
 
 /**
  * Custom Vite plugin to finalize the standalone index.html.
- * For standalone builds, preserve file:/// compatibility by replacing the
- * generated module entry with a classic external script entry.
- * This keeps the main bundle out of index.html while avoiding module loading
- * restrictions on local files.
+ *
+ * Standalone output is opened directly through file:// without an HTTP server:
+ *
+ *   naidan-standalone-<version>/
+ *     index.html
+ *     assets/index-<hash>.js
+ *     ...
+ *
+ *   index.html:
+ *     <link rel="icon" href="./favicon.svg">
+ *     <script src="./assets/index-<hash>.js"></script>
+ *     <script id="file-protocol-compatible-standalone-worker-hub"
+ *             type="text/x-naidan-worker">...</script>
+ *
+ * The main app entry must stay a relative classic script, not an
+ * HTTP-served module entry such as:
+ *
+ *     <script type="module" crossorigin src="/assets/index-<hash>.js"></script>
+ *
  * Worker sources remain embedded because their blob/object-url flow depends
  * on in-document access to the source text.
  */
@@ -528,7 +553,7 @@ async function finalizeStandaloneIndexHtml({ outDir }: { outDir: string }) {
   const scripts = Array.from(document.querySelectorAll('script')) as HTMLScriptElement[]
   for (const script of scripts) {
     const src = script.getAttribute('src')
-    if (src && src.includes('assets/index-')) {
+    if (src !== null && /^(\.\/)?assets\/index-[^/]+\.js$/.test(src)) {
       script.removeAttribute('type')
       script.removeAttribute('crossorigin')
     }
