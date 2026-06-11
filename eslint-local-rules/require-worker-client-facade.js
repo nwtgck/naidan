@@ -1,5 +1,5 @@
 import path from 'path'
-import { STANDALONE_WORKER_CLIENT_FACADES } from '../build/standalone-worker-facades.js'
+import { STANDALONE_WORKER_CLIENT_FACADES } from '../build/standalone-facades.js'
 
 function normalizePath(filePath) {
   return filePath.replace(/\\/g, '/')

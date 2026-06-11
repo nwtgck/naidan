@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
-import { createStandaloneWorkerClientAliases } from './build/standalone-worker-facades.js'
+import { createStandaloneFacadeAliases } from './build/standalone-facades.js'
 import {
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
   STANDALONE_WORKER_MANIFEST_SCRIPT_ID,
@@ -72,6 +72,11 @@ function setCrossOriginModuleHeaders({ res }: {
   res.setHeader('Access-Control-Allow-Origin', '*')
 }
 
+const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch'
+const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/services/privacy-fetch/'
+const ZOD_MODULE_PATH_SEGMENT = '/node_modules/zod/'
+const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker'
+
 function normalizeModulePathForChunkRouting(modulePath: string): string {
   return modulePath.replaceAll('\\', '/')
 }
@@ -81,13 +86,13 @@ function isPrivacyFetchBrokerChunk(chunkInfo: {
   facadeModuleId?: string | null
   moduleIds?: string[]
 }): boolean {
-  if (chunkInfo.name.includes('privacy-fetch')) {
+  if (chunkInfo.name.includes(PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER)) {
     return true
   }
 
   if (chunkInfo.facadeModuleId !== undefined && chunkInfo.facadeModuleId !== null) {
     const normalizedFacadeModuleId = normalizeModulePathForChunkRouting(chunkInfo.facadeModuleId)
-    if (normalizedFacadeModuleId.includes('/src/services/privacy-fetch/')) {
+    if (normalizedFacadeModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)) {
       return true
     }
   }
@@ -96,8 +101,8 @@ function isPrivacyFetchBrokerChunk(chunkInfo: {
   // dependencies still stay inside the broker asset subtree for auditing.
   return chunkInfo.moduleIds?.some((moduleId) => {
     const normalizedModuleId = normalizeModulePathForChunkRouting(moduleId)
-    return normalizedModuleId.includes('/src/services/privacy-fetch/')
-      || normalizedModuleId.includes('/node_modules/zod/')
+    return normalizedModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)
+      || normalizedModuleId.includes(ZOD_MODULE_PATH_SEGMENT)
   }) ?? false
 }
 
@@ -237,9 +242,9 @@ export default defineConfig(({ mode }) => {
       privacyFetchBroker: path.resolve(__dirname, 'privacy-fetch-broker.html'),
     }
   const standaloneAliases: Alias[] = isStandalone
-    ? createStandaloneWorkerClientAliases({
+    ? createStandaloneFacadeAliases({
       resolvePath: ensureExistingPath,
-    }) as unknown as Alias[]
+    })
     : []
   const embeddedWorkers: EmbeddedWorkerSpec[] = [
     {
@@ -391,13 +396,13 @@ export default defineConfig(({ mode }) => {
           format: isStandalone ? 'iife' : 'es',
           entryFileNames: (chunkInfo) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
-              return 'assets/privacy-fetch-broker/[name]-[hash].js'
+              return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`
             }
             return 'assets/[name]-[hash].js'
           },
           chunkFileNames: (chunkInfo) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
-              return 'assets/privacy-fetch-broker/[name]-[hash].js'
+              return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`
             }
             return 'assets/[name]-[hash].js'
           },
