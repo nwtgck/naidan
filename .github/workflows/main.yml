@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.x
           cache: 'npm'
@@ -34,10 +34,10 @@ jobs:
         shardTotal: [8]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.x
           cache: 'npm'
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run Python server tests (Isolated)
         run: |
@@ -65,10 +65,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.x
           cache: 'npm'
@@ -86,7 +86,7 @@ jobs:
         run: npm run build
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: naidan-server/go.mod
 
@@ -96,13 +96,13 @@ jobs:
           go run build.go
 
       - name: Upload full dist build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: full-dist-build
           path: dist/
 
       - name: Upload naidan-server binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: naidan-server-binary
           path: naidan-server/naidan-server
@@ -117,16 +117,16 @@ jobs:
       statuses: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.x
           cache: 'npm'
 
       - name: Download full dist build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: full-dist-build
           path: dist
@@ -141,13 +141,13 @@ jobs:
 
       - name: Publish to Cloudflare Pages
         id: cloudflare_pages_deploy
-        uses: cloudflare/pages-action@1
+        uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          projectName: naidan
-          directory: dist/hosted
+          command: pages deploy dist/hosted --project-name=naidan
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          packageManager: npm
 
       - name: Add publish URL as commit status
         uses: actions/github-script@v8
@@ -161,7 +161,7 @@ jobs:
               description: 'Cloudflare Pages deployment',
               state: 'success',
               sha,
-              target_url: "${{ steps.cloudflare_pages_deploy.outputs.url }}",
+              target_url: "${{ steps.cloudflare_pages_deploy.outputs.deployment-url }}",
             });
 
   publish_to_cloudflare_local_only:
@@ -174,10 +174,10 @@ jobs:
       statuses: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download full dist build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: full-dist-build
           path: dist
@@ -195,13 +195,13 @@ jobs:
 
       - name: Publish to Cloudflare Pages (Local API Only)
         id: cloudflare_pages_deploy_local
-        uses: cloudflare/pages-action@1
+        uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.ONLY_LOCAL_CLOUDFLARE_API_TOKEN }}
-          projectName: naidan-only-local
-          directory: dist/hosted
+          command: pages deploy dist/hosted --project-name=naidan-only-local
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          packageManager: npm
 
       - name: Add publish URL as commit status
         uses: actions/github-script@v8
@@ -215,7 +215,7 @@ jobs:
               description: 'Local-only version deployment',
               state: 'success',
               sha,
-              target_url: "${{ steps.cloudflare_pages_deploy_local.outputs.url }}",
+              target_url: "${{ steps.cloudflare_pages_deploy_local.outputs.deployment-url }}",
             });
 
   publish_to_cloudflare_curated:
@@ -228,16 +228,16 @@ jobs:
       statuses: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.x
           cache: 'npm'
 
       - name: Download full dist build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: full-dist-build
           path: dist
@@ -287,13 +287,13 @@ jobs:
 
       - name: Publish to Cloudflare Pages (Curated)
         id: cloudflare_pages_deploy_curated
-        uses: cloudflare/pages-action@1
+        uses: cloudflare/wrangler-action@v4
         with:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           apiToken: ${{ secrets.CURATED_CLOUDFLARE_API_TOKEN }}
-          projectName: naidan-curated
-          directory: dist/hosted
+          command: pages deploy dist/hosted --project-name=naidan-curated
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          packageManager: npm
 
       - name: Add publish URL as commit status
         uses: actions/github-script@v8
@@ -307,7 +307,7 @@ jobs:
               description: 'Curated-access deployment',
               state: 'success',
               sha,
-              target_url: "${{ steps.cloudflare_pages_deploy_curated.outputs.url }}",
+              target_url: "${{ steps.cloudflare_pages_deploy_curated.outputs.deployment-url }}",
             });
 
   release_to_github:
@@ -318,10 +318,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download full dist build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: full-dist-build
           path: dist
@@ -337,7 +337,7 @@ jobs:
           mv dist/naidan-hosted.zip dist/naidan-hosted-${TAG}.zip
 
       - name: Upload extra assets to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/naidan-standalone-${{ steps.get_tag.outputs.TAG_NAME }}.zip
@@ -346,12 +346,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: naidan-server/go.mod
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6.2.1
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: v2.7.0
