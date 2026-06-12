@@ -49,7 +49,6 @@ vi.mock('lucide-vue-next', () => ({
   CalculatorIcon: { template: '<span>Calculator</span>' },
   BookOpenIcon: { template: '<span>Wikipedia</span>' },
   TerminalIcon: { template: '<span>Terminal</span>' },
-  InfoIcon: { template: '<span>Info</span>' },
 }));
 
 describe('LmToolsSettings.vue', () => {
@@ -94,18 +93,6 @@ describe('LmToolsSettings.vue', () => {
 
     expect(wrapper.find('[data-testid="tool-wikipedia-toggle"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="tool-wikipedia-note"]').exists()).toBe(false);
-  });
-
-  it('shows the wikipedia note only when both wikipedia tools are enabled', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-
-    expect(wrapper.get('[data-testid="tool-wikipedia-note"]').text()).toContain(
-      'Wikipedia search keywords are sent to the external service without additional user approval.',
-    );
   });
 
   it('enables wikipedia through dependency actions from the toggle', async () => {

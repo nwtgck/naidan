@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BookOpenIcon, CalculatorIcon, InfoIcon } from 'lucide-vue-next';
+import { BookOpenIcon, CalculatorIcon } from 'lucide-vue-next';
 import { useChatTools } from '@/composables/useChatTools';
 import { useToolDependencyActions } from '@/composables/useToolDependencyActions';
 import WeshToolSettings from './WeshToolSettings.vue';
@@ -95,17 +95,6 @@ defineExpose({
       </button>
 
       <WeshToolSettings />
-    </div>
-
-    <div
-      v-if="isWikipediaEnabled"
-      class="flex items-start gap-3 px-4 py-2.5 bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100/50 dark:border-amber-900/20 rounded-xl"
-      data-testid="tool-wikipedia-note"
-    >
-      <InfoIcon class="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-      <div class="text-[10px] leading-relaxed text-amber-800/80 dark:text-amber-300/80 italic font-medium">
-        Wikipedia search keywords are sent to the external service without additional user approval.
-      </div>
     </div>
   </div>
 </template>
