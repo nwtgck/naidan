@@ -150,14 +150,14 @@ const thumbnails = ref<Record<string, string>>({});
 const isSupportedMap = ref<Record<string, boolean>>({});
 const thumbnailObserver = ref<IntersectionObserver | null>(null);
 
-const loadMediaDetails = async (item: MediaItem) => {
+const loadMediaDetails = async ({ item }: { item: MediaItem }) => {
   if (thumbnails.value[item.binaryObjectId]) return;
 
   try {
     const blob = await storageService.getFile({ binaryObjectId: item.binaryObjectId });
     if (blob) {
       thumbnails.value[item.binaryObjectId] = URL.createObjectURL(blob);
-      const support = await ImageDownloadHydrator.detectSupport(blob);
+      const support = await ImageDownloadHydrator.detectSupport({ blob });
       isSupportedMap.value[item.binaryObjectId] = support;
     }
   } catch (e) {
@@ -172,7 +172,7 @@ const setupObserver = () => {
         const id = (entry.target as HTMLElement).dataset.id;
         if (id) {
           const item = allMediaItems.value.find(i => i.binaryObjectId === id);
-          if (item) loadMediaDetails(item);
+          if (item) loadMediaDetails({ item });
         }
       }
     });
@@ -222,11 +222,11 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem; withMet
       model: item.model,
       withMetadata: true,
       storageService,
-      onError: (err) => addErrorEvent({
+      onError: ({ error }) => addErrorEvent({
         source: 'MediaShelf:Download',
         message: 'Failed to embed metadata in image.',
 
-        details: err instanceof Error ? err.message : String(err),
+        details: error instanceof Error ? error.message : String(error),
       })
     });
   } else {

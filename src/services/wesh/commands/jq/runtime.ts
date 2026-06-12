@@ -10,7 +10,7 @@ interface JqRuntimeContext {
   variables: Record<string, JsonValue>;
 }
 
-export type JqRuntimeFilterEvaluator = (options: {
+export type JqRuntimeFilterEvaluator = ({ filter, input }: {
   filter: JqFilter;
   input: JsonValue;
 }) => { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError };
@@ -100,7 +100,7 @@ function applyPathAssignment({
 }: {
   root: JsonValue;
   path: JqPath;
-  assignValue: (options: { currentValue: JsonValue | undefined }) => { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError };
+  assignValue: ({ currentValue }: { currentValue: JsonValue | undefined }) => { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError };
   mode: 'assign' | 'update';
 }): { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError } {
   if (path.segments.length === 0) {
@@ -126,7 +126,7 @@ function assignIntoPath({
 }: {
   container: JsonValue;
   segments: JqPathSegment[];
-  assignValue: (options: { currentValue: JsonValue | undefined }) => { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError };
+  assignValue: ({ currentValue }: { currentValue: JsonValue | undefined }) => { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError };
   mode: 'assign' | 'update';
 }): { ok: true } | { ok: false; error: JqRuntimeError } {
   const [head, ...tail] = segments;

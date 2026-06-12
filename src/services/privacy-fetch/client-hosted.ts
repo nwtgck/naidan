@@ -4,8 +4,10 @@ import type {
   PrivacyFetchResponse,
 } from './types'
 
-export async function privacyFetch(
-  request: PrivacyFetchRequest,
-): Promise<PrivacyFetchResponse> {
-  return getPrivacyFetchBrokerClient().fetch(request)
+export async function privacyFetch({
+  request,
+}: {
+  request: PrivacyFetchRequest;
+}): Promise<PrivacyFetchResponse> {
+  return getPrivacyFetchBrokerClient().fetch({ request })
 }

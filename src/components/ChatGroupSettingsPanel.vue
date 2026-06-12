@@ -307,7 +307,7 @@ async function setGroupNameFromModelId() {
   if (!modelId || !currentChatGroup.value) return;
 
   const newName = modelId.split('/').pop() || modelId;
-  await storageService.updateChatGroup(currentChatGroup.value.id, (current) => {
+  await storageService.updateChatGroup({ id: currentChatGroup.value.id, updater: ({ current }) => {
     if (current === null) {
       throw new Error('Chat group not found');
     }
@@ -317,7 +317,7 @@ async function setGroupNameFromModelId() {
       name: newName,
       updatedAt: Date.now(),
     };
-  });
+  } });
 }
 
 

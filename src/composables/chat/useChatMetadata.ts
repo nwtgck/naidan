@@ -95,7 +95,8 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
 
     await updateChatMeta({
       id: chatId,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           throw new Error('Chat not found');
         }
@@ -127,7 +128,8 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
 
     await updateChatMeta({
       id: chatId,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           throw new Error('Chat not found');
         }
@@ -157,7 +159,8 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
 
     await updateChatMeta({
       id: chatId,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           throw new Error('Chat not found');
         }
@@ -187,7 +190,8 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
 
     await updateChatMeta({
       id: chatId,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           throw new Error('Chat not found');
         }
@@ -218,7 +222,8 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
 
     await updateChatMeta({
       id: chatId,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           throw new Error('Chat not found');
         }
@@ -291,7 +296,8 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
 
     await updateChatMeta({
       id: chatId,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           throw new Error('Chat not found');
         }

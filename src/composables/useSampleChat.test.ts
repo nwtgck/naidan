@@ -30,8 +30,8 @@ describe('useSampleChat', () => {
       TEST_ONLY: {},
     });
     // Mock updateHierarchy to just call the callback
-    vi.mocked(storageService.updateHierarchy).mockImplementation(async (updater) => {
-      await updater({ items: [] });
+    vi.mocked(storageService.updateHierarchy).mockImplementation(async ({ updater }) => {
+      await updater({ current: { items: [] } });
     });
   });
 
@@ -42,12 +42,12 @@ describe('useSampleChat', () => {
     // Verify storage calls
     const contentCall = vi.mocked(storageService.updateChatContent).mock.calls[0];
     expect(contentCall).toBeDefined();
-    const content = await contentCall![1](null);
+    const content = await contentCall![0].updater({ current: null });
 
     const metaCall = vi.mocked(storageService.updateChatMeta).mock.calls[0];
     expect(metaCall).toBeDefined();
-    const meta = await metaCall![1](null);
-    const chatId = metaCall![0];
+    const meta = await metaCall![0].updater({ current: null });
+    const chatId = metaCall![0].id;
 
     expect(chatId).toBeDefined();
     expect(meta.title).toBe('🚀 Sample: Tree Showcase');
@@ -93,12 +93,12 @@ describe('useSampleChat', () => {
 
     const contentCall = vi.mocked(storageService.updateChatContent).mock.calls[0];
     expect(contentCall).toBeDefined();
-    const content = await contentCall![1](null);
+    const content = await contentCall![0].updater({ current: null });
 
     const metaCall = vi.mocked(storageService.updateChatMeta).mock.calls[0];
     expect(metaCall).toBeDefined();
-    const meta = await metaCall![1](null);
-    const chatId = metaCall![0];
+    const meta = await metaCall![0].updater({ current: null });
+    const chatId = metaCall![0].id;
 
     expect(meta.title).toBe('Long Sample: Outline Stress Test');
     expect(meta.debugEnabled).toBe(false);

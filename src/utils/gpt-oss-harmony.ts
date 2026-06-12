@@ -72,7 +72,7 @@ export class HarmonyStreamParser {
     return this.messages.at(-1);
   }
 
-  private _newMessage(init?: Partial<HarmonyMessage>): HarmonyDelta {
+  private _newMessage({ init }: { init?: Partial<HarmonyMessage> } = {}): HarmonyDelta {
     const msg: HarmonyMessage = {
       role: "",
       channel: "",
@@ -129,7 +129,7 @@ export class HarmonyStreamParser {
       this._buf = "";
       this._state = State.HEADER_CHANNEL;
       if (!this._current || this._current.endReason !== "pending") {
-        return this._newMessage({ role: "assistant" });
+        return this._newMessage({ init: { role: "assistant" } });
       }
       return null;
 

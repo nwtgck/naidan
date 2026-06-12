@@ -92,6 +92,7 @@ const availableImageModels = computed(() => props.availableImageModels);
 
 const isAnimatingHeight = computed({
   get: () => props.isAnimatingHeight,
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue computed setters must accept the next value as a positional setter argument.
   set: (val) => emit('update:isAnimatingHeight', val)
 });
 
@@ -597,6 +598,7 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: str
       // Enabling writes: request write permission from the browser.
       // The handle was obtained with mode:'read', so writes will fail unless explicitly upgraded.
       type FSHandleWithPermission = FileSystemDirectoryHandle & {
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this signature mirrors the File System Access API requestPermission contract.
         requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
       };
       const result = await (handle as FSHandleWithPermission).requestPermission({ mode: 'readwrite' });
@@ -707,6 +709,7 @@ function adjustTextareaHeight({ force }: { force?: boolean }) {
   }
 }
 
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM resize listener.
 const handleWindowResize = (_event: Event) => adjustTextareaHeight({});
 
 function toggleMaximized() {

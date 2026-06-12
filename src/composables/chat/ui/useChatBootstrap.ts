@@ -31,7 +31,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   });
 
   installChatBootstrap({
-    registerBeforeUnload: (_args) => {
+    registerBeforeUnload: (_args: Record<never, never>) => {
       if (typeof window === 'undefined') {
         return undefined;
       }
@@ -47,8 +47,8 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
         window.removeEventListener('beforeunload', onBeforeUnload);
       };
     },
-    subscribeModelList: (_args) => {
-      return transformersJsService.subscribeModelList(async () => {
+    subscribeModelList: (_args: Record<never, never>) => {
+      return transformersJsService.subscribeModelList({ listener: async () => {
         const type = chatDerivedState.resolvedSettings.value?.endpointType;
         if (type === undefined) {
           return;
@@ -71,7 +71,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
           throw new Error(`Unhandled endpoint type: ${_ex}`);
         }
         }
-      });
+      } });
     },
   });
 

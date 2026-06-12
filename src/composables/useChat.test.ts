@@ -11,7 +11,7 @@ import { findRestorationIndex } from '@/utils/chat-tree';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
-    capturedListener: null as ((event: any) => void | Promise<void>) | null,
+    capturedListener: null as (({ event }: { event: any }) => void | Promise<void>) | null,
     settings: {
       endpointType: 'openai',
       endpointUrl: 'http://localhost',
@@ -46,7 +46,7 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),
     getFile: vi.fn().mockResolvedValue(new Blob([])),
-    subscribeToChanges: vi.fn().mockImplementation((listener) => {
+    subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
       mocks.capturedListener = listener;
       return () => {};
     }),
@@ -64,10 +64,10 @@ vi.mock('./useSettings', () => ({
 }));
 
 // Mock LLM Provider
-const mockLlmChat = vi.fn().mockImplementation(async (params: { onChunk: (chunk: string) => void }) => {
-  params.onChunk('Hello');
+const mockLlmChat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+  params.onChunk({ chunk: 'Hello' });
   await new Promise(r => setTimeout(r, 10)); // Simulate network delay
-  params.onChunk(' World');
+  params.onChunk({ chunk: ' World' });
 });
 
 vi.mock('../services/lm/openai', () => {
@@ -112,15 +112,15 @@ describe('useChat Composable Logic', () => {
 
     // Setup persistence mocks
     vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
-    vi.mocked(storageService.updateChatContent).mockImplementation((_id, updater) => {
-      return Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined })) as any;
+    vi.mocked(storageService.updateChatContent).mockImplementation(({ updater }) => {
+      return Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } })) as any;
     });
     vi.mocked(storageService.updateChatGroup).mockResolvedValue(undefined);
 
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
 
-    vi.mocked(storageService.updateHierarchy).mockImplementation(async (updater) => {
-      mockHierarchy = await updater(mockHierarchy);
+    vi.mocked(storageService.updateHierarchy).mockImplementation(async ({ updater }) => {
+      mockHierarchy = await updater({ current: mockHierarchy });
       // Synchronize mockRootItems ONLY when hierarchy is explicitly updated
       mockRootItems.length = 0;
       mockHierarchy.items.forEach(node => {
@@ -145,7 +145,7 @@ describe('useChat Composable Logic', () => {
 
   const simulateExternalEvent = async (event: any) => {
     if (!mocks.capturedListener) return;
-    await mocks.capturedListener(event);
+    await mocks.capturedListener({ event });
     await Promise.resolve();
   };
 
@@ -174,11 +174,11 @@ describe('useChat Composable Logic', () => {
     // Mock a slow LLM response
     let resolveGen: () => void;
     const genStarted = new Promise<void>(resolve => resolveGen = resolve);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Started...');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Started...' });
       resolveGen();
       await new Promise(r => setTimeout(r, 100)); // Simulate slow generation
-      params.onChunk(' Finished');
+      params.onChunk({ chunk: ' Finished' });
     });
 
     const result = await sendMessage({ content: 'Start background generation' });
@@ -205,9 +205,9 @@ describe('useChat Composable Logic', () => {
 
     await renameChat({ id: '1', newTitle: 'New' });
     expect(storageService.updateChatMeta).toHaveBeenCalled();
-    const [id, updater] = vi.mocked(storageService.updateChatMeta).mock.calls[0]!;
+    const [{ id, updater }] = vi.mocked(storageService.updateChatMeta).mock.calls[0]!;
     expect(id).toBe('1');
-    const result = await (updater as any)({ id: '1', title: 'Old' });
+    const result = await (updater as any)({ current: mockChat });
     expect(result.title).toBe('New');
   });
 
@@ -239,8 +239,8 @@ describe('useChat Composable Logic', () => {
     const newId = await forkChat({ messageId: 'm1' });
 
     expect(newId).toBeDefined();
-    expect(storageService.updateChatMeta).toHaveBeenCalledWith(newId, expect.any(Function));
-    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(c => c[0] === newId)![1];
+    expect(storageService.updateChatMeta).toHaveBeenCalledWith({ id: newId, updater: expect.any(Function) });
+    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(c => c[0].id === newId)![0].updater;
     const result = await (updater as any)({});
     expect(result.title).toBe('Fork of Original');
     expect(result.currentLeafId).toBe('m1');
@@ -338,13 +338,13 @@ describe('useChat Composable Logic', () => {
 
     const newId = await forkChat({ messageId: 'm1' });
 
-    const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => call[0] === newId);
-    const contentUpdater = updaterCall?.[1];
+    const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => call[0].id === newId);
+    const contentUpdater = updaterCall?.[0].updater;
     const savedContent = await (contentUpdater as any)(null);
     const clonedNode = savedContent?.root.items[0];
     expect(clonedNode?.attachments).toEqual([att]);
 
-    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => call[0] === newId)?.[1];
+    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => call[0].id === newId)?.[0].updater;
     const savedMeta = await (updater as any)({});
     expect(savedMeta?.modelId).toBe('special-model');
   });
@@ -464,8 +464,8 @@ describe('useChat Composable Logic', () => {
     }) as any });
 
     // 1. Send first message and get first response
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('First Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'First Response' });
     });
     await sendMessage({ content: 'Hello' });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for first generation to complete
@@ -478,8 +478,8 @@ describe('useChat Composable Logic', () => {
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
 
     // 2. Regenerate
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Second Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Second Response' });
     });
     await regenerateMessage({ failedMessageId: firstAssistantMsg!.id });
     await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2);
@@ -501,10 +501,10 @@ describe('useChat Composable Logic', () => {
 
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
     expect(activeMessages.value[1]?.content).toBe('First Response');
-    expect(storageService.updateChatContent).toHaveBeenCalledWith(
-      'regen-test',
-      expect.any(Function),
-    );
+    expect(storageService.updateChatContent).toHaveBeenCalledWith({
+      id: 'regen-test',
+      updater: expect.any(Function),
+    });
   });
 
   it('should store lmParameters in UserMessageNode and AssistantMessageNode after sendMessage', async () => {
@@ -891,10 +891,10 @@ describe('useChat Composable Logic', () => {
       expect(chat!.systemPrompt).toEqual({ behavior: 'override', content: 'Custom system prompt' });
 
       // Verify persistence call
-      expect(storageService.updateChatMeta).toHaveBeenCalledWith(
-        chat!.id,
-        expect.any(Function)
-      );
+      expect(storageService.updateChatMeta).toHaveBeenCalledWith({
+        id: chat!.id,
+        updater: expect.any(Function),
+      });
     });
 
     it('should insert before the first chat even if groups exist later in the list', async () => {
@@ -1063,9 +1063,9 @@ describe('useChat Composable Logic', () => {
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
     // Mock the LLM provider for title generation
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Paris');
-      params.onChunk(' Title');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Paris' });
+      params.onChunk({ chunk: ' Title' });
     });
 
     const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
@@ -1165,8 +1165,8 @@ describe('useChat Composable Logic', () => {
     });
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('New Better Title');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'New Better Title' });
     });
 
     chatObj.title = null; // Clear title to allow auto-generation to proceed
@@ -1385,11 +1385,11 @@ describe('useChat Composable Logic', () => {
       await chatStore.deleteChat({ id: chat2Id, injectAddToast: mockAdd });
 
       // 4. Simulate Tab B removing it from hierarchy
-      await storageService.updateHierarchy((curr) => {
+      await storageService.updateHierarchy({ updater: ({ current: curr }) => {
         const g = curr.items[0] as HierarchyChatGroupNode;
         g.chat_ids = ['c1'];
         return curr;
-      });
+      } });
       await chatStore.loadChats({});
 
       // 5. Act: Undo

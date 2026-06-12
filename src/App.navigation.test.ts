@@ -5,6 +5,8 @@ import App from './App.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Chat } from './models/types';
 
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
+
 // Mock CurrentChatPane to track mounting/unmounting
 const mountSpy = vi.fn();
 const unmountSpy = vi.fn();

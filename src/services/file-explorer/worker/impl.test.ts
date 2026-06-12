@@ -273,16 +273,16 @@ describe('file-explorer.worker.impl', () => {
         },
       ],
     }
-    await provider.saveChatMeta(chatMeta)
-    await provider.saveChatContent(chatMeta.id, chatContent)
-    await provider.saveChatGroup(chatGroup)
-    await provider.saveHierarchy({
+    await provider.saveChatMeta({ meta: chatMeta })
+    await provider.saveChatContent({ id: chatMeta.id, content: chatContent })
+    await provider.saveChatGroup({ chatGroup })
+    await provider.saveHierarchy({ hierarchy: {
       items: [{
         type: 'chat_group',
         id: 'chat-group-1',
         chat_ids: ['chat-1'],
       }],
-    })
+    } })
     const storedChatMeta = await provider.loadChatMeta({ id: 'chat-1' })
 
     const { sessionId } = await worker.prepareSession({

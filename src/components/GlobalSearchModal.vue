@@ -32,7 +32,7 @@ const {
 
 const searchInput = ref<HTMLInputElement | null>(null);
 const groupPreviewRef = ref<{
-  navigate: (direction: 'up' | 'down') => void;
+  navigate: ({ direction }: { direction: 'up' | 'down' }) => void;
   handleEnter: () => void;
   selectedChatId: string | null;
     } | null>(null);
@@ -288,7 +288,7 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
     switch (pane) {
     case 'preview':
       if (groupPreviewRef.value) {
-        groupPreviewRef.value.navigate('down');
+        groupPreviewRef.value.navigate({ direction: 'down' });
       }
       break;
     case 'results':
@@ -306,7 +306,7 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
     switch (pane) {
     case 'preview':
       if (groupPreviewRef.value) {
-        groupPreviewRef.value.navigate('up');
+        groupPreviewRef.value.navigate({ direction: 'up' });
       }
       break;
     case 'results':

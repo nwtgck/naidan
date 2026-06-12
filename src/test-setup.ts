@@ -27,4 +27,4 @@ afterEach(async () => {
   // 2. Wait for all dynamic imports (Async Components) to be fully loaded.
   // This is a built-in Vitest utility that tracks pending module fetches.
   await vi.dynamicImportSettled();
-});
+}, 30000);

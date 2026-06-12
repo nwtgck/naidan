@@ -25,14 +25,14 @@ const animatedPercent = ref(0);
 const hideTimerId = ref<number | undefined>(undefined);
 const animationFrameId = ref<number | undefined>(undefined);
 
-function clearHideTimer(_args: Record<string, never>) {
+function clearHideTimer(_args: Record<never, never>) {
   if (hideTimerId.value !== undefined) {
     window.clearTimeout(hideTimerId.value);
     hideTimerId.value = undefined;
   }
 }
 
-function clearPercentAnimationFrame(_args: Record<string, never>) {
+function clearPercentAnimationFrame(_args: Record<never, never>) {
   if (animationFrameId.value !== undefined) {
     window.cancelAnimationFrame(animationFrameId.value);
     animationFrameId.value = undefined;
@@ -137,7 +137,7 @@ const requestPreviewRef = ref<HTMLElement | null>(null);
 const outputPreviewRef = ref<HTMLElement | null>(null);
 const shouldAutoScrollOutput = ref(true);
 
-function syncOutputAutoScrollState(_args: Record<string, never>) {
+function syncOutputAutoScrollState(_args: Record<never, never>) {
   const element = outputPreviewRef.value;
   if (!element) {
     return;
@@ -147,7 +147,7 @@ function syncOutputAutoScrollState(_args: Record<string, never>) {
   shouldAutoScrollOutput.value = element.scrollTop + element.clientHeight >= element.scrollHeight - thresholdPx;
 }
 
-function scrollOutputToBottom(_args: Record<string, never>) {
+function scrollOutputToBottom(_args: Record<never, never>) {
   const element = outputPreviewRef.value;
   if (!element) {
     return;
@@ -156,7 +156,7 @@ function scrollOutputToBottom(_args: Record<string, never>) {
   element.scrollTop = element.scrollHeight;
 }
 
-function scrollRequestToBottom(_args: Record<string, never>) {
+function scrollRequestToBottom(_args: Record<never, never>) {
   const element = requestPreviewRef.value;
   if (!element) {
     return;

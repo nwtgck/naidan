@@ -30,7 +30,7 @@ const loadMoreSentinel = ref<HTMLElement | null>(null);
 const isAddingItems = ref(false);
 
 // Limit concurrent image processing to keep UI responsive
-const thumbnailSemaphore = new Semaphore(2); // Reduced slightly for better scroll priority
+const thumbnailSemaphore = new Semaphore({ maxConcurrency: 2 }); // Reduced slightly for better scroll priority
 
 const fetchObjects = async () => {
   isLoading.value = true;
@@ -232,6 +232,7 @@ const createThumbnailUrl = ({ blob, size = 120 }: { blob: Blob; size?: number })
         }
       }, 'image/jpeg', 0.7);
     };
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is assigned to an HTMLImageElement error handler.
     img.onerror = (e) => {
       URL.revokeObjectURL(url);
       reject(e);
@@ -250,6 +251,7 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
       const blob = await storageService.getFile({ binaryObjectId: obj.id });
       if (blob) {
         // requestIdleCallback (with fallback) to avoid blocking the main thread during scroll
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this fallback mirrors the requestIdleCallback callback contract.
         const scheduleWork = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
 
         const thumbUrl = await new Promise<string>((resolve, reject) => {

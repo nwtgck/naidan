@@ -337,11 +337,11 @@ class RelaxedJsonValueParser {
 }
 
 export class Qwen3_5ToolCallParser {
-  private readonly onText: (text: string) => void;
+  private readonly onText: ({ text }: { text: string }) => void;
   private pending = '';
   private parsedToolCalls: ToolCall[] = [];
 
-  constructor({ onText }: { onText: (text: string) => void }) {
+  constructor({ onText }: { onText: ({ text }: { text: string }) => void }) {
     this.onText = onText;
   }
 
@@ -352,7 +352,7 @@ export class Qwen3_5ToolCallParser {
 
   flush(): void {
     if (this.pending.length > 0) {
-      this.onText(this.pending);
+      this.onText({ text: this.pending });
     }
     this.pending = '';
   }
@@ -368,14 +368,14 @@ export class Qwen3_5ToolCallParser {
       const startIdx = this.pending.indexOf(TOOL_CALL_OPEN);
       if (startIdx === -1) {
         if (this.pending.length > 0) {
-          this.onText(this.pending);
+          this.onText({ text: this.pending });
           this.pending = '';
         }
         return;
       }
 
       if (startIdx > 0) {
-        this.onText(this.pending.slice(0, startIdx));
+        this.onText({ text: this.pending.slice(0, startIdx) });
         this.pending = this.pending.slice(startIdx);
       }
 
@@ -389,7 +389,7 @@ export class Qwen3_5ToolCallParser {
       if (parsed) {
         this.parsedToolCalls.push(parsed);
       } else {
-        this.onText(`${TOOL_CALL_OPEN}${inner}${TOOL_CALL_CLOSE}`);
+        this.onText({ text: `${TOOL_CALL_OPEN}${inner}${TOOL_CALL_CLOSE}` });
       }
     }
   }

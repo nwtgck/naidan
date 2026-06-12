@@ -718,7 +718,7 @@ export const buildSidebarItemsFromHierarchy = (
   const metaMap = new Map(chatMetas.map(m => [m.id, m]));
   const groupMap = new Map(chatGroups.map(g => [g.id, g]));
 
-  const assembleNode = (node: HierarchyNode): SidebarItem | null => {
+  const assembleNode = ({ node }: { node: HierarchyNode }): SidebarItem | null => {
     switch (node.type) {
     case 'chat': {
       const meta = metaMap.get(node.id);
@@ -759,7 +759,7 @@ export const buildSidebarItemsFromHierarchy = (
   };
 
   return hierarchy.items
-    .map(assembleNode)
+    .map((node) => assembleNode({ node }))
     .filter((i): i is SidebarItem => i !== null);
 };
 

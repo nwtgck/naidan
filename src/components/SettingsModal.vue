@@ -133,6 +133,7 @@ const activeTab = computed({
     if (tab === 'volumes' && !isVolumesFeatureEnabled.value) return 'connection';
     return (tab as Tab) || 'connection';
   },
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue computed setters must accept the next value as a positional setter argument.
   set: (val) => {
     const pathMap: Record<string, string> = {
       profiles: 'provider-profiles',

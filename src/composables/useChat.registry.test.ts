@@ -16,20 +16,20 @@ vi.mock('../services/storage', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: (...args: any[]) => mockSaveChat(...args),
-    updateChatMeta: vi.fn().mockImplementation((id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
       const curr = chats.get(id) || null;
-      return Promise.resolve(updater(curr)).then(updated => {
+      return Promise.resolve(updater({ current: curr })).then(updated => {
         chats.set(id, JSON.parse(JSON.stringify(updated)));
       });
     }),
     loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id))),
-    updateChatContent: vi.fn().mockImplementation((id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
       const curr = chats.get(id) || { root: { items: [] } };
-      return Promise.resolve(updater(curr)).then(updated => {
+      return Promise.resolve(updater({ current: curr })).then(updated => {
         chats.set(id, { ...JSON.parse(JSON.stringify(chats.get(id) || {})), ...JSON.parse(JSON.stringify(updated)) });
       });
     }),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadChat: (...args: any[]) => mockLoadChat(...args),
     getSidebarStructure: vi.fn().mockResolvedValue([]),

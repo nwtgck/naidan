@@ -92,14 +92,14 @@ describe('OPFSStorageProvider Directory Isolation', () => {
     expect(storageDir.kind).toBe('directory');
 
     // Saving settings should put the file inside the subdirectory, NOT the root
-    await provider.saveSettings({
+    await provider.saveSettings({ settings: {
       autoTitleEnabled: true,
       storageType: 'opfs',
       providerProfiles: [],
       mounts: [],
       endpointType: 'openai',
       endpointUrl: 'http://localhost'
-    });
+    } });
 
     expect(mockOpfsRoot.entries.has('settings.json')).toBe(false);
     expect(storageDir.entries.has('settings.json')).toBe(true);
@@ -114,14 +114,14 @@ describe('OPFSStorageProvider Directory Isolation', () => {
     mockOpfsRoot.entries.set('other-app-data.txt', new MockFileSystemFileHandle('other-app-data.txt'));
 
     // Save some app data
-    await provider.saveSettings({
+    await provider.saveSettings({ settings: {
       autoTitleEnabled: true,
       storageType: 'opfs',
       providerProfiles: [],
       mounts: [],
       endpointType: 'openai',
       endpointUrl: 'http://localhost'
-    });
+    } });
 
     expect(storageDir.entries.size).toBeGreaterThan(0);
     expect(mockOpfsRoot.entries.has('other-app-data.txt')).toBe(true);

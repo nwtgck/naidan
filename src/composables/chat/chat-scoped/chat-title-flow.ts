@@ -108,7 +108,7 @@ export async function generateChatTitleForChat({
     await provider.chat({
       messages: promptMessages,
       model: titleModelId,
-      onChunk: (chunk) => {
+      onChunk: ({ chunk }) => {
         generatedTitle += chunk;
       },
       parameters: undefined,
@@ -123,7 +123,8 @@ export async function generateChatTitleForChat({
     if (mutableChat.title === titleAtStart) {
       await updateChatMeta({
         id: mutableChat.id,
-        updater: (current) => {
+
+        updater: ({ current }) => {
           if (current === null) {
             return mutableChat;
           }

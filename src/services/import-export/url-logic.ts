@@ -22,7 +22,7 @@ export class URLImportExportLogic {
   private service: ImportExportService;
 
   constructor() {
-    this.service = new ImportExportService(storageService);
+    this.service = new ImportExportService({ storage: storageService });
   }
 
   /**

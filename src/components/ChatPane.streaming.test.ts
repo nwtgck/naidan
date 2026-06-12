@@ -24,12 +24,12 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-let triggerChunk: (chunk: string) => void;
+let triggerChunk: (params: { chunk: string }) => void;
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
-    async chat(params: { onChunk: (c: string) => void }) {
-      triggerChunk = params.onChunk;
+    async chat({ onChunk }: { onChunk: (params: { chunk: string }) => void }) {
+      triggerChunk = onChunk;
       return new Promise<void>(() => {});
     }
     async listModels() {
@@ -53,22 +53,22 @@ vi.mock('../services/storage', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn().mockImplementation((id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
       if (!chats.has(id)) chats.set(id, existing);
-      const updated = updater(existing);
+      const updated = updater({ current: existing });
       Object.assign(existing, updated);
       return Promise.resolve();
     }),
     loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id))),
-    updateChatContent: vi.fn().mockImplementation((id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
       if (!chats.has(id)) chats.set(id, existing);
-      const updated = updater(existing);
+      const updated = updater({ current: existing });
       Object.assign(existing, updated);
       return Promise.resolve();
     }),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadChat: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id) || null)),
     listChats: vi.fn().mockResolvedValue([]),
@@ -154,7 +154,7 @@ describe('ChatPane Streaming DOM Test', () => {
       throw new Error('LLM chat was not triggered');
     }
 
-    triggerChunk('Live');
+    triggerChunk({ chunk: 'Live' });
     await nextTick();
     await nextTick();
 
@@ -166,7 +166,7 @@ describe('ChatPane Streaming DOM Test', () => {
     }
     expect(wrapper.html()).toContain('Live');
 
-    triggerChunk(' Update');
+    triggerChunk({ chunk: ' Update' });
     await nextTick();
     await nextTick();
     expect(wrapper.html()).toContain('Live Update');

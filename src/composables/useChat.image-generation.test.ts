@@ -32,8 +32,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => ({ id, root: { items: [] } })),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((id, updater) => Promise.resolve(updater({ id, root: { items: [] } }))),
-    updateHierarchy: vi.fn().mockImplementation(async (updater) => updater({ items: [] })),
+    updateChatContent: vi.fn().mockImplementation(({ id, updater }) => Promise.resolve(updater({ current: { id, root: { items: [] } } }))),
+    updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     listChatGroups: vi.fn().mockResolvedValue([]),
     loadChatGroup: vi.fn().mockResolvedValue(null),
@@ -106,8 +106,8 @@ describe('useChat Image Generation', () => {
     expect(success).toBe(true);
     expect(updateSpy).toHaveBeenCalled();
     // Check if the content updated by storageService contains the image request
-    const updater = updateSpy.mock.calls[0]![1];
-    const result = (await updater({ id: 'chat-1', root: { items: [] } } as any)) as any;
+    const updater = updateSpy.mock.calls[0]![0].updater;
+    const result = (await updater({ current: { id: 'chat-1', root: { items: [] } } as any })) as any;
     expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":1024,"height":1024,"model":"x/z-image-turbo:v1","count":1,"persistAs":"original"} -->a cat');
   });
 
@@ -132,8 +132,8 @@ describe('useChat Image Generation', () => {
     expect(success).toBe(true);
     expect(updateSpy).toHaveBeenCalled();
 
-    const updater = updateSpy.mock.calls[0]![1];
-    const result = (await updater({ id: 'chat-explicit', root: { items: [] } } as any)) as any;
+    const updater = updateSpy.mock.calls[0]![0].updater;
+    const result = (await updater({ current: { id: 'chat-explicit', root: { items: [] } } as any })) as any;
     expect(result.root.items[0].content).toContain('<!-- naidan_experimental_image_request {"width":768,"height":512,"model":"x/z-image-turbo:v1","count":2,"persistAs":"png","steps":25,"seed":7} -->a fox');
   });
 
@@ -158,8 +158,8 @@ describe('useChat Image Generation', () => {
 
     expect(success).toBe(true);
     // Check if the content updated by storageService contains the image request and attachments
-    const updater = updateSpy.mock.calls[0]![1];
-    const result = (await updater({ id: 'chat-attachments', root: { items: [] } } as any)) as any;
+    const updater = updateSpy.mock.calls[0]![0].updater;
+    const result = (await updater({ current: { id: 'chat-attachments', root: { items: [] } } as any })) as any;
     expect(result.root.items[0].attachments).toHaveLength(1);
     expect(result.root.items[0].attachments[0].id).toBe('att-1');
   });

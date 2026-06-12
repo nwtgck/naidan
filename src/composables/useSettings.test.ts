@@ -34,9 +34,9 @@ vi.mock('./useConfirm', () => ({
 const mocks = vi.hoisted(() => ({
   init: vi.fn(),
   loadSettings: vi.fn(),
-  updateSettings: vi.fn().mockImplementation(async (updater) => {
+  updateSettings: vi.fn().mockImplementation(async ({ updater }) => {
     const current = await mocks.loadSettings();
-    return await updater(current);
+    return await updater({ current: current });
   }),
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
@@ -125,8 +125,8 @@ describe('useSettings Initialization and Bootstrap', () => {
     expect(settings.value.storageType).toBe('opfs');
     expect(mocks.updateSettings).toHaveBeenCalled();
     // Verify the result of the updater (which we know in this test)
-    const updater = mocks.updateSettings.mock.calls[0]![0];
-    const updated = await updater();
+    const updater = mocks.updateSettings.mock.calls[0]![0].updater;
+    const updated = await updater({ current: settings.value });
     expect(updated).toEqual(expect.objectContaining({
       storageType: 'opfs',
       endpointUrl: 'http://new-endpoint'

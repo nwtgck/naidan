@@ -4,11 +4,13 @@ export class MockFileSystemHandle {
   public kind: 'file' | 'directory';
   public name: string;
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   constructor(kind: 'file' | 'directory', name: string) {
     this.kind = kind;
     this.name = name;
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   isSameEntry(other: MockFileSystemHandle): boolean {
     return this === other;
   }
@@ -19,6 +21,7 @@ export class MockFile {
   public name: string;
   public lastModified: number;
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   constructor(content: Uint8Array, name: string, lastModified: number) {
     this.content = content;
     this.name = name;
@@ -29,6 +32,7 @@ export class MockFile {
     return this.content.length;
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   slice(start?: number, end?: number): MockFile {
     const s = start ?? 0;
     const e = end ?? this.content.length;
@@ -38,6 +42,7 @@ export class MockFile {
   stream(): ReadableStream<Uint8Array> {
     const content = new Uint8Array(this.content);
     return new ReadableStream({
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
       start(controller) {
         controller.enqueue(content);
         controller.close();
@@ -58,8 +63,10 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
   public fileHandle: MockFileSystemFileHandle;
   private cursor: number = 0;
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   constructor(fileHandle: MockFileSystemFileHandle, options?: { keepExistingData?: boolean }) {
     super({
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
       write: async (chunk) => {
         await this.write(chunk);
       },
@@ -79,10 +86,12 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     // If keepExistingData=false, it truncates.
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   async seek(position: number): Promise<void> {
     this.cursor = position;
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   async truncate(size: number): Promise<void> {
     if (this.fileHandle.content.length === size) return;
     if (this.fileHandle.content.length > size) {
@@ -96,6 +105,7 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
     this.fileHandle.lastModified = Date.now();
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   async write(data: unknown): Promise<void> {
     let bytes: Uint8Array;
 
@@ -141,6 +151,7 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle {
   public content: Uint8Array;
   public lastModified: number;
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   constructor(name: string, content: Uint8Array = new Uint8Array(0)) {
     super('file', name);
     this.content = content;
@@ -151,6 +162,7 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle {
     return Promise.resolve(new MockFile(this.content, this.name, this.lastModified));
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   async createWritable(options?: { keepExistingData?: boolean }): Promise<MockFileSystemWritableFileStream> {
     return new MockFileSystemWritableFileStream(this, options);
   }
@@ -159,11 +171,13 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle {
 export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
   private children: Map<string, MockFileSystemHandle>;
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   constructor(name: string) {
     super('directory', name);
     this.children = new Map();
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemFileHandle> {
     const child = this.children.get(name);
     if (child) {
@@ -186,6 +200,7 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     throw new Error(`NotFoundError: File '${name}' not found.`);
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemDirectoryHandle> {
     const child = this.children.get(name);
     if (child) {
@@ -208,6 +223,7 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     throw new Error(`NotFoundError: Directory '${name}' not found.`);
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   async removeEntry(name: string, options?: { recursive?: boolean }): Promise<void> {
     const child = this.children.get(name);
     if (!child) throw new Error(`NotFoundError: Entry '${name}' not found.`);
@@ -230,6 +246,7 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     this.children.delete(name);
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   async resolve(possibleDescendant: MockFileSystemHandle): Promise<string[] | null> {
     if (possibleDescendant === this) return [];
 

@@ -181,7 +181,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
 
     // Hydrate
     // @ts-expect-error: Accessing private for test
-    await provider.hydrateAttachments(nodes);
+    await provider.hydrateAttachments({ nodes });
 
     const atts = nodes[0]!.attachments!;
     expect(atts[0]!.mimeType).toBe('image/png');

@@ -188,6 +188,7 @@ export function warmStandaloneWorkerCacheAtIdle(_args: EmptyArgs): void {
 
   if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
     ;(window as unknown as {
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this type mirrors the browser requestIdleCallback contract.
       requestIdleCallback: (callback: () => void) => void
     }).requestIdleCallback(run)
     return

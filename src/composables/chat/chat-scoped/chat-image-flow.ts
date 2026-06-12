@@ -98,7 +98,7 @@ export async function handleImageGenerationForChat({
     updater,
   }: {
     chatId: string;
-    updater: (current: import('@/models/types').ChatContent) => import('@/models/types').ChatContent;
+    updater: ({ current }: { current: import('@/models/types').ChatContent }) => import('@/models/types').ChatContent;
   }) => Promise<void>;
   triggerChatRef: ({ chatId }: { chatId: string }) => void;
   incTask: ({ chatId, type }: { chatId: string; type: 'process' }) => void;
@@ -175,7 +175,7 @@ export async function generateImageForChat({
     images,
     endpointUrl: resolved.endpointUrl,
     endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
-    onProgress: (_progress) => {},
+    onProgress: ({ currentStep: _currentStep, totalSteps: _totalSteps }) => {},
     signal,
   });
 }

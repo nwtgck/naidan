@@ -19,6 +19,7 @@ import {
 
 const { addToast } = useToast();
 
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue directive hooks receive the element as a positional hook argument.
 const vFocus = { mounted: (el: HTMLElement) => el.focus() };
 
 const props = defineProps<{

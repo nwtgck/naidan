@@ -232,6 +232,7 @@ class WebSpeechService {
       }
     };
 
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is assigned to a SpeechSynthesisUtterance error handler.
     utterance.onerror = (event) => {
       switch (event.error) {
       case 'interrupted': return;

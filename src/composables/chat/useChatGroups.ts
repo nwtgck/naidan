@@ -39,7 +39,7 @@ export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
       currentChatGroupRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateChatGroup(chatGroupId, (current) => {
+    await storageService.updateChatGroup({ id: chatGroupId, updater: ({ current }) => {
       if (current === null) {
         throw new Error('Chat group not found');
       }
@@ -49,7 +49,7 @@ export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
         ...updates,
         updatedAt: Date.now(),
       };
-    });
+    } });
     await loadData({});
   }
 
@@ -65,7 +65,7 @@ export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
       currentChatRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateHierarchy((current) => {
+    await storageService.updateHierarchy({ updater: ({ current }) => {
       let detachedChatId: string | undefined;
 
       current.items = current.items.filter((item) => {
@@ -106,7 +106,7 @@ export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
       }
       groupNode.chat_ids.unshift(detachedChatId);
       return current;
-    });
+    } });
     await loadData({});
   }
 

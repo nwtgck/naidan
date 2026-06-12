@@ -172,7 +172,7 @@ function walkValue({
   mapper,
 }: {
   value: JsonValue;
-  mapper: (options: { input: JsonValue }) => { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError };
+  mapper: ({ input }: { input: JsonValue }) => { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError };
 }): { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError } {
   if (Array.isArray(value)) {
     const mappedItems: JsonValue[] = [];
@@ -222,7 +222,7 @@ function recurseValues({
   evaluateNext,
 }: {
   input: JsonValue;
-  evaluateNext: (options: { input: JsonValue }) => { ok: true; values: JsonValue[] } | { ok: false; error: JqRuntimeError };
+  evaluateNext: ({ input }: { input: JsonValue }) => { ok: true; values: JsonValue[] } | { ok: false; error: JqRuntimeError };
 }): { ok: true; values: JsonValue[] } | { ok: false; error: JqRuntimeError } {
   const outputs: JsonValue[] = [input];
   const next = evaluateNext({ input });

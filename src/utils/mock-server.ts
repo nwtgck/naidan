@@ -13,6 +13,7 @@ export interface CapturedRequest {
  * Returns the base URL and a way to close the server and access captured requests.
  */
 export async function startMockServer({ handler }: {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   handler: (req: http.IncomingMessage, res: http.ServerResponse) => void
 }) {
   const capturedRequests: CapturedRequest[] = [];

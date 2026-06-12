@@ -6,10 +6,10 @@ import type {
 } from '@/services/wesh/types';
 
 interface WeshFileCapabilities {
-  open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
-  stat(options: { path: string }): Promise<unknown>;
-  tryReadBlobEfficiently?(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
-  tryCreateFileWriterEfficiently?(options: {
+  open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
+  stat({ path }: { path: string }): Promise<unknown>;
+  tryReadBlobEfficiently?({ path }: { path: string }): Promise<WeshEfficientBlobReadResult>;
+  tryCreateFileWriterEfficiently?({ path, mode }: {
     path: string;
     mode: 'truncate' | 'append';
   }): Promise<WeshEfficientFileWriteResult>;
@@ -173,6 +173,7 @@ export function openHandleReadStream({
   chunkSize?: number;
 }): ReadableStream<Uint8Array> {
   return new ReadableStream({
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source pull signature.
     async pull(controller) {
       const buffer = new Uint8Array(chunkSize);
       try {

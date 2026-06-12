@@ -51,6 +51,7 @@ const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 
 const form = computed({
   get: () => props.modelValue,
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue computed setters must accept the next value as a positional setter argument.
   set: (val) => emit('update:modelValue', val)
 });
 

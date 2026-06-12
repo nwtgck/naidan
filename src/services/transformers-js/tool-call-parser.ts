@@ -24,14 +24,14 @@ function longestSuffixMatchingPrefix({ text, pattern }: { text: string, pattern:
  * Call `drainToolCalls()` to retrieve all tool calls collected during the session.
  */
 export class ToolCallStreamParser {
-  private readonly onText: (text: string) => void;
+  private readonly onText: ({ text }: { text: string }) => void;
 
   private pending = '';
   private buffer = '';
   private inToolCall = false;
   private parsedToolCalls: ToolCall[] = [];
 
-  constructor({ onText }: { onText: (text: string) => void }) {
+  constructor({ onText }: { onText: ({ text }: { text: string }) => void }) {
     this.onText = onText;
   }
 
@@ -46,10 +46,10 @@ export class ToolCallStreamParser {
    */
   flush(): void {
     if (!this.inToolCall && this.pending.length > 0) {
-      this.onText(this.pending);
+      this.onText({ text: this.pending });
     } else if (this.inToolCall) {
       // Preserve malformed output instead of dropping assistant-visible text.
-      this.onText(`${TOOL_CALL_OPEN}${this.buffer}${this.pending}`);
+      this.onText({ text: `${TOOL_CALL_OPEN}${this.buffer}${this.pending}` });
     }
     this.pending = '';
     this.buffer = '';
@@ -73,12 +73,12 @@ export class ToolCallStreamParser {
           // No opening tag — stream everything except a potential partial tag at the tail
           const holdBack = longestSuffixMatchingPrefix({ text: this.pending, pattern: TOOL_CALL_OPEN });
           const safe = this.pending.length - holdBack;
-          if (safe > 0) this.onText(this.pending.slice(0, safe));
+          if (safe > 0) this.onText({ text: this.pending.slice(0, safe) });
           this.pending = this.pending.slice(safe);
           break;
         }
         // Stream text before the opening tag, then enter tool call mode
-        if (startIdx > 0) this.onText(this.pending.slice(0, startIdx));
+        if (startIdx > 0) this.onText({ text: this.pending.slice(0, startIdx) });
         this.pending = this.pending.slice(startIdx + TOOL_CALL_OPEN.length);
         this.inToolCall = true;
         this.buffer = '';
@@ -115,7 +115,7 @@ export class ToolCallStreamParser {
       });
     } catch (e) {
       console.warn('[ToolCallStreamParser] Failed to parse tool call JSON:', e);
-      this.onText(`${TOOL_CALL_OPEN}${this.buffer}${TOOL_CALL_CLOSE}`);
+      this.onText({ text: `${TOOL_CALL_OPEN}${this.buffer}${TOOL_CALL_CLOSE}` });
     }
   }
 }

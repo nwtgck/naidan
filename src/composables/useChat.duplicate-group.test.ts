@@ -7,9 +7,9 @@ vi.mock('../services/storage', () => ({
   storageService: {
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     updateChatGroup: vi.fn().mockResolvedValue(undefined),
-    updateHierarchy: vi.fn().mockImplementation((updater) => {
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => {
       const curr = { items: [] };
-      updater(curr);
+      updater({ current: curr });
       return Promise.resolve();
     }),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
@@ -55,14 +55,11 @@ describe('useChat.duplicateChatGroup', () => {
     const newGroupId = await duplicateChatGroup({ groupId: 'g1' });
 
     expect(newGroupId).toBeDefined();
-    expect(storageService.updateChatGroup).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(Function)
-    );
+    expect(storageService.updateChatGroup).toHaveBeenCalledWith({ id: expect.any(String), updater: expect.any(Function) });
 
     // Check the new group content via the updater passed to updateChatGroup
-    const updater = (storageService.updateChatGroup as any).mock.calls[0][1];
-    const newGroup = updater(null);
+    const updater = (storageService.updateChatGroup as any).mock.calls[0][0].updater;
+    const newGroup = updater({ current: null });
 
     expect(newGroup.name).toBe('Copy of Original');
     expect(newGroup.modelId).toBe('gpt-4');
@@ -78,8 +75,8 @@ describe('useChat.duplicateChatGroup', () => {
     rootItems.value = [{ id: 'g1', type: 'chat_group', chatGroup: originalGroup as any }];
 
     let capturedHierarchy: any = { items: [{ type: 'chat_group', id: 'g1', chat_ids: [] }] };
-    vi.mocked(storageService.updateHierarchy).mockImplementationOnce(async (updater) => {
-      capturedHierarchy = updater(capturedHierarchy);
+    vi.mocked(storageService.updateHierarchy).mockImplementationOnce(async ({ updater }) => {
+      capturedHierarchy = updater({ current: capturedHierarchy });
     });
 
     await duplicateChatGroup({ groupId: 'g1' });

@@ -8,9 +8,11 @@ import type { TokenizerAndRendererExtension } from 'marked';
 export const detailsExtension: TokenizerAndRendererExtension = {
   name: 'details',
   level: 'block',
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method implements the marked TokenizerAndRendererExtension.start contract.
   start(src: string) {
     return src.match(/<details>/)?.index;
   },
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method implements the marked TokenizerAndRendererExtension.tokenizer contract.
   tokenizer(src: string) {
     if (!src.startsWith('<details>')) return undefined;
 

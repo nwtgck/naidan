@@ -20,28 +20,28 @@ export abstract class IStorageProvider {
 
   abstract listVolumes(): AsyncIterable<Volume>;
 
-  abstract createVolume(params: {
+  abstract createVolume({ name, type, sourceHandle }: {
     name: string;
     type: VolumeType;
     sourceHandle: FileSystemDirectoryHandle;
   }): Promise<Volume>;
 
-  abstract createVolumeFromFiles(params: {
+  abstract createVolumeFromFiles({ name, entries, onProgress, signal }: {
     name: string;
     entries: Array<{ file: File; relativePath: string }>;
-    onProgress?: (progress: { processed: number; total: number }) => void;
+    onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
     signal?: AbortSignal;
   }): Promise<Volume>;
 
-  abstract getVolumeDirectoryHandle(params: {
+  abstract getVolumeDirectoryHandle({ volumeId }: {
     volumeId: string;
   }): Promise<FileSystemDirectoryHandle | null>;
 
-  abstract deleteVolume(params: {
+  abstract deleteVolume({ volumeId }: {
     volumeId: string;
   }): Promise<void>;
 
-  abstract renameVolume(params: {
+  abstract renameVolume({ volumeId, name }: {
     volumeId: string;
     name: string;
   }): Promise<void>;
@@ -52,11 +52,11 @@ export abstract class IStorageProvider {
 
   // --- Hierarchy Management ---
   abstract loadHierarchy(): Promise<HierarchyDto | null>;
-  abstract saveHierarchy(hierarchy: HierarchyDto): Promise<void>;
+  abstract saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void>;
 
   // --- Bulk Operations (Migration) ---
   abstract dump(): Promise<StorageSnapshot>;
-  abstract restore(snapshot: StorageSnapshot): Promise<void>;
+  abstract restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void>;
 
   // --- Public Domain API (Default Implementations) ---
 
@@ -106,23 +106,23 @@ export abstract class IStorageProvider {
   /**
    * Persists chat metadata (title, updated date, etc).
    */
-  abstract saveChatMeta(meta: ChatMeta): Promise<void>;
+  abstract saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void>;
 
   /**
    * Saves only the chat content (message tree) to a dedicated file.
    */
-  abstract saveChatContent(id: string, content: ChatContent): Promise<void>;
+  abstract saveChatContent({ id, content }: { id: string; content: ChatContent }): Promise<void>;
 
   abstract loadChat({ id }: { id: string }): Promise<Chat | null>;
   abstract loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null>;
   abstract loadChatContent({ id }: { id: string }): Promise<ChatContent | null>;
   abstract deleteChat({ id }: { id: string }): Promise<void>;
 
-  abstract saveChatGroup(chatGroup: ChatGroup): Promise<void>;
+  abstract saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void>;
   abstract loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null>;
   abstract deleteChatGroup({ id }: { id: string }): Promise<void>;
 
-  abstract saveSettings(settings: Settings): Promise<void>;
+  abstract saveSettings({ settings }: { settings: Settings }): Promise<void>;
   abstract loadSettings(): Promise<Settings | null>;
   abstract clearAll(): Promise<void>;
 
@@ -131,7 +131,7 @@ export abstract class IStorageProvider {
    * @deprecated Use the named arguments version instead.
    */
   abstract saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
-  abstract saveFile(params: {
+  abstract saveFile({ blob, binaryObjectId, name, mimeType }: {
     blob: Blob;
     binaryObjectId: string;
     name: string;

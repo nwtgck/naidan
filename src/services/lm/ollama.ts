@@ -98,27 +98,26 @@ export class OllamaProvider implements LLMProvider {
     headers?: [string, string][];
   };
 
-  constructor(config: { endpoint: string; headers?: [string, string][] }) {
-    this.config = config;
+  constructor({ endpoint, headers }: { endpoint: string; headers?: [string, string][] }) {
+    this.config = { endpoint, headers };
   }
 
-  async chat(params: {
+  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;
-    onChunk: (chunk: string) => void;
+    onChunk: ({ chunk }: { chunk: string }) => void;
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
-    onToolResult?: (params: {
+    onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
+    onToolResult?: ({ id, result }: {
       id: string;
       result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
 
@@ -341,23 +340,23 @@ export class OllamaProvider implements LLMProvider {
             const thinking = validated.message?.thinking || '';
             if (thinking) {
               if (!isThinking) {
-                onChunk('<think>');
+                onChunk({ chunk: '<think>' });
                 fullContent += '<think>';
                 isThinking = true;
               }
               fullContent += thinking;
-              onChunk(thinking);
+              onChunk({ chunk: thinking });
             }
 
             const content = validated.message?.content || '';
             if (content) {
               if (isThinking) {
-                onChunk('</think>');
+                onChunk({ chunk: '</think>' });
                 fullContent += '</think>';
                 isThinking = false;
               }
               fullContent += content;
-              onChunk(content);
+              onChunk({ chunk: content });
             }
 
             if (validated.message?.tool_calls) {
@@ -375,7 +374,7 @@ export class OllamaProvider implements LLMProvider {
 
             if (validated.done) {
               if (isThinking) {
-                onChunk('</think>');
+                onChunk({ chunk: '</think>' });
                 fullContent += '</think>';
                 isThinking = false;
               }
@@ -434,7 +433,7 @@ export class OllamaProvider implements LLMProvider {
               const executionResult = await tool.execute({
                 args: validatedArgs,
                 signal,
-                onEvent: async (event) => {
+                onEvent: async ({ event }) => {
                   onToolEvent?.({ id: tc.id, event });
                 },
                 approvalContext: toolApprovalContext,
@@ -485,8 +484,7 @@ export class OllamaProvider implements LLMProvider {
     }
   }
 
-  async listModels(params: { signal?: AbortSignal }): Promise<string[]> {
-    const { signal } = params;
+  async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
     let response: Response;
@@ -537,7 +535,7 @@ export class OllamaProvider implements LLMProvider {
     steps: number | undefined;
     seed: number | undefined;
     images: { blob: Blob }[];
-    onProgress: (params: { currentStep: number; totalSteps: number }) => void;
+    onProgress: ({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) => void;
     signal: AbortSignal | undefined;
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> {
     const { endpoint, headers } = this.config;

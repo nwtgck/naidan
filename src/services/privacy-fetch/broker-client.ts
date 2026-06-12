@@ -9,14 +9,18 @@ import type {
 } from './types'
 
 type PendingRequest = {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
   reject: (reason: Error) => void;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise resolver signature.
   resolve: (value: PrivacyFetchResponse) => void;
   cleanup: () => void;
 }
 
 type Deferred<T> = {
   promise: Promise<T>;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
   reject: (reason: Error) => void;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise resolver signature.
   resolve: (value: T) => void;
 }
 
@@ -25,7 +29,9 @@ const PRIVACY_FETCH_BROKER_PATH = '/privacy-fetch-broker.html'
 let sharedPrivacyFetchBrokerClient: PrivacyFetchBrokerClient | undefined
 
 function createDeferred<T>(): Deferred<T> {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise resolver signature.
   let resolve!: (value: T) => void
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
   let reject!: (reason: Error) => void
   const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve
@@ -100,7 +106,7 @@ export function createPrivacyFetchBrokerClient({
     callback,
   }: {
     requestId: string;
-    callback: (pendingRequest: PendingRequest) => void;
+    callback: ({ pendingRequest }: { pendingRequest: PendingRequest }) => void;
   }): void => {
     const pendingRequest = pendingRequests.get(requestId)
     if (pendingRequest === undefined) {
@@ -109,9 +115,10 @@ export function createPrivacyFetchBrokerClient({
 
     pendingRequest.cleanup()
     pendingRequests.delete(requestId)
-    callback(pendingRequest)
+    callback({ pendingRequest })
   }
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to addEventListener.
   const handleMessage = (event: MessageEvent) => {
     if (event.source !== iframe?.contentWindow) {
       return
@@ -133,7 +140,7 @@ export function createPrivacyFetchBrokerClient({
     case 'response':
       resolvePendingRequest({
         requestId: message.requestId,
-        callback: (pendingRequest) => {
+        callback: ({ pendingRequest }) => {
           pendingRequest.resolve({
             url: message.url,
             status: message.status,
@@ -152,7 +159,7 @@ export function createPrivacyFetchBrokerClient({
     case 'rejected':
       resolvePendingRequest({
         requestId: message.requestId,
-        callback: (pendingRequest) => {
+        callback: ({ pendingRequest }) => {
           pendingRequest.reject(createPrivacyFetchError({
             code: 'rejected',
             message: `Privacy fetch rejected [${message.validationResult.code}]: ${message.validationResult.message}`,
@@ -163,7 +170,7 @@ export function createPrivacyFetchBrokerClient({
     case 'error':
       resolvePendingRequest({
         requestId: message.requestId,
-        callback: (pendingRequest) => {
+        callback: ({ pendingRequest }) => {
           pendingRequest.reject(createPrivacyFetchError({
             code: message.code,
             message: `Privacy fetch failed [${message.code}]: ${message.message}`,
@@ -252,7 +259,7 @@ export function createPrivacyFetchBrokerClient({
   }
 
   return {
-    async fetch(request: PrivacyFetchRequest): Promise<PrivacyFetchResponse> {
+    async fetch({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchResponse> {
       if (disposed) {
         throw createPrivacyFetchError({
           code: 'broker_disposed',
@@ -323,7 +330,9 @@ export function createPrivacyFetchBrokerClient({
         }
 
         pendingRequests.set(requestId, {
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise resolver signature.
           resolve: (response) => settle({ callback: () => resolve(response) }),
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
           reject: (error) => settle({ callback: () => reject(error) }),
           cleanup,
         })

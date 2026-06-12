@@ -132,8 +132,8 @@ async function startCopyAndEmit({ name, entries, label, readOnly }: {
       name,
       entries,
       signal: controller.signal,
-      onProgress: (p) => {
-        progress.value = p;
+      onProgress: ({ processed, total }) => {
+        progress.value = { processed, total };
       },
     });
     emit('created', { volumeId: vol.id, mountPath: generateSuggestedPath({ baseName: name }), readOnly });
@@ -321,10 +321,12 @@ function onDocDrop({ event }: { event: DragEvent }) {
   handleDrop({ event });
 }
 
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM dragover listener.
 function handleDocumentDragOver(event: DragEvent) {
   onDocDragOver({ event });
 }
 
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM drop listener.
 function handleDocumentDrop(event: DragEvent) {
   onDocDrop({ event });
 }

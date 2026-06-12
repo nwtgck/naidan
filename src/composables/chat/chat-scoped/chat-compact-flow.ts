@@ -174,7 +174,7 @@ export async function runCompactCurrentBranchForChat({
     await provider.chat({
       messages: requestMessages,
       model: resolvedModel,
-      onChunk: (chunk) => {
+      onChunk: ({ chunk }) => {
         compactContent += chunk;
         contextCompactRuntime.setProgress({
           chatId: mutableChat.id,
@@ -228,7 +228,8 @@ export async function runCompactCurrentBranchForChat({
 
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({
+
+      updater: ({ current }) => ({
         ...current,
         root: mutableChat.root,
         currentLeafId: mutableChat.currentLeafId,
@@ -236,7 +237,8 @@ export async function runCompactCurrentBranchForChat({
     });
     await updateChatMeta({
       id: mutableChat.id,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           return mutableChat;
         }

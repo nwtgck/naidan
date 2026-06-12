@@ -107,6 +107,7 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
           const input = await readAllFileBytes({ files: context.files, path: fullPath });
           const decompressor = new DecompressionStream('gzip');
           const inputProvider = new ReadableStream({
+            // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
             start(controller) {
               controller.enqueue(input);
               controller.close();
@@ -134,6 +135,7 @@ export const gunzipCommandDefinition: WeshCommandDefinition = {
         const input = await readStreamBytes({ stream: openHandleReadStream({ handle: context.stdin }) });
         const decompressor = new DecompressionStream('gzip');
         const inputProvider = new ReadableStream({
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
           start(controller) {
             controller.enqueue(input);
             controller.close();

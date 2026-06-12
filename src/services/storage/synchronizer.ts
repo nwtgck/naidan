@@ -31,7 +31,7 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
 export type StorageChangeEvent = z.infer<typeof StorageChangeEventSchema>;
 export type ChangeType = StorageChangeEvent['type'];
 
-export type ChangeListener = (event: StorageChangeEvent) => void;
+export type ChangeListener = ({ event }: { event: StorageChangeEvent }) => void | Promise<void>;
 
 export class StorageSynchronizer {
   private listeners: Set<ChangeListener> = new Set();
@@ -63,7 +63,7 @@ export class StorageSynchronizer {
             const raw = JSON.parse(e.newValue);
             const result = StorageChangeEventSchema.safeParse(raw);
             if (result.success) {
-              this.emit(result.data);
+              this.emit({ event: result.data });
             } else {
               console.warn('Failed to validate storage signal:', result.error);
             }
@@ -94,10 +94,11 @@ export class StorageSynchronizer {
       })()) {
         try {
           this.broadcastChannel = new BroadcastChannel('naidan_storage_sync');
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is assigned to BroadcastChannel.onmessage.
           this.broadcastChannel.onmessage = (ev) => {
             const result = StorageChangeEventSchema.safeParse(ev.data);
             if (result.success) {
-              this.emit(result.data);
+              this.emit({ event: result.data });
             } else {
               console.warn('Failed to validate broadcast message:', result.error);
             }
@@ -116,24 +117,23 @@ export class StorageSynchronizer {
    * This version does not force a failure but monitors the time taken.
    * It provides callbacks to notify if lock acquisition or task execution is taking too long.
    */
-  async withLock<T>(
-    fn: () => Promise<T>,
-    {
-      lockKey,
-      notifyLockWaitAfterMs = 3000,
-      notifyTaskSlowAfterMs = 5000,
-      onLockWait,
-      onTaskSlow,
-      onFinalize
-    }: {
-      lockKey: string;
-      notifyLockWaitAfterMs?: number;
-      notifyTaskSlowAfterMs?: number;
-      onLockWait?: () => void;
-      onTaskSlow?: () => void;
-      onFinalize?: () => void;
-    }
-  ): Promise<T> {
+  async withLock<T>({
+    fn,
+    lockKey,
+    notifyLockWaitAfterMs = 3000,
+    notifyTaskSlowAfterMs = 5000,
+    onLockWait,
+    onTaskSlow,
+    onFinalize
+  }: {
+    fn: () => Promise<T>;
+    lockKey: string;
+    notifyLockWaitAfterMs?: number;
+    notifyTaskSlowAfterMs?: number;
+    onLockWait?: () => void;
+    onTaskSlow?: () => void;
+    onFinalize?: () => void;
+  }): Promise<T> {
     let wasSlow = false;
 
     if (typeof navigator !== 'undefined' && navigator.locks?.request) {
@@ -174,11 +174,12 @@ export class StorageSynchronizer {
   /**
    * Notifies other tabs of a change.
    */
-  notify(event: StorageChangeEvent): void;
+  notify({ type }: StorageChangeEvent): void;
   /**
    * @deprecated Use notify(event: StorageChangeEvent) instead.
    */
   notify(type: string, id?: string): void;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because deprecated overloads are retained for compatibility.
   notify(eventOrType: StorageChangeEvent | string, id?: string): void {
     let event: StorageChangeEvent;
     const t = typeof eventOrType;
@@ -223,12 +224,12 @@ export class StorageSynchronizer {
     }
   }
 
-  subscribe(listener: ChangeListener) {
+  subscribe({ listener }: { listener: ChangeListener }) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  private emit(event: StorageChangeEvent) {
-    this.listeners.forEach(l => l(event));
+  private emit({ event }: { event: StorageChangeEvent }) {
+    this.listeners.forEach(l => l({ event }));
   }
 }

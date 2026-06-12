@@ -150,8 +150,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -237,8 +239,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -288,8 +292,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     mockGenerateId.mockReturnValue('req-2')
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -355,8 +361,10 @@ describe('createPrivacyFetchBrokerClient', () => {
 
     const controller = new AbortController()
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: controller.signal,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: controller.signal,
+      },
     })
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -411,8 +419,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -464,8 +474,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -498,8 +510,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     controller.abort()
 
     await expect(client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: controller.signal,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: controller.signal,
+      },
     })).rejects.toMatchObject({
       name: 'AbortError',
       code: 'aborted',
@@ -513,8 +527,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     const controller = new AbortController()
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: controller.signal,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: controller.signal,
+      },
     })
 
     controller.abort()

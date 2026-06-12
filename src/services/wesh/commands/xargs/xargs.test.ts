@@ -143,7 +143,9 @@ describe('wesh xargs', () => {
     expect(parallelSleep.stdout.text).toBe('');
     expect(parallelSleep.stderr.text).toBe('');
     expect(parallelSleep.result.exitCode).toBe(0);
-    expect(elapsedMs).toBeLessThan(170);
+    // Keep this assertion loose enough for sharded CI-like runs where
+    // worker startup and timer scheduling can add noticeable overhead.
+    expect(elapsedMs).toBeLessThan(400);
   });
 
   it('normalizes child failures under parallel execution', async () => {

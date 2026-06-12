@@ -309,9 +309,9 @@ function handleClearContent() {
 onMounted(() => {
   loadAttachments();
 
-  transformersUnsubscribe = transformersJsService.subscribe((s) => {
+  transformersUnsubscribe = transformersJsService.subscribe({ listener: ({ status: s }) => {
     transformersStatus.value = s;
-  });
+  } });
 
 });
 

@@ -24,7 +24,7 @@ const approvalRuntimeState = reactive<ApprovalRuntimeState>({
 });
 
 const chatApprovalLocks = new Map<string, Semaphore>();
-const pendingDecisionResolvers = new Map<string, (decision: ApprovalUiDecision) => void>();
+const pendingDecisionResolvers = new Map<string, ({ decision }: { decision: ApprovalUiDecision }) => void>();
 
 function getChatApprovalLock({
   chatId,
@@ -36,7 +36,7 @@ function getChatApprovalLock({
     return existing;
   }
 
-  const lock = new Semaphore(1);
+  const lock = new Semaphore({ maxConcurrency: 1 });
   chatApprovalLocks.set(chatId, lock);
   return lock;
 }
@@ -111,7 +111,7 @@ function waitForApprovalUiDecision({
     };
     signal?.addEventListener('abort', handleAbort, { once: true });
 
-    pendingDecisionResolvers.set(request.requestId, (decision) => {
+    pendingDecisionResolvers.set(request.requestId, ({ decision }) => {
       signal?.removeEventListener('abort', handleAbort);
       resolve(decision);
     });
@@ -263,7 +263,7 @@ export function useApproval(_args: Record<never, never>): {
     if (resolver === undefined) {
       return;
     }
-    resolver(decision);
+    resolver({ decision });
   }
 
   function clearAll(_args: Record<never, never>): void {

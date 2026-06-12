@@ -66,7 +66,7 @@ export const chatDataStore = createChatDataStore({
   onExternalGenerationAbortRequest: ({ chatId }) => {
     chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
   },
-  onMigration: (_args) => {
+  onMigration: (_args: Record<never, never>) => {
     for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
     chatRuntimeStore.clearActiveGenerations({});
     chatRuntimeStore.clearActiveTaskCounts({});

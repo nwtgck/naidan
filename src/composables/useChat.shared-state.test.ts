@@ -3,8 +3,8 @@ import { useChat } from './useChat';
 
 const chats = new Map<string, any>();
 const mockListModels = vi.fn();
-const mockUpdateChatContent = vi.fn().mockImplementation(async (_id: string, updater: (current: unknown) => unknown) => {
-  return await updater(null);
+const mockUpdateChatContent = vi.fn().mockImplementation(async ({ updater }: { id: string; updater: ({ current }: { current: unknown }) => unknown }) => {
+  return await updater({ current: null });
 });
 
 vi.mock('../services/storage', () => ({
@@ -18,10 +18,10 @@ vi.mock('../services/storage', () => ({
     loadChatContent: vi.fn().mockResolvedValue(null),
     loadChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => chats.get(id) ?? null),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
-    updateHierarchy: vi.fn().mockImplementation(async (updater: (current: { items: never[] }) => { items: never[] }) => updater({ items: [] })),
+    updateHierarchy: vi.fn().mockImplementation(async ({ updater }: { updater: ({ current }: { current: { items: never[] } }) => { items: never[] } }) => updater({ current: { items: [] } })),
     updateChatContent: (...args: Parameters<typeof mockUpdateChatContent>) => mockUpdateChatContent(...args),
-    updateChatMeta: vi.fn().mockImplementation(async (id: string, updater: (current: unknown) => Promise<unknown> | unknown) => {
-      const updated = await updater(chats.get(id) ?? null);
+    updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }: { id: string; updater: ({ current }: { current: unknown }) => Promise<unknown> | unknown }) => {
+      const updated = await updater({ current: chats.get(id) ?? null });
       chats.set(id, updated);
     }),
     deleteChat: vi.fn(),
@@ -65,8 +65,8 @@ describe('useChat shared state', () => {
     vi.clearAllMocks();
     chats.clear();
     mockListModels.mockResolvedValue(['gpt-4.1', 'o4-mini']);
-    mockUpdateChatContent.mockImplementation(async (_id: string, updater: (current: unknown) => unknown) => {
-      return await updater(null);
+    mockUpdateChatContent.mockImplementation(async ({ updater }: { id: string; updater: ({ current }: { current: unknown }) => unknown }) => {
+      return await updater({ current: null });
     });
 
     const chatStore = useChat();
@@ -97,9 +97,9 @@ describe('useChat shared state', () => {
     const createChatBlocked = new Promise<void>(resolve => {
       releaseCreateChat = resolve;
     });
-    mockUpdateChatContent.mockImplementationOnce(async (_id: string, updater: (current: unknown) => unknown) => {
+    mockUpdateChatContent.mockImplementationOnce(async ({ updater }: { id: string; updater: ({ current }: { current: unknown }) => unknown }) => {
       await createChatBlocked;
-      return await updater(null);
+      return await updater({ current: null });
     });
 
     const storeA = useChat();

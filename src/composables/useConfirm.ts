@@ -16,6 +16,7 @@ const confirmConfirmButtonText = ref('Confirm');
 const confirmCancelButtonText = ref('Cancel');
 const confirmButtonVariant = ref<'default' | 'danger'>('default'); // New ref for variant
 const confirmIcon = shallowRef<Component | undefined>(undefined); // Use shallowRef for components
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this stores the native Promise resolve callback contract.
 let resolvePromise: ((value: boolean) => void) | undefined;
 
 export function useConfirm() {

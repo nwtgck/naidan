@@ -2,6 +2,7 @@ export const WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS = 1000
 
 type QueuedWikipediaApiSlot = {
   onAbort: (() => void) | undefined;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
   reject: (reason: unknown) => void;
   resolve: () => void;
   signal: AbortSignal | undefined;

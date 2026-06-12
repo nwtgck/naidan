@@ -61,20 +61,20 @@ export class MemoryStorageProvider extends IStorageProvider {
     return { ...this.hierarchy };
   }
 
-  async saveHierarchy(hierarchy: HierarchyDto): Promise<void> {
+  async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
     this.hierarchy = HierarchySchemaDto.parse(hierarchy);
   }
 
   // --- Persistence Implementation ---
 
-  async saveChatMeta(meta: ChatMeta): Promise<void> {
+  async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
     ChatMetaSchemaDto.parse(dto);
     this.chatMetas.set(meta.id, dto);
   }
 
-  async saveChatContent(id: string, content: ChatContent): Promise<void> {
-    const findAndCacheBlobs = (nodes: MessageNode[]) => {
+  async saveChatContent({ id, content }: { id: string; content: ChatContent }): Promise<void> {
+    const findAndCacheBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
       for (const node of nodes) {
         if (node.attachments) {
           for (const att of node.attachments) {
@@ -84,11 +84,11 @@ export class MemoryStorageProvider extends IStorageProvider {
           }
         }
         if (node.replies?.items) {
-          findAndCacheBlobs(node.replies.items);
+          findAndCacheBlobs({ nodes: node.replies.items });
         }
       }
     };
-    findAndCacheBlobs(content.root.items);
+    findAndCacheBlobs({ nodes: content.root.items });
 
     const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
@@ -109,7 +109,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
       if (group) chat.groupId = group.id;
 
-      const restoreBlobs = (nodes: MessageNode[]) => {
+      const restoreBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
@@ -129,10 +129,10 @@ export class MemoryStorageProvider extends IStorageProvider {
               }
             }
           }
-          if (node.replies?.items) restoreBlobs(node.replies.items);
+          if (node.replies?.items) restoreBlobs({ nodes: node.replies.items });
         }
       };
-      restoreBlobs(chat.root.items);
+      restoreBlobs({ nodes: chat.root.items });
 
       return chat;
     } catch {
@@ -161,7 +161,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       const dto = ChatContentSchemaDto.parse(rawContent);
       const content = chatContentToDomain({ dto });
 
-      const restoreBlobs = (nodes: MessageNode[]) => {
+      const restoreBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
@@ -181,10 +181,10 @@ export class MemoryStorageProvider extends IStorageProvider {
               }
             }
           }
-          if (node.replies?.items) restoreBlobs(node.replies.items);
+          if (node.replies?.items) restoreBlobs({ nodes: node.replies.items });
         }
       };
-      restoreBlobs(content.root.items);
+      restoreBlobs({ nodes: content.root.items });
 
       return content;
     } catch {
@@ -197,7 +197,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     this.chatContents.delete(id);
   }
 
-  async saveChatGroup(chatGroup: ChatGroup): Promise<void> {
+  async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
     ChatGroupSchemaDto.parse(dto);
     this.chatGroups.set(chatGroup.id, dto);
@@ -226,7 +226,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     return buildSidebarItemsFromHierarchy({ hierarchy, chatMetas, chatGroups });
   }
 
-  async saveSettings(settings: Settings): Promise<void> {
+  async saveSettings({ settings }: { settings: Settings }): Promise<void> {
     const dto = settingsToDto({ domain: settings });
     SettingsSchemaDto.parse(dto);
     this.settings = settings;
@@ -242,7 +242,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     // MemoryStorage doesn't support volumes
   }
 
-  async createVolume(_params: {
+  async createVolume({ name: _name, type: _type, sourceHandle: _sourceHandle }: {
     name: string;
     type: import('@/models/types').VolumeType;
     sourceHandle: FileSystemDirectoryHandle;
@@ -250,28 +250,28 @@ export class MemoryStorageProvider extends IStorageProvider {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
-  async createVolumeFromFiles(_params: {
+  async createVolumeFromFiles({ name: _name, entries: _entries, onProgress: _onProgress, signal: _signal }: {
     name: string;
     entries: Array<{ file: File; relativePath: string }>;
-    onProgress?: (progress: { processed: number; total: number }) => void;
+    onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
     signal?: AbortSignal;
   }): Promise<import('@/models/types').Volume> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
-  async getVolumeDirectoryHandle(_params: {
+  async getVolumeDirectoryHandle({ volumeId: _volumeId }: {
     volumeId: string;
   }): Promise<FileSystemDirectoryHandle | null> {
     return null;
   }
 
-  async deleteVolume(_params: {
+  async deleteVolume({ volumeId: _volumeId }: {
     volumeId: string;
   }): Promise<void> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
-  async renameVolume(_params: {
+  async renameVolume({ volumeId: _volumeId, name: _name }: {
     volumeId: string;
     name: string;
   }): Promise<void> {
@@ -284,12 +284,13 @@ export class MemoryStorageProvider extends IStorageProvider {
    * @deprecated Use the named arguments version instead.
    */
   async saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
-  async saveFile(params: {
+  async saveFile({ blob, binaryObjectId, name, mimeType }: {
     blob: Blob;
     binaryObjectId: string;
     name: string;
     mimeType: string | undefined;
   }): Promise<void>;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because deprecated overloads are retained for compatibility.
   async saveFile(blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined }, binaryObjectId?: string, name?: string, mimeType?: string): Promise<void> {
     let blob: Blob;
     let bId: string;
@@ -397,16 +398,16 @@ export class MemoryStorageProvider extends IStorageProvider {
     };
   }
 
-  async restore(snapshot: StorageSnapshot): Promise<void> {
+  async restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void> {
     const { structure, contentStream } = snapshot;
 
-    if (structure.settings) await this.saveSettings(structure.settings);
-    if (structure.hierarchy) await this.saveHierarchy(structure.hierarchy);
+    if (structure.settings) await this.saveSettings({ settings: structure.settings });
+    if (structure.hierarchy) await this.saveHierarchy({ hierarchy: structure.hierarchy });
     if (structure.chatMetas) {
-      for (const meta of structure.chatMetas) await this.saveChatMeta(meta);
+      for (const meta of structure.chatMetas) await this.saveChatMeta({ meta });
     }
     if (structure.chatGroups) {
-      for (const group of structure.chatGroups) await this.saveChatGroup(group);
+      for (const group of structure.chatGroups) await this.saveChatGroup({ chatGroup: group });
     }
 
     for await (const chunk of contentStream) {
@@ -414,8 +415,8 @@ export class MemoryStorageProvider extends IStorageProvider {
       switch (type) {
       case 'chat': {
         const domainChat = chatToDomain({ dto: chunk.data });
-        await this.saveChatContent(domainChat.id, domainChat);
-        await this.saveChatMeta(domainChat);
+        await this.saveChatContent({ id: domainChat.id, content: domainChat });
+        await this.saveChatMeta({ meta: domainChat });
         break;
       }
       case 'binary_object':

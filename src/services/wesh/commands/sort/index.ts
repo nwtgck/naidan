@@ -1192,6 +1192,7 @@ export const sortCommandDefinition: WeshCommandDefinition = {
         path: fullPath,
         mode: 'truncate',
         stream: new ReadableStream<Uint8Array>({
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
           start(controller) {
             controller.enqueue(new TextEncoder().encode(outputText));
             controller.close();

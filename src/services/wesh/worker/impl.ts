@@ -27,7 +27,7 @@ function createForwardingHandle({
   onEvent,
 }: {
   stream: 'stdout' | 'stderr'
-  onEvent: (event: WeshWorkerRemoteExecutionEvent) => Promise<void>
+  onEvent: ({ event }: { event: WeshWorkerRemoteExecutionEvent }) => Promise<void>
 }) {
   const toTransferableBuffer = ({ chunk }: {
     chunk: Uint8Array
@@ -44,13 +44,16 @@ function createForwardingHandle({
 
   const handle = createWriteHandleFromStream({
     target: new WritableStream({
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the WritableStream sink signature.
       async write(chunk) {
         const buffer = toTransferableBuffer({ chunk })
 
-        await onEvent(Comlink.transfer({
-          type: stream,
-          buffer,
-        }, [buffer]))
+        await onEvent({
+          event: Comlink.transfer({
+            type: stream,
+            buffer,
+          }, [buffer]),
+        })
       },
     }),
   })
@@ -68,6 +71,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
   }>()
 
   return {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     async init(requestOrOptions, naidanSysfsRemoteReader) {
       const normalizedRequest = (() => {
         if (
@@ -140,6 +144,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       }
     },
 
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     async startExecution(request, onEvent) {
       if (!wesh) {
         throw new Error('Wesh worker is not initialized')
@@ -148,7 +153,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       const validated = weshWorkerExecuteRequestSchema.parse(request)
       const executionId = `wesh-exec-${nextExecutionId}`
       nextExecutionId += 1
-      const emit = async (event: WeshWorkerRemoteExecutionEvent) => {
+      const emit = async ({ event }: { event: WeshWorkerRemoteExecutionEvent }) => {
         await onEvent?.(event)
       }
       const stdoutCapture = createForwardingHandle({
@@ -162,22 +167,24 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       const stdin = createTestReadHandleFromText({ text: '' })
       const completion = (async () => {
         try {
-          await emit({ type: 'started' })
+          await emit({ event: { type: 'started' } })
           const result = await wesh.execute({
             script: validated.script,
             stdin,
             stdout: stdoutCapture.handle,
             stderr: stderrCapture.handle,
           })
-          await emit({ type: 'exit', exitCode: result.exitCode })
+          await emit({ event: { type: 'exit', exitCode: result.exitCode } })
 
           return weshWorkerExecutionSummarySchema.parse({
             exitCode: result.exitCode,
           })
         } catch (error) {
           await emit({
-            type: 'error',
-            message: error instanceof Error ? error.message : String(error),
+            event: {
+              type: 'error',
+              message: error instanceof Error ? error.message : String(error),
+            },
           })
           throw error
         } finally {

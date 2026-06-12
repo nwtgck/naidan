@@ -15,6 +15,7 @@ const featureFlags = useStorage<FeatureFlags>(
   localStorage,
   {
     serializer: {
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because VueUse storage serializers must match the serializer callback contract.
       read: (value) => {
         if (!value) {
           return createDefaultFeatureFlags();
@@ -43,6 +44,7 @@ const featureFlags = useStorage<FeatureFlags>(
 
         return createDefaultFeatureFlags();
       },
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because VueUse storage serializers must match the serializer callback contract.
       write: (value) => JSON.stringify(FeatureFlagsSchema.parse(value)),
     },
   }

@@ -36,12 +36,15 @@ interface ModelInternals {
 }
 
 interface Qwen3_5ProcessorLike {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external Transformers.js processor signature.
   (text: string): Promise<Record<string, unknown>>;
   tokenizer: PreTrainedTokenizer;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors an external Transformers.js tokenizer signature.
   batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[];
 }
 
 interface AutoModelWithSupports {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors an external Transformers.js model signature.
   supports?: (modelType: string) => boolean;
 }
 
@@ -49,6 +52,7 @@ const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
 // Intercept fetch to handle SPA 404 fallback and enforce local-only constraints
 const originalFetch = self.fetch;
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this function mirrors the global fetch signature.
 const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   let urlString = '';
   if (typeof input === 'string') {
@@ -144,6 +148,7 @@ env.backends.onnx.logLevel = 'error';
  * Custom cache implementation that uses OPFS inside Worker.
  */
 const opfsCache = {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the Cache.match-compatible signature expected by Transformers.js.
   async match(request: string | Request): Promise<Response | undefined> {
     const urlString = typeof request === 'string' ? request : request.url;
     if (typeof request !== 'string' && request.method && request.method !== 'GET') return undefined;
@@ -189,6 +194,7 @@ const opfsCache = {
     }
   },
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the Cache.put-compatible signature expected by Transformers.js.
   async put(request: string | Request, response: Response): Promise<void> {
     const urlString = typeof request === 'string' ? request : request.url;
     const path = urlToPath({ url: urlString });
@@ -291,6 +297,7 @@ function assertGemma4RuntimeSupport({ modelId }: { modelId: string }): void {
 // ---------------------------------------------------------------------------
 
 const transformersJsWorker: ITransformersJsWorker = {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   async downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void) {
     console.log('[transformersJsWorker] Starting downloadModel:', modelId);
     let cleanModelId = modelId;
@@ -319,6 +326,7 @@ const transformersJsWorker: ITransformersJsWorker = {
    * for large assets. This is called after the scanner has identified
    * all necessary URLs.
    */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   async prefetchUrls(urls: string[], progressCallback: (x: ProgressInfo) => void): Promise<void> {
     console.log(`[transformersJsWorker] Starting prefetch of ${urls.length} URLs.`);
 
@@ -360,6 +368,7 @@ const transformersJsWorker: ITransformersJsWorker = {
 
         // Create a custom stream to track progress
         const transformStream = new TransformStream({
+          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the TransformStream transformer signature.
           transform(chunk, controller) {
             loaded += chunk.length;
             progressCallback({
@@ -384,6 +393,7 @@ const transformersJsWorker: ITransformersJsWorker = {
     }
   },
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   async loadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult> {
     console.log('[transformersJsWorker] Starting loadModel:', modelId);
 
@@ -406,7 +416,10 @@ const transformersJsWorker: ITransformersJsWorker = {
         run: async () => {
           // 1. Load Model
           // We try several combinations of device and dtype to find what works on this hardware/model
-          const tryLoad = async (device: 'webgpu' | 'wasm', dtype: 'q4f16' | 'q4' | undefined) => {
+          const tryLoad = async ({ device, dtype }: {
+            device: 'webgpu' | 'wasm'
+            dtype: 'q4f16' | 'q4' | undefined
+          }) => {
             const startedAt = performance.now();
             debugLog({
               event: 'worker tryLoad start',
@@ -461,20 +474,20 @@ const transformersJsWorker: ITransformersJsWorker = {
           };
 
           try {
-            model = await tryLoad('webgpu', 'q4f16');
+            model = await tryLoad({ device: 'webgpu', dtype: 'q4f16' });
           } catch (err) {
             console.warn('[transformersJsWorker] webgpu/q4f16 failed:', err);
             try {
-              model = await tryLoad('webgpu', 'q4');
+              model = await tryLoad({ device: 'webgpu', dtype: 'q4' });
             } catch (err2) {
               console.warn('[transformersJsWorker] webgpu/q4 failed:', err2);
               try {
                 // Try without forced dtype (let library decide, e.g. use original fp32/fp16)
-                model = await tryLoad('webgpu', undefined);
+                model = await tryLoad({ device: 'webgpu', dtype: undefined });
               } catch (err3) {
                 console.warn('[transformersJsWorker] webgpu/default failed, falling back to wasm:', err3);
                 // Last resort: standard CPU execution
-                model = await tryLoad('wasm', undefined);
+                model = await tryLoad({ device: 'wasm', dtype: undefined });
               }
             }
           }
@@ -558,9 +571,12 @@ const transformersJsWorker: ITransformersJsWorker = {
     stoppingCriteria.reset();
   },
 
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   async generateText(
     messages: ChatMessage[],
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onChunk: (chunk: string) => void,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onToolCalls: (toolCalls: ToolCall[]) => void,
     params?: LmParameters,
     tools?: WorkerToolDefinition[]
@@ -601,11 +617,11 @@ const transformersJsWorker: ITransformersJsWorker = {
         model,
         tokenizer,
         messages,
-        onChunk: (chunk) => {
+        onChunk: ({ chunk }) => {
           console.debug('[transformersJsWorker] raw token:', JSON.stringify(chunk));
           onChunk(chunk);
         },
-        onToolCalls,
+        onToolCalls: ({ toolCalls }) => onToolCalls(toolCalls),
         params,
         tools,
         runtimeState: generationRuntimeState,

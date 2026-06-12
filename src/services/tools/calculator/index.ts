@@ -20,7 +20,7 @@ export class CalculatorTool implements Tool {
   }: {
     args: unknown;
     signal?: AbortSignal;
-    onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
     approvalContext?: ToolApprovalContext;
   }): Promise<
     | { status: 'success'; content: string }

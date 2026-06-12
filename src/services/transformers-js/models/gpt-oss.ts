@@ -27,8 +27,8 @@ export async function generateGptOss({
   model: PreTrainedModel;
   tokenizer: PreTrainedTokenizer;
   messages: ChatMessage[];
-  onChunk: (chunk: string) => void;
-  onToolCalls: (toolCalls: ToolCall[]) => void;
+  onChunk: ({ chunk }: { chunk: string }) => void;
+  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void;
   params: LmParameters | undefined;
   tools: WorkerToolDefinition[] | undefined;
   pastKeyValues: unknown;
@@ -36,7 +36,7 @@ export async function generateGptOss({
     reset(): void;
     interrupt(): void;
   };
-  generateWithModel: (args: {
+  generateWithModel: ({ model, inputs, pastKeyValues, params, streamer, stoppingCriteria }: {
     model: PreTrainedModel;
     inputs: Record<string, unknown>;
     pastKeyValues: unknown;
@@ -71,6 +71,7 @@ export async function generateGptOss({
   const streamer = new TextStreamer(tokenizer, {
     skip_prompt: true,
     skip_special_tokens: false,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Transformers TextStreamer signature.
     callback_function: (output: string) => {
       const delta = parser.push({ token: output });
       if (!delta) return;
@@ -84,20 +85,20 @@ export async function generateGptOss({
 
         if (pendingAnalysisClose) {
           if (visibleChannel !== 'analysis') {
-            onChunk('</think>');
+            onChunk({ chunk: '</think>' });
             currentChannel = '';
           }
           pendingAnalysisClose = false;
         }
 
         if (visibleChannel !== currentChannel) {
-          if (currentChannel === 'analysis') onChunk('</think>');
-          if (visibleChannel === 'analysis') onChunk('<think>');
+          if (currentChannel === 'analysis') onChunk({ chunk: '</think>' });
+          if (visibleChannel === 'analysis') onChunk({ chunk: '<think>' });
           currentChannel = visibleChannel;
         }
 
         if (!isFunctionCallMessage && visibleChannel !== 'commentary') {
-          onChunk(delta.textDelta);
+          onChunk({ chunk: delta.textDelta });
         }
         break;
       }
@@ -111,14 +112,14 @@ export async function generateGptOss({
         case 'call':
         case 'return':
           if (pendingAnalysisClose || currentChannel === 'analysis') {
-            onChunk('</think>');
+            onChunk({ chunk: '</think>' });
             pendingAnalysisClose = false;
           }
           currentChannel = '';
           break;
         case 'end':
           if (isFunctionCallMessage && currentChannel === 'analysis') {
-            onChunk('</think>');
+            onChunk({ chunk: '</think>' });
             pendingAnalysisClose = false;
             currentChannel = '';
           }
@@ -175,7 +176,7 @@ export async function generateGptOss({
     streamer,
     stoppingCriteria,
   });
-  if (pendingToolCalls.length > 0) onToolCalls(pendingToolCalls);
+  if (pendingToolCalls.length > 0) onToolCalls({ toolCalls: pendingToolCalls });
   return result.past_key_values;
 }
 

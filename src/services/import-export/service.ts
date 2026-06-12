@@ -59,26 +59,30 @@ function truncateByByteLength({ str, maxBytes }: { str: string, maxBytes: number
  */
 export interface IImportExportStorage {
   loadSettings(): Promise<Settings | null>;
-  updateSettings(updater: (current: Settings | null) => Settings | Promise<Settings>): Promise<void>;
+  updateSettings({ updater }: { updater: ({ current }: { current: Settings | null }) => Settings | Promise<Settings> }): Promise<void>;
   listChats(): Promise<ChatSummary[]>;
   listChatGroups(): Promise<ChatGroup[]>;
   loadChat({ id }: { id: string }): Promise<Chat | null>;
   loadHierarchy(): Promise<Hierarchy | null>;
   clearAll(): Promise<void>;
   dumpWithoutLock(): Promise<StorageSnapshot>;
-  restore(snapshot: StorageSnapshot): Promise<void>;
+  restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void>;
 }
 
 export class ImportExportService {
   private globalEvents = useGlobalEvents();
 
+  private storage: IImportExportStorage;
+
   // Accept a subset of IStorageProvider that handles the necessary persistence
-  constructor(private storage: IImportExportStorage) {}
+  constructor({ storage }: { storage: IImportExportStorage }) {
+    this.storage = storage;
+  }
 
   /**
    * Export data as a ZIP stream.
    */
-  async exportData(options: ExportOptions): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
+  async exportData({ exclude, fileNameSegment }: ExportOptions): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
     const zip = new JSZip();
     const dateStr = formatDate({ date: new Date() });
 
@@ -91,9 +95,9 @@ export class ImportExportService {
     const AVAILABLE_BYTES = 255 - SUFFIX_BYTES - PREFIX_BYTES - 1;
 
     let midSegment = '';
-    if (options.fileNameSegment) {
+    if (fileNameSegment) {
       /* eslint-disable no-control-regex */
-      const sanitized = options.fileNameSegment.replace(/[/?%*:|"<>\x00-\x1F]/g, '_').trim();
+      const sanitized = fileNameSegment.replace(/[/?%*:|"<>\x00-\x1F]/g, '_').trim();
       /* eslint-enable no-control-regex */
       if (sanitized) {
         midSegment = `-${truncateByByteLength({ str: sanitized, maxBytes: AVAILABLE_BYTES })}`;
@@ -120,7 +124,7 @@ export class ImportExportService {
       binary_object: false,
     };
 
-    for (const item of (options.exclude || [])) {
+    for (const item of (exclude ?? [])) {
       switch (item) {
       case 'chat':
         excludeFlags.chat = true;
@@ -222,6 +226,7 @@ export class ImportExportService {
     }
 
     const stream = new ReadableStream<Uint8Array>({
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
       start(controller) {
         zip.generateInternalStream({ type: 'uint8array', streamFiles: true })
           .on('data', (data) => controller.enqueue(data))
@@ -237,9 +242,9 @@ export class ImportExportService {
   /**
    * Analyze ZIP file and return preview information.
    */
-  async analyze(zipFile: Blob): Promise<ImportPreview> {
-    const zip = await this.loadZip(zipFile);
-    const rootPath = this.findRootPath(zip);
+  async analyze({ zipFile }: { zipFile: Blob }): Promise<ImportPreview> {
+    const zip = await this.loadZip({ blob: zipFile });
+    const rootPath = this.findRootPath({ zip });
 
     const stats = { chatsCount: 0, chatGroupsCount: 0, attachmentsCount: 0, hasSettings: false, providerProfilesCount: 0 };
     const items: ImportPreviewItem[] = [];
@@ -402,8 +407,8 @@ export class ImportExportService {
    * Verify that the ZIP content is valid by dry-running the restoration snapshots.
    */
   async verify({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
-    const zip = await this.loadZip(zipFile);
-    const rootPath = this.findRootPath(zip);
+    const zip = await this.loadZip({ blob: zipFile });
+    const rootPath = this.findRootPath({ zip });
 
     let snapshot: StorageSnapshot;
     const mode = config.data.mode;
@@ -427,8 +432,8 @@ export class ImportExportService {
    * Execute Import.
    */
   async executeImport({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
-    const zip = await this.loadZip(zipFile);
-    const rootPath = this.findRootPath(zip);
+    const zip = await this.loadZip({ blob: zipFile });
+    const rootPath = this.findRootPath({ zip });
     const settingsFile = zip.file(rootPath + 'settings.json');
 
     const mode = config.data.mode;
@@ -442,7 +447,7 @@ export class ImportExportService {
         } catch (e) { /* Ignore */ }
       }
       const replaceSnapshot = await this.createRestoreSnapshot({ zip, rootPath });
-      await this.storage.restore(replaceSnapshot);
+      await this.storage.restore({ snapshot: replaceSnapshot });
       break;
     }
     case 'append': {
@@ -453,7 +458,7 @@ export class ImportExportService {
         } catch (e) { /* Ignore */ }
       }
       const appendSnapshot = await this.createAppendSnapshot({ zip, rootPath, config });
-      await this.storage.restore(appendSnapshot);
+      await this.storage.restore({ snapshot: appendSnapshot });
       break;
     }
     default: {
@@ -463,7 +468,7 @@ export class ImportExportService {
     }
   }
 
-  private async loadZip(blob: Blob): Promise<JSZip> {
+  private async loadZip({ blob }: { blob: Blob }): Promise<JSZip> {
     try {
       return await JSZip.loadAsync(blob);
     } catch (e) {
@@ -472,7 +477,7 @@ export class ImportExportService {
     }
   }
 
-  private findRootPath(zip: JSZip): string {
+  private findRootPath({ zip }: { zip: JSZip }): string {
     const manifestPath = Object.keys(zip.files).find(path => path.endsWith('export-manifest.json'));
     if (!manifestPath) throw new Error('Missing export-manifest.json');
 
@@ -481,7 +486,7 @@ export class ImportExportService {
   }
 
   private async applySettingsImport({ zipSettings, strategies }: { zipSettings: SettingsDto; strategies: ImportConfig['settings'] }) {
-    await this.storage.updateSettings((currentSettings) => {
+    await this.storage.updateSettings({ updater: ({ current: currentSettings }) => {
       const newSettingsDomain = settingsToDomain({ dto: zipSettings });
       const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
@@ -524,7 +529,7 @@ export class ImportExportService {
       }
       }
       return finalSettings;
-    });
+    } });
   }
 
   private async createRestoreSnapshot({ zip, rootPath }: { zip: JSZip; rootPath: string }): Promise<StorageSnapshot> {

@@ -76,7 +76,7 @@ describe('OpenAIProvider Integration Tests', () => {
       await provider.chat({
         messages: [{ role: 'user', content: 'Hi' }],
         model: 'gpt-4',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -222,7 +222,7 @@ data: [DONE]
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -244,7 +244,7 @@ data: [DONE]
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -322,7 +322,7 @@ data: [DONE]
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -346,7 +346,7 @@ data: [DONE]
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -371,7 +371,7 @@ data: [DONE]
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -395,7 +395,7 @@ data: [DONE]
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -419,7 +419,7 @@ data: [DONE]
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -442,7 +442,7 @@ data: [DONE]
         await provider.chat({
           messages: [],
           model: 'any',
-          onChunk: (chunk) => {
+          onChunk: ({ chunk: chunk }) => {
             result += chunk;
           }
         });
@@ -465,7 +465,7 @@ data: [DONE]
       const chatPromise = provider.chat({
         messages: [],
         model: 'any',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           if (chunk === 'A') controller.abort();
         },
         signal: controller.signal

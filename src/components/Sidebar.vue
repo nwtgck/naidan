@@ -417,6 +417,7 @@ function toggleGroupCompactExpansion({ groupId }: { groupId: string }) {
 
 // Custom directive for auto-focusing elements
 const vFocus = {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue directive hooks receive the element as a positional hook argument.
   mounted: (el: HTMLElement) => el.focus(),
 };
 
@@ -489,6 +490,7 @@ function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string,
       element.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
       element.style.transition = 'transform 0ms';
 
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this fallback mirrors the requestAnimationFrame callback contract.
       const runNextFrame = window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 16));
       runNextFrame(() => {
         element.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
@@ -742,6 +744,7 @@ function updateGroupItems({ groupId, newItems }: { groupId: string; newItems: Ch
 function useGroupItemsModel({ groupId }: { groupId: string }) {
   return computed({
     get: () => getGroupItems({ groupId }),
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue computed setters must accept the next value as a positional setter argument.
     set: (val) => updateGroupItems({ groupId, newItems: val })
   });
 }

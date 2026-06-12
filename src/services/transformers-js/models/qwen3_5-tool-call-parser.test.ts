@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Qwen3_5ToolCallParser } from './qwen3_5-tool-call-parser';
 
 describe('Qwen3_5ToolCallParser', () => {
-  let onText: ReturnType<typeof vi.fn<(text: string) => void>>;
+  let onText: ReturnType<typeof vi.fn<({ text }: { text: string }) => void>>;
   let parser: Qwen3_5ToolCallParser;
 
   beforeEach(() => {
-    onText = vi.fn<(text: string) => void>();
+    onText = vi.fn<({ text }: { text: string }) => void>();
     parser = new Qwen3_5ToolCallParser({ onText });
   });
 
@@ -92,8 +92,8 @@ hello
     });
     parser.feed({ output: ' after' });
 
-    expect(onText).toHaveBeenCalledWith('before ');
-    expect(onText).toHaveBeenCalledWith(' after');
+    expect(onText).toHaveBeenCalledWith({ text: 'before ' });
+    expect(onText).toHaveBeenCalledWith({ text: ' after' });
   });
 
   it('preserves malformed tool call blocks as plain text', () => {
@@ -108,12 +108,12 @@ pwd
     });
 
     expect(parser.drainToolCalls()).toHaveLength(0);
-    expect(onText).toHaveBeenCalledWith(`\
+    expect(onText).toHaveBeenCalledWith({ text: `\
 <tool_call>
 <function=shell_execute>
 <parameter=shell_script>
 pwd
 </parameter>
-</tool_call>`);
+</tool_call>` });
   });
 });

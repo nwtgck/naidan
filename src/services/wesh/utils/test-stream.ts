@@ -10,6 +10,7 @@ export function createTestReadHandleFromText({
   text: string;
 }): WeshFileHandle {
   const source = new ReadableStream<Uint8Array>({
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
     start(controller) {
       if (text.length > 0) {
         controller.enqueue(new TextEncoder().encode(text));
@@ -29,6 +30,7 @@ export function createTestReadHandleFromBytes({
   bytes: Uint8Array;
 }): WeshFileHandle {
   const source = new ReadableStream<Uint8Array>({
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
     start(controller) {
       if (bytes.length > 0) {
         controller.enqueue(new Uint8Array(bytes));
@@ -47,6 +49,7 @@ export function createTestWriteCaptureHandle() {
 
   const handle = createWriteHandleFromStream({
     target: new WritableStream({
+      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams writable sink write signature.
       write(chunk) {
         // Store a copy to avoid issues with buffer reuse in Wesh
         chunks.push(new Uint8Array(chunk));

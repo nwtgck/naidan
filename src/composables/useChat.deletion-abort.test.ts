@@ -13,8 +13,8 @@ vi.mock('../services/storage', () => ({
     saveChat: vi.fn(),
     updateChatMeta: vi.fn().mockResolvedValue(undefined),
     loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
-    updateHierarchy: vi.fn().mockImplementation((updater) => Promise.resolve(updater({ items: [] }))),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { items: [] } }))),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn().mockResolvedValue(undefined),
     updateChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -46,7 +46,7 @@ describe('useChat Delete Undo Logic', () => {
   const { deleteChat, TEST_ONLY } = chatStore;
   const { activeGenerations } = TEST_ONLY;
 
-  let capturedOnClose: ((reason: any) => void) | undefined;
+  let capturedOnClose: (({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>) | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -88,7 +88,7 @@ describe('useChat Delete Undo Logic', () => {
     expect(capturedOnClose).toBeDefined();
 
     // 4. Simulate toast timeout/dismiss
-    if (capturedOnClose) await capturedOnClose('timeout');
+    if (capturedOnClose) await capturedOnClose({ reason: 'timeout' });
 
     // VERIFY: Now cleanup is executed
     expect(mockAbort).toHaveBeenCalled();
@@ -114,7 +114,7 @@ describe('useChat Delete Undo Logic', () => {
     await deleteChat({ id: chatId });
 
     // 4. Simulate Undo click (reason: action)
-    if (capturedOnClose) await capturedOnClose('action');
+    if (capturedOnClose) await capturedOnClose({ reason: 'action' });
 
     // VERIFY: Cleanup is skipped
     expect(mockAbort).not.toHaveBeenCalled();

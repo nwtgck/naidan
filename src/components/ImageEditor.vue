@@ -216,6 +216,7 @@ function onPanning({ event }: { event: MouseEvent }) {
   };
   lastMousePos.value = { x: event.clientX, y: event.clientY };
 }
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM mousemove listener.
 const handlePanMouseMove = (event: MouseEvent) => onPanning({ event });
 
 function stopPanning() {
@@ -678,6 +679,7 @@ function onMouseMove({ event }: { event: MouseEvent }) {
   }
   selection.value.rect = { x, y, w, h };
 }
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM mousemove listener.
 const handleSelectionMouseMove = (event: MouseEvent) => onMouseMove({ event });
 
 function onMouseUp() {

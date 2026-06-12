@@ -302,7 +302,8 @@ export async function sendMessageToTargetChat({
     notifyChatChanged({ chatId: mutableChat.id });
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({
+
+      updater: ({ current }) => ({
         ...(current || {}),
         root: mutableChat.root,
         currentLeafId: mutableChat.currentLeafId,
@@ -310,7 +311,8 @@ export async function sendMessageToTargetChat({
     });
     await updateChatMeta({
       id: mutableChat.id,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           return mutableChat;
         }
@@ -327,7 +329,7 @@ export async function sendMessageToTargetChat({
       chat: mutableChat,
       assistantId: assistantMessage.id,
       lmParameters,
-      onReady: (_args) => {
+      onReady: (_args: Record<never, never>) => {
         markGenerationReady?.();
         markGenerationReady = undefined;
       },
@@ -592,7 +594,7 @@ export async function generateResponseForAssistant({
 
           chatVolatileState.deleteVolatileToolOutput({ toolCallId: id });
         },
-        onChunk: async (chunk) => {
+        onChunk: async ({ chunk }) => {
           generationState.currentAssistantNode.content += chunk;
           notifyChatChanged({ chatId: mutableChat.id });
 
@@ -602,7 +604,8 @@ export async function generateResponseForAssistant({
             try {
               await updateChatContent({
                 id: mutableChat.id,
-                updater: (current) => ({
+
+                updater: ({ current }) => ({
                   ...(current || {}),
                   root: mutableChat.root,
                   currentLeafId: mutableChat.currentLeafId,
@@ -625,7 +628,8 @@ export async function generateResponseForAssistant({
 
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({
+
+      updater: ({ current }) => ({
         ...(current || {}),
         root: mutableChat.root,
         currentLeafId: mutableChat.currentLeafId,
@@ -655,7 +659,8 @@ export async function generateResponseForAssistant({
       notifyChatChanged({ chatId: mutableChat.id });
       await updateChatContent({
         id: mutableChat.id,
-        updater: (current) => ({
+
+        updater: ({ current }) => ({
           ...(current || {}),
           root: mutableChat.root,
           currentLeafId: mutableChat.currentLeafId,
@@ -676,7 +681,8 @@ export async function generateResponseForAssistant({
       notifyChatChanged({ chatId: mutableChat.id });
       await updateChatContent({
         id: mutableChat.id,
-        updater: (current) => ({
+
+        updater: ({ current }) => ({
           ...(current || {}),
           root: mutableChat.root,
           currentLeafId: mutableChat.currentLeafId,
@@ -696,7 +702,7 @@ export async function generateResponseForAssistant({
       });
       updateChatMeta({
         id: mutableChat.id,
-        updater: (current) => {
+        updater: ({ current }) => {
           if (current === null) {
             return mutableChat;
           }
@@ -797,11 +803,13 @@ async function regenerateMessageForTarget({
 
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+
+      updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
     });
     await updateChatMeta({
       id: mutableChat.id,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           return mutableChat;
         }
@@ -817,7 +825,7 @@ async function regenerateMessageForTarget({
       chat: mutableChat,
       assistantId: newAssistantMessage.id,
       lmParameters: failedNode.lmParameters,
-      onReady: (_args) => {
+      onReady: (_args: Record<never, never>) => {
         markGenerationReady?.();
         markGenerationReady = undefined;
       },
@@ -896,7 +904,7 @@ async function persistAttachment({
   case 'memory':
     if (storageService.canPersistBinary) {
       try {
-        await storageService.saveFile(attachment.blob, attachment.binaryObjectId, attachment.originalName);
+        await storageService.saveFile({ blob: attachment.blob, binaryObjectId: attachment.binaryObjectId, name: attachment.originalName });
         return { ...attachment, status: 'persisted' };
       } catch {
         return attachment;
@@ -1179,11 +1187,11 @@ async function handleImageGenerationWithDefaults({
     updateChatContent: async ({ chatId: contentChatId, updater }) => {
       await updateChatContent({
         id: contentChatId,
-        updater: (current) => {
+        updater: ({ current }) => {
           if (current === null) {
             throw new Error('Chat content not found');
           }
-          return updater(current);
+          return updater({ current: current });
         },
       });
     },
@@ -1214,7 +1222,7 @@ async function persistToolContent({
   if (text.length > binaryThreshold) {
     const blob = new Blob([text], { type: 'text/plain' });
     const binaryId = generateId();
-    await storageService.saveFile(blob, binaryId, `tool_${type}_${toolCallId}.txt`);
+    await storageService.saveFile({ blob, binaryObjectId: binaryId, name: `tool_${type}_${toolCallId}.txt` });
     return { type: 'binary_object', id: binaryId };
   }
 

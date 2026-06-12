@@ -72,7 +72,7 @@ export function createWeshTool({
     }: {
       args: unknown;
       signal?: AbortSignal;
-      onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+      onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
       approvalContext?: ToolApprovalContext;
     }) {
       let abortHandler: (() => void) | undefined;
@@ -159,7 +159,7 @@ export function createWeshTool({
             const text = state.decoder.decode(acceptedChunk, { stream: true });
             if (text) {
               appendOutput({ stream, text });
-              await onEvent?.({ type: 'output', stream, text });
+              await onEvent?.({ event: { type: 'output', stream, text } });
             }
           }
 
@@ -195,10 +195,10 @@ export function createWeshTool({
           request: {
             script: validated.shell_script,
           },
-          onEvent: async (event) => {
+          onEvent: async ({ event }) => {
             switch (event.type) {
             case 'started':
-              await onEvent?.({ type: 'started' });
+              await onEvent?.({ event: { type: 'started' } });
               break;
             case 'stdout':
               await consumeOutputChunk({ stream: 'stdout', chunk: event.chunk });
@@ -207,7 +207,7 @@ export function createWeshTool({
               await consumeOutputChunk({ stream: 'stderr', chunk: event.chunk });
               break;
             case 'exit':
-              await onEvent?.({ type: 'exit', exitCode: event.exitCode });
+              await onEvent?.({ event: { type: 'exit', exitCode: event.exitCode } });
               break;
             case 'error':
               throw new Error(event.message);

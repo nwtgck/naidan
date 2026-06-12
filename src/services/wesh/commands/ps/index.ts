@@ -12,7 +12,7 @@ type PsColumnKey = 'user' | 'pid' | 'ppid' | 'pgid' | 'stat' | 'args' | 'cwd';
 interface PsColumnDefinition {
   key: PsColumnKey;
   header: string;
-  getValue(options: { process: WeshProcessSnapshot }): string;
+  getValue({ process }: { process: WeshProcessSnapshot }): string;
 }
 
 const psArgvSpec: StandardArgvParserSpec = {

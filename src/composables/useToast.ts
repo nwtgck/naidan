@@ -5,13 +5,13 @@ export interface Toast {
   message: string;
   actionLabel?: string;
   onAction?: () => void | Promise<void>;
-  onClose?: (reason: 'timeout' | 'dismiss' | 'action') => void | Promise<void>;
+  onClose?: ({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>;
   duration?: number;
 }
 
 const toasts = ref<Toast[]>([]);
 
-const addToast = (toast: Omit<Toast, 'id'>) => {
+const addToast = ({ ...toast }: Omit<Toast, 'id'>) => {
   const id = Math.random().toString(36).substring(2, 9);
   const newToast = { ...toast, id };
 
@@ -29,7 +29,7 @@ const addToast = (toast: Omit<Toast, 'id'>) => {
 const removeToast = ({ id, reason = 'dismiss' }: { id: string, reason?: 'timeout' | 'dismiss' | 'action' }) => {
   const toast = toasts.value.find(t => t.id === id);
   if (toast?.onClose) {
-    toast.onClose(reason);
+    toast.onClose({ reason });
   }
   toasts.value = toasts.value.filter(t => t.id !== id);
 };

@@ -124,7 +124,7 @@ describe('LLM Providers Reasoning', () => {
       await provider.chat({
         messages: [{ role: 'user', content: 'Hi' }],
         model: 'gpt-4o',
-        onChunk: (c) => receivedChunks.push(c),
+        onChunk: ({ chunk: c }) => receivedChunks.push(c),
       });
 
       expect(receivedChunks).toContain('<think>');
@@ -163,7 +163,7 @@ describe('LLM Providers Reasoning', () => {
       await provider.chat({
         messages: [{ role: 'user', content: 'Hi' }],
         model: 'gpt-4o',
-        onChunk: (c) => receivedChunks.push(c),
+        onChunk: ({ chunk: c }) => receivedChunks.push(c),
       });
 
       expect(receivedChunks.join('')).toBe('<think>Alternative field</think>Done');
@@ -194,7 +194,7 @@ describe('LLM Providers Reasoning', () => {
       await provider.chat({
         messages: [{ role: 'user', content: 'Hi' }],
         model: 'gpt-4o',
-        onChunk: (c) => receivedChunks.push(c),
+        onChunk: ({ chunk: c }) => receivedChunks.push(c),
       });
 
       expect(receivedChunks.join('')).toBe('<think>Unfinished thoughts</think>');

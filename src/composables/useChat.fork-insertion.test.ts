@@ -12,10 +12,10 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn(),
     saveChat: vi.fn().mockResolvedValue(undefined),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => {
-      return Promise.resolve(updater(null)) as any;
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => {
+      return Promise.resolve(updater({ current: null })) as any;
     }),
-    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
+    updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
       const chat = useChat();
       const currentH = {
         items: chat.rootItems.value.map(item => {
@@ -23,7 +23,7 @@ vi.mock('../services/storage', () => ({
           return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
         })
       };
-      const updated = await updater(currentH as any);
+      const updated = await updater({ current: currentH as any });
 
       // We don't really need to map back to rootItems here because forkChat calls loadData()
       // which calls getSidebarStructure().

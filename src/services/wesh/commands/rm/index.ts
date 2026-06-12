@@ -61,7 +61,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     const force = parsed.optionValues.force === true;
     let exitCode = 0;
 
-    const removeRecursive = async (path: string) => {
+    const removeRecursive = async ({ path }: { path: string }) => {
       const st = await context.files.lstat({ path });
       switch (st.type) {
       case 'directory': {
@@ -69,7 +69,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
           throw new Error('is a directory');
         }
         for await (const entry of context.files.readDir({ path })) {
-          await removeRecursive(entry.fullPath);
+          await removeRecursive({ path: entry.fullPath });
         }
         await context.files.rmdir({ path });
         break;
@@ -90,7 +90,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     for (const p of parsed.positionals) {
       try {
         const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
-        await removeRecursive(fullPath);
+        await removeRecursive({ path: fullPath });
       } catch (e: unknown) {
         if (!force) {
           const message = e instanceof Error ? e.message : String(e);

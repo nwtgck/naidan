@@ -74,7 +74,7 @@ describe('useChat Interruption', () => {
 
     // 1. Start a slow generation
     let firstGenAborted = false;
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;
       signal.addEventListener('abort', () => {
         firstGenAborted = true;
@@ -83,13 +83,13 @@ describe('useChat Interruption', () => {
         firstGenAborted = true;
         return;
       }
-      onChunk('First chunk');
+      onChunk({ chunk: 'First chunk' });
       await new Promise(resolve => setTimeout(resolve, 100));
       if (signal.aborted) {
         firstGenAborted = true;
         return;
       }
-      onChunk('Second chunk');
+      onChunk({ chunk: 'Second chunk' });
     });
 
     const sendSuccess = await sendMessage({ content: 'Hello' });
@@ -102,8 +102,8 @@ describe('useChat Interruption', () => {
     const firstAssistantMsgId = userMsg.replies.items[0].id;
 
     // 2. Call regenerate while first one is still running
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Second Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Second Response' });
     });
 
     await regenerateMessage({ failedMessageId: firstAssistantMsgId });
@@ -137,15 +137,15 @@ describe('useChat Interruption', () => {
 
     // 1. Start a slow generation
     let firstGenAborted = false;
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;
       signal.addEventListener('abort', () => {
         firstGenAborted = true;
       });
-      onChunk('First chunk');
+      onChunk({ chunk: 'First chunk' });
       await new Promise(resolve => setTimeout(resolve, 100));
       if (signal.aborted) return;
-      onChunk('Second chunk');
+      onChunk({ chunk: 'Second chunk' });
     });
 
     await sendMessage({ content: 'Hello' });
@@ -154,8 +154,8 @@ describe('useChat Interruption', () => {
     const userMsg = chat.root.items[0];
 
     // 2. Call editMessage (resend) while first one is still running
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Edited Response');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Edited Response' });
     });
 
     await editMessage({ messageId: userMsg.id, newContent: 'Hello Again' });

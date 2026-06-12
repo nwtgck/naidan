@@ -196,7 +196,8 @@ export function useImageGeneration() {
     storageType: 'opfs' | 'local' | 'memory',
     signal: AbortSignal | undefined,
     getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined,
-    updateChatContent: ({ chatId, updater }: { chatId: string, updater: (current: ChatContent) => ChatContent }) => Promise<void>,
+
+    updateChatContent: ({ chatId, updater }: { chatId: string, updater: ({ current }: { current: ChatContent }) => ChatContent }) => Promise<void>,
     triggerChatRef: ({ chatId }: { chatId: string }) => void,
     incTask: ({ chatId, type }: { chatId: string, type: 'process' }) => void,
     decTask: ({ chatId, type }: { chatId: string, type: 'process' }) => void
@@ -243,7 +244,8 @@ export function useImageGeneration() {
       triggerChatRef({ chatId });
       await updateChatContent({
         chatId: mutableChat.id,
-        updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
+
+        updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
       });
 
       const blocks: GeneratedImageBlock[] = [];
@@ -306,7 +308,7 @@ export function useImageGeneration() {
             suffix: extension,
             fallback: `generated-${Date.now()}-${i}`
           });
-          await storageService.saveFile(finalBlob, binaryObjectId, fileName);
+          await storageService.saveFile({ blob: finalBlob, binaryObjectId, name: fileName });
 
           const { width: dw, height: dh } = getDisplayDimensions({ width, height });
 
@@ -346,7 +348,8 @@ export function useImageGeneration() {
         triggerChatRef({ chatId });
         await updateChatContent({
           chatId: mutableChat.id,
-          updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
+
+          updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
         });
       }
       // Finalize: replace PENDING with PROCESSED
@@ -363,7 +366,8 @@ export function useImageGeneration() {
       decTask({ chatId, type: 'process' });
       await updateChatContent({
         chatId: mutableChat.id,
-        updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
+
+        updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
       });
       triggerChatRef({ chatId });
     }

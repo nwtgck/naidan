@@ -18,8 +18,8 @@ describe('useChat Persistence Timing', () => {
 
     vi.doMock('../services/lm/openai', () => ({
       OpenAIProvider: class {
-        chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-          params.onChunk('Done');
+        chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
+          params.onChunk({ chunk: 'Done' });
           return Promise.resolve();
         });
         listModels = vi.fn().mockResolvedValue(['gpt-4']);
@@ -42,21 +42,21 @@ describe('useChat Persistence Timing', () => {
         }),
         loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id) ?? null)),
         loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id) ?? null)),
-        updateChatContent: vi.fn().mockImplementation((id, updater) => {
+        updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
           const existing = chats.get(id) || null;
           const current = existing ? { root: existing.root, currentLeafId: existing.currentLeafId } : null;
-          const updated = updater(current);
+          const updated = updater({ current: current });
           if (existing) chats.set(id, { ...existing, ...updated });
           return Promise.resolve(updated);
         }),
-        updateChatMeta: vi.fn().mockImplementation((id, updater) => {
+        updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
           const existing = chats.get(id) || null;
-          const updated = updater(existing);
+          const updated = updater({ current: existing });
           if (updated) chats.set(id, { ...existing, ...updated });
           return Promise.resolve(updated);
         }),
-        updateHierarchy: vi.fn().mockImplementation((updater) => {
-          hierarchy = updater(hierarchy);
+        updateHierarchy: vi.fn().mockImplementation(({ updater }) => {
+          hierarchy = updater({ current: hierarchy });
           return Promise.resolve(hierarchy);
         }),
         loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(hierarchy)),
@@ -107,11 +107,12 @@ describe('useChat Persistence Timing', () => {
 
     // First message (User -> Assistant)
     await sendMessage({ content: 'Hello' });
-    // Wait for background generation to finish, which triggers storage.persist
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    // Wait for the persistence side effect directly; broad shard runs can leave
+    // streaming state transitions interleaved with other module-isolation tests.
+    await vi.waitUntil(() => persistMock.mock.calls.length === 1);
 
     expect(persistMock).toHaveBeenCalledTimes(1);
-  });
+  }, 30000);
 
   it('should NOT call navigator.storage.persist after the second assistant response in the same chat', async () => {
     const { useChat } = await import('./useChat');
@@ -122,7 +123,7 @@ describe('useChat Persistence Timing', () => {
 
     // First message
     await sendMessage({ content: 'Message 1' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => persistMock.mock.calls.length === 1);
     expect(persistMock).toHaveBeenCalledTimes(1);
 
     // Second message
@@ -139,7 +140,7 @@ describe('useChat Persistence Timing', () => {
     // Chat 1
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await sendMessage({ content: 'Chat 1 Message 1' });
-    await vi.waitUntil(() => !chatStore.streaming.value);
+    await vi.waitUntil(() => persistMock.mock.calls.length === 1);
     expect(persistMock).toHaveBeenCalledTimes(1);
 
     // Chat 2

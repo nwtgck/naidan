@@ -133,10 +133,10 @@ vi.mock('../composables/useGlobalSearch', () => ({
 describe('ChatGroupSettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.updateChatGroup.mockImplementation(async (groupId: string, updater: (current: ChatGroup | null) => ChatGroup) => {
-      if (mockGroup.id === groupId) {
-        const next = updater(mockGroup);
-        mockUpdateChatGroupMetadata(next);
+    mocks.updateChatGroup.mockImplementation(async ({ id, updater }: { id: string; updater: ({ current }: { current: ChatGroup | null }) => ChatGroup }) => {
+      if (mockGroup.id === id) {
+        const next = updater({ current: mockGroup });
+        mockUpdateChatGroupMetadata({ id, updates: next });
         Object.assign(mockGroup, next);
       }
     });

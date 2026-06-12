@@ -49,7 +49,7 @@ export function useSidebarStructure(): SidebarStructureAdapter {
         }
       }),
     };
-    await storageService.updateHierarchy((_current) => newHierarchy);
+    await storageService.updateHierarchy({ updater: ({ current: _current }) => newHierarchy });
   }
 
   async function setChatGroupCollapsed({
@@ -69,13 +69,13 @@ export function useSidebarStructure(): SidebarStructureAdapter {
       currentChatGroupRef.value.isCollapsed = isCollapsed;
     }
 
-    await storageService.updateChatGroup(groupId, (current) => {
+    await storageService.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (current === null) {
         throw new Error('Chat group not found');
       }
       current.isCollapsed = isCollapsed;
       return current;
-    });
+    } });
   }
 
   return {
