@@ -53,17 +53,14 @@ export default class FailedOnlyReporter implements Reporter {
   private logs: UserConsoleLog[] = []
   private endReported = false
 
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
   onInit(vitest: Vitest) {
     this.vitest = vitest
   }
 
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
   onUserConsoleLog(log: UserConsoleLog) {
     this.logs.push(log)
   }
 
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
   async onTestCaseResult(testCase: TestCase) {
     this.total++
     const result = testCase.result()
@@ -132,18 +129,22 @@ export default class FailedOnlyReporter implements Reporter {
     }
   }
 
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this signature follows the Vitest reporter contract.
   async onFinished(files: readonly VitestTask[] = [], errors: readonly VitestError[] = []) {
-    await this.reportEnd(files, errors)
+    await this.reportEnd({ files, errors })
   }
 
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
   async onTestRunEnd(testModules: readonly VitestTask[] = [], unhandledErrors: readonly VitestError[] = []) {
-    await this.reportEnd(testModules, unhandledErrors)
+    await this.reportEnd({
+      files: testModules,
+      errors: unhandledErrors,
+    })
   }
 
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
-  private async reportEnd(files: readonly VitestTask[], errors: readonly VitestError[]) {
+  private async reportEnd({ files, errors }: {
+    files: readonly VitestTask[];
+    errors: readonly VitestError[];
+  }) {
     if (this.endReported) {
       return
     }

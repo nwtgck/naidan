@@ -220,7 +220,6 @@ async function openGrepInputStream({
 }): Promise<ReadableStream<Uint8Array>> {
   if (file === '-') {
     return new ReadableStream<Uint8Array>({
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source pull signature.
       async pull(controller) {
         const buf = new Uint8Array(4096);
         const { bytesRead } = await context.stdin.read({ buffer: buf });

@@ -1122,7 +1122,6 @@ class HostVolumeDB {
   private open(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(this.DB_NAME, 1);
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is assigned to the IndexedDB onupgradeneeded handler.
       req.onupgradeneeded = (e) => {
         const db = (e.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(this.STORE_NAME)) {

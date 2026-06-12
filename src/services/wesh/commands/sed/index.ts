@@ -543,7 +543,6 @@ function createInputStream({
   handle: WeshFileHandle;
 }): ReadableStream<Uint8Array> {
   return new ReadableStream({
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source pull signature.
     async pull(controller) {
       const buf = new Uint8Array(4096);
       const { bytesRead } = await handle.read({ buffer: buf });
@@ -1043,7 +1042,6 @@ export const sedCommandDefinition: WeshCommandDefinition = {
             path: fullPath,
             mode: 'truncate',
             stream: new ReadableStream<Uint8Array>({
-              // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
               start(controller) {
                 controller.enqueue(encoder.encode(output));
                 controller.close();

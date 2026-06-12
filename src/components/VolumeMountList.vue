@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import type { ObjectDirective } from 'vue';
 import type { Volume, Mount } from '@/models/types';
 import { useToast } from '@/composables/useToast';
 import {
@@ -19,8 +20,7 @@ import {
 
 const { addToast } = useToast();
 
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue directive hooks receive the element as a positional hook argument.
-const vFocus = { mounted: (el: HTMLElement) => el.focus() };
+const vFocus: ObjectDirective<HTMLElement> = { mounted: (el) => el.focus() };
 
 const props = defineProps<{
   volumes: Volume[];

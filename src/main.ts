@@ -20,7 +20,6 @@ const app = createApp(App)
  * fail silently, particularly in the restrictive 'file:///' environment.
  * It helps identify which component and lifecycle hook caused the issue.
  */
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue errorHandler must match Vue's application config callback contract.
 app.config.errorHandler = (err, instance, info) => {
   console.error('Vue Error:', err)
   console.error('Vue Instance:', instance)

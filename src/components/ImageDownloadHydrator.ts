@@ -69,7 +69,6 @@ export const ImageDownloadHydrator = {
     imgEl.height = parseInt(height || '512');
     imgEl.alt = 'generated image';
     imgEl.className = 'naidan-clickable-img rounded-xl shadow-lg border border-gray-100 dark:border-gray-800 max-w-full h-auto !m-0 block cursor-pointer hover:opacity-95 transition-opacity';
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is assigned to an HTMLImageElement onclick handler.
     imgEl.onclick = (e) => {
       e.stopPropagation();
       onPreview();

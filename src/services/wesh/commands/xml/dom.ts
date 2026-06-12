@@ -402,7 +402,6 @@ function createNamespaceResolver({
   }
 
   return {
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the DOM Node lookupNamespaceURI signature.
     lookupNamespaceURI(prefix) {
       const normalizedPrefix = prefix ?? '';
       const overridden = namespaces.get(normalizedPrefix);

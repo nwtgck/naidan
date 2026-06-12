@@ -107,7 +107,6 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
           });
         const compressor = new CompressionStream('gzip');
         const inputProvider = new ReadableStream({
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
           start(controller) {
             controller.enqueue(input);
             controller.close();

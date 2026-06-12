@@ -232,7 +232,6 @@ const createThumbnailUrl = ({ blob, size = 120 }: { blob: Blob; size?: number })
         }
       }, 'image/jpeg', 0.7);
     };
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is assigned to an HTMLImageElement error handler.
     img.onerror = (e) => {
       URL.revokeObjectURL(url);
       reject(e);
@@ -251,8 +250,7 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
       const blob = await storageService.getFile({ binaryObjectId: obj.id });
       if (blob) {
         // requestIdleCallback (with fallback) to avoid blocking the main thread during scroll
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this fallback mirrors the requestIdleCallback callback contract.
-        const scheduleWork = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+        const scheduleWork: typeof window.requestIdleCallback = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
 
         const thumbUrl = await new Promise<string>((resolve, reject) => {
           scheduleWork(async () => {

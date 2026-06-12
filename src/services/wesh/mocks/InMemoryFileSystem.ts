@@ -42,7 +42,6 @@ export class MockFile {
   stream(): ReadableStream<Uint8Array> {
     const content = new Uint8Array(this.content);
     return new ReadableStream({
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
       start(controller) {
         controller.enqueue(content);
         controller.close();
@@ -66,7 +65,6 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
   constructor(fileHandle: MockFileSystemFileHandle, options?: { keepExistingData?: boolean }) {
     super({
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
       write: async (chunk) => {
         await this.write(chunk);
       },

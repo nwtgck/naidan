@@ -368,7 +368,6 @@ const transformersJsWorker: ITransformersJsWorker = {
 
         // Create a custom stream to track progress
         const transformStream = new TransformStream({
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the TransformStream transformer signature.
           transform(chunk, controller) {
             loaded += chunk.length;
             progressCallback({

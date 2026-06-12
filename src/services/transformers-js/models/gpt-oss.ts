@@ -71,7 +71,6 @@ export async function generateGptOss({
   const streamer = new TextStreamer(tokenizer, {
     skip_prompt: true,
     skip_special_tokens: false,
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Transformers TextStreamer signature.
     callback_function: (output: string) => {
       const delta = parser.push({ token: output });
       if (!delta) return;

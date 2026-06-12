@@ -238,7 +238,6 @@ const systemPromptBehavior = computed({
     if (localSystemPrompt.value.behavior === 'override' && localSystemPrompt.value.content === null) return 'clear';
     return localSystemPrompt.value.behavior;
   },
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue computed setters must accept the next value as a positional setter argument.
   set: (val: 'inherit' | 'clear' | 'override' | 'append') => {
     switch (val) {
     case 'inherit':

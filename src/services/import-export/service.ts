@@ -226,7 +226,6 @@ export class ImportExportService {
     }
 
     const stream = new ReadableStream<Uint8Array>({
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source start signature.
       start(controller) {
         zip.generateInternalStream({ type: 'uint8array', streamFiles: true })
           .on('data', (data) => controller.enqueue(data))

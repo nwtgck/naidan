@@ -130,7 +130,6 @@ const standardGenerationStrategy: GenerationStrategy = {
     const streamer = new TextStreamer(tokenizer, {
       skip_prompt: true,
       skip_special_tokens: true,
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Transformers TextStreamer signature.
       callback_function: (output: string) => {
         if (toolCallParser) {
           toolCallParser.feed({ output });
@@ -242,7 +241,6 @@ const gemma4GenerationStrategy: GenerationStrategy = {
     const streamer = new TextStreamer(tokenizer, {
       skip_prompt: true,
       skip_special_tokens: true,
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Transformers TextStreamer signature.
       callback_function: (output: string) => {
         rawChunkIndex += 1;
         rawStreamOutput += output;
@@ -350,7 +348,6 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     const streamer = new TextStreamer(tokenizer, {
       skip_prompt: true,
       skip_special_tokens: reasoningMode !== 'enabled',
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Transformers TextStreamer signature.
       callback_function: (output: string) => {
         toolCallParser.feed({ output });
       },

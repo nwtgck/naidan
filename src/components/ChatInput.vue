@@ -92,7 +92,6 @@ const availableImageModels = computed(() => props.availableImageModels);
 
 const isAnimatingHeight = computed({
   get: () => props.isAnimatingHeight,
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Vue computed setters must accept the next value as a positional setter argument.
   set: (val) => emit('update:isAnimatingHeight', val)
 });
 
@@ -709,8 +708,7 @@ function adjustTextareaHeight({ force }: { force?: boolean }) {
   }
 }
 
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM resize listener.
-const handleWindowResize = (_event: Event) => adjustTextareaHeight({});
+const handleWindowResize = () => adjustTextareaHeight({});
 
 function toggleMaximized() {
   if (textareaRef.value) {

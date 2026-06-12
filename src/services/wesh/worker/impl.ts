@@ -44,7 +44,6 @@ function createForwardingHandle({
 
   const handle = createWriteHandleFromStream({
     target: new WritableStream({
-      // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the WritableStream sink signature.
       async write(chunk) {
         const buffer = toTransferableBuffer({ chunk })
 

@@ -399,7 +399,6 @@ function createStdinStream({
   handle: WeshFileHandle;
 }): ReadableStream<Uint8Array> {
   return new ReadableStream({
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams underlying source pull signature.
     async pull(controller) {
       const buffer = new Uint8Array(4096);
       const { bytesRead } = await handle.read({ buffer });

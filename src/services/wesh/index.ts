@@ -1504,7 +1504,6 @@ usage: ${name} [-c command] [file [argument...]]
     const chunks: Uint8Array[] = [];
     const captureHandle = createWriteHandleFromStream({
       target: new WritableStream<Uint8Array>({
-        // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors the Web Streams writable sink write signature.
         write: async (chunk) => {
           chunks.push(new Uint8Array(chunk));
         },

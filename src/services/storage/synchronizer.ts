@@ -94,7 +94,6 @@ export class StorageSynchronizer {
       })()) {
         try {
           this.broadcastChannel = new BroadcastChannel('naidan_storage_sync');
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is assigned to BroadcastChannel.onmessage.
           this.broadcastChannel.onmessage = (ev) => {
             const result = StorageChangeEventSchema.safeParse(ev.data);
             if (result.success) {
