@@ -32,7 +32,7 @@ export class OPFSTmpManager {
   private readonly pageHideHandler = () => {
     this.scheduleOwnScopeCleanup();
   };
-  private readonly storageHandler = (event: StorageEvent) => {
+  private readonly storageHandler: NonNullable<Window['onstorage']> = (event) => {
     if (event.key !== OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY) {
       return;
     }
@@ -63,7 +63,7 @@ export class OPFSTmpManager {
       return this.activeFlush;
     }
 
-    this.activeFlush = this.synchronizer.withLock(async () => {
+    this.activeFlush = this.synchronizer.withLock({ fn: async () => {
       const pending = this.readPendingOwnerCleanups();
       if (pending.ownerScopeIds.length === 0) {
         return;
@@ -80,7 +80,7 @@ export class OPFSTmpManager {
       this.writePendingOwnerCleanups({
         ownerScopeIds: remainingOwnerScopeIds,
       });
-    }, { lockKey: OPFS_TMP_CLEANUP_LOCK_KEY }).finally(() => {
+    }, lockKey: OPFS_TMP_CLEANUP_LOCK_KEY }).finally(() => {
       this.activeFlush = null;
     });
 

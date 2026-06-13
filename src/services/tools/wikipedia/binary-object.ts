@@ -83,7 +83,7 @@ export async function saveWikipediaPageTextAsBinaryObject({
   })
   const byteLength = blob.size
 
-  await storageService.saveFile(blob, binaryObjectId, name)
+  await storageService.saveFile({ blob, binaryObjectId, name })
 
   return {
     lineCount,

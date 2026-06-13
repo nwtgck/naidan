@@ -94,17 +94,21 @@ line 2`
     })
 
     expect(mockSaveFile).toHaveBeenCalledTimes(1)
-    const savedBlob = mockSaveFile.mock.calls[0]?.[0] as Blob
-    expect(savedBlob.type).toBe('text/plain;charset=utf-8')
-    expect(savedBlob.size).toBe(result.byteLength)
-    expect(mockSaveFile).toHaveBeenCalledWith(
-      savedBlob,
-      'bin-1',
-      'Quantum_computing_en_25220.txt',
-    )
+    const saveFileParams = mockSaveFile.mock.calls[0]?.[0] as {
+      blob: Blob;
+      binaryObjectId: string;
+      name: string;
+    }
+    expect(saveFileParams.blob.type).toBe('text/plain;charset=utf-8')
+    expect(saveFileParams.blob.size).toBe(result.byteLength)
+    expect(mockSaveFile).toHaveBeenCalledWith({
+      blob: saveFileParams.blob,
+      binaryObjectId: 'bin-1',
+      name: 'Quantum_computing_en_25220.txt',
+    })
     expect(result).toEqual({
       lineCount: 2,
-      byteLength: savedBlob.size,
+      byteLength: saveFileParams.blob.size,
       sysfsNaidanDataFilePath: '/sys/fs/naidan/binary-objects/by-id/bin-1/data',
     })
   })
@@ -122,6 +126,6 @@ line 2`
     })
 
     expect(result.lineCount).toBe(WIKIPEDIA_INLINE_CONTENT_MAX_LINES + 1)
-    expect(result.byteLength).toBe((mockSaveFile.mock.calls[0]?.[0] as Blob).size)
+    expect(result.byteLength).toBe((mockSaveFile.mock.calls[0]?.[0] as { blob: Blob }).blob.size)
   })
 })

@@ -73,7 +73,8 @@ export type ChatDataStore = {
     updater,
   }: {
     id: string;
-    updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>;
+
+    updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>;
   }): Promise<void>;
 
   updateChatMeta({
@@ -81,7 +82,8 @@ export type ChatDataStore = {
     updater,
   }: {
     id: string;
-    updater: (current: Chat | null) => Chat | Promise<Chat>;
+
+    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
   }): Promise<void>;
 };
 
@@ -268,11 +270,12 @@ export function createChatDataStore({
     updater,
   }: {
     id: string;
-    updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>;
+
+    updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>;
   }) {
     const existing = liveChatRegistry.get(id);
     if (existing) {
-      const updated = await updater({ root: existing.root, currentLeafId: existing.currentLeafId });
+      const updated = await updater({ current: { root: existing.root, currentLeafId: existing.currentLeafId } });
       existing.root = updated.root;
       existing.currentLeafId = updated.currentLeafId;
       if (currentChatRef.value && toRaw(currentChatRef.value).id === id) {
@@ -280,7 +283,7 @@ export function createChatDataStore({
       }
     }
 
-    await storageService.updateChatContent(id, updater);
+    await storageService.updateChatContent({ id: id, updater: updater });
   }
 
   async function updateChatMeta({
@@ -288,20 +291,21 @@ export function createChatDataStore({
     updater,
   }: {
     id: string;
-    updater: (current: Chat | null) => Chat | Promise<Chat>;
+
+    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
   }) {
     const existing = liveChatRegistry.get(id);
     if (existing) {
-      const updated = await updater(toRaw(existing));
+      const updated = await updater({ current: toRaw(existing) });
       Object.assign(existing, updated);
       if (currentChatRef.value && toRaw(currentChatRef.value).id === id) {
         triggerRef(currentChatRef);
       }
     }
 
-    await storageService.updateChatMeta(id, async (curr) => {
+    await storageService.updateChatMeta({ id: id, updater: async ({ current: curr }) => {
       const fullChat = curr ? await storageService.loadChat({ id }) : null;
-      const updatedFull = await updater(fullChat);
+      const updatedFull = await updater({ current: fullChat });
       if (!updatedFull) return curr!;
       const { root: _r, endpointType, endpointUrl, endpointHttpHeaders, ...meta } = updatedFull;
       return {
@@ -314,7 +318,7 @@ export function createChatDataStore({
           },
         }),
       } as ChatMeta;
-    });
+    } });
   }
 
   async function openChat({
@@ -330,7 +334,7 @@ export function createChatDataStore({
         const node = findNodeInBranch({ items: chat.root.items, targetId: leafId });
         if (node) {
           chat.currentLeafId = leafId;
-          void storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
+          void storageService.updateChatContent({ id: id, updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
         }
       }
       currentChatGroupRef.value = null;
@@ -344,7 +348,7 @@ export function createChatDataStore({
         const node = findNodeInBranch({ items: loaded.root.items, targetId: leafId });
         if (node) {
           loaded.currentLeafId = leafId;
-          void storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
+          void storageService.updateChatContent({ id: id, updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
         }
       }
       applyVolatileAssistantErrorsToChat({ chat: loaded });
@@ -411,7 +415,7 @@ export function createChatDataStore({
     }
   }
 
-  storageService.subscribeToChanges(async (event) => {
+  storageService.subscribeToChanges({ listener: async ({ event }) => {
     switch (event.type) {
     case 'chat_meta_and_chat_group': {
       debouncedSidebarReload({});
@@ -483,7 +487,7 @@ export function createChatDataStore({
       throw new Error(`Unhandled event: ${_ex}`);
     }
     }
-  });
+  } });
 
   return {
     rootItems,

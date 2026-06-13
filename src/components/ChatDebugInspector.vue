@@ -108,7 +108,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: str
   })();
 
   // Helper to extract IDs from a node
-  const extractIds = (node: MessageNode) => {
+  const extractIds = ({ node }: { node: MessageNode }) => {
     // From attachments
     if (node.attachments) {
       for (const att of node.attachments) {
@@ -143,7 +143,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: str
 
   // Traverse the relevant nodes
   for (const node of nodesToScan) {
-    extractIds(node);
+    extractIds({ node });
   }
 
   // Ensure the clicked one is in the set

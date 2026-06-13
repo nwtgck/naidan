@@ -100,7 +100,7 @@ onMounted(async () => {
     }
   }
 
-  unsubscribe = transformersJsService.subscribe(() => {
+  unsubscribe = transformersJsService.subscribe({ listener: () => {
     const state = transformersJsService.getState();
     const type = effectiveType.value;
     switch (type) {
@@ -117,7 +117,7 @@ onMounted(async () => {
       return _ex;
     }
     }
-  });
+  } });
 });
 
 onUnmounted(() => {

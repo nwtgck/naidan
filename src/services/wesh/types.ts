@@ -37,7 +37,7 @@ export interface WeshFileHandle {
   /**
    * Read data into a buffer (Bring Your Own Buffer)
    */
-  read(options: {
+  read({ buffer, offset, length, position }: {
     buffer: Uint8Array;
     offset?: number; // Offset in the buffer to start writing at
     length?: number; // Maximum number of bytes to read
@@ -47,7 +47,7 @@ export interface WeshFileHandle {
   /**
    * Write data from a buffer
    */
-  write(options: {
+  write({ buffer, offset, length, position }: {
     buffer: Uint8Array;
     offset?: number; // Offset in the buffer to start reading from
     length?: number; // Number of bytes to write
@@ -58,12 +58,12 @@ export interface WeshFileHandle {
 
   stat(): Promise<WeshStat>;
 
-  truncate(options: { size: number }): Promise<void>;
+  truncate({ size }: { size: number }): Promise<void>;
 
   /**
    * Control device/handle specific operations (e.g. terminal size, blocking mode)
    */
-  ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }>;
+  ioctl({ request, arg }: { request: number; arg?: unknown }): Promise<{ ret: number }>;
 
   cloneReference?(): WeshFileHandle;
 
@@ -159,9 +159,9 @@ export interface WeshOpenFlags {
 }
 
 export interface WeshEfficientFileWriter {
-  write(options: { chunk: Uint8Array }): Promise<void>;
+  write({ chunk }: { chunk: Uint8Array }): Promise<void>;
   close(): Promise<void>;
-  abort(options: { reason: unknown }): Promise<void>;
+  abort({ reason }: { reason: unknown }): Promise<void>;
 }
 
 export interface WeshDirEntry {
@@ -171,7 +171,7 @@ export interface WeshDirEntry {
 }
 
 export interface WeshIVirtualFileSystem {
-  mount(options: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
+  mount({ path, handle, readOnly }: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
   mountVirtual({
     path,
     readOnly,
@@ -181,51 +181,51 @@ export interface WeshIVirtualFileSystem {
     readOnly: boolean;
     provider: WeshVirtualMountProvider;
   }): void;
-  unmount(options: { path: string }): Promise<void>;
+  unmount({ path }: { path: string }): Promise<void>;
 
   /**
    * Open a file by path.
    * Handles translation of VFS paths to handles.
    */
-  open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
+  open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
 
-  stat(options: { path: string }): Promise<WeshStat>;
-  lstat(options: { path: string }): Promise<WeshStat>;
-  readlink(options: { path: string }): Promise<string>;
+  stat({ path }: { path: string }): Promise<WeshStat>;
+  lstat({ path }: { path: string }): Promise<WeshStat>;
+  readlink({ path }: { path: string }): Promise<string>;
 
-  resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
+  resolve({ path }: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
 
-  tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
-  tryCreateFileWriterEfficiently(options: {
+  tryReadBlobEfficiently({ path }: { path: string }): Promise<WeshEfficientBlobReadResult>;
+  tryCreateFileWriterEfficiently({ path, mode }: {
     path: string;
     mode: 'truncate' | 'append';
   }): Promise<WeshEfficientFileWriteResult>;
 
-  readDir(options: { path: string }): AsyncIterable<WeshDirEntry>;
+  readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry>;
 
-  mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
+  mkdir({ path, mode, recursive }: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
 
-  symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void>;
+  symlink({ path, targetPath, mode }: { path: string; targetPath: string; mode?: number }): Promise<void>;
 
-  unlink(options: { path: string }): Promise<void>;
-  rmdir(options: { path: string }): Promise<void>;
-  mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
-  rename(options: { oldPath: string; newPath: string }): Promise<void>;
+  unlink({ path }: { path: string }): Promise<void>;
+  rmdir({ path }: { path: string }): Promise<void>;
+  mknod({ path, type, mode }: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
+  rename({ oldPath, newPath }: { oldPath: string; newPath: string }): Promise<void>;
 
-  registerSpecialFile(options: { path: string; type: WeshSpecialFileType; handler: () => WeshFileHandle }): void;
-  unregisterSpecialFile(options: { path: string }): void;
+  registerSpecialFile({ path, type, handler }: { path: string; type: WeshSpecialFileType; handler: () => WeshFileHandle }): void;
+  unregisterSpecialFile({ path }: { path: string }): void;
 
   /**
    * Returns the underlying native FileSystemHandle for the given path, or null
    * if the path resolves to a synthetic directory, special file, or registry entry.
    */
-  getNativeHandle(options: { path: string }): Promise<FileSystemHandle | null>;
+  getNativeHandle({ path }: { path: string }): Promise<FileSystemHandle | null>;
 
   /**
    * Returns whether the given path is read-only based on the owning mount.
    * Paths outside every real mount (synthetic intermediate directories) return true.
    */
-  getReadOnlyForPath(options: { path: string }): boolean;
+  getReadOnlyForPath({ path }: { path: string }): boolean;
 }
 
 export type NaidanSysfsVisibility =
@@ -331,8 +331,8 @@ export interface WeshCommandContext {
 
   text(): {
     input: AsyncIterable<string>;
-    print(options: { text: string }): Promise<void>;
-    error(options: { text: string }): Promise<void>;
+    print({ text }: { text: string }): Promise<void>;
+    error({ text }: { text: string }): Promise<void>;
   };
 
   // Commands depend on capability-scoped APIs instead of the raw kernel so they
@@ -340,22 +340,22 @@ export interface WeshCommandContext {
   // resource tracking, or couple themselves to internal runtime details.
 
   // State management (Built-in only)
-  setCwd(options: { path: string }): void;
-  setEnv(options: { key: string; value: string }): void;
-  unsetEnv(options: { key: string }): void;
+  setCwd({ path }: { path: string }): void;
+  setEnv({ key, value }: { key: string; value: string }): void;
+  unsetEnv({ key }: { key: string }): void;
   getHistory(): string[];
   getAliases(): Array<{ name: string; value: string }>;
-  setAlias(options: { name: string; value: string }): void;
-  unsetAlias(options: { name: string }): void;
-  getWeshCommandMeta(options: { name: string }): WeshCommandMeta | undefined;
+  setAlias({ name, value }: { name: string; value: string }): void;
+  unsetAlias({ name }: { name: string }): void;
+  getWeshCommandMeta({ name }: { name: string }): WeshCommandMeta | undefined;
   getCommandNames(): string[];
-  resolveCommand(options: { name: string }): WeshResolvedCommand;
+  resolveCommand({ name }: { name: string }): WeshResolvedCommand;
   getJobs(): Array<{ id: number; command: string; status: 'running' | 'done' }>;
   getProcesses(): WeshProcessSnapshot[];
-  getShellOption(options: { name: WeshShellOption }): boolean;
-  setShellOption(options: { name: WeshShellOption; enabled: boolean }): void;
+  getShellOption({ name }: { name: WeshShellOption }): boolean;
+  setShellOption({ name, enabled }: { name: WeshShellOption; enabled: boolean }): void;
   getShellOptions(): Array<[WeshShellOption, boolean]>;
-  executeCommand(options: {
+  executeCommand({ command, args, stdin, stdout, stderr, ignoreAliases }: {
     command: string;
     args: string[];
     stdin?: WeshFileHandle;
@@ -363,56 +363,56 @@ export interface WeshCommandContext {
     stderr?: WeshFileHandle;
     ignoreAliases?: boolean;
   }): Promise<WeshCommandResult>;
-  executeShell(options: {
+  executeShell({ script, stdin, stdout, stderr }: {
     script: string;
     stdin?: WeshFileHandle;
     stdout?: WeshFileHandle;
     stderr?: WeshFileHandle;
   }): Promise<WeshCommandResult>;
   files: {
-    open(options: {
+    open({ path, flags, mode }: {
       path: string;
       flags: WeshOpenFlags;
       mode?: number;
     }): Promise<WeshFileHandle>;
-    stat(options: { path: string }): Promise<WeshStat>;
-    lstat(options: { path: string }): Promise<WeshStat>;
-    readDir(options: { path: string }): AsyncIterable<WeshDirEntry>;
-    readlink(options: { path: string }): Promise<string>;
-    resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
-    tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
-    tryCreateFileWriterEfficiently(options: {
+    stat({ path }: { path: string }): Promise<WeshStat>;
+    lstat({ path }: { path: string }): Promise<WeshStat>;
+    readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry>;
+    readlink({ path }: { path: string }): Promise<string>;
+    resolve({ path }: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
+    tryReadBlobEfficiently({ path }: { path: string }): Promise<WeshEfficientBlobReadResult>;
+    tryCreateFileWriterEfficiently({ path, mode }: {
       path: string;
       mode: 'truncate' | 'append';
     }): Promise<WeshEfficientFileWriteResult>;
-    mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
-    symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void>;
-    mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
-    unlink(options: { path: string }): Promise<void>;
-    rmdir(options: { path: string }): Promise<void>;
-    rename(options: { oldPath: string; newPath: string }): Promise<void>;
+    mkdir({ path, mode, recursive }: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
+    symlink({ path, targetPath, mode }: { path: string; targetPath: string; mode?: number }): Promise<void>;
+    mknod({ path, type, mode }: { path: string; type: WeshFileType; mode?: number }): Promise<void>;
+    unlink({ path }: { path: string }): Promise<void>;
+    rmdir({ path }: { path: string }): Promise<void>;
+    rename({ oldPath, newPath }: { oldPath: string; newPath: string }): Promise<void>;
   };
   process: {
     getPid(): number;
     getGroupId(): number;
     getWaitStatus(): WeshWaitStatus | undefined;
-    signalSelf(options: { signal: number }): Promise<void>;
-    signalGroup(options: { signal: number }): Promise<void>;
-    waitForSignalOrTimeout(options: {
+    signalSelf({ signal }: { signal: number }): Promise<void>;
+    signalGroup({ signal }: { signal: number }): Promise<void>;
+    waitForSignalOrTimeout({ timeoutMs, pollIntervalMs }: {
       timeoutMs: number;
       pollIntervalMs?: number;
     }): Promise<WeshWaitStatus | undefined>;
   };
   getFileDescriptors(): Array<[number, WeshFileHandle]>;
-  getFileDescriptor(options: { fd: number }): WeshFileHandle | undefined;
-  setFileDescriptor(options: { fd: number; handle: WeshFileHandle; persist: boolean }): Promise<void>;
-  closeFileDescriptor(options: { fd: number; persist: boolean }): Promise<void>;
-  setTrap(options: { condition: string; disposition: WeshTrapDisposition | undefined }): void;
-  getTrapAction(options: { condition: string }): WeshTrapDisposition | undefined;
+  getFileDescriptor({ fd }: { fd: number }): WeshFileHandle | undefined;
+  setFileDescriptor({ fd, handle, persist }: { fd: number; handle: WeshFileHandle; persist: boolean }): Promise<void>;
+  closeFileDescriptor({ fd, persist }: { fd: number; persist: boolean }): Promise<void>;
+  setTrap({ condition, disposition }: { condition: string; disposition: WeshTrapDisposition | undefined }): void;
+  getTrapAction({ condition }: { condition: string }): WeshTrapDisposition | undefined;
   getTraps(): Array<[string, WeshTrapDisposition]>;
 }
 
-export type WeshCommandFunction = (options: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
+export type WeshCommandFunction = ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>;
 
 export interface WeshCommandMeta {
   name: string;

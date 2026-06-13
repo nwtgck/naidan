@@ -8,9 +8,9 @@ vi.mock('../services/storage', () => ({
   storageService: {
     updateChatContent: vi.fn(),
     updateChatMeta: vi.fn(),
-    updateHierarchy: vi.fn(async (cb) => {
+    updateHierarchy: vi.fn(async ({ updater }) => {
       const mockHierarchy = { items: [] };
-      return cb(mockHierarchy);
+      return updater({ current: mockHierarchy });
     }),
     loadChat: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
@@ -64,11 +64,11 @@ describe('useChat fork title fix', () => {
     expect(newId).toBeDefined();
 
     // Find the updateChatMeta call for the new chat
-    const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call: any[]) => call[0] === newId);
+    const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call) => call[0].id === newId);
     expect(updaterCall).toBeDefined();
 
-    const metaUpdater = updaterCall![1];
-    const resultMeta = await (metaUpdater as any)({});
+    const metaUpdater = updaterCall![0].updater;
+    const resultMeta = await (metaUpdater as any)({ current: {} });
 
     expect(resultMeta.title).toBe('Fork of New Chat');
   });
@@ -88,9 +88,9 @@ describe('useChat fork title fix', () => {
 
     const newId = await forkChat({ messageId: 'm1' });
 
-    const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call: any[]) => call[0] === newId);
-    const metaUpdater = updaterCall![1];
-    const resultMeta = await (metaUpdater as any)({});
+    const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call) => call[0].id === newId);
+    const metaUpdater = updaterCall![0].updater;
+    const resultMeta = await (metaUpdater as any)({ current: {} });
 
     expect(resultMeta.title).toBe('Fork of Original Title');
   });

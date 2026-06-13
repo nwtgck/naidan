@@ -30,7 +30,7 @@ const loadMoreSentinel = ref<HTMLElement | null>(null);
 const isAddingItems = ref(false);
 
 // Limit concurrent image processing to keep UI responsive
-const thumbnailSemaphore = new Semaphore(2); // Reduced slightly for better scroll priority
+const thumbnailSemaphore = new Semaphore({ maxConcurrency: 2 }); // Reduced slightly for better scroll priority
 
 const fetchObjects = async () => {
   isLoading.value = true;
@@ -250,7 +250,7 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
       const blob = await storageService.getFile({ binaryObjectId: obj.id });
       if (blob) {
         // requestIdleCallback (with fallback) to avoid blocking the main thread during scroll
-        const scheduleWork = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
+        const scheduleWork: typeof window.requestIdleCallback = window.requestIdleCallback || ((cb) => setTimeout(cb, 1));
 
         const thumbUrl = await new Promise<string>((resolve, reject) => {
           scheduleWork(async () => {

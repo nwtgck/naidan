@@ -247,7 +247,7 @@ const showHistoryModal = ref(false);
 const showTitleDialog = ref(false);
 const generatedTitleHistory = ref<string[]>([]);
 
-function getCurrentViewportMessageId(_args: Record<string, never>) {
+function getCurrentViewportMessageId(_args: Record<never, never>) {
   const scrollContainer = container.value;
   if (!scrollContainer) return undefined;
 
@@ -273,7 +273,7 @@ function getCurrentViewportMessageId(_args: Record<string, never>) {
   return closest?.id;
 }
 
-function toggleOutline(_args: Record<string, never>) {
+function toggleOutline(_args: Record<never, never>) {
   chatAreaSession.toggleOutline({
     getCurrentViewportMessageId: () => getCurrentViewportMessageId({}),
   });
@@ -348,7 +348,7 @@ async function exportChat() {
 
   let markdownContent = `# ${chat.value.title || 'New Chat'}\n\n`;
 
-  const processFlowItems = async (items: ChatFlowItem[]) => {
+  const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
     for (const item of items) {
       const itemType = item.type;
       switch (itemType) {
@@ -441,7 +441,7 @@ async function exportChat() {
       }
       case 'process_sequence':
         markdownContent += `## Process Sequence: ${item.summary}\n`;
-        await processFlowItems(item.items);
+        await processFlowItems({ items: item.items });
         break;
       default: {
         const _ex: never = itemType;
@@ -451,7 +451,7 @@ async function exportChat() {
     }
   };
 
-  await processFlowItems(chatFlow.value);
+  await processFlowItems({ items: chatFlow.value });
 
   const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
   const filename = `${chat.value.title || 'new_chat'}.txt`;
@@ -483,7 +483,7 @@ async function shareAsURL() {
   }
 }
 
-async function openChatFileExplorer(_args: Record<string, never>) {
+async function openChatFileExplorer(_args: Record<never, never>) {
   if (!chat.value) return;
 
   const mounts = await buildWorkerMountsForChat({
@@ -875,14 +875,14 @@ async function handleFork({ messageId }: { messageId: string }) {
 
 function handleForkLastMessage() {
   // We need to find the last message across all potential levels of nesting in chatFlow
-  const findLastMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
+  const findLastMessage = ({ items }: { items: ChatFlowItem[] }): ChatFlowItem | null => {
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i]!;
       const type = item.type;
       switch (type) {
       case 'message': return item;
       case 'process_sequence': {
-        const nested = findLastMessage(item.items);
+        const nested = findLastMessage({ items: item.items });
         if (nested) return nested;
         break;
       }
@@ -897,7 +897,7 @@ function handleForkLastMessage() {
     return null;
   };
 
-  const lastMsgItem = findLastMessage(chatFlow.value);
+  const lastMsgItem = findLastMessage({ items: chatFlow.value });
   if (lastMsgItem && lastMsgItem.type === 'message') {
     handleFork({ messageId: lastMsgItem.node.id });
   }

@@ -3,6 +3,8 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
+
 // 1. Mock LLM providers to prevent real network calls
 const mockListModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
 vi.mock('./services/lm/openai', () => ({

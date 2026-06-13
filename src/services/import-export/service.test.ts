@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import type { SettingsDto, ChatMetaDto, ChatGroupDto } from '@/models/dto';
 import type { ImportConfig } from './types';
 import type { Mocked } from 'vitest';
-import type { StorageSnapshot, Settings, ChatMeta } from '@/models/types';
+import type { Settings, ChatMeta } from '@/models/types';
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';
@@ -38,15 +38,15 @@ describe('ImportExportService', () => {
       restore: vi.fn(),
       clearAll: vi.fn(),
       loadSettings: vi.fn(),
-      updateSettings: vi.fn().mockImplementation(async (updater) => {
+      updateSettings: vi.fn().mockImplementation(async ({ updater }) => {
         const current = await mockStorage.loadSettings();
-        await updater(current);
+        await updater({ current: current });
       }),
       listChats: vi.fn(),
       listChatGroups: vi.fn(),
       loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     } as any;
-    service = new ImportExportService(mockStorage);
+    service = new ImportExportService({ storage: mockStorage });
   });
 
   const createValidSettingsDto = (overrides: Partial<SettingsDto> = {}): SettingsDto => ({
@@ -537,7 +537,7 @@ describe('ImportExportService', () => {
       await service.executeImport({ zipFile: zipBlob, config: { data: { mode: 'append' }, settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' } } });
 
       const calls = mockStorage.restore.mock.calls;
-      const snapshot = calls[0]![0] as StorageSnapshot;
+      const snapshot = calls[0]![0].snapshot;
       const chunks = [];
       for await (const chunk of snapshot.contentStream) {
         chunks.push(chunk);
@@ -591,7 +591,7 @@ describe('ImportExportService', () => {
       } });
 
       const calls = mockStorage.restore.mock.calls;
-      const snapshot = calls[0]![0] as StorageSnapshot;
+      const snapshot = calls[0]![0].snapshot;
       const chunks = [];
       for await (const chunk of snapshot.contentStream) {
         chunks.push(chunk);
@@ -646,7 +646,7 @@ describe('ImportExportService', () => {
       } });
 
       const calls = mockStorage.restore.mock.calls;
-      const snapshot = calls[0]![0] as StorageSnapshot;
+      const snapshot = calls[0]![0].snapshot;
       const chunks = [];
       for await (const chunk of snapshot.contentStream) {
         chunks.push(chunk);
@@ -696,7 +696,7 @@ describe('ImportExportService', () => {
       } });
 
       const calls = mockStorage.restore.mock.calls;
-      const snapshot = calls[0]![0] as StorageSnapshot;
+      const snapshot = calls[0]![0].snapshot;
       const chunks = [];
       for await (const chunk of snapshot.contentStream) {
         chunks.push(chunk);
@@ -741,7 +741,7 @@ describe('ImportExportService', () => {
       } });
 
       const calls = mockStorage.restore.mock.calls;
-      const snapshot = calls[0]![0] as StorageSnapshot;
+      const snapshot = calls[0]![0].snapshot;
       const chunks = [];
       for await (const chunk of snapshot.contentStream) {
         chunks.push(chunk);
@@ -769,7 +769,7 @@ describe('ImportExportService', () => {
       expect(mockStorage.clearAll).not.toHaveBeenCalled();
 
       // Verify that the hierarchy sent to restore contains the existing item
-      const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
+      const snapshot = mockStorage.restore.mock.calls[0]![0].snapshot;
       expect(snapshot.structure.hierarchy.items).toContainEqual({ type: 'chat', id: 'existing-chat' });
     });
 
@@ -785,7 +785,7 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
       } });
 
-      const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
+      const snapshot = mockStorage.restore.mock.calls[0]![0].snapshot;
       expect(snapshot.structure.chatGroups).toHaveLength(1);
       expect(snapshot.structure.chatGroups[0]!.name).toBe('Empty Group');
       expect(snapshot.structure.chatMetas).toHaveLength(0);
@@ -806,7 +806,7 @@ describe('ImportExportService', () => {
         settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
       } });
 
-      const snapshot = mockStorage.restore.mock.calls[0]![0] as StorageSnapshot;
+      const snapshot = mockStorage.restore.mock.calls[0]![0].snapshot;
       expect(snapshot.structure.chatMetas[0]!.systemPrompt).toEqual({
         behavior: 'append',
         content: 'Extra context'
@@ -844,8 +844,8 @@ describe('ImportExportService', () => {
       await service.executeImport({ zipFile: zipBlob, config });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
-      const updater = mockStorage.updateSettings.mock.calls[0]![0];
-      const result = await updater(await mockStorage.loadSettings());
+      const updater = mockStorage.updateSettings.mock.calls[0]![0].updater;
+      const result = await updater({ current: await mockStorage.loadSettings() });
       expect(result).toEqual(expect.objectContaining({
         lmParameters: {
           temperature: 0.1,
@@ -878,8 +878,8 @@ describe('ImportExportService', () => {
       await service.executeImport({ zipFile: zipBlob, config });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
-      const updater = mockStorage.updateSettings.mock.calls[0]![0];
-      const result = await updater(await mockStorage.loadSettings());
+      const updater = mockStorage.updateSettings.mock.calls[0]![0].updater;
+      const result = await updater({ current: await mockStorage.loadSettings() });
       expect(result.lmParameters).toEqual({
         temperature: 0.7,
         reasoning: { effort: 'high' }
@@ -905,8 +905,8 @@ describe('ImportExportService', () => {
       await service.executeImport({ zipFile: zipBlob, config });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
-      const updater = mockStorage.updateSettings.mock.calls[0]![0];
-      const result = await updater(await mockStorage.loadSettings());
+      const updater = mockStorage.updateSettings.mock.calls[0]![0].updater;
+      const result = await updater({ current: await mockStorage.loadSettings() });
       expect(result.heavyContentAlertDismissed).toBe(true);
       expect(result.endpointUrl).toBe('http://imported');
       expect(result.endpointHttpHeaders).toEqual([['X-Test', 'imported']]);
@@ -931,8 +931,8 @@ describe('ImportExportService', () => {
       } });
 
       expect(mockStorage.updateSettings).toHaveBeenCalled();
-      const updater = mockStorage.updateSettings.mock.calls[0]![0];
-      const result = await updater(await mockStorage.loadSettings());
+      const updater = mockStorage.updateSettings.mock.calls[0]![0].updater;
+      const result = await updater({ current: await mockStorage.loadSettings() });
       expect(result).toEqual(expect.objectContaining({
         providerProfiles: [
           expect.objectContaining({ id: '018d476a-7b3a-73fd-8000-000000000009' }),
@@ -947,7 +947,7 @@ describe('ImportExportService', () => {
       const zip = new JSZip();
       zip.file('export-manifest.json', '{}');
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const preview = await service.analyze(zipBlob);
+      const preview = await service.analyze({ zipFile: zipBlob });
       expect(preview.stats.chatsCount).toBe(0);
       expect(preview.stats.hasSettings).toBe(false);
     });
@@ -958,7 +958,7 @@ describe('ImportExportService', () => {
       zip.file('hierarchy.json', JSON.stringify({ items: [{ type: 'chat_group', id: UUID_G1, chat_ids: [] }] }));
       zip.folder('chat-groups')!.file(`${UUID_G1}.json`, JSON.stringify({ id: UUID_G1, name: 'Empty Group', updatedAt: 1000, isCollapsed: false }));
 
-      const preview = await service.analyze(await zip.generateAsync({ type: 'blob' }));
+      const preview = await service.analyze({ zipFile: await zip.generateAsync({ type: 'blob' }) });
 
       expect(preview.stats.chatGroupsCount).toBe(1);
       expect(preview.stats.chatsCount).toBe(0);
@@ -987,7 +987,7 @@ describe('ImportExportService', () => {
       const shard = UUID_A1.slice(-2);
       zip.folder('binary-objects')!.folder(shard)!.file(`${UUID_A1}.bin`, new Blob(['...']));
 
-      const preview = await service.analyze(await zip.generateAsync({ type: 'blob' }));
+      const preview = await service.analyze({ zipFile: await zip.generateAsync({ type: 'blob' }) });
 
       expect(preview.stats.chatsCount).toBe(2); // Broken is skipped
       expect(preview.stats.attachmentsCount).toBe(1);
@@ -1008,7 +1008,7 @@ describe('ImportExportService', () => {
         { id: UUID_C1, title: 'C1', groupId: UUID_G1, updatedAt: 1000, createdAt: 1000 }
       ] }));
 
-      const preview = await service.analyze(await zip.generateAsync({ type: 'blob' }));
+      const preview = await service.analyze({ zipFile: await zip.generateAsync({ type: 'blob' }) });
 
       expect(preview.items).toHaveLength(1);
       expect(preview.items[0]!.type).toBe('chat_group');

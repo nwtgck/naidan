@@ -56,7 +56,7 @@ async function loadImage() {
     if (blob) {
       if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
       imageUrl.value = URL.createObjectURL(blob);
-      isSupported.value = await ImageDownloadHydrator.detectSupport(blob);
+      isSupported.value = await ImageDownloadHydrator.detectSupport({ blob });
     } else {
       error.value = 'Image not found in storage';
     }
@@ -103,10 +103,10 @@ async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
     model: undefined, // Model info not directly available in the block JSON currently
     withMetadata,
     storageService,
-    onError: (err) => addErrorEvent({
+    onError: ({ error }) => addErrorEvent({
       source: 'GeneratedImageBlock:Download',
       message: 'Failed to embed metadata in image.',
-      details: err instanceof Error ? err.message : String(err),
+      details: error instanceof Error ? error.message : String(error),
     })
   });
 }

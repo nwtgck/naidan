@@ -40,8 +40,8 @@ vi.mock('../services/storage', () => ({
     saveChat: vi.fn(),
     updateChatMeta: vi.fn().mockResolvedValue(undefined),
     loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => {
-      return Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined })) as any;
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => {
+      return Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } })) as any;
     }),
     updateHierarchy: vi.fn().mockResolvedValue(undefined),
     loadHierarchy: vi.fn(),
@@ -93,12 +93,12 @@ describe('useChat Interrupt and Sync Tests', () => {
     clearEvents();
 
     vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
-    vi.mocked(storageService.updateChatContent).mockImplementation((_id, updater) => {
-      return Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined })) as any;
+    vi.mocked(storageService.updateChatContent).mockImplementation(({ updater }) => {
+      return Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } })) as any;
     });
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
-    vi.mocked(storageService.updateHierarchy).mockImplementation(async (updater) => {
-      mockHierarchy = await updater(mockHierarchy);
+    vi.mocked(storageService.updateHierarchy).mockImplementation(async ({ updater }) => {
+      mockHierarchy = await updater({ current: mockHierarchy });
       return Promise.resolve();
     });
   });
@@ -302,7 +302,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     });
 
     mockLlm.chat.mockImplementationOnce(async (params: any) => {
-      params.onChunk('Regenerated');
+      params.onChunk({ chunk: 'Regenerated' });
     });
 
     await regenerateMessage({ failedMessageId: assistantId });
@@ -361,7 +361,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     TEST_ONLY.activeTaskCounts.set(`process:${chatId}`, 1);
 
     mockLlm.chat.mockImplementationOnce(async (params: any) => {
-      params.onChunk('Edited Response');
+      params.onChunk({ chunk: 'Edited Response' });
     });
 
     await editMessage({ messageId: 'user-1', newContent: 'Updated content' });

@@ -597,6 +597,7 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: str
       // Enabling writes: request write permission from the browser.
       // The handle was obtained with mode:'read', so writes will fail unless explicitly upgraded.
       type FSHandleWithPermission = FileSystemDirectoryHandle & {
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this signature mirrors the File System Access API requestPermission contract.
         requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
       };
       const result = await (handle as FSHandleWithPermission).requestPermission({ mode: 'readwrite' });
@@ -707,7 +708,7 @@ function adjustTextareaHeight({ force }: { force?: boolean }) {
   }
 }
 
-const handleWindowResize = (_event: Event) => adjustTextareaHeight({});
+const handleWindowResize = () => adjustTextareaHeight({});
 
 function toggleMaximized() {
   if (textareaRef.value) {

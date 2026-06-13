@@ -114,7 +114,7 @@ function reset() {
   stopJsonError.value = null;
 }
 
-const isOverridden = (key: keyof LmParameters) => {
+const isOverridden = ({ key }: { key: keyof LmParameters }) => {
   switch (key) {
   case 'reasoning':
     return params.value.reasoning.effort !== undefined;
@@ -162,11 +162,11 @@ defineExpose({
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8">
       <!-- Temperature -->
-      <div class="space-y-3" :class="{ 'opacity-60': !isOverridden('temperature') }">
+      <div class="space-y-3" :class="{ 'opacity-60': !isOverridden({ key: 'temperature' }) }">
         <div class="flex justify-between items-center">
-          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden('temperature') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
+          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden({ key: 'temperature' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
             Temperature
-            <span v-if="isOverridden('temperature')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
+            <span v-if="isOverridden({ key: 'temperature' })" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <div class="flex items-center gap-2">
             <input
@@ -176,7 +176,7 @@ defineExpose({
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('temperature')" @click="updateParam({ key: 'temperature', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
+            <button v-if="isOverridden({ key: 'temperature' })" @click="updateParam({ key: 'temperature', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
@@ -188,11 +188,11 @@ defineExpose({
       </div>
 
       <!-- Top P -->
-      <div class="space-y-3" :class="{ 'opacity-60': !isOverridden('topP') }">
+      <div class="space-y-3" :class="{ 'opacity-60': !isOverridden({ key: 'topP' }) }">
         <div class="flex justify-between items-center">
-          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden('topP') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
+          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden({ key: 'topP' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
             Top P
-            <span v-if="isOverridden('topP')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
+            <span v-if="isOverridden({ key: 'topP' })" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <div class="flex items-center gap-2">
             <input
@@ -202,7 +202,7 @@ defineExpose({
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('topP')" @click="updateParam({ key: 'topP', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
+            <button v-if="isOverridden({ key: 'topP' })" @click="updateParam({ key: 'topP', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
@@ -214,11 +214,11 @@ defineExpose({
       </div>
 
       <!-- Max Tokens -->
-      <div class="space-y-3" :class="{ 'opacity-60': !isOverridden('maxCompletionTokens') }">
+      <div class="space-y-3" :class="{ 'opacity-60': !isOverridden({ key: 'maxCompletionTokens' }) }">
         <div class="flex justify-between items-center">
-          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden('maxCompletionTokens') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
+          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden({ key: 'maxCompletionTokens' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
             Max Tokens
-            <span v-if="isOverridden('maxCompletionTokens')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
+            <span v-if="isOverridden({ key: 'maxCompletionTokens' })" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <div class="flex items-center gap-2">
             <input
@@ -228,17 +228,17 @@ defineExpose({
               placeholder="Default"
               class="w-24 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('maxCompletionTokens')" @click="updateParam({ key: 'maxCompletionTokens', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
+            <button v-if="isOverridden({ key: 'maxCompletionTokens' })" @click="updateParam({ key: 'maxCompletionTokens', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
       </div>
 
       <!-- Presence Penalty -->
-      <div class="space-y-3" :class="{ 'opacity-60': !isOverridden('presencePenalty') }">
+      <div class="space-y-3" :class="{ 'opacity-60': !isOverridden({ key: 'presencePenalty' }) }">
         <div class="flex justify-between items-center">
-          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden('presencePenalty') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
+          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden({ key: 'presencePenalty' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
             Presence Penalty
-            <span v-if="isOverridden('presencePenalty')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
+            <span v-if="isOverridden({ key: 'presencePenalty' })" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
           <div class="flex items-center gap-2">
             <input
@@ -248,7 +248,7 @@ defineExpose({
               placeholder="Default"
               class="w-16 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-right outline-none focus:border-blue-500 transition-all"
             />
-            <button v-if="isOverridden('presencePenalty')" @click="updateParam({ key: 'presencePenalty', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
+            <button v-if="isOverridden({ key: 'presencePenalty' })" @click="updateParam({ key: 'presencePenalty', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400"><XIcon class="w-3 h-3"/></button>
           </div>
         </div>
         <input
@@ -260,13 +260,13 @@ defineExpose({
       </div>
 
       <!-- Stop Sequences -->
-      <div class="space-y-3 col-span-1 md:col-span-2" :class="{ 'opacity-60': !isOverridden('stop') }">
+      <div class="space-y-3 col-span-1 md:col-span-2" :class="{ 'opacity-60': !isOverridden({ key: 'stop' }) }">
         <div class="flex justify-between items-center">
-          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden('stop') ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
+          <label class="text-xs font-bold flex items-center gap-1.5" :class="isOverridden({ key: 'stop' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500'">
             Stop Sequences (JSON Array)
-            <span v-if="isOverridden('stop')" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
+            <span v-if="isOverridden({ key: 'stop' })" class="w-1 h-1 rounded-full bg-blue-500 animate-pulse"></span>
           </label>
-          <button v-if="isOverridden('stop')" @click="updateParam({ key: 'stop', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 flex items-center gap-1 text-[10px] font-bold">
+          <button v-if="isOverridden({ key: 'stop' })" @click="updateParam({ key: 'stop', value: undefined })" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-400 flex items-center gap-1 text-[10px] font-bold">
             <XIcon class="w-3 h-3"/> Reset to Default
           </button>
         </div>

@@ -187,9 +187,7 @@ export function warmStandaloneWorkerCacheAtIdle(_args: EmptyArgs): void {
   }
 
   if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-    ;(window as unknown as {
-      requestIdleCallback: (callback: () => void) => void
-    }).requestIdleCallback(run)
+    ;(window as Window & Pick<Window, 'requestIdleCallback'>).requestIdleCallback(run)
     return
   }
 

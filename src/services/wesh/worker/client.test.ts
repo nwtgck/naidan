@@ -57,7 +57,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
     const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
     const client = await createFileProtocolCompatibleWeshWorkerClient({
-      rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+      rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
       mounts: [],
       user: 'user',
       initialEnv: {},
@@ -130,7 +130,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
     const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
     const client = await createFileProtocolCompatibleWeshWorkerClient({
-      rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+      rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
       mounts: [],
       user: 'user',
       initialEnv: {},
@@ -192,7 +192,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
     const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
     const client = await createFileProtocolCompatibleWeshWorkerClient({
-      rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+      rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
       mounts: [{
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',

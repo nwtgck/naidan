@@ -38,7 +38,7 @@ describe('OpenAIProvider', () => {
       onChunk
     });
 
-    expect(onChunk).toHaveBeenCalledWith('Hello');
+    expect(onChunk).toHaveBeenCalledWith({ chunk: 'Hello' });
   });
 
   it('should include custom headers in chat request', async () => {
@@ -157,7 +157,7 @@ describe('OllamaProvider', () => {
       onChunk
     });
 
-    expect(onChunk).toHaveBeenCalledWith('valid');
+    expect(onChunk).toHaveBeenCalledWith({ chunk: 'valid' });
     expect(onChunk).toHaveBeenCalledTimes(1);
 
     // Assert error reporting
@@ -198,7 +198,7 @@ describe('OllamaProvider', () => {
       onChunk
     });
 
-    const calls = onChunk.mock.calls.map(c => c[0]);
+    const calls = onChunk.mock.calls.map(c => c[0].chunk);
     expect(calls).toEqual(['<think>', 'I am thinking', ' more', '</think>', 'Final answer']);
   });
 
@@ -225,7 +225,7 @@ describe('OllamaProvider', () => {
       onChunk
     });
 
-    const calls = onChunk.mock.calls.map(c => c[0]);
+    const calls = onChunk.mock.calls.map(c => c[0].chunk);
     expect(calls).toEqual(['<think>', 'thought', '</think>']);
   });
 

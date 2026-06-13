@@ -23,7 +23,7 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
-const service = new ImportExportService(storageService);
+const service = new ImportExportService({ storage: storageService });
 const { addToast } = useToast();
 
 /**
@@ -191,7 +191,7 @@ async function handleFileSelect({ event }: { event: Event }) {
   error.value = null;
 
   try {
-    importPreview.value = await service.analyze(file);
+    importPreview.value = await service.analyze({ zipFile: file });
     mode.value = 'import_preview';
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to analyze file';

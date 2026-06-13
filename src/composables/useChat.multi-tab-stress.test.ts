@@ -21,8 +21,8 @@ const { mocks } = vi.hoisted(() => ({
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
-    subscribeToChanges: vi.fn().mockImplementation((cb) => {
-      mocks.mockNotify = cb;
+    subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
+      mocks.mockNotify = (event: any) => listener({ event });
       return () => {};
     }),
     listChats: vi.fn().mockImplementation(() => Promise.resolve([])),
@@ -41,17 +41,17 @@ vi.mock('../services/storage', () => ({
       if (!chat) return null;
       return JSON.parse(JSON.stringify({ root: chat.root, currentLeafId: chat.currentLeafId }));
     }),
-    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mocks.mockChatStorage.get(id) || null;
-      const updated = await updater(current);
+      const updated = await updater({ current: current });
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_meta_and_chat_group', id });
       return Promise.resolve();
     }),
-    updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(async ({ id, updater }) => {
       const currentFull = mocks.mockChatStorage.get(id) || null;
       const currentContent = currentFull ? { root: currentFull.root, currentLeafId: currentFull.currentLeafId } : null;
-      const updatedContent = await updater(currentContent);
+      const updatedContent = await updater({ current: currentContent });
 
       const updatedFull = currentFull ? { ...currentFull, ...updatedContent } : { id, ...updatedContent };
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updatedFull)));
@@ -124,7 +124,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
       const now = i * 100;
       vi.setSystemTime(now);
       if (i % 5 === 0 || i === 49) {
-        await storageService.updateChatContent('c1', () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }));
+        await storageService.updateChatContent({ id: 'c1', updater: () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }) });
       }
     }
 
@@ -177,11 +177,11 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
         if (now - lastSave > 10 && !isSaving) {
           isSaving = true;
           try {
-            await storageService.updateChatContent(chat.id, (current) => ({
+            await storageService.updateChatContent({ id: chat.id, updater: ({ current }) => ({
               ...current,
               root: chat.root,
               currentLeafId: chat.currentLeafId
-            }));
+            }) });
             lastSave = Date.now();
           } finally {
             isSaving = false;

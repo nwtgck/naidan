@@ -5,16 +5,16 @@ import type { ToolApprovalContext } from '@/services/approval';
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
 
 export interface LLMProvider {
-  chat(params: {
+  chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;
-    onChunk: (chunk: string) => void;
+    onChunk: ({ chunk }: { chunk: string }) => void;
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: (params: { id: string; event: ToolExecutionEvent }) => void;
-    onToolResult?: (params: {
+    onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: string; event: ToolExecutionEvent }) => void;
+    onToolResult?: ({ id, result }: {
       id: string;
       result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
@@ -22,5 +22,5 @@ export interface LLMProvider {
     signal?: AbortSignal;
   }): Promise<void>;
 
-  listModels(params: { signal?: AbortSignal }): Promise<string[]>;
+  listModels({ signal }: { signal?: AbortSignal }): Promise<string[]>;
 }

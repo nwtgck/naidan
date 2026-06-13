@@ -5,7 +5,11 @@ export class Semaphore {
   private activeCount = 0;
   private queue: (() => void)[] = [];
 
-  constructor(private maxConcurrency: number) {}
+  private maxConcurrency: number;
+
+  constructor({ maxConcurrency }: { maxConcurrency: number }) {
+    this.maxConcurrency = maxConcurrency;
+  }
 
   async acquire(): Promise<void> {
     if (this.activeCount < this.maxConcurrency) {

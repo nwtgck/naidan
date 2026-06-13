@@ -16,7 +16,7 @@ describe('wesh tr', () => {
 
   beforeEach(async () => {
     const { Wesh } = await import('@/services/wesh/index');
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
     wesh.registerCommand({ definition: trCommandDefinition });

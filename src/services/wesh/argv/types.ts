@@ -26,7 +26,7 @@ export interface ArgvValueOptionSpec {
   key: string;
   valueName: string;
   allowAttachedValue: boolean;
-  parseValue: ((options: { value: string }) => { ok: true; value: ArgvValue } | { ok: false; message: string }) | undefined;
+  parseValue: (({ value }: { value: string }) => { ok: true; value: ArgvValue } | { ok: false; message: string }) | undefined;
   help: ArgvOptionHelp;
 }
 
@@ -45,7 +45,7 @@ export interface ArgvSpecialParseResult {
   occurrences?: ArgvOptionOccurrence[];
 }
 
-export type ArgvSpecialTokenParser = (options: {
+export type ArgvSpecialTokenParser = ({ token, nextToken }: {
   token: string;
   nextToken: string | undefined;
 }) => ArgvSpecialParseResult | undefined;

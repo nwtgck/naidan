@@ -447,8 +447,10 @@ async function requestWikipediaResponseWithRetry({
       let response: PrivacyFetchResponse
       try {
         response = await privacyFetch({
-          url: url.toString(),
-          signal,
+          request: {
+            url: url.toString(),
+            signal,
+          },
         })
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {

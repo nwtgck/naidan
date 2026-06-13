@@ -32,15 +32,31 @@ vi.mock('../services/transformers-js', () => {
   return {
     transformersJsService: {
       getState: vi.fn(() => state),
-      subscribe: vi.fn((cb) => {
-        listeners.add(cb);
-        cb(state.status, state.progress, state.error, state.isCached, state.isLoadingFromCache, state.progressItems, state.loadingModelId);
-        return () => listeners.delete(cb);
+      subscribe: vi.fn(({ listener }) => {
+        listeners.add(listener);
+        listener({
+          status: state.status,
+          progress: state.progress,
+          error: state.error,
+          isCached: state.isCached,
+          isLoadingFromCache: state.isLoadingFromCache,
+          progressItems: state.progressItems,
+          loadingModelId: state.loadingModelId,
+        });
+        return () => listeners.delete(listener);
       }),
       // Helper for testing to trigger state changes
       __triggerStateChange: (updates: any) => {
         Object.assign(state, updates);
-        listeners.forEach((cb: any) => cb(state.status, state.progress, state.error, state.isCached, state.isLoadingFromCache, state.progressItems, state.loadingModelId));
+        listeners.forEach((listener: any) => listener({
+          status: state.status,
+          progress: state.progress,
+          error: state.error,
+          isCached: state.isCached,
+          isLoadingFromCache: state.isLoadingFromCache,
+          progressItems: state.progressItems,
+          loadingModelId: state.loadingModelId,
+        }));
       }
     }
   };

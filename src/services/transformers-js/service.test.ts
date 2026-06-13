@@ -195,9 +195,9 @@ describe('transformersJsService', () => {
 
     // Subscribe to track status changes
     const statuses: string[] = [];
-    transformersJsService.subscribe((status) => {
+    transformersJsService.subscribe({ listener: ({ status }) => {
       statuses.push(status);
-    });
+    } });
 
     await transformersJsService.loadModel({ modelId: 'some-model' });
 
@@ -347,7 +347,14 @@ describe('transformersJsService', () => {
     await transformersJsService.loadModel({ modelId: 'some-model' });
 
     const controller = new AbortController();
-    const genPromise = transformersJsService.generateText([], () => {}, () => {}, EMPTY_LM_PARAMETERS, undefined, controller.signal);
+    const genPromise = transformersJsService.generateText({
+      messages: [],
+      onChunk: () => {},
+      onToolCalls: () => {},
+      params: EMPTY_LM_PARAMETERS,
+      tools: undefined,
+      signal: controller.signal,
+    });
 
     controller.abort();
     await genPromise;
@@ -373,7 +380,14 @@ describe('transformersJsService', () => {
       reasoning: { effort: 'high' as const }
     });
 
-    await transformersJsService.generateText([], () => {}, () => {}, reactiveParams, undefined, undefined);
+    await transformersJsService.generateText({
+      messages: [],
+      onChunk: () => {},
+      onToolCalls: () => {},
+      params: reactiveParams,
+      tools: undefined,
+      signal: undefined,
+    });
 
     const workerParams = mockRemote.generateText.mock.calls[0]?.[3];
     expect(workerParams).toEqual({
@@ -425,14 +439,14 @@ describe('transformersJsService', () => {
       }
     }]);
 
-    await transformersJsService.generateText(
-      reactiveMessages as any,
-      () => {},
-      () => {},
-      undefined,
-      reactiveTools as any,
-      undefined
-    );
+    await transformersJsService.generateText({
+      messages: reactiveMessages as any,
+      onChunk: () => {},
+      onToolCalls: () => {},
+      params: undefined,
+      tools: reactiveTools as any,
+      signal: undefined,
+    });
 
     const workerMessages = mockRemote.generateText.mock.calls[0]?.[0];
     const workerTools = mockRemote.generateText.mock.calls[0]?.[4];
@@ -485,7 +499,7 @@ describe('transformersJsService', () => {
     const { transformersJsService } = await import('./index');
     const data = new ArrayBuffer(10);
 
-    await transformersJsService.importFile('my-model', 'onnx/model.onnx', data);
+    await transformersJsService.importFile({ modelName: 'my-model', fileName: 'onnx/model.onnx', data });
 
     // Verify directory structure was created through the root mock
     const models = await mockRoot.getDirectoryHandle('models');

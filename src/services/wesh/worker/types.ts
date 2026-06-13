@@ -92,18 +92,23 @@ export type WeshWorkerExecutionEvent =
   | { type: 'exit'; exitCode: number }
   | { type: 'error'; message: string }
 
+export type WeshWorkerExecutionEventCallback = ({ event }: { event: WeshWorkerExecutionEvent }) => void | Promise<void>
+
 export interface IWeshWorker {
   /**
    * Comlink proxy values must stay as top-level arguments here.
    * Nesting a proxied object inside a named-args object can trigger
    * "Function object could not be cloned." in real browsers.
    */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   init(
     request: WeshWorkerInitRequest,
     naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
   ): Promise<void>
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   startExecution(
     request: WeshWorkerExecuteRequest,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onEvent?: (event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>
   ): Promise<WeshWorkerStartExecutionResponse>
   awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>
@@ -117,7 +122,7 @@ export interface IWeshWorker {
 export interface WeshWorkerClient {
   startExecution({ request, onEvent }: {
     request: WeshWorkerExecuteRequest
-    onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
+    onEvent?: WeshWorkerExecutionEventCallback
   }): Promise<WeshWorkerStartExecutionResponse>
   awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>

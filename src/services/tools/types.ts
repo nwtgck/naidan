@@ -61,10 +61,10 @@ export interface Tool {
    * Execute the tool with the given arguments.
    * The arguments are guaranteed to be validated against the parametersSchema before execution.
    */
-  execute(params: {
+  execute({ args, signal, onEvent, approvalContext }: {
     args: unknown;
     signal?: AbortSignal;
-    onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
     approvalContext?: ToolApprovalContext;
   }): Promise<
     | { status: 'success'; content: string }

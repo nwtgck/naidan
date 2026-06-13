@@ -24,7 +24,7 @@ export const ImageDownloadHydrator = {
     try {
       const activeBlob = blob || await storageService.getFile({ binaryObjectId: id });
       if (activeBlob) {
-        isSupported = await this.detectSupport(activeBlob);
+        isSupported = await this.detectSupport({ blob: activeBlob });
       }
     } catch (err) {
       console.warn('[Hydrator] Metadata support detection failed:', err);
@@ -44,7 +44,7 @@ export const ImageDownloadHydrator = {
   /**
    * Detects if the given blob's format supports metadata embedding.
    */
-  async detectSupport(blob: Blob): Promise<boolean> {
+  async detectSupport({ blob }: { blob: Blob }): Promise<boolean> {
     try {
       const format = await detectFormat({ blob });
       return format !== UNSUPPORTED;
@@ -87,7 +87,7 @@ export const ImageDownloadHydrator = {
     model: string | undefined,
     withMetadata: boolean,
     storageService: StorageService,
-    onError: (err: unknown) => void
+    onError: ({ error }: { error: unknown }) => void
   }) {
     try {
       const obj = await storageService.getBinaryObject({ binaryObjectId: id });
@@ -113,7 +113,7 @@ export const ImageDownloadHydrator = {
           }
         } catch (err) {
           console.error('[Hydrator] Failed to embed metadata:', err);
-          onError(err);
+          onError({ error: err });
         }
       }
 
@@ -146,7 +146,7 @@ export const ImageDownloadHydrator = {
     portal: HTMLElement,
     isSupported: boolean,
     align?: 'left' | 'right',
-    onDownload: (payload: { withMetadata: boolean }) => void
+    onDownload: ({ withMetadata }: { withMetadata: boolean }) => void
   }): () => void {
     const vnode = vueH(ImageDownloadButton, {
       isSupported,

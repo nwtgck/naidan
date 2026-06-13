@@ -87,18 +87,18 @@ function longMessageContent({ turnIndex, role }: {
 
 async function persistSampleChat({ chat, loadChats, openChat }: {
   chat: Chat;
-  loadChats: (_params: Record<string, never>) => Promise<void>;
+  loadChats: (_params: Record<never, never>) => Promise<void>;
   openChat: ({ id }: { id: string }) => Promise<unknown>;
 }) {
-  await storageService.updateChatContent(chat.id, () => ({
+  await storageService.updateChatContent({ id: chat.id, updater: () => ({
     root: chat.root,
     currentLeafId: chat.currentLeafId
-  }));
-  await storageService.updateChatMeta(chat.id, () => chat);
-  await storageService.updateHierarchy((curr) => {
+  }) });
+  await storageService.updateChatMeta({ id: chat.id, updater: () => chat });
+  await storageService.updateHierarchy({ updater: ({ current: curr }) => {
     curr.items.push({ type: 'chat', id: chat.id });
     return curr;
-  });
+  } });
 
   await loadChats({});
   await openChat({ id: chat.id });

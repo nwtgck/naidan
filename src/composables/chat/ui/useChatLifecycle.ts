@@ -23,7 +23,7 @@ export interface AddToastOptions {
   message: string;
   actionLabel?: string;
   onAction?: () => void | Promise<void>;
-  onClose?: (reason: 'timeout' | 'dismiss' | 'action') => void | Promise<void>;
+  onClose?: ({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>;
   duration?: number;
 }
 
@@ -43,7 +43,7 @@ export type ChatLifecycleAdapter = {
     injectAddToast,
   }: {
     id: string;
-    injectAddToast: ((toast: AddToastOptions) => string) | undefined;
+    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }): Promise<void>;
 
   deleteAllChats(_args: Record<never, never>): Promise<void>;
@@ -95,7 +95,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         id: chatId,
         updater: () => chat,
       });
-      await storageService.updateHierarchy((current) => {
+      await storageService.updateHierarchy({ updater: ({ current }) => {
         if (groupId !== undefined) {
           const group = current.items.find((item) => item.type === 'chat_group' && item.id === groupId) as HierarchyChatGroupNode | undefined;
           if (group !== undefined) {
@@ -108,7 +108,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         const insertIndex = firstChatIndex !== -1 ? firstChatIndex : current.items.length;
         current.items.splice(insertIndex, 0, { type: 'chat', id: chatId });
         return current;
-      });
+      } });
 
       setCurrentChatId({ chatId });
       currentChatRef.value = chat;
@@ -124,14 +124,14 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     injectAddToast,
   }: {
     id: string;
-    injectAddToast: ((toast: AddToastOptions) => string) | undefined;
+    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }): Promise<void> {
     const chat = await storageService.loadChat({ id });
     if (chat === null) {
       return;
     }
 
-    await storageService.updateHierarchy((current) => {
+    await storageService.updateHierarchy({ updater: ({ current }) => {
       current.items = current.items.filter((item) => {
         switch (item.type) {
         case 'chat':
@@ -146,7 +146,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         }
       });
       return current;
-    });
+    } });
 
     if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === id) {
       currentChatRef.value = null;
@@ -169,7 +169,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       actionLabel: 'Undo',
       onAction: async () => {
         const originalGroupId = chat.groupId;
-        await storageService.updateHierarchy((current) => {
+        await storageService.updateHierarchy({ updater: ({ current }) => {
           if (originalGroupId !== null) {
             const group = current.items.find((item) => {
               switch (item.type) {
@@ -191,14 +191,14 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
           current.items.push({ type: 'chat', id: chat.id });
           return current;
-        });
+        } });
         await loadData({});
         await chatNavigation.openChat({
           chatId: chat.id,
           leafId: undefined,
         });
       },
-      onClose: async (reason) => {
+      onClose: async ({ reason }) => {
         switch (reason) {
         case 'action':
           return;
@@ -237,7 +237,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     await Promise.all(chatGroups.map(async ({ id }) => {
       await storageService.deleteChatGroup({ id });
     }));
-    await storageService.updateHierarchy((_current) => ({ items: [] } as Hierarchy));
+    await storageService.updateHierarchy({ updater: ({ current: _current }) => ({ items: [] } as Hierarchy) });
 
     currentChatRef.value = null;
     currentChatGroupRef.value = null;

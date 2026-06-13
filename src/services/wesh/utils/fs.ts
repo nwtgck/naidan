@@ -6,10 +6,10 @@ import type {
 } from '@/services/wesh/types';
 
 interface WeshFileCapabilities {
-  open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
-  stat(options: { path: string }): Promise<unknown>;
-  tryReadBlobEfficiently?(options: { path: string }): Promise<WeshEfficientBlobReadResult>;
-  tryCreateFileWriterEfficiently?(options: {
+  open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
+  stat({ path }: { path: string }): Promise<unknown>;
+  tryReadBlobEfficiently?({ path }: { path: string }): Promise<WeshEfficientBlobReadResult>;
+  tryCreateFileWriterEfficiently?({ path, mode }: {
     path: string;
     mode: 'truncate' | 'append';
   }): Promise<WeshEfficientFileWriteResult>;

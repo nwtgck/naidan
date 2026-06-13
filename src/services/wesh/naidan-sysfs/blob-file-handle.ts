@@ -75,7 +75,7 @@ export class BlobFileHandle implements WeshFileHandle {
     }
   }
 
-  async truncate(_args: { size: number }): Promise<void> {
+  async truncate({ size: _size }: { size: number }): Promise<void> {
     throw new Error('File is read-only')
   }
 

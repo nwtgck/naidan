@@ -70,27 +70,26 @@ export class OpenAIProvider implements LLMProvider {
     headers?: [string, string][];
   };
 
-  constructor(config: { endpoint: string; headers?: [string, string][] }) {
-    this.config = config;
+  constructor({ endpoint, headers }: { endpoint: string; headers?: [string, string][] }) {
+    this.config = { endpoint, headers };
   }
 
-  async chat(params: {
+  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;
-    onChunk: (chunk: string) => void;
+    onChunk: ({ chunk }: { chunk: string }) => void;
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
-    onToolResult?: (params: {
+    onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
+    onToolResult?: ({ id, result }: {
       id: string;
       result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
 
@@ -184,7 +183,7 @@ export class OpenAIProvider implements LLMProvider {
         const { done, value } = await reader.read();
         if (done) {
           if (isThinking) {
-            onChunk('</think>');
+            onChunk({ chunk: '</think>' });
             fullContent += '</think>';
             isThinking = false;
           }
@@ -209,22 +208,22 @@ export class OpenAIProvider implements LLMProvider {
             const reasoning = delta.reasoning || delta.reasoning_content;
             if (reasoning) {
               if (!isThinking) {
-                onChunk('<think>');
+                onChunk({ chunk: '<think>' });
                 fullContent += '<think>';
                 isThinking = true;
               }
               fullContent += reasoning;
-              onChunk(reasoning);
+              onChunk({ chunk: reasoning });
             }
 
             if (delta.content) {
               if (isThinking) {
-                onChunk('</think>');
+                onChunk({ chunk: '</think>' });
                 fullContent += '</think>';
                 isThinking = false;
               }
               fullContent += delta.content;
-              onChunk(delta.content);
+              onChunk({ chunk: delta.content });
             }
 
             if (delta.tool_calls) {
@@ -305,7 +304,7 @@ export class OpenAIProvider implements LLMProvider {
               const executionResult = await tool.execute({
                 args: validatedArgs,
                 signal,
-                onEvent: async (event) => {
+                onEvent: async ({ event }) => {
                   onToolEvent?.({ id: tc.id, event });
                 },
                 approvalContext: toolApprovalContext,
@@ -359,8 +358,7 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
-  async listModels(params: { signal?: AbortSignal }): Promise<string[]> {
-    const { signal } = params;
+  async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
     const { endpoint, headers } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/models`;
     let response: Response;

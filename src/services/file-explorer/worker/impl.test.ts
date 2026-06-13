@@ -14,7 +14,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('lists native directory entries with metadata', async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
     const fileHandle = await rootHandle.getFileHandle('readme.txt', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('hello')
@@ -44,7 +44,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('reads text previews and formats JSON', async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
     const fileHandle = await rootHandle.getFileHandle('data.json', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('{"a":1}')
@@ -77,7 +77,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('creates, copies, moves, and deletes entries inside a session', async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
     await rootHandle.getDirectoryHandle('target', { create: true })
 
     const { sessionId } = await worker.prepareSession({
@@ -148,7 +148,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('exposes virtual directories for wesh mounts roots', async () => {
-    const mountHandle = new MockFileSystemDirectoryHandle('project')
+    const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' })
     const fileHandle = await mountHandle.getFileHandle('index.ts', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('export {}')
@@ -187,7 +187,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('lists and navigates naidan sysfs entries from wesh mounts', async () => {
-    const opfsRoot = new MockFileSystemDirectoryHandle('opfs-root')
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs-root' })
     const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true })
     await storageRoot.getDirectoryHandle('uploaded-files', { create: true })
     Object.defineProperty(globalThis, 'navigator', {
@@ -273,16 +273,16 @@ describe('file-explorer.worker.impl', () => {
         },
       ],
     }
-    await provider.saveChatMeta(chatMeta)
-    await provider.saveChatContent(chatMeta.id, chatContent)
-    await provider.saveChatGroup(chatGroup)
-    await provider.saveHierarchy({
+    await provider.saveChatMeta({ meta: chatMeta })
+    await provider.saveChatContent({ id: chatMeta.id, content: chatContent })
+    await provider.saveChatGroup({ chatGroup })
+    await provider.saveHierarchy({ hierarchy: {
       items: [{
         type: 'chat_group',
         id: 'chat-group-1',
         chat_ids: ['chat-1'],
       }],
-    })
+    } })
     const storedChatMeta = await provider.loadChatMeta({ id: 'chat-1' })
 
     const { sessionId } = await worker.prepareSession({

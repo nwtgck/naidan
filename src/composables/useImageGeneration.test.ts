@@ -285,11 +285,11 @@ describe('useImageGeneration', () => {
       });
 
       // Should have saved with .webp extension
-      expect(storageService.saveFile).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'image/webp' }),
-        expect.any(String),
-        expect.stringMatching(/\.webp$/)
-      );
+      expect(storageService.saveFile).toHaveBeenCalledWith(expect.objectContaining({
+        blob: expect.objectContaining({ type: 'image/webp' }),
+        binaryObjectId: expect.any(String),
+        name: expect.stringMatching(/\.webp$/)
+      }));
     });
 
     it('falls back to original format if re-encoding fails', async () => {
@@ -306,11 +306,11 @@ describe('useImageGeneration', () => {
       });
 
       // Should have saved original blob with .png extension (default)
-      expect(storageService.saveFile).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'image/png' }),
-        expect.any(String),
-        expect.stringMatching(/\.png$/)
-      );
+      expect(storageService.saveFile).toHaveBeenCalledWith(expect.objectContaining({
+        blob: expect.objectContaining({ type: 'image/png' }),
+        binaryObjectId: expect.any(String),
+        name: expect.stringMatching(/\.png$/)
+      }));
     });
 
     it('generates a random numeric seed when "browser_random" is specified and includes it in blocks and prompt', async () => {

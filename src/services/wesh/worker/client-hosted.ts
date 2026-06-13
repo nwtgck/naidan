@@ -10,7 +10,7 @@ import {
   weshWorkerInitRequestSchema,
   type IWeshWorker,
   type WeshWorkerClient,
-  type WeshWorkerExecutionEvent,
+  type WeshWorkerExecutionEventCallback,
   type WeshWorkerExecuteRequest,
   type WeshWorkerRemoteExecutionEvent,
 } from './types'
@@ -74,12 +74,12 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   return {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest
-      onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
+      onEvent?: WeshWorkerExecutionEventCallback
     }) {
       const response = await runtime.remote.startExecution(
         request,
         onEvent ? Comlink.proxy(async (event: WeshWorkerRemoteExecutionEvent) => {
-          await onEvent(mapRemoteWeshWorkerExecutionEventToClientEvent({ event }))
+          await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) })
         }) : undefined,
       )
       return weshWorkerStartExecutionResponseSchema.parse(response)

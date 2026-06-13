@@ -128,7 +128,7 @@ useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ ev
 onMounted(async () => {
   searchQuery.value = '';
   await refreshLocalModels();
-  unsubscribe = transformersJsService.subscribe((s, p, e, c, l, items) => {
+  unsubscribe = transformersJsService.subscribe({ listener: ({ status: s, progress: p, error: e, isCached: c, isLoadingFromCache: l, progressItems: items }) => {
     status.value = s;
     progress.value = p;
     error.value = e;
@@ -140,10 +140,10 @@ onMounted(async () => {
     device.value = state.device;
     totalLoadedAmount.value = state.totalLoadedAmount;
     totalSizeAmount.value = state.totalSizeAmount;
-  });
-  unsubscribeList = transformersJsService.subscribeModelList(() => {
+  } });
+  unsubscribeList = transformersJsService.subscribeModelList({ listener: () => {
     refreshLocalModels();
-  });
+  } });
 });
 
 onUnmounted(() => {
@@ -264,7 +264,7 @@ const handleImportLocalModel = async ({ event }: { event: Event }) => {
     for (const file of files) {
       const fileName = file.webkitRelativePath.substring(pathSegments[0]!.length + 1);
       if (!fileName) continue;
-      await transformersJsService.importFile(modelName, fileName, file.stream());
+      await transformersJsService.importFile({ modelName, fileName, data: file.stream() });
       completed++;
       importProgress.value = Math.round((completed / files.length) * 100);
     }

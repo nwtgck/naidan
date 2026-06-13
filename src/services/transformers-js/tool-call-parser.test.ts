@@ -2,27 +2,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallStreamParser } from './tool-call-parser';
 
 describe('ToolCallStreamParser', () => {
-  let onText: ReturnType<typeof vi.fn<(text: string) => void>>;
+  let onText: ReturnType<typeof vi.fn<({ text }: { text: string }) => void>>;
   let parser: ToolCallStreamParser;
 
   beforeEach(() => {
-    onText = vi.fn<(text: string) => void>();
+    onText = vi.fn<({ text }: { text: string }) => void>();
     parser = new ToolCallStreamParser({ onText });
   });
 
   it('streams plain text immediately', () => {
     parser.feed({ output: 'hello world' });
-    expect(onText).toHaveBeenCalledWith('hello world');
+    expect(onText).toHaveBeenCalledWith({ text: 'hello world' });
   });
 
   it('holds back a potential opening tag prefix and emits once it resolves', () => {
     parser.feed({ output: 'hello <tool_ca' });
-    expect(onText).toHaveBeenCalledWith('hello ');
+    expect(onText).toHaveBeenCalledWith({ text: 'hello ' });
     onText.mockClear();
 
     // Resuming with non-tag characters: held-back prefix is flushed normally
     parser.feed({ output: 'll is not a tag' });
-    expect(onText).toHaveBeenCalledWith('<tool_call is not a tag');
+    expect(onText).toHaveBeenCalledWith({ text: '<tool_call is not a tag' });
   });
 
   it('parses a tool call and returns it via drainToolCalls', () => {
@@ -42,8 +42,8 @@ describe('ToolCallStreamParser', () => {
     const payload = JSON.stringify({ name: 'fn', arguments: {} });
     parser.feed({ output: `prefix <tool_call>${payload}</tool_call> suffix` });
 
-    expect(onText).toHaveBeenCalledWith('prefix ');
-    expect(onText).toHaveBeenCalledWith(' suffix');
+    expect(onText).toHaveBeenCalledWith({ text: 'prefix ' });
+    expect(onText).toHaveBeenCalledWith({ text: ' suffix' });
 
     const calls = parser.drainToolCalls();
     expect(calls).toHaveLength(1);
@@ -66,7 +66,7 @@ describe('ToolCallStreamParser', () => {
 
     const calls = parser.drainToolCalls();
     expect(calls).toHaveLength(0);
-    expect(onText).toHaveBeenCalledWith('<tool_call>not valid json</tool_call>');
+    expect(onText).toHaveBeenCalledWith({ text: '<tool_call>not valid json</tool_call>' });
   });
 
   it('drainToolCalls clears the internal list', () => {
@@ -82,14 +82,14 @@ describe('ToolCallStreamParser', () => {
     onText.mockClear();
 
     parser.flush();
-    expect(onText).toHaveBeenCalledWith('<tool_ca');
+    expect(onText).toHaveBeenCalledWith({ text: '<tool_ca' });
   });
 
   it('flush preserves an unclosed tool call block as plain text', () => {
     parser.feed({ output: '<tool_call>{"name":"fn","arguments":{}}' }); // no closing tag
     parser.flush();
 
-    expect(onText).toHaveBeenCalledWith('<tool_call>{"name":"fn","arguments":{}}');
+    expect(onText).toHaveBeenCalledWith({ text: '<tool_call>{"name":"fn","arguments":{}}' });
     expect(parser.drainToolCalls()).toHaveLength(0);
   });
 

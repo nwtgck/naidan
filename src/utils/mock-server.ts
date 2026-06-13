@@ -1,5 +1,6 @@
 import http from 'http';
 import type { AddressInfo } from 'net';
+import type { RequestListener } from 'http';
 
 export interface CapturedRequest {
   url?: string;
@@ -13,7 +14,7 @@ export interface CapturedRequest {
  * Returns the base URL and a way to close the server and access captured requests.
  */
 export async function startMockServer({ handler }: {
-  handler: (req: http.IncomingMessage, res: http.ServerResponse) => void
+  handler: RequestListener
 }) {
   const capturedRequests: CapturedRequest[] = [];
   let server: http.Server | null = null;

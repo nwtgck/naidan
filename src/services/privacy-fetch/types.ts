@@ -122,6 +122,6 @@ export type PrivacyFetchBrokerToParentMessage =
   | PrivacyFetchErrorMessage
 
 export type PrivacyFetchBrokerClient = {
-  fetch(request: PrivacyFetchRequest): Promise<PrivacyFetchResponse>;
+  fetch({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchResponse>;
   dispose(): void;
 }

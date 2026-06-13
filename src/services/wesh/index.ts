@@ -104,23 +104,23 @@ class StaticTextFileHandle implements WeshFileHandle {
     this.mode = mode;
   }
 
-  async read(options: {
+  async read({ buffer, offset, length: requestedLength, position }: {
     buffer: Uint8Array;
     offset?: number;
     length?: number;
     position?: number;
   }): Promise<{ bytesRead: number }> {
-    const bufferOffset = options.offset ?? 0;
-    const length = options.length ?? (options.buffer.length - bufferOffset);
-    const start = options.position ?? this.position;
+    const bufferOffset = offset ?? 0;
+    const length = requestedLength ?? (buffer.length - bufferOffset);
+    const start = position ?? this.position;
     if (start >= this.bytes.length) {
       return { bytesRead: 0 };
     }
 
     const end = Math.min(start + length, this.bytes.length);
     const slice = this.bytes.subarray(start, end);
-    options.buffer.set(slice, bufferOffset);
-    if (options.position === undefined) {
+    buffer.set(slice, bufferOffset);
+    if (position === undefined) {
       this.position = end;
     }
     return { bytesRead: slice.length };
@@ -180,21 +180,23 @@ class SharedFileHandle implements WeshFileHandle {
     });
   }
 
-  async read(options: {
+  async read({ buffer, offset, length, position }: {
     buffer: Uint8Array;
     offset?: number;
     length?: number;
     position?: number;
   }): Promise<{ bytesRead: number }> {
+    const options = { buffer, offset, length, position };
     return this.state.handle.read(options);
   }
 
-  async write(options: {
+  async write({ buffer, offset, length, position }: {
     buffer: Uint8Array;
     offset?: number;
     length?: number;
     position?: number;
   }): Promise<{ bytesWritten: number }> {
+    const options = { buffer, offset, length, position };
     return this.state.handle.write(options);
   }
 
@@ -214,11 +216,13 @@ class SharedFileHandle implements WeshFileHandle {
     return this.state.handle.stat();
   }
 
-  async truncate(options: { size: number }): Promise<void> {
+  async truncate({ size }: { size: number }): Promise<void> {
+    const options = { size };
     await this.state.handle.truncate(options);
   }
 
-  async ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }> {
+  async ioctl({ request, arg }: { request: number; arg?: unknown }): Promise<{ ret: number }> {
+    const options = { request, arg };
     return this.state.handle.ioctl(options);
   }
 
@@ -338,14 +342,14 @@ export class Wesh {
       }),
     });
 
-    this.registerInternalCommand('jobs', async ({ context }) => {
+    this.registerInternalCommand({ name: 'jobs', fn: async ({ context }) => {
       const jobs = context.getJobs();
       const { print } = context.text();
       for (const job of jobs) {
         await print({ text: `[${job.id}] ${job.status} ${job.command}\n` });
       }
       return { exitCode: 0 };
-    });
+    } });
   }
 
   async init(): Promise<void> {
@@ -362,7 +366,7 @@ export class Wesh {
     this.commands.set(definition.meta.name, definition);
   }
 
-  async signalForegroundProcessGroup(options: { signal: number }): Promise<boolean> {
+  async signalForegroundProcessGroup({ signal }: { signal: number }): Promise<boolean> {
     const foregroundProcessGroupId = this.foregroundProcessGroupScopes.at(-1)?.pgid;
     if (foregroundProcessGroupId === undefined) {
       return false;
@@ -370,13 +374,13 @@ export class Wesh {
 
     await this.kernel.killProcessGroup({
       pgid: foregroundProcessGroupId,
-      signal: options.signal,
+      signal: signal,
       excludedPids: [this.shellPid],
     });
     return true;
   }
 
-  private registerInternalCommand(name: string, fn: ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>) {
+  private registerInternalCommand({ name, fn }: { name: string; fn: ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult> }) {
     this.commands.set(name, {
       fn,
       meta: { name, description: 'Built-in command', usage: name }
@@ -3333,7 +3337,7 @@ usage: ${name} [-c command] [file [argument...]]
    * Execute a shell script.
    * Low-level: All I/O goes to provided handles. Returns only exit status.
    */
-  async execute(options: {
+  async execute({ script: rawScript, stdin, stdout, stderr }: {
     script: string;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
@@ -3341,7 +3345,7 @@ usage: ${name} [-c command] [file [argument...]]
   }): Promise<WeshCommandResult> {
     if (this.shellPid === 0) await this.init();
 
-    const script = options.script.trim();
+    const script = rawScript.trim();
     if (!script) {
       return { exitCode: 0 };
     }
@@ -3358,9 +3362,9 @@ usage: ${name} [-c command] [file [argument...]]
         functions: new Map(),
         cwd: this.cwd,
         fds: this.createShellFdTable({
-          stdin: options.stdin,
-          stdout: options.stdout,
-          stderr: options.stderr,
+          stdin: stdin,
+          stdout: stdout,
+          stderr: stderr,
         }),
         traps: this.traps,
         shellOptions: this.shellOptions,
@@ -3395,12 +3399,20 @@ usage: ${name} [-c command] [file [argument...]]
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       const encoder = new TextEncoder();
-      await options.stderr.write({ buffer: encoder.encode(`wesh: ${message}\n`) });
+      await stderr.write({ buffer: encoder.encode(`wesh: ${message}\n`) });
       return { exitCode: 1 };
     }
   }
 
-  private async executeNode(options: {
+  private async executeNode({
+    node,
+    environment,
+    stdin,
+    stdout,
+    stderr,
+    loopDepth = 0,
+    functionDepth = 0,
+  }: {
     node: WeshASTNode,
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
@@ -3409,15 +3421,7 @@ usage: ${name} [-c command] [file [argument...]]
     loopDepth?: number,
     functionDepth?: number,
   }): Promise<WeshCommandResult> {
-    const {
-      node,
-      environment,
-      stdin,
-      stdout,
-      stderr,
-      loopDepth = 0,
-      functionDepth = 0,
-    } = options;
+    const options = { node, environment, stdin, stdout, stderr, loopDepth, functionDepth };
     let result: WeshCommandResult;
 
     switch (node.kind) {
@@ -3837,7 +3841,15 @@ usage: ${name} [-c command] [file [argument...]]
     return result;
   }
 
-  private async executePipeline(options: {
+  private async executePipeline({
+    node,
+    environment,
+    stdin,
+    stdout,
+    stderr,
+    loopDepth = 0,
+    functionDepth = 0,
+  }: {
     node: { commands: WeshASTNode[] },
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
@@ -3846,15 +3858,6 @@ usage: ${name} [-c command] [file [argument...]]
     loopDepth?: number,
     functionDepth?: number,
   }): Promise<WeshCommandResult> {
-    const {
-      node,
-      environment,
-      stdin,
-      stdout,
-      stderr,
-      loopDepth = 0,
-      functionDepth = 0,
-    } = options;
     const commands = node.commands;
     if (commands.length === 0) return { exitCode: 0 };
 
@@ -3916,7 +3919,16 @@ usage: ${name} [-c command] [file [argument...]]
     return results[results.length - 1]!;
   }
 
-  private async executeCommand(options: {
+  private async executeCommand({
+    node,
+    environment,
+    stdin,
+    stdout,
+    stderr,
+    ignoreAliases,
+    loopDepth = 0,
+    functionDepth = 0,
+  }: {
     node: WeshCommandNode,
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
@@ -3926,16 +3938,6 @@ usage: ${name} [-c command] [file [argument...]]
     loopDepth?: number;
     functionDepth?: number;
   }): Promise<WeshCommandResult> {
-    const {
-      node,
-      environment,
-      stdin,
-      stdout,
-      stderr,
-      ignoreAliases,
-      loopDepth = 0,
-      functionDepth = 0,
-    } = options;
     const aliasExpandedNode = ignoreAliases === true
       ? node
       : this.expandAliasCommandNode({
@@ -4825,7 +4827,7 @@ usage: ${name} [-c command] [file [argument...]]
     };
   }
 
-  private async executeArgv(options: {
+  private async executeArgv({ command, args, environment, stdin, stdout, stderr, ignoreAliases }: {
     command: string;
     args: string[];
     environment: WeshExecutionEnvironment;
@@ -4835,23 +4837,23 @@ usage: ${name} [-c command] [file [argument...]]
     ignoreAliases?: boolean;
   }): Promise<WeshCommandResult> {
     const isolatedEnvironment = await this.spawnChildExecutionEnvironment({
-      parentEnvironment: options.environment,
-      pgid: options.environment.pgid,
+      parentEnvironment: environment,
+      pgid: environment.pgid,
     });
 
     return this.executeCommand({
       node: {
         kind: 'command',
         assignments: [],
-        name: options.command,
-        args: options.args,
+        name: command,
+        args: args,
         redirections: [],
       },
       environment: isolatedEnvironment,
-      stdin: options.stdin,
-      stdout: options.stdout,
-      stderr: options.stderr,
-      ignoreAliases: options.ignoreAliases,
+      stdin: stdin,
+      stdout: stdout,
+      stderr: stderr,
+      ignoreAliases: ignoreAliases,
     });
   }
 
@@ -4956,41 +4958,41 @@ usage: ${name} [-c command] [file [argument...]]
     return childEnvironment;
   }
 
-  private async runExitTrapIfNeeded(options: {
+  private async runExitTrapIfNeeded({ result, environment, stdin, stdout, stderr }: {
     result: WeshCommandResult;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult> {
-    const exitTrap = options.environment.traps.get('EXIT');
+    const exitTrap = environment.traps.get('EXIT');
     if (exitTrap === undefined || exitTrap.kind !== 'run') {
-      return options.result;
+      return result;
     }
 
     await this.runTrapScript({
       script: exitTrap.action,
-      trapStatus: options.result.waitStatus ?? {
+      trapStatus: result.waitStatus ?? {
         kind: 'exited',
-        exitCode: options.result.exitCode,
+        exitCode: result.exitCode,
       },
-      environment: options.environment,
-      stdin: options.stdin,
-      stdout: options.stdout,
-      stderr: options.stderr,
+      environment: environment,
+      stdin: stdin,
+      stdout: stdout,
+      stderr: stderr,
     });
-    return options.result;
+    return result;
   }
 
-  private async runSignalTrapIfNeeded(options: {
+  private async runSignalTrapIfNeeded({ signal, environment, stdin, stdout, stderr }: {
     signal: number;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<void> {
-    for (const condition of weshSignalConditionNames({ signal: options.signal })) {
-      const trapDisposition = options.environment.traps.get(condition);
+    for (const condition of weshSignalConditionNames({ signal: signal })) {
+      const trapDisposition = environment.traps.get(condition);
       if (trapDisposition === undefined) {
         continue;
       }
@@ -5003,12 +5005,12 @@ usage: ${name} [-c command] [file [argument...]]
           script: trapDisposition.action,
           trapStatus: {
             kind: 'signaled',
-            signal: options.signal,
+            signal: signal,
           },
-          environment: options.environment,
-          stdin: options.stdin,
-          stdout: options.stdout,
-          stderr: options.stderr,
+          environment: environment,
+          stdin: stdin,
+          stdout: stdout,
+          stderr: stderr,
         });
         return;
       default: {
@@ -5019,7 +5021,7 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private async runTrapScript(options: {
+  private async runTrapScript({ script, trapStatus, environment, stdin, stdout, stderr }: {
     script: string;
     trapStatus: WeshWaitStatus;
     environment: WeshExecutionEnvironment;
@@ -5027,51 +5029,51 @@ usage: ${name} [-c command] [file [argument...]]
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<void> {
-    const previousQuestionMark = options.environment.env.get('?');
-    options.environment.env.set(
+    const previousQuestionMark = environment.env.get('?');
+    environment.env.set(
       '?',
       weshWaitStatusToExitCode({
-        waitStatus: options.trapStatus,
+        waitStatus: trapStatus,
       }).toString(),
     );
     try {
       await this.executeShellInState({
-        script: options.script,
-        environment: options.environment,
-        stdin: options.stdin,
-        stdout: options.stdout,
-        stderr: options.stderr,
+        script: script,
+        environment: environment,
+        stdin: stdin,
+        stdout: stdout,
+        stderr: stderr,
       });
     } finally {
       if (previousQuestionMark === undefined) {
-        options.environment.env.delete('?');
+        environment.env.delete('?');
       } else {
-        options.environment.env.set('?', previousQuestionMark);
+        environment.env.set('?', previousQuestionMark);
       }
     }
   }
 
-  private async buildSignalCommandResultIfAny(options: {
+  private async buildSignalCommandResultIfAny({ pid, environment, stdin, stdout, stderr }: {
     pid: number;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult | undefined> {
-    const signalWaitStatus = this.kernel.getWaitStatus({ pid: options.pid });
+    const signalWaitStatus = this.kernel.getWaitStatus({ pid: pid });
     if (signalWaitStatus === undefined) {
       return undefined;
     }
 
     switch (signalWaitStatus.kind) {
     case 'signaled':
-      this.kernel.consumePendingSignals({ pid: options.pid });
+      this.kernel.consumePendingSignals({ pid: pid });
       await this.runSignalTrapIfNeeded({
         signal: signalWaitStatus.signal,
-        environment: options.environment,
-        stdin: options.stdin,
-        stdout: options.stdout,
-        stderr: options.stderr,
+        environment: environment,
+        stdin: stdin,
+        stdout: stdout,
+        stderr: stderr,
       });
       return {
         exitCode: weshWaitStatusToExitCode({
@@ -5080,7 +5082,7 @@ usage: ${name} [-c command] [file [argument...]]
         waitStatus: signalWaitStatus,
       };
     case 'stopped':
-      this.kernel.consumePendingSignals({ pid: options.pid });
+      this.kernel.consumePendingSignals({ pid: pid });
       return {
         exitCode: weshWaitStatusToExitCode({
           waitStatus: signalWaitStatus,
@@ -5096,17 +5098,17 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private async runWithForegroundProcessGroup<T>(options: {
+  private async runWithForegroundProcessGroup<T>({ pgid, fn }: {
     pgid: number;
     fn: () => Promise<T>;
   }): Promise<T> {
     const scopeId = this.nextForegroundProcessGroupScopeId++;
     this.foregroundProcessGroupScopes.push({
       id: scopeId,
-      pgid: options.pgid,
+      pgid: pgid,
     });
     try {
-      return await options.fn();
+      return await fn();
     } finally {
       const scopeIndex = this.foregroundProcessGroupScopes.findIndex(scope => scope.id === scopeId);
       if (scopeIndex >= 0) {
@@ -5115,12 +5117,12 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private buildProcessSignalDispositions(options: {
+  private buildProcessSignalDispositions({ environment }: {
     environment: WeshExecutionEnvironment;
   }): Map<number, WeshProcessSignalDisposition> {
     const signalDispositions = new Map<number, WeshProcessSignalDisposition>();
 
-    for (const [condition, disposition] of options.environment.traps.entries()) {
+    for (const [condition, disposition] of environment.traps.entries()) {
       switch (disposition.kind) {
       case 'ignore':
         for (const signal of weshSignalNumbersForCondition({ condition })) {
@@ -5139,10 +5141,9 @@ usage: ${name} [-c command] [file [argument...]]
     return signalDispositions;
   }
 
-  private syncSpecialParameters(options: {
+  private syncSpecialParameters({ environment }: {
     environment: WeshExecutionEnvironment;
   }): void {
-    const { environment } = options;
     environment.env.set('$$', environment.shellPid.toString());
     environment.env.set('#', environment.positionalArgs.length.toString());
     environment.env.set('0', environment.env.get('SHELL') ?? 'wesh');
@@ -5163,7 +5164,7 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private async executeShellInState(options: {
+  private async executeShellInState({ script, environment, stdin, stdout, stderr }: {
     script: string;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
@@ -5171,16 +5172,16 @@ usage: ${name} [-c command] [file [argument...]]
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult> {
     const rootNode = parseCommandLine({
-      commandLine: options.script,
-      env: options.environment.env,
+      commandLine: script,
+      env: environment.env,
     });
 
     return this.executeNode({
       node: rootNode,
-      environment: options.environment,
-      stdin: options.stdin,
-      stdout: options.stdout,
-      stderr: options.stderr,
+      environment: environment,
+      stdin: stdin,
+      stdout: stdout,
+      stderr: stderr,
     });
   }
 }

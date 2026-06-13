@@ -7,6 +7,9 @@ import type {
   ScanTask,
   WorkerToolDefinition,
   TransformersJsWorkerClient,
+  TransformersJsProgressCallback,
+  TransformersJsChunkCallback,
+  TransformersJsToolCallsCallback,
 } from './types';
 
 /**
@@ -110,22 +113,30 @@ function cloneWorkerTools({ tools }: { tools: WorkerToolDefinition[] | undefined
   }));
 }
 
-type ProgressListener = (
-  status: typeof loadingStatus,
-  progress: number,
-  error: string | undefined,
-  isCached: boolean,
-  isLoadingFromCache: boolean,
-  progressItems: Record<string, ProgressInfo>,
-  loadingModelId: string | undefined
-) => void;
+type ProgressListener = ({
+  status,
+  progress,
+  error,
+  isCached,
+  isLoadingFromCache,
+  progressItems,
+  loadingModelId,
+}: {
+  status: typeof loadingStatus;
+  progress: number;
+  error: string | undefined;
+  isCached: boolean;
+  isLoadingFromCache: boolean;
+  progressItems: Record<string, ProgressInfo>;
+  loadingModelId: string | undefined;
+}) => void;
 const listeners: Set<ProgressListener> = new Set();
 
-type ModelListListener = () => void;
+type ModelListListener = (_args: Record<never, never>) => void;
 const modelListListeners: Set<ModelListListener> = new Set();
 
 function notify() {
-  listeners.forEach(l => l(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId));
+  listeners.forEach(l => l({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId }));
 }
 
 function updateProgress({ info }: { info: ProgressInfo }) {
@@ -220,7 +231,7 @@ function updateProgress({ info }: { info: ProgressInfo }) {
 }
 
 function notifyModelListChange() {
-  modelListListeners.forEach(l => l());
+  modelListListeners.forEach(l => l({}));
 }
 
 // Worker management
@@ -266,7 +277,7 @@ function isFatalError({ msg }: { msg: string }): boolean {
 async function preDownloadModel({ modelId, remote, progress_callback }: {
   modelId: string,
   remote: TransformersJsWorkerClient,
-  progress_callback: (info: ProgressInfo) => void
+  progress_callback: TransformersJsProgressCallback
 }): Promise<{ discoveredFileCount: number }> {
   const startedAt = performance.now();
   const scannerClient = createTransformersJsScannerWorkerClient({});
@@ -336,13 +347,13 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
 }
 
 export const transformersJsService = {
-  subscribe(listener: ProgressListener) {
+  subscribe({ listener }: { listener: ProgressListener }) {
     listeners.add(listener);
-    listener(loadingStatus, loadingProgress, loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId);
+    listener({ status: loadingStatus, progress: loadingProgress, error: loadingError, isCached, isLoadingFromCache, progressItems, loadingModelId });
     return () => listeners.delete(listener);
   },
 
-  subscribeModelList(listener: ModelListListener) {
+  subscribeModelList({ listener }: { listener: ModelListListener }) {
     modelListListeners.add(listener);
     return () => modelListListeners.delete(listener);
   },
@@ -391,7 +402,7 @@ export const transformersJsService = {
       }
 
       // Helper to calculate directory stats and check for marker
-      const getDirStats = async (dir: FileSystemDirectoryHandle): Promise<{ size: number; fileCount: number; lastModified: number; isComplete: boolean }> => {
+      const getDirStats = async ({ dir }: { dir: FileSystemDirectoryHandle }): Promise<{ size: number; fileCount: number; lastModified: number; isComplete: boolean }> => {
         let size = 0;
         let fileCount = 0;
         let lastModified = 0;
@@ -400,8 +411,8 @@ export const transformersJsService = {
         const markers = new Set<string>();
         let hasWeights = false;
 
-        const scan = async (d: FileSystemDirectoryHandle, path: string = '') => {
-          for await (const [name, handle] of d.entries()) {
+        const scan = async ({ dir, path = '' }: { dir: FileSystemDirectoryHandle; path?: string }) => {
+          for await (const [name, handle] of dir.entries()) {
             const h = handle as FileSystemHandle;
             const fullPath = path ? `${path}/${name}` : name;
 
@@ -419,7 +430,7 @@ export const transformersJsService = {
               break;
             }
             case 'directory':
-              await scan(h as FileSystemDirectoryHandle, fullPath);
+              await scan({ dir: h as FileSystemDirectoryHandle, path: fullPath });
               break;
             default: {
               const _ex: never = h.kind as never;
@@ -428,7 +439,7 @@ export const transformersJsService = {
             }
           }
         };
-        await scan(dir);
+        await scan({ dir });
 
         // A model is considered complete if:
         // 1. Every file present has a corresponding .complete marker
@@ -466,7 +477,7 @@ export const transformersJsService = {
           const h = handle as FileSystemHandle;
           switch (h.kind) {
           case 'directory': {
-            const stats = await getDirStats(h as FileSystemDirectoryHandle);
+            const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
             results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
             break;
           }
@@ -487,7 +498,7 @@ export const transformersJsService = {
           const h = handle as FileSystemHandle;
           switch (h.kind) {
           case 'directory': {
-            const stats = await getDirStats(h as FileSystemDirectoryHandle);
+            const stats = await getDirStats({ dir: h as FileSystemDirectoryHandle });
             // We still label it as 'user/' to the rest of the app
             results.push({ id: `user/${name}`, isLocal: true, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
             break;
@@ -513,7 +524,7 @@ export const transformersJsService = {
               const rh = repoHandle as FileSystemHandle;
               switch (rh.kind) {
               case 'directory': {
-                const stats = await getDirStats(rh as FileSystemDirectoryHandle);
+                const stats = await getDirStats({ dir: rh as FileSystemDirectoryHandle });
                 results.push({ id: `hf.co/${orgName}/${repoName}`, isLocal: false, size: stats.size, fileCount: stats.fileCount, lastModified: stats.lastModified, isComplete: stats.isComplete });
                 break;
               }
@@ -542,7 +553,7 @@ export const transformersJsService = {
     return results;
   },
 
-  async importFile(modelName: string, fileName: string, data: ArrayBuffer | ReadableStream) {
+  async importFile({ modelName, fileName, data }: { modelName: string; fileName: string; data: ArrayBuffer | ReadableStream }) {
     const root = await navigator.storage.getDirectory();
     const modelsDir = await root.getDirectoryHandle('models', { create: true });
     const userDir = await modelsDir.getDirectoryHandle('user', { create: true });
@@ -661,7 +672,7 @@ export const transformersJsService = {
       notify();
 
       let lastProgressNotify = 0;
-      const progress_callback = (info: ProgressInfo) => {
+      const progress_callback: TransformersJsProgressCallback = ({ info }) => {
         updateProgress({ info });
         if (info.status === 'cached') {
           isCached = true;
@@ -777,7 +788,7 @@ export const transformersJsService = {
       notify();
 
       let lastProgressNotify = 0;
-      const progress_callback = (info: ProgressInfo) => {
+      const progress_callback: TransformersJsProgressCallback = ({ info }) => {
         updateProgress({ info });
 
         const now = Date.now();
@@ -861,14 +872,14 @@ export const transformersJsService = {
   /**
    * Generates text through the worker.
    */
-  async generateText(
-    messages: ChatMessage[],
-    onChunk: (chunk: string) => void,
-    onToolCalls: (toolCalls: ToolCall[]) => void,
-    params?: LmParameters,
-    tools?: WorkerToolDefinition[],
+  async generateText({ messages, onChunk, onToolCalls, params, tools, signal }: {
+    messages: ChatMessage[]
+    onChunk: TransformersJsChunkCallback
+    onToolCalls: TransformersJsToolCallsCallback
+    params?: LmParameters
+    tools?: WorkerToolDefinition[]
     signal?: AbortSignal
-  ) {
+  }) {
     switch (loadingStatus) {
     case 'idle':
     case 'loading':

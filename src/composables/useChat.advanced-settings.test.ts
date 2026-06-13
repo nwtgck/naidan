@@ -13,8 +13,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadSettings: vi.fn().mockResolvedValue({}),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
@@ -80,8 +80,8 @@ describe('useChat Advanced Settings Resolution', () => {
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'profile-gpt', 'chat-gpt']);
     mockOllamaModels.mockResolvedValue(['llama3']);
 
-    mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
-    mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
+    mockOpenAIChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'OpenAI Resp' }));
+    mockOllamaChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'Ollama Resp' }));
 
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     await openChat({ id: chat!.id });
@@ -271,8 +271,8 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
   it('stores endpoint as a nested object so it survives a page reload', async () => {
     // Capture the async updater that updateChatMeta passes to storageService.updateChatMeta.
     // In production, storage calls this updater with the stored ChatMeta and saves the result.
-    let capturedStorageUpdater: ((curr: unknown) => Promise<unknown>) | undefined;
-    vi.mocked(storageService.updateChatMeta).mockImplementationOnce((_id, updater) => {
+    let capturedStorageUpdater: (({ current }: { current: unknown }) => Promise<unknown>) | undefined;
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce(({ updater }) => {
       capturedStorageUpdater = updater as typeof capturedStorageUpdater;
       return Promise.resolve(undefined as any);
     });
@@ -291,7 +291,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
 
     // Simulate storage calling the updater with the existing ChatMeta row.
     const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
-    const saved = await capturedStorageUpdater!(existingMeta) as Record<string, unknown>;
+    const saved = await capturedStorageUpdater!({ current: existingMeta }) as Record<string, unknown>;
 
     // Endpoint must be saved as a nested object — not as flat fields.
     // If flat fields appear here the storage mapper silently ignores them and the
@@ -313,7 +313,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
   // so the endpoint was written as undefined on every chat activity.
   it('preserves endpoint override when updateChatMeta is called via a non-settings path (e.g. renameChat)', async () => {
     // First updateChatMeta is from updateChatSettings — just let it resolve.
-    vi.mocked(storageService.updateChatMeta).mockImplementationOnce((_id, _updater) => Promise.resolve(undefined as any));
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce(({ updater: _updater }) => Promise.resolve(undefined as any));
 
     await updateChatSettings({ id: currentChat.value!.id, updates: {
       endpointType: 'openai',
@@ -326,8 +326,8 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     expect(currentChat.value?.endpointUrl).toBe('http://chat-specific-url');
 
     // Second updateChatMeta is from renameChat — capture its storage updater.
-    let capturedStorageUpdater: ((curr: unknown) => Promise<unknown>) | undefined;
-    vi.mocked(storageService.updateChatMeta).mockImplementationOnce((_id, updater) => {
+    let capturedStorageUpdater: (({ current }: { current: unknown }) => Promise<unknown>) | undefined;
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce(({ updater }) => {
       capturedStorageUpdater = updater as typeof capturedStorageUpdater;
       return Promise.resolve(undefined as any);
     });
@@ -340,7 +340,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     expect(capturedStorageUpdater).toBeDefined();
 
     const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
-    const saved = await capturedStorageUpdater!(existingMeta) as Record<string, unknown>;
+    const saved = await capturedStorageUpdater!({ current: existingMeta }) as Record<string, unknown>;
 
     // Endpoint must survive the title-update path as a nested object.
     expect(saved['endpoint']).toEqual({
@@ -355,8 +355,8 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
   });
 
   it('clears the stored endpoint object when endpointType is unset', async () => {
-    let capturedStorageUpdater: ((curr: unknown) => Promise<unknown>) | undefined;
-    vi.mocked(storageService.updateChatMeta).mockImplementationOnce((_id, updater) => {
+    let capturedStorageUpdater: (({ current }: { current: unknown }) => Promise<unknown>) | undefined;
+    vi.mocked(storageService.updateChatMeta).mockImplementationOnce(({ updater }) => {
       capturedStorageUpdater = updater as typeof capturedStorageUpdater;
       return Promise.resolve(undefined as any);
     });
@@ -366,7 +366,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     await updateChatSettings({ id: currentChat.value!.id, updates: { modelId: 'custom-model' } });
 
     const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
-    const saved = await capturedStorageUpdater!(existingMeta) as Record<string, unknown>;
+    const saved = await capturedStorageUpdater!({ current: existingMeta }) as Record<string, unknown>;
 
     expect(saved['endpoint']).toBeUndefined();
     expect(saved['modelId']).toBe('custom-model');

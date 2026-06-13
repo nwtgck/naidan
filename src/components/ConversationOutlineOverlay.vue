@@ -52,7 +52,7 @@ const outlineBodyMaxHeightClass = computed(() => {
   return peekMessageId.value === undefined ? 'max-h-[calc(55vh-41px)]' : 'max-h-[calc(80vh-41px)]';
 });
 
-function updateScrollHints(_args: Record<string, never>) {
+function updateScrollHints(_args: Record<never, never>) {
   const body = outlineBody.value;
   if (!body) {
     topScrollHintVisibility.value = 'hidden';
@@ -64,7 +64,7 @@ function updateScrollHints(_args: Record<string, never>) {
   bottomScrollHintVisibility.value = body.scrollTop + body.clientHeight < body.scrollHeight - 1 ? 'visible' : 'hidden';
 }
 
-function scrollToInitialMessage(_args: Record<string, never>) {
+function scrollToInitialMessage(_args: Record<never, never>) {
   const body = outlineBody.value;
   const initialMessageId = props.initialMessageId;
   if (!body || !initialMessageId) {

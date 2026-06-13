@@ -132,8 +132,8 @@ async function startCopyAndEmit({ name, entries, label, readOnly }: {
       name,
       entries,
       signal: controller.signal,
-      onProgress: (p) => {
-        progress.value = p;
+      onProgress: ({ processed, total }) => {
+        progress.value = { processed, total };
       },
     });
     emit('created', { volumeId: vol.id, mountPath: generateSuggestedPath({ baseName: name }), readOnly });
@@ -321,13 +321,13 @@ function onDocDrop({ event }: { event: DragEvent }) {
   handleDrop({ event });
 }
 
-function handleDocumentDragOver(event: DragEvent) {
-  onDocDragOver({ event });
-}
+const handleDocumentDragOver: EventListener = (event) => {
+  onDocDragOver({ event: event as DragEvent });
+};
 
-function handleDocumentDrop(event: DragEvent) {
-  onDocDrop({ event });
-}
+const handleDocumentDrop: EventListener = (event) => {
+  onDocDrop({ event: event as DragEvent });
+};
 
 onMounted(async () => {
   hasFileSystemAccess.value = checkFileSystemAccessSupport();

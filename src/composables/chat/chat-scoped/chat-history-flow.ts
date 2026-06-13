@@ -122,7 +122,7 @@ export async function commitFullHistoryManipulationForChat({
       case 'memory':
         if (storageService.canPersistBinary) {
           try {
-            await storageService.saveFile(attachment.blob, attachment.binaryObjectId, attachment.originalName);
+            await storageService.saveFile({ blob: attachment.blob, binaryObjectId: attachment.binaryObjectId, name: attachment.originalName });
             message.attachments[index] = { ...attachment, status: 'persisted' };
           } catch (error) {
             console.error('Failed to persist attachment during manipulation:', error);
@@ -154,11 +154,13 @@ export async function commitFullHistoryManipulationForChat({
 
   await updateChatContent({
     id: mutableChat.id,
-    updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+
+    updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
   });
   await updateChatMeta({
     id: mutableChat.id,
-    updater: (current) => {
+
+    updater: ({ current }) => {
       if (current === null) {
         return mutableChat;
       }
@@ -277,13 +279,13 @@ async function forkChatFromTarget({
     id: newChatId,
     updater: () => newChat,
   });
-  await storageService.updateHierarchy((current) => {
+  await storageService.updateHierarchy({ updater: ({ current }) => {
     return prependForkedChatToHierarchy({
       current,
       newChatId,
       chatGroupId: mutableChat.groupId,
     });
-  });
+  } });
   await loadData({});
   await useChatNavigation().openChat({ chatId: newChat.id, leafId: undefined });
   return newChat.id;
@@ -340,7 +342,8 @@ async function editMessageInTarget({
     mutableChat.currentLeafId = correctedNode.id;
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+
+      updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
     });
     notifyChatChanged({ chatId: mutableChat.id });
     break;
@@ -389,7 +392,8 @@ async function switchVersionInTarget({
   notifyChatChanged({ chatId: mutableChat.id });
   await updateChatContent({
     id: mutableChat.id,
-    updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+
+    updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
   });
 }
 

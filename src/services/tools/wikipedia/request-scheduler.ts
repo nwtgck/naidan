@@ -2,7 +2,7 @@ export const WIKIPEDIA_API_MIN_REQUEST_INTERVAL_MS = 1000
 
 type QueuedWikipediaApiSlot = {
   onAbort: (() => void) | undefined;
-  reject: (reason: unknown) => void;
+  reject: ReturnType<typeof Promise.withResolvers<void>>['reject'];
   resolve: () => void;
   signal: AbortSignal | undefined;
 }

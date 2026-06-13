@@ -142,7 +142,7 @@ class StandardFileHandle implements WeshFileHandle {
     this._cursor = file.size;
   }
 
-  async read(options: {
+  async read({ buffer, offset, length, position }: {
     buffer: Uint8Array;
     offset?: number;
     length?: number;
@@ -150,28 +150,28 @@ class StandardFileHandle implements WeshFileHandle {
   }): Promise<WeshIOResult> {
     await this.ready;
     const file = await this.handle.getFile();
-    const pos = options.position ?? this._cursor;
+    const pos = position ?? this._cursor;
 
     if (pos >= file.size) return { bytesRead: 0 };
 
-    const bufferOffset = options.offset ?? 0;
-    const maxLen = options.length ?? (options.buffer.length - bufferOffset);
+    const bufferOffset = offset ?? 0;
+    const maxLen = length ?? (buffer.length - bufferOffset);
     const end = Math.min(pos + maxLen, file.size);
 
     const slice = file.slice(pos, end);
     const arrayBuffer = await slice.arrayBuffer();
     const result = new Uint8Array(arrayBuffer);
 
-    options.buffer.set(result, bufferOffset);
+    buffer.set(result, bufferOffset);
 
-    if (options.position === undefined) {
+    if (position === undefined) {
       this._cursor += result.length;
     }
 
     return { bytesRead: result.length };
   }
 
-  async write(options: {
+  async write({ buffer, offset, length: requestedLength, position }: {
     buffer: Uint8Array;
     offset?: number;
     length?: number;
@@ -180,11 +180,11 @@ class StandardFileHandle implements WeshFileHandle {
     await this.ready;
     if (this.readOnly) throw new Error('File is read-only');
 
-    const bufferOffset = options.offset ?? 0;
-    const length = options.length ?? (options.buffer.length - bufferOffset);
-    const dataToWrite = options.buffer.subarray(bufferOffset, bufferOffset + length);
+    const bufferOffset = offset ?? 0;
+    const length = requestedLength ?? (buffer.length - bufferOffset);
+    const dataToWrite = buffer.subarray(bufferOffset, bufferOffset + length);
 
-    const pos = options.position ?? this._cursor;
+    const pos = position ?? this._cursor;
 
     const writable = await this.handle.createWritable({ keepExistingData: true });
     try {
@@ -194,7 +194,7 @@ class StandardFileHandle implements WeshFileHandle {
       await writable.close();
     }
 
-    if (options.position === undefined) {
+    if (position === undefined) {
       this._cursor += length;
     }
 
@@ -217,12 +217,12 @@ class StandardFileHandle implements WeshFileHandle {
     };
   }
 
-  async truncate(options: { size: number }): Promise<void> {
+  async truncate({ size }: { size: number }): Promise<void> {
     await this.ready;
     if (this.readOnly) throw new Error('File is read-only');
     const writable = await this.handle.createWritable({ keepExistingData: true });
     try {
-      await writable.truncate(options.size);
+      await writable.truncate(size);
     } finally {
       await writable.close();
     }
@@ -238,10 +238,10 @@ class FifoHandle implements WeshFileHandle {
   private bufferHeadIndex = 0;
   private bufferSize = 0;
   private headOffset = 0;
-  private waiters: Array<(val: void) => void> = [];
+  private waiters: Array<ReturnType<typeof Promise.withResolvers<void>>['resolve']> = [];
   private closed = false;
 
-  async read(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
+  async read({ buffer, offset, length }: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
     if (this.bufferHeadIndex >= this.buffer.length && this.closed) return { bytesRead: 0 };
 
     while (this.bufferHeadIndex >= this.buffer.length) {
@@ -250,12 +250,12 @@ class FifoHandle implements WeshFileHandle {
     }
 
     const chunk = this.buffer[this.bufferHeadIndex]!;
-    const bufferOffset = options.offset ?? 0;
-    const maxLen = options.length ?? (options.buffer.length - bufferOffset);
+    const bufferOffset = offset ?? 0;
+    const maxLen = length ?? (buffer.length - bufferOffset);
     const available = chunk.length - this.headOffset;
     const copyLen = Math.min(available, maxLen);
 
-    options.buffer.set(chunk.subarray(this.headOffset, this.headOffset + copyLen), bufferOffset);
+    buffer.set(chunk.subarray(this.headOffset, this.headOffset + copyLen), bufferOffset);
 
     if (copyLen === available) {
       this.bufferHeadIndex += 1;
@@ -275,12 +275,12 @@ class FifoHandle implements WeshFileHandle {
     return { bytesRead: copyLen };
   }
 
-  async write(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshWriteResult> {
+  async write({ buffer, offset, length: requestedLength }: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshWriteResult> {
     if (this.closed) throw new WeshBrokenPipeError();
 
-    const bufferOffset = options.offset ?? 0;
-    const length = options.length ?? (options.buffer.length - bufferOffset);
-    const data = new Uint8Array(options.buffer.subarray(bufferOffset, bufferOffset + length));
+    const bufferOffset = offset ?? 0;
+    const length = requestedLength ?? (buffer.length - bufferOffset);
+    const data = new Uint8Array(buffer.subarray(bufferOffset, bufferOffset + length));
 
     this.buffer.push(data);
     this.bufferSize += length;
@@ -321,8 +321,8 @@ class DevNullHandle implements WeshFileHandle {
   async read(): Promise<WeshIOResult> {
     return { bytesRead: 0 };
   }
-  async write(options: { length?: number; buffer: Uint8Array; offset?: number }): Promise<WeshWriteResult> {
-    const len = options.length ?? (options.buffer.length - (options.offset ?? 0));
+  async write({ length, buffer, offset }: { length?: number; buffer: Uint8Array; offset?: number }): Promise<WeshWriteResult> {
+    const len = length ?? (buffer.length - (offset ?? 0));
     return { bytesWritten: len };
   }
   async close() {}
@@ -336,14 +336,14 @@ class DevNullHandle implements WeshFileHandle {
 }
 
 class DevZeroHandle implements WeshFileHandle {
-  async read(options: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
-    const offset = options.offset ?? 0;
-    const length = options.length ?? (options.buffer.length - offset);
-    options.buffer.fill(0, offset, offset + length);
+  async read({ buffer, offset: requestedOffset, length: requestedLength }: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {
+    const offset = requestedOffset ?? 0;
+    const length = requestedLength ?? (buffer.length - offset);
+    buffer.fill(0, offset, offset + length);
     return { bytesRead: length };
   }
-  async write(options: { length?: number; buffer: Uint8Array; offset?: number }): Promise<WeshWriteResult> {
-    const len = options.length ?? (options.buffer.length - (options.offset ?? 0));
+  async write({ length, buffer, offset }: { length?: number; buffer: Uint8Array; offset?: number }): Promise<WeshWriteResult> {
+    const len = length ?? (buffer.length - (offset ?? 0));
     return { bytesWritten: len };
   }
   async close() {}
@@ -430,7 +430,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     try {
       const systemDir = await handle.getDirectoryHandle(WESH_SYSTEM_DIR);
       const metaDir = await systemDir.getDirectoryHandle(METADATA_DIR);
-      await this.scanRegistryRecursive(metaDir, '', registryCache);
+      await this.scanRegistryRecursive({ dirHandle: metaDir, relPath: '', cache: registryCache });
     } catch {
       // No metadata dir
     }
@@ -459,11 +459,15 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     this.mounts.sort((a, b) => b.path.length - a.path.length);
   }
 
-  private async scanRegistryRecursive(
-    dirHandle: FileSystemDirectoryHandle,
-    relPath: string,
-    cache: Map<string, RegistryEntry>
-  ) {
+  private async scanRegistryRecursive({
+    dirHandle,
+    relPath,
+    cache,
+  }: {
+    dirHandle: FileSystemDirectoryHandle;
+    relPath: string;
+    cache: Map<string, RegistryEntry>;
+  }) {
     for await (const [name, handle] of dirHandle.entries()) {
       const itemPath = relPath ? `${relPath}/${name}` : name;
       switch (handle.kind) {
@@ -480,7 +484,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         break;
       }
       case 'directory':
-        await this.scanRegistryRecursive(handle as FileSystemDirectoryHandle, itemPath, cache);
+        await this.scanRegistryRecursive({ dirHandle: handle as FileSystemDirectoryHandle, relPath: itemPath, cache });
         break;
       default: {
         const _ex: never = handle.kind;
@@ -504,18 +508,18 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     this.specialFiles.delete(this.normalizePath({ path }));
   }
 
-  async open(options: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle> {
-    const normalized = this.normalizePath({ path: options.path });
+  async open({ path, flags, mode }: { path: string; flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle> {
+    const normalized = this.normalizePath({ path: path });
     const virtualMount = this.findVirtualMount({ path: normalized });
     if (virtualMount !== undefined) {
       return virtualMount.provider.open({
         path: normalized,
-        flags: options.flags,
-        mode: options.mode,
+        flags: flags,
+        mode: mode,
       });
     }
-    const create = options.flags.creation !== 'never';
-    const truncate = options.flags.truncate === 'truncate';
+    const create = flags.creation !== 'never';
+    const truncate = flags.truncate === 'truncate';
     let resolved: ResolvedNode;
 
     try {
@@ -524,14 +528,14 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         finalSymlinkTreatment: 'follow',
         depth: 0,
       });
-      switch (options.flags.creation) {
+      switch (flags.creation) {
       case 'always':
         throw new Error(`File exists: ${normalized}`);
       case 'never':
       case 'if-needed':
         break;
       default: {
-        const _ex: never = options.flags.creation;
+        const _ex: never = flags.creation;
         throw new Error(`Unhandled creation flag: ${_ex}`);
       }
       }
@@ -600,8 +604,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
 
     const fileHandle = new StandardFileHandle({
       handle: resolved.handle as FileSystemFileHandle,
-      readOnly: resolved.readOnly || options.flags.access === 'read',
-      append: options.flags.append === 'append'
+      readOnly: resolved.readOnly || flags.access === 'read',
+      append: flags.append === 'append'
     });
 
     if (truncate) {
@@ -611,42 +615,42 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     return fileHandle;
   }
 
-  async stat(options: { path: string }): Promise<WeshStat> {
-    const normalized = this.normalizePath({ path: options.path });
+  async stat({ path }: { path: string }): Promise<WeshStat> {
+    const normalized = this.normalizePath({ path: path });
     const virtualMount = this.findVirtualMount({ path: normalized });
     if (virtualMount !== undefined) {
       return virtualMount.provider.stat({ path: normalized });
     }
     const resolved = await this.resolveNode({
-      path: options.path,
+      path: path,
       finalSymlinkTreatment: 'follow',
       depth: 0,
     });
     return this.statFromResolvedNode({ resolved });
   }
 
-  async lstat(options: { path: string }): Promise<WeshStat> {
-    const normalized = this.normalizePath({ path: options.path });
+  async lstat({ path }: { path: string }): Promise<WeshStat> {
+    const normalized = this.normalizePath({ path: path });
     const virtualMount = this.findVirtualMount({ path: normalized });
     if (virtualMount !== undefined) {
       return virtualMount.provider.lstat({ path: normalized });
     }
     const resolved = await this.resolveNode({
-      path: options.path,
+      path: path,
       finalSymlinkTreatment: 'no-follow',
       depth: 0,
     });
     return this.statFromResolvedNode({ resolved });
   }
 
-  async readlink(options: { path: string }): Promise<string> {
-    const normalized = this.normalizePath({ path: options.path });
+  async readlink({ path }: { path: string }): Promise<string> {
+    const normalized = this.normalizePath({ path: path });
     const virtualMount = this.findVirtualMount({ path: normalized });
     if (virtualMount !== undefined) {
       return virtualMount.provider.readlink({ path: normalized });
     }
     const resolved = await this.resolveNode({
-      path: options.path,
+      path: path,
       finalSymlinkTreatment: 'no-follow',
       depth: 0,
     });
@@ -657,7 +661,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         return resolved.resolution.entry.targetPath ?? '';
       case 'fifo':
       case 'chardev':
-        throw new Error(`Invalid argument: ${options.path}`);
+        throw new Error(`Invalid argument: ${path}`);
       default: {
         const _ex: never = resolved.resolution.entry.type;
         throw new Error(`Unhandled registry entry type: ${_ex}`);
@@ -666,7 +670,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     case 'handle':
     case 'synthetic-directory':
     case 'special':
-      throw new Error(`Invalid argument: ${options.path}`);
+      throw new Error(`Invalid argument: ${path}`);
     default: {
       const _ex: never = resolved;
       throw new Error(`Unhandled resolved node: ${_ex}`);
@@ -674,8 +678,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
-  async resolve(options: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
-    const normalized = this.normalizePath({ path: options.path });
+  async resolve({ path }: { path: string }): Promise<{ fullPath: string; stat: WeshStat }> {
+    const normalized = this.normalizePath({ path: path });
     const virtualMount = this.findVirtualMount({ path: normalized });
     if (virtualMount !== undefined) {
       return {
@@ -684,7 +688,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       };
     }
     const resolved = await this.resolveNode({
-      path: options.path,
+      path: path,
       finalSymlinkTreatment: 'follow',
       depth: 0,
     });
@@ -694,8 +698,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     };
   }
 
-  async tryReadBlobEfficiently(options: { path: string }): Promise<WeshEfficientBlobReadResult> {
-    const normalized = this.normalizePath({ path: options.path });
+  async tryReadBlobEfficiently({ path }: { path: string }): Promise<WeshEfficientBlobReadResult> {
+    const normalized = this.normalizePath({ path: path });
     if (this.findVirtualMount({ path: normalized }) !== undefined) {
       return {
         kind: 'fallback-required',
@@ -703,7 +707,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       };
     }
     const resolved = await this.resolveNode({
-      path: options.path,
+      path: path,
       finalSymlinkTreatment: 'follow',
       depth: 0,
     });
@@ -726,7 +730,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         };
       }
       case 'directory':
-        throw new Error(`Not a file: ${options.path}`);
+        throw new Error(`Not a file: ${path}`);
       default: {
         const _ex: never = resolved.handle.kind;
         throw new Error(`Unhandled handle kind: ${_ex}`);
@@ -746,23 +750,23 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
-  async tryCreateFileWriterEfficiently(options: {
+  async tryCreateFileWriterEfficiently({ path, mode }: {
     path: string;
     mode: 'truncate' | 'append';
   }): Promise<WeshEfficientFileWriteResult> {
-    const normalized = this.normalizePath({ path: options.path });
+    const normalized = this.normalizePath({ path: path });
     if (this.findVirtualMount({ path: normalized }) !== undefined) {
       throw new Error(`Read-only filesystem: ${normalized}`);
     }
     let resolved: ResolvedNode;
     try {
       resolved = await this.resolveNode({
-        path: options.path,
+        path: path,
         finalSymlinkTreatment: 'follow',
         depth: 0,
       });
     } catch {
-      const normalized = this.normalizePath({ path: options.path });
+      const normalized = this.normalizePath({ path: path });
       const parts = normalized.split('/');
       const name = parts.pop();
       if (name === undefined) {
@@ -793,19 +797,19 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         const fileHandle = resolved.handle as FileSystemFileHandle;
         const writable = await fileHandle.createWritable({
           keepExistingData: (() => {
-            switch (options.mode) {
+            switch (mode) {
             case 'append':
               return true;
             case 'truncate':
               return false;
             default: {
-              const _ex: never = options.mode;
+              const _ex: never = mode;
               throw new Error(`Unhandled writer mode: ${_ex}`);
             }
             }
           })(),
         });
-        switch (options.mode) {
+        switch (mode) {
         case 'append': {
           const file = await fileHandle.getFile();
           await writable.seek(file.size);
@@ -814,7 +818,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         case 'truncate':
           break;
         default: {
-          const _ex: never = options.mode;
+          const _ex: never = mode;
           throw new Error(`Unhandled writer mode: ${_ex}`);
         }
         }
@@ -835,7 +839,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         };
       }
       case 'directory':
-        throw new Error(`Not a file: ${options.path}`);
+        throw new Error(`Not a file: ${path}`);
       default: {
         const _ex: never = resolved.handle.kind;
         throw new Error(`Unhandled handle kind: ${_ex}`);
@@ -855,8 +859,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
-  async *readDir(options: { path: string }): AsyncIterable<WeshDirEntry> {
-    const normalized = this.normalizePath({ path: options.path });
+  async *readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry> {
+    const normalized = this.normalizePath({ path: path });
     const virtualMount = this.findVirtualMount({ path: normalized });
     if (virtualMount !== undefined) {
       for await (const entry of virtualMount.provider.readDir({ path: normalized })) {
@@ -865,7 +869,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       return;
     }
     const resolved = await this.resolveNode({
-      path: options.path,
+      path: path,
       finalSymlinkTreatment: 'follow',
       depth: 0,
     });
@@ -875,15 +879,15 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     case 'synthetic-directory':
       break;
     case 'special':
-      throw new Error(`Not a directory: ${options.path}`);
+      throw new Error(`Not a directory: ${path}`);
     case 'registry':
-      throw new Error(`Not a directory: ${options.path}`);
+      throw new Error(`Not a directory: ${path}`);
     case 'handle': {
       switch (resolved.handle.kind) {
       case 'directory':
         break;
       case 'file':
-        throw new Error(`Not a directory: ${options.path}`);
+        throw new Error(`Not a directory: ${path}`);
       default: {
         const _ex: never = resolved.handle.kind;
         throw new Error(`Unhandled case: ${_ex}`);
@@ -956,8 +960,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
-  async mkdir(options: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
-    const normalized = this.normalizePath({ path: options.path });
+  async mkdir({ path, mode: _mode, recursive }: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
+    const normalized = this.normalizePath({ path: path });
     if (this.findVirtualMount({ path: normalized }) !== undefined) {
       throw new Error(`Read-only filesystem: ${normalized}`);
     }
@@ -998,7 +1002,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         }
         }
       } catch {
-        if (!options.recursive && i < parts.length - 1) throw new Error(`No such file or directory: ${currentPath}`);
+        if (!recursive && i < parts.length - 1) throw new Error(`No such file or directory: ${currentPath}`);
         const parent = await this.resolveExistingDirectory({
           path: currentPath || '/',
           finalSymlinkTreatment: 'follow',
@@ -1010,8 +1014,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
   }
 
-  async symlink(options: { path: string; targetPath: string; mode?: number }): Promise<void> {
-    const normalized = this.normalizePath({ path: options.path });
+  async symlink({ path, targetPath, mode }: { path: string; targetPath: string; mode?: number }): Promise<void> {
+    const normalized = this.normalizePath({ path: path });
     if (this.findVirtualMount({ path: normalized }) !== undefined) {
       throw new Error(`Read-only filesystem: ${normalized}`);
     }
@@ -1052,15 +1056,15 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     const relPath = this.getRelativePath({ path: normalized, mount });
     const entry: RegistryEntry = {
       type: 'symlink',
-      mode: options.mode ?? 0o777,
-      targetPath: options.targetPath,
+      mode: mode ?? 0o777,
+      targetPath: targetPath,
     };
     mount.registryCache.set(relPath, entry);
-    await this.saveRegistryEntry(mount, relPath, entry);
+    await this.saveRegistryEntry({ mount, relPath, entry });
   }
 
-  async unlink(options: { path: string }): Promise<void> {
-    const normalized = this.normalizePath({ path: options.path });
+  async unlink({ path }: { path: string }): Promise<void> {
+    const normalized = this.normalizePath({ path: path });
     if (this.findVirtualMount({ path: normalized }) !== undefined) {
       throw new Error(`Read-only filesystem: ${normalized}`);
     }
@@ -1095,7 +1099,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     switch (resolved.kind) {
     case 'registry':
       resolved.resolution.mount.registryCache.delete(resolved.resolution.relPath);
-      await this.deleteRegistryEntry(resolved.resolution.mount, resolved.resolution.relPath);
+      await this.deleteRegistryEntry({ mount: resolved.resolution.mount, relPath: resolved.resolution.relPath });
       break;
     case 'handle':
     case 'synthetic-directory':
@@ -1118,8 +1122,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     }
     await parent.handle.removeEntry(name);
   }
-  async rmdir(options: { path: string }): Promise<void> {
-    const normalized = this.normalizePath({ path: options.path });
+  async rmdir({ path }: { path: string }): Promise<void> {
+    const normalized = this.normalizePath({ path: path });
     if (this.findVirtualMount({ path: normalized }) !== undefined) {
       throw new Error(`Read-only filesystem: ${normalized}`);
     }
@@ -1169,8 +1173,8 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     await parent.handle.removeEntry(name);
   }
 
-  async mknod(options: { path: string; type: WeshFileType; mode?: number }): Promise<void> {
-    const normalized = this.normalizePath({ path: options.path });
+  async mknod({ path, type, mode }: { path: string; type: WeshFileType; mode?: number }): Promise<void> {
+    const normalized = this.normalizePath({ path: path });
     const mount = this.findMount({ path: normalized });
     switch (mount?.type) {
     case 'directory':
@@ -1196,10 +1200,10 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     await parent.handle.getFileHandle(name, { create: true });
 
     let entry: RegistryEntry;
-    switch (options.type) {
+    switch (type) {
     case 'fifo':
     case 'chardev':
-      entry = { type: options.type, mode: options.mode ?? 0o644 };
+      entry = { type: type, mode: mode ?? 0o644 };
       break;
     case 'symlink':
       throw new Error("Use ln -s for symlinks");
@@ -1207,18 +1211,18 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     case 'directory':
       return;
     default: {
-      const _ex: never = options.type;
+      const _ex: never = type;
       throw new Error(`Unhandled option type: ${_ex}`);
     }
     }
 
     mount.registryCache.set(relPath, entry);
-    await this.saveRegistryEntry(mount, relPath, entry);
+    await this.saveRegistryEntry({ mount, relPath, entry });
   }
 
-  async rename(options: { oldPath: string; newPath: string }): Promise<void> {
-    const oldNormalized = this.normalizePath({ path: options.oldPath });
-    const newNormalized = this.normalizePath({ path: options.newPath });
+  async rename({ oldPath, newPath }: { oldPath: string; newPath: string }): Promise<void> {
+    const oldNormalized = this.normalizePath({ path: oldPath });
+    const newNormalized = this.normalizePath({ path: newPath });
     if (oldNormalized === newNormalized) {
       return;
     }
@@ -1336,15 +1340,15 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       && newRelPath !== undefined
     ) {
       oldMount.registryCache.delete(oldRelPath);
-      await this.deleteRegistryEntry(oldMount, oldRelPath);
+      await this.deleteRegistryEntry({ mount: oldMount, relPath: oldRelPath });
       newMount.registryCache.set(newRelPath, oldRegistryEntry);
-      await this.saveRegistryEntry(newMount, newRelPath, oldRegistryEntry);
+      await this.saveRegistryEntry({ mount: newMount, relPath: newRelPath, entry: oldRegistryEntry });
     }
   }
 
   // --- Registry Persistence Helpers ---
 
-  private async saveRegistryEntry(mount: DirectoryMountEntry, relPath: string, entry: RegistryEntry) {
+  private async saveRegistryEntry({ mount, relPath, entry }: { mount: DirectoryMountEntry; relPath: string; entry: RegistryEntry }) {
     if (mount.readOnly) return;
 
     const systemDir = await mount.handle.getDirectoryHandle(WESH_SYSTEM_DIR, { create: true });
@@ -1364,7 +1368,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
     await writable.close();
   }
 
-  private async deleteRegistryEntry(mount: DirectoryMountEntry, relPath: string) {
+  private async deleteRegistryEntry({ mount, relPath }: { mount: DirectoryMountEntry; relPath: string }) {
     if (mount.readOnly) return;
     try {
       const systemDir = await mount.handle.getDirectoryHandle(WESH_SYSTEM_DIR);

@@ -8,7 +8,7 @@ import { nextTick, reactive, toRaw } from 'vue';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
-    capturedListener: null as ((event: any) => void) | null,
+    capturedListener: null as (({ event }: { event: any }) => void | Promise<void>) | null,
     mockChatStorage: new Map<string, Chat>(),
     mockGroupStorage: new Map<string, any>(),
     mockRootItems: [] as SidebarItem[],
@@ -19,30 +19,30 @@ const { mocks } = vi.hoisted(() => ({
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
-    subscribeToChanges: vi.fn().mockImplementation((l) => {
-      mocks.capturedListener = l;
+    subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
+      mocks.capturedListener = listener;
       return () => {};
     }),
     listChats: vi.fn().mockImplementation(() => Promise.resolve(Array.from(mocks.mockChatStorage.values()).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId })))),
     loadChat: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
     saveChat: vi.fn(),
     loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
-    updateChatMeta: vi.fn().mockImplementation(async  (id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mocks.mockChatStorage.get(id) || null;
-      const updated = await updater(current);
+      const updated = await updater({ current: current });
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
-    updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(async ({ id, updater }) => {
       const existing = mocks.mockChatStorage.get(id) || null;
-      const updated = await updater(existing as any);
+      const updated = await updater({ current: existing as any });
       if (existing) {
         mocks.mockChatStorage.set(id, { ...existing, ...updated });
       }
       return Promise.resolve();
     }),
-    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
-      mocks.mockHierarchy = await updater(mocks.mockHierarchy);
+    updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
+      mocks.mockHierarchy = await updater({ current: mocks.mockHierarchy });
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(mocks.mockHierarchy)),
@@ -51,9 +51,9 @@ vi.mock('../services/storage', () => ({
       mocks.mockChatStorage.delete(id);
       return Promise.resolve();
     }),
-    updateChatGroup: vi.fn().mockImplementation(async  (id, updater) => {
+    updateChatGroup: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mocks.mockGroupStorage.get(id) || null;
-      const updated = await updater(current);
+      const updated = await updater({ current: current });
       mocks.mockGroupStorage.set(id, JSON.parse(JSON.stringify(updated)));
       return Promise.resolve();
     }),
@@ -110,7 +110,7 @@ describe('useChat Cross-Tab Synchronization', () => {
 
   const simulateExternalEvent = async (event: any) => {
     if (mocks.capturedListener) {
-      await mocks.capturedListener(event);
+      await mocks.capturedListener({ event });
       // Yield to event loop to allow any microtasks/promises from the listener to resolve
       await Promise.resolve();
     }

@@ -9,8 +9,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined }))),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } }))),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn(),
     updateChatGroup: vi.fn(),
@@ -82,10 +82,10 @@ describe('useChat Streaming State Logic', () => {
 
     let resolveGen: () => void;
     const p = new Promise<void>(r => resolveGen = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Start');
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Start' });
       await p;
-      params.onChunk('End');
+      params.onChunk({ chunk: 'End' });
     });
 
     const sendPromise = sendMessage({ content: 'Hello' });

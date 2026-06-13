@@ -18,7 +18,7 @@ const promptCancelButtonText = ref('Cancel');
 const promptInputValue = ref('');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const promptBodyComponent = shallowRef<Component | any | null>(null);
-let resolvePromptPromise: ((value: string | null) => void) | undefined;
+let resolvePromptPromise: ReturnType<typeof Promise.withResolvers<string | null>>['resolve'] | undefined;
 
 export function usePrompt() {
   const showPrompt = ({ title, message, confirmButtonText, cancelButtonText, defaultValue, bodyComponent }: PromptOptions): Promise<string | null> => {

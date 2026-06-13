@@ -60,7 +60,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     await provider.chat({
       messages: [{ role: 'user', content: 'London weather?' }],
       model: 'llama3',
-      onChunk: (chunk) => {
+      onChunk: ({ chunk: chunk }) => {
         result += chunk;
       },
       tools: [mockTool],
@@ -108,7 +108,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     await provider.chat({
       messages: [],
       model: 'llama3',
-      onChunk: (chunk) => {
+      onChunk: ({ chunk: chunk }) => {
         result += chunk;
       },
       tools: [mockTool],

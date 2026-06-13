@@ -59,7 +59,7 @@ describe('wesh vfs mounts', () => {
   let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });
@@ -83,7 +83,7 @@ describe('wesh vfs mounts', () => {
   }
 
   it('lists and reads direct mount points from their parent directory', async () => {
-    const mountedRoot = new MockFileSystemDirectoryHandle('mounted');
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'mounted' });
     const fileHandle = await mountedRoot.getFileHandle('note.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('mounted content');
@@ -107,7 +107,7 @@ describe('wesh vfs mounts', () => {
   });
 
   it('treats synthetic parent directories of nested mounts as readable directories', async () => {
-    const mountedRoot = new MockFileSystemDirectoryHandle('nested');
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'nested' });
     const fileHandle = await mountedRoot.getFileHandle('hello.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('hello');
@@ -152,7 +152,7 @@ describe('wesh vfs mounts', () => {
   });
 
   it('readDir reports fullPath for synthetic mount parents and mounted directories', async () => {
-    const mountedRoot = new MockFileSystemDirectoryHandle('work');
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'work' });
     const fileHandle = await mountedRoot.getFileHandle('note.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('hello');
@@ -226,7 +226,7 @@ second
   });
 
   it('rejects unlink and rmdir mutations on read-only mounts', async () => {
-    const readOnlyRoot = new MockFileSystemDirectoryHandle('readonly');
+    const readOnlyRoot = new MockFileSystemDirectoryHandle({ name: 'readonly' });
     const fileHandle = await readOnlyRoot.getFileHandle('locked.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('locked');
@@ -243,7 +243,7 @@ second
   });
 
   it('rejects write-oriented opens on read-only mounts', async () => {
-    const readOnlyRoot = new MockFileSystemDirectoryHandle('readonly-open');
+    const readOnlyRoot = new MockFileSystemDirectoryHandle({ name: 'readonly-open' });
     const fileHandle = await readOnlyRoot.getFileHandle('existing.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('existing');
@@ -273,7 +273,7 @@ second
   });
 
   it('rejects mkdir and mknod on read-only mounts', async () => {
-    const readOnlyRoot = new MockFileSystemDirectoryHandle('readonly-create');
+    const readOnlyRoot = new MockFileSystemDirectoryHandle({ name: 'readonly-create' });
 
     await wesh.vfs.mount({
       path: '/ro-create',
@@ -286,13 +286,13 @@ second
   });
 
   it('rejects rename when the source or destination filesystem is read-only', async () => {
-    const sourceRoot = new MockFileSystemDirectoryHandle('readonly-source');
+    const sourceRoot = new MockFileSystemDirectoryHandle({ name: 'readonly-source' });
     const sourceFile = await sourceRoot.getFileHandle('file.txt', { create: true });
     const sourceWritable = await sourceFile.createWritable();
     await sourceWritable.write('source');
     await sourceWritable.close();
 
-    const destinationRoot = new MockFileSystemDirectoryHandle('readonly-destination');
+    const destinationRoot = new MockFileSystemDirectoryHandle({ name: 'readonly-destination' });
     const destinationDir = await destinationRoot.getDirectoryHandle('dir', { create: true });
     void destinationDir;
 
@@ -480,7 +480,7 @@ second
 
 describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () => {
   it('getNativeHandle returns a real handle for a mounted directory', async () => {
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     await mount.getFileHandle('file.txt', { create: true });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
@@ -491,7 +491,7 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('getNativeHandle returns null for a synthetic intermediate directory', async () => {
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/home/user/v1', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
 
@@ -500,7 +500,7 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('getNativeHandle returns a file handle for a real file inside a mount', async () => {
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     await mount.getFileHandle('note.txt', { create: true });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
@@ -511,8 +511,8 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('getReadOnlyForPath returns the mount readOnly flag for paths inside a mount', async () => {
-    const m1 = new MockFileSystemDirectoryHandle('m1');
-    const m2 = new MockFileSystemDirectoryHandle('m2');
+    const m1 = new MockFileSystemDirectoryHandle({ name: 'm1' });
+    const m2 = new MockFileSystemDirectoryHandle({ name: 'm2' });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/home/user/rw', handle: m1 as unknown as FileSystemDirectoryHandle, readOnly: false });
     await vfs.mount({ path: '/home/user/ro', handle: m2 as unknown as FileSystemDirectoryHandle, readOnly: true });
@@ -522,7 +522,7 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('getReadOnlyForPath returns true for synthetic directories outside any mount', async () => {
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/home/user/v1', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
 
@@ -532,8 +532,8 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('VFS with no rootHandle synthesises directories for nested mounts', async () => {
-    const v1 = new MockFileSystemDirectoryHandle('v1');
-    const v2 = new MockFileSystemDirectoryHandle('v2');
+    const v1 = new MockFileSystemDirectoryHandle({ name: 'v1' });
+    const v2 = new MockFileSystemDirectoryHandle({ name: 'v2' });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/home/user/v1', handle: v1 as unknown as FileSystemDirectoryHandle, readOnly: false });
     await vfs.mount({ path: '/home/user/v2', handle: v2 as unknown as FileSystemDirectoryHandle, readOnly: true });
@@ -549,7 +549,7 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
 
   it('VFS with no rootHandle does not expose /dev special files', async () => {
     const vfs = new WeshVFS({ rootHandle: undefined });
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
 
     const rootEntries: string[] = [];

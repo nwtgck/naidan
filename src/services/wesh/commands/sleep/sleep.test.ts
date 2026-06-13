@@ -11,7 +11,7 @@ describe('wesh sleep', () => {
   let originalWaitForSignalOrTimeout: Wesh['kernel']['waitForSignalOrTimeout'] | undefined;
 
   beforeEach(async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
     originalWaitForSignalOrTimeout = wesh.kernel.waitForSignalOrTimeout.bind(wesh.kernel);

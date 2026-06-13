@@ -13,8 +13,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
-    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
       const chat = useChat();
       const currentH = {
         items: chat.rootItems.value.map(item => {
@@ -22,7 +22,7 @@ vi.mock('../services/storage', () => ({
           return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
         })
       };
-      const updated = await updater(currentH as any);
+      const updated = await updater({ current: currentH as any });
       // Map back to sidebar structure for the test to see the changes after loadChats()
       const newSidebar = updated.items.map((node: any) => {
         if (node.type === 'chat') return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };

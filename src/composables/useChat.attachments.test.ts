@@ -31,23 +31,23 @@ vi.mock('../services/storage', () => ({
       chats.set(chat.id, chat);
       return Promise.resolve();
     }),
-    updateChatMeta: vi.fn().mockImplementation((id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
-      const updated = updater(existing);
+      const updated = updater({ current: existing });
       const merged = { ...existing, ...updated };
       chats.set(id, merged);
       return Promise.resolve();
     }),
     loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id))),
-    updateChatContent: vi.fn().mockImplementation((id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
-      const updated = updater({ root: existing.root, currentLeafId: existing.currentLeafId });
+      const updated = updater({ current: { root: existing.root, currentLeafId: existing.currentLeafId } });
       const merged = { ...existing, ...updated };
       chats.set(id, merged);
       return Promise.resolve();
     }),
-    updateHierarchy: vi.fn().mockImplementation((updater) => {
-      hierarchy = updater(hierarchy);
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => {
+      hierarchy = updater({ current: hierarchy });
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(hierarchy)),
@@ -78,8 +78,8 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
-    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Response');
+    chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Response' });
       return Promise.resolve();
     });
     listModels = vi.fn().mockResolvedValue(['test-model']);
@@ -88,8 +88,8 @@ vi.mock('../services/lm/openai', () => ({
 
 vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: class {
-    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Response');
+    chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Response' });
       return Promise.resolve();
     });
     listModels = vi.fn().mockResolvedValue(['test-model']);
@@ -235,7 +235,7 @@ describe('useChat - Attachment & Migration Logic', () => {
           const att = msg.attachments[i];
           if (att && att.status === 'memory') {
             const blob = (att as any).blob;
-            await storageService.saveFile(blob, att.binaryObjectId, att.originalName);
+            await storageService.saveFile({ blob, binaryObjectId: att.binaryObjectId, name: att.originalName });
             msg.attachments[i] = {
               id: att.id,
               binaryObjectId: att.binaryObjectId,
@@ -253,11 +253,11 @@ describe('useChat - Attachment & Migration Logic', () => {
     await storageService.switchProvider({ type: 'opfs' });
 
     // 3. Verify rescue occurred
-    expect(storageService.saveFile).toHaveBeenCalledWith(
-      mockBlob,
-      '550e8400-e29b-41d4-a716-446655440002',
-      'to-migrate.png'
-    );
+    expect(storageService.saveFile).toHaveBeenCalledWith({
+      blob: mockBlob,
+      binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
+      name: 'to-migrate.png',
+    });
 
     const chat = await storageService.loadChat({ id: 'rescue-chat' });
     const finalMsg = chat!.root.items[0];

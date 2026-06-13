@@ -247,7 +247,7 @@ export function useChat() {
     injectAddToast,
   }: {
     id: string;
-    injectAddToast?: ((toast: AddToastOptions) => string) | undefined;
+    injectAddToast?: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }) {
     await chatLifecycle.deleteChat({
       id,
@@ -442,11 +442,12 @@ export function useChat() {
       updateChatContent: async ({ chatId, updater }) => {
         await updateChatContent({
           id: chatId,
-          updater: (current) => {
+
+          updater: ({ current }) => {
             if (current === null) {
               throw new Error('Chat content not found');
             }
-            return updater(current);
+            return updater({ current: current });
           },
         });
       },
@@ -985,7 +986,7 @@ export function useChat() {
     currentChatGroupRef: _currentChatGroup,
     registerLiveInstance,
     setContextCompactProgress,
-    clearLiveChatRegistryImpl: (_args) => {
+    clearLiveChatRegistryImpl: (_args: Record<never, never>) => {
       liveChatRegistry.clear();
     },
   });
@@ -994,7 +995,7 @@ export function useChat() {
   const __testOnlySetContextCompactProgress = chatTestSupport.__testOnlySetContextCompactProgress;
   const clearLiveChatRegistry = chatTestSupport.clearLiveChatRegistry;
 
-  const clearActiveTaskCounts = (_params: Record<string, never>) => {
+  const clearActiveTaskCounts = (_params: Record<never, never>) => {
     chatRuntimeStore.clearActiveTaskCounts({});
   };
 

@@ -117,8 +117,8 @@ describe('useChat Tool Chaining', () => {
 
     // Setup persistence mocks
     vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
-    vi.mocked(storageService.updateChatContent).mockImplementation((_id, updater) => {
-      return Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined })) as any;
+    vi.mocked(storageService.updateChatContent).mockImplementation(({ updater }) => {
+      return Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } })) as any;
     });
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
   });
@@ -155,7 +155,7 @@ describe('useChat Tool Chaining', () => {
 
       // Iteration 2: Assistant responds with final text
       onAssistantMessageStart?.();
-      onChunk('Final answer is 4.');
+      onChunk({ chunk: 'Final answer is 4.' });
       await nextTick();
     });
 

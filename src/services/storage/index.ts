@@ -40,7 +40,7 @@ export class StorageService {
   }
 
   async init({ type }: { type: 'local' | 'opfs' | 'memory' }) {
-    await this.synchronizer.withLock(async () => {
+    await this.synchronizer.withLock({ fn: async () => {
       const isOPFSSupported = await checkOPFSSupport();
       let targetType: 'local' | 'opfs' | 'memory' = type;
 
@@ -66,7 +66,7 @@ export class StorageService {
       }
       }
       await this.provider.init();
-    }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('init') });
+    }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'init' }) });
   }
 
   getCurrentType(): 'local' | 'opfs' | 'memory' {
@@ -82,15 +82,16 @@ export class StorageService {
 
   // --- Synchronization ---
 
-  subscribeToChanges(listener: ChangeListener) {
-    return this.synchronizer.subscribe(listener);
+  subscribeToChanges({ listener }: { listener: ChangeListener }) {
+    return this.synchronizer.subscribe({ listener });
   }
 
-  notify(event: StorageChangeEvent): void;
+  notify({ type }: StorageChangeEvent): void;
   /**
    * @deprecated Use notify(event: StorageChangeEvent) instead.
    */
   notify(type: string, id?: string): void;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because deprecated overloads are retained for compatibility.
   notify(eventOrType: StorageChangeEvent | string, id?: string): void {
     const t = typeof eventOrType;
     switch (t) {
@@ -125,32 +126,32 @@ export class StorageService {
    * Performs an atomic update on the sidebar hierarchy.
    * Prevents lost updates when multiple tabs are reordering or adding chats.
    */
-  async updateHierarchy(updater: (current: Hierarchy) => Hierarchy | Promise<Hierarchy>): Promise<void> {
+  async updateHierarchy({ updater }: { updater: ({ current }: { current: Hierarchy }) => Hierarchy | Promise<Hierarchy> }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadHierarchy();
-        const updated = await updater(current);
-        await this.getProvider().saveHierarchy(hierarchyToDto({ domain: updated }));
-      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('updateHierarchy') });
+        const updated = await updater({ current: current });
+        await this.getProvider().saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
+      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateHierarchy' }) });
       this.synchronizer.notify('chat_meta_and_chat_group');
     } catch (e) {
-      this.handleStorageError(e, 'updateHierarchy');
+      this.handleStorageError({ error: e, source: 'updateHierarchy' });
       throw e;
     }
   }
 
   // --- Persistence Methods ---
 
-  async updateChatMeta(id: string, updater: (current: ChatMeta | null) => ChatMeta | Promise<ChatMeta>): Promise<void> {
+  async updateChatMeta({ id, updater }: { id: string; updater: ({ current }: { current: ChatMeta | null }) => ChatMeta | Promise<ChatMeta> }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadChatMeta({ id });
-        const updated = await updater(current);
-        await this.getProvider().saveChatMeta(updated);
-      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('updateChatMeta') });
+        const updated = await updater({ current: current });
+        await this.getProvider().saveChatMeta({ meta: updated });
+      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
       this.synchronizer.notify('chat_meta_and_chat_group', id);
     } catch (e) {
-      this.handleStorageError(e, 'updateChatMeta');
+      this.handleStorageError({ error: e, source: 'updateChatMeta' });
       throw e;
     }
   }
@@ -163,16 +164,16 @@ export class StorageService {
     return this.getProvider().loadChatContent({ id });
   }
 
-  async updateChatContent(id: string, updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>): Promise<void> {
+  async updateChatContent({ id, updater }: { id: string; updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent> }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadChatContent({ id });
-        const updated = await updater(current);
-        await this.getProvider().saveChatContent(id, updated);
-      }, { lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${id}`, ...this.getLockOptions('updateChatContent') });
+        const updated = await updater({ current: current });
+        await this.getProvider().saveChatContent({ id, content: updated });
+      }, lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${id}`, ...this.getLockOptions({ source: 'updateChatContent' }) });
       this.synchronizer.notify('chat_content', id);
     } catch (e) {
-      this.handleStorageError(e, 'updateChatContent');
+      this.handleStorageError({ error: e, source: 'updateChatContent' });
       throw e;
     }
   }
@@ -183,26 +184,26 @@ export class StorageService {
 
   async deleteChat({ id }: { id: string }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().deleteChat({ id });
-      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('deleteChat') });
+      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChat' }) });
       this.synchronizer.notify('chat_meta_and_chat_group', id);
     } catch (e) {
-      this.handleStorageError(e, 'deleteChat');
+      this.handleStorageError({ error: e, source: 'deleteChat' });
       throw e;
     }
   }
 
-  async updateChatGroup(id: string, updater: (current: ChatGroup | null) => ChatGroup | Promise<ChatGroup>): Promise<void> {
+  async updateChatGroup({ id, updater }: { id: string; updater: ({ current }: { current: ChatGroup | null }) => ChatGroup | Promise<ChatGroup> }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadChatGroup({ id });
-        const updated = await updater(current);
-        await this.getProvider().saveChatGroup(updated);
-      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('updateChatGroup') });
+        const updated = await updater({ current: current });
+        await this.getProvider().saveChatGroup({ chatGroup: updated });
+      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatGroup' }) });
       this.synchronizer.notify('chat_meta_and_chat_group', id);
     } catch (e) {
-      this.handleStorageError(e, 'updateChatGroup');
+      this.handleStorageError({ error: e, source: 'updateChatGroup' });
       throw e;
     }
   }
@@ -213,12 +214,12 @@ export class StorageService {
 
   async deleteChatGroup({ id }: { id: string }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().deleteChatGroup({ id });
-      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('deleteChatGroup') });
+      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChatGroup' }) });
       this.synchronizer.notify('chat_meta_and_chat_group', id);
     } catch (e) {
-      this.handleStorageError(e, 'deleteChatGroup');
+      this.handleStorageError({ error: e, source: 'deleteChatGroup' });
       throw e;
     }
   }
@@ -240,16 +241,16 @@ export class StorageService {
   /**
    * Performs an atomic update on the global settings.
    */
-  async updateSettings(updater: (current: Settings | null) => Settings | Promise<Settings>): Promise<void> {
+  async updateSettings({ updater }: { updater: ({ current }: { current: Settings | null }) => Settings | Promise<Settings> }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadSettings();
-        const updated = await updater(current);
-        await this.getProvider().saveSettings(updated);
-      }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('updateSettings') });
+        const updated = await updater({ current: current });
+        await this.getProvider().saveSettings({ settings: updated });
+      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'updateSettings' }) });
       this.synchronizer.notify('settings');
     } catch (e) {
-      this.handleStorageError(e, 'updateSettings');
+      this.handleStorageError({ error: e, source: 'updateSettings' });
       throw e;
     }
   }
@@ -260,25 +261,34 @@ export class StorageService {
 
   async clearAll(): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().clearAll();
-      }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('clearAll') });
+      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'clearAll' }) });
       this.synchronizer.notify('migration');
     } catch (e) {
-      this.handleStorageError(e, 'clearAll');
+      this.handleStorageError({ error: e, source: 'clearAll' });
       throw e;
     }
   }
 
   // --- File Storage Methods ---
 
-  async saveFile(blob: Blob, binaryObjectId: string, name: string): Promise<void> {
+  async saveFile({ blob, binaryObjectId, name }: {
+    blob: Blob
+    binaryObjectId: string
+    name: string
+  }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
-        await this.getProvider().saveFile(blob, binaryObjectId, name);
-      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('saveFile') });
+      await this.synchronizer.withLock({ fn: async () => {
+        await this.getProvider().saveFile({
+          blob,
+          binaryObjectId,
+          name,
+          mimeType: blob.type || undefined,
+        });
+      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'saveFile' }) });
     } catch (e) {
-      this.handleStorageError(e, 'saveFile');
+      this.handleStorageError({ error: e, source: 'saveFile' });
       throw e;
     }
   }
@@ -301,15 +311,15 @@ export class StorageService {
 
   async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().deleteBinaryObject({ binaryObjectId });
-      }, { lockKey: LOCK_METADATA, ...this.getLockOptions('deleteBinaryObject') });
+      }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteBinaryObject' }) });
       // Notify binary objects changed if we had a specific event,
       // but 'chat_content' or similar might be enough, or just generic.
       // For now, let's just notify 'chat_content' as it's most related to attachments.
       this.synchronizer.notify('chat_content');
     } catch (e) {
-      this.handleStorageError(e, 'deleteBinaryObject');
+      this.handleStorageError({ error: e, source: 'deleteBinaryObject' });
       throw e;
     }
   }
@@ -320,33 +330,33 @@ export class StorageService {
     return this.getProvider().listVolumes();
   }
 
-  async createVolume(params: {
+  async createVolume({ name, type, sourceHandle }: {
     name: string;
     type: VolumeType;
     sourceHandle: FileSystemDirectoryHandle;
   }): Promise<Volume> {
-    return this.getProvider().createVolume(params);
+    return this.getProvider().createVolume({ name, type, sourceHandle });
   }
 
-  async createVolumeFromFiles(params: {
+  async createVolumeFromFiles({ name, entries, onProgress, signal }: {
     name: string;
     entries: Array<{ file: File; relativePath: string }>;
-    onProgress?: (progress: { processed: number; total: number }) => void;
+    onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
     signal?: AbortSignal;
   }): Promise<Volume> {
-    return this.getProvider().createVolumeFromFiles(params);
+    return this.getProvider().createVolumeFromFiles({ name, entries, onProgress, signal });
   }
 
-  async getVolumeDirectoryHandle(params: { volumeId: string }): Promise<FileSystemDirectoryHandle | null> {
-    return this.getProvider().getVolumeDirectoryHandle(params);
+  async getVolumeDirectoryHandle({ volumeId }: { volumeId: string }): Promise<FileSystemDirectoryHandle | null> {
+    return this.getProvider().getVolumeDirectoryHandle({ volumeId });
   }
 
-  async deleteVolume(params: { volumeId: string }): Promise<void> {
-    return this.getProvider().deleteVolume(params);
+  async deleteVolume({ volumeId }: { volumeId: string }): Promise<void> {
+    return this.getProvider().deleteVolume({ volumeId });
   }
 
-  async renameVolume(params: { volumeId: string; name: string }): Promise<void> {
-    return this.getProvider().renameVolume(params);
+  async renameVolume({ volumeId, name }: { volumeId: string; name: string }): Promise<void> {
+    return this.getProvider().renameVolume({ volumeId, name });
   }
 
   async mountVolume({ volumeId, mountPath, readOnly }: {
@@ -354,7 +364,7 @@ export class StorageService {
     mountPath: string;
     readOnly: boolean;
   }): Promise<void> {
-    await this.updateSettings((settings) => {
+    await this.updateSettings({ updater: ({ current: settings }) => {
       if (!settings) throw new Error('Settings not initialized');
       const exists = settings.mounts.some(m => m.type === 'volume' && m.volumeId === volumeId);
       if (exists) return settings;
@@ -363,39 +373,39 @@ export class StorageService {
         ...settings,
         mounts: [...settings.mounts, { type: 'volume', volumeId, mountPath, readOnly }],
       };
-    });
+    } });
   }
 
   async unmountVolume({ volumeId }: { volumeId: string }): Promise<void> {
-    await this.updateSettings((settings) => {
+    await this.updateSettings({ updater: ({ current: settings }) => {
       if (!settings) return null as unknown as Settings;
       return {
         ...settings,
         mounts: settings.mounts.filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
       };
-    });
+    } });
   }
 
   async addMountToChat({ chatId, mount }: { chatId: string; mount: Mount }): Promise<void> {
-    await this.updateChatMeta(chatId, (current) => {
+    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${chatId}`);
       const existing = current.mounts ?? [];
       return { ...current, mounts: [...existing, mount] };
-    });
+    } });
   }
 
   async removeMountFromChat({ chatId, volumeId }: { chatId: string; volumeId: string }): Promise<void> {
-    await this.updateChatMeta(chatId, (current) => {
+    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${chatId}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
       };
-    });
+    } });
   }
 
   async updateChatMount({ chatId, volumeId, readOnly }: { chatId: string; volumeId: string; readOnly: boolean }): Promise<void> {
-    await this.updateChatMeta(chatId, (current) => {
+    await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat not found: ${chatId}`);
       return {
         ...current,
@@ -403,29 +413,29 @@ export class StorageService {
           m.type === 'volume' && m.volumeId === volumeId ? { ...m, readOnly } : m
         ),
       };
-    });
+    } });
   }
 
   async addMountToChatGroup({ groupId, mount }: { groupId: string; mount: Mount }): Promise<void> {
-    await this.updateChatGroup(groupId, (current) => {
+    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${groupId}`);
       const existing = current.mounts ?? [];
       return { ...current, mounts: [...existing, mount] };
-    });
+    } });
   }
 
   async removeMountFromChatGroup({ groupId, volumeId }: { groupId: string; volumeId: string }): Promise<void> {
-    await this.updateChatGroup(groupId, (current) => {
+    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${groupId}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
       };
-    });
+    } });
   }
 
   async updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }: { groupId: string; volumeId: string; mountPath: string; readOnly: boolean }): Promise<void> {
-    await this.updateChatGroup(groupId, (current) => {
+    await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (!current) throw new Error(`Chat group not found: ${groupId}`);
       return {
         ...current,
@@ -433,12 +443,12 @@ export class StorageService {
           m.type === 'volume' && m.volumeId === volumeId ? { ...m, mountPath, readOnly } : m
         ),
       };
-    });
+    } });
   }
 
   async switchProvider({ type }: { type: 'local' | 'opfs' | 'memory' }) {
     try {
-      await this.synchronizer.withLock(async () => {
+      await this.synchronizer.withLock({ fn: async () => {
         const activeProvider = this.getProvider();
         if (this.currentType === type) return;
 
@@ -480,7 +490,7 @@ export class StorageService {
                 }
 
                 const rescued: MigrationChunkDto[] = [];
-                const findAndRescue = (nodes: MessageNode[]) => {
+                const findAndRescue = ({ nodes }: { nodes: MessageNode[] }) => {
                   for (const node of nodes) {
                     if (node.attachments) {
                       for (let i = 0; i < node.attachments.length; i++) {
@@ -511,10 +521,10 @@ export class StorageService {
                         }
                       }
                     }
-                    if (node.replies?.items) findAndRescue(node.replies.items);
+                    if (node.replies?.items) findAndRescue({ nodes: node.replies.items });
                   }
                 };
-                findAndRescue(chat.root.items);
+                findAndRescue({ nodes: chat.root.items });
                 for (const r of rescued) yield r;
                 yield { type: 'chat', data: chatToDto({ domain: chat }) };
               } else {
@@ -533,10 +543,10 @@ export class StorageService {
         };
 
         try {
-          await newProvider.restore({
+          await newProvider.restore({ snapshot: {
             structure: snapshot.structure,
             contentStream: migrationStream(),
-          });
+          } });
         } catch (e) {
           this.provider = oldProvider;
           this.currentType = oldType;
@@ -546,11 +556,11 @@ export class StorageService {
         if (typeof localStorage !== 'undefined') {
           localStorage.setItem(STORAGE_BOOTSTRAP_KEY, type);
         }
-      }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('switchProvider', { notifyLockWaitAfterMs: 5000 }) });
+      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }) });
 
       this.synchronizer.notify('migration');
     } catch (e) {
-      this.handleStorageError(e, 'switchProvider');
+      this.handleStorageError({ error: e, source: 'switchProvider' });
       throw e;
     }
   }
@@ -571,19 +581,19 @@ export class StorageService {
    * Restores storage content from a snapshot.
    * This operation is guarded by an exclusive lock as it is destructive.
    */
-  async restore(snapshot: StorageSnapshot): Promise<void> {
+  async restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void> {
     try {
-      await this.synchronizer.withLock(async () => {
-        await this.getProvider().restore(snapshot);
-      }, { lockKey: SYNC_LOCK_KEY, ...this.getLockOptions('restore', { notifyLockWaitAfterMs: 5000 }) });
+      await this.synchronizer.withLock({ fn: async () => {
+        await this.getProvider().restore({ snapshot });
+      }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'restore', custom: { notifyLockWaitAfterMs: 5000 } }) });
       this.synchronizer.notify('migration');
     } catch (e) {
-      this.handleStorageError(e, 'restore');
+      this.handleStorageError({ error: e, source: 'restore' });
       throw e;
     }
   }
 
-  private getLockOptions(source: string, custom: { notifyLockWaitAfterMs?: number } = {}) {
+  private getLockOptions({ source, custom = {} }: { source: string; custom?: { notifyLockWaitAfterMs?: number } }) {
     return {
       ...custom,
       onLockWait: () => {
@@ -610,12 +620,12 @@ export class StorageService {
     };
   }
 
-  private handleStorageError(e: unknown, source: string) {
+  private handleStorageError({ error, source }: { error: unknown; source: string }) {
     const { addErrorEvent } = useGlobalEvents();
     addErrorEvent({
       source: `StorageService:${source}`,
       message: 'An error occurred during a storage operation.',
-      details: e instanceof Error ? e : String(e),
+      details: error instanceof Error ? error : String(error),
     });
   }
 }

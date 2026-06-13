@@ -11,7 +11,7 @@ describe('shopt command', () => {
 
   beforeEach(async () => {
     wesh = new Wesh({
-      rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+      rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
     });
     await wesh.init();
   });

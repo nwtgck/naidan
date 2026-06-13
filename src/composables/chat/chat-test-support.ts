@@ -23,7 +23,7 @@ export type ChatTestSupport = {
     progress: ContextCompactProgress;
   }): void;
 
-  clearLiveChatRegistry(_args: Record<string, never>): void;
+  clearLiveChatRegistry(_args: Record<never, never>): void;
 };
 
 export function createChatTestSupport({
@@ -43,7 +43,7 @@ export function createChatTestSupport({
     chatId: string;
     progress: ContextCompactProgress;
   }) => void;
-  clearLiveChatRegistryImpl: (_args: Record<string, never>) => void;
+  clearLiveChatRegistryImpl: (_args: Record<never, never>) => void;
 }): ChatTestSupport {
   function __testOnlySetCurrentChat({
     chat,
@@ -77,7 +77,7 @@ export function createChatTestSupport({
     });
   }
 
-  function clearLiveChatRegistry(_args: Record<string, never>) {
+  function clearLiveChatRegistry(_args: Record<never, never>) {
     clearLiveChatRegistryImpl({});
   }
 

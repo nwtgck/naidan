@@ -102,14 +102,14 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     await storageService.init({ type: 'local' });
 
     // Setup valid settings to avoid Zod validation errors during switchProvider
-    await storageService.updateSettings(() => ({
+    await storageService.updateSettings({ updater: () => ({
       endpointType: 'openai',
       endpointUrl: 'http://localhost:11434',
       autoTitleEnabled: true,
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
-    }));
+    }) });
 
 
     const mockBlob = new Blob(['binary-content'], { type: 'image/png' });
@@ -141,15 +141,15 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       debugEnabled: false
     };
 
-    await storageService.updateChatContent(chat.id, () => ({
+    await storageService.updateChatContent({ id: chat.id, updater: () => ({
       root: chat.root,
       currentLeafId: undefined
-    } as any));
-    await storageService.updateChatMeta(chat.id, () => chat as any);
-    await storageService.updateHierarchy((curr) => {
+    } as any) });
+    await storageService.updateChatMeta({ id: chat.id, updater: () => chat as any });
+    await storageService.updateHierarchy({ updater: ({ current: curr }) => {
       curr.items.push({ type: 'chat', id: chat.id });
       return curr;
-    });
+    } });
     await storageService.switchProvider({ type: 'opfs' });
 
     const loadedChat = await storageService.loadChat({ id: '550e8400-e29b-41d4-a716-446655440000' });

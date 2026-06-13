@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, nextTick, computed, toRaw } from 'vue';
+import type { ObjectDirective } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { onKeyStroke } from '@vueuse/core';
 import draggable from 'vuedraggable';
@@ -416,8 +417,8 @@ function toggleGroupCompactExpansion({ groupId }: { groupId: string }) {
 }
 
 // Custom directive for auto-focusing elements
-const vFocus = {
-  mounted: (el: HTMLElement) => el.focus(),
+const vFocus: ObjectDirective<HTMLElement> = {
+  mounted: (el) => el.focus(),
 };
 
 const isMac = typeof window !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
@@ -489,7 +490,7 @@ function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string,
       element.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
       element.style.transition = 'transform 0ms';
 
-      const runNextFrame = window.requestAnimationFrame ?? ((callback: FrameRequestCallback) => window.setTimeout(callback, 16));
+      const runNextFrame: typeof window.requestAnimationFrame = window.requestAnimationFrame ?? ((callback) => window.setTimeout(callback, 16));
       runNextFrame(() => {
         element.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)';
         element.style.transform = '';

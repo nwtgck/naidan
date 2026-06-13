@@ -118,6 +118,25 @@ Rules:
 5. Add standalone Vite alias for the facade path, normally `@/services/foo/worker/client`.
 6. Do not keep a noop loader alias once the facade exists.
 
+
+## Comlink and Named Args
+
+Comlink positional exceptions are only for callable signatures that directly form the Comlink boundary: methods exposed with `Comlink.expose(...)`, methods declared for `Comlink.wrap<RemoteInterface>(...)`, or remote methods that receive `Comlink.proxy(...)` callbacks as top-level arguments.
+
+Do not use the Comlink exception merely because a function internally calls a Comlink remote. Naidan-facing facades that hide the worker boundary should still use named args, and should bridge to the positional Comlink call internally:
+
+```ts
+async function generateText({ messages, onChunk }: {
+  messages: ChatMessage[];
+  onChunk: ({ chunk }: { chunk: string }) => void;
+}) {
+  return remote.generateText(
+    { messages },
+    Comlink.proxy((chunk) => onChunk({ chunk })),
+  );
+}
+```
+
 ## Vite Rules
 
 - Use `resolve.alias` to swap standalone clients.

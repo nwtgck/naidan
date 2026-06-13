@@ -134,7 +134,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
     const applyNumbering = numberAllLines || numberNonBlankLines;
     const hasTransform = applyNumbering || showEnds || showTabs || showNonPrinting || squeezeBlank;
 
-    const processRawStream = async (stream: ReadableStream<Uint8Array>) => {
+    const processRawStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const reader = stream.getReader();
       try {
         while (true) {
@@ -147,7 +147,7 @@ export const catCommandDefinition: WeshCommandDefinition = {
       }
     };
 
-    const processStream = async (stream: ReadableStream<Uint8Array>) => {
+    const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       const decoder = new TextDecoder();
       const reader = stream.getReader();
       let buffer = '';
@@ -213,10 +213,10 @@ export const catCommandDefinition: WeshCommandDefinition = {
 
     const processInputStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       if (hasTransform) {
-        await processStream(stream);
+        await processStream({ stream });
         return;
       }
-      await processRawStream(stream);
+      await processRawStream({ stream });
     };
 
     if (files.length === 0) {

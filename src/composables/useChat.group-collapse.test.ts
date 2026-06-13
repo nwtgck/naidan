@@ -18,7 +18,7 @@ vi.mock('../services/storage', () => ({
     updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
     loadChatGroup: vi.fn().mockResolvedValue(null),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     getSidebarStructure: vi.fn().mockImplementation(() => Promise.resolve([...mockRootItems])),
     deleteChatGroup: vi.fn(),
     notify: vi.fn(),
@@ -64,13 +64,13 @@ describe('useChat Group Collapse', () => {
     expect(itemAfterCollapse.chatGroup.isCollapsed).toBe(true);
 
     // Assert: Persisted to storage
-    expect(storageService.updateChatGroup).toHaveBeenCalledWith('g1', expect.any(Function));
+    expect(storageService.updateChatGroup).toHaveBeenCalledWith({ id: 'g1', updater: expect.any(Function) });
 
     // Test the updater function passed to storageService
     const calls = vi.mocked(storageService.updateChatGroup).mock.calls;
     expect(calls[0]).toBeDefined();
-    const updater = calls[0]![1];
-    const updatedGroup = (updater as any)(group) as ChatGroup;
+    const updater = calls[0]![0].updater;
+    const updatedGroup = (updater as any)({ current: group }) as ChatGroup;
     expect(updatedGroup.isCollapsed).toBe(true);
 
     // Act: Expand
@@ -129,6 +129,6 @@ describe('useChat Group Collapse', () => {
 
     // Assert
     expect(currentChatGroup.value?.isCollapsed).toBe(true);
-    expect(storageService.updateChatGroup).toHaveBeenCalledWith('g1', expect.any(Function));
+    expect(storageService.updateChatGroup).toHaveBeenCalledWith({ id: 'g1', updater: expect.any(Function) });
   });
 });

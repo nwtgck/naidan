@@ -72,9 +72,9 @@ describe('useChat Thinking Abort', () => {
     }) as any;
     __testOnlySetCurrentChat({ chat });
 
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
+    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;
-      onChunk('<think>I am thinking...');
+      onChunk({ chunk: '<think>I am thinking...' });
 
       // Wait for abort
       return new Promise((_resolve, reject) => {

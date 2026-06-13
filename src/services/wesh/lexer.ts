@@ -31,7 +31,7 @@ export class Lexer {
   private position: number = 0;
   private length: number;
 
-  constructor(input: string) {
+  constructor({ input }: { input: string }) {
     this.input = input;
     this.length = input.length;
   }
@@ -362,7 +362,7 @@ export class Lexer {
     return token;
   }
 
-  readHereDoc(delimiter: string): string {
+  readHereDoc({ delimiter }: { delimiter: string }): string {
     let content = '';
 
     // Simple line-based scanner

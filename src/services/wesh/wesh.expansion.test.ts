@@ -11,7 +11,7 @@ describe('wesh shell expansion', () => {
   let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({
       rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
       initialEnv: {
@@ -233,7 +233,7 @@ tree/deep/more/gamma.txt
   });
 
   it('supports glob expansion inside mounted directories', async () => {
-    const mountedRoot = new MockFileSystemDirectoryHandle('mounted');
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'mounted' });
     await writeFile({ directory: mountedRoot, path: 'nested/one.xml', data: '<one />' });
     await writeFile({ directory: mountedRoot, path: 'nested/deeper/two.xml', data: '<two />' });
 
@@ -258,7 +258,7 @@ for file in /mounted/**/*.xml; do echo "$file"; done`,
   });
 
   it('reports a normal path-not-found error for unmatched absolute globs', async () => {
-    const mountedRoot = new MockFileSystemDirectoryHandle('mounted');
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'mounted' });
     await writeFile({ directory: mountedRoot, path: 'nested/one.xml', data: '<one />' });
 
     await wesh.vfs.mount({

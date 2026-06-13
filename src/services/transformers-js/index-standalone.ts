@@ -1,29 +1,37 @@
-import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
-import type { ProgressInfo, WorkerToolDefinition } from './types';
+import type { ChatMessage, LmParameters } from '@/models/types';
+import type { ProgressInfo, WorkerToolDefinition, TransformersJsChunkCallback, TransformersJsToolCallsCallback } from './types';
 
-type ProgressListener = (
-  status: 'idle' | 'loading' | 'ready' | 'error',
-  progress: number,
-  error?: string,
-  isCached?: boolean,
-  isLoadingFromCache?: boolean,
-  progressItems?: Record<string, ProgressInfo>,
-  loadingModelId?: string
-) => void;
+type ProgressListener = ({
+  status,
+  progress,
+  error,
+  isCached,
+  isLoadingFromCache,
+  progressItems,
+  loadingModelId,
+}: {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  progress: number;
+  error?: string;
+  isCached?: boolean;
+  isLoadingFromCache?: boolean;
+  progressItems?: Record<string, ProgressInfo>;
+  loadingModelId?: string;
+}) => void;
 
-type ModelListListener = () => void;
+type ModelListListener = (_args: Record<never, never>) => void;
 
 const unsupportedError = () => new Error('Transformers.js is not available in standalone mode');
 
 const progressItems: Record<string, ProgressInfo> = {};
 
 export const transformersJsService = {
-  subscribe(listener: ProgressListener) {
-    listener('idle', 0, undefined, false, false, progressItems, undefined);
+  subscribe({ listener }: { listener: ProgressListener }) {
+    listener({ status: 'idle', progress: 0, error: undefined, isCached: false, isLoadingFromCache: false, progressItems, loadingModelId: undefined });
     return () => {};
   },
 
-  subscribeModelList(_listener: ModelListListener) {
+  subscribeModelList({ listener: _listener }: { listener: ModelListListener }) {
     return () => {};
   },
 
@@ -49,19 +57,23 @@ export const transformersJsService = {
     return [];
   },
 
-  async importFile(_modelName: string, _fileName: string, _data: ArrayBuffer | ReadableStream) {
+  async importFile({ modelName: _modelName, fileName: _fileName, data: _data }: {
+    modelName: string;
+    fileName: string;
+    data: ArrayBuffer | ReadableStream;
+  }) {
     throw unsupportedError();
   },
 
-  async deleteModel(_modelId: string) {
+  async deleteModel({ modelId: _modelId }: { modelId: string }) {
     throw unsupportedError();
   },
 
-  async loadModel(_modelId: string) {
+  async loadModel({ modelId: _modelId }: { modelId: string }) {
     throw unsupportedError();
   },
 
-  async downloadModel(_modelId: string) {
+  async downloadModel({ modelId: _modelId }: { modelId: string }) {
     throw unsupportedError();
   },
 
@@ -71,14 +83,14 @@ export const transformersJsService = {
 
   async resetCache() {},
 
-  async generateText(
-    _messages: ChatMessage[],
-    _onChunk: (chunk: string) => void,
-    _onToolCalls: (toolCalls: ToolCall[]) => void,
-    _params?: LmParameters,
-    _tools?: WorkerToolDefinition[],
-    _signal?: AbortSignal
-  ) {
+  async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools, signal: _signal }: {
+    messages: ChatMessage[];
+    onChunk: TransformersJsChunkCallback;
+    onToolCalls: TransformersJsToolCallsCallback;
+    params?: LmParameters;
+    tools?: WorkerToolDefinition[];
+    signal?: AbortSignal;
+  }) {
     throw unsupportedError();
   },
 };

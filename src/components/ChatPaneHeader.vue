@@ -62,7 +62,7 @@ const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
 const actionsMenuRoot = ref<HTMLElement | null>(null);
 
-function closeFloatingMenus(_args: Record<string, never>) {
+function closeFloatingMenus(_args: Record<never, never>) {
   showMoreMenu.value = false;
   showMoveMenu.value = false;
 }

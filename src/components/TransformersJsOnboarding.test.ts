@@ -124,9 +124,9 @@ describe('Transformers.js Onboarding Integration', () => {
       progressItems: {},
     });
     (transformersJsService.listCachedModels as any).mockResolvedValue([]);
-    (transformersJsService.subscribe as any).mockImplementation((listener: any) => {
+    (transformersJsService.subscribe as any).mockImplementation(({ listener }: any) => {
       // Immediate call for the first state
-      listener('idle', 0, undefined, false, false, {});
+      listener({ status: 'idle', progress: 0, error: undefined, isCached: false, isLoadingFromCache: false, progressItems: {} });
       return () => {};
     });
 
@@ -191,9 +191,9 @@ describe('Transformers.js Onboarding Integration', () => {
 
   it('enables "Get Started" button when a model is loaded via service subscription', async () => {
     let subscriberCallback: any;
-    (transformersJsService.subscribe as any).mockImplementation((cb: any) => {
-      subscriberCallback = cb;
-      cb('idle', 0, null, false, false);
+    (transformersJsService.subscribe as any).mockImplementation(({ listener }: any) => {
+      subscriberCallback = listener;
+      listener({ status: 'idle', progress: 0, error: null, isCached: false, isLoadingFromCache: false });
       return () => {};
     });
 
@@ -209,7 +209,7 @@ describe('Transformers.js Onboarding Integration', () => {
       activeModelId: 'some-model-id'
     });
     // Trigger the callback that service would trigger
-    subscriberCallback('ready', 100, null, true, true);
+    subscriberCallback({ status: 'ready', progress: 100, error: null, isCached: true, isLoadingFromCache: true });
     await flushPromises();
     await nextTick();
 

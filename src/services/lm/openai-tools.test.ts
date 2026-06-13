@@ -56,7 +56,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     await provider.chat({
       messages: [{ role: 'user', content: 'Tokyo weather?' }],
       model: 'gpt-4',
-      onChunk: (chunk) => {
+      onChunk: ({ chunk: chunk }) => {
         result += chunk;
       },
       tools: [mockTool],
@@ -147,7 +147,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     await provider.chat({
       messages: [],
       model: 'gpt-4',
-      onChunk: (chunk) => {
+      onChunk: ({ chunk: chunk }) => {
         result += chunk;
       },
       tools: [mockTool],

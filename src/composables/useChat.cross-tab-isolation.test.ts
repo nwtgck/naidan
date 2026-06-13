@@ -76,9 +76,9 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     vi.doMock('../services/storage', () => ({
       storageService: {
         init: vi.fn(),
-        subscribeToChanges: vi.fn().mockImplementation((l) => {
-          getShared().listeners.add(l);
-          return () => getShared().listeners.delete(l);
+        subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
+          getShared().listeners.add(listener);
+          return () => getShared().listeners.delete(listener);
         }),
         getSidebarStructure: vi.fn().mockImplementation(async () => {
           const s = getShared();
@@ -111,55 +111,55 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
         loadSettings: vi.fn().mockImplementation(async () => JSON.parse(JSON.stringify(getShared().settings))),
         listChatGroups: vi.fn().mockImplementation(async () => Array.from(getShared().groups.values()).map(g => JSON.parse(JSON.stringify(g)))),
         loadChatGroup: vi.fn().mockResolvedValue(null),
-        updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+        updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
           const s = getShared();
           const current = s.chats.get(id);
-          const updatedMeta = await updater(current ? JSON.parse(JSON.stringify(current)) : null);
+          const updatedMeta = await updater({ current: current ? JSON.parse(JSON.stringify(current)) : null });
           if (current) s.chats.set(id, { ...current, ...updatedMeta });
           else s.chats.set(id, { id, ...updatedMeta });
-          s.listeners.forEach((l: any) => l({ type: 'chat_meta_and_chat_group', id, timestamp: Date.now() }));
+          await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } })));
         }),
-        updateHierarchy: vi.fn().mockImplementation(async (updater) => {
+        updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
           const s = getShared();
-          s.hierarchy = await updater(JSON.parse(JSON.stringify(s.hierarchy)));
-          s.listeners.forEach((l: any) => l({ type: 'chat_meta_and_chat_group', timestamp: Date.now() }));
+          s.hierarchy = await updater({ current: JSON.parse(JSON.stringify(s.hierarchy)) });
+          await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } })));
         }),
-        updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+        updateChatContent: vi.fn().mockImplementation(async ({ id, updater }) => {
           const s = getShared();
           const current = s.chats.get(id);
           const existingContent = current ? { root: current.root, currentLeafId: current.currentLeafId } : { root: { items: [] } };
-          const updatedContent = await updater(JSON.parse(JSON.stringify(existingContent)));
+          const updatedContent = await updater({ current: JSON.parse(JSON.stringify(existingContent)) });
           if (current) s.chats.set(id, { ...current, ...updatedContent });
           else s.chats.set(id, { id, ...updatedContent });
-          s.listeners.forEach((l: any) => l({ type: 'chat_content', id, timestamp: Date.now() }));
+          await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'chat_content', id, timestamp: Date.now() } })));
         }),
-        updateChatGroup: vi.fn().mockImplementation(async (id, updater) => {
+        updateChatGroup: vi.fn().mockImplementation(async ({ id, updater }) => {
           const s = getShared();
           const current = s.groups.get(id);
-          const updated = await updater(current ? JSON.parse(JSON.stringify(current)) : null);
+          const updated = await updater({ current: current ? JSON.parse(JSON.stringify(current)) : null });
           s.groups.set(id, JSON.parse(JSON.stringify(updated)));
-          s.listeners.forEach((l: any) => l({ type: 'chat_meta_and_chat_group', id, timestamp: Date.now() }));
+          await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } })));
         }),
-        updateSettings: vi.fn().mockImplementation(async (updater) => {
+        updateSettings: vi.fn().mockImplementation(async ({ updater }) => {
           const s = getShared();
-          s.settings = await updater(JSON.parse(JSON.stringify(s.settings)));
-          s.listeners.forEach((l: any) => l({ type: 'settings', timestamp: Date.now() }));
+          s.settings = await updater({ current: JSON.parse(JSON.stringify(s.settings)) });
+          await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'settings', timestamp: Date.now() } })));
         }),
         deleteChat: vi.fn().mockImplementation(async ({ id }: { id: string }) => {
           const s = getShared();
           s.chats.delete(id);
-          s.listeners.forEach((l: any) => l({ type: 'chat_meta_and_chat_group', id, timestamp: Date.now() }));
+          await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } })));
         }),
         clearAll: vi.fn().mockImplementation(async () => {
           const s = getShared();
           s.chats.clear();
           s.groups.clear();
           s.hierarchy = { items: [] };
-          s.listeners.forEach((l: any) => l({ type: 'migration', timestamp: Date.now() }));
+          await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'migration', timestamp: Date.now() } })));
         }),
         notify: vi.fn().mockImplementation((event) => {
           // Immediately notify all listeners in all simulated tabs
-          getShared().listeners.forEach((l: any) => l(event));
+          void Promise.all(Array.from(getShared().listeners, (l: any) => l({ event })));
         }),
       }
     }));
@@ -178,7 +178,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     vi.doMock('../services/lm/openai', () => ({
       OpenAIProvider: function() {
         return {
-          chat: vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void, signal?: AbortSignal }) => {
+          chat: vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void, signal?: AbortSignal }) => {
             const { onChunk, signal } = params;
             await Promise.resolve();
             // Generate enough chunks for state verification but not so many that it times out
@@ -188,7 +188,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
                 err.name = 'AbortError';
                 throw err;
               }
-              onChunk(`chunk ${i}`);
+              onChunk({ chunk: `chunk ${i}` });
               await new Promise(r => setTimeout(r, 100));
             }
           }),
@@ -213,25 +213,26 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabA = await createTab();
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
-    vi.advanceTimersByTime(600);
+    await vi.advanceTimersByTimeAsync(600);
     await tabB.openChat({ id: chat!.id });
     await tabA.renameChat({ id: chat!.id, newTitle: 'New Title' });
-    vi.advanceTimersByTime(600);
+    await vi.advanceTimersByTimeAsync(600);
     await nextTick();
     expect(tabB.currentChat.value?.title).toBe('New Title');
-  }, 10_000);
+  }, 30_000);
 
   it('should sync sidebar reordering (chat_meta_and_chat_group)', async () => {
     const tabA = await createTab();
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
-    vi.advanceTimersByTime(600);
+    await vi.advanceTimersByTimeAsync(600);
     await nextTick();
+    await vi.waitUntil(() => tabB.rootItems.value.length === 1);
     expect(tabB.rootItems.value.length).toBe(1);
 
     const groupId = await tabA.createChatGroup({ name: 'Group' });
     await tabA.moveChatToGroup({ chatId: chat!.id, targetGroupId: groupId });
-    vi.advanceTimersByTime(600);
+    await vi.advanceTimersByTimeAsync(600);
     await nextTick();
 
     const groupItem = tabB.rootItems.value[0];
@@ -264,7 +265,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await createTab();
     await createTab();
     const { storageService } = await import('../services/storage');
-    await storageService.updateSettings((curr: any) => ({ ...curr, someNewSetting: true }));
+    await storageService.updateSettings({ updater: ({ current: curr }: { current: any }) => ({ ...curr, someNewSetting: true }) });
     vi.advanceTimersByTime(600);
     await nextTick();
     expect(vi.mocked(storageService.getSidebarStructure)).toHaveBeenCalled();

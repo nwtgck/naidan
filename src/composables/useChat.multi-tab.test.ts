@@ -28,9 +28,9 @@ vi.mock('../services/storage', () => ({
       return JSON.parse(JSON.stringify(chat));
     }),
     loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(mocks.mockChatStorage.get(id) || null)),
-    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mocks.mockChatStorage.get(id) || null;
-      const updatedMeta = await updater(current ? JSON.parse(JSON.stringify(current)) : null);
+      const updatedMeta = await updater({ current: current ? JSON.parse(JSON.stringify(current)) : null });
       if (current) {
         const full = { ...current, ...updatedMeta };
         mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(full)));
@@ -39,10 +39,10 @@ vi.mock('../services/storage', () => ({
       }
       return Promise.resolve();
     }),
-    updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mocks.mockChatStorage.get(id) || null;
       const existingContent = current ? { root: current.root, currentLeafId: current.currentLeafId } : { root: { items: [] } };
-      const updatedContent = await updater(existingContent);
+      const updatedContent = await updater({ current: existingContent });
       if (current) {
         const full = { ...current, ...updatedContent };
         mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(full)));
@@ -52,8 +52,8 @@ vi.mock('../services/storage', () => ({
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(JSON.parse(JSON.stringify(mocks.mockHierarchy)))),
-    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
-      mocks.mockHierarchy = await updater(mocks.mockHierarchy);
+    updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
+      mocks.mockHierarchy = await updater({ current: mocks.mockHierarchy });
       return Promise.resolve();
     }),
     deleteChat: vi.fn().mockImplementation(({ id }: { id: string }) => {
@@ -80,7 +80,7 @@ vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
-    return { chat: vi.fn().mockImplementation((_m, _mo, _u, onChunk) => onChunk('OK')), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
+    return { chat: vi.fn().mockImplementation(({ onChunk }) => onChunk({ chunk: 'OK' })), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
   },
 }));
 
@@ -159,10 +159,10 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     // 1. Tab B starts generating (Slow)
     let resolveGen: () => void;
     const genP = new Promise<void>(r => resolveGen = r);
-    vi.mocked(storageService.updateChatContent).mockImplementation(async (id, updater) => {
+    vi.mocked(storageService.updateChatContent).mockImplementation(async ({ id, updater }) => {
       await genP;
       const current = mocks.mockChatStorage.get(id) || null;
-      const updated = await updater(current);
+      const updated = await updater({ current: current });
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
     });
 

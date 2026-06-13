@@ -11,8 +11,8 @@ vi.mock('../services/storage', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadChat: vi.fn(),
     loadSettings: vi.fn().mockResolvedValue({}),
@@ -73,8 +73,8 @@ describe('useChat Settings Resolution Policy', () => {
     mockOpenAIModels.mockResolvedValue(['global-gpt', 'other-gpt', 'pinned-model', 'model-a', 'model-b']);
     mockOllamaModels.mockResolvedValue(['llama-global', 'llama-other']);
 
-    mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Resp'));
-    mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Resp'));
+    mockOpenAIChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'OpenAI Resp' }));
+    mockOllamaChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'Ollama Resp' }));
 
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
   });

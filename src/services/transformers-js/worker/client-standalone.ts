@@ -1,9 +1,11 @@
-import type { EmptyArgs, ChatMessage, LmParameters, ToolCall } from '@/models/types'
+import type { EmptyArgs, ChatMessage, LmParameters } from '@/models/types'
 import type {
   TransformersJsWorkerClient,
-  ProgressInfo,
   ModelLoadResult,
   WorkerToolDefinition,
+  TransformersJsProgressCallback,
+  TransformersJsChunkCallback,
+  TransformersJsToolCallsCallback,
 } from '@/services/transformers-js/types'
 
 function createUnsupportedError(): Error {
@@ -12,15 +14,21 @@ function createUnsupportedError(): Error {
 
 export function createTransformersJsWorkerClient(_args: EmptyArgs): TransformersJsWorkerClient {
   return {
-    async downloadModel(_args: { modelId: string, progressCallback: (x: ProgressInfo) => void }): Promise<void> {
-      throw createUnsupportedError()
-    },
-    async prefetchUrls(_args: { urls: string[], progressCallback: (x: ProgressInfo) => void }): Promise<void> {
-      throw createUnsupportedError()
-    },
-    async loadModel(_args: {
+    async downloadModel({ modelId: _modelId, progressCallback: _progressCallback }: {
       modelId: string
-      progressCallback: (x: ProgressInfo) => void
+      progressCallback: TransformersJsProgressCallback
+    }): Promise<void> {
+      throw createUnsupportedError()
+    },
+    async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }: {
+      urls: string[]
+      progressCallback: TransformersJsProgressCallback
+    }): Promise<void> {
+      throw createUnsupportedError()
+    },
+    async loadModel({ modelId: _modelId, progressCallback: _progressCallback }: {
+      modelId: string
+      progressCallback: TransformersJsProgressCallback
     }): Promise<ModelLoadResult> {
       throw createUnsupportedError()
     },
@@ -33,10 +41,10 @@ export function createTransformersJsWorkerClient(_args: EmptyArgs): Transformers
     async resetCache(_args: EmptyArgs): Promise<void> {
       throw createUnsupportedError()
     },
-    async generateText(_args: {
+    async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools }: {
       messages: ChatMessage[]
-      onChunk: (chunk: string) => void
-      onToolCalls: (toolCalls: ToolCall[]) => void
+      onChunk: TransformersJsChunkCallback
+      onToolCalls: TransformersJsToolCallsCallback
       params?: LmParameters
       tools?: WorkerToolDefinition[]
     }): Promise<void> {

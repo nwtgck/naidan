@@ -14,9 +14,9 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined }))),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } }))),
     loadChatContent: vi.fn().mockResolvedValue(null),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
@@ -45,8 +45,8 @@ vi.mock('./useSettings', () => ({
 }));
 
 // Mock LLM Provider
-const mockChat = vi.fn().mockImplementation(async (params: { model: string, onChunk: (chunk: string) => void }) => {
-  params.onChunk('Response from ' + params.model);
+const mockChat = vi.fn().mockImplementation(async (params: { model: string, onChunk: (params: { chunk: string }) => void }) => {
+  params.onChunk({ chunk: 'Response from ' + params.model });
 });
 
 vi.mock('../services/lm/openai', () => {
@@ -122,8 +122,8 @@ describe('useChat Model ID Persistence & Resolution', () => {
     // 5. Verify storage was called with correct modelIds in the tree
     expect(storageService.updateChatContent).toHaveBeenCalled();
     const lastCall = vi.mocked(storageService.updateChatContent).mock.calls[vi.mocked(storageService.updateChatContent).mock.calls.length - 1];
-    const updater = lastCall![1];
-    const lastSavedContent = await (updater as any)(null);
+    const updater = lastCall![0].updater;
+    const lastSavedContent = await (updater as any)({ current: null });
 
     // Path: root -> user1 -> assistant1 (gpt-3.5) -> user2 -> assistant2 (gpt-4)
     const assistant1 = lastSavedContent.root.items[0]?.replies.items[0];

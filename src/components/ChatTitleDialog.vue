@@ -81,7 +81,7 @@ watch(
   }
 );
 
-function emitGenerateTitle(_args: Record<string, never>) {
+function emitGenerateTitle(_args: Record<never, never>) {
   emit('generate-title', selectedTitleModelDraft.value);
 }
 
@@ -105,7 +105,7 @@ function titleModelSourceLabel({ source }: { source: 'chat' | 'chat_group' | 'gl
   }
 }
 
-function toggleDetails(_args: Record<string, never>) {
+function toggleDetails(_args: Record<never, never>) {
   const currentVisibility = detailVisibility.value;
   switch (currentVisibility) {
   case 'hidden':

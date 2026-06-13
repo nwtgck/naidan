@@ -6,7 +6,7 @@ import { vi } from 'vitest';
  */
 export function setupScrollToMock() {
   if (typeof window !== 'undefined') {
-    const mockScrollTo = function(this: HTMLElement | Element | Window, options?: number | ScrollToOptions, _left?: number) {
+    const mockScrollTo: typeof window.scrollTo = function(this: HTMLElement | Element | Window, options?: number | ScrollToOptions, _left?: number) {
       if (typeof options === 'object' && options !== null) {
         const scrollToOptions = options as ScrollToOptions;
         if (this instanceof HTMLElement || this instanceof Element) {

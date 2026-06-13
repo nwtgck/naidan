@@ -148,7 +148,7 @@ export function createWeshTerminalSessions({
     try {
       const started = await client.startExecution({
         request: { script },
-        onEvent: async (event) => {
+        onEvent: async ({ event }) => {
           switch (event.type) {
           case 'started':
             break;

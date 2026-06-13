@@ -10,6 +10,7 @@ import {
   SystemPromptSchemaDto,
 } from '@/models/dto'
 
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this local Zod helper intentionally mirrors Zod's schema-first helper style.
 const orUndefined = <T extends z.ZodTypeAny>(schema: T) => z.union([schema, z.undefined()])
 
 export const naidanSysfsRemoteChatSummarySchema = z.object({

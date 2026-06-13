@@ -77,7 +77,7 @@ describe('OllamaProvider Integration Tests', () => {
       await provider.chat({
         messages: [{ role: 'user', content: 'What is the answer?' }],
         model: 'llama3',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -116,7 +116,7 @@ describe('OllamaProvider Integration Tests', () => {
       await provider.chat({
         messages: [],
         model: 'llama3',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });
@@ -139,7 +139,7 @@ describe('OllamaProvider Integration Tests', () => {
         await provider.chat({
           messages: [],
           model: 'llama3',
-          onChunk: (chunk) => {
+          onChunk: ({ chunk: chunk }) => {
             result += chunk;
           }
         });
@@ -268,7 +268,7 @@ describe('OllamaProvider Integration Tests', () => {
       await provider.chat({
         messages: [],
         model: 'llama3',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         },
         parameters: {
@@ -527,7 +527,7 @@ describe('OllamaProvider Integration Tests', () => {
       await provider.chat({
         messages: [],
         model: 'llama3',
-        onChunk: (chunk) => {
+        onChunk: ({ chunk: chunk }) => {
           result += chunk;
         }
       });

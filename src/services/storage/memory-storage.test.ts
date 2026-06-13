@@ -20,8 +20,8 @@ describe('MemoryStorageProvider', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChatContent(mockChat.id, mockChat);
-    await provider.saveChatMeta(mockChat);
+    await provider.saveChatContent({ id: mockChat.id, content: mockChat });
+    await provider.saveChatMeta({ meta: mockChat });
     const loaded = await provider.loadChat({ id: mockChat.id });
     expect(loaded).toEqual(expect.objectContaining(mockChat));
   });
@@ -37,9 +37,9 @@ describe('MemoryStorageProvider', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChatContent(mockChat.id, mockChat);
-    await provider.saveChatMeta(mockChat);
-    await provider.saveHierarchy({ items: [{ type: 'chat', id: mockChat.id }] });
+    await provider.saveChatContent({ id: mockChat.id, content: mockChat });
+    await provider.saveChatMeta({ meta: mockChat });
+    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: mockChat.id }] } });
     const list = await provider.listChats();
     expect(list).toHaveLength(1);
     expect(list[0]?.id).toBe(mockChat.id);
@@ -56,8 +56,8 @@ describe('MemoryStorageProvider', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChatContent(mockChat.id, mockChat);
-    await provider.saveChatMeta(mockChat);
+    await provider.saveChatContent({ id: mockChat.id, content: mockChat });
+    await provider.saveChatMeta({ meta: mockChat });
     await provider.deleteChat({ id: mockChat.id });
     const loaded = await provider.loadChat({ id: mockChat.id });
     expect(loaded).toBeNull();
@@ -87,7 +87,7 @@ describe('MemoryStorageProvider', () => {
         ]
       };
 
-      await provider.saveHierarchy(mockHierarchy);
+      await provider.saveHierarchy({ hierarchy: mockHierarchy });
       const loaded = await provider.loadHierarchy();
       expect(loaded).toEqual(mockHierarchy);
     });
@@ -117,9 +117,9 @@ describe('MemoryStorageProvider', () => {
         items: [],
       };
 
-      await provider.saveChatMeta(mockChat);
-      await provider.saveChatContent(mockChat.id, mockChat);
-      await provider.saveChatGroup(mockGroup);
+      await provider.saveChatMeta({ meta: mockChat });
+      await provider.saveChatContent({ id: mockChat.id, content: mockChat });
+      await provider.saveChatGroup({ chatGroup: mockGroup });
 
       const chats = await provider.listChats();
       const groups = await provider.listChatGroups();
@@ -127,11 +127,11 @@ describe('MemoryStorageProvider', () => {
       expect(chats).toHaveLength(0);
       expect(groups).toHaveLength(0);
 
-      await provider.saveHierarchy({
+      await provider.saveHierarchy({ hierarchy: {
         items: [
           { type: 'chat_group', id: mockGroup.id, chat_ids: [mockChat.id] }
         ]
-      });
+      } });
 
       const visibleChats = await provider.listChats();
       const visibleGroups = await provider.listChatGroups();
