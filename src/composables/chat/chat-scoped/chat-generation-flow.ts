@@ -384,10 +384,12 @@ export async function generateResponseForAssistant({
     generation: { controller, chat: mutableChat },
   });
   storageService.notify({
-    type: 'chat_content_generation',
-    id: mutableChat.id,
-    status: 'started',
-    timestamp: Date.now(),
+    event: {
+      type: 'chat_content_generation',
+      id: mutableChat.id,
+      status: 'started',
+      timestamp: Date.now(),
+    },
   });
   registerLiveInstance({ chat: mutableChat });
 
@@ -695,10 +697,12 @@ export async function generateResponseForAssistant({
     if (chatRuntimeStore.activeGenerations.has(mutableChat.id)) {
       chatRuntimeStore.deleteActiveGeneration({ chatId: mutableChat.id });
       storageService.notify({
-        type: 'chat_content_generation',
-        id: mutableChat.id,
-        status: 'stopped',
-        timestamp: Date.now(),
+        event: {
+          type: 'chat_content_generation',
+          id: mutableChat.id,
+          status: 'stopped',
+          timestamp: Date.now(),
+        },
       });
       updateChatMeta({
         id: mutableChat.id,

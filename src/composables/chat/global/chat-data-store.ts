@@ -480,6 +480,7 @@ export function createChatDataStore({
       await loadData({});
       break;
     }
+    case 'binary_objects':
     case 'settings':
       break;
     default: {

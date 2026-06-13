@@ -295,7 +295,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
     TEST_ONLY.externalGenerations.add(chatId);
-    vi.mocked(storageService.notify).mockImplementation((event: any) => {
+    vi.mocked(storageService.notify).mockImplementation(({ event }: any) => {
       if (event.type === 'chat_content_generation' && event.status === 'abort_request' && event.id === chatId) {
         TEST_ONLY.externalGenerations.delete(chatId);
       }
@@ -307,11 +307,13 @@ describe('useChat Interrupt and Sync Tests', () => {
 
     await regenerateMessage({ failedMessageId: assistantId });
 
-    expect(vi.mocked(storageService.notify)).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'chat_content_generation',
-      id: chatId,
-      status: 'abort_request',
-    }));
+    expect(vi.mocked(storageService.notify)).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        type: 'chat_content_generation',
+        id: chatId,
+        status: 'abort_request',
+      }),
+    });
     expect(chat.root.items[0].replies.items).toHaveLength(2);
     expect(chat.root.items[0].replies.items[1].content).toBe('Regenerated');
   }, 15000);

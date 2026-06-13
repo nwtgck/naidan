@@ -82,10 +82,12 @@ describe('abortProcessingForChat', () => {
       chatId: 'chat-1',
     });
     expect(mockNotify).toHaveBeenCalledWith({
-      type: 'chat_content_generation',
-      id: 'chat-1',
-      status: 'abort_request',
-      timestamp: expect.any(Number),
+      event: {
+        type: 'chat_content_generation',
+        id: 'chat-1',
+        status: 'abort_request',
+        timestamp: expect.any(Number),
+      },
     });
   });
 
@@ -98,10 +100,12 @@ describe('abortProcessingForChat', () => {
 
     expect(mockDeleteActiveGeneration).not.toHaveBeenCalled();
     expect(mockNotify).toHaveBeenCalledWith({
-      type: 'chat_content_generation',
-      id: 'chat-2',
-      status: 'abort_request',
-      timestamp: expect.any(Number),
+      event: {
+        type: 'chat_content_generation',
+        id: 'chat-2',
+        status: 'abort_request',
+        timestamp: expect.any(Number),
+      },
     });
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({
       chatId: 'chat-2',

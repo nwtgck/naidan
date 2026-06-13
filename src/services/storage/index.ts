@@ -86,33 +86,8 @@ export class StorageService {
     return this.synchronizer.subscribe({ listener });
   }
 
-  notify({ type }: StorageChangeEvent): void;
-  /**
-   * @deprecated Use notify(event: StorageChangeEvent) instead.
-   */
-  notify(type: string, id?: string): void;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because deprecated overloads are retained for compatibility.
-  notify(eventOrType: StorageChangeEvent | string, id?: string): void {
-    const t = typeof eventOrType;
-    switch (t) {
-    case 'string':
-      this.synchronizer.notify(eventOrType as string, id);
-      break;
-    case 'object':
-      this.synchronizer.notify(eventOrType as StorageChangeEvent);
-      break;
-    case 'undefined':
-    case 'boolean':
-    case 'number':
-    case 'function':
-    case 'symbol':
-    case 'bigint':
-      throw new Error(`Unexpected event type: ${t}`);
-    default: {
-      const _ex: never = t;
-      throw new Error(`Unhandled event type: ${_ex}`);
-    }
-    }
+  notify({ event }: { event: StorageChangeEvent }): void {
+    this.synchronizer.notify({ event });
   }
 
   // --- Hierarchy Management (Atomic) ---
@@ -133,7 +108,7 @@ export class StorageService {
         const updated = await updater({ current: current });
         await this.getProvider().saveHierarchy({ hierarchy: hierarchyToDto({ domain: updated }) });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateHierarchy' }) });
-      this.synchronizer.notify('chat_meta_and_chat_group');
+      this.notify({ event: { type: 'chat_meta_and_chat_group', timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'updateHierarchy' });
       throw e;
@@ -149,7 +124,7 @@ export class StorageService {
         const updated = await updater({ current: current });
         await this.getProvider().saveChatMeta({ meta: updated });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
-      this.synchronizer.notify('chat_meta_and_chat_group', id);
+      this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'updateChatMeta' });
       throw e;
@@ -171,7 +146,7 @@ export class StorageService {
         const updated = await updater({ current: current });
         await this.getProvider().saveChatContent({ id, content: updated });
       }, lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${id}`, ...this.getLockOptions({ source: 'updateChatContent' }) });
-      this.synchronizer.notify('chat_content', id);
+      this.notify({ event: { type: 'chat_content', id, timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'updateChatContent' });
       throw e;
@@ -187,7 +162,7 @@ export class StorageService {
       await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().deleteChat({ id });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChat' }) });
-      this.synchronizer.notify('chat_meta_and_chat_group', id);
+      this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'deleteChat' });
       throw e;
@@ -201,7 +176,7 @@ export class StorageService {
         const updated = await updater({ current: current });
         await this.getProvider().saveChatGroup({ chatGroup: updated });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatGroup' }) });
-      this.synchronizer.notify('chat_meta_and_chat_group', id);
+      this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'updateChatGroup' });
       throw e;
@@ -217,7 +192,7 @@ export class StorageService {
       await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().deleteChatGroup({ id });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChatGroup' }) });
-      this.synchronizer.notify('chat_meta_and_chat_group', id);
+      this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'deleteChatGroup' });
       throw e;
@@ -248,7 +223,7 @@ export class StorageService {
         const updated = await updater({ current: current });
         await this.getProvider().saveSettings({ settings: updated });
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'updateSettings' }) });
-      this.synchronizer.notify('settings');
+      this.notify({ event: { type: 'settings', timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'updateSettings' });
       throw e;
@@ -264,7 +239,7 @@ export class StorageService {
       await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().clearAll();
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'clearAll' }) });
-      this.synchronizer.notify('migration');
+      this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'clearAll' });
       throw e;
@@ -314,10 +289,7 @@ export class StorageService {
       await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().deleteBinaryObject({ binaryObjectId });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteBinaryObject' }) });
-      // Notify binary objects changed if we had a specific event,
-      // but 'chat_content' or similar might be enough, or just generic.
-      // For now, let's just notify 'chat_content' as it's most related to attachments.
-      this.synchronizer.notify('chat_content');
+      this.notify({ event: { type: 'binary_objects', timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'deleteBinaryObject' });
       throw e;
@@ -558,7 +530,7 @@ export class StorageService {
         }
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'switchProvider', custom: { notifyLockWaitAfterMs: 5000 } }) });
 
-      this.synchronizer.notify('migration');
+      this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'switchProvider' });
       throw e;
@@ -586,7 +558,7 @@ export class StorageService {
       await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().restore({ snapshot });
       }, lockKey: SYNC_LOCK_KEY, ...this.getLockOptions({ source: 'restore', custom: { notifyLockWaitAfterMs: 5000 } }) });
-      this.synchronizer.notify('migration');
+      this.notify({ event: { type: 'migration', timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'restore' });
       throw e;

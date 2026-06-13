@@ -280,44 +280,21 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
 
-  /**
-   * @deprecated Use the named arguments version instead.
-   */
-  async saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
   async saveFile({ blob, binaryObjectId, name, mimeType }: {
     blob: Blob;
     binaryObjectId: string;
     name: string;
-    mimeType: string | undefined;
-  }): Promise<void>;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because deprecated overloads are retained for compatibility.
-  async saveFile(blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined }, binaryObjectId?: string, name?: string, mimeType?: string): Promise<void> {
-    let blob: Blob;
-    let bId: string;
-    let fileName: string;
-    let mType: string | undefined;
-
-    if (blobOrParams instanceof Blob) {
-      blob = blobOrParams;
-      bId = binaryObjectId!;
-      fileName = name!;
-      mType = mimeType;
-    } else {
-      blob = blobOrParams.blob;
-      bId = blobOrParams.binaryObjectId;
-      fileName = blobOrParams.name;
-      mType = blobOrParams.mimeType;
-    }
-
+    mimeType?: string;
+  }): Promise<void> {
     const meta: BinaryObject = {
-      id: bId,
-      mimeType: mType || blob.type || 'application/octet-stream',
+      id: binaryObjectId,
+      mimeType: mimeType || blob.type || 'application/octet-stream',
       size: blob.size,
       createdAt: Date.now(),
-      name: fileName,
+      name,
     };
 
-    this.binaryObjects.set(bId, { blob, meta });
+    this.binaryObjects.set(binaryObjectId, { blob, meta });
   }
 
   async getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null> {

@@ -157,7 +157,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
           s.hierarchy = { items: [] };
           await Promise.all(Array.from(s.listeners, (l: any) => l({ event: { type: 'migration', timestamp: Date.now() } })));
         }),
-        notify: vi.fn().mockImplementation((event) => {
+        notify: vi.fn().mockImplementation(({ event }) => {
           // Immediately notify all listeners in all simulated tabs
           void Promise.all(Array.from(getShared().listeners, (l: any) => l({ event })));
         }),

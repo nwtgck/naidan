@@ -23,6 +23,10 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
     timestamp: z.number(),
   }),
   z.object({
+    type: z.literal('binary_objects'),
+    timestamp: z.number(),
+  }),
+  z.object({
     type: z.literal('migration'),
     timestamp: z.number(),
   }),
@@ -173,39 +177,7 @@ export class StorageSynchronizer {
   /**
    * Notifies other tabs of a change.
    */
-  notify({ type }: StorageChangeEvent): void;
-  /**
-   * @deprecated Use notify(event: StorageChangeEvent) instead.
-   */
-  notify(type: string, id?: string): void;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because deprecated overloads are retained for compatibility.
-  notify(eventOrType: StorageChangeEvent | string, id?: string): void {
-    let event: StorageChangeEvent;
-    const t = typeof eventOrType;
-    switch (t) {
-    case 'string':
-      event = {
-        type: eventOrType as string,
-        id,
-        timestamp: Date.now(),
-      } as unknown as StorageChangeEvent;
-      break;
-    case 'object':
-      event = eventOrType as StorageChangeEvent;
-      break;
-    case 'undefined':
-    case 'boolean':
-    case 'number':
-    case 'function':
-    case 'symbol':
-    case 'bigint':
-      throw new Error(`Unexpected event type: ${t}`);
-    default: {
-      const _ex: never = t;
-      throw new Error(`Unhandled event type: ${_ex}`);
-    }
-    }
-
+  notify({ event }: { event: StorageChangeEvent }): void {
     // 1. LocalStorage Signal
     try {
       localStorage.setItem(SYNC_SIGNAL_KEY, JSON.stringify(event));

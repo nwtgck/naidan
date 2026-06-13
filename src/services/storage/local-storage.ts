@@ -321,24 +321,17 @@ export class LocalStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
 
-  /**
-   * @deprecated Use the named arguments version instead.
-   */
-  async saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
-  async saveFile({ blob, binaryObjectId, name, mimeType }: {
+  async saveFile({
+    blob: _blob,
+    binaryObjectId: _binaryObjectId,
+    name: _name,
+    mimeType: _mimeType,
+  }: {
     blob: Blob;
     binaryObjectId: string;
     name: string;
-    mimeType: string | undefined;
-  }): Promise<void>;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because deprecated overloads are retained for compatibility.
-  async saveFile(
-    _blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined },
-    _binaryObjectId?: string,
-    _name?: string,
-    _mimeType?: string,
-    _size?: number
-  ): Promise<void> {
+    mimeType?: string;
+  }): Promise<void> {
     throw new Error('File persistence is not supported in LocalStorage provider.');
   }
 

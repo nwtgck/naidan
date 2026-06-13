@@ -25,10 +25,12 @@ export function abortProcessingForChat({
   const hasExternalGeneration = chatRuntimeStore.hasExternalGeneration({ chatId });
   if (activeGeneration !== undefined || hasExternalGeneration) {
     storageService.notify({
-      type: 'chat_content_generation',
-      id: chatId,
-      status: 'abort_request',
-      timestamp: Date.now(),
+      event: {
+        type: 'chat_content_generation',
+        id: chatId,
+        status: 'abort_request',
+        timestamp: Date.now(),
+      },
     });
   }
 

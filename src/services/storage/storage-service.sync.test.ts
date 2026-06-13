@@ -104,7 +104,7 @@ describe('StorageService Synchronization Wrapper', () => {
       lockKey: LOCK_METADATA,
     }));
     expect(mockProvider.deleteChat).toHaveBeenCalledWith({ id: 'c1' });
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'c1');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
   });
 
   it('should wrap updateChatGroup with lock and notify after success', async () => {
@@ -118,7 +118,7 @@ describe('StorageService Synchronization Wrapper', () => {
     }));
     expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveChatGroup).toHaveBeenCalledWith({ chatGroup: group });
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'g1');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'g1' }) });
   });
 
   it('should wrap deleteChatGroup with lock and notify after success', async () => {
@@ -129,7 +129,7 @@ describe('StorageService Synchronization Wrapper', () => {
       lockKey: LOCK_METADATA,
     }));
     expect(mockProvider.deleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'g1');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'g1' }) });
   });
 
   it('should wrap updateSettings with lock and notify after success', async () => {
@@ -143,7 +143,7 @@ describe('StorageService Synchronization Wrapper', () => {
     }));
     expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveSettings).toHaveBeenCalledWith({ settings });
-    expect(mockNotify).toHaveBeenCalledWith('settings');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'settings' }) });
   });
 
   it('should wrap clearAll with lock and notify migration', async () => {
@@ -154,7 +154,7 @@ describe('StorageService Synchronization Wrapper', () => {
       lockKey: SYNC_LOCK_KEY,
     }));
     expect(mockProvider.clearAll).toHaveBeenCalled();
-    expect(mockNotify).toHaveBeenCalledWith('migration');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'migration' }) });
   });
 
   it('should wrap saveFile with lock but not notify (tied to chat)', async () => {
@@ -213,7 +213,7 @@ describe('StorageService Synchronization Wrapper', () => {
       fn: expect.any(Function),
       notifyLockWaitAfterMs: 5000,
     }));
-    expect(mockNotify).toHaveBeenCalledWith('migration');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'migration' }) });
   });
 
   it('should report generic storage error via addErrorEvent', async () => {
@@ -241,7 +241,7 @@ describe('StorageService Synchronization Wrapper', () => {
     }));
     expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({ meta });
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'c1');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
   });
 
   it('should wrap updateChatContent with specific chat lock and notify', async () => {
@@ -255,7 +255,7 @@ describe('StorageService Synchronization Wrapper', () => {
     }));
     expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveChatContent).toHaveBeenCalledWith({ id: 'c1', content });
-    expect(mockNotify).toHaveBeenCalledWith('chat_content', 'c1');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_content', id: 'c1' }) });
   });
 
   it('should wrap updateHierarchy with metadata lock and notify', async () => {
@@ -267,6 +267,6 @@ describe('StorageService Synchronization Wrapper', () => {
       lockKey: LOCK_METADATA,
     }));
     expect(mockProvider.saveHierarchy).toHaveBeenCalled();
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group' }) });
   });
 });

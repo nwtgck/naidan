@@ -137,7 +137,7 @@ describe('StorageSynchronizer', () => {
   describe('Signaling', () => {
     it('should notify via localStorage', () => {
       const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
-      synchronizer.notify('chat_content', '123');
+      synchronizer.notify({ event: { type: 'chat_content', id: '123', timestamp: 123456789 } });
 
       expect(setItemSpy).toHaveBeenCalledWith(
         SYNC_SIGNAL_KEY,

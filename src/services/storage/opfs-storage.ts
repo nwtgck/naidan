@@ -115,7 +115,7 @@ export class OPFSStorageProvider extends IStorageProvider {
               const newBinaryObjectId = generateId();
 
               // Save to new location with NEW ID
-              await this.saveFile(blob, newBinaryObjectId, fileEntry.name);
+              await this.saveFile({ blob, binaryObjectId: newBinaryObjectId, name: fileEntry.name });
               idMap.set(attachmentId, newBinaryObjectId);
               break;
             }
@@ -528,30 +528,17 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   // --- Binary Object Storage ---
 
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because deprecated overloads are retained for compatibility.
-  async saveFile(blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined }, binaryObjectId?: string, name?: string, mimeType?: string): Promise<void> {
-    let blob: Blob;
-    let bId: string;
-    let fileName: string;
-    let mType: string | undefined;
-
-    if (blobOrParams instanceof Blob) {
-      blob = blobOrParams;
-      bId = binaryObjectId!;
-      fileName = name!;
-      mType = mimeType;
-    } else {
-      blob = blobOrParams.blob;
-      bId = blobOrParams.binaryObjectId;
-      fileName = blobOrParams.name;
-      mType = blobOrParams.mimeType;
-    }
-
-    const shard = this.getBinaryObjectShardPath({ id: bId });
+  async saveFile({ blob, binaryObjectId, name, mimeType }: {
+    blob: Blob;
+    binaryObjectId: string;
+    name: string;
+    mimeType?: string;
+  }): Promise<void> {
+    const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
     const dir = await this.getShardDir({ shard: shard });
 
     // 1. Write Blob
-    const binFileName = `${bId}.bin`;
+    const binFileName = `${binaryObjectId}.bin`;
     const fileHandle = await dir.getFileHandle(binFileName, { create: true }) as FileSystemFileHandleWithWritable;
     const writable = await fileHandle.createWritable();
     // Convert blob to ArrayBuffer for compatibility
@@ -564,12 +551,12 @@ export class OPFSStorageProvider extends IStorageProvider {
 
     // 3. Update Index
     const index = await this.loadShardIndex({ shard: shard });
-    index.objects[bId] = {
-      id: bId,
-      mimeType: mType || blob.type || 'application/octet-stream',
+    index.objects[binaryObjectId] = {
+      id: binaryObjectId,
+      mimeType: mimeType || blob.type || 'application/octet-stream',
       size: blob.size,
       createdAt: Date.now(),
-      name: fileName,
+      name,
     };
     await this.saveShardIndex({ shard: shard, index: index });
   }

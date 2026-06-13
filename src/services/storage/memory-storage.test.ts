@@ -68,7 +68,7 @@ describe('MemoryStorageProvider', () => {
     const binaryObjectId = 'bin-123';
     const name = 'test.txt';
 
-    await provider.saveFile(blob, binaryObjectId, name);
+    await provider.saveFile({ blob, binaryObjectId, name });
     const loadedBlob = await provider.getFile({ binaryObjectId });
     expect(loadedBlob).not.toBeNull();
     expect(loadedBlob?.size).toBe(blob.size);
