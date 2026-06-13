@@ -24,13 +24,13 @@ function createReaderStub({
   hierarchy: Hierarchy;
 }): NaidanSysfsStorageReader {
   return {
-    async loadHierarchy(_args: Record<never, never>) {
+    async loadHierarchy() {
       return hierarchy
     },
-    async getSidebarStructure(_args: Record<never, never>) {
+    async getSidebarStructure() {
       return sidebarItems
     },
-    async listChats(_args: Record<never, never>) {
+    async listChats() {
       return Object.values(metadataById).map(({ id, title, updatedAt, groupId }) => ({
         id,
         title,
@@ -38,7 +38,7 @@ function createReaderStub({
         groupId,
       }))
     },
-    async listChatGroups(_args: Record<never, never>) {
+    async listChatGroups() {
       return chatGroups
     },
     async loadChatMeta({ chatId }: { chatId: string }) {
@@ -54,8 +54,7 @@ function createReaderStub({
     async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
       return chatGroups.find(({ id }) => id === chatGroupId)
     },
-    async *listBinaryObjects(_args: Record<never, never>) {
-      void _args
+    async *listBinaryObjects() {
       for (const object of [] as never[]) {
         yield object
       }
@@ -320,7 +319,7 @@ export const chatGroup: ChatGroup = {
   ],
 }
 
-function createSidebarItems(_args: Record<never, never>): SidebarItem[] {
+function createSidebarItems(): SidebarItem[] {
   return [
     {
       id: 'chat_group:chat-group-1',
@@ -384,7 +383,7 @@ export async function createMountedNaidanSysfsWeshWithCurrentChat({
           'chat-3': individualChatContent,
         },
         chatGroups: [chatGroup],
-        sidebarItems: createSidebarItems({}),
+        sidebarItems: createSidebarItems(),
         hierarchy: {
           items: [
             { type: 'chat_group', id: 'chat-group-1', chat_ids: ['chat-1', 'chat-2'] },

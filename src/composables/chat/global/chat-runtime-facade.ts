@@ -42,7 +42,7 @@ export type ChatRuntimeFacade = {
     chatId: string | undefined;
   }): ContextCompactProgress;
 
-  clearActiveTaskCounts(_args: Record<never, never>): void;
+  clearActiveTaskCounts(): void;
 };
 
 export function createChatRuntimeFacade({
@@ -120,8 +120,8 @@ export function createChatRuntimeFacade({
     contextCompactRuntime.setProgress({ chatId, progress });
   }
 
-  function clearActiveTaskCounts(_args: Record<never, never>) {
-    runtimeStore.clearActiveTaskCounts({});
+  function clearActiveTaskCounts() {
+    runtimeStore.clearActiveTaskCounts();
   }
 
   return {

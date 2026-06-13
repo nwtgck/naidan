@@ -35,8 +35,8 @@ const emit = defineEmits<{
 }>();
 
 const { currentChatId, currentChat, resolvedSettings, inheritedSettings } = useCurrentChatState();
-const chatMetadata = useChatMetadata({});
-const chatModels = useChatModels({});
+const chatMetadata = useChatMetadata();
+const chatModels = useChatModels();
 const isFetchingModels = computed(() => chatModels.fetchingModels.value);
 const sortedAvailableModels = computed(() => naturalSort({ values: chatModels.availableModels.value || [] }));
 const { settings } = useSettings();
@@ -268,7 +268,6 @@ async function handleRestoreDefaults() {
   };
   await saveChanges();
 }
-
 
 defineExpose({
   TEST_ONLY: {

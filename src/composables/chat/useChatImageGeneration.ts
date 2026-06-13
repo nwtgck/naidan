@@ -16,7 +16,7 @@ export type ChatImageGenerationAdapter = {
   seed: ComputedRef<number | 'browser_random' | undefined>;
   selectedImageModel: ComputedRef<string | undefined>;
 
-  toggleImageMode(_args: Record<never, never>): void;
+  toggleImageMode(): void;
 
   updateResolution({
     width,
@@ -99,7 +99,7 @@ export function useChatImageGeneration({
     });
   });
 
-  function toggleImageMode(_args: Record<never, never>) {
+  function toggleImageMode() {
     imageGeneration.toggleImageMode({ chatId: chatId.value });
   }
 

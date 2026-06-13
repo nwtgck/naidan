@@ -843,7 +843,7 @@ describe('useChat Composable Logic', () => {
       { type: 'chat', id: 'c1' }
     ];
 
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
     expect(rootItems.value).toHaveLength(2);
 
     await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
@@ -871,7 +871,7 @@ describe('useChat Composable Logic', () => {
         { type: 'chat_group', id: 'g2', chat_ids: [] },
         { type: 'chat', id: 'c1' }
       ];
-      await chatStore.loadChats({});
+      await chatStore.loadChats();
 
       await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
@@ -906,7 +906,7 @@ describe('useChat Composable Logic', () => {
         { type: 'chat', id: 'c2' },
         { type: 'chat_group', id: 'g3', chat_ids: [] },
       ];
-      await chatStore.loadChats({});
+      await chatStore.loadChats();
 
       await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
@@ -923,7 +923,7 @@ describe('useChat Composable Logic', () => {
         { type: 'chat', id: 'c2' },
         { type: 'chat_group', id: 'g3', chat_ids: [] },
       ];
-      await chatStore.loadChats({});
+      await chatStore.loadChats();
 
       await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
@@ -948,7 +948,7 @@ describe('useChat Composable Logic', () => {
         { type: 'chat', id: 'c1' },
         { type: 'chat_group', id: 'g1', chat_ids: [] }
       ];
-      await chatStore.loadChats({});
+      await chatStore.loadChats();
 
       await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
@@ -967,7 +967,7 @@ describe('useChat Composable Logic', () => {
       mockHierarchy.items = [
         { type: 'chat_group', id: 'g1', chat_ids: [] }
       ];
-      await chatStore.loadChats({});
+      await chatStore.loadChats();
 
       await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
@@ -985,7 +985,7 @@ describe('useChat Composable Logic', () => {
     mockHierarchy.items = [{ type: 'chat', id: 'c1' }];
 
     const { createChatGroup } = useChat();
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
     await createChatGroup({ name: 'New Group' });
 
@@ -1116,7 +1116,7 @@ describe('useChat Composable Logic', () => {
 
   it('should show fetchingModels as true for global fetch or current chat fetch', async () => {
     const { fetchAvailableModels, TEST_ONLY: { __testOnlySetCurrentChat, clearActiveTaskCounts } } = useChat();
-    clearActiveTaskCounts({});
+    clearActiveTaskCounts();
 
     const chatA = reactive({ id: 'chat-A', root: { items: [] } }) as any;
     const chatB = reactive({ id: 'chat-B', root: { items: [] } }) as any;
@@ -1372,7 +1372,7 @@ describe('useChat Composable Logic', () => {
         return null;
       });
 
-      await chatStore.loadChats({});
+      await chatStore.loadChats();
 
       // 2. Mock toast capture with proper typing
       let capturedOnAction: (() => void | Promise<void>) | undefined;
@@ -1390,7 +1390,7 @@ describe('useChat Composable Logic', () => {
         g.chat_ids = ['c1'];
         return curr;
       } });
-      await chatStore.loadChats({});
+      await chatStore.loadChats();
 
       // 5. Act: Undo
       if (capturedOnAction) {

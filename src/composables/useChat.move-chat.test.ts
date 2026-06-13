@@ -86,7 +86,7 @@ describe('useChat moveChatToGroup', () => {
     ];
 
     mockGetSidebarStructure.mockResolvedValue(sidebarItems);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
     // Move chat c1 to group g1
     await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g1' });
@@ -126,7 +126,7 @@ describe('useChat moveChatToGroup', () => {
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 },
       { id: 'chat_group:g2', type: 'chat_group', chatGroup: group2 },
     ]);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
     await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g2' });
 
@@ -154,7 +154,7 @@ describe('useChat moveChatToGroup', () => {
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 },
       { id: 'chat:top', type: 'chat', chat: { id: 'top', title: 'Top Chat', updatedAt: 0 } }
     ]);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
     await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: null });
 
@@ -175,7 +175,7 @@ describe('useChat moveChatToGroup', () => {
       updatedAt: 0, isCollapsed: false,
     };
     mockGetSidebarStructure.mockResolvedValue([{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 }]);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
     await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: null });
 
@@ -194,7 +194,7 @@ describe('useChat moveChatToGroup', () => {
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } }
     ]);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
     await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g1' });
 

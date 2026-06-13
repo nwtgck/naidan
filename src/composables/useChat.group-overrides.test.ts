@@ -68,7 +68,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry({});
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
     chatStore.rootItems.value = [];
     mockRootItems.length = 0;
   });

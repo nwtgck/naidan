@@ -75,14 +75,14 @@ const isHovered = ref(false);
 
 const isChatStreaming = computed(() => props.isStreaming);
 const chatId = computed(() => props.chatId);
-const chatConversation = useChatConversation({});
+const chatConversation = useChatConversation();
 const chatDraft = useChatDraft();
 const chatMedia = useChatImageGeneration({
   chatId,
 });
-const chatModels = useChatModels({});
-const chatMounts = useChatMounts({});
-const chatMetadata = useChatMetadata({});
+const chatModels = useChatModels();
+const chatMounts = useChatMounts();
+const chatMetadata = useChatMetadata();
 const chat = computed(() => props.chat);
 const chatGroup = computed(() => props.chatGroup);
 const fetchingModels = chatModels.fetchingModels;
@@ -99,11 +99,10 @@ function formatLabel({ value, source }: { value: string | undefined; source: Set
   return formatSettingsSourceLabel({ value, source });
 }
 
-
 const isImageMode = computed({
   get: () => chatMedia.isImageMode.value,
   set: () => {
-    chatMedia.toggleImageMode({});
+    chatMedia.toggleImageMode();
   }
 });
 

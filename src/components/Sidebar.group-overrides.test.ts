@@ -16,7 +16,7 @@ const mockOpenChatGroup = vi.fn(({ id }: { id: string | null }) => {
   const group = mockChatGroups.value.find(g => g.id === id);
   if (group) mockCurrentChatGroup.value = group;
 });
-const mockOpenChat = vi.fn((_args?: { id: string }) => {
+const mockOpenChat = vi.fn(() => {
   mockCurrentChatGroup.value = null;
 });
 const mockSetChatGroupCollapsed = vi.fn();
@@ -75,7 +75,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 vi.mock('../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: () => ({
     openChat: ({ chatId }: { chatId: string; leafId?: string }) => {
-      mockOpenChat({ id: chatId });
+      void chatId;
+      mockOpenChat();
     },
     openChatAtMessage: vi.fn(),
     openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),

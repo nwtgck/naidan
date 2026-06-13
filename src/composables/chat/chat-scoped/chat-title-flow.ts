@@ -136,7 +136,7 @@ export async function generateChatTitleForChat({
           };
         },
       });
-      await loadData({});
+      await loadData();
       triggerCurrentChat({ chatId: mutableChat.id });
     }
 

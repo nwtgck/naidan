@@ -45,7 +45,7 @@ export type ChatMountsAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatMounts(_args: Record<never, never>): ChatMountsAdapter {
+export function useChatMounts(): ChatMountsAdapter {
   function getMounts({
     chatId,
   }: {

@@ -2,16 +2,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { useApproval } from './useApproval';
 import { APPROVAL_ACTIONS } from '@/services/approval';
 
-async function flushApprovalQueue(_args: Record<never, never>): Promise<void> {
+async function flushApprovalQueue(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
 }
 
 describe('useApproval', () => {
-  const approval = useApproval({});
+  const approval = useApproval();
 
   afterEach(() => {
-    approval.TEST_ONLY.clearAll({});
+    approval.TEST_ONLY.clearAll();
   });
 
   it('shows an active approval request and resolves an allow_once decision', async () => {
@@ -25,7 +25,7 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
     const activeRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
     expect(activeRequest).toMatchObject({
@@ -62,7 +62,7 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
     const firstRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
     expect(firstRequest).not.toBeUndefined();
@@ -92,7 +92,7 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
     const otherChatRequest = approval.getActiveApprovalRequest({ chatId: 'chat-b' }).value;
     expect(otherChatRequest).not.toBeUndefined();
@@ -115,7 +115,7 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
     const firstRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
     expect(firstRequest).not.toBeUndefined();
@@ -158,7 +158,7 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
     const firstRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
     expect(firstRequest?.preview).toEqual({
@@ -188,7 +188,7 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
     const activeRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
     expect(activeRequest).not.toBeUndefined();

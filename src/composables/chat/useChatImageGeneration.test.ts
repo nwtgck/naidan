@@ -111,7 +111,7 @@ describe('useChatImageGeneration', () => {
       availableModels: ['model-a', 'model-b'],
     });
 
-    chatImageGeneration.toggleImageMode({});
+    chatImageGeneration.toggleImageMode();
     chatImageGeneration.updateResolution({ width: 640, height: 480 });
     chatImageGeneration.updateCount({ count: 4 });
     chatImageGeneration.updatePersistAs({ format: 'jpeg' });

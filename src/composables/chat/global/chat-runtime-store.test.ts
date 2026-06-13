@@ -3,7 +3,7 @@ import { createChatRuntimeStore } from './chat-runtime-store';
 
 describe('createChatRuntimeStore', () => {
   it('tracks chat-scoped tasks and processing state', () => {
-    const store = createChatRuntimeStore({});
+    const store = createChatRuntimeStore();
 
     store.startTask({
       key: {
@@ -27,7 +27,7 @@ describe('createChatRuntimeStore', () => {
   });
 
   it('clears all tasks for one chat without touching another chat', () => {
-    const store = createChatRuntimeStore({});
+    const store = createChatRuntimeStore();
 
     store.startTask({
       key: {

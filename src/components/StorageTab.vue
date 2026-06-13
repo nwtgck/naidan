@@ -153,7 +153,7 @@ async function handleDeleteAllHistory() {
   });
 
   if (confirmed) {
-    await chatLifecycle.deleteAllChats({});
+    await chatLifecycle.deleteAllChats();
     emit('close');
     router.push('/');
   }
@@ -181,7 +181,6 @@ async function handleCopyExportURL() {
     isExportingURL.value = false;
   }
 }
-
 
 defineExpose({
   TEST_ONLY: {

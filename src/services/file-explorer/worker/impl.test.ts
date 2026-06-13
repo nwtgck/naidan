@@ -10,7 +10,7 @@ describe('file-explorer.worker.impl', () => {
   let worker: ReturnType<typeof createFileExplorerWorker>
 
   beforeEach(() => {
-    worker = createFileExplorerWorker({})
+    worker = createFileExplorerWorker()
   })
 
   it('lists native directory entries with metadata', async () => {

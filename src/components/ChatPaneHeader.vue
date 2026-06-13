@@ -62,7 +62,7 @@ const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
 const actionsMenuRoot = ref<HTMLElement | null>(null);
 
-function closeFloatingMenus(_args: Record<never, never>) {
+function closeFloatingMenus() {
   showMoreMenu.value = false;
   showMoveMenu.value = false;
 }
@@ -72,7 +72,7 @@ function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
   const target = event.target;
   if (!(target instanceof Node)) return;
   if (actionsMenuRoot.value?.contains(target)) return;
-  closeFloatingMenus({});
+  closeFloatingMenus();
 }
 
 useEventTargetListener(document, 'pointerdown', (event) => handleDocumentPointerDown({ event }));

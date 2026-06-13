@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
   fileExplorerPrepareSessionResponseSchema,
@@ -99,7 +99,7 @@ export async function createFileExplorerWorkerClient({
     async uploadFiles({ targetDirectoryPath, files }) {
       await remote.uploadFiles({ request: { sessionId, targetDirectoryPath, files } })
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       try {
         await remote.disposeSession({ request: { sessionId } })
         await remote[Comlink.releaseProxy]()

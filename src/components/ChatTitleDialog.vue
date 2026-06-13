@@ -81,7 +81,7 @@ watch(
   }
 );
 
-function emitGenerateTitle(_args: Record<never, never>) {
+function emitGenerateTitle() {
   emit('generate-title', selectedTitleModelDraft.value);
 }
 
@@ -105,7 +105,7 @@ function titleModelSourceLabel({ source }: { source: 'chat' | 'chat_group' | 'gl
   }
 }
 
-function toggleDetails(_args: Record<never, never>) {
+function toggleDetails() {
   const currentVisibility = detailVisibility.value;
   switch (currentVisibility) {
   case 'hidden':
@@ -126,7 +126,6 @@ function toggleDetails(_args: Record<never, never>) {
 onBeforeUnmount(() => {
   if (titleAutosaveTimer) clearTimeout(titleAutosaveTimer);
 });
-
 
 defineExpose({
   TEST_ONLY: {
@@ -194,7 +193,7 @@ defineExpose({
                 type="button"
                 class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                 data-testid="generate-chat-title-button"
-                @click="emitGenerateTitle({})"
+                @click="emitGenerateTitle()"
               >
                 <SparklesIcon class="w-3.5 h-3.5" />
                 <span>Generate</span>
@@ -207,7 +206,7 @@ defineExpose({
               type="button"
               class="w-full flex items-center justify-between px-1 py-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
               data-testid="title-options-toggle"
-              @click="toggleDetails({})"
+              @click="toggleDetails()"
             >
               <span>Options & History</span>
               <span>{{ detailVisibility === 'visible' ? 'Hide' : 'Show' }}</span>

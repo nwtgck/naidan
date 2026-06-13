@@ -46,7 +46,7 @@ export type ChatLifecycleAdapter = {
     injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }): Promise<void>;
 
-  deleteAllChats(_args: Record<never, never>): Promise<void>;
+  deleteAllChats(): Promise<void>;
 
   TEST_ONLY: Record<never, never>;
 };
@@ -112,7 +112,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
       setCurrentChatId({ chatId });
       currentChatRef.value = chat;
-      await loadData({});
+      await loadData();
       return chat;
     } finally {
       creatingChat.value = false;
@@ -151,9 +151,9 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === id) {
       currentChatRef.value = null;
     }
-    await loadData({});
+    await loadData();
 
-    const cleanup = async (_args: Record<never, never>) => {
+    const cleanup = async () => {
       if (chatRuntimeStore.activeGenerations.has(id)) {
         chatRuntimeStore.getActiveGeneration({ chatId: id })?.controller.abort();
         chatRuntimeStore.deleteActiveGeneration({ chatId: id });
@@ -192,7 +192,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
           current.items.push({ type: 'chat', id: chat.id });
           return current;
         } });
-        await loadData({});
+        await loadData();
         await chatNavigation.openChat({
           chatId: chat.id,
           leafId: undefined,
@@ -204,7 +204,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
           return;
         case 'timeout':
         case 'dismiss':
-          await cleanup({});
+          await cleanup();
           return;
         default: {
           const _ex: never = reason;
@@ -215,18 +215,18 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     });
 
     if (!toastId) {
-      await cleanup({});
+      await cleanup();
     }
   }
 
-  async function deleteAllChats(_args: Record<never, never>): Promise<void> {
+  async function deleteAllChats(): Promise<void> {
     for (const [, item] of chatRuntimeStore.activeGenerations.entries()) {
       item.controller.abort();
     }
-    chatRuntimeStore.clearActiveGenerations({});
-    chatRuntimeStore.clearActiveTaskCounts({});
+    chatRuntimeStore.clearActiveGenerations();
+    chatRuntimeStore.clearActiveTaskCounts();
     liveChatRegistry.clear();
-    clearChatTmpDirectories({});
+    clearChatTmpDirectories();
 
     const chats = await storageService.listChats();
     const chatGroups = await storageService.listChatGroups();
@@ -242,7 +242,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     currentChatRef.value = null;
     currentChatGroupRef.value = null;
     setCurrentChatId({ chatId: null });
-    await loadData({});
+    await loadData();
   }
 
   return {

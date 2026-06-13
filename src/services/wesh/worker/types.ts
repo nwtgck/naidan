@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { EmptyArgs } from '@/models/types'
+
 import type { NaidanSysfsRemoteReader } from '@/services/wesh/naidan-sysfs/types'
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
@@ -115,8 +115,8 @@ export interface IWeshWorker {
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
   disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
-  interrupt(_args: EmptyArgs): Promise<boolean>
-  dispose(_args: EmptyArgs): Promise<void>
+  interrupt(): Promise<boolean>
+  dispose(): Promise<void>
 }
 
 export interface WeshWorkerClient {
@@ -129,8 +129,8 @@ export interface WeshWorkerClient {
   cancelExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
   disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
-  interrupt(_args: EmptyArgs): Promise<boolean>
-  dispose(_args: EmptyArgs): Promise<void>
+  interrupt(): Promise<boolean>
+  dispose(): Promise<void>
 }
 
 export function mapWeshMountsToWorkerMounts({ mounts }: {

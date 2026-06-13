@@ -154,7 +154,7 @@ class WeshKernelHardProcessFileHandle extends WeshKernelProcessFileHandle {
 }
 
 class WeshKernelSoftProcessFileHandle extends WeshKernelProcessFileHandle {
-  private readonly closeSignal = new WeshHandleCloseSignal({});
+  private readonly closeSignal = new WeshHandleCloseSignal();
 
   async read({ buffer, offset, length, position }: {
     buffer: Uint8Array;
@@ -415,7 +415,6 @@ class PipeHandle implements WeshFileHandle {
     return new PipeHandle({ state: this.state, mode: this.mode });
   }
 }
-
 
 export class WeshKernel {
   private processes: Map<number, WeshProcess> = new Map();

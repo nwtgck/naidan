@@ -56,7 +56,7 @@ describe('useChat Interruption', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry({});
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('should interrupt current generation and start new one when regenerateMessage is called', async () => {

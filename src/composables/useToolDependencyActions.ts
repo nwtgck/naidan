@@ -14,7 +14,7 @@ export function useToolDependencyActions() {
     setNaidanSysfsMountSelection,
   } = useChatWeshPreferences()
 
-  function isNaidanSysfsMountedForCurrentChat(_args: Record<never, never>): boolean {
+  function isNaidanSysfsMountedForCurrentChat(): boolean {
     const selection = getNaidanSysfsMountSelection({ chatId: currentChat.value?.id })
     switch (selection) {
     case 'none':
@@ -30,14 +30,14 @@ export function useToolDependencyActions() {
     }
   }
 
-  function isWikipediaEffectivelyEnabledForCurrentChat(_args: Record<never, never>): boolean {
+  function isWikipediaEffectivelyEnabledForCurrentChat(): boolean {
     return isToolEnabled({ name: 'shell_execute' })
-      && isNaidanSysfsMountedForCurrentChat({})
+      && isNaidanSysfsMountedForCurrentChat()
       && isToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME })
       && isToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME })
   }
 
-  function enableWikipediaToolsForCurrentChat(_args: Record<never, never>): void {
+  function enableWikipediaToolsForCurrentChat(): void {
     setToolEnabled({ name: 'shell_execute', enabled: true })
     setToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: true })
     setToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: true })
@@ -62,23 +62,23 @@ export function useToolDependencyActions() {
     }
   }
 
-  function disableWikipediaToolsForCurrentChat(_args: Record<never, never>): void {
+  function disableWikipediaToolsForCurrentChat(): void {
     setToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: false })
     setToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: false })
   }
 
-  function disableShellToolForCurrentChat(_args: Record<never, never>): void {
+  function disableShellToolForCurrentChat(): void {
     setToolEnabled({ name: 'shell_execute', enabled: false })
-    disableWikipediaToolsForCurrentChat({})
+    disableWikipediaToolsForCurrentChat()
   }
 
-  function disableNaidanSysfsForCurrentChat(_args: Record<never, never>): void {
+  function disableNaidanSysfsForCurrentChat(): void {
     const chatId = currentChat.value?.id
     setNaidanSysfsMountSelection({
       chatId,
       selection: 'none',
     })
-    disableWikipediaToolsForCurrentChat({})
+    disableWikipediaToolsForCurrentChat()
   }
 
   return {

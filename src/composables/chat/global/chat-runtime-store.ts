@@ -124,8 +124,8 @@ export type ChatRuntimeStore = {
     chatId: string;
   }): void;
 
-  clearActiveGenerations(_args: Record<never, never>): void;
-  clearActiveTaskCounts(_args: Record<never, never>): void;
+  clearActiveGenerations(): void;
+  clearActiveTaskCounts(): void;
 
   TEST_ONLY: {
     activeTaskCounts: Map<string, number>;
@@ -150,7 +150,7 @@ function isChatScopedTaskKey({
   return serializedKey.endsWith(`:${chatId}`);
 }
 
-export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntimeStore {
+export function createChatRuntimeStore(): ChatRuntimeStore {
   const activeGenerations = reactive(new Map<string, ActiveGenerationEntry>());
   const activeTitleGenerations = reactive(new Map<string, AbortController>());
   const externalGenerations = reactive(new Set<string>());
@@ -330,11 +330,11 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
     activeTitleGenerations.delete(chatId);
   }
 
-  function clearActiveGenerations(_args: Record<never, never>) {
+  function clearActiveGenerations() {
     activeGenerations.clear();
   }
 
-  function clearActiveTaskCounts(_args: Record<never, never>) {
+  function clearActiveTaskCounts() {
     activeTaskCounts.clear();
   }
 

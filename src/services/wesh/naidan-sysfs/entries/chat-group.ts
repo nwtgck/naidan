@@ -11,7 +11,7 @@ import { renderChatGroupMetadataJson } from '@/services/wesh/naidan-sysfs/render
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsRestrictedDirectoryEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -19,7 +19,7 @@ function createFileStat({ size }: { size: number }): WeshStat {
   return { size, mode: 0o444, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-function createRestrictedDirectoryStat(_args: Record<never, never>): WeshStat {
+function createRestrictedDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -68,12 +68,12 @@ function createChatGroupMetadataFileEntry({
   }
 }
 
-function createRestrictedChatsDirectoryEntry(_args: Record<never, never>): NaidanSysfsRestrictedDirectoryEntry {
+function createRestrictedChatsDirectoryEntry(): NaidanSysfsRestrictedDirectoryEntry {
   return {
     kind: 'restricted-directory',
     async stat({ path }: { path: string }) {
       void path
-      return createRestrictedDirectoryStat({})
+      return createRestrictedDirectoryStat()
     },
     async *readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry> {
       yield* []
@@ -115,14 +115,14 @@ function createChatGroupChatsDirectoryEntry({
 }): NaidanSysfsDirectoryEntry | NaidanSysfsRestrictedDirectoryEntry {
   switch (context.visibility) {
   case 'current_chat_only':
-    return createRestrictedChatsDirectoryEntry({})
+    return createRestrictedChatsDirectoryEntry()
   case 'current_chat_with_chat_group':
   case 'all_chats':
     return {
       kind: 'directory',
       async stat({ path }: { path: string }) {
         void path
-        return createDirectoryStat({})
+        return createDirectoryStat()
       },
       async *readDir({
         path,
@@ -181,7 +181,7 @@ export function createChatGroupDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       yield { name: NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME}` }

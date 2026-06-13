@@ -341,7 +341,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatBId);
 
     // 2. Perform global delete
-    await deleteAllChats({});
+    await deleteAllChats();
     expect(mockChatStorage.size).toBe(0);
 
     // 3. Finish generations

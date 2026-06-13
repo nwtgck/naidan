@@ -37,7 +37,7 @@ export type ChatBranchesAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatBranches(_args: Record<never, never>): ChatBranchesAdapter {
+export function useChatBranches(): ChatBranchesAdapter {
   async function editMessage({
     chatId,
     messageId,

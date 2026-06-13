@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs, ChatMessage, LmParameters, ToolCall } from '@/models/types'
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types'
 import type {
   ITransformersJsWorker,
   TransformersJsWorkerClient,
@@ -15,7 +15,7 @@ function createUnavailableEnvironmentError(): Error {
   return new Error('Transformers.js worker is not available in this environment')
 }
 
-export function createTransformersJsWorkerClient(_args: EmptyArgs): TransformersJsWorkerClient {
+export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   if (typeof Worker === 'undefined') {
     return {
       async downloadModel({ modelId: _modelId, progressCallback: _progressCallback }) {
@@ -27,19 +27,19 @@ export function createTransformersJsWorkerClient(_args: EmptyArgs): Transformers
       async loadModel({ modelId: _modelId, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError()
       },
-      async unloadModel(_args: EmptyArgs) {
+      async unloadModel() {
         throw createUnavailableEnvironmentError()
       },
-      async interrupt(_args: EmptyArgs) {
+      async interrupt() {
         throw createUnavailableEnvironmentError()
       },
-      async resetCache(_args: EmptyArgs) {
+      async resetCache() {
         throw createUnavailableEnvironmentError()
       },
       async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools }) {
         throw createUnavailableEnvironmentError()
       },
-      async dispose(_args: EmptyArgs) {
+      async dispose() {
       },
     }
   }
@@ -70,13 +70,13 @@ export function createTransformersJsWorkerClient(_args: EmptyArgs): Transformers
     }): Promise<ModelLoadResult> {
       return remote.loadModel(modelId, Comlink.proxy((info: ProgressInfo) => progressCallback({ info })))
     },
-    async unloadModel(_args: EmptyArgs): Promise<void> {
+    async unloadModel(): Promise<void> {
       return remote.unloadModel()
     },
-    async interrupt(_args: EmptyArgs): Promise<void> {
+    async interrupt(): Promise<void> {
       return remote.interrupt()
     },
-    async resetCache(_args: EmptyArgs): Promise<void> {
+    async resetCache(): Promise<void> {
       return remote.resetCache()
     },
     async generateText({ messages, onChunk, onToolCalls, params, tools }: {
@@ -94,7 +94,7 @@ export function createTransformersJsWorkerClient(_args: EmptyArgs): Transformers
         tools
       )
     },
-    async dispose(_args: EmptyArgs): Promise<void> {
+    async dispose(): Promise<void> {
       try {
         await remote[Comlink.releaseProxy]()
       } finally {

@@ -1,6 +1,6 @@
 import { ref, shallowRef } from 'vue';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
-import type { EmptyArgs, SidebarItem } from '@/models/types';
+import type { SidebarItem } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { createGlobalSearchWorkerClient } from '@/services/global-search/worker/client';
 import type {
@@ -103,7 +103,7 @@ export function useChatSearch() {
     })
   }
 
-  async function disposeSearchClient(_args: EmptyArgs) {
+  async function disposeSearchClient() {
     const client = searchClient
     const sessionId = searchSessionId
     searchClient = undefined
@@ -119,7 +119,7 @@ export function useChatSearch() {
         await client.disposeSession({ request: { sessionId } })
       }
     } finally {
-      await client.dispose({})
+      await client.dispose()
     }
   }
 
@@ -174,7 +174,7 @@ export function useChatSearch() {
       }
 
       if (!searchClient) {
-        searchClient = await createGlobalSearchWorkerClient({})
+        searchClient = await createGlobalSearchWorkerClient()
       }
 
       if (!searchSourceCache) {
@@ -339,7 +339,7 @@ export function useChatSearch() {
     isSearching.value = false;
     isScanningContent.value = false;
     lastSearchKey = null;
-    void disposeSearchClient({});
+    void disposeSearchClient();
   };
 
   /**
@@ -350,7 +350,7 @@ export function useChatSearch() {
     isSearching.value = false;
     isScanningContent.value = false;
     lastSearchKey = null;
-    void disposeSearchClient({});
+    void disposeSearchClient();
   };
 
   return {

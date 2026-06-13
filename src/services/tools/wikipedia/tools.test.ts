@@ -25,7 +25,6 @@ vi.mock('./render', () => ({
   renderWikipediaPageMarkdown: mockRenderWikipediaPageMarkdown,
 }));
 
-
 function createApprovalContext({
   calls,
 }: {
@@ -43,7 +42,7 @@ function createApprovalContext({
 describe('WikipediaSearchTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearRememberedWikipediaPageTitles({});
+    clearRememberedWikipediaPageTitles();
   });
 
   it('accepts lang and query in parametersSchema', () => {
@@ -110,7 +109,7 @@ describe('WikipediaSearchTool', () => {
 describe('WikipediaGetPageTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearRememberedWikipediaPageTitles({});
+    clearRememberedWikipediaPageTitles();
   });
 
   it('accepts lang and pageId in parametersSchema', () => {

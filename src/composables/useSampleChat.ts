@@ -87,7 +87,7 @@ function longMessageContent({ turnIndex, role }: {
 
 async function persistSampleChat({ chat, loadChats, openChat }: {
   chat: Chat;
-  loadChats: (_params: Record<never, never>) => Promise<void>;
+  loadChats: () => Promise<void>;
   openChat: ({ id }: { id: string }) => Promise<unknown>;
 }) {
   await storageService.updateChatContent({ id: chat.id, updater: () => ({
@@ -100,7 +100,7 @@ async function persistSampleChat({ chat, loadChats, openChat }: {
     return curr;
   } });
 
-  await loadChats({});
+  await loadChats();
   await openChat({ id: chat.id });
 }
 

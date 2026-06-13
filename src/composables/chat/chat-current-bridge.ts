@@ -5,9 +5,9 @@ export type ChatCurrentBridge = {
   currentChat: ComputedRef<Chat | null>;
   currentChatGroup: ComputedRef<ChatGroup | null>;
 
-  getCurrentChat(_args: Record<never, never>): Chat | null;
+  getCurrentChat(): Chat | null;
 
-  getCurrentChatId(_args: Record<never, never>): string | null;
+  getCurrentChatId(): string | null;
 
   getChatTargetById({
     id,
@@ -42,14 +42,14 @@ export function createChatCurrentBridge({
   const currentChat = computed(() => currentChatRef.value ? readonly(currentChatRef.value) as Chat : null);
   const currentChatGroup = computed(() => currentChatGroupRef.value ? readonly(currentChatGroupRef.value) as ChatGroup : null);
 
-  function getCurrentChat(_args: Record<never, never>) {
+  function getCurrentChat() {
     if (!currentChatRef.value) {
       return null;
     }
     return getLiveChat({ chat: currentChatRef.value });
   }
 
-  function getCurrentChatId(_args: Record<never, never>) {
+  function getCurrentChatId() {
     if (!currentChatRef.value) {
       return null;
     }

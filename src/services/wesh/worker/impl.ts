@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { Wesh } from '@/services/wesh'
 import { NaidanSysfsProvider } from '@/services/wesh/naidan-sysfs/provider'
 import {
@@ -62,7 +62,7 @@ function createForwardingHandle({
   }
 }
 
-export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
+export function createWeshWorker(): IWeshWorker {
   let wesh: Wesh | undefined
   let nextExecutionId = 1
   const executions = new Map<string, {
@@ -107,7 +107,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
           const reader = await (() => {
             switch (mount.storageType) {
             case 'opfs':
-              return createOpfsNaidanSysfsStorageReader({})
+              return createOpfsNaidanSysfsStorageReader()
             case 'local':
             case 'memory':
               if (naidanSysfsRemoteReader === undefined) {
@@ -234,14 +234,14 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       }
     },
 
-    async interrupt(_args: EmptyArgs) {
+    async interrupt() {
       if (!wesh) {
         return false
       }
       return wesh.signalForegroundProcessGroup({ signal: 2 })
     },
 
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       wesh = undefined
     },
   }

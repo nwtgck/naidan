@@ -16,7 +16,7 @@ class StreamReadHandle implements WeshFileHandle {
     refCount: number;
     closed: boolean;
   };
-  private readonly closeSignal = new WeshHandleCloseSignal({});
+  private readonly closeSignal = new WeshHandleCloseSignal();
 
   constructor({ state }: {
     state: {
@@ -141,7 +141,7 @@ class StreamWriteHandle implements WeshFileHandle {
     refCount: number;
     closed: boolean;
   };
-  private readonly closeSignal = new WeshHandleCloseSignal({});
+  private readonly closeSignal = new WeshHandleCloseSignal();
 
   constructor({ state }: {
     state: {

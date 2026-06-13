@@ -40,10 +40,10 @@ import type { WeshMount } from '@/services/wesh/types';
 const { currentChatGroup } = useCurrentChatState();
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
-const chatGroups = useChatGroups({});
-const chatModels = useChatModels({});
+const chatGroups = useChatGroups();
+const chatModels = useChatModels();
 const { openFileExplorer } = useFileExplorerModal();
-const chatGroupMountsActions = useChatGroupMounts({});
+const chatGroupMountsActions = useChatGroupMounts();
 const isFetchingModels = computed(() => chatModels.fetchingModels.value);
 
 const selectedProviderProfileId = ref('');
@@ -319,7 +319,6 @@ async function setGroupNameFromModelId() {
     };
   } });
 }
-
 
 defineExpose({
   TEST_ONLY: {

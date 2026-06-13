@@ -60,7 +60,7 @@ describe('useChatMounts', () => {
     mockGetReadonlyChat.mockReturnValue(liveChat);
     mockGetLiveChatById.mockReturnValue(liveChat);
 
-    const chatMounts = useChatMounts({});
+    const chatMounts = useChatMounts();
     const mounts = chatMounts.getMounts({
       chatId: computed(() => 'chat-1'),
     });

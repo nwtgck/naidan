@@ -38,6 +38,6 @@ export function getRememberedWikipediaPageTitle({
   }));
 }
 
-export function clearRememberedWikipediaPageTitles(_args: Record<never, never>): void {
+export function clearRememberedWikipediaPageTitles(): void {
   rememberedPageTitlesByKey.clear();
 }

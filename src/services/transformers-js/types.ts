@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-imports -- Worker-facing transformers.js type references are centralized here to keep service and worker contracts aligned. */
 import type { AutoProcessor, AutoTokenizer, AutoModelForCausalLM, AutoModelForImageTextToText } from '@huggingface/transformers';
-import type { ChatMessage, EmptyArgs, LmParameters, ToolCall } from '@/models/types';
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -39,7 +39,7 @@ export interface ITransformersJsScannerWorker {
 
 export interface TransformersJsScannerWorkerClient {
   scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }>;
-  dispose(_args: EmptyArgs): Promise<void>;
+  dispose(): Promise<void>;
 }
 
 export interface WorkerToolDefinition {
@@ -92,9 +92,9 @@ export interface TransformersJsWorkerClient {
     modelId: string
     progressCallback: TransformersJsProgressCallback
   }): Promise<ModelLoadResult>;
-  unloadModel(_args: EmptyArgs): Promise<void>;
-  interrupt(_args: EmptyArgs): Promise<void>;
-  resetCache(_args: EmptyArgs): Promise<void>;
+  unloadModel(): Promise<void>;
+  interrupt(): Promise<void>;
+  resetCache(): Promise<void>;
   generateText({ messages, onChunk, onToolCalls, params, tools }: {
     messages: ChatMessage[]
     onChunk: TransformersJsChunkCallback
@@ -102,5 +102,5 @@ export interface TransformersJsWorkerClient {
     params?: LmParameters
     tools?: WorkerToolDefinition[]
   }): Promise<void>;
-  dispose(_args: EmptyArgs): Promise<void>;
+  dispose(): Promise<void>;
 }

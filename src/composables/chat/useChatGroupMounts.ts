@@ -37,7 +37,7 @@ export type ChatGroupMountsAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatGroupMounts(_args: Record<never, never>): ChatGroupMountsAdapter {
+export function useChatGroupMounts(): ChatGroupMountsAdapter {
   async function addMount({
     chatGroupId,
     mount,

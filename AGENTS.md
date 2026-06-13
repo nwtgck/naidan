@@ -12,6 +12,8 @@ For **new** or **refactored** functions, use a single mandatory argument object 
 
 Exception: keep single positional arguments for TypeScript type predicate functions when the predicate form is needed for narrowing (for example `isElementNode(node): node is Element`). Converting these to object arguments breaks the narrowing benefit and forces extra casts at call sites.
 
+Zero-argument Naidan-owned callables may use an empty parameter list. Use `()` when there is no meaningful argument object. An empty object argument may still be appropriate for intentional contracts, protocol shapes, compatibility boundaries, or APIs where an empty object is part of the public shape.
+
 - **Why single-argument objects?**: Function requirements frequently evolve. Starting with an object ensures that adding a second or third parameter is a non-breaking, consistent change. This prevents "parameter creep" where developers might otherwise add positional arguments to avoid refactoring, leading to inconsistent and hard-to-read signatures.
 - **Explicit > Implicit**: Avoid property defaults. They hide intent and create "implicit knowledge". Require explicit values (including `undefined`) so the state is fully visible at the call site.
 - **Inline Types**: Prefer inline destructuring and type definitions in signatures.

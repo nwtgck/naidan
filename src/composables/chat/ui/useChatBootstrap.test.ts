@@ -72,12 +72,12 @@ describe('useChatBootstrap', () => {
 
     expect(mockInstallChatBootstrap).toHaveBeenCalledTimes(1);
 
-    await chatBootstrap.loadChats({});
+    await chatBootstrap.loadChats();
     await chatBootstrap.openChat({
       chatId: 'chat-1',
     });
 
-    expect(mockLoadData).toHaveBeenCalledWith({});
+    expect(mockLoadData).toHaveBeenCalledWith();
     expect(mockOpenChat).toHaveBeenCalledWith({
       chatId: 'chat-1',
     });

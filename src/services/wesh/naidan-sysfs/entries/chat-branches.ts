@@ -32,7 +32,7 @@ function createFormatExtension({ format }: { format: NaidanSysfsBranchFormat }):
   }
 }
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -224,7 +224,7 @@ function createLeafContentDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       for (const [index, node] of nodes.entries()) {
@@ -268,7 +268,7 @@ function createLeafDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       const extension = createFormatExtension({ format })
@@ -316,7 +316,7 @@ function createLeavesDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,
@@ -397,7 +397,7 @@ function createTreeDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       const { chain, nextNodes } = collectLinearChain({ nodes })
@@ -480,7 +480,7 @@ export function createChatBranchesDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       yield { name: NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME, type: 'symlink', fullPath: `${path}/${NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME}` }

@@ -24,10 +24,10 @@ const naidanSysfsMountSelection = computed(() => getNaidanSysfsMountSelection({ 
 const isNaidanSysfsMounted = computed(() => naidanSysfsMountSelection.value !== 'none');
 const hasWritableTmp = computed(() => shouldIncludeWritableTmpMount({ storageType: settings.value.storageType }));
 
-function handleShellToolToggle(_args: Record<never, never>) {
+function handleShellToolToggle() {
   const enablingShellExecute = !isToolEnabled({ name: 'shell_execute' });
   if (!enablingShellExecute) {
-    disableShellToolForCurrentChat({})
+    disableShellToolForCurrentChat()
     return
   }
 
@@ -37,9 +37,9 @@ function handleShellToolToggle(_args: Record<never, never>) {
   }
 }
 
-function handleNaidanSysfsToggle(_args: Record<never, never>) {
+function handleNaidanSysfsToggle() {
   if (isNaidanSysfsMounted.value) {
-    disableNaidanSysfsForCurrentChat({})
+    disableNaidanSysfsForCurrentChat()
     return
   }
   setNaidanSysfsMountSelection({
@@ -79,7 +79,7 @@ defineExpose({
 <template>
   <template v-if="isWeshToolFeatureEnabled">
     <button
-      @click="handleShellToolToggle({})"
+      @click="handleShellToolToggle()"
       class="relative flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 text-left border overflow-hidden group active:scale-[0.98]"
       :class="isToolEnabled({ name: 'shell_execute' })
         ? 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/30 shadow-sm'
@@ -124,7 +124,7 @@ defineExpose({
       </div>
 
       <button
-        @click="handleNaidanSysfsToggle({})"
+        @click="handleNaidanSysfsToggle()"
         class="w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition-colors bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900"
         data-testid="naidan-sysfs-toggle"
       >

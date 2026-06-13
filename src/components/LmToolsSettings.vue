@@ -13,15 +13,15 @@ const {
 } = useToolDependencyActions();
 
 const isWikipediaEnabled = computed(() => {
-  return isWikipediaEffectivelyEnabledForCurrentChat({});
+  return isWikipediaEffectivelyEnabledForCurrentChat();
 });
 
-function toggleWikipedia(_args: Record<never, never>): void {
+function toggleWikipedia(): void {
   if (isWikipediaEnabled.value) {
-    disableWikipediaToolsForCurrentChat({});
+    disableWikipediaToolsForCurrentChat();
     return;
   }
-  enableWikipediaToolsForCurrentChat({});
+  enableWikipediaToolsForCurrentChat();
 }
 
 defineExpose({
@@ -64,7 +64,7 @@ defineExpose({
       </button>
 
       <button
-        @click="toggleWikipedia({})"
+        @click="toggleWikipedia()"
         class="relative flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 text-left border overflow-hidden group active:scale-[0.98]"
         :class="isWikipediaEnabled
           ? 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/30 shadow-sm'

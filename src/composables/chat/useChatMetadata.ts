@@ -78,7 +78,7 @@ export type ChatMetadataAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapter {
+export function useChatMetadata(): ChatMetadataAdapter {
   async function rename({
     chatId,
     title,
@@ -108,7 +108,7 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
         };
       },
     });
-    await loadData({});
+    await loadData();
   }
 
   async function toggleDebug({
@@ -203,7 +203,7 @@ export function useChatMetadata(_args: Record<never, never>): ChatMetadataAdapte
         };
       },
     });
-    await loadData({});
+    await loadData();
   }
 
   async function updateSettings({

@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME } from '@/models/constants'
 import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
@@ -120,13 +120,13 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       const response = await runtime.remote.execute({ request })
       return weshWorkerExecutionSummarySchema.parse(response)
     },
-    async interrupt(_args: EmptyArgs) {
-      return runtime.remote.interrupt({})
+    async interrupt() {
+      return runtime.remote.interrupt()
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       const activeRuntime = runtime
       try {
-        await activeRuntime.remote.dispose({})
+        await activeRuntime.remote.dispose()
       } finally {
         await destroyRuntime(activeRuntime)
       }

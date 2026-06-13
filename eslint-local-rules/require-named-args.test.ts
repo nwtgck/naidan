@@ -121,13 +121,17 @@ describe('require-named-args rule', () => {
     await expect(lint(`function read(_args: Record<never, never>) {}`)).resolves.toHaveLength(0);
   });
 
-  it('allows the shared EmptyArgs alias for the empty named args convention', async () => {
-    await expect(lint(`type EmptyArgs = Record<never, never>; function read(_args: EmptyArgs) {}`)).resolves.toHaveLength(0);
+  it('reports EmptyArgs because empty args contracts should use Record<never, never> directly', async () => {
+    const messages = await lint(`type EmptyArgs = Record<never, never>; function read(_args: EmptyArgs) {}`);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.message).toBe('Use one destructured object param, e.g. fn({ value }: Args). Disable only for true external/deprecated contracts.');
   });
 
   it('allows any identifier name for the explicit empty named args type', async () => {
     await expect(lint(`function read(options: Record<never, never>) {}`)).resolves.toHaveLength(0);
-    await expect(lint(`type EmptyArgs = Record<never, never>; function read(params: EmptyArgs) {}`)).resolves.toHaveLength(0);
+    const emptyArgsMessages = await lint(`type EmptyArgs = Record<never, never>; function read(params: EmptyArgs) {}`);
+    expect(emptyArgsMessages).toHaveLength(1);
   });
 
   it('allows inline destructured object parameters', async () => {

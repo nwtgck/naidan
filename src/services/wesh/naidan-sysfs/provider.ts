@@ -27,7 +27,7 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
       currentChatId,
       currentChatGroupId,
     }
-    this.rootEntry = createRootEntry({})
+    this.rootEntry = createRootEntry()
   }
 
   async open({

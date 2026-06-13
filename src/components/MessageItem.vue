@@ -101,7 +101,7 @@ const attachmentUrls = ref<Record<string, string>>({});
 const messageChatId = computed(() => props.chatId);
 
 const { openPreview } = useImagePreview();
-const chatMetadata = useChatMetadata({});
+const chatMetadata = useChatMetadata();
 const chatImageProgress = useChatImageProgress({
   chatId: messageChatId,
 });
@@ -346,7 +346,6 @@ const displayContent = computed(() => {
 });
 
 const isImageResponse = computed(() => isImageGenerationProcessed({ content: props.message.content || '' }));
-
 
 const speechText = computed(() => {
   const mode = props.mode;
@@ -709,7 +708,6 @@ defineExpose({
             <span>Retry</span>
           </button>
         </div>
-
 
         <div v-if="isLastInNode" class="flex items-center justify-between min-h-[28px]" :class="isNested ? 'mt-1' : 'mt-3'" data-testid="message-actions-wrapper">
           <!-- Version Paging -->

@@ -73,8 +73,8 @@ describe('useChat shared state', () => {
     chatStore.availableModels.value = [];
     chatStore.TEST_ONLY.__testOnlySetCurrentChat({ chat: null });
     chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: null });
-    chatStore.TEST_ONLY.clearLiveChatRegistry({});
-    chatStore.TEST_ONLY.clearActiveTaskCounts({});
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
+    chatStore.TEST_ONLY.clearActiveTaskCounts();
   });
 
   it('shares availableModels across useChat callers', async () => {

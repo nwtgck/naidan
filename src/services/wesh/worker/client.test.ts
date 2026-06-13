@@ -69,8 +69,8 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
         script: 'echo ok',
       },
     })
-    const interrupted = await client.interrupt({})
-    await client.dispose({})
+    const interrupted = await client.interrupt()
+    await client.dispose()
 
     expect(init).toHaveBeenCalledTimes(1)
     expect(response.exitCode).toBe(0)
@@ -227,7 +227,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     )
     expect(init.mock.calls[0]?.[0]).not.toHaveProperty('naidanSysfsRemoteReader')
 
-    await client.dispose({})
+    await client.dispose()
     expect(release).toHaveBeenCalledTimes(1)
     expect(terminate).toHaveBeenCalledTimes(1)
   })

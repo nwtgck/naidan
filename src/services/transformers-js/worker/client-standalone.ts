@@ -1,4 +1,4 @@
-import type { EmptyArgs, ChatMessage, LmParameters } from '@/models/types'
+import type { ChatMessage, LmParameters } from '@/models/types'
 import type {
   TransformersJsWorkerClient,
   ModelLoadResult,
@@ -12,7 +12,7 @@ function createUnsupportedError(): Error {
   return new Error('Transformers.js is not available in standalone mode')
 }
 
-export function createTransformersJsWorkerClient(_args: EmptyArgs): TransformersJsWorkerClient {
+export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   return {
     async downloadModel({ modelId: _modelId, progressCallback: _progressCallback }: {
       modelId: string
@@ -32,13 +32,13 @@ export function createTransformersJsWorkerClient(_args: EmptyArgs): Transformers
     }): Promise<ModelLoadResult> {
       throw createUnsupportedError()
     },
-    async unloadModel(_args: EmptyArgs): Promise<void> {
+    async unloadModel(): Promise<void> {
       throw createUnsupportedError()
     },
-    async interrupt(_args: EmptyArgs): Promise<void> {
+    async interrupt(): Promise<void> {
       throw createUnsupportedError()
     },
-    async resetCache(_args: EmptyArgs): Promise<void> {
+    async resetCache(): Promise<void> {
       throw createUnsupportedError()
     },
     async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools }: {
@@ -50,7 +50,7 @@ export function createTransformersJsWorkerClient(_args: EmptyArgs): Transformers
     }): Promise<void> {
       throw createUnsupportedError()
     },
-    async dispose(_args: EmptyArgs): Promise<void> {
+    async dispose(): Promise<void> {
     },
   }
 }

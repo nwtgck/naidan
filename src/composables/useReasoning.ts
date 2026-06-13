@@ -2,7 +2,7 @@ import { computed } from 'vue';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 
 export function useReasoning() {
-  const chatMetadata = useChatMetadata({});
+  const chatMetadata = useChatMetadata();
 
   return {
     getReasoningEffort: ({ chatId }: { chatId: string }) => chatMetadata.reasoningEffort({

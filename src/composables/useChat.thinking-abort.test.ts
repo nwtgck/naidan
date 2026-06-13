@@ -56,7 +56,7 @@ describe('useChat Thinking Abort', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry({});
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('should close thinking tag and process thinking when aborted during thinking', async () => {

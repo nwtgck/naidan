@@ -1,5 +1,5 @@
 import { UNTITLED_CHAT_TITLE } from '@/models/constants'
-import type { EmptyArgs } from '@/models/types'
+
 import { searchChatTree, searchLinearBranch } from '@/utils/chat-search'
 import { getChatBranchIterator } from '@/utils/chat-tree'
 import type { Chat, MessageBranch } from '@/models/types'
@@ -40,7 +40,7 @@ function getSessionSource({ sessionId }: {
   return source
 }
 
-export function createGlobalSearchWorker(_args: EmptyArgs): IGlobalSearchWorker {
+export function createGlobalSearchWorker(): IGlobalSearchWorker {
   return {
     async prepareSession({ request }) {
       const validated = globalSearchWorkerPrepareSessionRequestSchema.parse(request)

@@ -2,7 +2,7 @@ import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry } from '@/services/wesh/naidan-sysfs/types'
 import { createChatDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -24,7 +24,7 @@ export async function listVisibleChatIds({ context }: { context: NaidanSysfsCont
     ]))
   }
   case 'all_chats':
-    return (await context.reader.listChats({})).map(chat => chat.id)
+    return (await context.reader.listChats()).map(chat => chat.id)
   default: {
     const _ex: never = context.visibility
     throw new Error(`Unhandled visibility: ${String(_ex)}`)
@@ -32,12 +32,12 @@ export async function listVisibleChatIds({ context }: { context: NaidanSysfsCont
   }
 }
 
-export function createChatsDirectoryEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
+export function createChatsDirectoryEntry(): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,

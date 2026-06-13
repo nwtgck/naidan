@@ -69,7 +69,7 @@ describe('useChat Group Deletion', () => {
       return null;
     });
 
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
     expect(rootItems.value).toHaveLength(1);
 
     // Act
@@ -97,7 +97,7 @@ describe('useChat Group Deletion', () => {
       return null;
     });
 
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
     // Act
     await deleteChatGroup({ id: 'g1' });
@@ -117,7 +117,7 @@ describe('useChat Group Deletion', () => {
 
     vi.mocked(storageService.loadChat).mockResolvedValue(chat1);
 
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
     __testOnlySetCurrentChat({ chat: reactive(chat1) as any });
 
     await deleteChatGroup({ id: 'g1' });
@@ -134,7 +134,7 @@ describe('useChat Group Deletion', () => {
 
     vi.mocked(storageService.loadChat).mockResolvedValue(chatOut);
 
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
     __testOnlySetCurrentChat({ chat: reactive(chatOut) as any });
 
     await deleteChatGroup({ id: 'g1' });

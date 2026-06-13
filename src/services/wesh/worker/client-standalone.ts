@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
 import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
@@ -39,7 +39,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   })
 
   const createRuntime = async () => {
-    const worker = await createFileProtocolCompatibleStandaloneWorkerHub({})
+    const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
     const remote = Comlink.wrap<IWorkerHub>(worker)
     const wesh = await remote.wesh
     // Keep the proxied reader as a separate top-level argument.
@@ -115,13 +115,13 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       const response = await runtime.wesh.execute({ request })
       return weshWorkerExecutionSummarySchema.parse(response)
     },
-    async interrupt(_args: EmptyArgs) {
-      return runtime.wesh.interrupt({})
+    async interrupt() {
+      return runtime.wesh.interrupt()
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       const activeRuntime = runtime
       try {
-        await activeRuntime.wesh.dispose({})
+        await activeRuntime.wesh.dispose()
       } finally {
         await destroyRuntime(activeRuntime)
       }

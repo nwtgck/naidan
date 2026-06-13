@@ -147,7 +147,7 @@ describe('WeshToolSettings.vue', () => {
 
     await wrapper.find('[data-testid="tool-wesh-toggle"]').trigger('click');
 
-    expect(mockDisableShellToolForCurrentChat).toHaveBeenCalledWith({});
+    expect(mockDisableShellToolForCurrentChat).toHaveBeenCalledWith();
   });
 
   it('defaults sysfs mount enabling to current_chat_only', async () => {
@@ -200,6 +200,6 @@ describe('WeshToolSettings.vue', () => {
 
     await wrapper.find('[data-testid="naidan-sysfs-toggle"]').trigger('click');
 
-    expect(mockDisableNaidanSysfsForCurrentChat).toHaveBeenCalledWith({});
+    expect(mockDisableNaidanSysfsForCurrentChat).toHaveBeenCalledWith();
   });
 });

@@ -89,14 +89,14 @@ const {
   isChatWeshTerminalOpen,
   toggleChatWeshTerminal,
 } = useLayout();
-const approval = useApproval({});
-const chatConversation = useChatConversation({});
-const chatBranches = useChatBranches({});
-const chatCompaction = useChatCompaction({});
-const chatGroups = useChatGroups({});
-const chatModels = useChatModels({});
-const chatTitle = useChatTitle({});
-const chatMetadata = useChatMetadata({});
+const approval = useApproval();
+const chatConversation = useChatConversation();
+const chatBranches = useChatBranches();
+const chatCompaction = useChatCompaction();
+const chatGroups = useChatGroups();
+const chatModels = useChatModels();
+const chatTitle = useChatTitle();
+const chatMetadata = useChatMetadata();
 const { getSortedImageModels } = useImageGeneration();
 const props = defineProps<{
   chatId: string
@@ -247,7 +247,7 @@ const showHistoryModal = ref(false);
 const showTitleDialog = ref(false);
 const generatedTitleHistory = ref<string[]>([]);
 
-function getCurrentViewportMessageId(_args: Record<never, never>) {
+function getCurrentViewportMessageId() {
   const scrollContainer = container.value;
   if (!scrollContainer) return undefined;
 
@@ -273,15 +273,15 @@ function getCurrentViewportMessageId(_args: Record<never, never>) {
   return closest?.id;
 }
 
-function toggleOutline(_args: Record<never, never>) {
+function toggleOutline() {
   chatAreaSession.toggleOutline({
-    getCurrentViewportMessageId: () => getCurrentViewportMessageId({}),
+    getCurrentViewportMessageId: () => getCurrentViewportMessageId(),
   });
 }
 
 function jumpToOutlineMessage({ messageId }: { messageId: string }) {
   jumpToMessage({ messageId });
-  closeOutline({});
+  closeOutline();
 }
 
 function clearTargetMessageQuery() {
@@ -335,7 +335,7 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
   generatedTitleHistory.value = Array.from(new Set(nextHistory));
 }
 
-function handleAbortTitleGeneration(_args: Record<never, never>) {
+function handleAbortTitleGeneration() {
   const chatValue = chat.value;
   if (!chatValue) return;
   chatTitle.abortTitleGeneration({
@@ -483,7 +483,7 @@ async function shareAsURL() {
   }
 }
 
-async function openChatFileExplorer(_args: Record<never, never>) {
+async function openChatFileExplorer() {
   if (!chat.value) return;
 
   const mounts = await buildWorkerMountsForChat({
@@ -820,8 +820,8 @@ async function handleRegenerate({ messageId }: { messageId: string }) {
   });
 }
 
-async function handleCompactContext(_args: Record<never, never>) {
-  openCompactSettings({});
+async function handleCompactContext() {
+  openCompactSettings();
 }
 
 async function handleConfirmCompact({
@@ -831,7 +831,7 @@ async function handleConfirmCompact({
   keepCount: number;
   instruction: string;
 }) {
-  closeCompactSettings({});
+  closeCompactSettings();
   const chatValue = chat.value;
   if (!chatValue) return;
   const didCompact = await chatCompaction.compactCurrentBranch({
@@ -840,11 +840,11 @@ async function handleConfirmCompact({
     instructionOverride: instruction,
   });
   if (didCompact) {
-    playNeuralSyncEffect({});
+    playNeuralSyncEffect();
   }
 }
 
-function handleAbortContextCompact(_args: Record<never, never>) {
+function handleAbortContextCompact() {
   const chatValue = chat.value;
   if (!chatValue) return;
   chatCompaction.abort({
@@ -912,14 +912,13 @@ function getChatSiblings({ messageId }: { messageId: string }) {
   })];
 }
 
-function handleRefreshModels(_args: Record<never, never>) {
+function handleRefreshModels() {
   const chatValue = chat.value;
   if (!chatValue) return;
   void chatModels.fetchForChat({
     chatId: chatValue.id,
   });
 }
-
 
 function handleApprovalDecision({
   decision,
@@ -936,7 +935,7 @@ function handleApprovalDecision({
   });
 }
 
-function handleAbortGeneration(_args: Record<never, never>) {
+function handleAbortGeneration() {
   const chatValue = chat.value;
   if (!chatValue) return;
   chatConversation.abort({
@@ -944,7 +943,7 @@ function handleAbortGeneration(_args: Record<never, never>) {
   });
 }
 
-function handleToggleDebug(_args: Record<never, never>) {
+function handleToggleDebug() {
   const chatValue = chat.value;
   if (!chatValue) return;
   void chatMetadata.toggleDebug({
@@ -1057,17 +1056,17 @@ watch(
       @update:show-chat-settings="showChatSettings = $event"
       @fork-last-message="handleForkLastMessage"
       @move-to-group="groupId => handleMoveToGroup({ groupId })"
-      @toggle-outline="toggleOutline({})"
+      @toggle-outline="toggleOutline()"
       @print="handlePrint"
       @search-chat="() => { if (chat) useGlobalSearch().openSearch({ chatId: chat.id }); }"
       @open-history="showHistoryModal = true"
-      @compact-context="handleCompactContext({})"
+      @compact-context="handleCompactContext()"
       @export-chat="exportChat"
       @toggle-media-shelf="toggleMediaShelf"
       @share-url="shareAsURL"
-      @open-file-explorer="openChatFileExplorer({})"
+      @open-file-explorer="openChatFileExplorer()"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
-      @toggle-debug="handleToggleDebug({})"
+      @toggle-debug="handleToggleDebug()"
     />
 
     <!-- Chat Settings Panel -->
@@ -1088,8 +1087,8 @@ watch(
       @close="showTitleDialog = false"
       @save-title="title => handleSaveTitle({ title })"
       @generate-title="modelId => handleGenerateTitle({ modelId })"
-      @abort-title="handleAbortTitleGeneration({})"
-      @refresh-models="handleRefreshModels({})"
+      @abort-title="handleAbortTitleGeneration()"
+      @refresh-models="handleRefreshModels()"
     />
 
     <!-- History Manipulation Modal -->
@@ -1104,7 +1103,7 @@ watch(
       :total-messages="activeMessages.length"
       :initial-keep-count="6"
       :initial-instruction="initialContextCompactInstruction"
-      @close="closeCompactSettings({})"
+      @close="closeCompactSettings()"
       @confirm="({ keepCount, instruction }) => handleConfirmCompact({ keepCount, instruction })"
     />
 
@@ -1128,7 +1127,7 @@ watch(
         <div class="pointer-events-auto">
           <ContextCompactProgressStrip
             :progress="contextCompactProgress"
-            @abort="handleAbortContextCompact({})"
+            @abort="handleAbortContextCompact()"
           />
         </div>
       </div>
@@ -1149,7 +1148,7 @@ watch(
         :visibility="outlineVisibility"
         :flow-items="chatFlow"
         :initial-message-id="initialOutlineMessageId"
-        @close="closeOutline({})"
+        @close="closeOutline()"
         @select-message="(messageId) => jumpToOutlineMessage({ messageId })"
       />
       <div
@@ -1217,7 +1216,7 @@ watch(
                       @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                       @switch-version="messageId => handleSwitchVersion({ messageId })"
                       @regenerate="messageId => handleRegenerate({ messageId })"
-                      @abort="handleAbortGeneration({})"
+                      @abort="handleAbortGeneration()"
                     />
                     <ToolCallGroupItem
                       v-else-if="subItem.type === 'tool_group' && isExpanded"
@@ -1252,7 +1251,7 @@ watch(
                 @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                 @switch-version="messageId => handleSwitchVersion({ messageId })"
                 @regenerate="messageId => handleRegenerate({ messageId })"
-                @abort="handleAbortGeneration({})"
+                @abort="handleAbortGeneration()"
               />
 
               <!-- Standalone Tool Group -->
@@ -1298,7 +1297,7 @@ watch(
         :show="isDebugEnabled"
         :chat="chat"
         :active-messages="activeMessages"
-        @close="handleToggleDebug({})"
+        @close="handleToggleDebug()"
         data-testid="chat-inspector"
       />
     </div>

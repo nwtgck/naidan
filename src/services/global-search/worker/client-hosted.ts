@@ -1,6 +1,6 @@
 import * as Comlink from 'comlink'
 import { GLOBAL_SEARCH_WORKER_NAME } from '@/models/constants'
-import type { EmptyArgs } from '@/models/types'
+
 import {
   globalSearchWorkerPrepareSessionResponseSchema,
   globalSearchWorkerSearchChatContentResponseSchema,
@@ -9,7 +9,7 @@ import {
   type IGlobalSearchWorker,
 } from './types'
 
-export async function createGlobalSearchWorkerClient(_args: EmptyArgs): Promise<GlobalSearchWorkerClient> {
+export async function createGlobalSearchWorkerClient(): Promise<GlobalSearchWorkerClient> {
   const worker = new Worker(
     new URL('./entry.ts', import.meta.url),
     {
@@ -35,7 +35,7 @@ export async function createGlobalSearchWorkerClient(_args: EmptyArgs): Promise<
     async disposeSession({ request }) {
       await remote.disposeSession({ request })
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       await remote[Comlink.releaseProxy]()
       worker.terminate()
     },

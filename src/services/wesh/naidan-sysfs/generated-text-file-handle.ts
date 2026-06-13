@@ -28,7 +28,7 @@ export class GeneratedTextFileHandle implements WeshFileHandle {
     length?: number;
     position?: number;
   }): Promise<WeshIOResult> {
-    const bytes = await this.ensureBytes({})
+    const bytes = await this.ensureBytes()
     const bufferOffset = offset ?? 0
     const start = position ?? this.position
     const maxLength = length ?? (buffer.length - bufferOffset)
@@ -41,7 +41,7 @@ export class GeneratedTextFileHandle implements WeshFileHandle {
     return { bytesRead: slice.length }
   }
 
-  async write(_args: Record<never, never>): Promise<WeshWriteResult> {
+  async write(): Promise<WeshWriteResult> {
     throw new Error('File is read-only')
   }
 
@@ -60,7 +60,7 @@ export class GeneratedTextFileHandle implements WeshFileHandle {
     return { ret: 0 }
   }
 
-  private async ensureBytes(_args: Record<never, never>): Promise<Uint8Array> {
+  private async ensureBytes(): Promise<Uint8Array> {
     if (this.bytes === undefined) {
       this.bytes = new TextEncoder().encode(await this.readText())
     }

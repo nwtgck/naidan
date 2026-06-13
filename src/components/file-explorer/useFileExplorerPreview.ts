@@ -23,7 +23,7 @@ export function useFileExplorerPreview({
   });
   let latestPreviewRequestId = 0;
   let latestHighlightRequestId = 0;
-  const highlightWorkerClientPromise = acquireSharedHighlightWorkerClient({});
+  const highlightWorkerClientPromise = acquireSharedHighlightWorkerClient();
 
   function revokeObjectUrl(): void {
     if (previewState.value.objectUrl) {
@@ -248,7 +248,7 @@ export function useFileExplorerPreview({
     togglePreviewVisibility,
     toggleJsonFormat,
     dispose() {
-      void releaseSharedHighlightWorkerClient({});
+      void releaseSharedHighlightWorkerClient();
     },
     TEST_ONLY: {
       // Export internal state and logic used only for testing here. Do not reference these in production logic.

@@ -136,7 +136,7 @@ describe('FileExplorerPreviewPanel security', () => {
   })
 
   it('does not materialize hostile html from highlighted preview output', async () => {
-    const worker = createHighlightWorker({})
+    const worker = createHighlightWorker()
     const probe = vi.fn()
     vi.stubGlobal('__xssProbe', probe)
     const response = await worker.highlight({

@@ -145,7 +145,7 @@ describe('useChat Cross-Tab Synchronization', () => {
 
   it('should reflect sidebar changes when reordered in another tab', async () => {
     const { rootItems, loadChats } = chatStore;
-    await loadChats({});
+    await loadChats();
     const newItem: SidebarItem = { id: 'chat:chat-1', type: 'chat', chat: { id: 'chat-1', title: 'C1', updatedAt: Date.now(), groupId: null } };
     mocks.mockRootItems.push(newItem);
     vi.advanceTimersByTime(1000); // Reset throttle state by aging the last reload

@@ -6,7 +6,7 @@ export class WeshHandleCloseSignal {
   private resolveClosePromise: (() => void) | undefined;
   private isClosed = false;
 
-  constructor(_options: Record<never, never>) {
+  constructor() {
     this.closePromise = new Promise<void>(resolve => {
       this.resolveClosePromise = resolve;
     });

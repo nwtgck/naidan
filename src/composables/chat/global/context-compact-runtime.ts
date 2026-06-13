@@ -46,7 +46,7 @@ export type ContextCompactRuntime = {
   };
 };
 
-export function createContextCompactRuntime(_args: Record<never, never>): ContextCompactRuntime {
+export function createContextCompactRuntime(): ContextCompactRuntime {
   const compactProgressByChat = reactive(new Map<string, ContextCompactProgress>());
   const compactProgressResetTimers = reactive(new Map<string, ReturnType<typeof globalThis.setTimeout>>());
   const activeContextCompactions = reactive(new Map<string, AbortController>());

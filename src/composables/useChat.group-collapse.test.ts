@@ -49,7 +49,7 @@ describe('useChat Group Collapse', () => {
     const group: ChatGroup = { id: 'g1', name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 };
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
 
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
     const item = rootItems.value[0] as Extract<SidebarItem, { type: 'chat_group' }>;
     expect(item).toBeDefined();
     expect(item.type).toBe('chat_group');
@@ -83,7 +83,7 @@ describe('useChat Group Collapse', () => {
     const group: ChatGroup = reactive({ id: 'g1', name: 'Group 1', isCollapsed: false, items: [], updatedAt: 0 });
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group });
 
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
     __testOnlySetCurrentChatGroup({ group });
 
     // Act
@@ -100,7 +100,7 @@ describe('useChat Group Collapse', () => {
     mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 });
     mockRootItems.push({ id: 'chat_group:g2', type: 'chat_group', chatGroup: group2 });
 
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
     __testOnlySetCurrentChatGroup({ group: group1 });
 
     // Act: Toggle group 2 while group 1 is selected

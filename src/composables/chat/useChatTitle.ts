@@ -23,7 +23,7 @@ export type ChatTitleCommandsAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatTitle(_args: Record<never, never>): ChatTitleCommandsAdapter {
+export function useChatTitle(): ChatTitleCommandsAdapter {
   async function generateTitle({
     chatId,
     titleModelIdOverride,

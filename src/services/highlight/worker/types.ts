@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import type { EmptyArgs } from '@/models/types'
 
 export const highlightModeSchema = z.union([
   z.literal('named-language'),
@@ -26,5 +25,5 @@ export interface IHighlightWorker {
 
 export interface HighlightWorkerClient {
   highlight({ request }: { request: HighlightRequest }): Promise<HighlightResponse>
-  dispose(_args: EmptyArgs): Promise<void>
+  dispose(): Promise<void>
 }

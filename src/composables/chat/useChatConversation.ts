@@ -37,7 +37,7 @@ export type ChatConversationAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatConversation(_args: Record<never, never>): ChatConversationAdapter {
+export function useChatConversation(): ChatConversationAdapter {
   async function sendMessage({
     chatId,
     content,

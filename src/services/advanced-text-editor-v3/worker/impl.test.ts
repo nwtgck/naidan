@@ -3,7 +3,7 @@ import { createAdvancedTextEditorV3Worker } from './impl'
 
 describe('advanced-text-editor-v3 worker', () => {
   it('searches text with case-insensitive plain matching', async () => {
-    const worker = createAdvancedTextEditorV3Worker({})
+    const worker = createAdvancedTextEditorV3Worker()
 
     const response = await worker.searchText({
       request: {
@@ -22,7 +22,7 @@ describe('advanced-text-editor-v3 worker', () => {
   })
 
   it('returns invalid regex state without throwing', async () => {
-    const worker = createAdvancedTextEditorV3Worker({})
+    const worker = createAdvancedTextEditorV3Worker()
 
     const response = await worker.searchText({
       request: {
@@ -38,7 +38,7 @@ describe('advanced-text-editor-v3 worker', () => {
   })
 
   it('replaces all matches and returns refreshed match state', async () => {
-    const worker = createAdvancedTextEditorV3Worker({})
+    const worker = createAdvancedTextEditorV3Worker()
 
     const response = await worker.replaceAll({
       request: {
@@ -56,7 +56,7 @@ describe('advanced-text-editor-v3 worker', () => {
   })
 
   it('replaces a selected single match', async () => {
-    const worker = createAdvancedTextEditorV3Worker({})
+    const worker = createAdvancedTextEditorV3Worker()
 
     const response = await worker.replaceSingle({
       request: {
@@ -78,7 +78,7 @@ describe('advanced-text-editor-v3 worker', () => {
   })
 
   it('prepares multi-edit by expanding to the current word and applying replacement', async () => {
-    const worker = createAdvancedTextEditorV3Worker({})
+    const worker = createAdvancedTextEditorV3Worker()
 
     const prepared = await worker.prepareMultiEdit({
       request: {

@@ -87,7 +87,7 @@ class FakeWorker {
   constructor(_url: URL | string, _options?: WorkerOptions) {
     this.endpoint.connect({ peer: this.workerEndpoint })
     this.workerEndpoint.connect({ peer: this.endpoint })
-    Comlink.expose(createFileExplorerWorker({}), this.workerEndpoint as unknown as MessagePort)
+    Comlink.expose(createFileExplorerWorker(), this.workerEndpoint as unknown as MessagePort)
   }
 
   postMessage(message: unknown): void {
@@ -190,7 +190,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     const afterDeleteListing = await client.readDirectory({ path: '/' })
     expect(afterDeleteListing.entries.map(entry => entry.name).sort()).toEqual(['data.json', 'docs'])
 
-    await client.dispose({})
+    await client.dispose()
     expect(createdWorkers).toHaveLength(1)
     expect(createdWorkers[0]?.terminated).toBe(true)
   })
@@ -222,7 +222,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     const mountListing = await client.readDirectory({ path: '/home/user/project' })
     expect(mountListing.entries.map(entry => entry.name)).toEqual(['index.ts'])
 
-    await client.dispose({})
+    await client.dispose()
     expect(createdWorkers.at(-1)?.terminated).toBe(true)
   })
 })

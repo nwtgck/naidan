@@ -60,7 +60,7 @@ export type ChatVolatileState = {
   };
 };
 
-export function createChatVolatileState(_args: Record<never, never>): ChatVolatileState {
+export function createChatVolatileState(): ChatVolatileState {
   const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
   const volatileToolOutputs = reactive(new Map<string, string>());
 

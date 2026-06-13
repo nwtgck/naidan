@@ -92,7 +92,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       current.items.unshift({ type: 'chat_group', id, chat_ids: [] });
       return current;
     } });
-    await loadData({});
+    await loadData();
     return id;
   }
 
@@ -133,7 +133,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       });
       return current;
     } });
-    await loadData({});
+    await loadData();
   }
 
   async function duplicateChatGroup({
@@ -167,7 +167,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       }
       return current;
     } });
-    await loadData({});
+    await loadData();
     return newId;
   }
 
@@ -191,7 +191,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       current.updatedAt = Date.now();
       return current;
     } });
-    await loadData({});
+    await loadData();
   }
 
   async function updateChatGroupMetadata({
@@ -212,7 +212,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       }
       return { ...current, ...updates, updatedAt: Date.now() };
     } });
-    await loadData({});
+    await loadData();
   }
 
   async function moveChatToGroup({
@@ -276,7 +276,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       }
       return current;
     } });
-    await loadData({});
+    await loadData();
   }
 
   async function reorderSidebarChatAfterSend({
@@ -335,7 +335,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       });
       return current;
     } });
-    await loadData({});
+    await loadData();
   }
 
   return {

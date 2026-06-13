@@ -115,7 +115,7 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
+    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
   });
 
   it('disables wikipedia through dependency actions from the toggle', async () => {
@@ -126,7 +126,7 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockDisableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
+    expect(mockDisableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
   });
 
   it('shows wikipedia as enabled only when both tools are enabled', async () => {
@@ -146,7 +146,7 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
+    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
   });
 
   it('shows wikipedia as disabled when shell is off even if wikipedia tool flags remain enabled', async () => {

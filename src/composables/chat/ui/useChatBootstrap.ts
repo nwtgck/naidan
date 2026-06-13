@@ -9,7 +9,7 @@ import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from '@/composables/useSettings';
 
 export type ChatBootstrapAdapter = {
-  loadChats(_args: Record<never, never>): Promise<void>;
+  loadChats(): Promise<void>;
 
   openChat({
     chatId,
@@ -22,7 +22,7 @@ export type ChatBootstrapAdapter = {
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
   const { settings } = useSettings();
-  const chatModels = useChatModels({});
+  const chatModels = useChatModels();
   const chatNavigation = useChatNavigation();
   const chatDerivedState = createChatDerivedState({
     currentChatRef,
@@ -31,7 +31,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   });
 
   installChatBootstrap({
-    registerBeforeUnload: (_args: Record<never, never>) => {
+    registerBeforeUnload: () => {
       if (typeof window === 'undefined') {
         return undefined;
       }
@@ -47,7 +47,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
         window.removeEventListener('beforeunload', onBeforeUnload);
       };
     },
-    subscribeModelList: (_args: Record<never, never>) => {
+    subscribeModelList: () => {
       return transformersJsService.subscribeModelList({ listener: async () => {
         const type = chatDerivedState.resolvedSettings.value?.endpointType;
         if (type === undefined) {
@@ -75,8 +75,8 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
     },
   });
 
-  async function loadChats(_args: Record<never, never>) {
-    await loadData({});
+  async function loadChats() {
+    await loadData();
   }
 
   async function openChat({

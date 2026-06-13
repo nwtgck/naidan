@@ -46,7 +46,7 @@ const { handleKeyDown } = useFileExplorerKeyboard({ ctx: context });
 
 onUnmounted(() => {
   _preview.dispose();
-  void client.dispose({});
+  void client.dispose();
 });
 </script>
 

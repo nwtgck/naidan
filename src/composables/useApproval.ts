@@ -219,7 +219,7 @@ export async function ensureApproval({
   });
 }
 
-export function useApproval(_args: Record<never, never>): {
+export function useApproval(): {
   ensureApproval: EnsureApproval;
   getActiveApprovalRequest: ({
     chatId,
@@ -241,9 +241,9 @@ export function useApproval(_args: Record<never, never>): {
       chatId: string;
       actionId: ApprovalActionId;
     }) => ApprovalStoredStatus;
-    clearAll: (_args: Record<never, never>) => void;
+    clearAll: () => void;
   };
-} {
+  } {
   function getActiveApprovalRequest({
     chatId,
   }: {
@@ -266,7 +266,7 @@ export function useApproval(_args: Record<never, never>): {
     resolver({ decision });
   }
 
-  function clearAll(_args: Record<never, never>): void {
+  function clearAll(): void {
     approvalRuntimeState.activeRequestsByChatId.clear();
     approvalRuntimeState.chatApprovalsByChatId.clear();
     approvalRuntimeState.globalApprovalActionIds.clear();

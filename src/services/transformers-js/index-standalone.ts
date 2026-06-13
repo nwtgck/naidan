@@ -19,7 +19,7 @@ type ProgressListener = ({
   loadingModelId?: string;
 }) => void;
 
-type ModelListListener = (_args: Record<never, never>) => void;
+type ModelListListener = () => void;
 
 const unsupportedError = () => new Error('Transformers.js is not available in standalone mode');
 

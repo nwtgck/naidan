@@ -26,7 +26,7 @@ export type ChatModelsAdapter = {
     chatId: string;
   }): Promise<string[]>;
 
-  fetchForGlobalEndpoint(_args: Record<never, never>): Promise<string[]>;
+  fetchForGlobalEndpoint(): Promise<string[]>;
 
   fetchForEndpoint({
     customEndpoint,
@@ -37,7 +37,7 @@ export type ChatModelsAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatModels(_args: Record<never, never>): ChatModelsAdapter {
+export function useChatModels(): ChatModelsAdapter {
   const fetchingModelsState = computed(() => fetchingModels.value);
 
   async function fetchForChat({
@@ -51,7 +51,7 @@ export function useChatModels(_args: Record<never, never>): ChatModelsAdapter {
     });
   }
 
-  async function fetchForGlobalEndpoint(_args: Record<never, never>): Promise<string[]> {
+  async function fetchForGlobalEndpoint(): Promise<string[]> {
     return await fetchModelsForGlobalEndpoint({
       errorSource: 'useChatModels:fetchForGlobalEndpoint',
     });

@@ -9,7 +9,7 @@ export type ChatDataStore = {
   currentChatGroupRef: Ref<ChatGroup | null>;
   liveChatRegistry: Map<string, Chat>;
 
-  loadData(_args: Record<never, never>): Promise<void>;
+  loadData(): Promise<void>;
   replaceSidebarItems({
     items,
   }: {
@@ -102,7 +102,7 @@ export function createChatDataStore({
   onExternalGenerationStarted: ({ chatId }: { chatId: string }) => void;
   onExternalGenerationStopped: ({ chatId }: { chatId: string }) => void;
   onExternalGenerationAbortRequest: ({ chatId }: { chatId: string }) => void;
-  onMigration: (_args: Record<never, never>) => void;
+  onMigration: () => void;
 }): ChatDataStore {
   const rootItems = ref<SidebarItem[]>([]);
   const currentChatRef = ref<Chat | null>(null);
@@ -144,7 +144,7 @@ export function createChatDataStore({
     if (newChat) registerLiveInstance({ chat: newChat });
   });
 
-  function syncLiveInstancesWithSidebar(_args: Record<never, never>) {
+  function syncLiveInstancesWithSidebar() {
     const sync = ({
       items,
       parentGroupId,
@@ -180,10 +180,10 @@ export function createChatDataStore({
   const THROTTLE_MS = 200;
   let lastSidebarReload = 0;
 
-  function loadData(_args: Record<never, never>) {
+  function loadData() {
     return storageService.getSidebarStructure().then((sidebarStructure) => {
       rootItems.value = sidebarStructure;
-      syncLiveInstancesWithSidebar({});
+      syncLiveInstancesWithSidebar();
     });
   }
 
@@ -193,31 +193,31 @@ export function createChatDataStore({
     items: SidebarItem[];
   }) {
     rootItems.value = items;
-    syncLiveInstancesWithSidebar({});
+    syncLiveInstancesWithSidebar();
   }
 
-  function debouncedSidebarReload(_args: Record<never, never>) {
+  function debouncedSidebarReload() {
     const now = Date.now();
 
-    const performReload = async (_innerArgs: Record<never, never>) => {
+    const performReload = async () => {
       if (sidebarReloadTimeout) {
         clearTimeout(sidebarReloadTimeout);
         sidebarReloadTimeout = null;
       }
 
-      await loadData({});
+      await loadData();
       lastSidebarReload = Date.now();
     };
 
     if (now - lastSidebarReload > THROTTLE_MS) {
-      void performReload({});
+      void performReload();
       return;
     }
 
     if (!sidebarReloadTimeout) {
       const delay = THROTTLE_MS - (now - lastSidebarReload);
       sidebarReloadTimeout = setTimeout(() => {
-        void performReload({});
+        void performReload();
       }, delay);
     }
   }
@@ -418,7 +418,7 @@ export function createChatDataStore({
   storageService.subscribeToChanges({ listener: async ({ event }) => {
     switch (event.type) {
     case 'chat_meta_and_chat_group': {
-      debouncedSidebarReload({});
+      debouncedSidebarReload();
 
       if (event.id && currentChatRef.value && toRaw(currentChatRef.value).id === event.id) {
         const fresh = await storageService.loadChat({ id: event.id });
@@ -472,12 +472,12 @@ export function createChatDataStore({
       break;
     }
     case 'migration': {
-      onMigration({});
+      onMigration();
       liveChatRegistry.clear();
       currentChatRef.value = null;
       currentChatGroupRef.value = null;
 
-      await loadData({});
+      await loadData();
       break;
     }
     case 'binary_objects':

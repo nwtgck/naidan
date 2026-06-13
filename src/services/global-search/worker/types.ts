@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { EmptyArgs } from '@/models/types'
+
 import {
   flatSearchResultItemSchema,
   searchChatContentSchema,
@@ -66,5 +66,5 @@ export interface GlobalSearchWorkerClient {
   searchTitles({ request }: { request: GlobalSearchWorkerSearchTitlesRequest }): Promise<GlobalSearchWorkerSearchTitlesResponse>
   searchChatContent({ request }: { request: GlobalSearchWorkerSearchChatContentRequest }): Promise<GlobalSearchWorkerSearchChatContentResponse>
   disposeSession({ request }: { request: GlobalSearchWorkerDisposeSessionRequest }): Promise<void>
-  dispose(_args: EmptyArgs): Promise<void>
+  dispose(): Promise<void>
 }

@@ -205,7 +205,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     const { useChat } = await import('./useChat');
     const store = useChat();
-    await store.loadChats({});
+    await store.loadChats();
     return store;
   }
 

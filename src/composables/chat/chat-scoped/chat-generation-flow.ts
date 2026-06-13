@@ -1,18 +1,5 @@
 import { reactive, toRaw } from 'vue';
-import type {
-  AssistantMessageNode,
-  Attachment,
-  Chat,
-  ChatGroup,
-  ChatMessage,
-  EndpointType,
-  LmParameters,
-  MessageNode,
-  MultimodalContent,
-  Settings,
-  ToolMessageNode,
-  UserMessageNode,
-} from '@/models/types';
+import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { LLMProvider } from '@/services/lm/types';
 import type { Tool } from '@/services/tools/types';
@@ -206,7 +193,7 @@ export async function sendMessageToTargetChat({
 
     const processedAttachments: Attachment[] = [];
     if (normalizedAttachments.length > 0 && !storageService.canPersistBinary) {
-      const confirmed = await confirmTemporaryAttachments({});
+      const confirmed = await confirmTemporaryAttachments();
       if (!confirmed) {
         return false;
       }
@@ -329,7 +316,7 @@ export async function sendMessageToTargetChat({
       chat: mutableChat,
       assistantId: assistantMessage.id,
       lmParameters,
-      onReady: (_args: Record<never, never>) => {
+      onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;
       },
@@ -354,7 +341,7 @@ export async function generateResponseForAssistant({
   chat: Chat | Readonly<Chat>;
   assistantId: string;
   lmParameters: LmParameters | undefined;
-  onReady: ((_args: Record<never, never>) => void) | undefined;
+  onReady: (() => void) | undefined;
 }): Promise<void> {
   let didSignalReady = false;
   const signalReady = () => {
@@ -362,7 +349,7 @@ export async function generateResponseForAssistant({
       return;
     }
     didSignalReady = true;
-    onReady?.({});
+    onReady?.();
   };
 
   const mutableChat = getLiveChat({ chat });
@@ -458,7 +445,7 @@ export async function generateResponseForAssistant({
 
     try {
       signalReady();
-      const { ensureApproval } = useApproval({});
+      const { ensureApproval } = useApproval();
       await provider.chat({
         messages: finalMessages,
         model: resolvedModel,
@@ -713,7 +700,7 @@ export async function generateResponseForAssistant({
           return { ...current, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
         },
       }).then(async () => {
-        await loadData({});
+        await loadData();
       }).catch(() => {});
 
       const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
@@ -829,7 +816,7 @@ async function regenerateMessageForTarget({
       chat: mutableChat,
       assistantId: newAssistantMessage.id,
       lmParameters: failedNode.lmParameters,
-      onReady: (_args: Record<never, never>) => {
+      onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;
       },
@@ -885,7 +872,7 @@ function collectChatGroups({
   });
 }
 
-async function confirmTemporaryAttachments(_args: Record<never, never>): Promise<boolean> {
+async function confirmTemporaryAttachments(): Promise<boolean> {
   const { settings } = useSettings();
   if (settings.value.heavyContentAlertDismissed !== false) {
     return true;

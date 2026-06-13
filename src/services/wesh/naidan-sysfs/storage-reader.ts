@@ -8,7 +8,7 @@ import {
   lmParametersToDomain,
 } from '@/models/mappers'
 import type { ChatContentDto } from '@/models/dto'
-import type { ChatGroup, EmptyArgs, SidebarItem } from '@/models/types'
+import type { ChatGroup, SidebarItem } from '@/models/types'
 import { storageService } from '@/services/storage'
 import { OPFSStorageProvider } from '@/services/storage/opfs-storage'
 import type { WeshMount } from '@/services/wesh/types'
@@ -72,24 +72,22 @@ function assertStorageTypeMatches({
   }
 }
 
-export async function createOpfsNaidanSysfsStorageReader(
-  _args: EmptyArgs,
-): Promise<NaidanSysfsStorageReader> {
+export async function createOpfsNaidanSysfsStorageReader(): Promise<NaidanSysfsStorageReader> {
   const provider = new OPFSStorageProvider()
   await provider.init()
 
   return {
-    async loadHierarchy(_args: EmptyArgs) {
+    async loadHierarchy() {
       const dto = await provider.loadHierarchy()
       return dto ? hierarchyToDomain({ dto }) : { items: [] }
     },
-    async getSidebarStructure(_args: EmptyArgs) {
+    async getSidebarStructure() {
       return provider.getSidebarStructure()
     },
-    async listChats(_args: EmptyArgs) {
+    async listChats() {
       return provider.listChats()
     },
-    async listChatGroups(_args: EmptyArgs) {
+    async listChatGroups() {
       return provider.listChatGroups()
     },
     async loadChatMeta({ chatId }: { chatId: string }) {
@@ -104,7 +102,7 @@ export async function createOpfsNaidanSysfsStorageReader(
     async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
       return (await provider.loadChatGroup({ id: chatGroupId })) ?? undefined
     },
-    async *listBinaryObjects(_args: EmptyArgs) {
+    async *listBinaryObjects() {
       for await (const object of provider.listBinaryObjects()) {
         yield createNaidanSysfsBinaryObject({ object })
       }
@@ -126,17 +124,17 @@ export function createNaidanSysfsRemoteReader({
 }): NaidanSysfsRemoteReader {
   return {
     storageType,
-    async getSidebarStructure(_args: EmptyArgs) {
+    async getSidebarStructure() {
       assertStorageTypeMatches({ expectedStorageType: storageType })
       return naidanSysfsRemoteSidebarItemSchema.array().parse(
         (await storageService.getSidebarStructure()).map(item => createRemoteSidebarItem({ item })),
       )
     },
-    async listChats(_args: EmptyArgs) {
+    async listChats() {
       assertStorageTypeMatches({ expectedStorageType: storageType })
       return naidanSysfsRemoteChatSummarySchema.array().parse(await storageService.listChats())
     },
-    async listChatGroups(_args: EmptyArgs) {
+    async listChatGroups() {
       assertStorageTypeMatches({ expectedStorageType: storageType })
       return naidanSysfsRemoteChatGroupPayloadSchema.array().parse(
         (await storageService.listChatGroups()).map(chatGroup => createRemoteChatGroupPayload({ chatGroup })),
@@ -169,7 +167,7 @@ export function createNaidanSysfsRemoteReader({
       }
       return naidanSysfsRemoteChatGroupPayloadSchema.parse(createRemoteChatGroupPayload({ chatGroup }))
     },
-    async listBinaryObjects(_args: EmptyArgs) {
+    async listBinaryObjects() {
       assertStorageTypeMatches({ expectedStorageType: storageType })
       const objects: NaidanSysfsBinaryObject[] = []
       for await (const object of storageService.listBinaryObjects()) {
@@ -345,8 +343,8 @@ export function createRemoteNaidanSysfsStorageReader({
   remoteReader: NaidanSysfsRemoteReader;
 }): NaidanSysfsStorageReader {
   return {
-    async loadHierarchy(_args: EmptyArgs) {
-      const items = naidanSysfsRemoteSidebarItemSchema.array().parse(await remoteReader.getSidebarStructure({}))
+    async loadHierarchy() {
+      const items = naidanSysfsRemoteSidebarItemSchema.array().parse(await remoteReader.getSidebarStructure())
       const chatGroupItems = items.filter(
         (item): item is Extract<typeof item, { type: 'chat_group' }> => item.type === 'chat_group',
       )
@@ -367,8 +365,8 @@ export function createRemoteNaidanSysfsStorageReader({
         ],
       }
     },
-    async getSidebarStructure(_args: EmptyArgs) {
-      return naidanSysfsRemoteSidebarItemSchema.array().parse(await remoteReader.getSidebarStructure({})).map(item => {
+    async getSidebarStructure() {
+      return naidanSysfsRemoteSidebarItemSchema.array().parse(await remoteReader.getSidebarStructure()).map(item => {
         switch (item.type) {
         case 'chat':
           return {
@@ -394,11 +392,11 @@ export function createRemoteNaidanSysfsStorageReader({
         }
       })
     },
-    async listChats(_args: EmptyArgs) {
-      return naidanSysfsRemoteChatSummarySchema.array().parse(await remoteReader.listChats({}))
+    async listChats() {
+      return naidanSysfsRemoteChatSummarySchema.array().parse(await remoteReader.listChats())
     },
-    async listChatGroups(_args: EmptyArgs) {
-      return naidanSysfsRemoteChatGroupPayloadSchema.array().parse(await remoteReader.listChatGroups({})).map(payload =>
+    async listChatGroups() {
+      return naidanSysfsRemoteChatGroupPayloadSchema.array().parse(await remoteReader.listChatGroups()).map(payload =>
         remoteChatGroupPayloadToDomain({ payload }),
       )
     },
@@ -431,8 +429,8 @@ export function createRemoteNaidanSysfsStorageReader({
         payload: naidanSysfsRemoteChatGroupPayloadSchema.parse(chatGroup),
       })
     },
-    async *listBinaryObjects(_args: EmptyArgs) {
-      const objects = await remoteReader.listBinaryObjects({})
+    async *listBinaryObjects() {
+      const objects = await remoteReader.listBinaryObjects()
       for (const object of objects) {
         yield naidanSysfsRemoteBinaryObjectSchema.parse(object)
       }

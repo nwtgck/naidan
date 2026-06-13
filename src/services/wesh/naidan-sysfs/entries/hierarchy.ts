@@ -3,7 +3,7 @@ import { NAIDAN_SYSFS_ROOT_PATH } from '@/services/wesh/naidan-sysfs/constants'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -56,7 +56,7 @@ function createHierarchyChatGroupSymlinkName({
 }
 
 async function listVisibleHierarchyItems({ context }: { context: NaidanSysfsContext }): Promise<SidebarItem[]> {
-  const items = await context.reader.getSidebarStructure({})
+  const items = await context.reader.getSidebarStructure()
 
   switch (context.visibility) {
   case 'current_chat_only':
@@ -78,12 +78,12 @@ async function listVisibleHierarchyItems({ context }: { context: NaidanSysfsCont
   }
 }
 
-export function createHierarchyDirectoryEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
+export function createHierarchyDirectoryEntry(): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,

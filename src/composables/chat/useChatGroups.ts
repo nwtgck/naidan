@@ -26,7 +26,7 @@ export type ChatGroupsAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
+export function useChatGroups(): ChatGroupsAdapter {
   async function updateChatGroupMetadata({
     chatGroupId,
     updates,
@@ -50,7 +50,7 @@ export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
         updatedAt: Date.now(),
       };
     } });
-    await loadData({});
+    await loadData();
   }
 
   async function moveChatToGroup({
@@ -107,7 +107,7 @@ export function useChatGroups(_args: Record<never, never>): ChatGroupsAdapter {
       groupNode.chat_ids.unshift(detachedChatId);
       return current;
     } });
-    await loadData({});
+    await loadData();
   }
 
   return {

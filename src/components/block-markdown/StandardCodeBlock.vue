@@ -31,7 +31,7 @@ async function syncHighlightedCodeFromWorker({
   const requestId = ++latestHighlightRequestId;
 
   try {
-    highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient({})
+    highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient()
     const client = await highlightWorkerClientPromise
     const response = await client.highlight({
       request: {
@@ -76,7 +76,7 @@ onUpdated(() => {
 });
 
 onMounted(() => {
-  highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient({})
+  highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient()
   void syncHighlightedCodeFromWorker({
     code: props.code,
     lang: props.lang,
@@ -95,7 +95,7 @@ onBeforeUnmount(() => {
   isDisposed = true;
   latestHighlightRequestId += 1;
   highlightWorkerClientPromise = undefined;
-  void releaseSharedHighlightWorkerClient({});
+  void releaseSharedHighlightWorkerClient();
 });
 
 const copied = ref(false);
@@ -111,7 +111,6 @@ async function copyCode() {
     console.error('Failed to copy code:', err);
   }
 }
-
 
 defineExpose({
   TEST_ONLY: {

@@ -23,7 +23,7 @@ The goal is:
 ## Core Rules
 
 1. App code imports a client facade, not a loader.
-2. Callers use typed clients with `dispose({})`, not raw `Worker`.
+2. Callers use typed clients with `dispose()`, not raw `Worker`.
 3. Hosted/standalone switching happens with Vite alias, not runtime protocol branching.
 
 Examples of public facades:
@@ -70,7 +70,7 @@ Rules:
 
 1. Put reusable worker logic in `foo/worker/impl.ts`.
 2. Keep `foo/worker/entry.ts` as the hosted entrypoint that only exposes the worker.
-3. Add the service to `IWorkerHub` and `createStandaloneWorkerHub({})`.
+3. Add the service to `IWorkerHub` and `createStandaloneWorkerHub()`.
 4. Wrap hub services with `Comlink.proxy(...)`.
 5. Add standalone Vite alias for the public facade path, normally `@/services/foo/worker/client`.
 

@@ -39,7 +39,7 @@ describe('useChatSearch Composable', () => {
 
     mockCreateGlobalSearchWorkerClient.mockImplementation(async () => {
       const { createGlobalSearchWorker } = await import('@/services/global-search/worker/impl')
-      const worker = createGlobalSearchWorker({})
+      const worker = createGlobalSearchWorker()
 
       return {
         prepareSession({ request }: { request: import('@/services/global-search/worker/types').GlobalSearchWorkerPrepareSessionRequest }) {
@@ -462,6 +462,6 @@ describe('useChatSearch Composable', () => {
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(dispose).toHaveBeenCalledWith({})
+    expect(dispose).toHaveBeenCalledWith()
   })
 })

@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { createHighlightWorker } from './impl'
 import {
   highlightResponseSchema,
@@ -7,21 +7,21 @@ import {
   type IHighlightWorker,
 } from './types'
 
-function createMainThreadFallbackClient(_args: EmptyArgs): HighlightWorkerClient {
-  const worker = createHighlightWorker({})
+function createMainThreadFallbackClient(): HighlightWorkerClient {
+  const worker = createHighlightWorker()
 
   return {
     async highlight({ request }) {
       return highlightResponseSchema.parse(await worker.highlight({ request }))
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
     },
   }
 }
 
-export async function createHighlightWorkerClient(_args: EmptyArgs): Promise<HighlightWorkerClient> {
+export async function createHighlightWorkerClient(): Promise<HighlightWorkerClient> {
   if (typeof Worker === 'undefined') {
-    return createMainThreadFallbackClient({})
+    return createMainThreadFallbackClient()
   }
 
   const worker = new Worker(
@@ -37,7 +37,7 @@ export async function createHighlightWorkerClient(_args: EmptyArgs): Promise<Hig
     async highlight({ request }) {
       return highlightResponseSchema.parse(await remote.highlight({ request }))
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       try {
         await remote[Comlink.releaseProxy]()
       } finally {

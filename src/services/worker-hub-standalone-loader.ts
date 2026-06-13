@@ -1,4 +1,4 @@
-import type { EmptyArgs } from '@/models/types'
+
 import {
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
   FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_NAME,
@@ -22,7 +22,7 @@ function getEmbeddedWorkerSource({ workerId }: {
   return source
 }
 
-export async function createFileProtocolCompatibleStandaloneWorkerHub(_args: EmptyArgs): Promise<Worker> {
+export async function createFileProtocolCompatibleStandaloneWorkerHub(): Promise<Worker> {
   const cachedFile = await getCachedStandaloneWorkerFile({
     workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
   })

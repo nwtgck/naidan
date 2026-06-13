@@ -39,7 +39,7 @@ export function getChatTmpDirectory({
   return chatTmpDirectories.get(chatId);
 }
 
-export function clearChatTmpDirectories(_args: Record<never, never>): void {
+export function clearChatTmpDirectories(): void {
   chatTmpDirectories.clear();
 }
 

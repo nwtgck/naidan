@@ -132,7 +132,7 @@ type ProgressListener = ({
 }) => void;
 const listeners: Set<ProgressListener> = new Set();
 
-type ModelListListener = (_args: Record<never, never>) => void;
+type ModelListListener = () => void;
 const modelListListeners: Set<ModelListListener> = new Set();
 
 function notify() {
@@ -231,7 +231,7 @@ function updateProgress({ info }: { info: ProgressInfo }) {
 }
 
 function notifyModelListChange() {
-  modelListListeners.forEach(l => l({}));
+  modelListListeners.forEach(l => l());
 }
 
 // Worker management
@@ -250,10 +250,10 @@ let client: TransformersJsWorkerClient;
  */
 function initWorker() {
   if (client) {
-    void client.dispose({});
+    void client.dispose();
   }
 
-  client = createTransformersJsWorkerClient({});
+  client = createTransformersJsWorkerClient();
 }
 
 // Initial setup
@@ -280,7 +280,7 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
   progress_callback: TransformersJsProgressCallback
 }): Promise<{ discoveredFileCount: number }> {
   const startedAt = performance.now();
-  const scannerClient = createTransformersJsScannerWorkerClient({});
+  const scannerClient = createTransformersJsScannerWorkerClient();
 
   try {
     let cleanModelId = modelId;
@@ -342,7 +342,7 @@ async function preDownloadModel({ modelId, remote, progress_callback }: {
     // as the original loadModel/downloadModel will still attempt to run normally.
     return { discoveredFileCount: 0 };
   } finally {
-    await scannerClient.dispose({});
+    await scannerClient.dispose();
   }
 }
 
@@ -834,7 +834,7 @@ export const transformersJsService = {
   async unloadModel() {
     try {
       if (client) {
-        await client.unloadModel({});
+        await client.unloadModel();
       }
       activeModelId = undefined;
       loadingStatus = 'idle';
@@ -859,13 +859,13 @@ export const transformersJsService = {
 
   async interrupt() {
     if (client) {
-      await client.interrupt({});
+      await client.interrupt();
     }
   },
 
   async resetCache() {
     if (client) {
-      await client.resetCache({});
+      await client.resetCache();
     }
   },
 

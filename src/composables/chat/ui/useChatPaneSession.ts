@@ -13,19 +13,19 @@ export function useChatPaneSession({
   const initialOutlineMessageId = ref<string | undefined>(undefined);
   const hideNeuralSyncEffectTimer = ref<number | undefined>(undefined);
 
-  function clearNeuralSyncEffectTimer(_args: Record<never, never>) {
+  function clearNeuralSyncEffectTimer() {
     if (hideNeuralSyncEffectTimer.value === undefined) return;
     window.clearTimeout(hideNeuralSyncEffectTimer.value);
     hideNeuralSyncEffectTimer.value = undefined;
   }
 
-  function clearNeuralSyncEffect(_args: Record<never, never>) {
-    clearNeuralSyncEffectTimer({});
+  function clearNeuralSyncEffect() {
+    clearNeuralSyncEffectTimer();
     showNeuralSyncEffect.value = false;
   }
 
-  function playNeuralSyncEffect(_args: Record<never, never>) {
-    clearNeuralSyncEffectTimer({});
+  function playNeuralSyncEffect() {
+    clearNeuralSyncEffectTimer();
     showNeuralSyncEffect.value = true;
     hideNeuralSyncEffectTimer.value = window.setTimeout(() => {
       showNeuralSyncEffect.value = false;
@@ -33,11 +33,11 @@ export function useChatPaneSession({
     }, 1200);
   }
 
-  function openCompactSettings(_args: Record<never, never>) {
+  function openCompactSettings() {
     showCompactSettings.value = true;
   }
 
-  function closeCompactSettings(_args: Record<never, never>) {
+  function closeCompactSettings() {
     showCompactSettings.value = false;
   }
 
@@ -63,20 +63,20 @@ export function useChatPaneSession({
     }
   }
 
-  function closeOutline(_args: Record<never, never>) {
+  function closeOutline() {
     outlineVisibility.value = 'hidden';
     initialOutlineMessageId.value = undefined;
   }
 
   watch(chatIdentityKey, () => {
-    closeCompactSettings({});
-    closeOutline({});
-    clearNeuralSyncEffect({});
+    closeCompactSettings();
+    closeOutline();
+    clearNeuralSyncEffect();
   });
 
   if (getCurrentInstance()) {
     onBeforeUnmount(() => {
-      clearNeuralSyncEffect({});
+      clearNeuralSyncEffect();
     });
   }
 

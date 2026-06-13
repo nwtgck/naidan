@@ -86,8 +86,8 @@ describe('useChat Interrupt and Sync Tests', () => {
     TEST_ONLY.externalGenerations.clear();
     TEST_ONLY.activeTitleGenerations.clear();
     TEST_ONLY.activeContextCompactions.clear();
-    TEST_ONLY.clearActiveTaskCounts({});
-    TEST_ONLY.clearLiveChatRegistry({});
+    TEST_ONLY.clearActiveTaskCounts();
+    TEST_ONLY.clearLiveChatRegistry();
     mockRootItems.length = 0;
     mockHierarchy = { items: [] };
     clearEvents();

@@ -55,7 +55,7 @@ describe('useChatGroupMounts', () => {
       },
     ];
 
-    const chatGroupMounts = useChatGroupMounts({});
+    const chatGroupMounts = useChatGroupMounts();
 
     await chatGroupMounts.addMount({
       chatGroupId: 'group-1',

@@ -9,7 +9,7 @@ describe('createContextCompactRuntime', () => {
   it('clears completed progress after a short delay', async () => {
     vi.useFakeTimers();
     try {
-      const runtime = createContextCompactRuntime({});
+      const runtime = createContextCompactRuntime();
 
       runtime.setProgress({
         chatId: 'chat-compact',
@@ -47,7 +47,7 @@ describe('createContextCompactRuntime', () => {
   it('replaces the reset timer when a new progress update arrives', async () => {
     vi.useFakeTimers();
     try {
-      const runtime = createContextCompactRuntime({});
+      const runtime = createContextCompactRuntime();
 
       runtime.setProgress({
         chatId: 'chat-compact',

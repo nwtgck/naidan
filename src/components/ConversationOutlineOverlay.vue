@@ -52,7 +52,7 @@ const outlineBodyMaxHeightClass = computed(() => {
   return peekMessageId.value === undefined ? 'max-h-[calc(55vh-41px)]' : 'max-h-[calc(80vh-41px)]';
 });
 
-function updateScrollHints(_args: Record<never, never>) {
+function updateScrollHints() {
   const body = outlineBody.value;
   if (!body) {
     topScrollHintVisibility.value = 'hidden';
@@ -64,11 +64,11 @@ function updateScrollHints(_args: Record<never, never>) {
   bottomScrollHintVisibility.value = body.scrollTop + body.clientHeight < body.scrollHeight - 1 ? 'visible' : 'hidden';
 }
 
-function scrollToInitialMessage(_args: Record<never, never>) {
+function scrollToInitialMessage() {
   const body = outlineBody.value;
   const initialMessageId = props.initialMessageId;
   if (!body || !initialMessageId) {
-    updateScrollHints({});
+    updateScrollHints();
     return;
   }
 
@@ -86,15 +86,15 @@ function scrollToInitialMessage(_args: Record<never, never>) {
       behavior: 'instant',
     });
   }
-  updateScrollHints({});
+  updateScrollHints();
 }
 
 watch([() => props.visibility, () => props.initialMessageId, outlineItems], () => {
-  nextTick(() => scrollToInitialMessage({}));
+  nextTick(() => scrollToInitialMessage());
 }, { immediate: true });
 
 watch(peekMessageId, () => {
-  nextTick(() => updateScrollHints({}));
+  nextTick(() => updateScrollHints());
 });
 
 function togglePeek({ messageId }: { messageId: string }) {
@@ -140,7 +140,6 @@ function roleClass({ role }: { role: OutlineRole }) {
   }
 }
 
-
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
@@ -184,7 +183,7 @@ defineExpose({
         <div class="relative">
           <div
             ref="outlineBody"
-            @scroll="updateScrollHints({})"
+            @scroll="updateScrollHints()"
             class="overflow-y-auto py-1 transition-[max-height] duration-150 ease-out"
             :class="outlineBodyMaxHeightClass"
             data-testid="conversation-outline-body"

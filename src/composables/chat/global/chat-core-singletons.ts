@@ -13,9 +13,9 @@ import {
   getChatTmpDirectory,
 } from './chat-tmp-directory-store';
 
-export const chatRuntimeStore = createChatRuntimeStore({});
-export const contextCompactRuntime = createContextCompactRuntime({});
-export const chatVolatileState = createChatVolatileState({});
+export const chatRuntimeStore = createChatRuntimeStore();
+export const contextCompactRuntime = createContextCompactRuntime();
+export const chatVolatileState = createChatVolatileState();
 export const availableModels = ref<string[]>([]);
 export const creatingChat = ref(false);
 
@@ -66,11 +66,11 @@ export const chatDataStore = createChatDataStore({
   onExternalGenerationAbortRequest: ({ chatId }) => {
     chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
   },
-  onMigration: (_args: Record<never, never>) => {
+  onMigration: () => {
     for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
-    chatRuntimeStore.clearActiveGenerations({});
-    chatRuntimeStore.clearActiveTaskCounts({});
-    clearChatTmpDirectories({});
+    chatRuntimeStore.clearActiveGenerations();
+    chatRuntimeStore.clearActiveTaskCounts();
+    clearChatTmpDirectories();
   },
 });
 

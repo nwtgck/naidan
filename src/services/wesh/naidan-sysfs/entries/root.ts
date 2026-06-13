@@ -30,7 +30,7 @@ function createFileStat({ size }: { size: number }): WeshStat {
   return { size, mode: 0o444, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-function createVersionFileEntry(_args: Record<never, never>): NaidanSysfsFileEntry {
+function createVersionFileEntry(): NaidanSysfsFileEntry {
   return {
     kind: 'file',
     async stat({ path }: { path: string }) {
@@ -92,7 +92,7 @@ function createCurrentChatGroupSymlinkEntry({
   }
 }
 
-export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
+export function createRootEntry(): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
@@ -161,27 +161,27 @@ export function createRootEntry(_args: Record<never, never>): NaidanSysfsDirecto
       void parentPath
       switch (name) {
       case NAIDAN_SYSFS_VERSION_FILE_NAME:
-        return createVersionFileEntry({})
+        return createVersionFileEntry()
       case NAIDAN_SYSFS_CURRENT_CHAT_SYMLINK_NAME:
         return createCurrentChatSymlinkEntry({ chatId: context.currentChatId })
       case NAIDAN_SYSFS_CHATS_DIRECTORY_NAME:
-        return createChatsDirectoryEntry({})
+        return createChatsDirectoryEntry()
       case NAIDAN_SYSFS_HIERARCHY_DIRECTORY_NAME:
-        return createHierarchyDirectoryEntry({})
+        return createHierarchyDirectoryEntry()
       case NAIDAN_SYSFS_BINARY_OBJECTS_DIRECTORY_NAME:
         return shouldExposeBinaryObjectsDirectory({ context })
-          ? createBinaryObjectsDirectoryEntry({})
+          ? createBinaryObjectsDirectoryEntry()
           : undefined
       case NAIDAN_SYSFS_CURRENT_CHAT_GROUP_SYMLINK_NAME:
         return context.currentChatGroupId === undefined
           ? undefined
           : createCurrentChatGroupSymlinkEntry({ chatGroupId: context.currentChatGroupId })
       case NAIDAN_SYSFS_CHAT_GROUPS_DIRECTORY_NAME:
-        return createChatGroupsDirectoryEntry({})
+        return createChatGroupsDirectoryEntry()
       default:
         if (isBinaryObjectsDirectoryName({ name })) {
           return shouldExposeBinaryObjectsDirectory({ context })
-            ? createBinaryObjectsDirectoryEntry({})
+            ? createBinaryObjectsDirectoryEntry()
             : undefined
         }
         return undefined

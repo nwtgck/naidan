@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { createAdvancedTextEditorV3Worker } from './impl'
 import {
   advancedTextEditorV3ApplyMultiEditResponseSchema,
@@ -11,8 +11,8 @@ import {
   type IAdvancedTextEditorV3Worker,
 } from './types'
 
-function createMainThreadFallbackClient(_args: EmptyArgs): AdvancedTextEditorV3WorkerClient {
-  const worker = createAdvancedTextEditorV3Worker({})
+function createMainThreadFallbackClient(): AdvancedTextEditorV3WorkerClient {
+  const worker = createAdvancedTextEditorV3Worker()
   return {
     async searchText({ request }) {
       return advancedTextEditorV3SearchTextResponseSchema.parse(await worker.searchText({ request }))
@@ -29,14 +29,14 @@ function createMainThreadFallbackClient(_args: EmptyArgs): AdvancedTextEditorV3W
     async applyMultiEdit({ request }) {
       return advancedTextEditorV3ApplyMultiEditResponseSchema.parse(await worker.applyMultiEdit({ request }))
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
     },
   }
 }
 
-export async function createAdvancedTextEditorV3WorkerClient(_args: EmptyArgs): Promise<AdvancedTextEditorV3WorkerClient> {
+export async function createAdvancedTextEditorV3WorkerClient(): Promise<AdvancedTextEditorV3WorkerClient> {
   if (typeof Worker === 'undefined') {
-    return createMainThreadFallbackClient({})
+    return createMainThreadFallbackClient()
   }
 
   const worker = new Worker(
@@ -64,7 +64,7 @@ export async function createAdvancedTextEditorV3WorkerClient(_args: EmptyArgs): 
     async applyMultiEdit({ request }) {
       return advancedTextEditorV3ApplyMultiEditResponseSchema.parse(await remote.applyMultiEdit({ request }))
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       try {
         await remote[Comlink.releaseProxy]()
       } finally {

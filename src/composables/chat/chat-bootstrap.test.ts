@@ -13,16 +13,16 @@ describe('installChatBootstrap', () => {
     const secondModelListCleanup = vi.fn();
 
     installChatBootstrap({
-      registerBeforeUnload: (_args) => firstBeforeUnloadCleanup,
-      subscribeModelList: (_args) => firstModelListCleanup,
+      registerBeforeUnload: () => firstBeforeUnloadCleanup,
+      subscribeModelList: () => firstModelListCleanup,
     });
 
     expect(firstBeforeUnloadCleanup).not.toHaveBeenCalled();
     expect(firstModelListCleanup).not.toHaveBeenCalled();
 
     installChatBootstrap({
-      registerBeforeUnload: (_args) => secondBeforeUnloadCleanup,
-      subscribeModelList: (_args) => secondModelListCleanup,
+      registerBeforeUnload: () => secondBeforeUnloadCleanup,
+      subscribeModelList: () => secondModelListCleanup,
     });
 
     expect(firstBeforeUnloadCleanup).toHaveBeenCalledTimes(1);

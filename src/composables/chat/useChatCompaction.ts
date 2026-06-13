@@ -23,7 +23,7 @@ export type ChatCompactionAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatCompaction(_args: Record<never, never>): ChatCompactionAdapter {
+export function useChatCompaction(): ChatCompactionAdapter {
   async function compactCurrentBranch({
     chatId,
     keepRecentMessages,

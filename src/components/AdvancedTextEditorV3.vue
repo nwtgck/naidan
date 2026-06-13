@@ -144,7 +144,7 @@ let multiEditRequestVersion = 0;
 
 async function getWorkerClient() {
   if (!workerClient) {
-    workerClient = await createAdvancedTextEditorV3WorkerClient({});
+    workerClient = await createAdvancedTextEditorV3WorkerClient();
   }
   return workerClient;
 }
@@ -830,7 +830,7 @@ onUnmounted(() => {
     ghostElement.parentNode.removeChild(ghostElement);
   }
   if (workerClient) {
-    void workerClient.dispose({});
+    void workerClient.dispose();
   }
 });
 

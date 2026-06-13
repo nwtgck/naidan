@@ -1,16 +1,5 @@
 import { reactive, toRaw } from 'vue';
-import type {
-  AssistantMessageNode,
-  Chat,
-  Hierarchy,
-  HierarchyChatGroupNode,
-  HierarchyNode,
-  LmParameters,
-  MessageNode,
-  SystemPrompt,
-  ToolMessageNode,
-  UserMessageNode,
-} from '@/models/types';
+import type { AssistantMessageNode, Chat, Hierarchy, HierarchyChatGroupNode, HierarchyNode, LmParameters, MessageNode, SystemPrompt, ToolMessageNode, UserMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
 import {
@@ -286,7 +275,7 @@ async function forkChatFromTarget({
       chatGroupId: mutableChat.groupId,
     });
   } });
-  await loadData({});
+  await loadData();
   await useChatNavigation().openChat({ chatId: newChat.id, leafId: undefined });
   return newChat.id;
 }

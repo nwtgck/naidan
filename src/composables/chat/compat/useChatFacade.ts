@@ -84,12 +84,12 @@ export function useChat() {
   });
   const currentChat = chatCurrentBridge.currentChat;
   const currentChatGroup = chatCurrentBridge.currentChatGroup;
-  const chatConversation = useChatConversation({});
-  const chatBranches = useChatBranches({});
-  const chatCompaction = useChatCompaction({});
-  const chatMetadata = useChatMetadata({});
-  const chatModelsOwner = useChatModels({});
-  const chatTitleOwner = useOwnedChatTitle({});
+  const chatConversation = useChatConversation();
+  const chatBranches = useChatBranches();
+  const chatCompaction = useChatCompaction();
+  const chatMetadata = useChatMetadata();
+  const chatModelsOwner = useChatModels();
+  const chatTitleOwner = useOwnedChatTitle();
   const sidebarItems = chatDerivedState.sidebarItems;
   const chats = chatDerivedState.chats;
   const chatGroups = chatDerivedState.chatGroups;
@@ -105,7 +105,7 @@ export function useChat() {
     chatId: string;
     mount: import('@/models/types').Mount;
   }) {
-    await useChatMounts({}).addMount({
+    await useChatMounts().addMount({
       chatId,
       mount,
     });
@@ -118,7 +118,7 @@ export function useChat() {
     chatId: string;
     volumeId: string;
   }) {
-    await useChatMounts({}).removeMount({
+    await useChatMounts().removeMount({
       chatId,
       volumeId,
     });
@@ -133,7 +133,7 @@ export function useChat() {
     volumeId: string;
     readOnly: boolean;
   }) {
-    await useChatMounts({}).updateMount({
+    await useChatMounts().updateMount({
       chatId,
       volumeId,
       readOnly,
@@ -147,7 +147,7 @@ export function useChat() {
     groupId: string;
     mount: import('@/models/types').Mount;
   }) {
-    await useChatGroupMounts({}).addMount({
+    await useChatGroupMounts().addMount({
       chatGroupId: groupId,
       mount,
     });
@@ -160,7 +160,7 @@ export function useChat() {
     groupId: string;
     volumeId: string;
   }) {
-    await useChatGroupMounts({}).removeMount({
+    await useChatGroupMounts().removeMount({
       chatGroupId: groupId,
       volumeId,
     });
@@ -177,7 +177,7 @@ export function useChat() {
     mountPath: string;
     readOnly: boolean;
   }) {
-    await useChatGroupMounts({}).updateMount({
+    await useChatGroupMounts().updateMount({
       chatGroupId: groupId,
       volumeId,
       mountPath,
@@ -255,8 +255,8 @@ export function useChat() {
     });
   }
 
-  async function deleteAllChats(_args: Record<never, never>) {
-    await chatLifecycle.deleteAllChats({});
+  async function deleteAllChats() {
+    await chatLifecycle.deleteAllChats();
   }
 
   async function renameChat({
@@ -345,14 +345,14 @@ export function useChat() {
     }
 
     if (chatId === undefined) {
-      const currentChatId = chatCurrentBridge.getCurrentChatId({});
+      const currentChatId = chatCurrentBridge.getCurrentChatId();
       if (currentChatId !== null) {
         return await chatModelsOwner.fetchForChat({
           chatId: currentChatId,
         });
       }
 
-      return await chatModelsOwner.fetchForGlobalEndpoint({});
+      return await chatModelsOwner.fetchForGlobalEndpoint();
     }
 
     return await chatModelsOwner.fetchForChat({
@@ -549,7 +549,7 @@ export function useChat() {
       return;
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -566,7 +566,7 @@ export function useChat() {
     chat: Chat | Readonly<Chat>;
     assistantId: string;
     lmParameters?: LmParameters;
-    onReady?: (_args: Record<never, never>) => void;
+    onReady?: () => void;
   }): Promise<void> {
     await generateResponseForAssistant({
       chat,
@@ -599,7 +599,7 @@ export function useChat() {
       });
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return false;
     }
@@ -647,7 +647,7 @@ export function useChat() {
       return;
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -668,7 +668,7 @@ export function useChat() {
       return;
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -684,7 +684,7 @@ export function useChat() {
     keepRecentMessages: number;
     instructionOverride: string | undefined;
   }) {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return false;
     }
@@ -726,7 +726,7 @@ export function useChat() {
       });
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return null;
     }
@@ -758,7 +758,7 @@ export function useChat() {
     newContent: string;
     lmParameters?: LmParameters;
   }): Promise<void> {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -794,7 +794,7 @@ export function useChat() {
   }: {
     messageId: string;
   }): Promise<void> {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -826,7 +826,7 @@ export function useChat() {
   }): MessageNode[] {
     const targetChat = chatId !== undefined
       ? chatCurrentBridge.getChatTargetById({ id: chatId })
-      : chatCurrentBridge.getCurrentChat({});
+      : chatCurrentBridge.getCurrentChat();
     if (targetChat === null) {
       return [];
     }
@@ -842,7 +842,7 @@ export function useChat() {
   }: {
     failedMessageId: string;
   }): Promise<void> {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -865,8 +865,8 @@ export function useChat() {
     });
   }
 
-  async function toggleDebug(_args: Record<never, never>) {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+  async function toggleDebug() {
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -954,7 +954,7 @@ export function useChat() {
     persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }) {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return false;
     }
@@ -986,7 +986,7 @@ export function useChat() {
     currentChatGroupRef: _currentChatGroup,
     registerLiveInstance,
     setContextCompactProgress,
-    clearLiveChatRegistryImpl: (_args: Record<never, never>) => {
+    clearLiveChatRegistryImpl: () => {
       liveChatRegistry.clear();
     },
   });
@@ -995,8 +995,8 @@ export function useChat() {
   const __testOnlySetContextCompactProgress = chatTestSupport.__testOnlySetContextCompactProgress;
   const clearLiveChatRegistry = chatTestSupport.clearLiveChatRegistry;
 
-  const clearActiveTaskCounts = (_params: Record<never, never>) => {
-    chatRuntimeStore.clearActiveTaskCounts({});
+  const clearActiveTaskCounts = () => {
+    chatRuntimeStore.clearActiveTaskCounts();
   };
 
   const getVolatileToolOutput = chatVolatileState.getVolatileToolOutput;

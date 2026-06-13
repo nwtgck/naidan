@@ -213,7 +213,7 @@ export function createWeshTerminalSessions({
     const session = sessionsInternal.value.find(s => s.id === sessionId);
     if (!session) return;
     cancelFns.delete(sessionId);
-    await session._client?.dispose({});
+    await session._client?.dispose();
     sessionsInternal.value = sessionsInternal.value.filter(s => s.id !== sessionId);
     if (activeSessionId.value === sessionId) {
       activeSessionId.value = sessionsInternal.value[0]?.id;

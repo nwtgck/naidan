@@ -21,7 +21,7 @@ import type {
   NaidanSysfsFileEntry,
 } from '@/services/wesh/naidan-sysfs/types'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -130,7 +130,7 @@ function createBinaryObjectLeafDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,
@@ -184,12 +184,12 @@ function createBinaryObjectLeafDirectoryEntry({
   }
 }
 
-function createBinaryObjectByIdDirectoryEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
+function createBinaryObjectByIdDirectoryEntry(): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,
@@ -198,7 +198,7 @@ function createBinaryObjectByIdDirectoryEntry(_args: Record<never, never>): Naid
       path: string;
       context: NaidanSysfsContext;
     }): AsyncIterable<WeshDirEntry> {
-      for await (const object of context.reader.listBinaryObjects({})) {
+      for await (const object of context.reader.listBinaryObjects()) {
         yield {
           name: object.id,
           type: 'directory',
@@ -225,12 +225,12 @@ function createBinaryObjectByIdDirectoryEntry(_args: Record<never, never>): Naid
   }
 }
 
-export function createBinaryObjectsDirectoryEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
+export function createBinaryObjectsDirectoryEntry(): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,
@@ -263,7 +263,7 @@ export function createBinaryObjectsDirectoryEntry(_args: Record<never, never>): 
       }
       switch (name) {
       case NAIDAN_SYSFS_BINARY_OBJECTS_BY_ID_DIRECTORY_NAME:
-        return createBinaryObjectByIdDirectoryEntry({})
+        return createBinaryObjectByIdDirectoryEntry()
       default:
         return undefined
       }

@@ -6,7 +6,7 @@ import { renderMessageJson } from '@/services/wesh/naidan-sysfs/render/message-j
 import { renderMessageMarkdown } from '@/services/wesh/naidan-sysfs/render/message-markdown'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry } from '@/services/wesh/naidan-sysfs/types'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -121,7 +121,7 @@ export function createChatContentDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,

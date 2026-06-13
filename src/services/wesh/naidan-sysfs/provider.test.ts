@@ -20,10 +20,10 @@ function createReaderStub({
 }): NaidanSysfsStorageReader {
   const objects = new Map((binaryObjects ?? []).map(object => [object.id, createNaidanSysfsBinaryObject({ object })]))
   return {
-    async loadHierarchy(_args: Record<never, never>) {
+    async loadHierarchy() {
       return { items: [] }
     },
-    async getSidebarStructure(_args: Record<never, never>) {
+    async getSidebarStructure() {
       if (chatGroup !== undefined) {
         return [{
           id: `chat_group:${chatGroup.id}`,
@@ -45,10 +45,10 @@ function createReaderStub({
       }
       return []
     },
-    async listChats(_args: Record<never, never>) {
+    async listChats() {
       return chatGroup?.items.map(item => item.chat) ?? []
     },
-    async listChatGroups(_args: Record<never, never>) {
+    async listChatGroups() {
       return chatGroup === undefined ? [] : [chatGroup]
     },
     async loadChatMeta({ chatId }: { chatId: string }) {
@@ -73,7 +73,7 @@ function createReaderStub({
       }
       return chatGroup
     },
-    async *listBinaryObjects(_args: Record<never, never>) {
+    async *listBinaryObjects() {
       for (const object of objects.values()) {
         yield object
       }

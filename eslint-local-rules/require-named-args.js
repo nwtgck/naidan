@@ -24,7 +24,6 @@ function isRecordNeverNeverParameter(node, sourceCode) {
 
   return [
     'Record<never, never>',
-    'EmptyArgs',
   ].includes(normalizeWhitespace(sourceCode.getText(typeAnnotation)));
 }
 
@@ -698,7 +697,7 @@ export const rule = {
     },
     schema: [],
     messages: {
-      requireNamedArgs: 'Use named args: no args, EmptyArgs, or one destructured object param. Disable only for true external/deprecated contracts.',
+      requireNamedArgs: 'Use named args: no args, Record<never, never>, or one destructured object param. Disable only for true external/deprecated contracts.',
       requireNamedArgsDestructure: 'Use one destructured object param, e.g. fn({ value }: Args). Disable only for true external/deprecated contracts.',
       requireNamedArgsWrap: 'Wrap positional params into one object param, e.g. fn({ id, name }). Disable only for true external/deprecated contracts.',
       requireNamedArgsTypeSignature: 'Naidan callback/signature types should use one object param. Import external callback types instead of redefining them.',

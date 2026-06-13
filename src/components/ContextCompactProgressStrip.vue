@@ -25,14 +25,14 @@ const animatedPercent = ref(0);
 const hideTimerId = ref<number | undefined>(undefined);
 const animationFrameId = ref<number | undefined>(undefined);
 
-function clearHideTimer(_args: Record<never, never>) {
+function clearHideTimer() {
   if (hideTimerId.value !== undefined) {
     window.clearTimeout(hideTimerId.value);
     hideTimerId.value = undefined;
   }
 }
 
-function clearPercentAnimationFrame(_args: Record<never, never>) {
+function clearPercentAnimationFrame() {
   if (animationFrameId.value !== undefined) {
     window.cancelAnimationFrame(animationFrameId.value);
     animationFrameId.value = undefined;
@@ -44,7 +44,7 @@ function animatePercentTo({
 }: {
   percent: number;
 }) {
-  clearPercentAnimationFrame({});
+  clearPercentAnimationFrame();
   animationFrameId.value = window.requestAnimationFrame(() => {
     animatedPercent.value = percent;
     animationFrameId.value = undefined;
@@ -52,7 +52,7 @@ function animatePercentTo({
 }
 
 watch(display, async (nextDisplay) => {
-  clearHideTimer({});
+  clearHideTimer();
   visibleDisplay.value = nextDisplay;
 
   if (nextDisplay.isRunning) {
@@ -137,7 +137,7 @@ const requestPreviewRef = ref<HTMLElement | null>(null);
 const outputPreviewRef = ref<HTMLElement | null>(null);
 const shouldAutoScrollOutput = ref(true);
 
-function syncOutputAutoScrollState(_args: Record<never, never>) {
+function syncOutputAutoScrollState() {
   const element = outputPreviewRef.value;
   if (!element) {
     return;
@@ -147,7 +147,7 @@ function syncOutputAutoScrollState(_args: Record<never, never>) {
   shouldAutoScrollOutput.value = element.scrollTop + element.clientHeight >= element.scrollHeight - thresholdPx;
 }
 
-function scrollOutputToBottom(_args: Record<never, never>) {
+function scrollOutputToBottom() {
   const element = outputPreviewRef.value;
   if (!element) {
     return;
@@ -156,7 +156,7 @@ function scrollOutputToBottom(_args: Record<never, never>) {
   element.scrollTop = element.scrollHeight;
 }
 
-function scrollRequestToBottom(_args: Record<never, never>) {
+function scrollRequestToBottom() {
   const element = requestPreviewRef.value;
   if (!element) {
     return;
@@ -168,7 +168,7 @@ function scrollRequestToBottom(_args: Record<never, never>) {
 watch(showRequestPreview, async (val) => {
   if (val) {
     await nextTick();
-    scrollRequestToBottom({});
+    scrollRequestToBottom();
   }
 });
 
@@ -178,7 +178,7 @@ watch(outputPreview, async () => {
   }
 
   await nextTick();
-  scrollOutputToBottom({});
+  scrollOutputToBottom();
 });
 
 watch(requestPreview, async () => {
@@ -187,12 +187,12 @@ watch(requestPreview, async () => {
   }
 
   await nextTick();
-  scrollRequestToBottom({});
+  scrollRequestToBottom();
 });
 
 onBeforeUnmount(() => {
-  clearHideTimer({});
-  clearPercentAnimationFrame({});
+  clearHideTimer();
+  clearPercentAnimationFrame();
 });
 
 defineExpose({
@@ -345,7 +345,7 @@ defineExpose({
                 ref="outputPreviewRef"
                 class="max-h-48 overflow-auto whitespace-pre-wrap break-words px-3 py-3 text-[11px] leading-relaxed font-mono text-violet-950 dark:text-violet-100/90 selection:bg-violet-200/50 dark:selection:bg-violet-500/30"
                 data-testid="context-compact-output-scroll"
-                @scroll="syncOutputAutoScrollState({})"
+                @scroll="syncOutputAutoScrollState()"
               >{{ outputPreview }}</pre>
             </div>
           </div>
