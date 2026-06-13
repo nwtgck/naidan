@@ -52,8 +52,7 @@ const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
 
 // Intercept fetch to handle SPA 404 fallback and enforce local-only constraints
 const originalFetch = self.fetch;
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this function mirrors the global fetch signature.
-const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+const interceptedFetch: typeof self.fetch = async (input, init) => {
   let urlString = '';
   if (typeof input === 'string') {
     urlString = input;

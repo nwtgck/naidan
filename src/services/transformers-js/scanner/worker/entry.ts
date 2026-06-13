@@ -56,8 +56,7 @@ let lastHeavyMockUrl: string | undefined;
 let lastMetadataFetchUrl: string | undefined;
 
 // Intercept fetch to collect URLs and mock heavy files
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this function mirrors the global fetch signature.
-const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+const interceptedFetch: typeof self.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   fetchCount += 1;
   lastFetchUrl = url;

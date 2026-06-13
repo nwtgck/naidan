@@ -13,7 +13,7 @@ describe('wesh date', () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-03-20T01:02:03Z'));
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });

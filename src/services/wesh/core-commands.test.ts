@@ -11,7 +11,7 @@ describe('wesh core command parsing', () => {
   let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });

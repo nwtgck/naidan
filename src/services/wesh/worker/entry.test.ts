@@ -21,7 +21,7 @@ describe('wesh.worker', () => {
     await import('./entry')
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
-    const rootHandle = new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle
 
     await workerApi.init({
       request: {
@@ -49,8 +49,8 @@ describe('wesh.worker', () => {
     await import('./entry')
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
-    const mountedRoot = new MockFileSystemDirectoryHandle('mounted')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'mounted' })
     const fileHandle = await mountedRoot.getFileHandle('hello.txt', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('from mount')
@@ -82,7 +82,7 @@ describe('wesh.worker', () => {
   it('can read the naidan sysfs version file', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
-    const opfsRoot = new MockFileSystemDirectoryHandle('opfs-root')
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs-root' })
     const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true })
     await storageRoot.getDirectoryHandle('uploaded-files', { create: true })
     vi.stubGlobal('navigator', {
@@ -95,7 +95,7 @@ describe('wesh.worker', () => {
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
       request: {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [{
           type: 'naidan_sysfs',
           path: '/sys/fs/naidan',
@@ -128,7 +128,7 @@ describe('wesh.worker', () => {
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
       request: {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [],
         user: 'user',
         initialEnv: {},
@@ -204,7 +204,7 @@ describe('wesh.worker', () => {
 
     await workerApi.init(
       {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [{
           type: 'naidan_sysfs',
           path: '/sys/fs/naidan',
@@ -289,7 +289,7 @@ describe('wesh.worker', () => {
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
       request: {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [],
         user: 'user',
         initialEnv: {},
@@ -318,7 +318,7 @@ describe('wesh.worker', () => {
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
       request: {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [],
         user: 'user',
         initialEnv: {},

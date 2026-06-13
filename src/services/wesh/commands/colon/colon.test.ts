@@ -10,7 +10,7 @@ describe('wesh :', () => {
   let wesh: Wesh;
 
   beforeEach(async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle('root');
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });

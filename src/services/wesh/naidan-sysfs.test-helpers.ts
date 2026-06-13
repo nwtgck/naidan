@@ -361,7 +361,7 @@ export async function createMountedNaidanSysfsWeshWithCurrentChat({
   currentChatId: string;
   currentChatGroupId: string | undefined;
 }): Promise<Wesh> {
-  const rootHandle = new MockFileSystemDirectoryHandle('root')
+  const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
   const wesh = new Wesh({
     rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
     initialEnv: {},

@@ -6,8 +6,7 @@ import { vi } from 'vitest';
  */
 export function setupScrollToMock() {
   if (typeof window !== 'undefined') {
-    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external API-compatible shape.
-    const mockScrollTo = function(this: HTMLElement | Element | Window, options?: number | ScrollToOptions, _left?: number) {
+    const mockScrollTo: typeof window.scrollTo = function(this: HTMLElement | Element | Window, options?: number | ScrollToOptions, _left?: number) {
       if (typeof options === 'object' && options !== null) {
         const scrollToOptions = options as ScrollToOptions;
         if (this instanceof HTMLElement || this instanceof Element) {

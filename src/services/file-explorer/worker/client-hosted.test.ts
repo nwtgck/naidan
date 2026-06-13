@@ -133,7 +133,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
 
   it('runs native-directory operations through the hosted worker client facade', async () => {
     const { createFileExplorerWorkerClient } = await import('./client-hosted')
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
     const jsonFileHandle = await rootHandle.getFileHandle('data.json', { create: true })
     const jsonWritable = await jsonFileHandle.createWritable()
     await jsonWritable.write('{"hello":"world"}')
@@ -197,7 +197,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
 
   it('reads mounted directories through the hosted worker client facade', async () => {
     const { createFileExplorerWorkerClient } = await import('./client-hosted')
-    const mountHandle = new MockFileSystemDirectoryHandle('project')
+    const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' })
     const fileHandle = await mountHandle.getFileHandle('index.ts', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('export const value = 1')

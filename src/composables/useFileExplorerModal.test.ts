@@ -13,7 +13,7 @@ describe('useFileExplorerModal', () => {
 
   it('keeps wesh mount options structured-cloneable after opening the modal', () => {
     const { fileExplorerOptions, openFileExplorer } = useFileExplorerModal()
-    const mountHandle = new MockFileSystemDirectoryHandle('project')
+    const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' })
 
     openFileExplorer({ options: {
       kind: 'wesh-mounts',
