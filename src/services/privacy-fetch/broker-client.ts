@@ -8,31 +8,24 @@ import type {
   PrivacyFetchResponse,
 } from './types'
 
-type PendingRequest = {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
-  reject: (reason: Error) => void;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise resolver signature.
-  resolve: (value: PrivacyFetchResponse) => void;
+type PromiseCallbacks<T> = Pick<
+  ReturnType<typeof Promise.withResolvers<T>>,
+  'reject' | 'resolve'
+>
+
+type PendingRequest = PromiseCallbacks<PrivacyFetchResponse> & {
   cleanup: () => void;
 }
 
-type Deferred<T> = {
-  promise: Promise<T>;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
-  reject: (reason: Error) => void;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise resolver signature.
-  resolve: (value: T) => void;
-}
+type Deferred<T> = ReturnType<typeof Promise.withResolvers<T>>
 
 const PRIVACY_FETCH_BROKER_PATH = '/privacy-fetch-broker.html'
 
 let sharedPrivacyFetchBrokerClient: PrivacyFetchBrokerClient | undefined
 
 function createDeferred<T>(): Deferred<T> {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise resolver signature.
-  let resolve!: (value: T) => void
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
-  let reject!: (reason: Error) => void
+  let resolve!: Deferred<T>['resolve']
+  let reject!: Deferred<T>['reject']
   const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve
     reject = promiseReject
@@ -118,8 +111,7 @@ export function createPrivacyFetchBrokerClient({
     callback({ pendingRequest })
   }
 
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to addEventListener.
-  const handleMessage = (event: MessageEvent) => {
+  const handleMessage: NonNullable<Window['onmessage']> = (event) => {
     if (event.source !== iframe?.contentWindow) {
       return
     }
@@ -329,11 +321,11 @@ export function createPrivacyFetchBrokerClient({
           request.signal?.removeEventListener('abort', onAbort)
         }
 
+        const resolvePending: PendingRequest['resolve'] = (response) => settle({ callback: () => resolve(response) })
+        const rejectPending: PendingRequest['reject'] = (error) => settle({ callback: () => reject(error) })
         pendingRequests.set(requestId, {
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise resolver signature.
-          resolve: (response) => settle({ callback: () => resolve(response) }),
-          // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Promise rejecter signature.
-          reject: (error) => settle({ callback: () => reject(error) }),
+          resolve: resolvePending,
+          reject: rejectPending,
           cleanup,
         })
 

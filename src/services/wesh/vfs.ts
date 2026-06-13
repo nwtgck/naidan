@@ -238,8 +238,7 @@ class FifoHandle implements WeshFileHandle {
   private bufferHeadIndex = 0;
   private bufferSize = 0;
   private headOffset = 0;
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these callbacks are Promise resolvers for FIFO readers.
-  private waiters: Array<(val: void) => void> = [];
+  private waiters: Array<ReturnType<typeof Promise.withResolvers<void>>['resolve']> = [];
   private closed = false;
 
   async read({ buffer, offset, length }: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshIOResult> {

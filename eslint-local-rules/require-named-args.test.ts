@@ -142,19 +142,20 @@ describe('require-named-args rule', () => {
     await expect(lint(`type Args = { id: string }; function read({ id }: Args) {}`)).resolves.toHaveLength(0);
   });
 
-  it('reports single positional parameters with concise guidance', async () => {
+  it('reports single positional parameters with destructuring guidance', async () => {
     const messages = await lint(`function read(id: string) {}`);
 
     expect(messages).toHaveLength(1);
     expect(messages[0]?.ruleId).toBe('local-rules-named-args/require-named-args');
-    expect(messages[0]?.message).toContain('Use named args');
+    expect(messages[0]?.message).toContain('Use one destructured object param');
     expect(messages[0]?.message).toContain('Disable only for true external/deprecated contracts');
   });
 
-  it('reports multiple positional parameters', async () => {
+  it('reports multiple positional parameters with object wrapping guidance', async () => {
     const messages = await lint(`function read(id: string, name: string) {}`);
 
     expect(messages).toHaveLength(1);
+    expect(messages[0]?.message).toContain('Wrap positional params into one object param');
   });
 
   it('reports identifier parameters with inline object types', async () => {
@@ -187,10 +188,12 @@ describe('require-named-args rule', () => {
     expect(messages).toHaveLength(1);
   });
 
-  it('reports Naidan-defined positional callback types', async () => {
+  it('reports Naidan-defined positional callback types with external-type guidance', async () => {
     const messages = await lint(`type Listener = (status: string, progress: number) => void;`);
 
     expect(messages).toHaveLength(1);
+    expect(messages[0]?.message).toContain('Naidan callback/signature types should use one object param');
+    expect(messages[0]?.message).toContain('Import external callback types instead of redefining them');
   });
 
   it('reports single positional callback type parameters', async () => {
@@ -336,6 +339,20 @@ class Listener implements LocalListener { handleEvent(event) { void event; } }
     await expect(typedLint(`const channel = new BroadcastChannel('test'); channel.onmessage = (event) => { void event; };`)).resolves.toHaveLength(0);
   });
 
+  it('allows class property arrow callbacks with external contextual signatures', async () => {
+    await expect(typedLint(`class Target { private readonly listener: EventListener = (event) => { void event; }; }`)).resolves.toHaveLength(0);
+  });
+
+  it('reports class property arrow callbacks with Naidan-owned contextual signatures', async () => {
+    const messages = await typedLint(`
+// eslint-disable-next-line local-rules-named-args/require-named-args -- test fixture defines a local positional callback contract.
+type Listener = (event: Event) => void;
+class Target { private readonly listener: Listener = (event) => { void event; }; }
+`);
+
+    expect(messages).toHaveLength(1);
+  });
+
   it('reports assignment RHS callbacks with concise contextual-typing guidance when the target has a Naidan-owned signature', async () => {
     const messages = await typedLint(`
 // eslint-disable-next-line local-rules-named-args/require-named-args -- test fixture defines a local positional callback contract.
@@ -345,7 +362,7 @@ listener = (event) => { void event; };
 `);
 
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.message).toContain('assignment target an external callback type');
+    expect(messages[0]?.message).toContain('assignment target with an external callback type');
     expect(messages[0]?.message).toContain('Disable only for true external/deprecated contracts');
   });
 
@@ -384,6 +401,44 @@ target.onmessage = (event) => { void event; };
 
   it('allows Vitest reporter class methods when they implement Vitest reporter signatures', async () => {
     await expect(typedLint(`import type { Reporter } from 'vitest/reporters'; class FailedOnlyReporter implements Reporter { onTestRunEnd(testModules, errors) { void testModules; void errors; } }`)).resolves.toHaveLength(0);
+  }, 30_000);
+
+
+  it('reports stored Promise callback types with Promise.withResolvers guidance', async () => {
+    const messages = await lint(`let resolvePromise: ((value: boolean) => void) | undefined;`);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.message).toContain('Promise.withResolvers');
+  });
+
+  it('reports DOM-named callback types with external DOM type guidance', async () => {
+    const messages = await lint(`let storageHandler: (event: StorageEvent) => void;`);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.message).toContain("Window['onstorage']");
+    expect(messages[0]?.message).toContain('typeof window.requestIdleCallback');
+  });
+
+  it('allows interface methods that mirror same-named methods from external base interfaces', async () => {
+    await expect(typedLint(`interface LocalEventTarget extends EventTarget { addEventListener(type: string, listener: EventListenerOrEventListenerObject): void; }`)).resolves.toHaveLength(0);
+  });
+
+  it('reports interface methods added beside an external base interface', async () => {
+    const messages = await typedLint(`interface LocalEventTarget extends EventTarget { localListener(event: Event): void; }`);
+
+    expect(messages).toHaveLength(1);
+  }, 30_000);
+
+  it('reports interface methods that mirror same-named methods from Naidan-owned base interfaces', async () => {
+    const messages = await typedLint(`
+interface LocalBase {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- test fixture defines a local positional method contract.
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject): void
+}
+interface LocalEventTarget extends LocalBase { addEventListener(type: string, listener: EventListenerOrEventListenerObject): void; }
+`);
+
+    expect(messages).toHaveLength(1);
   }, 30_000);
 
 

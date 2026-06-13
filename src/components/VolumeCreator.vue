@@ -321,15 +321,13 @@ function onDocDrop({ event }: { event: DragEvent }) {
   handleDrop({ event });
 }
 
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM dragover listener.
-function handleDocumentDragOver(event: DragEvent) {
-  onDocDragOver({ event });
-}
+const handleDocumentDragOver: EventListener = (event) => {
+  onDocDragOver({ event: event as DragEvent });
+};
 
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM drop listener.
-function handleDocumentDrop(event: DragEvent) {
-  onDocDrop({ event });
-}
+const handleDocumentDrop: EventListener = (event) => {
+  onDocDrop({ event: event as DragEvent });
+};
 
 onMounted(async () => {
   hasFileSystemAccess.value = checkFileSystemAccessSupport();

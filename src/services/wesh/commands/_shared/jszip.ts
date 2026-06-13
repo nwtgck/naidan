@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 
 interface JSZipObjectWithInternalStream extends JSZip.JSZipObject {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the JSZip internalStream signature.
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this runtime JSZip method is not declared on JSZip.JSZipObject's public type.
   internalStream(type: 'uint8array'): JSZip.JSZipStreamHelper<Uint8Array>;
 }
 

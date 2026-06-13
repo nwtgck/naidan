@@ -36,7 +36,6 @@ interface GenerationResult {
 }
 
 interface TextGenerationModel extends PreTrainedModel {
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the Transformers model.generate input signature.
   generate(inputs: Record<string, unknown>): Promise<GenerationResult & (ModelOutput | Tensor)>;
 }
 

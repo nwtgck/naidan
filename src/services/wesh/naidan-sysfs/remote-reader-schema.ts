@@ -10,7 +10,8 @@ import {
   SystemPromptSchemaDto,
 } from '@/models/dto'
 
-const orUndefined = <T extends z.ZodTypeAny>({ schema }: { schema: T }) => z.union([schema, z.undefined()])
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this local Zod helper intentionally mirrors Zod's schema-first helper style.
+const orUndefined = <T extends z.ZodTypeAny>(schema: T) => z.union([schema, z.undefined()])
 
 export const naidanSysfsRemoteChatSummarySchema = z.object({
   id: z.string().min(1),
@@ -27,13 +28,13 @@ export const naidanSysfsRemoteChatSidebarItemSchema = z.object({
 
 export const naidanSysfsRemoteChatGroupPayloadSchema = z.object({
   dto: ChatGroupSchemaDto.extend({
-    endpoint: orUndefined({ schema: EndpointSchemaDto }),
-    modelId: orUndefined({ schema: z.string() }),
-    autoTitleEnabled: orUndefined({ schema: z.boolean() }),
-    titleModelId: orUndefined({ schema: z.string() }),
-    systemPrompt: orUndefined({ schema: SystemPromptSchemaDto }),
-    lmParameters: orUndefined({ schema: LmParametersSchemaDto }),
-    mounts: orUndefined({ schema: z.array(MountSchemaDto) }),
+    endpoint: orUndefined(EndpointSchemaDto),
+    modelId: orUndefined(z.string()),
+    autoTitleEnabled: orUndefined(z.boolean()),
+    titleModelId: orUndefined(z.string()),
+    systemPrompt: orUndefined(SystemPromptSchemaDto),
+    lmParameters: orUndefined(LmParametersSchemaDto),
+    mounts: orUndefined(z.array(MountSchemaDto)),
   }),
   items: z.array(naidanSysfsRemoteChatSidebarItemSchema),
 })

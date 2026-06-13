@@ -32,8 +32,7 @@ export class OPFSTmpManager {
   private readonly pageHideHandler = () => {
     this.scheduleOwnScopeCleanup();
   };
-  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM storage listener.
-  private readonly storageHandler = (event: StorageEvent) => {
+  private readonly storageHandler: NonNullable<Window['onstorage']> = (event) => {
     if (event.key !== OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY) {
       return;
     }

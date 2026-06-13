@@ -809,12 +809,9 @@ function handleKeyDown({ event }: { event: KeyboardEvent }) {
   }
 }
 
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback is passed directly to a DOM keydown listener.
-function handleWindowKeyDown(event: KeyboardEvent) {
+useEventTargetListener(window, 'keydown', (event) => {
   handleKeyDown({ event });
-}
-
-useEventTargetListener(window, 'keydown', handleWindowKeyDown);
+});
 useEventTargetListener(window, 'resize', calculateLineHeights);
 
 onMounted(() => {

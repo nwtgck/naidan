@@ -315,6 +315,42 @@ function isClassMethodImplementingExternalSignature({ checker, tsNode }) {
   return false;
 }
 
+
+function isInterfaceMethodExtendingExternalSignature({ checker, tsNode }) {
+  if (!ts.isMethodSignature(tsNode) || !ts.isInterfaceDeclaration(tsNode.parent)) {
+    return false;
+  }
+
+  const propertyName = getTsPropertyNameText(tsNode.name);
+  if (!propertyName) {
+    return false;
+  }
+
+  for (const heritageClause of tsNode.parent.heritageClauses ?? []) {
+    for (const heritageType of heritageClause.types) {
+      const baseType = checker.getTypeAtLocation(heritageType);
+
+      for (const typePart of getTypeParts(baseType)) {
+        const symbol = typePart.getProperty(propertyName);
+        if (!symbol) {
+          continue;
+        }
+
+        if (hasExternalDeclaration(symbol.getDeclarations() ?? [])) {
+          return true;
+        }
+
+        const propertyType = checker.getTypeOfSymbolAtLocation(symbol, heritageType);
+        if (isExternalCallableType(propertyType, checker)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
 function isContextualSignatureFromExternalDeclaration({ checker, tsNode }) {
   // getContextualType covers external signatures attached through variable declarations,
   // function arguments, and assignment RHS expressions such as `window.onresize = (...) => {}`.
@@ -392,6 +428,10 @@ function getTypedExpressionContextNode(node) {
       return parent.id?.typeAnnotation ? parent : undefined;
     }
 
+    if (parent.type === 'PropertyDefinition') {
+      return parent.typeAnnotation ? parent : undefined;
+    }
+
     if (parent.type === 'AssignmentExpression') {
       return parent.right === current ? parent : undefined;
     }
@@ -437,7 +477,8 @@ function canHaveTypeCheckedExternalContext(node) {
   if (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression') {
     return (
       node.type === 'MethodDefinition' ||
-      node.type === 'PropertyDefinition'
+      node.type === 'PropertyDefinition' ||
+      node.type === 'TSMethodSignature'
     );
   }
 
@@ -458,7 +499,8 @@ function isTypeCheckedExternalBoundaryCallback({ node, state }) {
   return (
     isContextualSignatureFromExternalDeclaration({ checker: state.checker, tsNode }) ||
     isObjectLiteralPropertyContextuallyExternal({ checker: state.checker, tsNode }) ||
-    isClassMethodImplementingExternalSignature({ checker: state.checker, tsNode })
+    isClassMethodImplementingExternalSignature({ checker: state.checker, tsNode }) ||
+    isInterfaceMethodExtendingExternalSignature({ checker: state.checker, tsNode })
   );
 }
 
@@ -542,6 +584,82 @@ function isAllowedSignature({ node, params, sourceCode }) {
   );
 }
 
+
+
+function getFunctionNameHintText(node) {
+  if (node.id?.type === 'Identifier') {
+    return node.id.name;
+  }
+
+  let current = node.parent;
+  while (current) {
+    if (current.type === 'VariableDeclarator' && current.id?.type === 'Identifier') {
+      return current.id.name;
+    }
+
+    if (
+      current.type === 'Property' ||
+      current.type === 'MethodDefinition' ||
+      current.type === 'PropertyDefinition' ||
+      current.type === 'TSPropertySignature' ||
+      current.type === 'TSMethodSignature'
+    ) {
+      return getStaticPropertyName(current);
+    }
+
+    if (current.type === 'TSTypeAliasDeclaration' && current.id?.type === 'Identifier') {
+      return current.id.name;
+    }
+
+    current = current.parent;
+  }
+
+  return undefined;
+}
+
+function hasPromiseCallbackLikeName(node) {
+  const name = getFunctionNameHintText(node);
+  return Boolean(name && /(?:resolve|reject)/iu.test(name));
+}
+
+function hasDomCallbackLikeName(node) {
+  const name = getFunctionNameHintText(node);
+  return Boolean(name && /(?:idle|animation|storage|message|resize)/iu.test(name));
+}
+
+function getReportMessageId({ node, params }) {
+  if (isAssignmentFunctionRhs(node)) {
+    return 'requireNamedArgsAssignment';
+  }
+
+  if (hasPromiseCallbackLikeName(node)) {
+    return 'requireNamedArgsPromiseCallback';
+  }
+
+  if (hasDomCallbackLikeName(node)) {
+    return 'requireNamedArgsDomCallback';
+  }
+
+  if (
+    node.type === 'TSFunctionType' ||
+    node.type === 'TSCallSignatureDeclaration' ||
+    node.type === 'TSConstructSignatureDeclaration' ||
+    node.type === 'TSMethodSignature'
+  ) {
+    return 'requireNamedArgsTypeSignature';
+  }
+
+  if (params.length > 1) {
+    return 'requireNamedArgsWrap';
+  }
+
+  if (params.length === 1) {
+    return 'requireNamedArgsDestructure';
+  }
+
+  return 'requireNamedArgs';
+}
+
 function checkFunctionLike(node, context, state) {
   const sourceCode = context.sourceCode;
 
@@ -568,7 +686,7 @@ function checkFunctionLike(node, context, state) {
 
   context.report({
     node,
-    messageId: isAssignmentFunctionRhs(node) ? 'requireNamedArgsAssignment' : 'requireNamedArgs',
+    messageId: getReportMessageId({ node, params }),
   });
 }
 
@@ -581,7 +699,12 @@ export const rule = {
     schema: [],
     messages: {
       requireNamedArgs: 'Use named args: no args, EmptyArgs, or one destructured object param. Disable only for true external/deprecated contracts.',
-      requireNamedArgsAssignment: 'Use named args, or give the assignment target an external callback type so this rule can verify it. Disable only for true external/deprecated contracts.',
+      requireNamedArgsDestructure: 'Use one destructured object param, e.g. fn({ value }: Args). Disable only for true external/deprecated contracts.',
+      requireNamedArgsWrap: 'Wrap positional params into one object param, e.g. fn({ id, name }). Disable only for true external/deprecated contracts.',
+      requireNamedArgsTypeSignature: 'Naidan callback/signature types should use one object param. Import external callback types instead of redefining them.',
+      requireNamedArgsAssignment: "Use named args, or type the assignment target with an external callback type, e.g. Window['onstorage']. Disable only for true external/deprecated contracts.",
+      requireNamedArgsPromiseCallback: "Use named args. Stored Promise callbacks can use ReturnType<typeof Promise.withResolvers<T>>['resolve'|'reject'].",
+      requireNamedArgsDomCallback: "Use named args. For DOM callbacks, prefer external types like Window['onstorage'] or typeof window.requestIdleCallback.",
     },
   },
   create(context) {
