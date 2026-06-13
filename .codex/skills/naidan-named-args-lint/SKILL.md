@@ -1,6 +1,6 @@
 ---
 name: naidan-named-args-lint
-description: Use this when fixing Naidan require-named-args lint errors. Prefer named args or verifiable external TypeScript types over eslint-disable comments. Includes safe patterns for Promise callbacks, DOM callbacks, assignment RHS callbacks, EventTarget adapters, Comlink boundaries, runtime-only external contracts, and external interface contracts.
+description: Use this when fixing Naidan require-named-args lint errors. Prefer named args or verifiable external TypeScript types over eslint-disable comments. Includes safe patterns for Promise callbacks, DOM callbacks, platform-owned callback and mock contracts, assignment RHS callbacks, EventTarget adapters, Comlink boundaries, runtime-only external contracts, and external interface contracts.
 ---
 
 # Naidan named-args lint fixes
@@ -281,6 +281,74 @@ const requestIdle:
     (callback) => window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 0 }), 0);
 ```
 
+
+## Platform-owned callback and mock contracts
+
+When a positional callback or mock mirrors a platform API, prefer typing it with the platform-owned contract instead of adding a disable comment.
+
+For Node HTTP server callbacks, use the Node-owned listener type.
+
+```ts
+import type { RequestListener } from 'node:http';
+
+const handler: RequestListener = (req, res) => {
+  // external Node HTTP callback contract
+};
+```
+
+For global `fetch` adapters, use the global fetch type.
+
+```ts
+const interceptedFetch: typeof self.fetch = async (input, init) => {
+  // external fetch contract
+  return fetch(input, init);
+};
+```
+
+For DOM function shims, use the DOM-owned function type.
+
+```ts
+const mockScrollTo: typeof window.scrollTo = (_options, _left) => {
+  // external scrollTo contract
+};
+```
+
+For test doubles that mirror platform objects, implement the platform interface when TypeScript can verify it.
+
+```ts
+class MockFileSystemHandle implements FileSystemHandle {
+  readonly kind: FileSystemHandleKind;
+  readonly name: string;
+
+  async isSameEntry(other: FileSystemHandle): Promise<boolean> {
+    return this === other;
+  }
+}
+```
+
+Do not assume that implementing an external interface covers local constructors. Constructors are not part of TypeScript interfaces, so mock constructors remain Naidan-owned and should use named args unless they are intentionally preserving a deprecated or runtime-only positional contract.
+
+```ts
+class MockFileSystemDirectoryHandle implements FileSystemDirectoryHandle {
+  constructor({ name }: { name: string }) {
+    this.name = name;
+  }
+}
+```
+
+After adding `implements` for an external interface, run typecheck and add any required platform members to the mock. For example, `FileSystemDirectoryHandle` requires async iteration support.
+
+```ts
+async *[Symbol.asyncIterator](): AsyncIterableIterator<[
+  string,
+  FileSystemHandle,
+]> {
+  for (const entry of this.entries.values()) {
+    yield [entry.name, entry];
+  }
+}
+```
+
 ## Assignment RHS callbacks
 
 Do not allow assignments just because they are assignments.
@@ -526,8 +594,11 @@ Before returning a patch:
 3. Convert inline object parameters like `params: { ... }` to destructured parameters.
 4. Prefer `ReturnType<typeof Promise.withResolvers<T>>[...]` for Promise callbacks.
 5. Prefer DOM-owned types like `Window['onstorage']`, `Window['onmessage']`, `HTMLImageElement['onerror']`, or `Window['requestIdleCallback']`.
-6. Keep Comlink boundary methods positional, but keep Naidan-facing facades named args.
-7. Keep runtime-only external exceptions narrow and explicit.
-8. Confirm no `TODO(named-args-audit): mechanically suppressed` remains.
-9. Confirm `TODO(named-args-design)` is rare and genuinely needs human design judgment.
-10. Run the named-args rule tests and lint before finalizing.
+6. Prefer platform-owned function types like `RequestListener`, `typeof self.fetch`, or `typeof window.scrollTo` for platform callback shims.
+7. Prefer `implements` for external platform object mocks, then typecheck and add missing required members.
+8. Keep local mock constructors named args unless they intentionally preserve a deprecated or runtime-only positional contract.
+9. Keep Comlink boundary methods positional, but keep Naidan-facing facades named args.
+10. Keep runtime-only external exceptions narrow and explicit.
+11. Confirm no `TODO(named-args-audit): mechanically suppressed` remains.
+12. Confirm `TODO(named-args-design)` is rare and genuinely needs human design judgment.
+13. Run the named-args rule tests and lint before finalizing.
