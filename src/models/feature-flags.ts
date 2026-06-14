@@ -1,19 +1,20 @@
 import { z } from 'zod';
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined';
 import { STORAGE_KEY_PREFIX } from '@/models/constants';
 
 const FeatureFlagStatusSchema = z.enum(['enabled', 'disabled']);
 
 export const FeatureFlagSchemas = {
-  volume: z.object({
+  volume: resolveMissingAsUndefined(z.object({
     status: FeatureFlagStatusSchema,
-    compatibilityRiskAcknowledgedAt: z.union([z.number(), z.undefined()]),
+    compatibilityRiskAcknowledgedAt: missingAsUndefined(z.number()),
     params: z.object({}),
-  }),
-  wesh_tool: z.object({
+  })),
+  wesh_tool: resolveMissingAsUndefined(z.object({
     status: FeatureFlagStatusSchema,
-    compatibilityRiskAcknowledgedAt: z.union([z.number(), z.undefined()]),
+    compatibilityRiskAcknowledgedAt: missingAsUndefined(z.number()),
     params: z.object({}),
-  }),
+  })),
 } as const;
 
 export const FeatureFlagsSchema = z.object(FeatureFlagSchemas);

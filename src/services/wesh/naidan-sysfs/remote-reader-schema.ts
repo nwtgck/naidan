@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined'
 import {
   BinaryObjectSchemaDto,
   ChatContentSchemaDto,
@@ -10,8 +11,9 @@ import {
   SystemPromptSchemaDto,
 } from '@/models/dto'
 
-// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this local Zod helper intentionally mirrors Zod's schema-first helper style.
-const orUndefined = <T extends z.ZodTypeAny>(schema: T) => z.union([schema, z.undefined()])
+// Keep the existing local helper name so this remote schema diff stays focused
+// on the Zod 4.4 missing-key semantics rather than a broad rename.
+const orUndefined = missingAsUndefined
 
 export const naidanSysfsRemoteChatSummarySchema = z.object({
   id: z.string().min(1),
@@ -27,7 +29,7 @@ export const naidanSysfsRemoteChatSidebarItemSchema = z.object({
 })
 
 export const naidanSysfsRemoteChatGroupPayloadSchema = z.object({
-  dto: ChatGroupSchemaDto.extend({
+  dto: ChatGroupSchemaDto.safeExtend({
     endpoint: orUndefined(EndpointSchemaDto),
     modelId: orUndefined(z.string()),
     autoTitleEnabled: orUndefined(z.boolean()),
@@ -55,6 +57,7 @@ export const naidanSysfsRemoteChatMetaPayloadSchema = z.object({
 
 export const naidanSysfsRemoteChatContentPayloadSchema = ChatContentSchemaDto
 
-export const naidanSysfsRemoteBinaryObjectSchema = BinaryObjectSchemaDto.extend({
+export const naidanSysfsRemoteBinaryObjectSchema = resolveMissingAsUndefined(z.object({
+  ...BinaryObjectSchemaDto.shape,
   name: z.union([z.string(), z.null()]),
-})
+}))

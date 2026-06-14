@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined'
 import type { NaidanSysfsRemoteReader } from '@/services/wesh/naidan-sysfs/types'
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
@@ -29,21 +30,21 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
     'data',
   ]),
   currentChatId: z.string().min(1),
-  currentChatGroupId: z.union([z.string().min(1), z.undefined()]),
+  currentChatGroupId: missingAsUndefined(z.string().min(1)),
 })
 
-export const weshWorkerMountSchema = z.discriminatedUnion('type', [
+export const weshWorkerMountSchema = resolveMissingAsUndefined(z.discriminatedUnion('type', [
   weshWorkerDirectoryMountSchema,
   weshWorkerNaidanSysfsMountSchema,
-])
+]))
 
-export const weshWorkerInitRequestSchema = z.object({
+export const weshWorkerInitRequestSchema = resolveMissingAsUndefined(z.object({
   rootHandle: z.custom<FileSystemDirectoryHandle | 'readonly'>(),
   mounts: z.array(weshWorkerMountSchema),
   user: z.string().min(1),
   initialEnv: z.record(z.string(), z.string()),
-  initialCwd: z.union([z.string().min(1), z.undefined()]),
-})
+  initialCwd: missingAsUndefined(z.string().min(1)),
+}))
 
 export const weshWorkerExecuteRequestSchema = z.object({
   script: z.string(),

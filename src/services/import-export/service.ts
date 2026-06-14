@@ -740,7 +740,13 @@ export class ImportExportService {
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
-            const dto: ChatDto = { ...meta, ...content, messages: undefined };
+            const dto: ChatDto = {
+              ...meta,
+              ...content,
+              // ChatContentSchemaDto materializes missing currentLeafId as undefined.
+              currentLeafId: content.currentLeafId ?? meta.currentLeafId,
+              messages: undefined,
+            };
 
             const messageIdMap = new Map<string, string>();
             const process = ({ node }: { node: MessageNodeDto }) => {
