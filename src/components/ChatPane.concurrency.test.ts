@@ -303,7 +303,7 @@ describe('ChatPane Concurrency Button State', () => {
 
     const mockSendMessage = vi.fn();
     // We need to return the mock in the useChat implementation
-    vi.spyOn(await import('../composables/useChat'), 'useChat').mockReturnValue({
+    vi.spyOn(await import('@/composables/useChat'), 'useChat').mockReturnValue({
       currentChat: mockCurrentChat,
       streaming: computed(() => mockActiveGenerations.size > 0),
       activeGenerations: mockActiveGenerations,

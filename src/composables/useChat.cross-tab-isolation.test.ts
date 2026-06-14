@@ -268,7 +268,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
   it('should reload sidebar when settings change (settings event)', async () => {
     await createTab();
     await createTab();
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     await storageService.updateSettings({ updater: ({ current: curr }: { current: any }) => ({ ...curr, someNewSetting: true }) });
     vi.advanceTimersByTime(600);
     await nextTick();
@@ -283,7 +283,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     await tabB.openChat({ id: chat!.id });
     expect(tabB.currentChat.value).not.toBeNull();
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     await storageService.clearAll();
     vi.advanceTimersByTime(600);
     await nextTick();

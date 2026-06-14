@@ -441,7 +441,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
 
     // Mock storageService.getBinaryObject to return valid objects
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
       if (binaryObjectId === 'obj-1') return { id: 'obj-1', mimeType: 'image/png', name: 'img1.png' } as any;
       if (binaryObjectId === 'obj-2') return { id: 'obj-2', mimeType: 'image/png', name: 'img2.png' } as any;

@@ -24,7 +24,7 @@ export class CalculatorTool implements Tool {
     approvalContext?: ToolApprovalContext;
   }): Promise<
     | { status: 'success'; content: string }
-    | { status: 'error'; code: import('../types').ToolExecutionErrorCode; message: string }
+    | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string }
   > {
     try {
       if (signal?.aborted) throw new Error('Generation aborted');

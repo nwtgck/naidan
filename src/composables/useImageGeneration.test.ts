@@ -35,7 +35,7 @@ if (!global.crypto) {
 
 // Mock LLM provider
 vi.mock('../services/lm/ollama', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../services/lm/ollama')>();
+  const actual = await importOriginal<typeof import('@/services/lm/ollama')>();
   return {
     ...actual,
     OllamaProvider: class {
@@ -270,7 +270,7 @@ describe('useImageGeneration', () => {
 
     it('converts image to requested format when persistAs is specified', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { storageService } = await import('../services/storage');
+      const { storageService } = await import('@/services/storage');
 
       await handleImageGeneration({
         ...commonParams,
@@ -294,7 +294,7 @@ describe('useImageGeneration', () => {
 
     it('falls back to original format if re-encoding fails', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { storageService } = await import('../services/storage');
+      const { storageService } = await import('@/services/storage');
 
       // Force failure
       mockReencodeImage.mockRejectedValueOnce(new Error('Canvas failure'));
@@ -360,8 +360,8 @@ describe('useImageGeneration', () => {
 
     it('uses undefined for steps in the final output blocks if provider returns UNKNOWN_STEPS', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { OllamaProvider } = await import('../services/lm/ollama');
-      const { UNKNOWN_STEPS } = await import('../services/lm/types');
+      const { OllamaProvider } = await import('@/services/lm/ollama');
+      const { UNKNOWN_STEPS } = await import('@/services/lm/types');
 
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockResolvedValueOnce({
@@ -402,7 +402,7 @@ describe('useImageGeneration', () => {
 
     it('clears imageProgressMap at the start of each image in a batch', async () => {
       const { handleImageGeneration, imageProgressMap } = useImageGeneration();
-      const { OllamaProvider } = await import('../services/lm/ollama');
+      const { OllamaProvider } = await import('@/services/lm/ollama');
 
       // Set stale progress
       imageProgressMap.value[chatId] = { currentStep: 50, totalSteps: 50 };

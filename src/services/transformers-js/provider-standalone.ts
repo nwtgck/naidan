@@ -14,10 +14,10 @@ export class TransformersJsProvider implements LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: ({ id, event }: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
+    onToolEvent?: ({ id, event }: { id: string; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
     onToolResult?: ({ id, result }: {
       id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;

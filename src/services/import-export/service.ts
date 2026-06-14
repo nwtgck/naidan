@@ -115,7 +115,7 @@ export class ImportExportService {
     const snapshot = await this.storage.dumpWithoutLock();
     const { structure, contentStream } = snapshot;
 
-    const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('../../models/mappers');
+    const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('@/models/mappers');
 
     root.file('settings.json', JSON.stringify(settingsToDto({ domain: structure.settings }), null, 2));
 

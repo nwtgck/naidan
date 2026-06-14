@@ -80,7 +80,7 @@ vi.mock('../services/storage', () => ({
 }));
 
 vi.mock('../composables/chat/ui/useChatPaneState', async () => {
-  const currentChatStateModule = await import('../composables/chat/ui/useCurrentChatState');
+  const currentChatStateModule = await import('@/composables/chat/ui/useCurrentChatState');
   return {
     useChatPaneState: () => {
       const state = currentChatStateModule.useCurrentChatState();

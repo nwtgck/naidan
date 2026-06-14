@@ -16,7 +16,7 @@ export interface LLMProvider {
     onToolEvent?: ({ id, event }: { id: string; event: ToolExecutionEvent }) => void;
     onToolResult?: ({ id, result }: {
       id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;

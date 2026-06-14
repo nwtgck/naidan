@@ -173,7 +173,7 @@ describe('VolumeSettingsTab - Rename Volume', () => {
     });
 
     it('shows a toast and does not save when name is blank', async () => {
-      const { useToast } = await import('../composables/useToast');
+      const { useToast } = await import('@/composables/useToast');
       const mockAddToast = vi.fn();
       vi.mocked(useToast).mockReturnValue({ addToast: mockAddToast } as any);
 

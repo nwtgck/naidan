@@ -141,7 +141,7 @@ export function useSettings() {
         // Handle URL-based data import BEFORE loading existing settings to ensure append mode works correctly
         if (dataZipBase64) {
           try {
-            const { urlImportExportLogic } = await import('../services/import-export/url-logic');
+            const { urlImportExportLogic } = await import('@/services/import-export/url-logic');
             await urlImportExportLogic.importFromBase64({ zipBase64: dataZipBase64 });
             // Clear local reference to large data to help GC
             dataZipBase64 = undefined;

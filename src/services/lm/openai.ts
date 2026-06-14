@@ -82,10 +82,10 @@ export class OpenAIProvider implements LLMProvider {
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
     onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: ({ id, event }: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
+    onToolEvent?: ({ id, event }: { id: string; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
     onToolResult?: ({ id, result }: {
       id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
@@ -173,7 +173,7 @@ export class OpenAIProvider implements LLMProvider {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      const accumulatedToolCalls: Map<string, import('../../models/types').ToolCall> = new Map();
+      const accumulatedToolCalls: Map<string, import('@/models/types').ToolCall> = new Map();
       // Track the current active ID for each index to detect sequential calls on the same index
       const indexToCurrentIdMap: Map<number, string> = new Map();
       let fullContent = '';
@@ -328,7 +328,7 @@ export class OpenAIProvider implements LLMProvider {
             } catch (e) {
               if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-              const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
+              const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
@@ -337,7 +337,7 @@ export class OpenAIProvider implements LLMProvider {
             }
 
           } else if (!tool) {
-            const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
             result = errorResult.message;
           } else {

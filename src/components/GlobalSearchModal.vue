@@ -396,7 +396,7 @@ async function selectItem({ index }: { index: number }) {
   }
 }
 
-const previousFocusArea = ref<import('../composables/useLayout').FocusArea | undefined>(undefined);
+const previousFocusArea = ref<import('@/composables/useLayout').FocusArea | undefined>(undefined);
 
 watch(isSearchOpen, (isOpen) => {
   if (isOpen) {

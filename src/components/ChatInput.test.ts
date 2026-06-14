@@ -120,7 +120,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatGroupId: string | undefined;
     naidanSysfsVisibility: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'all_chats';
   }) => {
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     const mounts: Array<{ type: string; path: string; readOnly?: boolean; visibility?: string }> = [];
 
     if (chatId !== undefined && mockSettings.value.storageType === 'opfs') {
@@ -539,7 +539,7 @@ describe('ChatInput Integration', () => {
       mounts: [],
     };
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -568,7 +568,7 @@ describe('ChatInput Integration', () => {
       mounts: [],
     };
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -596,7 +596,7 @@ describe('ChatInput Integration', () => {
       mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
     };
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -632,7 +632,7 @@ describe('ChatInput Integration', () => {
     };
     mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();

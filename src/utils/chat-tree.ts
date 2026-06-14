@@ -111,7 +111,7 @@ export interface HistoryItem {
   content: string;
   modelId?: string;
   thinking?: string;
-  attachments?: import('../models/types').Attachment[];
+  attachments?: import('@/models/types').Attachment[];
 }
 
 export function createBranchFromMessages({ messages }: { messages: HistoryItem[] }): MessageNode[] {

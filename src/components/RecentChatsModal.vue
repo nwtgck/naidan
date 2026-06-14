@@ -178,7 +178,7 @@ async function selectItem({ index }: { index: number }) {
   closeRecent();
 }
 
-const previousFocusArea = ref<import('../composables/useLayout').FocusArea | undefined>(undefined);
+const previousFocusArea = ref<import('@/composables/useLayout').FocusArea | undefined>(undefined);
 
 watch(isRecentOpen, (isOpen) => {
   if (isOpen) {

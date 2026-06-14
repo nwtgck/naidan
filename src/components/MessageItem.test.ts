@@ -563,7 +563,7 @@ describe('MessageItem Attachment Rendering', () => {
 
   it('renders persisted attachments by fetching from storage', async () => {
     // Mock storageService
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.spyOn(storageService, 'getFile').mockResolvedValue(new Blob([''], { type: 'image/png' }));
 
     const message = createMessageWithAttachments([{

@@ -373,7 +373,7 @@ describe('ChatPane Group Inheritance UI', () => {
   it('should pass inherited reasoning effort to sendMessage when not overridden at chat level', async () => {
     const mockSendMessage = vi.fn().mockResolvedValue(true);
     // Use an inline spy to verify sendMessage arguments
-    vi.spyOn(await import('../composables/useChat'), 'useChat').mockReturnValue({
+    vi.spyOn(await import('@/composables/useChat'), 'useChat').mockReturnValue({
       currentChat: mockCurrentChat,
       chatGroups: mockChatGroups,
       resolvedSettings: mockResolvedSettings,

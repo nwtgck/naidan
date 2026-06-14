@@ -1,9 +1,7 @@
-import process from 'node:process';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
-import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-init.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
@@ -17,34 +15,7 @@ import noAllowedHtmlCast from './eslint-local-rules/no-allowed-html-cast.js';
 import noInvalidAllowedHtmlTemplate from './eslint-local-rules/no-invalid-allowed-html-template.js';
 import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
 import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
-
-const noRelativeImportPathsCompat = {
-  ...noRelativeImportPaths,
-  rules: {
-    ...noRelativeImportPaths.rules,
-    'no-relative-import-paths': {
-      ...noRelativeImportPaths.rules['no-relative-import-paths'],
-      create(context) {
-        const contextWithLegacyCwd = new Proxy(context, {
-          get(target, property, receiver) {
-            if (property === 'getCwd') {
-              return () => target.cwd ?? process.cwd();
-            }
-            if (property === 'getFilename') {
-              return () => target.filename;
-            }
-            if (property === 'getPhysicalFilename') {
-              return () => target.physicalFilename ?? target.filename;
-            }
-            return Reflect.get(target, property, receiver);
-          },
-        });
-
-        return noRelativeImportPaths.rules['no-relative-import-paths'].create(contextWithLegacyCwd);
-      },
-    },
-  },
-};
+import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -111,9 +82,6 @@ export default tseslint.config(
   ...pluginVue.configs['flat/essential'],
   {
     files: ['**/*.ts', '**/*.vue'],
-    plugins: {
-      'no-relative-import-paths': noRelativeImportPathsCompat,
-    },
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,
@@ -161,10 +129,6 @@ export default tseslint.config(
       'indent': ['warn', 2],
       'brace-style': ['warn', '1tbs', { allowSingleLine: false }],
       'no-trailing-spaces': 'error',
-      'no-relative-import-paths/no-relative-import-paths': [
-        'error',
-        { allowSameFolder: true, rootDir: 'src', prefix: '@' }
-      ],
       // Prevents components (like icons) from disappearing silently due to missing imports.
       // Without this, build succeeds but the component fails to render at runtime.
       'vue/no-undef-components': ['error', {
@@ -240,6 +204,7 @@ export default tseslint.config(
   noInvalidAllowedHtmlTemplate,
   noRawDompurify,
   noXssProneBrowserApis,
+  preferRootAliasImports,
   {
     files: ['**/*.test.ts'],
     languageOptions: {

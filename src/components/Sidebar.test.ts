@@ -169,7 +169,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
 }));
 
 vi.mock('../composables/chat/global/chat-core-singletons', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../composables/chat/global/chat-core-singletons')>();
+  const actual = await importOriginal<typeof import('@/composables/chat/global/chat-core-singletons')>();
   return {
     ...actual,
     isProcessing: ({ chatId: _chatId }: { chatId: string }) => false,

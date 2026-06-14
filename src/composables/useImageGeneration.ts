@@ -289,7 +289,7 @@ export function useImageGeneration() {
             finalBlob = await reencodeImage({ blob, format: persistAs });
             extension = `.${persistAs}`;
           } catch (e) {
-            const { useGlobalEvents } = await import('../composables/useGlobalEvents');
+            const { useGlobalEvents } = await import('@/composables/useGlobalEvents');
             const { addErrorEvent } = useGlobalEvents();
             addErrorEvent({
               source: 'useImageGeneration:handleImageGeneration',
