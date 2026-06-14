@@ -12,7 +12,7 @@ vi.mock('../services/storage', () => ({
 }));
 
 // Mock image processing
-const mockReencodeImage = vi.fn().mockImplementation(({ format }) => {
+const mockReencodeImage = vi.fn().mockImplementation(({ format }: { format: string }) => {
   return Promise.resolve(new Blob([`reencoded-${format}`], { type: `image/${format}` }));
 });
 vi.mock('../utils/image-processing', () => ({

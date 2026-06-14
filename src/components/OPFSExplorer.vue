@@ -40,6 +40,13 @@ function formatSize({ bytes }: { bytes?: number }): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getErrorMessage({ error }: { error: unknown }): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
 function formatDate({ timestamp }: { timestamp?: number }): string {
   if (!timestamp) return '';
   return new Date(timestamp).toLocaleString();
@@ -107,7 +114,7 @@ async function loadDirectory({ handle }: { handle: FileSystemDirectoryHandle }) 
     rawFileContent.value = '';
     isFormatted.value = false;
   } catch (e) {
-    error.value = `Failed to load directory: ${e}`;
+    error.value = `Failed to load directory: ${getErrorMessage({ error: e })}`;
   }
 }
 
@@ -193,7 +200,7 @@ async function viewFile({ entry }: { entry: OPFSEntry }) {
       isFormatted.value = false;
     }
   } catch (e) {
-    fileContent.value = `Error reading file: ${e}`;
+    fileContent.value = `Error reading file: ${getErrorMessage({ error: e })}`;
     isFormatted.value = false;
   }
 }
@@ -230,7 +237,7 @@ async function deleteEntry({ entry }: { entry: OPFSEntry }) {
     await currentHandle.value!.removeEntry(entry.name, { recursive: true });
     await loadDirectory({ handle: currentHandle.value! });
   } catch (e) {
-    error.value = `Failed to delete: ${e}`;
+    error.value = `Failed to delete: ${getErrorMessage({ error: e })}`;
   }
 }
 

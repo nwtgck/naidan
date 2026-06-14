@@ -68,8 +68,7 @@ export class FsExplorerDirectory implements ExplorerDirectory {
         };
         break;
       default: {
-        const _ex: never = handle.kind;
-        throw new Error(`Unhandled kind: ${_ex}`);
+        throw new Error(`Unhandled kind: ${((handle satisfies never) as { readonly kind: string }).kind}`);
       }
       }
     }

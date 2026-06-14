@@ -39,7 +39,7 @@ const rule = {
           hasDOMContentLoaded = true;
           const callback = node.arguments[1];
           if (callback && (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression')) {
-            const bodyText = context.getSourceCode().getText(callback.body);
+            const bodyText = context.sourceCode.getText(callback.body);
             if (bodyText.includes('app.mount')) {
               hasMountInsideListener = true;
             }

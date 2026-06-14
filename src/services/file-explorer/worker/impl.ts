@@ -538,8 +538,7 @@ async function listNativeDirectoryEntries({
       break
     }
     default: {
-      const _exhaustiveCheck: never = childHandle.kind
-      throw new Error(`Unhandled directory child kind: ${String(_exhaustiveCheck)}`)
+      throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`)
     }
     }
   }
@@ -726,8 +725,7 @@ async function copyDirectoryHandleToDirectory({
       })
       break
     default: {
-      const _exhaustiveCheck: never = childHandle.kind
-      throw new Error(`Unhandled directory child kind: ${String(_exhaustiveCheck)}`)
+      throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`)
     }
     }
   }
@@ -997,8 +995,7 @@ export function createFileExplorerWorker(): IFileExplorerWorker {
             })
             break
           default: {
-            const _exhaustiveCheck: never = childHandle.kind
-            throw new Error(`Unhandled directory child kind: ${String(_exhaustiveCheck)}`)
+            throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`)
           }
           }
         }

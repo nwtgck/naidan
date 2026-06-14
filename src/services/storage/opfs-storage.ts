@@ -866,7 +866,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         break;
       }
       default: {
-        const _ex: never = entry.kind;
+        const _ex: never = entry;
         throw new Error(`Unhandled entry kind: ${(_ex as { kind: string }).kind}`);
       }
       }
@@ -889,8 +889,7 @@ export class OPFSStorageProvider extends IStorageProvider {
         case 'file':
           break;
         default: {
-          const _ex: never = shardEntry.kind;
-          throw new Error(`Unhandled entry kind: ${(_ex as { kind: string }).kind}`);
+          throw new Error(`Unhandled entry kind: ${((shardEntry satisfies never) as { readonly kind: string }).kind}`);
         }
         }
       }

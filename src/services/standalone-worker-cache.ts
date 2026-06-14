@@ -122,8 +122,8 @@ async function cleanupStandaloneWorkerCache({
     case 'directory':
       break
     default: {
-      const _exhaustiveCheck: never = handle.kind
-      throw new Error(`Unhandled cache entry kind: ${_exhaustiveCheck}`)
+      const _exhaustiveCheck: never = handle
+      throw new Error(`Unhandled cache entry kind: ${(_exhaustiveCheck as { readonly kind: string }).kind}`)
     }
     }
   }

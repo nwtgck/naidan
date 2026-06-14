@@ -487,8 +487,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
         await this.scanRegistryRecursive({ dirHandle: handle as FileSystemDirectoryHandle, relPath: itemPath, cache });
         break;
       default: {
-        const _ex: never = handle.kind;
-        throw new Error(`Unhandled case: ${_ex}`);
+        throw new Error(`Unhandled case: ${((handle satisfies never) as { readonly kind: string }).kind}`);
       }
       }
     }
@@ -908,8 +907,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
           type = 'file';
           break;
         default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled file kind: ${_ex}`);
+          throw new Error(`Unhandled file kind: ${((entry satisfies never) as { readonly kind: string }).kind}`);
         }
         }
 
@@ -1328,7 +1326,7 @@ export class WeshVFS implements WeshIVirtualFileSystem {
       throw new Error('Directory rename not yet implemented');
     default: {
       const _ex: never = sourceHandle.kind;
-      throw new Error(`Unhandled kind: ${_ex}`);
+      throw new Error(`Unhandled kind: ${(_ex as string)}`);
     }
     }
 

@@ -574,7 +574,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       name: 'calc',
       description: 'Calc',
       parametersSchema: z.object({ e: z.string() }),
-      execute: vi.fn().mockImplementation(async ({ args }) => ({ status: 'success', content: `res_${(args as any).e}` })),
+      execute: vi.fn().mockImplementation(async ({ args }) => ({ status: 'success', content: `res_${(args as { e: string }).e}` })),
     };
 
     serverInstance = await startMockServer({

@@ -1,5 +1,5 @@
 /// <reference types="vitest" />
-import VueRouter from 'unplugin-vue-router/vite'
+import VueRouter from 'vue-router/vite'
 import { defineConfig } from 'vitest/config'
 import { build as viteBuild } from 'vite'
 import type { Alias } from 'vite'

@@ -18,6 +18,10 @@ function resetSharedStorage() {
 if (!shared[STORAGE_KEY]) resetSharedStorage();
 const getShared = () => shared[STORAGE_KEY];
 
+type TestHierarchyNode =
+  | { type: 'chat'; id: string }
+  | { type: 'chat_group'; id: string; chat_ids?: string[] };
+
 // --- Mock BroadcastChannel to bridge the "tabs" ---
 class MockBroadcastChannel {
   name: string;
@@ -83,7 +87,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
         getSidebarStructure: vi.fn().mockImplementation(async () => {
           const s = getShared();
           if (!s || !s.hierarchy) return [];
-          return (s.hierarchy.items || []).map((node: any) => {
+          return ((s.hierarchy.items || []) as TestHierarchyNode[]).map((node) => {
             if (node.type === 'chat') {
               const chat = s.chats.get(node.id);
               return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: chat?.title || null, updatedAt: chat?.updatedAt || 0, groupId: chat?.groupId || null } };

@@ -245,7 +245,7 @@ async function pickHostVolume({ mode }: { mode: 'read' | 'readwrite' }) {
   toggleAddFolderMode(false);
   try {
     // @ts-expect-error: File System Access API
-    const handle = await window.showDirectoryPicker({ mode });
+    const handle = await window.showDirectoryPicker({ mode }) as FileSystemDirectoryHandle;
     isCreating.value = true;
     const name = handle.name;
     const vol = await storageService.createVolume({ name, type: 'host', sourceHandle: handle });
@@ -282,7 +282,7 @@ async function createVolume({ type }: { type: 'opfs' | 'host' }) {
     if (window.showDirectoryPicker) {
       try {
         // @ts-expect-error: File System Access API
-        const handle = await window.showDirectoryPicker({ mode: 'read' });
+        const handle = await window.showDirectoryPicker({ mode: 'read' }) as FileSystemDirectoryHandle;
         isCreating.value = true;
         const name = handle.name;
         const vol = await storageService.createVolume({ name, type: 'opfs', sourceHandle: handle });

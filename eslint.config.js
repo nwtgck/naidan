@@ -1,3 +1,4 @@
+import process from 'node:process';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
@@ -11,6 +12,34 @@ import requireDefineExposeTestOnly from './eslint-local-rules/require-define-exp
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
 import requireNamedArgs from './eslint-local-rules/require-named-args.js';
+
+const noRelativeImportPathsCompat = {
+  ...noRelativeImportPaths,
+  rules: {
+    ...noRelativeImportPaths.rules,
+    'no-relative-import-paths': {
+      ...noRelativeImportPaths.rules['no-relative-import-paths'],
+      create(context) {
+        const contextWithLegacyCwd = new Proxy(context, {
+          get(target, property, receiver) {
+            if (property === 'getCwd') {
+              return () => target.cwd ?? process.cwd();
+            }
+            if (property === 'getFilename') {
+              return () => target.filename;
+            }
+            if (property === 'getPhysicalFilename') {
+              return () => target.physicalFilename ?? target.filename;
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        });
+
+        return noRelativeImportPaths.rules['no-relative-import-paths'].create(contextWithLegacyCwd);
+      },
+    },
+  },
+};
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -78,7 +107,7 @@ export default tseslint.config(
   {
     files: ['**/*.ts', '**/*.vue'],
     plugins: {
-      'no-relative-import-paths': noRelativeImportPaths,
+      'no-relative-import-paths': noRelativeImportPathsCompat,
     },
     languageOptions: {
       parserOptions: {
@@ -98,6 +127,18 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/restrict-template-expressions': ['error', {
+        allowNever: true,
+        allowAny: false,
+        allowBoolean: true,
+        allowNullish: true,
+        allowNumber: true,
+        allowRegExp: false,
+      }],
+      // ESLint 10 adds stricter recommended rules. Keep this major-version
+      // migration focused on tooling compatibility; tighten these separately.
+      'no-useless-assignment': 'off',
+      'preserve-caught-error': 'off',
       // '@typescript-eslint/no-unused-vars': ['error', { 
       //   argsIgnorePattern: '^_',
       //   varsIgnorePattern: '^_',

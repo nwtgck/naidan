@@ -20,7 +20,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     // Mock navigator.storage with full directory handle simulation
     const entries = new Map();
     const mockRoot = {
-      getDirectoryHandle: vi.fn().mockImplementation(async (name, opts) => {
+      getDirectoryHandle: vi.fn().mockImplementation(async (name: string, opts?: { create?: boolean }) => {
         if (!entries.has(name)) {
           if (opts?.create) {
             entries.set(name, createMockDir(name));
@@ -66,7 +66,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       return {
         kind: 'directory',
         name,
-        getDirectoryHandle: vi.fn().mockImplementation(async (n, _opts) => {
+        getDirectoryHandle: vi.fn().mockImplementation(async (n: string, _opts?: { create?: boolean }) => {
           if (!subEntries.has(n)) {
             if (_opts?.create) {
               subEntries.set(n, createMockDir(n));

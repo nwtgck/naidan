@@ -61,7 +61,7 @@ vi.mock('../services/storage', () => ({
       return Promise.resolve(hierarchy.items.filter(i => i.type === 'chat_group').map(i => i.chatGroup));
     }),
     getSidebarStructure: vi.fn().mockImplementation(() => {
-      return Promise.resolve(Array.from(chats.values()).map(c => ({
+      return Promise.resolve((Array.from(chats.values()) as Array<{ id: string; title: string; updatedAt: number; groupId?: string | null }>).map(c => ({
         id: `chat:${c.id}`,
         type: 'chat',
         chat: { id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId }

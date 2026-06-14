@@ -48,8 +48,7 @@ async function _doScan({
           break;
         }
         default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
+          throw new Error(`Unhandled entry kind: ${((entry satisfies never) as { readonly kind: string }).kind}`);
         }
         }
       }

@@ -162,8 +162,10 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle<'file'> imple
   }
 }
 
+type MockFileSystemDirectoryChild = MockFileSystemFileHandle | MockFileSystemDirectoryHandle;
+
 export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directory'> implements FileSystemDirectoryHandle {
-  private children: Map<string, MockFileSystemHandle>;
+  private children: Map<string, MockFileSystemDirectoryChild>;
 
   constructor({ name }: { name: string }) {
     super({ kind: 'directory', name });
@@ -179,8 +181,8 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
       case 'directory':
         throw new Error(`TypeMismatchError: Entry '${name}' is not a file.`);
       default: {
-        const _ex: never = child.kind;
-        throw new Error(`Unhandled case: ${_ex}`);
+        const _ex: never = child;
+        throw new Error(`Unhandled case: ${(_ex as { readonly kind: string }).kind}`);
       }
       }
     }
@@ -201,8 +203,8 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
       case 'file':
         throw new Error(`TypeMismatchError: Entry '${name}' is not a directory.`);
       default: {
-        const _ex: never = child.kind;
-        throw new Error(`Unhandled case: ${_ex}`);
+        const _ex: never = child;
+        throw new Error(`Unhandled case: ${(_ex as { readonly kind: string }).kind}`);
       }
       }
     }
@@ -229,8 +231,8 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
     case 'file':
       break;
     default: {
-      const _ex: never = child.kind;
-      throw new Error(`Unhandled file kind: ${_ex}`);
+      const _ex: never = child;
+      throw new Error(`Unhandled file kind: ${(_ex as { readonly kind: string }).kind}`);
     }
     }
     this.children.delete(name);
@@ -250,21 +252,21 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
       case 'file':
         break;
       default: {
-        const _ex: never = child.kind;
-        throw new Error(`Unhandled case: ${_ex}`);
+        const _ex: never = child;
+        throw new Error(`Unhandled case: ${(_ex as { readonly kind: string }).kind}`);
       }
       }
     }
     return null;
   }
 
-  entries(): FileSystemDirectoryHandleAsyncIterator<[string, FileSystemHandle]> {
+  entries(): FileSystemDirectoryHandleAsyncIterator<[string, MockFileSystemDirectoryChild]> {
     const children = this.children;
-    return (async function* (): AsyncGenerator<[string, FileSystemHandle]> {
+    return (async function* (): AsyncGenerator<[string, MockFileSystemDirectoryChild]> {
       for (const [name, handle] of children) {
         yield [name, handle];
       }
-    })() as FileSystemDirectoryHandleAsyncIterator<[string, FileSystemHandle]>;
+    })() as FileSystemDirectoryHandleAsyncIterator<[string, MockFileSystemDirectoryChild]>;
   }
 
   keys(): FileSystemDirectoryHandleAsyncIterator<string> {
@@ -276,16 +278,16 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directo
     })() as FileSystemDirectoryHandleAsyncIterator<string>;
   }
 
-  values(): FileSystemDirectoryHandleAsyncIterator<FileSystemHandle> {
+  values(): FileSystemDirectoryHandleAsyncIterator<MockFileSystemDirectoryChild> {
     const children = this.children;
-    return (async function* (): AsyncGenerator<FileSystemHandle> {
+    return (async function* (): AsyncGenerator<MockFileSystemDirectoryChild> {
       for (const handle of children.values()) {
         yield handle;
       }
-    })() as FileSystemDirectoryHandleAsyncIterator<FileSystemHandle>;
+    })() as FileSystemDirectoryHandleAsyncIterator<MockFileSystemDirectoryChild>;
   }
 
-  [Symbol.asyncIterator](): FileSystemDirectoryHandleAsyncIterator<[string, FileSystemHandle]> {
+  [Symbol.asyncIterator](): FileSystemDirectoryHandleAsyncIterator<[string, MockFileSystemDirectoryChild]> {
     return this.entries();
   }
 }

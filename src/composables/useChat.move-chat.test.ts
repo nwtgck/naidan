@@ -3,6 +3,10 @@ import { useChat } from './useChat';
 import { reactive } from 'vue';
 import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
 
+type TestHierarchyNode =
+  | { type: 'chat'; id: string }
+  | { type: 'chat_group'; id: string; chat_ids: string[] };
+
 const mockGetSidebarStructure = vi.fn();
 
 vi.mock('../services/storage', () => ({
@@ -24,7 +28,7 @@ vi.mock('../services/storage', () => ({
       };
       const updated = await updater({ current: currentH as any });
       // Map back to sidebar structure for the test to see the changes after loadChats()
-      const newSidebar = updated.items.map((node: any) => {
+      const newSidebar = (updated.items as TestHierarchyNode[]).map((node) => {
         if (node.type === 'chat') return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };
         return {
           id: `chat_group:${node.id}`,

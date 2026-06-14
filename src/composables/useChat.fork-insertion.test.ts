@@ -4,6 +4,10 @@ import { ref } from 'vue';
 import { storageService } from '@/services/storage';
 import type { SidebarItem } from '@/models/types';
 
+type TestHierarchyNode =
+  | { type: 'chat'; id: string }
+  | { type: 'chat_group'; id: string; chat_ids: string[] };
+
 // Mock storage
 vi.mock('../services/storage', () => ({
   storageService: {
@@ -29,7 +33,7 @@ vi.mock('../services/storage', () => ({
       // which calls getSidebarStructure().
       // So we just need to make getSidebarStructure return the updated structure.
       vi.mocked(storageService.getSidebarStructure).mockImplementation(async () => {
-        return updated.items.map((node: any) => {
+        return (updated.items as TestHierarchyNode[]).map((node) => {
           if (node.type === 'chat') {
             return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: node.id === 'a' ? 'A' : 'Fork of A', updatedAt: 0 } };
           }
