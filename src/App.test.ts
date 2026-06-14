@@ -219,7 +219,6 @@ describe('App', () => {
             </div>
           `
         },
-        OPFSExplorer: true,
         ChatGroupSettingsPanel: true,
         DebugWeshTerminalModal: true
       },

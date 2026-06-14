@@ -143,12 +143,6 @@ vi.mock('./composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('./composables/useOPFSExplorer', () => ({
-  useOPFSExplorer: () => ({
-    isOPFSOpen: ref(false),
-  }),
-}));
-
 // Mock sub-components
 vi.mock('./components/Sidebar.vue', () => ({
   default: {
@@ -162,8 +156,6 @@ vi.mock('./components/ToastContainer.vue', () => ({ default: { template: '<div><
 vi.mock('./components/SettingsModal.vue', () => ({ default: { template: '<div></div>' } }));
 vi.mock('./components/DebugPanel.vue', () => ({ default: { template: '<div></div>' } }));
 vi.mock('./components/CustomDialog.vue', () => ({ default: { template: '<div></div>' } }));
-vi.mock('./components/OPFSExplorer.vue', () => ({ default: { template: '<div></div>' } }));
-
 describe('App Navigation & Regression Tests', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -184,7 +176,6 @@ describe('App Navigation & Regression Tests', () => {
           'SettingsModal': true,
           'DebugPanel': true,
           'CustomDialog': true,
-          'OPFSExplorer': true,
           'DebugWeshTerminalModal': true,
           'OnboardingModal': true,
           'ToastContainer': true,

@@ -9,7 +9,6 @@ import { useChatOrganization } from './composables/chat/ui/useChatOrganization';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
-import { useOPFSExplorer } from './composables/useOPFSExplorer';
 import { useFileExplorerModal } from './composables/useFileExplorerModal';
 import { useTheme } from './composables/useTheme';
 import { usePrint } from './composables/usePrint';
@@ -39,7 +38,6 @@ const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted({ loader: () => i
 const RecentChatsModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/RecentChatsModal.vue') });
 const DebugPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/DebugPanel.vue') });
 const CustomDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/CustomDialog.vue') });
-const OPFSExplorer = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/OPFSExplorer.vue') });
 const FileExplorerModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/FileExplorerModal.vue') });
 
 const currentChatState = useCurrentChatState();
@@ -79,7 +77,6 @@ const closeSettings = () => {
   }
 };
 
-const { isOPFSOpen } = useOPFSExplorer();
 const { isFileExplorerOpen } = useFileExplorerModal();
 
 // Initialize theme application logic
@@ -320,7 +317,6 @@ defineExpose({
       @cancel="handlePromptCancel"
     />
 
-    <OPFSExplorer v-model="isOPFSOpen" />
     <FileExplorerModal v-if="isFileExplorerOpen" />
   </div>
 

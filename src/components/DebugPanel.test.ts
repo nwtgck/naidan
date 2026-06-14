@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import DebugPanel from './DebugPanel.vue';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useLayout } from '@/composables/useLayout';
+import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { ref } from 'vue';
 
 vi.mock('../composables/useGlobalEvents', () => ({
@@ -13,10 +14,15 @@ vi.mock('../composables/useLayout', () => ({
   useLayout: vi.fn(),
 }));
 
+vi.mock('../composables/useFileExplorerModal', () => ({
+  useFileExplorerModal: vi.fn(),
+}));
+
 describe('DebugPanel', () => {
   const mockClearEvents = vi.fn();
   const mockAddErrorEvent = vi.fn();
   const mockAddInfoEvent = vi.fn();
+  const mockOpenFileExplorer = vi.fn();
   const isDebugOpen = ref(false);
 
   beforeEach(() => {
@@ -35,6 +41,9 @@ describe('DebugPanel', () => {
       toggleDebug: vi.fn(() => {
         isDebugOpen.value = !isDebugOpen.value;
       }),
+    });
+    (useFileExplorerModal as unknown as Mock).mockReturnValue({
+      openFileExplorer: mockOpenFileExplorer,
     });
   });
 
@@ -117,6 +126,18 @@ describe('DebugPanel', () => {
     await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
     await wrapper.find('[data-testid="trigger-test-error"]').trigger('click');
     expect(mockAddErrorEvent).toHaveBeenCalled();
+  });
+
+  it('opens the file explorer at the OPFS root from the menu', async () => {
+    isDebugOpen.value = true;
+    const wrapper = mount(DebugPanel);
+    await wrapper.vm.$nextTick();
+
+    await wrapper.find('[data-testid="debug-menu-button"]').trigger('mousedown');
+    await wrapper.find('[data-testid="open-opfs-explorer"]').trigger('click');
+
+    expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: { kind: 'opfs-root' } });
+    expect(wrapper.find('[data-testid="debug-menu-dropdown"]').exists()).toBe(false);
   });
 
   it('renders error object details correctly', async () => {

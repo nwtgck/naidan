@@ -167,10 +167,6 @@ vi.mock('./composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('./composables/useOPFSExplorer', () => ({
-  useOPFSExplorer: () => ({ isOPFSOpen: { value: false } }),
-}));
-
 vi.mock('./composables/useTheme', () => ({ useTheme: vi.fn() }));
 vi.mock('./composables/useGlobalSearch', () => ({ useGlobalSearch: () => ({ toggleSearch: vi.fn() }) }));
 
@@ -179,7 +175,6 @@ vi.mock('./components/ToastContainer.vue', () => ({ __esModule: true, default: {
 vi.mock('./components/SettingsModal.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 vi.mock('./components/DebugPanel.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 vi.mock('./components/CustomDialog.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
-vi.mock('./components/OPFSExplorer.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 vi.mock('./components/GlobalSearchModal.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 
 vi.mock('./components/OnboardingModal.vue', () => ({
