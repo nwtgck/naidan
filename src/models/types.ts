@@ -353,6 +353,9 @@ export interface Settings {
   experimental?: {
     markdownRendering?: 'block_markdown' | 'monolithic_html';
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat';
+    readonly unreadable?: {
+      readonly [key: string]: unknown;
+    };
   };
 }
 

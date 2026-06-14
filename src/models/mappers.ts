@@ -793,8 +793,13 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
     ...endpointInfo,
     storageType: storageType as StorageType,
     experimental: {
-      ...rest.experimental,
+      ...(rest.experimental?.markdownRendering === undefined
+        ? {}
+        : { markdownRendering: rest.experimental.markdownRendering }),
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
+      ...(rest.experimental?.unreadable === undefined
+        ? {}
+        : { unreadable: rest.experimental.unreadable }),
     },
     providerProfiles: providerProfiles?.map(p => {
       const { endpoint: pEndpoint, ...pRest } = p;
