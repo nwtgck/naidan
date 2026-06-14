@@ -293,6 +293,21 @@ export type WeshEfficientFileWriteResult =
 
 // --- Shell / Command Execution Context ---
 
+
+export interface WeshShellStateSnapshot {
+  cwd: string;
+  env: Record<string, string>;
+}
+
+export type WeshCommandListEntryKind = 'builtin' | 'alias';
+
+export interface WeshCommandListEntry {
+  name: string;
+  kind: WeshCommandListEntryKind;
+  description: string;
+  usage: string;
+}
+
 export interface WeshCommandResult {
   exitCode: number;
   waitStatus?: WeshWaitStatus;

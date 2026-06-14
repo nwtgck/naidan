@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import * as Comlink from 'comlink'
 
 import { FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME } from '@/models/constants'
@@ -8,6 +9,10 @@ import {
   mapWeshMountsToWorkerMounts,
   weshWorkerStartExecutionResponseSchema,
   weshWorkerInitRequestSchema,
+  weshWorkerShellStateSchema,
+  weshWorkerCommandEntrySchema,
+  weshWorkerListDirectoryRequestSchema,
+  weshWorkerDirectoryEntrySchema,
   type IWeshWorker,
   type WeshWorkerClient,
   type WeshWorkerExecutionEventCallback,
@@ -119,6 +124,19 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
       const response = await runtime.remote.execute({ request })
       return weshWorkerExecutionSummarySchema.parse(response)
+    },
+    async getShellState() {
+      const response = await runtime.remote.getShellState()
+      return weshWorkerShellStateSchema.parse(response)
+    },
+    async listCommands() {
+      const response = await runtime.remote.listCommands()
+      return z.array(weshWorkerCommandEntrySchema).parse(response)
+    },
+    async listDirectory({ request }) {
+      const validated = weshWorkerListDirectoryRequestSchema.parse(request)
+      const response = await runtime.remote.listDirectory({ request: validated })
+      return z.array(weshWorkerDirectoryEntrySchema).parse(response)
     },
     async interrupt() {
       return runtime.remote.interrupt()

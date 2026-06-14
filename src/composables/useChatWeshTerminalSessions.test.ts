@@ -37,6 +37,14 @@ vi.mock('@/composables/chat/ui/useChatTmpDirectory', () => ({
   }),
 }));
 
+function createDirectoryHandleMock({ name }: { name: string }): FileSystemDirectoryHandle {
+  const handle = {
+    name,
+    getDirectoryHandle: vi.fn(async (childName: string) => createDirectoryHandleMock({ name: childName })),
+  } as unknown as FileSystemDirectoryHandle;
+  return handle;
+}
+
 describe('useChatWeshTerminalSessions', () => {
   const tmpHandle = { name: 'tmp' } as unknown as FileSystemDirectoryHandle;
 
@@ -60,7 +68,7 @@ describe('useChatWeshTerminalSessions', () => {
         getDirectory: mocks.getDirectory,
       },
     });
-    const chatRoot = { getDirectoryHandle: vi.fn().mockResolvedValue({}) } as unknown as FileSystemDirectoryHandle;
+    const chatRoot = createDirectoryHandleMock({ name: 'chat-root' });
     const terminalRoot = { getDirectoryHandle: vi.fn().mockResolvedValue(chatRoot) } as unknown as FileSystemDirectoryHandle;
     mocks.getDirectory.mockResolvedValue({
       getDirectoryHandle: vi.fn().mockResolvedValue(terminalRoot),

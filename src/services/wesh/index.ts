@@ -13,6 +13,9 @@ import type {
   WeshProcessSignalDisposition,
   WeshShellOption,
   WeshFileHandleCloseSemantics,
+  WeshShellStateSnapshot,
+  WeshCommandListEntry,
+  WeshDirEntry,
 } from './types';
 import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
@@ -364,6 +367,39 @@ export class Wesh {
 
   registerCommand({ definition }: { definition: WeshCommandDefinition }): void {
     this.commands.set(definition.meta.name, definition);
+  }
+
+  getShellState(): WeshShellStateSnapshot {
+    return {
+      cwd: this.cwd,
+      env: Object.fromEntries(this.env.entries()),
+    };
+  }
+
+  listCommands(): WeshCommandListEntry[] {
+    return [
+      ...Array.from(this.commands.values()).map((definition): WeshCommandListEntry => ({
+        name: definition.meta.name,
+        kind: 'builtin',
+        description: definition.meta.description,
+        usage: definition.meta.usage,
+      })),
+      ...Array.from(this.aliases.entries()).map(([name, value]): WeshCommandListEntry => ({
+        name,
+        kind: 'alias',
+        description: `Alias for ${value}`,
+        usage: value,
+      })),
+    ].sort((left, right) => left.name.localeCompare(right.name) || left.kind.localeCompare(right.kind));
+  }
+
+  async listDirectory({ path }: { path: string }): Promise<WeshDirEntry[]> {
+    const resolvedPath = resolvePath({ cwd: this.cwd, path });
+    const entries: WeshDirEntry[] = [];
+    for await (const entry of this.vfs.readDir({ path: resolvedPath })) {
+      entries.push(entry);
+    }
+    return entries.sort((left, right) => left.name.localeCompare(right.name));
   }
 
   async signalForegroundProcessGroup({ signal }: { signal: number }): Promise<boolean> {

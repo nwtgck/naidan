@@ -70,6 +70,28 @@ export const weshWorkerExecutionSummarySchema = z.object({
   exitCode: z.number().int(),
 })
 
+export const weshWorkerShellStateSchema = z.object({
+  cwd: z.string().min(1),
+  env: z.record(z.string(), z.string()),
+})
+
+export const weshWorkerCommandEntrySchema = z.object({
+  name: z.string().min(1),
+  kind: z.enum(['builtin', 'alias']),
+  description: z.string(),
+  usage: z.string(),
+})
+
+export const weshWorkerListDirectoryRequestSchema = z.object({
+  path: z.string().min(1),
+})
+
+export const weshWorkerDirectoryEntrySchema = z.object({
+  name: z.string(),
+  type: z.enum(['file', 'directory', 'fifo', 'chardev', 'symlink']),
+  fullPath: z.string().min(1),
+})
+
 export type WeshWorkerInitRequest = z.infer<typeof weshWorkerInitRequestSchema>
 export type WeshWorkerExecuteRequest = z.infer<typeof weshWorkerExecuteRequestSchema>
 export type WeshWorkerStartExecutionResponse = z.infer<typeof weshWorkerStartExecutionResponseSchema>
@@ -78,6 +100,10 @@ export type WeshWorkerInterruptExecutionRequest = z.infer<typeof weshWorkerInter
 export type WeshWorkerDisposeExecutionRequest = z.infer<typeof weshWorkerDisposeExecutionRequestSchema>
 export type WeshWorkerExecutionSummary = z.infer<typeof weshWorkerExecutionSummarySchema>
 export type WeshWorkerMount = z.infer<typeof weshWorkerMountSchema>
+export type WeshWorkerShellState = z.infer<typeof weshWorkerShellStateSchema>
+export type WeshWorkerCommandEntry = z.infer<typeof weshWorkerCommandEntrySchema>
+export type WeshWorkerListDirectoryRequest = z.infer<typeof weshWorkerListDirectoryRequestSchema>
+export type WeshWorkerDirectoryEntry = z.infer<typeof weshWorkerDirectoryEntrySchema>
 
 export type WeshWorkerRemoteExecutionEvent =
   | { type: 'started' }
@@ -116,6 +142,9 @@ export interface IWeshWorker {
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
   disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
+  getShellState(): Promise<WeshWorkerShellState>
+  listCommands(): Promise<WeshWorkerCommandEntry[]>
+  listDirectory({ request }: { request: WeshWorkerListDirectoryRequest }): Promise<WeshWorkerDirectoryEntry[]>
   interrupt(): Promise<boolean>
   dispose(): Promise<void>
 }
@@ -130,6 +159,9 @@ export interface WeshWorkerClient {
   cancelExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
   disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
+  getShellState(): Promise<WeshWorkerShellState>
+  listCommands(): Promise<WeshWorkerCommandEntry[]>
+  listDirectory({ request }: { request: WeshWorkerListDirectoryRequest }): Promise<WeshWorkerDirectoryEntry[]>
   interrupt(): Promise<boolean>
   dispose(): Promise<void>
 }

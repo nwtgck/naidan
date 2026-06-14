@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import * as Comlink from 'comlink'
 
 import { Wesh } from '@/services/wesh'
@@ -17,6 +18,10 @@ import {
   weshWorkerInitRequestSchema,
   weshWorkerInterruptExecutionRequestSchema,
   weshWorkerStartExecutionResponseSchema,
+  weshWorkerShellStateSchema,
+  weshWorkerCommandEntrySchema,
+  weshWorkerListDirectoryRequestSchema,
+  weshWorkerDirectoryEntrySchema,
   type IWeshWorker,
   type WeshWorkerRemoteExecutionEvent,
   type WeshWorkerExecutionSummary,
@@ -232,6 +237,29 @@ export function createWeshWorker(): IWeshWorker {
       } finally {
         await this.disposeExecution({ request: { executionId } })
       }
+    },
+
+    async getShellState() {
+      if (!wesh) {
+        throw new Error('Wesh worker is not initialized')
+      }
+      return weshWorkerShellStateSchema.parse(wesh.getShellState())
+    },
+
+    async listCommands() {
+      if (!wesh) {
+        throw new Error('Wesh worker is not initialized')
+      }
+      return z.array(weshWorkerCommandEntrySchema).parse(wesh.listCommands())
+    },
+
+    async listDirectory({ request }) {
+      if (!wesh) {
+        throw new Error('Wesh worker is not initialized')
+      }
+      const validated = weshWorkerListDirectoryRequestSchema.parse(request)
+      const entries = await wesh.listDirectory({ path: validated.path })
+      return z.array(weshWorkerDirectoryEntrySchema).parse(entries)
     },
 
     async interrupt() {

@@ -24,6 +24,9 @@ describe('createWeshTool', () => {
       execute: vi.fn().mockResolvedValue({
         exitCode: 0,
       }),
+      getShellState: vi.fn().mockResolvedValue({ cwd: '/', env: {} }),
+      listCommands: vi.fn().mockResolvedValue([]),
+      listDirectory: vi.fn().mockResolvedValue([]),
       interrupt: vi.fn().mockResolvedValue(true),
       dispose: vi.fn().mockResolvedValue(undefined),
     }

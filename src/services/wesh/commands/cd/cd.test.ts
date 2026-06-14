@@ -87,6 +87,25 @@ describe('wesh cd', () => {
     expect(dashed.result.exitCode).toBe(0);
   });
 
+
+  it('changes to HOME when no path is provided', async () => {
+    await makeDir({ path: 'home/user' });
+    await makeDir({ path: 'work' });
+
+    const home = await execute({
+      script: `\
+HOME=/home/user
+cd work
+cd
+pwd
+`,
+    });
+
+    expect(home.stdout.text).toBe('/home/user\n');
+    expect(home.stderr.text).toBe('');
+    expect(home.result.exitCode).toBe(0);
+  });
+
   it('prints help and rejects usage errors', async () => {
     await writeFile({ path: 'not-a-dir.txt', data: 'x' });
 

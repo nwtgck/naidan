@@ -80,6 +80,34 @@ describe('Wesh Shell', () => {
     });
   });
 
+
+  it('exposes read-only shell and directory snapshots for terminal observation', async () => {
+    const home = await rootHandle.getDirectoryHandle('home', { create: true });
+    await home.getDirectoryHandle('user', { create: true });
+    await rootHandle.getFileHandle('note.txt', { create: true });
+    await wesh.execute({
+      script: 'alias ll="ls -l"; cd /home/user',
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: createTestWriteCaptureHandle().handle,
+      stderr: createTestWriteCaptureHandle().handle,
+    });
+
+    const shellState = wesh.getShellState();
+    const commands = wesh.listCommands();
+    const entries = await wesh.listDirectory({ path: '/' });
+
+    expect(shellState.cwd).toBe('/home/user');
+    expect(shellState.env.PWD).toBe('/home/user');
+    expect(commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'echo', kind: 'builtin' }),
+      expect.objectContaining({ name: 'll', kind: 'alias', usage: 'ls -l' }),
+    ]));
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'home', type: 'directory', fullPath: '/home' }),
+      expect.objectContaining({ name: 'note.txt', type: 'file', fullPath: '/note.txt' }),
+    ]));
+  });
+
   it('executes simple commands', async () => {
     const stdin = createTestReadHandleFromText({ text: '' });
     const stdout = createTestWriteCaptureHandle();

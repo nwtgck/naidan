@@ -58,6 +58,14 @@ vi.mock('lucide-vue-next', () => ({
   PlusIcon: { template: '<span>Plus</span>' },
 }));
 
+function createDirectoryHandleMock({ name }: { name: string }): FileSystemDirectoryHandle {
+  const handle = {
+    name,
+    getDirectoryHandle: vi.fn(async (childName: string) => createDirectoryHandleMock({ name: childName })),
+  } as unknown as FileSystemDirectoryHandle;
+  return handle;
+}
+
 describe('ChatWeshTerminalModal', () => {
   const tmpHandle = { name: 'tmp' } as unknown as FileSystemDirectoryHandle;
 
@@ -76,14 +84,9 @@ describe('ChatWeshTerminalModal', () => {
       disposeExecution: mocks.disposeExecution,
       dispose: mocks.dispose,
     });
-    const globalRoot = {
-      name: 'global-root',
-      getDirectoryHandle: vi.fn(),
-    } as unknown as FileSystemDirectoryHandle;
-    const terminalRoot = {
-      name: 'naidan-chat-wesh',
-      getDirectoryHandle: vi.fn().mockResolvedValue(globalRoot),
-    } as unknown as FileSystemDirectoryHandle;
+    const globalRoot = createDirectoryHandleMock({ name: 'global-root' });
+    const terminalRoot = createDirectoryHandleMock({ name: 'naidan-chat-wesh' });
+    vi.mocked(terminalRoot.getDirectoryHandle).mockResolvedValue(globalRoot);
     mocks.getDirectory.mockResolvedValue({
       getDirectoryHandle: vi.fn().mockResolvedValue(terminalRoot),
     });
@@ -126,7 +129,7 @@ describe('ChatWeshTerminalModal', () => {
         expect.objectContaining({ path: '/home/user/chat', readOnly: false }),
       ]),
       user: 'user',
-      initialEnv: { HOME: '/home/user' },
+      initialEnv: { HOME: '/home/user', TMPDIR: '/tmp' },
       initialCwd: '/home/user',
     }));
   });

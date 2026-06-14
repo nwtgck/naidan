@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import * as Comlink from 'comlink'
 
 import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
@@ -8,6 +9,10 @@ import {
   mapWeshMountsToWorkerMounts,
   weshWorkerStartExecutionResponseSchema,
   weshWorkerInitRequestSchema,
+  weshWorkerShellStateSchema,
+  weshWorkerCommandEntrySchema,
+  weshWorkerListDirectoryRequestSchema,
+  weshWorkerDirectoryEntrySchema,
   type WeshWorkerClient,
   type WeshWorkerExecutionEventCallback,
   type WeshWorkerExecuteRequest,
@@ -114,6 +119,19 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
     async execute({ request }: { request: WeshWorkerExecuteRequest }) {
       const response = await runtime.wesh.execute({ request })
       return weshWorkerExecutionSummarySchema.parse(response)
+    },
+    async getShellState() {
+      const response = await runtime.wesh.getShellState()
+      return weshWorkerShellStateSchema.parse(response)
+    },
+    async listCommands() {
+      const response = await runtime.wesh.listCommands()
+      return z.array(weshWorkerCommandEntrySchema).parse(response)
+    },
+    async listDirectory({ request }) {
+      const validated = weshWorkerListDirectoryRequestSchema.parse(request)
+      const response = await runtime.wesh.listDirectory({ request: validated })
+      return z.array(weshWorkerDirectoryEntrySchema).parse(response)
     },
     async interrupt() {
       return runtime.wesh.interrupt()

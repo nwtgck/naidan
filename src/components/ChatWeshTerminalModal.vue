@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { watch, nextTick, ref } from 'vue';
 import { TerminalIcon, XIcon } from 'lucide-vue-next';
-import WeshTerminalPane from './WeshTerminalPane.vue';
+import WeshTerminalPane from '@/features/wesh-terminal/components/WeshTerminalPane.vue';
 import { useChatWeshTerminalSessions } from '@/composables/useChatWeshTerminalSessions';
 import { useConfirm } from '@/composables/useConfirm';
 import type { Mount } from '@/models/types';
@@ -21,6 +21,7 @@ const {
   sessions,
   activeSessionId,
   runCommand,
+  completeInput,
   cancelRunningCommand,
   closeSession,
   createChatWorkerSession,
@@ -93,6 +94,7 @@ defineExpose({
           class="flex-1 min-h-0 flex flex-col"
           :sessions="sessions"
           :active-session-id="activeSessionId"
+          :complete-input="completeInput"
           @update:active-session-id="(id) => (activeSessionId = id)"
           @run="({ script }) => runCommand({ script })"
           @create-session="createChatWorkerSession({ chatMounts: chatMounts ?? [], chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility })"

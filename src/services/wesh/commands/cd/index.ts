@@ -56,7 +56,7 @@ export const cdCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const target = parsed.positionals[0] || '/';
+    const target = parsed.positionals[0] ?? context.env.get('HOME') ?? '/';
 
     try {
       let fullPath: string;
