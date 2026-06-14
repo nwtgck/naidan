@@ -1,31 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch } from 'vue';
 import { ChevronRightIcon, ChevronDownIcon, CopyIcon, CheckIcon, ImageIcon, CpuIcon, EyeIcon, EyeOffIcon, FileIcon } from 'lucide-vue-next';
-import createDOMPurify from 'dompurify';
 import { storageService } from '@/services/storage';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
 import type { GeneratedImageBlock } from '@/utils/image-generation';
 import type { MessageNode } from '@/models/types';
-
-const DOMPurify = (() => {
-  const t = typeof window;
-  switch (t) {
-  case 'undefined': return createDOMPurify();
-  case 'object':
-  case 'boolean':
-  case 'string':
-  case 'number':
-  case 'function':
-  case 'symbol':
-  case 'bigint':
-    return createDOMPurify(window);
-  default: {
-    const _ex: never = t;
-    return _ex;
-  }
-  }
-})();
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
+import { jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
 
 const props = defineProps<{
   node: Readonly<MessageNode>;
@@ -60,47 +42,14 @@ const copyContent = async () => {
   setTimeout(() => isCopied.value = false, 2000);
 };
 
-// JSON Processing (Escaping + Optional Highlighting + Sanitization)
-const processJsonOutput = ({ json }: { json: string }) => {
-  // 1. First, encode everything as plain text by escaping HTML special chars
-  const escaped = json
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  let html = escaped;
-  if (props.highlight) {
-    // 2. Add spans for highlighting. Since we already escaped the input,
-    // 'match' here cannot contain unescaped < or >.
-    html = escaped.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
-      let cls = 'text-blue-500 dark:text-blue-400';
-      if (/^"/.test(match)) {
-        if (/:$/.test(match)) {
-          cls = 'text-red-500 dark:text-red-400 opacity-80';
-        } else {
-          cls = 'text-green-600 dark:text-green-400';
-        }
-      } else if (/true|false/.test(match)) {
-        cls = 'text-orange-500';
-      } else if (/null/.test(match)) {
-        cls = 'text-magenta-500';
-      }
-      return `<span class="${cls}">${match}</span>`;
-    });
-  }
-
-  // 3. Finally, sanitize the result to be absolutely sure no XSS is possible.
-  // We only allow span tags with class attributes.
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['span'],
-    ALLOWED_ATTR: ['class']
-  });
-};
-
 const jsonOutput = computed(() => {
   const cleanNode = { ...props.node, replies: undefined };
   const json = JSON.stringify(cleanNode, null, 2);
-  return processJsonOutput({ json });
+  return jsonToHighlightedHtml({
+    json,
+    highlight: props.highlight,
+    keyStyle: 'tree',
+  });
 });
 
 const isoTimestamp = computed(() => {
@@ -385,10 +334,11 @@ export default {
 
         <!-- Integrated JSON -->
         <div class="p-4 bg-gray-50/20 dark:bg-black/10 border-t border-gray-100 dark:border-white/5">
-          <pre
+          <AllowedHtmlView
+            as="pre"
+            :html="jsonOutput"
             class="text-[10px] overflow-x-auto text-gray-500 dark:text-gray-400 leading-tight font-mono max-h-48 thin-scrollbar"
-            v-html="jsonOutput"
-          ></pre>
+          />
         </div>
       </div>
     </div>

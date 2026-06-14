@@ -3,6 +3,8 @@ import type { FileExplorerWorkerClient } from '@/services/file-explorer/worker/t
 import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight/worker/client-shared';
 import type { FileExplorerEntry, PreviewState } from './types';
 import { EXTENSION_LANGUAGE_MAP } from './constants';
+import { sanitizeHighlightHtml } from '@/lib/security/allowedHtml';
+import type { AllowedHtml } from '@/lib/security/allowedHtml';
 
 export function useFileExplorerPreview({
   client,
@@ -37,7 +39,7 @@ export function useFileExplorerPreview({
   }: {
     entry: FileExplorerEntry;
     displayText: string;
-  }): Promise<string | undefined> {
+  }): Promise<AllowedHtml | undefined> {
     try {
       const language = EXTENSION_LANGUAGE_MAP[entry.extension];
       const client = await highlightWorkerClientPromise
@@ -48,7 +50,7 @@ export function useFileExplorerPreview({
           mode: language ? 'named-language' : 'auto-detect',
         },
       })
-      return response.html;
+      return sanitizeHighlightHtml({ html: response.html });
     } catch {
       return undefined;
     }

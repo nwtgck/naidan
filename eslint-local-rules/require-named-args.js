@@ -562,12 +562,55 @@ function isAllowedExternalBoundaryCallback({ node, state }) {
   );
 }
 
+
+function getParameterTypeText(param, sourceCode) {
+  const typeAnnotation = param.type === 'RestElement'
+    ? param.typeAnnotation ?? param.argument?.typeAnnotation
+    : param.typeAnnotation;
+  return typeAnnotation ? sourceCode.getText(typeAnnotation.typeAnnotation) : undefined;
+}
+
+function isArrayOrTupleTypeText(typeText) {
+  if (!typeText) {
+    return false;
+  }
+
+  const normalized = typeText.replace(/\s+/gu, '');
+  return (
+    normalized.endsWith('[]') ||
+    /^readonly\[.*\]$/u.test(normalized) ||
+    /^\[.*\]$/u.test(normalized) ||
+    /^ReadonlyArray<.*>$/u.test(normalized) ||
+    /^Array<.*>$/u.test(normalized)
+  );
+}
+
+function isTaggedTemplateFunctionSignature({ params, sourceCode }) {
+  if (params.length !== 2) {
+    return false;
+  }
+
+  const [templateParam, substitutionsParam] = params;
+  if (!templateParam || !substitutionsParam || substitutionsParam.type !== 'RestElement') {
+    return false;
+  }
+
+  return (
+    getParameterTypeText(templateParam, sourceCode) === 'TemplateStringsArray' &&
+    isArrayOrTupleTypeText(getParameterTypeText(substitutionsParam, sourceCode))
+  );
+}
+
 function isAllowedSignature({ node, params, sourceCode }) {
   if (params.length === 0) {
     return true;
   }
 
   if (isTypePredicateReturnType(node)) {
+    return true;
+  }
+
+  if (isTaggedTemplateFunctionSignature({ params, sourceCode })) {
     return true;
   }
 

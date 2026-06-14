@@ -1,4 +1,5 @@
 import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
+import type { AllowedHtml } from '@/lib/security/allowedHtml';
 
 export type EntryKind = 'file' | 'directory';
 export type MimeCategory = 'text' | 'image' | 'video' | 'audio' | 'binary';
@@ -75,7 +76,7 @@ export interface PreviewState {
   entry: FileExplorerEntry | undefined;
   rawTextContent?: string | undefined;
   textContent: string | undefined;
-  highlightedHtml: string | undefined;
+  highlightedHtml: AllowedHtml | undefined;
   objectUrl: string | undefined;
   jsonFormatMode: 'formatted' | 'raw';
   loadingState: 'idle' | 'loading' | 'loaded' | 'error';

@@ -12,6 +12,11 @@ import requireDefineExposeTestOnly from './eslint-local-rules/require-define-exp
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
 import requireNamedArgs from './eslint-local-rules/require-named-args.js';
+import noRawVHtml from './eslint-local-rules/no-raw-v-html.js';
+import noAllowedHtmlCast from './eslint-local-rules/no-allowed-html-cast.js';
+import noInvalidAllowedHtmlTemplate from './eslint-local-rules/no-invalid-allowed-html-template.js';
+import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
+import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
 
 const noRelativeImportPathsCompat = {
   ...noRelativeImportPaths,
@@ -230,6 +235,11 @@ export default tseslint.config(
   requireIconSuffix,
   requireWorkerClientFacade,
   requireNamedArgs,
+  noRawVHtml,
+  noAllowedHtmlCast,
+  noInvalidAllowedHtmlTemplate,
+  noRawDompurify,
+  noXssProneBrowserApis,
   {
     files: ['**/*.test.ts'],
     languageOptions: {

@@ -1,32 +1,14 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon } from 'lucide-vue-next';
-import createDOMPurify from 'dompurify';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { storageService } from '@/services/storage';
 import { useRouter } from 'vue-router';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { BinaryObject, MessageNode } from '@/models/types';
-
-const DOMPurify = (() => {
-  const t = typeof window;
-  switch (t) {
-  case 'undefined': return createDOMPurify();
-  case 'object':
-  case 'boolean':
-  case 'string':
-  case 'number':
-  case 'function':
-  case 'symbol':
-  case 'bigint':
-    return createDOMPurify(window);
-  default: {
-    const _ex: never = t;
-    return _ex;
-  }
-  }
-})();
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
+import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
 
 const props = defineProps<{
   show: boolean;
@@ -171,50 +153,19 @@ function handleClose() {
   emit('close');
 }
 
-// Simple highlighter for the raw JSON view
-const highlightJson = ({ json }: { json: string }) => {
-  // 1. First, encode everything as plain text by escaping HTML special chars
-  const escaped = json
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  let html = escaped;
-  if (isHighlightEnabled.value) {
-    // 2. Add spans for highlighting. Input is already escaped.
-    html = escaped.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
-      let cls = 'text-blue-500 dark:text-blue-400'; // number
-      if (/^"/.test(match)) {
-        if (/:$/.test(match)) {
-          cls = 'text-red-500 dark:text-red-400 font-bold'; // key
-        } else {
-          cls = 'text-green-600 dark:text-green-400'; // string
-        }
-      } else if (/true|false/.test(match)) {
-        cls = 'text-orange-500';
-      } else if (/null/.test(match)) {
-        cls = 'text-magenta-500';
-      }
-      return `<span class="${cls}">${match}</span>`;
-    });
-  }
-
-  // 3. Sanitize to guarantee no malicious tags or attributes
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['span'],
-    ALLOWED_ATTR: ['class']
-  });
-};
-
 const rawJsonOutput = computed(() => {
   const m = mode.value;
   switch (m) {
   case 'active':
   case 'tree':
-    return '';
+    return allowedHtml``;
   case 'raw': {
     const json = JSON.stringify(props.chat, null, 2);
-    return highlightJson({ json });
+    return jsonToHighlightedHtml({
+      json,
+      highlight: isHighlightEnabled.value,
+      keyStyle: 'raw',
+    });
   }
   default: {
     const _ex: never = m;
@@ -385,10 +336,11 @@ defineExpose({
 
           <!-- Tab 3: Full JSON -->
           <div v-else-if="mode === 'raw'" class="flex-1 p-6 overflow-hidden">
-            <pre
+            <AllowedHtmlView
+              as="pre"
+              :html="rawJsonOutput"
               class="bg-gray-50/50 dark:bg-black/40 p-6 rounded-2xl border border-gray-100 dark:border-white/5 text-[11px] overflow-auto h-full text-gray-700 dark:text-gray-300 leading-relaxed font-mono thin-scrollbar"
-              v-html="rawJsonOutput"
-            ></pre>
+            />
           </div>
 
         </div>

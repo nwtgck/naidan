@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { inject, computed } from 'vue';
 import { BracesIcon, DownloadIcon, FileTextIcon, Loader2Icon, AlertCircleIcon, XIcon } from 'lucide-vue-next';
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import FileExplorerEntryIcon from './FileExplorerEntryIcon.vue';
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
 import { formatSize, formatDate } from './utils';
@@ -110,10 +111,11 @@ defineExpose({
         </div>
         <div class="flex-1 overflow-auto overscroll-contain">
           <!-- Syntax highlighted -->
-          <pre
+          <AllowedHtmlView
             v-if="s.highlightedHtml"
+            as="pre"
+            :html="s.highlightedHtml"
             class="p-3 text-[10px] leading-relaxed min-w-max"
-            v-html="s.highlightedHtml"
           />
           <!-- Plain text fallback -->
           <pre v-else class="p-3 text-[10px] leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre min-w-max">{{ s.textContent }}</pre>

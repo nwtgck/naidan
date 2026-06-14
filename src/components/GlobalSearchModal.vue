@@ -2,7 +2,6 @@
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { SearchIcon, XIcon, Loader2Icon, MessageSquareIcon, CornerDownRightIcon, ClockIcon, GitBranchIcon, FolderIcon, FilterIcon, CheckIcon, EyeIcon } from 'lucide-vue-next';
-import he from 'he';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useChatSearch, type SearchResultItem, type SearchRoleFilter, type SearchScope, type ContentMatch } from '@/composables/useChatSearch';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
@@ -13,6 +12,9 @@ import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
+import { highlightSearchTextAsHtml } from '@/lib/security/allowedHtml';
+import type { AllowedHtml } from '@/lib/security/allowedHtml';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
 const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupSearchPreview.vue') });
@@ -162,52 +164,20 @@ function formatTime({ timestamp }: { timestamp: number }) {
   return timeFormatter.format(new Date(timestamp));
 }
 
-function escapeRegExp({ string }: { string: string }) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 // Performance Optimization: Memoize highlighted strings.
 // Regex matching and string concatenation are expensive during rapid list navigation.
-const highlightCache = new Map<string, string>();
+const highlightCache = new Map<string, AllowedHtml>();
 
 function highlight({ text, query, color }: {
   text: string,
   query: string,
   color: 'indigo' | 'blue',
-}) {
-  if (!query) return he.encode(text);
-
+}): AllowedHtml {
   const cacheKey = `${color}:${query}:${text}`;
   const cached = highlightCache.get(cacheKey);
   if (cached) return cached;
 
-  const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
-  if (keywords.length === 0) return he.encode(text);
-
-  const pattern = keywords.map(k => escapeRegExp({ string: k })).join('|');
-  const regex = new RegExp(`(${pattern})`, 'gi');
-
-  const parts = text.split(regex);
-  const colorClasses = (() => {
-    switch (color) {
-    case 'blue':
-      return 'bg-blue-200 dark:bg-blue-900/50 text-blue-800 dark:text-blue-100';
-    case 'indigo':
-      return 'bg-indigo-200 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-100';
-    default: {
-      const _ex: never = color;
-      throw new Error(`Unhandled color: ${_ex}`);
-    }
-    }
-  })();
-
-  const result = parts.map(part => {
-    const isMatch = keywords.some(k => part.toLowerCase() === k);
-    if (isMatch) {
-      return `<span class="${colorClasses} font-bold rounded px-0.5">${he.encode(part)}</span>`;
-    }
-    return he.encode(part);
-  }).join('');
+  const result = highlightSearchTextAsHtml({ text, query, color });
 
   // Limit cache size to prevent memory leaks
   if (highlightCache.size > 1000) highlightCache.clear();
@@ -679,7 +649,12 @@ defineExpose({
                   </div>
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
-                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.name, query, color: 'blue' })"></span>
+                      <AllowedHtmlView
+                        v-if="isHighlightingEnabled"
+                        as="span"
+                        :html="highlight({ text: entry.item.name, query, color: 'blue' })"
+                        class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
+                      />
                       <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.name }}</span>
                       <div class="flex items-center gap-1.5 shrink-0">
                         <span class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ entry.item.chatCount }} chats</span>
@@ -696,11 +671,20 @@ defineExpose({
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex flex-col overflow-hidden">
-                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"></span>
+                        <AllowedHtmlView
+                          v-if="isHighlightingEnabled"
+                          as="span"
+                          :html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"
+                          class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
+                        />
                         <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || UNTITLED_CHAT_TITLE }}</span>
                         <span v-if="entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
                           <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
-                          <span v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.groupName, query, color: 'blue' })"></span>
+                          <AllowedHtmlView
+                            v-if="isHighlightingEnabled"
+                            as="span"
+                            :html="highlight({ text: entry.item.groupName, query, color: 'blue' })"
+                          />
                           <span v-else>{{ entry.item.groupName }}</span>
                         </span>
                       </div>
@@ -722,7 +706,12 @@ defineExpose({
                       <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ entry.item.role }}</span>
                       <span class="text-[9px] text-gray-400">{{ formatTime({ timestamp: entry.item.timestamp }) }}</span>
                     </div>
-                    <span v-if="isHighlightingEnabled" class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed" v-html="highlight({ text: entry.item.excerpt, query, color: 'indigo' })"></span>
+                    <AllowedHtmlView
+                      v-if="isHighlightingEnabled"
+                      as="span"
+                      :html="highlight({ text: entry.item.excerpt, query, color: 'indigo' })"
+                      class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed"
+                    />
                     <span v-else class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed">{{ entry.item.excerpt }}</span>
 
                     <div v-if="!entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">

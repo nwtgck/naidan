@@ -117,6 +117,19 @@ describe('require-named-args rule', () => {
     await expect(lint(`function read() {}`)).resolves.toHaveLength(0);
   });
 
+
+  it('allows tagged template function signatures because JavaScript supplies TemplateStringsArray and rest substitutions', async () => {
+    await expect(lint(`function html(parts: TemplateStringsArray, ...values: never[]): string { return parts[0] ?? ''; }`)).resolves.toHaveLength(0);
+    await expect(lint(`const css = (fragments: TemplateStringsArray, ...exprs: unknown[]): string => fragments.join(String(exprs.length));`)).resolves.toHaveLength(0);
+  });
+
+  it('reports TemplateStringsArray signatures that are not tagged template contracts', async () => {
+    const messages = await lint(`function bad(parts: TemplateStringsArray, value: string): string { return parts[0] ?? value; }`);
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.message).toBe('Wrap positional params into one object param, e.g. fn({ id, name }). Disable only for true external/deprecated contracts.');
+  });
+
   it('allows the explicit empty named args convention', async () => {
     await expect(lint(`function read(_args: Record<never, never>) {}`)).resolves.toHaveLength(0);
   });

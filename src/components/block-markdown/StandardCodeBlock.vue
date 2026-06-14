@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onBeforeUnmount, onBeforeUpdate, onMounted, onUpdated, watch } from 'vue';
 import { acquireSharedHighlightWorkerClient, releaseSharedHighlightWorkerClient } from '@/services/highlight/worker/client-shared';
-import { escapeTextForHtml } from '@/utils/html';
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
+import { escapeTextAsHtml, sanitizeHighlightHtml } from '@/lib/security/allowedHtml';
 import { CheckIcon, CopyIcon, TerminalIcon, WrapTextIcon } from 'lucide-vue-next';
 import { useCodeBlockSettings } from '@/composables/useCodeBlockSettings';
 
@@ -14,7 +15,7 @@ const { isLineWrapEnabled, toggleLineWrap } = useCodeBlockSettings();
 
 const preRef = ref<HTMLElement | null>(null);
 const scrollState = ref({ top: 0, left: 0 });
-const renderedCodeHtml = ref(escapeTextForHtml({
+const renderedCodeHtml = ref(escapeTextAsHtml({
   text: props.code,
 }));
 let latestHighlightRequestId = 0;
@@ -45,14 +46,14 @@ async function syncHighlightedCodeFromWorker({
       return
     }
 
-    renderedCodeHtml.value = response.html
+    renderedCodeHtml.value = sanitizeHighlightHtml({ html: response.html })
   } catch (error) {
     if (isDisposed || requestId !== latestHighlightRequestId) {
       return
     }
 
     console.error('Failed to highlight code in worker:', error)
-    renderedCodeHtml.value = escapeTextForHtml({
+    renderedCodeHtml.value = escapeTextAsHtml({
       text: code,
     })
   }
@@ -150,10 +151,10 @@ defineExpose({
       ref="preRef"
       class="!m-0 !p-4 !bg-transparent scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent"
       :class="isLineWrapEnabled ? 'whitespace-pre-wrap break-words overflow-x-hidden' : 'whitespace-pre overflow-x-auto'"
-    ><code
-      ref="codeRef"
+    ><AllowedHtmlView
+      as="code"
+      :html="renderedCodeHtml"
       class="!bg-transparent !p-0 !border-none !text-sm font-mono leading-relaxed !text-gray-200"
-      v-html="renderedCodeHtml"
-    ></code></pre>
+    /></pre>
   </div>
 </template>
