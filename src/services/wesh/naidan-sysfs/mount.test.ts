@@ -34,7 +34,7 @@ describe('createNaidanSysfsMount', () => {
   it('returns a naidan sysfs mount for local storage', () => {
     expect(createNaidanSysfsMount({
       storageType: 'local',
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
@@ -43,7 +43,7 @@ describe('createNaidanSysfsMount', () => {
       path: '/sys/fs/naidan',
       readOnly: true,
       storageType: 'local',
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
@@ -53,7 +53,7 @@ describe('createNaidanSysfsMount', () => {
   it('returns a naidan sysfs mount for memory storage', () => {
     expect(createNaidanSysfsMount({
       storageType: 'memory',
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,
@@ -62,7 +62,7 @@ describe('createNaidanSysfsMount', () => {
       path: '/sys/fs/naidan',
       readOnly: true,
       storageType: 'memory',
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
       currentChatId: 'chat-1',
       currentChatGroupId: undefined,

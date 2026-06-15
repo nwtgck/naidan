@@ -117,7 +117,7 @@ function createChatGroupChatsDirectoryEntry({
   case 'current_chat_only':
     return createRestrictedChatsDirectoryEntry()
   case 'current_chat_with_chat_group':
-  case 'all_chats':
+  case 'main_chats':
     return {
       kind: 'directory',
       async stat({ path }: { path: string }) {

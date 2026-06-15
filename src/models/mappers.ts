@@ -1,6 +1,8 @@
 /**
  * Mappers
  */
+import type { ToolConfig } from '@/services/tools/types';
+
 import type {
   RoleDto,
   MessageNodeDto,
@@ -43,7 +45,41 @@ import type {
   BinaryObject,
   LmParameters,
   Mount,
+  ToolConfigPersistence,
 } from './types';
+
+
+const toolConfigPersistenceToExperimentalDto = ({
+  persistence,
+}: {
+  persistence: ToolConfigPersistence | undefined;
+}): 'enabled' | undefined => {
+  const normalized = persistence ?? 'disabled';
+  switch (normalized) {
+  case 'disabled':
+    return undefined;
+  case 'enabled':
+    return 'enabled';
+  default: {
+    const _exhaustive: never = normalized;
+    throw new Error(`Unhandled tool config persistence setting: ${String(_exhaustive)}`);
+  }
+  }
+};
+
+const toolConfigsToDomain = ({
+  toolConfigs,
+}: {
+  toolConfigs: ToolConfig[] | undefined;
+}): ToolConfig[] | undefined => toolConfigs;
+
+const toolConfigsToExperimentalDto = ({
+  toolConfigs,
+}: {
+  toolConfigs: ToolConfig[] | undefined;
+}): { toolConfigs: ToolConfig[] | undefined } | undefined => {
+  return toolConfigs === undefined ? undefined : { toolConfigs };
+};
 
 const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
   const type = dto.type;
@@ -149,6 +185,7 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
   originChatId: dto.originChatId,
   originMessageId: dto.originMessageId,
   mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
+  toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
 });
 
 /**
@@ -639,6 +676,7 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: lmParameters }),
     mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
   };
 };
 
@@ -664,6 +702,7 @@ export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => 
   lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
   currentLeafId: domain.currentLeafId,
   mounts: domain.mounts?.map(domain => mountToDto({ domain })),
+  experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
 });
 
 export const chatContentToDto = ({ domain }: { domain: ChatContent }): ChatContentDto => ({
@@ -704,6 +743,7 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
     systemPrompt,
     lmParameters: lmParametersToDto({ domain: lmParameters }),
     mounts: domain.mounts?.map(domain => mountToDto({ domain })),
+    experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
     messages: undefined,
   };
 };
@@ -796,6 +836,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       ...(rest.experimental?.markdownRendering === undefined
         ? {}
         : { markdownRendering: rest.experimental.markdownRendering }),
+      toolConfigPersistence: rest.experimental?.toolConfigPersistence ?? 'disabled',
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
       ...(rest.experimental?.unreadable === undefined
         ? {}
@@ -875,6 +916,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     lmParameters: lmParametersToDto({ domain: rest.lmParameters }),
     experimental: {
       markdownRendering: rest.experimental?.markdownRendering,
+      toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
+        persistence: rest.experimental?.toolConfigPersistence,
+      }),
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
     },
     mounts: (domain.mounts || []).map(m => {

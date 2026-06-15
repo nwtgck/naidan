@@ -22,12 +22,12 @@ const {
   mockEnsureChatTmpDirectory,
   mockOpenFileExplorer,
   mockGetVolumeDirectoryHandle,
-  mockGetNaidanSysfsMountSelection,
+  mockGetNaidanSysfsAccessScope,
 } = vi.hoisted(() => ({
   mockEnsureChatTmpDirectory: vi.fn(),
   mockOpenFileExplorer: vi.fn(),
   mockGetVolumeDirectoryHandle: vi.fn(),
-  mockGetNaidanSysfsMountSelection: vi.fn(),
+  mockGetNaidanSysfsAccessScope: vi.fn(),
 }));
 
 // Mock dependencies
@@ -514,13 +514,13 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatGroupMounts,
     chatId,
     chatGroupId,
-    naidanSysfsVisibility,
+    naidanSysfsAccessScope,
   }: {
     chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
     chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
     chatId: string | undefined;
     chatGroupId: string | undefined;
-    naidanSysfsVisibility: string;
+    naidanSysfsAccessScope: string;
   }) => {
     const mounts: WeshMount[] = [];
 
@@ -528,13 +528,13 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
       mounts.push({ type: 'directory', path: '/tmp', handle: mockTmpHandle, readOnly: false });
     }
 
-    if (naidanSysfsVisibility !== 'none') {
+    if (naidanSysfsAccessScope !== 'none') {
       mounts.push({
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',
         readOnly: true,
         storageType: mockSettings.value.storageType,
-        visibility: naidanSysfsVisibility as 'current_chat_only' | 'current_chat_with_chat_group' | 'all_chats',
+        visibility: naidanSysfsAccessScope as 'current_chat_only' | 'current_chat_with_chat_group' | 'main_chats',
         binaryObjectAccess: 'data',
         currentChatId: chatId ?? '',
         currentChatGroupId: chatGroupId,
@@ -630,7 +630,7 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('../composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
+    getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),
 }));
 
@@ -724,7 +724,7 @@ function resetMocks() {
     handle: mockTmpHandle,
   });
   mockCompactCurrentBranch.mockResolvedValue(true);
-  mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_with_chat_group');
+  mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_with_chat_group');
   mockOpenFileExplorer.mockReset();
   mockGetVolumeDirectoryHandle.mockImplementation(({ volumeId }: { volumeId: string }) => {
     return Promise.resolve({ kind: 'directory', name: volumeId } as FileSystemDirectoryHandle);
@@ -1435,7 +1435,7 @@ Question`,
   });
 
   it('should omit naidan sysfs from header file explorer when the shared selection is none', async () => {
-    mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+    mockGetNaidanSysfsAccessScope.mockReturnValue('none');
     mockCurrentChat.value = {
       id: 'chat-1',
       title: 'Test Chat',
@@ -1460,22 +1460,22 @@ Question`,
     expect(options.mounts.some(mount => mount.type === 'naidan_sysfs')).toBe(false);
   });
 
-  it('should pass the shared naidan sysfs selection to the header wesh terminal', async () => {
-    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+  it('should pass the shared naidan sysfs access scope to the header wesh terminal', async () => {
+    mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
     wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
           ChatWeshTerminalModal: {
             name: 'ChatWeshTerminalModal',
-            props: ['naidanSysfsVisibility'],
-            template: '<div data-testid="stub-chat-wesh-terminal" :data-visibility="naidanSysfsVisibility"></div>',
+            props: ['naidanSysfsAccessScope'],
+            template: '<div data-testid="stub-chat-wesh-terminal" :data-access-scope="naidanSysfsAccessScope"></div>',
           },
         },
       },
     });
 
-    expect(wrapper.find('[data-testid="stub-chat-wesh-terminal"]').attributes('data-visibility')).toBe('current_chat_only');
+    expect(wrapper.find('[data-testid="stub-chat-wesh-terminal"]').attributes('data-access-scope')).toBe('current_chat_only');
   });
 
   it('should hide the chat inspector when debug mode is disabled', async () => {

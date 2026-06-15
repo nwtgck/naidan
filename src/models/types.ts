@@ -6,13 +6,14 @@
  * leaking into the core, ensuring structural integrity and preventing data
  * inconsistencies.
  */
-import type { ToolExecutionResult } from '@/services/tools/types';
+import type { ToolConfig, ToolExecutionResult } from '@/services/tools/types';
 
 // --- Domain Definitions (Business Logic Layer) ---
 
 export type Role = 'user' | 'assistant' | 'system' | 'tool';
 export type StorageType = 'local' | 'opfs' | 'memory';
 export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
+export type ToolConfigPersistence = 'disabled' | 'enabled';
 
 export type Reasoning = {
   effort: 'none' | 'low' | 'medium' | 'high' | undefined;
@@ -180,6 +181,7 @@ export interface Chat {
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
   mounts?: Mount[];
+  toolConfigs?: ToolConfig[];
 }
 
 /**
@@ -204,6 +206,7 @@ export interface ChatMeta {
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
   mounts?: Mount[];
+  toolConfigs?: ToolConfig[];
 }
 
 /**
@@ -352,6 +355,14 @@ export interface Settings {
   lmParameters?: LmParameters;
   experimental?: {
     markdownRendering?: 'block_markdown' | 'monolithic_html';
+    /**
+     * Controls whether tool configuration changes are persisted.
+     *
+     * This does not enable or disable any tool by itself. When disabled, tool
+     * config changes can still affect the current runtime session, but they are
+     * not written to ChatMeta.experimental.toolConfigs.
+     */
+    toolConfigPersistence?: ToolConfigPersistence;
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat';
     readonly unreadable?: {
       readonly [key: string]: unknown;

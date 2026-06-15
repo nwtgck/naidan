@@ -86,6 +86,7 @@ vi.mock('../services/tools/registry', () => ({
 }));
 
 vi.mock('./useChatTools', () => ({
+  getEffectiveToolConfigsForChat: ({ persistedToolConfigs }: { persistedToolConfigs: unknown }) => persistedToolConfigs ?? [{ key: 'builtin.calculator' }],
   useChatTools: () => ({
     enabledToolNames: { value: ['calculator'] },
   }),
@@ -93,7 +94,7 @@ vi.mock('./useChatTools', () => ({
 
 vi.mock('./useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
+    getNaidanSysfsAccessScope: vi.fn(() => 'none'),
   }),
 }));
 

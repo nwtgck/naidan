@@ -23,7 +23,7 @@ export async function listVisibleChatIds({ context }: { context: NaidanSysfsCont
       ...chatGroup.items.map(item => item.chat.id),
     ]))
   }
-  case 'all_chats':
+  case 'main_chats':
     return (await context.reader.listChats()).map(chat => chat.id)
   default: {
     const _ex: never = context.visibility

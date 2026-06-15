@@ -14,7 +14,7 @@ const mockSettings = ref({
   defaultModelId: 'gpt-4',
   providerProfiles: [],
   mounts: [],
-  experimental: undefined as { sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
+  experimental: undefined as { toolConfigPersistence?: 'disabled' | 'enabled'; sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
 });
 
 vi.mock('@/composables/useConfirm', () => ({
@@ -75,6 +75,19 @@ describe('FeatureFlagsSettings.vue', () => {
 
     expect(mockShowConfirm).toHaveBeenCalled();
     expect(useFeatureFlags().isFeatureEnabled({ feature: 'volume' })).toBe(true);
+  });
+
+  it('auto-saves the tool config persistence setting when toggled', async () => {
+    const wrapper = mount(FeatureFlagsSettings);
+    await wrapper.find('[data-testid="feature-tool-config-persistence-toggle"]').trigger('click');
+
+    expect(mockSaveSettings).toHaveBeenCalledWith({
+      patch: {
+        experimental: {
+          toolConfigPersistence: 'enabled',
+        },
+      },
+    });
   });
 
   it('auto-saves the sidebar send reorder setting when toggled', async () => {

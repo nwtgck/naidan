@@ -1,4 +1,4 @@
-import type { Tool } from './types';
+import type { LlmToolName, Tool } from './types';
 import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
 import { WikipediaGetPageTool, WikipediaSearchTool } from './wikipedia';
@@ -6,7 +6,7 @@ import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
 import { storageService } from '@/services/storage';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
-import type { NaidanSysfsMountSelection, WeshMount } from '@/services/wesh/types';
+import type { NaidanSysfsAccessScope, WeshMount } from '@/services/wesh/types';
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
 import { abortOngoingScans, getVolumeExtensions, isVolumeScanned, startVolumeExtensionScan } from './wesh/volume-extension-cache';
 import { buildShellDescription } from './wesh/shell-description';
@@ -22,16 +22,16 @@ export async function getEnabledTools({
   chatMounts,
   chatId,
   chatGroupId,
-  naidanSysfsVisibility,
+  naidanSysfsAccessScope,
   tmpHandle,
 }: {
-  enabledNames: string[];
+  enabledNames: LlmToolName[];
   settings: Settings;
   chatGroupMounts?: Mount[];
   chatMounts?: Mount[];
   chatId: string | undefined;
   chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsMountSelection;
+  naidanSysfsAccessScope: NaidanSysfsAccessScope;
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
@@ -40,7 +40,7 @@ export async function getEnabledTools({
     settings,
     chatId,
     chatGroupId,
-    naidanSysfsVisibility,
+    naidanSysfsAccessScope,
     tmpHandle,
   })
 
@@ -76,15 +76,15 @@ export async function getEnabledTools({
       if (shouldMountTmp) {
         resolvedMounts.push({ type: 'directory', path: '/tmp', handle: tmpHandle!, readOnly: false });
       }
-      switch (naidanSysfsVisibility) {
+      switch (naidanSysfsAccessScope) {
       case 'none':
         break
       case 'current_chat_only':
       case 'current_chat_with_chat_group':
-      case 'all_chats': {
+      case 'main_chats': {
         const naidanSysfsMount = createNaidanSysfsMount({
           storageType: settings.storageType,
-          visibility: naidanSysfsVisibility,
+          visibility: naidanSysfsAccessScope,
           binaryObjectAccess: 'data',
           currentChatId: chatId,
           currentChatGroupId: chatGroupId,
@@ -95,8 +95,8 @@ export async function getEnabledTools({
         break
       }
       default: {
-        const _ex: never = naidanSysfsVisibility
-        throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`)
+        const _ex: never = naidanSysfsAccessScope
+        throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`)
       }
       }
       const volumeHandles = new Map<string, FileSystemDirectoryHandle>();
@@ -174,29 +174,29 @@ function hasEnabledNaidanSysfsMount({
   settings,
   chatId,
   chatGroupId,
-  naidanSysfsVisibility,
+  naidanSysfsAccessScope,
 }: {
   settings: Settings;
   chatId: string | undefined;
   chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsMountSelection;
+  naidanSysfsAccessScope: NaidanSysfsAccessScope;
 }): boolean {
-  switch (naidanSysfsVisibility) {
+  switch (naidanSysfsAccessScope) {
   case 'none':
     return false
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
-  case 'all_chats':
+  case 'main_chats':
     return createNaidanSysfsMount({
       storageType: settings.storageType,
-      visibility: naidanSysfsVisibility,
+      visibility: naidanSysfsAccessScope,
       binaryObjectAccess: 'data',
       currentChatId: chatId,
       currentChatGroupId: chatGroupId,
     }) !== undefined
   default: {
-    const _ex: never = naidanSysfsVisibility
-    throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`)
+    const _ex: never = naidanSysfsAccessScope
+    throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`)
   }
   }
 }
@@ -206,14 +206,14 @@ function canExposeWikipediaToolsForGeneration({
   settings,
   chatId,
   chatGroupId,
-  naidanSysfsVisibility,
+  naidanSysfsAccessScope,
   tmpHandle,
 }: {
-  enabledNames: string[];
+  enabledNames: LlmToolName[];
   settings: Settings;
   chatId: string | undefined;
   chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsMountSelection;
+  naidanSysfsAccessScope: NaidanSysfsAccessScope;
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): boolean {
   if (!enabledNames.includes('shell_execute')) {
@@ -226,7 +226,7 @@ function canExposeWikipediaToolsForGeneration({
     settings,
     chatId,
     chatGroupId,
-    naidanSysfsVisibility,
+    naidanSysfsAccessScope,
   })) {
     return false
   }

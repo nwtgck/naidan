@@ -4,20 +4,20 @@ import type { Mount } from '@/models/types'
 import { storageService } from '@/services/storage'
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy'
 import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount'
-import type { NaidanSysfsMountSelection, WeshMount } from '@/services/wesh/types'
+import type { NaidanSysfsAccessScope, WeshMount } from '@/services/wesh/types'
 
 export async function buildWorkerMountsForChat({
   chatMounts,
   chatGroupMounts,
   chatId,
   chatGroupId,
-  naidanSysfsVisibility,
+  naidanSysfsAccessScope,
 }: {
   chatMounts: readonly Mount[]
   chatGroupMounts: readonly Mount[] | undefined
   chatId: string | undefined
   chatGroupId: string | undefined
-  naidanSysfsVisibility: NaidanSysfsMountSelection
+  naidanSysfsAccessScope: NaidanSysfsAccessScope
 }): Promise<WeshMount[]> {
   const { settings } = useSettings()
   const { ensureChatTmpDirectory } = useChatTmpDirectory()
@@ -29,15 +29,15 @@ export async function buildWorkerMountsForChat({
     result.push({ type: 'directory', path: '/tmp', handle: tmp.handle, readOnly: false })
   }
 
-  switch (naidanSysfsVisibility) {
+  switch (naidanSysfsAccessScope) {
   case 'none':
     break
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
-  case 'all_chats': {
+  case 'main_chats': {
     const naidanSysfsMount = createNaidanSysfsMount({
       storageType: settings.value.storageType,
-      visibility: naidanSysfsVisibility,
+      visibility: naidanSysfsAccessScope,
       binaryObjectAccess: 'data',
       currentChatId: chatId,
       currentChatGroupId: chatGroupId,
@@ -48,8 +48,8 @@ export async function buildWorkerMountsForChat({
     break
   }
   default: {
-    const _ex: never = naidanSysfsVisibility
-    throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`)
+    const _ex: never = naidanSysfsAccessScope
+    throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`)
   }
   }
 

@@ -79,7 +79,7 @@ import type { ApprovalUiDecision } from '@/services/approval';
 
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
-const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
+const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
 const { state: previewState, closePreview } = useImagePreview({ scoped: true });
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
@@ -158,22 +158,22 @@ const availableImageModels = computed(() => {
   return getSortedImageModels({ availableModels: availableModels.value });
 });
 
-const chatAreaNaidanSysfsVisibility = computed(() => {
-  return getNaidanSysfsMountSelection({ chatId: props.chatId });
+const chatAreaNaidanSysfsAccessScope = computed(() => {
+  return getNaidanSysfsAccessScope({ chatId: props.chatId });
 });
 
 const contextCompactPromptMode = computed<ContextCompactPromptMode>(() => {
-  const mountSelection = chatAreaNaidanSysfsVisibility.value;
-  switch (mountSelection) {
+  const accessScope = chatAreaNaidanSysfsAccessScope.value;
+  switch (accessScope) {
   case 'none':
     return 'without_message_ids';
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
-  case 'all_chats':
+  case 'main_chats':
     return 'with_message_ids';
   default: {
-    const _ex: never = mountSelection;
-    throw new Error(`Unhandled naidan sysfs visibility: ${_ex}`);
+    const _ex: never = accessScope;
+    throw new Error(`Unhandled naidan sysfs access scope: ${_ex}`);
   }
   }
 });
@@ -491,7 +491,7 @@ async function openChatFileExplorer() {
     chatGroupMounts: chatGroup.value?.mounts,
     chatId: chat.value.id,
     chatGroupId: chat.value.groupId ?? undefined,
-    naidanSysfsVisibility: chatAreaNaidanSysfsVisibility.value,
+    naidanSysfsAccessScope: chatAreaNaidanSysfsAccessScope.value,
   });
 
   openFileExplorer({ options: {
@@ -1114,7 +1114,7 @@ watch(
       :chat-group-mounts="chatGroup?.mounts"
       :chat-id="props.chatId"
       :chat-group-id="chat?.groupId ?? undefined"
-      :naidan-sysfs-visibility="chatAreaNaidanSysfsVisibility"
+      :naidan-sysfs-access-scope="chatAreaNaidanSysfsAccessScope"
       @close="toggleChatWeshTerminal()"
     />
 

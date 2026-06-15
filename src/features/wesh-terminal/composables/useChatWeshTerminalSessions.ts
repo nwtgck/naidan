@@ -1,7 +1,7 @@
 import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions'
 import type { Mount } from '@/models/types'
 import { buildWorkerMountsForChat } from '@/services/wesh/chat-worker-mounts'
-import type { NaidanSysfsMountSelection } from '@/services/wesh/types'
+import type { NaidanSysfsAccessScope } from '@/services/wesh/types'
 
 const store = createWeshTerminalSessions({
   opfsRootName: 'naidan-chat-wesh',
@@ -17,7 +17,7 @@ type SessionArgs = {
   chatGroupMounts: readonly Mount[] | undefined
   chatId: string | undefined
   chatGroupId: string | undefined
-  naidanSysfsVisibility: NaidanSysfsMountSelection
+  naidanSysfsAccessScope: NaidanSysfsAccessScope
 }
 
 function buildMountsForSession({
@@ -25,26 +25,26 @@ function buildMountsForSession({
   chatGroupMounts,
   chatId,
   chatGroupId,
-  naidanSysfsVisibility,
+  naidanSysfsAccessScope,
 }: SessionArgs) {
   return buildWorkerMountsForChat({
     chatMounts,
     chatGroupMounts,
     chatId,
     chatGroupId,
-    naidanSysfsVisibility,
+    naidanSysfsAccessScope,
   })
 }
 
 export function useChatWeshTerminalSessions() {
   return {
     ...store,
-    createChatWorkerSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
-      store.createSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
-    ensureActiveSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
-      store.ensureSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
-    reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }: SessionArgs) =>
-      store.ensureSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility }) }),
+    createChatWorkerSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }: SessionArgs) =>
+      store.createSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }) }),
+    ensureActiveSession: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }: SessionArgs) =>
+      store.ensureSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }) }),
+    reopenSessionIfNeeded: ({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }: SessionArgs) =>
+      store.ensureSession({ buildMounts: () => buildMountsForSession({ chatMounts, chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope }) }),
     TEST_ONLY: {
       buildWorkerMountsForChat,
     },

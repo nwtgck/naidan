@@ -7,21 +7,21 @@ import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
 import { useToolDependencyActions } from '@/composables/useToolDependencyActions';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
+import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 
 const { currentChat } = useCurrentChatState();
 const { settings } = useSettings();
 const { isToolEnabled, toggleTool } = useChatTools();
-const { getNaidanSysfsMountSelection, setNaidanSysfsMountSelection } = useChatWeshPreferences();
+const { getNaidanSysfsAccessScope, setNaidanSysfsAccessScope } = useChatWeshPreferences();
 const {
   disableNaidanSysfsForCurrentChat,
   disableShellToolForCurrentChat,
 } = useToolDependencyActions();
 const { isFeatureEnabled } = useFeatureFlags();
 const isWeshToolFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'wesh_tool' }));
-const naidanSysfsMountSelection = computed(() => getNaidanSysfsMountSelection({ chatId: currentChat.value?.id }));
-const isNaidanSysfsMounted = computed(() => naidanSysfsMountSelection.value !== 'none');
+const naidanSysfsAccessScope = computed(() => getNaidanSysfsAccessScope({ chatId: currentChat.value?.id }));
+const isNaidanSysfsMounted = computed(() => naidanSysfsAccessScope.value !== 'none');
 const hasWritableTmp = computed(() => shouldIncludeWritableTmpMount({ storageType: settings.value.storageType }));
 
 function handleShellToolToggle() {
@@ -32,8 +32,8 @@ function handleShellToolToggle() {
   }
 
   toggleTool({ name: 'shell_execute' });
-  if (enablingShellExecute && naidanSysfsMountSelection.value === 'none') {
-    setNaidanSysfsMountSelection({ chatId: currentChat.value?.id, selection: 'current_chat_only' });
+  if (enablingShellExecute && naidanSysfsAccessScope.value === 'none') {
+    setNaidanSysfsAccessScope({ chatId: currentChat.value?.id, accessScope: 'current_chat_only' });
   }
 }
 
@@ -42,9 +42,9 @@ function handleNaidanSysfsToggle() {
     disableNaidanSysfsForCurrentChat()
     return
   }
-  setNaidanSysfsMountSelection({
+  setNaidanSysfsAccessScope({
     chatId: currentChat.value?.id,
-    selection: 'current_chat_only',
+    accessScope: 'current_chat_only',
   });
 }
 
@@ -53,17 +53,17 @@ function handleNaidanSysfsSelectionChange({ event }: { event: Event }) {
   if (!(target instanceof HTMLSelectElement)) {
     return;
   }
-  const selection = target.value as NaidanSysfsMountSelection;
-  switch (selection) {
+  const accessScope = target.value as NaidanSysfsAccessScope;
+  switch (accessScope) {
   case 'none':
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
-  case 'all_chats':
-    setNaidanSysfsMountSelection({ chatId: currentChat.value?.id, selection });
+  case 'main_chats':
+    setNaidanSysfsAccessScope({ chatId: currentChat.value?.id, accessScope });
     break;
   default: {
-    const _ex: never = selection;
-    throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`);
+    const _ex: never = accessScope;
+    throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`);
   }
   }
 }
@@ -71,7 +71,7 @@ function handleNaidanSysfsSelectionChange({ event }: { event: Event }) {
 defineExpose({
   TEST_ONLY: {
     isNaidanSysfsMounted,
-    naidanSysfsMountSelection,
+    naidanSysfsAccessScope,
   },
 });
 </script>
@@ -144,19 +144,19 @@ defineExpose({
       </button>
 
       <div v-if="isNaidanSysfsMounted" class="px-1">
-        <label class="block text-[10px] font-black tracking-tight text-gray-400 mb-2" for="naidan-sysfs-visibility-select">
+        <label class="block text-[10px] font-black tracking-tight text-gray-400 mb-2" for="naidan-sysfs-access-scope-select">
           Visibility
         </label>
         <select
-          id="naidan-sysfs-visibility-select"
-          :value="naidanSysfsMountSelection"
+          id="naidan-sysfs-access-scope-select"
+          :value="naidanSysfsAccessScope"
           class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-[11px] text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-          data-testid="naidan-sysfs-visibility-select"
+          data-testid="naidan-sysfs-access-scope-select"
           @change="handleNaidanSysfsSelectionChange({ event: $event })"
         >
           <option value="current_chat_only">Current chat</option>
           <option value="current_chat_with_chat_group">Current chat + chat group</option>
-          <option value="all_chats">All chats</option>
+          <option value="main_chats">All chats</option>
         </select>
       </div>
     </div>

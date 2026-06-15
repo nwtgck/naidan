@@ -414,7 +414,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const meta = ChatMetaSchemaDto.parse(JSON.parse(await metaFile.text()));
       const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.text()));
 
-      const chat = chatToDomain({ dto: { ...meta, ...content, messages: undefined } });
+      const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
       // Resolve groupId from hierarchy
       const hierarchy = await this.loadHierarchy();

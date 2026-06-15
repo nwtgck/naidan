@@ -58,7 +58,7 @@ vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', templa
 const mockOpenFileExplorer = vi.fn();
 const mockEnsureChatTmpDirectory = vi.fn();
 const mockGetChatTmpDirectory = vi.fn();
-const mockGetNaidanSysfsMountSelection = vi.fn();
+const mockGetNaidanSysfsAccessScope = vi.fn();
 
 const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
 vi.mock('../composables/useSettings', () => ({
@@ -75,7 +75,7 @@ vi.mock('../composables/useChatTools', () => ({
 }));
 vi.mock('../composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
+    getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),
 }));
 vi.mock('../composables/useToast', () => ({
@@ -112,13 +112,13 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatMounts,
     chatGroupMounts,
     chatId,
-    naidanSysfsVisibility,
+    naidanSysfsAccessScope,
   }: {
     chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
     chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
     chatId: string | undefined;
     chatGroupId: string | undefined;
-    naidanSysfsVisibility: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'all_chats';
+    naidanSysfsAccessScope: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'main_chats';
   }) => {
     const { storageService } = await import('@/services/storage');
     const mounts: Array<{ type: string; path: string; readOnly?: boolean; visibility?: string }> = [];
@@ -128,11 +128,11 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
       mounts.push({ type: 'directory', path: tmp.mountPath, readOnly: false });
     }
 
-    if (naidanSysfsVisibility !== 'none') {
+    if (naidanSysfsAccessScope !== 'none') {
       mounts.push({
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',
-        visibility: naidanSysfsVisibility,
+        visibility: naidanSysfsAccessScope,
       });
     }
 
@@ -449,7 +449,7 @@ describe('ChatInput Integration', () => {
     mockSettings.value = { storageType: 'opfs', mounts: [] };
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
-    mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+    mockGetNaidanSysfsAccessScope.mockReturnValue('none');
     mockSendMessageForChat.mockResolvedValue(true);
   });
 
@@ -615,7 +615,7 @@ describe('ChatInput Integration', () => {
     }) });
   });
 
-  it('mount explorer reuses shared naidan sysfs mount selection', async () => {
+  it('mount explorer reuses shared naidan sysfs access scope', async () => {
     mockCurrentChat.value = {
       id: 'chat-1',
       modelId: 'model-1',
@@ -630,7 +630,7 @@ describe('ChatInput Integration', () => {
       storageType: 'opfs',
       mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
     };
-    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+    mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
 
     const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);

@@ -1,34 +1,53 @@
-import { ref } from 'vue';
-import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
-
-const naidanSysfsMountSelectionByChat = ref<Map<string, NaidanSysfsMountSelection>>(new Map());
+import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
+import {
+  findLastToolConfigByKey,
+  setWeshNaidanSysfsAccessScopeInToolConfigs,
+} from '@/services/tools/tool-config';
+import { getLiveChatById } from '@/composables/chat/global/chat-core-singletons';
+import {
+  getEffectiveToolConfigsForChat,
+  updateToolConfigsForChat,
+} from '@/composables/useChatTools';
 
 export function useChatWeshPreferences() {
-  const getNaidanSysfsMountSelection = ({ chatId }: { chatId: string | undefined }): NaidanSysfsMountSelection => {
+  const getNaidanSysfsAccessScope = ({ chatId }: { chatId: string | undefined }): NaidanSysfsAccessScope => {
     if (chatId === undefined) {
       return 'none';
     }
-    return naidanSysfsMountSelectionByChat.value.get(chatId) ?? 'none';
+
+    const liveChat = getLiveChatById({ chatId });
+    const toolConfigs = getEffectiveToolConfigsForChat({
+      chatId,
+      persistedToolConfigs: liveChat?.toolConfigs,
+    });
+    return findLastToolConfigByKey({ toolConfigs, key: 'builtin.wesh' })
+      ?.naidanSysfs.accessScope ?? 'none';
   };
 
-  const setNaidanSysfsMountSelection = ({
+  const setNaidanSysfsAccessScope = ({
     chatId,
-    selection,
+    accessScope,
   }: {
     chatId: string | undefined;
-    selection: NaidanSysfsMountSelection;
+    accessScope: NaidanSysfsAccessScope;
   }) => {
     if (chatId === undefined) return;
-    const next = new Map(naidanSysfsMountSelectionByChat.value);
-    next.set(chatId, selection);
-    naidanSysfsMountSelectionByChat.value = next;
+
+    updateToolConfigsForChat({
+      chatId,
+      updater: ({ toolConfigs }) => setWeshNaidanSysfsAccessScopeInToolConfigs({
+        toolConfigs,
+        accessScope,
+      }),
+    });
   };
 
   return {
-    getNaidanSysfsMountSelection,
-    setNaidanSysfsMountSelection,
+    getNaidanSysfsAccessScope,
+    setNaidanSysfsAccessScope,
     TEST_ONLY: {
-      naidanSysfsMountSelectionByChat,
+      // Export internal state and logic used only for testing here. Do not reference these in production logic.
+      // ESLint-required for useXxx return objects.
     },
   };
 }

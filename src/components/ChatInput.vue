@@ -38,7 +38,7 @@ import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, Chat, ChatGroup, LmParameters } from '@/models/types';
 
 const { setToolEnabled } = useChatTools();
-const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
+const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
 const { showConfirm } = useConfirm();
@@ -523,7 +523,7 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
     chatGroupMounts: chatGroup.value?.mounts,
     chatId: chat.value.id,
     chatGroupId: chat.value.groupId ?? undefined,
-    naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: chat.value.id }),
+    naidanSysfsAccessScope: getNaidanSysfsAccessScope({ chatId: chat.value.id }),
   });
 
   const clickedMount = mounts.find(m => m.volumeId === volumeId);

@@ -69,7 +69,7 @@ async function listVisibleHierarchyItems({ context }: { context: NaidanSysfsCont
       return items.filter(item => item.type === 'chat_group' && item.chatGroup.id === context.currentChatGroupId)
     }
     return items.filter(item => item.type === 'chat' && item.chat.id === context.currentChatId)
-  case 'all_chats':
+  case 'main_chats':
     return items
   default: {
     const _ex: never = context.visibility

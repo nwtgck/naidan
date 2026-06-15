@@ -103,7 +103,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     try {
       const meta = ChatMetaSchemaDto.parse(rawMeta);
       const content = ChatContentSchemaDto.parse(rawContent);
-      const chat = chatToDomain({ dto: { ...meta, ...content, messages: undefined } });
+      const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
       // Resolve groupId from hierarchy
       const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));

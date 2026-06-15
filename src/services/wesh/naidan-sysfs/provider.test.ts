@@ -383,10 +383,10 @@ describe('NaidanSysfsProvider', () => {
     ])
   })
 
-  it('lists chat-groups without current-chat-group for all_chats when the current chat is not in a chat group', async () => {
+  it('lists chat-groups without current-chat-group for main_chats when the current chat is not in a chat group', async () => {
     const provider = new NaidanSysfsProvider({
       reader: createReaderStub({ metadata: sampleIndividualChatMetadata, chatGroup: sampleChatGroup }),
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
       currentChatId: 'chat-3',
       currentChatGroupId: undefined,

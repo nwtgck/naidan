@@ -8,6 +8,8 @@ import { OllamaProvider } from '@/services/lm/ollama';
 import { TransformersJsProvider } from '@/services/transformers-js/provider';
 import { storageService } from '@/services/storage';
 import { getEnabledTools } from '@/services/tools/factory';
+import { findLastToolConfigByKey, llmToolNamesFromToolConfigs } from '@/services/tools/tool-config';
+import { getEffectiveToolConfigsForChat } from '@/composables/useChatTools';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import {
@@ -34,9 +36,7 @@ import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
 import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useToast } from '@/composables/useToast';
-import { useChatTools } from '@/composables/useChatTools';
 import { useApproval } from '@/composables/useApproval';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
 import {
   availableModels,
   chatRuntimeStore,
@@ -1096,9 +1096,13 @@ async function getEnabledToolsForChat({
   chat: Chat;
 }): Promise<Tool[]> {
   const { settings } = useSettings();
-  const { enabledToolNames } = useChatTools();
-  const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
-  const shellExecuteEnabled = enabledToolNames.value.includes('shell_execute');
+  const toolConfigs = getEffectiveToolConfigsForChat({
+    chatId: chat.id,
+    persistedToolConfigs: chat.toolConfigs,
+  });
+  const enabledNames = llmToolNamesFromToolConfigs({ toolConfigs });
+  const shellExecuteEnabled = enabledNames.includes('shell_execute');
+  const weshToolConfig = findLastToolConfigByKey({ toolConfigs, key: 'builtin.wesh' });
   const chatTmpDirectory = shellExecuteEnabled && shouldIncludeWritableTmpMount({ storageType: settings.value.storageType })
     ? await ensureChatTmpDirectory({ chatId: chat.id })
     : undefined;
@@ -1109,13 +1113,13 @@ async function getEnabledToolsForChat({
     : undefined;
 
   return await getEnabledTools({
-    enabledNames: enabledToolNames.value,
+    enabledNames,
     settings: settings.value as unknown as Settings,
     chatGroupMounts,
     chatMounts: chat.mounts,
     chatId: chat.id,
     chatGroupId: chat.groupId ?? undefined,
-    naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: chat.id }),
+    naidanSysfsAccessScope: weshToolConfig?.naidanSysfs.accessScope ?? 'none',
     tmpHandle: chatTmpDirectory?.handle,
   });
 }

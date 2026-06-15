@@ -20,7 +20,7 @@ const { mocks } = vi.hoisted(() => ({
       defaultModelId: 'gpt-4',
       providerProfiles: [],
       mounts: [],
-      experimental: undefined as { sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
+      experimental: undefined as { toolConfigPersistence?: 'disabled' | 'enabled'; sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
     },
   }
 }));

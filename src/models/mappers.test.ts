@@ -167,7 +167,7 @@ describe('Sidebar assembly', () => {
 });
 
 describe('Settings Mapping', () => {
-  it('defaults sidebar send reorder to disabled when experimental settings are missing', () => {
+  it('defaults experimental setting modes to disabled when experimental settings are missing', () => {
     const dto: SettingsDto = {
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
       defaultModelId: 'gpt-4',
@@ -184,6 +184,7 @@ describe('Settings Mapping', () => {
 
     const domain = settingsToDomain({ dto });
 
+    expect(domain.experimental?.toolConfigPersistence).toBe('disabled');
     expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
   });
 
@@ -203,6 +204,7 @@ describe('Settings Mapping', () => {
       lmParameters: undefined,
       experimental: {
         markdownRendering: undefined,
+        toolConfigPersistence: 'enabled',
         sidebarSendMessageReorder: 'move_sent_chat',
       },
     };
@@ -210,7 +212,9 @@ describe('Settings Mapping', () => {
     const dto = settingsToDto({ domain });
     const mapped = settingsToDomain({ dto });
 
+    expect(dto.experimental?.toolConfigPersistence).toBe('enabled');
     expect(dto.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
+    expect(mapped.experimental?.toolConfigPersistence).toBe('enabled');
     expect(mapped.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
   });
 });

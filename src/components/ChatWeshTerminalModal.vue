@@ -5,7 +5,7 @@ import WeshTerminalPane from '@/features/wesh-terminal/components/WeshTerminalPa
 import { useChatWeshTerminalSessions } from '@/composables/useChatWeshTerminalSessions';
 import { useConfirm } from '@/composables/useConfirm';
 import type { Mount } from '@/models/types';
-import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
+import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -13,7 +13,7 @@ const props = defineProps<{
   chatGroupMounts: readonly Mount[] | undefined;
   chatId: string | undefined;
   chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsMountSelection;
+  naidanSysfsAccessScope: NaidanSysfsAccessScope;
 }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 
@@ -38,7 +38,7 @@ watch(() => props.isOpen, async (open) => {
     chatGroupMounts: props.chatGroupMounts,
     chatId: props.chatId,
     chatGroupId: props.chatGroupId,
-    naidanSysfsVisibility: props.naidanSysfsVisibility,
+    naidanSysfsAccessScope: props.naidanSysfsAccessScope,
   });
   await nextTick();
   paneRef.value?.focusInput();
@@ -97,7 +97,7 @@ defineExpose({
           :complete-input="completeInput"
           @update:active-session-id="(id) => (activeSessionId = id)"
           @run="({ script }) => runCommand({ script })"
-          @create-session="createChatWorkerSession({ chatMounts: chatMounts ?? [], chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility })"
+          @create-session="createChatWorkerSession({ chatMounts: chatMounts ?? [], chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope })"
           @close-session="handleCloseSession"
           @cancel="({ sessionId }) => cancelRunningCommand({ sessionId })"
         />

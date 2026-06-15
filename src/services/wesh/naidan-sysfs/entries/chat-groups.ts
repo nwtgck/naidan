@@ -12,7 +12,7 @@ export async function listVisibleChatGroupIds({ context }: { context: NaidanSysf
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
     return context.currentChatGroupId === undefined ? [] : [context.currentChatGroupId]
-  case 'all_chats':
+  case 'main_chats':
     return (await context.reader.listChatGroups()).map(chatGroup => chatGroup.id)
   default: {
     const _ex: never = context.visibility

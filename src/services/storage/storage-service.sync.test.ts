@@ -91,6 +91,7 @@ describe('StorageService Synchronization Wrapper', () => {
     mockProvider.clearAll.mockResolvedValue(undefined);
     mockProvider.saveFile.mockResolvedValue(undefined);
     mockProvider.init.mockResolvedValue(undefined);
+    mockProvider.loadSettings.mockResolvedValue(null);
 
     service = new StorageService();
     await service.init({ type: 'local' });
@@ -242,6 +243,57 @@ describe('StorageService Synchronization Wrapper', () => {
     expect(updater).toHaveBeenCalled();
     expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({ meta });
     expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
+  });
+
+
+
+  it('should strip tool configs on ordinary chat meta updates when persistence is disabled', async () => {
+    const meta = {
+      id: 'c1',
+      toolConfigs: [{ key: 'builtin.calculator' }],
+    } as any;
+
+    await service.updateChatMeta({ id: 'c1', updater: () => meta });
+
+    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({
+      meta: { id: 'c1' },
+    });
+  });
+
+  it('should keep tool configs on ordinary chat meta updates when persistence is enabled', async () => {
+    const meta = {
+      id: 'c1',
+      toolConfigs: [{ key: 'builtin.calculator' }],
+    } as any;
+    mockProvider.loadSettings.mockResolvedValue({
+      experimental: {
+        toolConfigPersistence: 'enabled',
+      },
+    });
+
+    await service.updateChatMeta({ id: 'c1', updater: () => meta });
+
+    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({ meta });
+  });
+
+  it('should not gate restore snapshots by the tool config persistence setting', async () => {
+    const snapshot = {
+      structure: {
+        settings: {
+          experimental: {
+            toolConfigPersistence: 'disabled',
+          },
+        },
+        hierarchy: { items: [] },
+        chatMetas: [{ id: 'c1', toolConfigs: [{ key: 'builtin.calculator' }] }],
+        chatGroups: [],
+      },
+      contentStream: (async function* () {})(),
+    } as any;
+
+    await service.restore({ snapshot });
+
+    expect(mockProvider.restore).toHaveBeenCalledWith({ snapshot });
   });
 
   it('should wrap updateChatContent with specific chat lock and notify', async () => {

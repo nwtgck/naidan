@@ -3,11 +3,11 @@ import { renderChatMetadataMarkdown } from './naidan-sysfs/render/metadata-markd
 import { createMountedNaidanSysfsWesh, createMountedNaidanSysfsWeshWithCurrentChat, executeInWesh, individualChatMetadata, siblingChatMetadata } from './naidan-sysfs.test-helpers'
 import type { Wesh } from './index'
 
-describe('naidan sysfs all_chats', () => {
+describe('naidan sysfs all chats option', () => {
   let wesh: Wesh
 
   beforeEach(async () => {
-    wesh = await createMountedNaidanSysfsWesh({ visibility: 'all_chats' })
+    wesh = await createMountedNaidanSysfsWesh({ visibility: 'main_chats' })
   })
 
   it('lists hierarchy entries and allows access to all visible chats', async () => {
@@ -66,7 +66,7 @@ chat-group-1
 
   it('omits current-chat-group when the current chat is not in a chat group', async () => {
     const individualWesh = await createMountedNaidanSysfsWeshWithCurrentChat({
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       currentChatId: 'chat-3',
       currentChatGroupId: undefined,
     })

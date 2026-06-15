@@ -587,7 +587,7 @@ export class ImportExportService {
         if (contentFile) {
           try {
             const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
-            yield { type: 'chat' as const, data: { ...meta, ...content, messages: undefined } };
+            yield { type: 'chat' as const, data: { ...meta, ...content, experimental: meta.experimental, messages: undefined } };
           } catch (e) { /* Ignore */ }
         }
       }
@@ -743,6 +743,7 @@ export class ImportExportService {
             const dto: ChatDto = {
               ...meta,
               ...content,
+              experimental: meta.experimental,
               // ChatContentSchemaDto materializes missing currentLeafId as undefined.
               currentLeafId: content.currentLeafId ?? meta.currentLeafId,
               messages: undefined,

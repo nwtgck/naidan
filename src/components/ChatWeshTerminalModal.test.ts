@@ -109,7 +109,7 @@ describe('ChatWeshTerminalModal', () => {
         chatGroupMounts: undefined,
         chatId: 'chat-1',
         chatGroupId: 'chat-group-1',
-        naidanSysfsVisibility: 'all_chats',
+        naidanSysfsAccessScope: 'main_chats',
       },
     });
     await flushPromises();
@@ -121,7 +121,7 @@ describe('ChatWeshTerminalModal', () => {
         expect.objectContaining({
           type: 'naidan_sysfs',
           path: '/sys/fs/naidan',
-          visibility: 'all_chats',
+          visibility: 'main_chats',
           currentChatId: 'chat-1',
           currentChatGroupId: 'chat-group-1',
         }),
@@ -136,7 +136,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('does not call ensureChatTmpDirectory when chatId is undefined', async () => {
     mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsAccessScope: 'none' },
     });
     await flushPromises();
 
@@ -153,7 +153,7 @@ describe('ChatWeshTerminalModal', () => {
         chatGroupMounts: undefined,
         chatId: 'chat-1',
         chatGroupId: 'chat-group-1',
-        naidanSysfsVisibility: 'current_chat_only',
+        naidanSysfsAccessScope: 'current_chat_only',
       },
     });
     await flushPromises();
@@ -177,7 +177,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('shows session tab and new session button when open with no chat mounts', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsAccessScope: 'none' },
     });
     await flushPromises();
 
@@ -188,7 +188,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('asks for confirmation before closing a session', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsAccessScope: 'none' },
     });
     await flushPromises();
 

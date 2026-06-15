@@ -22,7 +22,7 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
   visibility: z.enum([
     'current_chat_only',
     'current_chat_with_chat_group',
-    'all_chats',
+    'main_chats',
   ]),
   binaryObjectAccess: z.enum([
     'none',

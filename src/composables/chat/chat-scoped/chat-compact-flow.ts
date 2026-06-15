@@ -105,7 +105,7 @@ export async function runCompactCurrentBranchForChat({
   try {
     const { settings } = useSettings();
     const { addErrorEvent } = useGlobalEvents();
-    const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
+    const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
     const loadedChat = getReadonlyChat({ chatId: mutableChat.id }) ?? mutableChat;
     const resolved = resolveChatSettings({
       chat: loadedChat,
@@ -130,7 +130,7 @@ export async function runCompactCurrentBranchForChat({
     }
 
     const promptMode = resolveCompactPromptMode({
-      mountSelection: getNaidanSysfsMountSelection({ chatId: mutableChat.id }),
+      accessScope: getNaidanSysfsAccessScope({ chatId: mutableChat.id }),
     });
     contextCompactRuntime.setProgress({
       chatId: mutableChat.id,
@@ -306,20 +306,20 @@ export function abortContextCompactForChat({
 }
 
 function resolveCompactPromptMode({
-  mountSelection,
+  accessScope,
 }: {
-  mountSelection: ReturnType<ReturnType<typeof useChatWeshPreferences>['getNaidanSysfsMountSelection']>;
+  accessScope: ReturnType<ReturnType<typeof useChatWeshPreferences>['getNaidanSysfsAccessScope']>;
 }): ContextCompactPromptMode {
-  switch (mountSelection) {
+  switch (accessScope) {
   case 'none':
     return 'without_message_ids';
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
-  case 'all_chats':
+  case 'main_chats':
     return 'with_message_ids';
   default: {
-    const _ex: never = mountSelection;
-    throw new Error(`Unhandled naidan sysfs mount selection: ${_ex}`);
+    const _ex: never = accessScope;
+    throw new Error(`Unhandled naidan sysfs access scope: ${_ex}`);
   }
   }
 }

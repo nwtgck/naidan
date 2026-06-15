@@ -4,6 +4,40 @@ import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missing
 
 const EmptyExperimentalSchemaDto = resolveMissingAsUndefined(z.object({}));
 
+export const ExperimentalCalculatorToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
+  key: z.literal('builtin.calculator'),
+}));
+
+export const ExperimentalWikipediaToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
+  key: z.literal('builtin.wikipedia'),
+}));
+
+export const ExperimentalWeshNaidanSysfsAccessScopeSchemaDto = z.enum([
+  'none',
+  'current_chat_only',
+  'current_chat_with_chat_group',
+  'main_chats',
+]);
+
+
+export const ExperimentalWeshToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
+  key: z.literal('builtin.wesh'),
+  naidanSysfs: resolveMissingAsUndefined(z.object({
+    accessScope: ExperimentalWeshNaidanSysfsAccessScopeSchemaDto,
+  })),
+}));
+
+export const ExperimentalToolConfigSchemaDto = z.discriminatedUnion('key', [
+  ExperimentalCalculatorToolConfigSchemaDto,
+  ExperimentalWikipediaToolConfigSchemaDto,
+  ExperimentalWeshToolConfigSchemaDto,
+]);
+export type ExperimentalToolConfigDto = z.infer<typeof ExperimentalToolConfigSchemaDto>;
+
+export const ExperimentalToolConfigsSchemaDto = z.array(ExperimentalToolConfigSchemaDto);
+export type ExperimentalToolConfigsDto = z.infer<typeof ExperimentalToolConfigsSchemaDto>;
+
+
 export const ExperimentalHttpEndpointSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalTransformersJsEndpointSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalReasoningSchemaDto = EmptyExperimentalSchemaDto;
@@ -34,7 +68,9 @@ export const ExperimentalMessageNodeAssistantSchemaDto = EmptyExperimentalSchema
 export const ExperimentalMessageNodeSystemSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalMessageNodeToolSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalMessageBranchSchemaDto = EmptyExperimentalSchemaDto;
-export const ExperimentalChatMetaSchemaDto = EmptyExperimentalSchemaDto;
+export const ExperimentalChatMetaSchemaDto = resolveMissingAsUndefined(z.object({
+  toolConfigs: missingAsUndefined(ExperimentalToolConfigsSchemaDto),
+}));
 export const ExperimentalChatMetaIndexSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalChatContentSchemaDto = EmptyExperimentalSchemaDto;
 export const ExperimentalProviderProfileSchemaDto = EmptyExperimentalSchemaDto;
@@ -46,6 +82,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
     z.literal('block_markdown'),
     z.literal('monolithic_html'),
   ])),
+  toolConfigPersistence: missingAsUndefined(z.literal('enabled')),
   sidebarSendMessageReorder: missingAsUndefined(z.union([
     z.literal('disabled'),
     z.literal('move_sent_chat'),

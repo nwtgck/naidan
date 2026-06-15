@@ -17,18 +17,20 @@ describe('optionalExperimentalFieldSchemaDto', () => {
   it('keeps readable fields and records only unreadable entries', () => {
     const parsed = OptionalExperimentalSettingsSchemaDto.parse({
       markdownRendering: 'future_renderer',
+      toolConfigPersistence: 'enabled',
       sidebarSendMessageReorder: 'move_sent_chat',
     });
 
     expect(parsed).toEqual({
       markdownRendering: undefined,
+      toolConfigPersistence: 'enabled',
       sidebarSendMessageReorder: 'move_sent_chat',
     });
     expect(parsed?.unreadable).toEqual({
       markdownRendering: 'future_renderer',
     });
     expect(Object.keys(parsed ?? {})).not.toContain('unreadable');
-    expect(JSON.stringify(parsed)).toBe('{"sidebarSendMessageReorder":"move_sent_chat"}');
+    expect(JSON.stringify(parsed)).toBe('{"toolConfigPersistence":"enabled","sidebarSendMessageReorder":"move_sent_chat"}');
   });
 
   it('records unknown experimental entries as unreadable', () => {
@@ -39,6 +41,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
 
     expect(parsed).toEqual({
       markdownRendering: undefined,
+      toolConfigPersistence: undefined,
       sidebarSendMessageReorder: 'disabled',
     });
     expect(parsed?.unreadable).toEqual({
@@ -51,6 +54,7 @@ describe('optionalExperimentalFieldSchemaDto', () => {
 
     expect(parsed).toEqual({
       markdownRendering: undefined,
+      toolConfigPersistence: undefined,
       sidebarSendMessageReorder: undefined,
     });
     expect(parsed?.unreadable).toEqual({

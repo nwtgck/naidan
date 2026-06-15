@@ -10,6 +10,7 @@ const { showConfirm } = useConfirm();
 const { settings, save } = useSettings();
 
 const sidebarSendMessageReorder = computed(() => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled');
+const toolConfigPersistence = computed(() => settings.value.experimental?.toolConfigPersistence ?? 'disabled');
 
 async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool' }) {
   if (isFeatureEnabled({ feature })) {
@@ -37,6 +38,27 @@ async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool
   });
 }
 
+async function handleToolConfigPersistenceToggle() {
+  const next = (() => {
+    switch (toolConfigPersistence.value) {
+    case 'disabled':
+      return 'enabled';
+    case 'enabled':
+      return 'disabled';
+    default: {
+      const _ex: never = toolConfigPersistence.value;
+      throw new Error(`Unhandled tool config persistence setting: ${_ex}`);
+    }
+    }
+  })();
+  await save({ patch: {
+    experimental: {
+      ...settings.value.experimental,
+      toolConfigPersistence: next,
+    },
+  } });
+}
+
 async function handleSidebarSendMessageReorderToggle() {
   const next = (() => {
     switch (sidebarSendMessageReorder.value) {
@@ -61,6 +83,7 @@ async function handleSidebarSendMessageReorderToggle() {
 defineExpose({
   TEST_ONLY: {
     handleFeatureToggle,
+    handleToolConfigPersistenceToggle,
     handleSidebarSendMessageReorderToggle,
   }
 });
@@ -182,6 +205,44 @@ defineExpose({
           </button>
         </div>
       </div>
+      <div
+        class="rounded-3xl border p-5 shadow-sm transition-all"
+        :class="toolConfigPersistence === 'enabled' ? 'border-red-200/80 dark:border-red-900/30 bg-red-50/60 dark:bg-red-950/10' : 'border-gray-200/80 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/40'"
+      >
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+              <FlaskConicalIcon class="w-4 h-4" :class="toolConfigPersistence === 'enabled' ? 'text-red-500' : 'text-gray-400'" />
+            </div>
+            <div class="flex flex-col min-w-0">
+              <span class="text-sm font-bold text-gray-900 dark:text-gray-100">Tool config persistence</span>
+              <span class="text-[10px] font-medium text-gray-500">Saves chat tool settings into chat metadata.</span>
+            </div>
+          </div>
+          <div
+            class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+            :class="toolConfigPersistence === 'enabled' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300'"
+          >
+            <AlertTriangleIcon v-if="toolConfigPersistence === 'enabled'" class="w-3 h-3" />
+            {{ toolConfigPersistence === 'enabled' ? 'Enabled' : 'Disabled' }}
+          </div>
+        </div>
+
+        <div class="mt-4 flex items-center justify-between gap-4">
+          <p class="text-[11px] font-medium leading-relaxed" :class="toolConfigPersistence === 'enabled' ? 'text-red-800/80 dark:text-red-200/80' : 'text-gray-600 dark:text-gray-300'">
+            {{ toolConfigPersistence === 'enabled' ? 'Tool configuration changes are persisted to chat metadata. Disable it if you want tool settings to stay runtime-only.' : 'Disabled by default. Tool configuration changes affect the current runtime session but are not saved to chat metadata.' }}
+          </p>
+          <button
+            @click="handleToolConfigPersistenceToggle"
+            class="shrink-0 rounded-2xl px-4 py-2 text-xs font-bold transition-all active:scale-95"
+            :class="toolConfigPersistence === 'enabled' ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 ring-2 ring-red-500/20' : 'bg-gray-900 hover:bg-black text-white dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white'"
+            data-testid="feature-tool-config-persistence-toggle"
+          >
+            {{ toolConfigPersistence === 'enabled' ? 'Disable experimental feature' : 'Enable' }}
+          </button>
+        </div>
+      </div>
+
     </div>
 
     <div class="rounded-2xl border border-amber-200/70 dark:border-amber-900/30 bg-amber-50/60 dark:bg-amber-950/10 px-4 py-3">

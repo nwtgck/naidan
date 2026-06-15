@@ -131,6 +131,18 @@ const mockSettings: Settings = {
   },
 };
 
+const normalizedMockSettings: Settings = {
+  ...mockSettings,
+  defaultModelId: undefined,
+  titleModelId: undefined,
+  heavyContentAlertDismissed: undefined,
+  systemPrompt: undefined,
+  experimental: {
+    ...mockSettings.experimental,
+    toolConfigPersistence: 'disabled',
+  },
+};
+
 // --- Test Suite ---
 
 describe('Storage Migration (Round-Trip)', () => {
@@ -157,7 +169,7 @@ describe('Storage Migration (Round-Trip)', () => {
     }
 
     // Verify snapshot structure
-    expect(snapshot.structure.settings).toEqual(mockSettings);
+    expect(snapshot.structure.settings).toEqual(normalizedMockSettings);
     expect(snapshot.structure.chatGroups).toHaveLength(1);
     expect(snapshot.structure.chatMetas).toHaveLength(1);
     expect(snapshot.structure.hierarchy.items).toHaveLength(1);
@@ -178,7 +190,7 @@ describe('Storage Migration (Round-Trip)', () => {
 
     // 5. Verify Data Integrity
     const loadedSettings = await provider.loadSettings();
-    expect(loadedSettings).toEqual(expect.objectContaining(mockSettings));
+    expect(loadedSettings).toEqual(normalizedMockSettings);
 
     const chatGroups = await provider.listChatGroups();
     expect(chatGroups).toHaveLength(1);
