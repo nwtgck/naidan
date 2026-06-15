@@ -1,4 +1,6 @@
+import { toChatId } from '@/models/ids';
 import { generateId } from '@/utils/id';
+import type { MessageId } from '@/models/ids';
 import { describe, it, expect } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
@@ -15,7 +17,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });
@@ -26,7 +28,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
 
 describe('MessageItem Design (Dynamic Thinking Border)', () => {
   const createMessage = (content: string): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'assistant',
     content,
     timestamp: Date.now(),

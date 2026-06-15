@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { computed } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -96,7 +97,7 @@ describe('useChatImageGeneration', () => {
     mockGetSelectedImageModel.mockReturnValue('model-b');
 
     const chatImageGeneration = useChatImageGeneration({
-      chatId: computed(() => 'chat-1'),
+      chatId: computed(() => toChatId({ raw: 'chat-1' })),
     });
 
     expect(chatImageGeneration.isImageMode.value).toBe(true);
@@ -107,7 +108,7 @@ describe('useChatImageGeneration', () => {
     expect(chatImageGeneration.seed.value).toBe(99);
     expect(chatImageGeneration.selectedImageModel.value).toBe('model-b');
     expect(mockGetSelectedImageModel).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       availableModels: ['model-a', 'model-b'],
     });
 
@@ -119,18 +120,18 @@ describe('useChatImageGeneration', () => {
     chatImageGeneration.updateSeed({ seed: 'browser_random' });
     chatImageGeneration.setImageModel({ modelId: 'model-a' });
 
-    expect(mockToggleImageMode).toHaveBeenCalledWith({ chatId: 'chat-1' });
-    expect(mockUpdateResolution).toHaveBeenCalledWith({ chatId: 'chat-1', width: 640, height: 480 });
-    expect(mockUpdateCount).toHaveBeenCalledWith({ chatId: 'chat-1', count: 4 });
-    expect(mockUpdatePersistAs).toHaveBeenCalledWith({ chatId: 'chat-1', format: 'jpeg' });
-    expect(mockUpdateSteps).toHaveBeenCalledWith({ chatId: 'chat-1', steps: 12 });
-    expect(mockUpdateSeed).toHaveBeenCalledWith({ chatId: 'chat-1', seed: 'browser_random' });
-    expect(mockSetImageModel).toHaveBeenCalledWith({ chatId: 'chat-1', modelId: 'model-a' });
+    expect(mockToggleImageMode).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
+    expect(mockUpdateResolution).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }), width: 640, height: 480 });
+    expect(mockUpdateCount).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }), count: 4 });
+    expect(mockUpdatePersistAs).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }), format: 'jpeg' });
+    expect(mockUpdateSteps).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }), steps: 12 });
+    expect(mockUpdateSeed).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }), seed: 'browser_random' });
+    expect(mockSetImageModel).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }), modelId: 'model-a' });
   });
 
   it('binds image requests to the scoped chatId', async () => {
     const chatImageGeneration = useChatImageGeneration({
-      chatId: computed(() => 'chat-1'),
+      chatId: computed(() => toChatId({ raw: 'chat-1' })),
     });
 
     await expect(chatImageGeneration.sendImageRequest({
@@ -145,7 +146,7 @@ describe('useChatImageGeneration', () => {
     })).resolves.toBe(true);
 
     expect(mockSendImageRequestForChat).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       prompt: 'draw a cat',
       width: 512,
       height: 512,

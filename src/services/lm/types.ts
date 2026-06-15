@@ -1,4 +1,5 @@
 import type { ChatMessage, LmParameters } from '@/models/types';
+import type { ToolCallId } from '@/models/ids';
 import type { Tool, ToolExecutionEvent } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
 
@@ -12,10 +13,10 @@ export interface LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: ({ id, event }: { id: string; event: ToolExecutionEvent }) => void;
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: ToolCallId; event: ToolExecutionEvent }) => void;
     onToolResult?: ({ id, result }: {
-      id: string;
+      id: ToolCallId;
       result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;

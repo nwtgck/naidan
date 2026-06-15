@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import HistoryManipulationModal from './HistoryManipulationModal.vue';
@@ -44,7 +45,7 @@ describe('HistoryManipulationModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useCurrentChatState).mockReturnValue({
-      currentChatId: computed(() => 'chat-1'),
+      currentChatId: computed(() => toChatId({ raw: 'chat-1' })),
       currentChat: computed(() => mockCurrentChat.value as any),
       currentChatGroup: computed(() => null),
       activeMessages: computed(() => mockActiveMessages.value),
@@ -188,7 +189,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
 
     expect(mockCommit).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Msg 2' }),
         expect.objectContaining({ content: 'Msg 1' })
@@ -208,7 +209,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
 
     expect(mockCommit).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Updated Msg 1' }),
         expect.objectContaining({ content: 'Msg 2' })
@@ -235,7 +236,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
 
     expect(mockCommit).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Msg 1' }),
         expect.objectContaining({ content: 'Msg 2' })
@@ -255,7 +256,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
 
     expect(mockCommit).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Msg 1' }),
         expect.objectContaining({ content: 'Msg 2' })
@@ -276,7 +277,7 @@ describe('HistoryManipulationModal', () => {
     await saveButton?.trigger('click');
 
     expect(mockCommit).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       messages: [
         expect.objectContaining({ content: 'Msg 1' }),
         expect.objectContaining({ content: 'Msg 2' })

@@ -1,12 +1,13 @@
 import { ref, inject, provide, type InjectionKey, type Ref } from 'vue';
 import type { BinaryObject } from '@/models/types';
+import type { BinaryObjectId } from '@/models/ids';
 
 interface PreviewState {
   objects: BinaryObject[];
-  initialId: string;
+  initialId: BinaryObjectId;
 }
 
-export type ContextualPreviewHandler = ({ id }: { id: string }) => Promise<void>;
+export type ContextualPreviewHandler = ({ id }: { id: BinaryObjectId }) => Promise<void>;
 
 export const MESSAGE_CONTEXTUAL_PREVIEW_KEY: InjectionKey<ContextualPreviewHandler> = Symbol('MessageContextualPreview');
 

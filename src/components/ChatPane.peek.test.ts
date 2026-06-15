@@ -1,3 +1,4 @@
+import type { ChatId, MessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -7,6 +8,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import type { MessageNode, Chat } from '@/models/types';
 
 import { setupScrollToMock } from '@/utils/test-utils';
+import { toChatId } from '@/models/ids';
 
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>(null);
@@ -123,16 +125,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -152,7 +154,7 @@ describe('ChatPane Peek Mode Specifications', () => {
   beforeEach(async () => {
     setupScrollToMock();
     mockCurrentChat.value = {
-      id: '1',
+      id: toChatId({ raw: '1' }),
       title: 'Test Chat',
       root: { items: [] } as { items: MessageNode[] },
       currentLeafId: undefined,

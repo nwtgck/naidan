@@ -9,6 +9,8 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { BinaryObject, MessageNode } from '@/models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
+import { toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
   show: boolean;
@@ -70,10 +72,10 @@ const selectedPath = computed(() => {
 
 // Attachment Preview Logic
 const previewObjects = ref<BinaryObject[]>([]);
-const previewInitialId = ref<string | null>(null);
+const previewInitialId = ref<BinaryObjectId | null>(null);
 
-async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: string }) {
-  const allImageIds = new Set<string>();
+async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
+  const allImageIds = new Set<BinaryObjectId>();
 
   // Determine which nodes to scan based on the current mode
   const nodesToScan = (() => {
@@ -109,7 +111,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: str
         try {
           const parsed = JSON.parse(jsonStr);
           if (parsed.binaryObjectId) {
-            allImageIds.add(parsed.binaryObjectId);
+            allImageIds.add(toBinaryObjectId({ raw: parsed.binaryObjectId }));
           }
         } catch (e) {
           console.error('Failed to parse image block in ChatDebugInspector:', e);

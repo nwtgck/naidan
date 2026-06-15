@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import SearchPreview from './SearchPreview.vue';
@@ -62,8 +63,8 @@ describe('SearchPreview Component', () => {
     const wrapper = mount(SearchPreview, {
       props: {
         match: {
-          chatId: 'chat1',
-          messageId: 'm1',
+          chatId: toChatId({ raw: 'chat1' }),
+          messageId: toMessageId({ raw: 'm1' }),
           targetLeafId: 'm2',
           excerpt: 'Msg 1',
           fullContent: 'Msg 1',
@@ -104,7 +105,7 @@ describe('SearchPreview Component', () => {
 
     const wrapper = mount(SearchPreview, {
       props: {
-        match: { chatId: 'chat1', messageId: 'm2', targetLeafId: 'm3' } as any
+        match: { chatId: toChatId({ raw: 'chat1' }), messageId: toMessageId({ raw: 'm2' }), targetLeafId: 'm3' } as any
       }
     });
 

@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
@@ -12,7 +13,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });

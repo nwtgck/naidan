@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { storageService } from '@/services/storage'
@@ -207,7 +208,7 @@ describe('useChatSearch Composable', () => {
 
     await composable.search({
       searchQuery: 'test',
-      options: { scope: 'all', chatId: 'chat2' },
+      options: { scope: 'all', chatId: toChatId({ raw: 'chat2' }) },
     })
 
     expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat2' })

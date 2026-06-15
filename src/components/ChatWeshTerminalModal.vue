@@ -4,6 +4,7 @@ import { TerminalIcon, XIcon } from 'lucide-vue-next';
 import WeshTerminalPane from '@/features/wesh-terminal/components/WeshTerminalPane.vue';
 import { useChatWeshTerminalSessions } from '@/composables/useChatWeshTerminalSessions';
 import { useConfirm } from '@/composables/useConfirm';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 import type { Mount } from '@/models/types';
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 
@@ -11,8 +12,8 @@ const props = defineProps<{
   isOpen: boolean;
   chatMounts: readonly Mount[] | undefined;
   chatGroupMounts: readonly Mount[] | undefined;
-  chatId: string | undefined;
-  chatGroupId: string | undefined;
+  chatId: ChatId | undefined;
+  chatGroupId: ChatGroupId | undefined;
   naidanSysfsAccessScope: NaidanSysfsAccessScope;
 }>();
 const emit = defineEmits<{ (e: 'close'): void }>();

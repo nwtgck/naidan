@@ -4,13 +4,14 @@ import {
   currentChatGroupRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatGroupId, VolumeId } from '@/models/ids';
 
 export type ChatGroupMountsAdapter = {
   addMount({
     chatGroupId,
     mount,
   }: {
-    chatGroupId: string;
+    chatGroupId: ChatGroupId;
     mount: Mount;
   }): Promise<void>;
 
@@ -18,8 +19,8 @@ export type ChatGroupMountsAdapter = {
     chatGroupId,
     volumeId,
   }: {
-    chatGroupId: string;
-    volumeId: string;
+    chatGroupId: ChatGroupId;
+    volumeId: VolumeId;
   }): Promise<void>;
 
   updateMount({
@@ -28,8 +29,8 @@ export type ChatGroupMountsAdapter = {
     mountPath,
     readOnly,
   }: {
-    chatGroupId: string;
-    volumeId: string;
+    chatGroupId: ChatGroupId;
+    volumeId: VolumeId;
     mountPath: string;
     readOnly: boolean;
   }): Promise<void>;
@@ -42,7 +43,7 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
     chatGroupId,
     mount,
   }: {
-    chatGroupId: string;
+    chatGroupId: ChatGroupId;
     mount: Mount;
   }): Promise<void> {
     await storageService.addMountToChatGroup({
@@ -66,8 +67,8 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
     chatGroupId,
     volumeId,
   }: {
-    chatGroupId: string;
-    volumeId: string;
+    chatGroupId: ChatGroupId;
+    volumeId: VolumeId;
   }): Promise<void> {
     await storageService.removeMountFromChatGroup({
       groupId: chatGroupId,
@@ -94,8 +95,8 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
     mountPath,
     readOnly,
   }: {
-    chatGroupId: string;
-    volumeId: string;
+    chatGroupId: ChatGroupId;
+    volumeId: VolumeId;
     mountPath: string;
     readOnly: boolean;
   }): Promise<void> {
@@ -147,7 +148,7 @@ export function useChatGroupMounts(): ChatGroupMountsAdapter {
 function findChatGroupById({
   chatGroupId,
 }: {
-  chatGroupId: string;
+  chatGroupId: ChatGroupId;
 }) {
   for (const item of rootItems.value) {
     switch (item.type) {

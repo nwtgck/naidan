@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ToolApprovalContext } from '@/services/approval';
+import type { BinaryObjectId, ToolCallId } from '@/models/ids';
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 
 /**
@@ -76,7 +77,7 @@ export type ToolConfig =
  */
 export type TextOrBinaryObject =
   | { type: 'text'; text: string }
-  | { type: 'binary_object'; id: string };
+  | { type: 'binary_object'; id: BinaryObjectId };
 
 export type ToolExecutionEvent =
   | { type: 'started' }
@@ -95,7 +96,7 @@ export type ToolExecutionEvent =
  *   (e.g., missing dependencies, internal bugs).
  * - Logical failures that the LLM can recover from or explain should be returned as { status: 'error' }.
  */
-export type ToolExecutionResult = { toolCallId: string } & (
+export type ToolExecutionResult = { toolCallId: ToolCallId } & (
   | { status: 'executing' }
   | { status: 'success'; content: TextOrBinaryObject }
   | { status: 'error'; error: { code: ToolExecutionErrorCode; message: TextOrBinaryObject } }
@@ -106,7 +107,7 @@ export type ToolExecutionResult = { toolCallId: string } & (
  * This is kept in memory only and not persisted.
  */
 export type ToolCallRecord = {
-  id: string;
+  id: ToolCallId;
   toolName: string;
   args: unknown;
   timestamp: number;

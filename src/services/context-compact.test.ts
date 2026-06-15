@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MessageNode } from '@/models/types';
+import { toMessageId } from '@/models/ids';
 import {
   buildCompactRequestMessages,
   createCompactBranchFromResponse,
@@ -22,7 +23,7 @@ function createMessage({
   switch (role) {
   case 'user':
     return {
-      id,
+      id: toMessageId({ raw: id }),
       role,
       content: content ?? '',
       attachments: undefined,
@@ -37,7 +38,7 @@ function createMessage({
     };
   case 'assistant':
     return {
-      id,
+      id: toMessageId({ raw: id }),
       role,
       content: content ?? '',
       attachments: undefined,
@@ -52,7 +53,7 @@ function createMessage({
     };
   case 'system':
     return {
-      id,
+      id: toMessageId({ raw: id }),
       role,
       content: content ?? '',
       attachments: undefined,
@@ -67,7 +68,7 @@ function createMessage({
     };
   case 'tool':
     return {
-      id,
+      id: toMessageId({ raw: id }),
       role,
       content: undefined,
       attachments: undefined,
@@ -179,7 +180,7 @@ Question` },
       compactContent: '# Compact Context',
       suffix,
       compactModelId: 'model-1',
-      createMessageId: () => createdIds.shift() ?? 'unexpected-id',
+      createMessageId: () => toMessageId({ raw: createdIds.shift() ?? 'unexpected-id' }),
       now: () => 100,
     });
 

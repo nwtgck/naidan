@@ -1,3 +1,5 @@
+import type { ChatId, MessageId } from '@/models/ids';
+import { toMessageId, toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -17,15 +19,15 @@ const router = createRouter({
 // Mock dependencies
 const mockForkChat = vi.fn();
 const mockCurrentChat = ref<{
-  id: string;
+  id: ChatId;
   title: string;
   root: any;
-  currentLeafId: string | undefined;
+  currentLeafId: MessageId | undefined;
   debugEnabled: boolean;
   originChatId: string | undefined;
   modelId: string | undefined;
 }>({
-  id: '1',
+  id: toChatId({ raw: '1' }),
   title: 'Test Chat',
   root: { items: [] },
   currentLeafId: undefined,
@@ -121,16 +123,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -299,11 +301,11 @@ describe('ChatPane Fork Functionality', () => {
     const forkBtn = wrapper.find('[data-testid="fork-chat-button"]');
     await forkBtn.trigger('click');
 
-    expect(mockForkChat).toHaveBeenCalledWith({ messageId: 'msg-2' });
+    expect(mockForkChat).toHaveBeenCalledWith({ messageId: toMessageId({ raw: 'msg-2' }) });
   });
 
   it('should change jump-to-origin button icon to ArrowUp', async () => {
-    mockCurrentChat.value.originChatId = 'parent-id';
+    mockCurrentChat.value.originChatId = toChatId({ raw: 'parent-id' });
     const wrapper = mountChatPane( {
       global: { plugins: [router] },
     });

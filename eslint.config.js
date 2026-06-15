@@ -12,6 +12,7 @@ import requireWorkerClientFacade from './eslint-local-rules/require-worker-clien
 import requireNamedArgs from './eslint-local-rules/require-named-args.js';
 import noRawVHtml from './eslint-local-rules/no-raw-v-html.js';
 import noAllowedHtmlCast from './eslint-local-rules/no-allowed-html-cast.js';
+import noNaidanIdCast from './eslint-local-rules/no-naidan-id-cast.js';
 import noInvalidAllowedHtmlTemplate from './eslint-local-rules/no-invalid-allowed-html-template.js';
 import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
 import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
@@ -201,6 +202,7 @@ export default tseslint.config(
   requireNamedArgs,
   noRawVHtml,
   noAllowedHtmlCast,
+  noNaidanIdCast,
   noInvalidAllowedHtmlTemplate,
   noRawDompurify,
   noXssProneBrowserApis,

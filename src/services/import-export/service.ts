@@ -29,10 +29,13 @@ import {
 import {
   settingsToDomain,
   chatGroupToDomain,
-  chatMetaToDomain
+  chatMetaToDomain,
+  hierarchyToDomain
 } from '@/models/mappers';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
+import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, MessageId, ProviderProfileId } from '@/models/ids';
 
 // Helper to format date YYYY-MM-DD
 function formatDate({ date }: { date: Date }): string {
@@ -62,7 +65,7 @@ export interface IImportExportStorage {
   updateSettings({ updater }: { updater: ({ current }: { current: Settings | null }) => Settings | Promise<Settings> }): Promise<void>;
   listChats(): Promise<ChatSummary[]>;
   listChatGroups(): Promise<ChatGroup[]>;
-  loadChat({ id }: { id: string }): Promise<Chat | null>;
+  loadChat({ id }: { id: ChatId }): Promise<Chat | null>;
   loadHierarchy(): Promise<Hierarchy | null>;
   clearAll(): Promise<void>;
   dumpWithoutLock(): Promise<StorageSnapshot>;
@@ -516,7 +519,7 @@ export class ImportExportService {
         finalSettings.providerProfiles = newSettingsDomain.providerProfiles;
         break;
       case 'append': {
-        const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: generateId() }));
+        const appended = newSettingsDomain.providerProfiles.map(p => ({ ...p, id: generateId<ProviderProfileId>() }));
         finalSettings.providerProfiles = [...finalSettings.providerProfiles, ...appended];
         break;
       }
@@ -578,7 +581,7 @@ export class ImportExportService {
     }
 
     const chatMetas = metasDto.map(dto => chatMetaToDomain({ dto }));
-    const hierarchy = hierarchyDto;
+    const hierarchy = hierarchyToDomain({ dto: hierarchyDto });
     const chatGroups = groupsDto.map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas }));
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
@@ -647,7 +650,7 @@ export class ImportExportService {
           const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
           if (result.success) {
             const dto = result.data;
-            const newId = generateId();
+            const newId = generateId<ChatGroupId>();
             groupIdMap.set(dto.id, newId);
             dto.id = newId;
             if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
@@ -668,7 +671,7 @@ export class ImportExportService {
           if (res.success) {
             const dto = res.data;
             const originalId = dto.id;
-            const newId = generateId();
+            const newId = generateId<ChatId>();
             chatIdMap.set(originalId, newId);
             dto.id = newId;
             if (config.data.chatTitlePrefix && dto.title) dto.title = `${config.data.chatTitlePrefix}${dto.title}`;
@@ -679,7 +682,7 @@ export class ImportExportService {
     }
 
     // 3. Hierarchy
-    const currentHierarchy = await this.storage.loadHierarchy() || { items: [] };
+    const currentHierarchy = hierarchyToDomain({ dto: await this.storage.loadHierarchy() || { items: [] } });
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
     let importedHierarchyItems: HierarchyNode[] = [];
     if (hierarchyFile) {
@@ -688,9 +691,9 @@ export class ImportExportService {
         importedHierarchyItems = hDto.items.map(node => {
           switch (node.type) {
           case 'chat':
-            return { type: 'chat', id: chatIdMap.get(node.id) || node.id };
+            return { type: 'chat', id: toChatId({ raw: chatIdMap.get(node.id) || node.id }) };
           case 'chat_group':
-            return { type: 'chat_group', id: groupIdMap.get(node.id) || node.id, chat_ids: node.chat_ids.map(cid => chatIdMap.get(cid) || cid) };
+            return { type: 'chat_group', id: toChatGroupId({ raw: groupIdMap.get(node.id) || node.id }), chat_ids: node.chat_ids.map(cid => toChatId({ raw: chatIdMap.get(cid) || cid })) };
           default: {
             const _ex: never = node;
             throw new Error(`Unhandled hierarchy node type: ${_ex}`);
@@ -702,8 +705,8 @@ export class ImportExportService {
 
     if (importedHierarchyItems.length === 0) {
       importedHierarchyItems = [
-        ...importedGroupsDto.map(g => ({ type: 'chat_group' as const, id: g.id, chat_ids: [] })),
-        ...importedMetas.map(m => ({ type: 'chat' as const, id: m.dto.id }))
+        ...importedGroupsDto.map(g => ({ type: 'chat_group' as const, id: toChatGroupId({ raw: g.id }), chat_ids: [] })),
+        ...importedMetas.map(m => ({ type: 'chat' as const, id: toChatId({ raw: m.dto.id }) }))
       ];
     }
 
@@ -752,7 +755,7 @@ export class ImportExportService {
             const messageIdMap = new Map<string, string>();
             const process = ({ node }: { node: MessageNodeDto }) => {
               const oldMsgId = node.id;
-              const newMsgId = generateId();
+              const newMsgId = generateId<MessageId>();
               messageIdMap.set(oldMsgId, newMsgId);
               node.id = newMsgId;
 
@@ -760,13 +763,13 @@ export class ImportExportService {
                 node.attachments.forEach(a => {
                   // remap attachment ID (the reference)
                   const originalAttId = a.id;
-                  a.id = generateId();
+                  a.id = generateId<AttachmentId>();
 
                   // Resolve binaryObjectId from V1 or V2
                   const oldBinaryId = ('binaryObjectId' in a) ? a.binaryObjectId : originalAttId;
 
                   if (!binaryRemapMap.has(oldBinaryId)) {
-                    binaryRemapMap.set(oldBinaryId, generateId());
+                    binaryRemapMap.set(oldBinaryId, generateId<BinaryObjectId>());
                   }
 
                   const newBinaryId = binaryRemapMap.get(oldBinaryId)!;

@@ -5,6 +5,7 @@ import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFil
 import { OPFSStorageProvider } from '@/services/storage/opfs-storage'
 import type { ChatContent, ChatGroup, ChatMeta } from '@/models/types'
 import { renderChatMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/metadata-markdown'
+import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 describe('file-explorer.worker.impl', () => {
   let worker: ReturnType<typeof createFileExplorerWorker>
@@ -202,10 +203,10 @@ describe('file-explorer.worker.impl', () => {
     const provider = new OPFSStorageProvider()
     await provider.init()
     const chatMeta: ChatMeta = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Main Chat',
-      groupId: 'chat-group-1',
-      currentLeafId: 'assistant-1',
+      groupId: toChatGroupId({ raw: 'chat-group-1' }),
+      currentLeafId: toMessageId({ raw: 'assistant-1' }),
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: false,
@@ -224,16 +225,16 @@ describe('file-explorer.worker.impl', () => {
       mounts: [],
     }
     const chatContent: ChatContent = {
-      currentLeafId: 'assistant-1',
+      currentLeafId: toMessageId({ raw: 'assistant-1' }),
       root: {
         items: [{
-          id: 'user-1',
+          id: toMessageId({ raw: 'user-1' }),
           role: 'user',
           content: 'Hello',
           timestamp: 1000,
           replies: {
             items: [{
-              id: 'assistant-1',
+              id: toMessageId({ raw: 'assistant-1' }),
               role: 'assistant',
               content: 'Hi',
               timestamp: 1001,
@@ -245,7 +246,7 @@ describe('file-explorer.worker.impl', () => {
       },
     }
     const chatGroup: ChatGroup = {
-      id: 'chat-group-1',
+      id: toChatGroupId({ raw: 'chat-group-1' }),
       name: 'Research',
       isCollapsed: false,
       updatedAt: 200,
@@ -265,10 +266,10 @@ describe('file-explorer.worker.impl', () => {
           id: 'chat:chat-1',
           type: 'chat',
           chat: {
-            id: 'chat-1',
+            id: toChatId({ raw: 'chat-1' }),
             title: 'Main Chat',
             updatedAt: 200,
-            groupId: 'chat-group-1',
+            groupId: toChatGroupId({ raw: 'chat-group-1' }),
           },
         },
       ],
@@ -283,7 +284,7 @@ describe('file-explorer.worker.impl', () => {
         chat_ids: ['chat-1'],
       }],
     } })
-    const storedChatMeta = await provider.loadChatMeta({ id: 'chat-1' })
+    const storedChatMeta = await provider.loadChatMeta({ id: toChatId({ raw: 'chat-1' }) })
 
     const { sessionId } = await worker.prepareSession({
       request: {
@@ -370,10 +371,10 @@ describe('file-explorer.worker.impl', () => {
 
   it('reads naidan sysfs metadata through a local remote reader', async () => {
     const chatMeta: ChatMeta = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Local Chat',
-      groupId: 'chat-group-1',
-      currentLeafId: 'a1chatMetadataAbCdEf',
+      groupId: toChatGroupId({ raw: 'chat-group-1' }),
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: false,
@@ -392,11 +393,11 @@ describe('file-explorer.worker.impl', () => {
       mounts: [],
     }
     const chatContent: ChatContent = {
-      currentLeafId: 'a1chatMetadataAbCdEf',
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
       root: { items: [] },
     }
     const chatGroup: ChatGroup = {
-      id: 'chat-group-1',
+      id: toChatGroupId({ raw: 'chat-group-1' }),
       name: 'Local Group',
       isCollapsed: false,
       updatedAt: 200,
@@ -411,15 +412,15 @@ describe('file-explorer.worker.impl', () => {
         id: 'chat:chat-1',
         type: 'chat',
         chat: {
-          id: 'chat-1',
+          id: toChatId({ raw: 'chat-1' }),
           title: 'Local Chat',
           updatedAt: 200,
-          groupId: 'chat-group-1',
+          groupId: toChatGroupId({ raw: 'chat-group-1' }),
         },
       }],
     }
     const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) })
-    expectedMetadata.groupId = 'chat-group-1'
+    expectedMetadata.groupId = toChatGroupId({ raw: 'chat-group-1' })
 
     const { sessionId } = await worker.prepareSession({
       request: {

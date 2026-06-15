@@ -5,6 +5,7 @@ import { storageService } from '@/services/storage';
 import { reactive, nextTick, computed } from 'vue';
 import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
+import { toChatId } from '@/models/ids';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
@@ -126,7 +127,7 @@ describe('useChat Tool Chaining', () => {
 
   it('should chain multiple tool calls in the active thread', async () => {
     const chat: Chat = reactive({
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Tool Test',
       root: { items: [] },
       createdAt: Date.now(),
@@ -211,7 +212,7 @@ describe('useChat Tool Chaining', () => {
 
   it('should correctly follow the branch even with multiple root items', async () => {
     const chat: Chat = reactive({
-      id: 'chat-2',
+      id: toChatId({ raw: 'chat-2' }),
       title: 'Branch Test',
       root: { items: [] },
       createdAt: Date.now(),

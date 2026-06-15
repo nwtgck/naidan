@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { BinaryObject } from '@/models/types';
+import type { BinaryObjectId } from '@/models/ids';
 import { storageService } from '@/services/storage';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {
@@ -11,7 +12,7 @@ import {
 
 interface Props {
   objects: BinaryObject[];
-  initialId: string;
+  initialId: BinaryObjectId;
 }
 
 const props = defineProps<Props>();

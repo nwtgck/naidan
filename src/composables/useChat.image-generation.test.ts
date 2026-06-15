@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
@@ -66,7 +67,7 @@ describe('useChat Image Generation', () => {
   it('sendMessage in image mode adds sentinel markers', async () => {
     const chat = { id: 'chat-1', modelId: 'llama3', groupId: null, root: { items: [] } } as any;
     chatStore.registerLiveInstance({ chat });
-    chatStore.toggleImageMode({ chatId: 'chat-1' });
+    chatStore.toggleImageMode({ chatId: toChatId({ raw: 'chat-1' }) });
 
     const success = await chatStore.sendMessage({ content: 'draw a cat', parentId: null, attachments: [], chatTarget: chat });
     expect(success).toBe(true);
@@ -118,7 +119,7 @@ describe('useChat Image Generation', () => {
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
 
     const success = await chatStore.sendImageRequestForChat({
-      chatId: 'chat-explicit',
+      chatId: toChatId({ raw: 'chat-explicit' }),
       prompt: 'a fox',
       width: 768,
       height: 512,
@@ -176,7 +177,7 @@ describe('useChat Image Generation', () => {
     } as any;
     chatStore.registerLiveInstance({ chat });
 
-    await chatStore.generateChatTitle({ chatId: 'chat-title-test', signal: undefined, titleModelIdOverride: undefined });
+    await chatStore.generateChatTitle({ chatId: toChatId({ raw: 'chat-title-test' }), signal: undefined, titleModelIdOverride: undefined });
 
     expect(mockOllamaChat).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([
@@ -205,7 +206,7 @@ describe('useChat Image Generation', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // Fork from assistant message 'a1'
-    const forkedChatId = await chatStore.forkChat({ messageId: 'a1', chatId: 'chat-fork' });
+    const forkedChatId = await chatStore.forkChat({ messageId: toMessageId({ raw: 'a1' }), chatId: toChatId({ raw: 'chat-fork' }) });
 
     expect(forkedChatId).toBeDefined();
     const forkedChat = chatStore.getLiveChat({ chat: { id: forkedChatId! } as any }) as any;
@@ -214,14 +215,14 @@ describe('useChat Image Generation', () => {
 
     // Regerenerating on the forked chat should trigger image generation again
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
-    await chatStore.regenerateMessage({ failedMessageId: 'a1' });
+    await chatStore.regenerateMessage({ failedMessageId: toMessageId({ raw: 'a1' }) });
 
     expect(updateSpy).toHaveBeenCalled();
   });
 
   it('image mode and resolution are isolated between chats', () => {
-    const chatA = 'chat-a';
-    const chatB = 'chat-b';
+    const chatA = toChatId({ raw: 'chat-a' });
+    const chatB = toChatId({ raw: 'chat-b' });
 
     chatStore.toggleImageMode({ chatId: chatA });
     chatStore.updateResolution({ chatId: chatA, width: 1024, height: 1024 });
@@ -249,7 +250,7 @@ describe('useChat Image Generation', () => {
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
 
     // Directly call regenerateMessage to trigger background generation
-    await chatStore.regenerateMessage({ failedMessageId: 'a1' });
+    await chatStore.regenerateMessage({ failedMessageId: toMessageId({ raw: 'a1' }) });
 
     // It should trigger updateChatContent at least once (for pending)
     await vi.waitFor(() => {

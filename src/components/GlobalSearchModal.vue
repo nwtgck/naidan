@@ -15,6 +15,7 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { highlightSearchTextAsHtml } from '@/lib/security/allowedHtml';
 import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
 const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupSearchPreview.vue') });
@@ -367,7 +368,7 @@ async function selectItem({ index }: { index: number }) {
   switch (type) {
   case 'chat': {
     const chatItem = target.item;
-    await openChat({ chatId: chatItem.chatId });
+    await openChat({ chatId: toChatId({ raw: chatItem.chatId }) });
     router.push(`/chat/${chatItem.chatId}`);
     closeSearch();
     break;
@@ -375,7 +376,10 @@ async function selectItem({ index }: { index: number }) {
   case 'message': {
     const matchItem = target.item;
     const parentChat = target.parentChat;
-    await openChatAtMessage({ chatId: parentChat.chatId, messageId: matchItem.messageId });
+    await openChatAtMessage({
+      chatId: toChatId({ raw: parentChat.chatId }),
+      messageId: toMessageId({ raw: matchItem.messageId }),
+    });
     router.push({
       path: `/chat/${parentChat.chatId}`,
       query: { 'message-id': matchItem.messageId }
@@ -385,7 +389,7 @@ async function selectItem({ index }: { index: number }) {
   }
   case 'chat_group': {
     const groupItem = target.item;
-    openChatGroup({ groupId: groupItem.groupId });
+    openChatGroup({ groupId: toChatGroupId({ raw: groupItem.groupId }) });
     closeSearch();
     break;
   }

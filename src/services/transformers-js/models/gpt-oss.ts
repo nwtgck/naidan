@@ -7,6 +7,8 @@ import {
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/utils/gpt-oss-harmony';
 import type { WorkerToolDefinition } from '@/services/transformers-js/types';
+import type { ToolCallId } from '@/models/ids';
+import { generateId } from '@/utils/id';
 
 interface GenerationResult {
   past_key_values: unknown;
@@ -138,7 +140,7 @@ export async function generateGptOss({
               break;
             }
             pendingToolCalls.push({
-              id: `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+              id: generateId<ToolCallId>(),
               type: 'function',
               function: {
                 name: functionName,

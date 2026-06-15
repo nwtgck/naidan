@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createBranchFromMessages, type HistoryItem } from './chat-tree';
+import { toAttachmentId, toBinaryObjectId } from '@/models/ids';
 
 describe('chat-tree utils', () => {
   describe('createBranchFromMessages', () => {
@@ -56,7 +57,7 @@ describe('chat-tree utils', () => {
         {
           role: 'user',
           content: 'Here is an image.',
-          attachments: [{ id: '1', binaryObjectId: '1', status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }]
+          attachments: [{ id: toAttachmentId({ raw: '1' }), binaryObjectId: toBinaryObjectId({ raw: '1' }), status: 'persisted', originalName: 'n.png', mimeType: 'image/png', size: 10, uploadedAt: 0 }]
         }
       ];
 

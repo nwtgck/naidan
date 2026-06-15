@@ -1,3 +1,4 @@
+import type { ChatId, MessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -6,6 +7,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
+import { toChatId } from '@/models/ids';
 
 // Mock router
 const router = createRouter({
@@ -132,15 +134,15 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? 'chat-1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: 'chat-1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -284,7 +286,7 @@ describe('ChatPane Auto-send', () => {
     setupScrollToMock();
     vi.clearAllMocks();
     mockCurrentChat.value = {
-      id: '1',
+      id: toChatId({ raw: '1' }),
       title: 'Test Chat',
       root: { items: [] },
       currentLeafId: undefined,
@@ -315,7 +317,7 @@ describe('ChatPane Auto-send', () => {
 
     // Now set currentChat
     mockCurrentChat.value = {
-      id: '1',
+      id: toChatId({ raw: '1' }),
       title: 'Test Chat',
       root: { items: [] },
       currentLeafId: undefined,

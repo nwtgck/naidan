@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockEnsureChatTmpDirectory } = vi.hoisted(() => ({
@@ -19,11 +20,11 @@ describe('useChatTmpDirectory', () => {
     const chatTmpDirectory = useChatTmpDirectory();
 
     await chatTmpDirectory.ensureChatTmpDirectory({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
 
     expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
   });
 });

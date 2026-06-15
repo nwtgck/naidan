@@ -1,3 +1,4 @@
+import type { ChatId } from '@/models/ids';
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 import {
   findLastToolConfigByKey,
@@ -10,7 +11,7 @@ import {
 } from '@/composables/useChatTools';
 
 export function useChatWeshPreferences() {
-  const getNaidanSysfsAccessScope = ({ chatId }: { chatId: string | undefined }): NaidanSysfsAccessScope => {
+  const getNaidanSysfsAccessScope = ({ chatId }: { chatId: ChatId | undefined }): NaidanSysfsAccessScope => {
     if (chatId === undefined) {
       return 'none';
     }
@@ -28,7 +29,7 @@ export function useChatWeshPreferences() {
     chatId,
     accessScope,
   }: {
-    chatId: string | undefined;
+    chatId: ChatId | undefined;
     accessScope: NaidanSysfsAccessScope;
   }) => {
     if (chatId === undefined) return;

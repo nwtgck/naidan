@@ -25,6 +25,7 @@ const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () =
 import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';
 import { ENDPOINT_PRESETS } from '@/models/constants';
+import type { ProviderProfileId } from '@/models/ids';
 
 const props = defineProps<{
   modelValue: Settings;
@@ -200,7 +201,7 @@ async function handleCreateProviderProfile() {
   if (!name) return;
 
   const newProviderProfile: ProviderProfile = {
-    id: generateId(),
+    id: generateId<ProviderProfileId>(),
     name,
     endpointType: form.value.endpointType,
     endpointUrl: form.value.endpointUrl,

@@ -7,28 +7,29 @@ import {
   currentChatRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
 
 export type ChatNavigationAdapter = {
   openChat({
     chatId,
     leafId,
   }: {
-    chatId: string;
-    leafId?: string;
+    chatId: ChatId;
+    leafId?: MessageId;
   }): Promise<import('@/models/types').Chat | null>;
 
   openChatAtMessage({
     chatId,
     messageId,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
   }): Promise<import('@/models/types').Chat | null>;
 
   openChatGroup({
     groupId,
   }: {
-    groupId: string | null;
+    groupId: ChatGroupId | null;
   }): void;
 
   TEST_ONLY: Record<never, never>;
@@ -47,8 +48,8 @@ export function useChatNavigation(): ChatNavigationAdapter {
     chatId,
     leafId,
   }: {
-    chatId: string;
-    leafId?: string;
+    chatId: ChatId;
+    leafId?: MessageId;
   }) {
     setCurrentChatId({ chatId });
     const chat = await chatDataStore.openChat({ id: chatId, leafId });
@@ -67,8 +68,8 @@ export function useChatNavigation(): ChatNavigationAdapter {
     chatId,
     messageId,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
   }) {
     setCurrentChatId({ chatId });
     const chat = await chatDataStore.openChatAtMessage({ chatId, messageId });
@@ -86,7 +87,7 @@ export function useChatNavigation(): ChatNavigationAdapter {
   function openChatGroup({
     groupId,
   }: {
-    groupId: string | null;
+    groupId: ChatGroupId | null;
   }) {
     chatDataStore.openChatGroup({ id: groupId });
   }

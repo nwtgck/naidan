@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, toRaw } from 'vue';
 import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 
@@ -59,7 +60,7 @@ export function useChatDisplayFlow({
   isProcessing
 }: {
   chat: ComputedRef<Chat | null>,
-  isProcessing: ({ chatId }: { chatId: string }) => boolean
+  isProcessing: ({ chatId }: { chatId: ChatId }) => boolean
 }) {
 
   /**

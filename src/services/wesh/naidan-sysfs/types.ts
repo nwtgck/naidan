@@ -1,4 +1,5 @@
 import type { Chat, ChatContent, ChatGroup, ChatMeta, ChatSummary, Hierarchy, SidebarItem } from '@/models/types'
+import type { BinaryObjectId, ChatGroupId, ChatId } from '@/models/ids'
 import type { ChatContentDto, ChatGroupDto, ChatMetaDto } from '@/models/dto'
 import type { NaidanSysfsBinaryObjectAccess, NaidanSysfsVisibility, WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 
@@ -15,13 +16,13 @@ export interface NaidanSysfsStorageReader {
   getSidebarStructure(): Promise<SidebarItem[]>;
   listChats(): Promise<ChatSummary[]>;
   listChatGroups(): Promise<ChatGroup[]>;
-  loadChatMeta({ chatId }: { chatId: string }): Promise<ChatMeta | undefined>;
-  loadChatContent({ chatId }: { chatId: string }): Promise<ChatContent | undefined>;
-  loadChat({ chatId }: { chatId: string }): Promise<Chat | undefined>;
-  loadChatGroup({ chatGroupId }: { chatGroupId: string }): Promise<ChatGroup | undefined>;
+  loadChatMeta({ chatId }: { chatId: ChatId }): Promise<ChatMeta | undefined>;
+  loadChatContent({ chatId }: { chatId: ChatId }): Promise<ChatContent | undefined>;
+  loadChat({ chatId }: { chatId: ChatId }): Promise<Chat | undefined>;
+  loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }): Promise<ChatGroup | undefined>;
   listBinaryObjects(): AsyncIterable<NaidanSysfsBinaryObject>;
-  getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<NaidanSysfsBinaryObject | undefined>;
-  getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | undefined>;
+  getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<NaidanSysfsBinaryObject | undefined>;
+  getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | undefined>;
 }
 
 export interface NaidanSysfsRemoteChatMetaPayload {
@@ -32,7 +33,7 @@ export interface NaidanSysfsRemoteChatMetaPayload {
 export interface NaidanSysfsRemoteChatSidebarItem {
   id: string;
   type: 'chat';
-  chat: ChatSummary;
+  chat: { id: string; title: string | null; updatedAt: number; groupId?: string | null };
 }
 
 export interface NaidanSysfsRemoteChatGroupPayload {
@@ -51,7 +52,7 @@ export type NaidanSysfsRemoteSidebarItem =
 export interface NaidanSysfsRemoteReader {
   readonly storageType: 'local' | 'memory';
   getSidebarStructure(): Promise<NaidanSysfsRemoteSidebarItem[]>;
-  listChats(): Promise<ChatSummary[]>;
+  listChats(): Promise<Array<{ id: string; title: string | null; updatedAt: number; groupId?: string | null }>>;
   listChatGroups(): Promise<NaidanSysfsRemoteChatGroupPayload[]>;
   loadChatMeta({ chatId }: { chatId: string }): Promise<NaidanSysfsRemoteChatMetaPayload | undefined>;
   loadChatContent({ chatId }: { chatId: string }): Promise<ChatContentDto | undefined>;
@@ -65,8 +66,8 @@ export interface NaidanSysfsContext {
   reader: NaidanSysfsStorageReader;
   visibility: NaidanSysfsVisibility;
   binaryObjectAccess: NaidanSysfsBinaryObjectAccess;
-  currentChatId: string;
-  currentChatGroupId: string | undefined;
+  currentChatId: ChatId;
+  currentChatGroupId: ChatGroupId | undefined;
 }
 
 export interface NaidanSysfsDirectoryEntry {

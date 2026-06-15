@@ -13,6 +13,7 @@ import { useFileExplorerModal } from './composables/useFileExplorerModal';
 import { useTheme } from './composables/useTheme';
 import { usePrint } from './composables/usePrint';
 import Sidebar from './components/Sidebar.vue';
+import type { ChatGroupId } from '@/models/ids';
 
 // Async components for print mode to keep initial bundle small.
 const PrintView = defineAsyncComponent(() => import('./components/PrintView.vue'));
@@ -168,7 +169,7 @@ watch(
     // We only trigger this if 'q' is provided. 'system-prompt' or 'model' alone
     // does not trigger a new chat.
     if (q) {
-      let targetGroupId: string | undefined = undefined;
+      let targetGroupId: ChatGroupId | undefined = undefined;
       if (typeof chatGroupId === 'string') {
         const group = currentChatState.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
         if (group) {

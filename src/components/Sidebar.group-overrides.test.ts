@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -158,7 +159,7 @@ describe('Sidebar Group Overrides', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockChatGroups.value = [
-      { id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
     ];
     mockChats.value = [];
     mockCurrentChatGroup.value = null;
@@ -214,7 +215,7 @@ describe('Sidebar Group Overrides', () => {
   });
 
   it('clears currentChatGroup when a chat item is clicked', async () => {
-    mockChats.value = [{ id: 'c1', title: 'Chat 1', updatedAt: 0 }];
+    mockChats.value = [{ id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 }];
     mockCurrentChatGroup.value = mockChatGroups.value[0]!;
     mockCurrentChat.value = { id: 'c1' };
 

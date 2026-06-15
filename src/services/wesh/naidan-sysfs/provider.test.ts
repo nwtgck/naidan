@@ -4,6 +4,7 @@ import type { NaidanSysfsStorageReader } from './types'
 import { NaidanSysfsProvider } from './provider'
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from './constants'
 import { createNaidanSysfsBinaryObject } from './binary-object-metadata'
+import { toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId, toToolCallId, toVolumeId } from '@/models/ids';
 
 function createReaderStub({
   metadata,
@@ -79,7 +80,7 @@ function createReaderStub({
       }
     },
     async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
-      return objects.get(binaryObjectId)
+      return objects.get(toBinaryObjectId({ raw: binaryObjectId }))
     },
     async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
       return binaryObjectBlobs?.[binaryObjectId]
@@ -88,10 +89,10 @@ function createReaderStub({
 }
 
 const sampleMetadata: ChatMeta = {
-  id: 'chat-1',
+  id: toChatId({ raw: 'chat-1' }),
   title: 'Main Chat',
-  groupId: 'chat-group-1',
-  currentLeafId: 'leaf-1',
+  groupId: toChatGroupId({ raw: 'chat-group-1' }),
+  currentLeafId: toMessageId({ raw: 'leaf-1' }),
   createdAt: 100,
   updatedAt: 200,
   debugEnabled: true,
@@ -103,34 +104,34 @@ const sampleMetadata: ChatMeta = {
   modelId: 'gpt-5',
   autoTitleEnabled: true,
   titleModelId: 'gpt-5-mini',
-  originChatId: 'origin-chat',
-  originMessageId: 'origin-message',
+  originChatId: toChatId({ raw: 'origin-chat' }),
+  originMessageId: toMessageId({ raw: 'origin-message' }),
   systemPrompt: { behavior: 'append', content: 'Be concise.' },
   lmParameters: undefined,
-  mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/data', readOnly: true }],
+  mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/data', readOnly: true }],
 }
 
 const sampleIndividualChatMetadata: ChatMeta = {
   ...sampleMetadata,
-  id: 'chat-3',
+  id: toChatId({ raw: 'chat-3' }),
   title: 'Individual Chat',
   groupId: null,
-  currentLeafId: 'Ra2iS1T2u3V4w5X6y7Z8',
+  currentLeafId: toMessageId({ raw: 'Ra2iS1T2u3V4w5X6y7Z8' }),
   updatedAt: 300,
 }
 
 const sampleContent: ChatContent = {
-  currentLeafId: 'Wt3lL1M2n3P4q5R6s7T8',
+  currentLeafId: toMessageId({ raw: 'Wt3lL1M2n3P4q5R6s7T8' }),
   root: {
     items: [
       {
-        id: 'Yu1lA1B2c3D4e5F6g7H8',
+        id: toMessageId({ raw: 'Yu1lA1B2c3D4e5F6g7H8' }),
         role: 'user',
         content: 'Hello from the user',
         timestamp: 1000,
         attachments: [{
-          id: 'att-1',
-          binaryObjectId: 'bin-1',
+          id: toAttachmentId({ raw: 'att-1' }),
+          binaryObjectId: toBinaryObjectId({ raw: 'bin-1' }),
           originalName: 'note.pdf',
           mimeType: 'application/pdf',
           size: 1234,
@@ -141,7 +142,7 @@ const sampleContent: ChatContent = {
         replies: {
           items: [
             {
-              id: 'Za2lF6G7h8J9k0L1m2N3',
+              id: toMessageId({ raw: 'Za2lF6G7h8J9k0L1m2N3' }),
               role: 'assistant',
               content: 'Assistant reply',
               timestamp: 1001,
@@ -150,7 +151,7 @@ const sampleContent: ChatContent = {
               modelId: 'gpt-5',
               lmParameters: undefined,
               toolCalls: [{
-                id: 'tool-call-1',
+                id: toToolCallId({ raw: 'tool-call-1' }),
                 type: 'function',
                 function: {
                   name: 'shell_execute',
@@ -160,7 +161,7 @@ const sampleContent: ChatContent = {
               replies: {
                 items: [
                   {
-                    id: 'Wt3lL1M2n3P4q5R6s7T8',
+                    id: toMessageId({ raw: 'Wt3lL1M2n3P4q5R6s7T8' }),
                     role: 'tool',
                     content: undefined,
                     attachments: undefined,
@@ -170,7 +171,7 @@ const sampleContent: ChatContent = {
                     lmParameters: undefined,
                     toolCalls: undefined,
                     results: [{
-                      toolCallId: 'tool-call-1',
+                      toolCallId: toToolCallId({ raw: 'tool-call-1' }),
                       status: 'success',
                       content: {
                         type: 'text',
@@ -191,11 +192,11 @@ const sampleContent: ChatContent = {
 }
 
 const branchingContent: ChatContent = {
-  currentLeafId: 'Xa4aX1Y2z3A4b5C6d7E8',
+  currentLeafId: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
   root: {
     items: [
       {
-        id: 'Ku1rA1B2c3D4e5F6g7H8',
+        id: toMessageId({ raw: 'Ku1rA1B2c3D4e5F6g7H8' }),
         role: 'user',
         content: 'Root user',
         timestamp: 2000,
@@ -209,7 +210,7 @@ const branchingContent: ChatContent = {
         replies: {
           items: [
             {
-              id: 'La2rF6G7h8J9k0L1m2N3',
+              id: toMessageId({ raw: 'La2rF6G7h8J9k0L1m2N3' }),
               role: 'assistant',
               content: 'Root assistant',
               timestamp: 2001,
@@ -223,7 +224,7 @@ const branchingContent: ChatContent = {
               replies: {
                 items: [
                   {
-                    id: 'Mu3aL1M2n3P4q5R6s7T8',
+                    id: toMessageId({ raw: 'Mu3aL1M2n3P4q5R6s7T8' }),
                     role: 'user',
                     content: 'Branch A user',
                     timestamp: 2002,
@@ -237,7 +238,7 @@ const branchingContent: ChatContent = {
                     replies: {
                       items: [
                         {
-                          id: 'Na4bR6S7t8V9w0X1y2Z3',
+                          id: toMessageId({ raw: 'Na4bR6S7t8V9w0X1y2Z3' }),
                           role: 'assistant',
                           content: 'Branch A first leaf',
                           timestamp: 2003,
@@ -251,7 +252,7 @@ const branchingContent: ChatContent = {
                           replies: { items: [] },
                         },
                         {
-                          id: 'Xa4aX1Y2z3A4b5C6d7E8',
+                          id: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
                           role: 'assistant',
                           content: 'Branch A current leaf',
                           timestamp: 2004,
@@ -268,7 +269,7 @@ const branchingContent: ChatContent = {
                     },
                   },
                   {
-                    id: 'Pu3bC6D7e8F9g0H1i2J3',
+                    id: toMessageId({ raw: 'Pu3bC6D7e8F9g0H1i2J3' }),
                     role: 'user',
                     content: 'Branch B user',
                     timestamp: 2005,
@@ -282,7 +283,7 @@ const branchingContent: ChatContent = {
                     replies: {
                       items: [
                         {
-                          id: 'Sa4cH1J2k3L4m5N6p7Q8',
+                          id: toMessageId({ raw: 'Sa4cH1J2k3L4m5N6p7Q8' }),
                           role: 'assistant',
                           content: 'Branch B leaf',
                           timestamp: 2006,
@@ -309,7 +310,7 @@ const branchingContent: ChatContent = {
 }
 
 const sampleChatGroup: ChatGroup = {
-  id: 'chat-group-1',
+  id: toChatGroupId({ raw: 'chat-group-1' }),
   name: 'Primary Group',
   isCollapsed: false,
   updatedAt: 300,
@@ -323,15 +324,15 @@ const sampleChatGroup: ChatGroup = {
   titleModelId: 'gpt-5-mini',
   systemPrompt: { behavior: 'append', content: 'Group prompt.' },
   lmParameters: undefined,
-  mounts: [{ type: 'volume', volumeId: 'vol-2', mountPath: '/shared', readOnly: true }],
+  mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'vol-2' }), mountPath: '/shared', readOnly: true }],
   items: [
-    { id: 'chat-1', type: 'chat', chat: { id: 'chat-1', title: 'Main Chat', updatedAt: 200, groupId: 'chat-group-1' } },
-    { id: 'chat-2', type: 'chat', chat: { id: 'chat-2', title: 'Sibling Chat', updatedAt: 250, groupId: 'chat-group-1' } },
+    { id: 'chat-1', type: 'chat', chat: { id: toChatId({ raw: 'chat-1' }), title: 'Main Chat', updatedAt: 200, groupId: toChatGroupId({ raw: 'chat-group-1' }) } },
+    { id: 'chat-2', type: 'chat', chat: { id: toChatId({ raw: 'chat-2' }), title: 'Sibling Chat', updatedAt: 250, groupId: toChatGroupId({ raw: 'chat-group-1' }) } },
   ],
 }
 
 const sampleBinaryObject: BinaryObject = {
-  id: 'bin-1',
+  id: toBinaryObjectId({ raw: 'bin-1' }),
   name: 'note.pdf',
   mimeType: 'application/pdf',
   size: 4,

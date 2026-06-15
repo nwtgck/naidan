@@ -9,6 +9,7 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useRouter } from 'vue-router';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import SearchPreview from './SearchPreview.vue';
+import type { ChatId } from '@/models/ids';
 
 const props = defineProps<{
   groupId: string;
@@ -21,12 +22,12 @@ const { closeSearch } = useGlobalSearch();
 
 const chats = ref<ChatSummary[]>([]);
 const isLoading = ref(false);
-const selectedChatId = ref<string | null>(null);
+const selectedChatId = ref<ChatId | null>(null);
 const chatListContainer = ref<HTMLElement | null>(null);
 
 const selectedChat = computed(() => chats.value.find(c => c.id === selectedChatId.value) || null);
 
-async function selectAndNavigate({ chatId }: { chatId: string }) {
+async function selectAndNavigate({ chatId }: { chatId: ChatId }) {
   await openChat({ chatId });
   router.push(`/chat/${chatId}`);
   closeSearch();

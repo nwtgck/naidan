@@ -8,6 +8,7 @@ import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hiera
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '@/utils/chat-tree';
+import { toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
@@ -198,8 +199,8 @@ describe('useChat Composable Logic', () => {
 
   it('should rename a chat and update storage', async () => {
     const { renameChat, rootItems } = useChat();
-    const mockChat: Chat = { id: '1', title: 'Old', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
-    rootItems.value = [{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Old', updatedAt: 0 } }];
+    const mockChat: Chat = { id: toChatId({ raw: '1' }), title: 'Old', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    rootItems.value = [{ id: 'chat:1', type: 'chat', chat: { id: toChatId({ raw: '1' }), title: 'Old', updatedAt: 0 } }];
     mockRootItems.push(...rootItems.value);
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat);
 
@@ -215,11 +216,11 @@ describe('useChat Composable Logic', () => {
     const { forkChat, rootItems } = useChat();
 
     // Create a tree: m1 -> m2
-    const m2: MessageNode = { id: 'm2', role: 'assistant', content: 'Msg 2', replies: { items: [] }, timestamp: 0 };
-    const m1: MessageNode = { id: 'm1', role: 'user', content: 'Msg 1', replies: { items: [m2] }, timestamp: 0 };
+    const m2: MessageNode = { id: toMessageId({ raw: 'm2' }), role: 'assistant', content: 'Msg 2', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Msg 1', replies: { items: [m2] }, timestamp: 0 };
 
     const mockChat: Chat = {
-      id: 'old-chat',
+      id: toChatId({ raw: 'old-chat' }),
       title: 'Original',
       root: { items: [m1] },
       createdAt: 0,
@@ -229,14 +230,14 @@ describe('useChat Composable Logic', () => {
     };
 
     __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
-    rootItems.value = [{ id: 'chat:old-chat', type: 'chat', chat: { id: 'old-chat', title: 'Original', updatedAt: 0 } }];
+    rootItems.value = [{ id: 'chat:old-chat', type: 'chat', chat: { id: toChatId({ raw: 'old-chat' }), title: 'Original', updatedAt: 0 } }];
     mockRootItems.push(...rootItems.value);
-    mockHierarchy.items = [{ type: 'chat', id: 'old-chat' }];
+    mockHierarchy.items = [{ type: 'chat', id: toChatId({ raw: 'old-chat' }) }];
 
     vi.mocked(storageService.listChats).mockResolvedValue([]);
 
     // Fork at message 'm1'
-    const newId = await forkChat({ messageId: 'm1' });
+    const newId = await forkChat({ messageId: toMessageId({ raw: 'm1' }) });
 
     expect(newId).toBeDefined();
     expect(storageService.updateChatMeta).toHaveBeenCalledWith({ id: newId, updater: expect.any(Function) });
@@ -251,7 +252,7 @@ describe('useChat Composable Logic', () => {
     vi.useFakeTimers();
     try {
       __testOnlySetContextCompactProgress({
-        chatId: 'chat-compact',
+        chatId: toChatId({ raw: 'chat-compact' }),
         progress: {
           phase: 'complete',
           requestPreview: undefined,
@@ -259,21 +260,21 @@ describe('useChat Composable Logic', () => {
         },
       });
 
-      expect(chatStore.getContextCompactProgress({ chatId: 'chat-compact' })).toEqual({
+      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
         phase: 'complete',
         requestPreview: undefined,
         outputPreview: '# Compact Context',
       });
 
       await vi.advanceTimersByTimeAsync(399);
-      expect(chatStore.getContextCompactProgress({ chatId: 'chat-compact' })).toEqual({
+      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
         phase: 'complete',
         requestPreview: undefined,
         outputPreview: '# Compact Context',
       });
 
       await vi.advanceTimersByTimeAsync(1);
-      expect(chatStore.getContextCompactProgress({ chatId: 'chat-compact' })).toEqual({
+      expect(chatStore.getContextCompactProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
         phase: 'idle',
       });
     } finally {
@@ -286,17 +287,17 @@ describe('useChat Composable Logic', () => {
 
     // Initial state: g1, c1
     mockHierarchy.items = [
-      { type: 'chat_group', id: 'g1', chat_ids: [] },
-      { type: 'chat', id: 'c1' }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) }
     ];
 
-    const m1: MessageNode = { id: 'm1', role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
     __testOnlySetCurrentChat({ chat: reactive({
-      id: 'c1', title: 'C1', root: { items: [m1] },
+      id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [m1] },
       createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null
     }) as any });
 
-    await forkChat({ messageId: 'm1' });
+    await forkChat({ messageId: toMessageId({ raw: 'm1' }) });
 
     // Expected: g1, fork_of_c1, c1
     expect(mockHierarchy.items).toHaveLength(3);
@@ -309,9 +310,9 @@ describe('useChat Composable Logic', () => {
   it('should inherit attachments and modelId during fork', async () => {
     const { forkChat } = useChat();
 
-    const att: Attachment = { id: 'a1', binaryObjectId: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
+    const att: Attachment = { id: toAttachmentId({ raw: 'a1' }), binaryObjectId: toBinaryObjectId({ raw: 'a1' }), originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
     const m1: MessageNode = {
-      id: 'm1',
+      id: toMessageId({ raw: 'm1' }),
       role: 'user',
       content: 'Msg 1',
       attachments: [att],
@@ -324,7 +325,7 @@ describe('useChat Composable Logic', () => {
     };
 
     const mockChat: Chat = {
-      id: 'old-chat',
+      id: toChatId({ raw: 'old-chat' }),
       title: 'Original',
       root: { items: [m1] },
       createdAt: 0,
@@ -334,9 +335,9 @@ describe('useChat Composable Logic', () => {
     };
 
     __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
-    mockHierarchy.items = [{ type: 'chat', id: 'old-chat' }];
+    mockHierarchy.items = [{ type: 'chat', id: toChatId({ raw: 'old-chat' }) }];
 
-    const newId = await forkChat({ messageId: 'm1' });
+    const newId = await forkChat({ messageId: toMessageId({ raw: 'm1' }) });
 
     const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => call[0].id === newId);
     const contentUpdater = updaterCall?.[0].updater;
@@ -352,9 +353,9 @@ describe('useChat Composable Logic', () => {
   it('should preserve attachments during editMessage', async () => {
     const { editMessage, currentChat } = useChat();
 
-    const att: Attachment = { id: 'a1', binaryObjectId: 'a1', originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
+    const att: Attachment = { id: toAttachmentId({ raw: 'a1' }), binaryObjectId: toBinaryObjectId({ raw: 'a1' }), originalName: 't.png', mimeType: 'image/png', size: 100, uploadedAt: 0, status: 'persisted' };
     const m1: MessageNode = {
-      id: 'm1',
+      id: toMessageId({ raw: 'm1' }),
       role: 'user',
       content: 'Original Content',
       attachments: [att],
@@ -376,7 +377,7 @@ describe('useChat Composable Logic', () => {
     }) as any });
 
     // Edit assistant message
-    await editMessage({ messageId: 'm1', newContent: 'New Content' });
+    await editMessage({ messageId: toMessageId({ raw: 'm1' }), newContent: 'New Content' });
 
     expect(currentChat.value?.root.items).toHaveLength(2);
     const newMsg = currentChat.value?.root.items[1];
@@ -388,7 +389,7 @@ describe('useChat Composable Logic', () => {
     const { sendMessage, editMessage, currentChat, rootItems } = useChat();
 
     const chatObj: Chat = {
-      id: 'chat-root-test',
+      id: toChatId({ raw: 'chat-root-test' }),
       title: 'Root Test',
       root: { items: [] },
       createdAt: Date.now(),
@@ -422,7 +423,7 @@ describe('useChat Composable Logic', () => {
     const { sendMessage, editMessage, currentChat, rootItems } = useChat();
 
     const chatObj: Chat = {
-      id: 'assistant-edit-test',
+      id: toChatId({ raw: 'assistant-edit-test' }),
       title: 'Assistant Edit',
       root: { items: [] },
       createdAt: Date.now(),
@@ -535,8 +536,8 @@ describe('useChat Composable Logic', () => {
   it('should maintain the new order after reordering items', async () => {
     const { persistSidebarStructure, rootItems } = useChat();
 
-    const mockChatGroup = { id: 'g1', name: 'Group A', isCollapsed: false, items: [], updatedAt: 0 };
-    const mockChat = { id: 'c1', title: 'Chat B', updatedAt: 0 };
+    const mockChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group A', isCollapsed: false, items: [], updatedAt: 0 };
+    const mockChat = { id: toChatId({ raw: 'c1' }), title: 'Chat B', updatedAt: 0 };
 
     const initial: SidebarItem[] = [
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup },
@@ -545,8 +546,8 @@ describe('useChat Composable Logic', () => {
     rootItems.value = initial;
     mockRootItems.push(...initial);
     mockHierarchy.items = [
-      { type: 'chat_group', id: 'g1', chat_ids: [] },
-      { type: 'chat', id: 'c1' }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) }
     ];
 
     const newItems: SidebarItem[] = [
@@ -562,8 +563,8 @@ describe('useChat Composable Logic', () => {
   it('should handle moving a chat into a chat group', async () => {
     const { persistSidebarStructure, rootItems } = useChat();
 
-    const mockChatGroup = { id: 'g1', name: 'Group A', isCollapsed: false, items: [], updatedAt: 0 };
-    const mockChat = { id: 'c1', title: 'Chat B', updatedAt: 0, groupId: null };
+    const mockChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Group A', isCollapsed: false, items: [], updatedAt: 0 };
+    const mockChat = { id: toChatId({ raw: 'c1' }), title: 'Chat B', updatedAt: 0, groupId: null };
 
     const initial: SidebarItem[] = [
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup },
@@ -572,8 +573,8 @@ describe('useChat Composable Logic', () => {
     rootItems.value = initial;
     mockRootItems.push(...initial);
     mockHierarchy.items = [
-      { type: 'chat_group', id: 'g1', chat_ids: [] },
-      { type: 'chat', id: 'c1' }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) }
     ];
 
     const newItems: SidebarItem[] = [
@@ -583,7 +584,7 @@ describe('useChat Composable Logic', () => {
         chatGroup: {
           ...mockChatGroup,
           items: [
-            { id: 'chat:c1', type: 'chat' as const, chat: { ...mockChat, groupId: 'g1' } },
+            { id: 'chat:c1', type: 'chat' as const, chat: { ...mockChat, groupId: toChatGroupId({ raw: 'g1' }) } },
           ],
         },
       },
@@ -597,10 +598,10 @@ describe('useChat Composable Logic', () => {
   it('should handle reordering chats within a chat group', async () => {
     const { persistSidebarStructure, rootItems } = useChat();
 
-    const chat1 = { id: 'c1', title: 'C1', updatedAt: 0, groupId: 'g1' };
-    const chat2 = { id: 'c2', title: 'C2', updatedAt: 0, groupId: 'g1' };
+    const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+    const chat2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     const mockChatGroup = {
-      id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0,
       items: [
         { id: 'chat:c1', type: 'chat' as const, chat: chat1 },
         { id: 'chat:c2', type: 'chat' as const, chat: chat2 },
@@ -610,7 +611,7 @@ describe('useChat Composable Logic', () => {
     const initial: SidebarItem[] = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup }];
     rootItems.value = initial;
     mockRootItems.push(...initial);
-    mockHierarchy.items = [{ type: 'chat_group', id: 'g1', chat_ids: ['c1', 'c2'] }];
+    mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' })] }];
 
     const newItems: SidebarItem[] = [
       {
@@ -635,16 +636,16 @@ describe('useChat Composable Logic', () => {
   it('should handle moving a chat out of a chat group to the root', async () => {
     const { persistSidebarStructure, rootItems } = useChat();
 
-    const chat1 = { id: 'c1', title: 'C1', updatedAt: 0, groupId: 'g1' };
+    const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     const mockChatGroup = {
-      id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0,
       items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }],
     };
 
     const initial: SidebarItem[] = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: mockChatGroup }];
     rootItems.value = initial;
     mockRootItems.push(...initial);
-    mockHierarchy.items = [{ type: 'chat_group', id: 'g1', chat_ids: ['c1'] }];
+    mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [toChatId({ raw: 'c1' })] }];
 
     const newItems: SidebarItem[] = [
       { id: 'chat_group:g1', type: 'chat_group' as const, chatGroup: { ...mockChatGroup, items: [] } },
@@ -658,13 +659,13 @@ describe('useChat Composable Logic', () => {
   it('should handle moving a chat from one chat group to another', async () => {
     const { persistSidebarStructure, rootItems } = useChat();
 
-    const chat1 = { id: 'c1', title: 'C1', updatedAt: 0, groupId: 'g1' };
+    const chat1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     const groupA = {
-      id: 'g1', name: 'GA', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g1' }), name: 'GA', isCollapsed: false, updatedAt: 0,
       items: [{ id: 'chat:c1', type: 'chat' as const, chat: chat1 }],
     };
     const groupB = {
-      id: 'g2', name: 'GB', isCollapsed: false, updatedAt: 0,
+      id: toChatGroupId({ raw: 'g2' }), name: 'GB', isCollapsed: false, updatedAt: 0,
       items: [],
     };
 
@@ -675,8 +676,8 @@ describe('useChat Composable Logic', () => {
     rootItems.value = initial;
     mockRootItems.push(...initial);
     mockHierarchy.items = [
-      { type: 'chat_group', id: 'g1', chat_ids: ['c1'] },
-      { type: 'chat_group', id: 'g2', chat_ids: [] }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [toChatId({ raw: 'c1' })] },
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] }
     ];
 
     const newItems: SidebarItem[] = [
@@ -686,7 +687,7 @@ describe('useChat Composable Logic', () => {
         type: 'chat_group' as const,
         chatGroup: {
           ...groupB,
-          items: [{ id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: 'g2' } }],
+          items: [{ id: 'chat:c1', type: 'chat' as const, chat: { ...chat1, groupId: toChatGroupId({ raw: 'g2' }) } }],
         },
       },
     ];
@@ -701,7 +702,7 @@ describe('useChat Composable Logic', () => {
     const { __testOnlySetCurrentChat } = TEST_ONLY;
 
     const mockChat: Chat = {
-      id: 'c1', title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+      id: toChatId({ raw: 'c1' }), title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
     };
     __testOnlySetCurrentChat({ chat: mockChat });
 
@@ -742,7 +743,7 @@ describe('useChat Composable Logic', () => {
     const { __testOnlySetCurrentChat } = TEST_ONLY;
 
     const mockChat: Chat = {
-      id: 'c1', title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
+      id: toChatId({ raw: 'c1' }), title: 'Test', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false,
     };
     __testOnlySetCurrentChat({ chat: mockChat });
 
@@ -762,7 +763,7 @@ describe('useChat Composable Logic', () => {
       // Fallback: if root is empty, something is wrong with sendMessage mock synchronization
       // but we can still test the logic by manually inserting a node
       const manualId = 'manual-u1';
-      liveChat.root.items.push({ id: manualId, role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] }, thinking: undefined, modelId: undefined });
+      liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] }, thinking: undefined, modelId: undefined });
       await editMessage({ messageId: manualId, newContent: 'Updated Hello', lmParameters: newParams });
     } else {
       mockLlmChat.mockClear();
@@ -834,13 +835,13 @@ describe('useChat Composable Logic', () => {
   it('should insert a new chat before the first individual chat', async () => {
     // 1. Setup initial state in MOCK storage
     const initial: SidebarItem[] = [
-      { id: 'chat_group:g1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] } },
-      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
+      { id: 'chat_group:g1', type: 'chat_group', chatGroup: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] } },
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } },
     ];
     mockRootItems.push(...initial);
     mockHierarchy.items = [
-      { type: 'chat_group', id: 'g1', chat_ids: [] },
-      { type: 'chat', id: 'c1' }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) }
     ];
 
     await chatStore.loadChats();
@@ -856,9 +857,9 @@ describe('useChat Composable Logic', () => {
 
   describe('New Chat Insertion Order', () => {
     it('should insert a new chat AFTER leading groups and BEFORE the first individual chat', async () => {
-      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
-      const g2 = { id: 'g2', name: 'G2', isCollapsed: false, updatedAt: 0, items: [] };
-      const c1 = { id: 'c1', title: 'C1', updatedAt: 0 };
+      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      const g2 = { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: false, updatedAt: 0, items: [] };
+      const c1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 };
 
       const initial: SidebarItem[] = [
         { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
@@ -867,9 +868,9 @@ describe('useChat Composable Logic', () => {
       ];
       mockRootItems.push(...initial);
       mockHierarchy.items = [
-        { type: 'chat_group', id: 'g1', chat_ids: [] },
-        { type: 'chat_group', id: 'g2', chat_ids: [] },
-        { type: 'chat', id: 'c1' }
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
+        { type: 'chat', id: toChatId({ raw: 'c1' }) }
       ];
       await chatStore.loadChats();
 
@@ -900,11 +901,11 @@ describe('useChat Composable Logic', () => {
     it('should insert before the first chat even if groups exist later in the list', async () => {
       // g1, g2, c1, c2, g3
       mockHierarchy.items = [
-        { type: 'chat_group', id: 'g1', chat_ids: [] },
-        { type: 'chat_group', id: 'g2', chat_ids: [] },
-        { type: 'chat', id: 'c1' },
-        { type: 'chat', id: 'c2' },
-        { type: 'chat_group', id: 'g3', chat_ids: [] },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
+        { type: 'chat', id: toChatId({ raw: 'c1' }) },
+        { type: 'chat', id: toChatId({ raw: 'c2' }) },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g3' }), chat_ids: [] },
       ];
       await chatStore.loadChats();
 
@@ -917,11 +918,11 @@ describe('useChat Composable Logic', () => {
 
     it('should insert before the first chat in a complex mixed list (g1, g2, c1, c2, g3)', async () => {
       mockHierarchy.items = [
-        { type: 'chat_group', id: 'g1', chat_ids: [] },
-        { type: 'chat_group', id: 'g2', chat_ids: [] },
-        { type: 'chat', id: 'c1' },
-        { type: 'chat', id: 'c2' },
-        { type: 'chat_group', id: 'g3', chat_ids: [] },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g2' }), chat_ids: [] },
+        { type: 'chat', id: toChatId({ raw: 'c1' }) },
+        { type: 'chat', id: toChatId({ raw: 'c2' }) },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g3' }), chat_ids: [] },
       ];
       await chatStore.loadChats();
 
@@ -936,8 +937,8 @@ describe('useChat Composable Logic', () => {
     });
 
     it('should insert at the very top if the first item is a chat', async () => {
-      const c1 = { id: 'c1', title: 'C1', updatedAt: 0 };
-      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      const c1 = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 };
+      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
 
       const initial: SidebarItem[] = [
         { id: 'chat:c1', type: 'chat', chat: c1 },
@@ -945,8 +946,8 @@ describe('useChat Composable Logic', () => {
       ];
       mockRootItems.push(...initial);
       mockHierarchy.items = [
-        { type: 'chat', id: 'c1' },
-        { type: 'chat_group', id: 'g1', chat_ids: [] }
+        { type: 'chat', id: toChatId({ raw: 'c1' }) },
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] }
       ];
       await chatStore.loadChats();
 
@@ -958,14 +959,14 @@ describe('useChat Composable Logic', () => {
     });
 
     it('should insert at the end if there are only groups', async () => {
-      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
 
       const initial: SidebarItem[] = [
         { id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 },
       ];
       mockRootItems.push(...initial);
       mockHierarchy.items = [
-        { type: 'chat_group', id: 'g1', chat_ids: [] }
+        { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] }
       ];
       await chatStore.loadChats();
 
@@ -979,10 +980,10 @@ describe('useChat Composable Logic', () => {
 
   it('should prepend a new chat group to the rootItems list', async () => {
     const initial: SidebarItem[] = [
-      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } },
     ];
     mockRootItems.push(...initial);
-    mockHierarchy.items = [{ type: 'chat', id: 'c1' }];
+    mockHierarchy.items = [{ type: 'chat', id: toChatId({ raw: 'c1' }) }];
 
     const { createChatGroup } = useChat();
     await chatStore.loadChats();
@@ -996,11 +997,11 @@ describe('useChat Composable Logic', () => {
 
   it('should maintain the correct position after sending a message when sidebar send reorder is disabled', async () => {
     const { sendMessage } = useChat();
-    const c2 = { id: 'c2', title: 'C2', updatedAt: 0 };
+    const c2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0 };
     mockHierarchy.items = [
-      { type: 'chat_group', id: 'g1', chat_ids: [] },
-      { type: 'chat', id: 'c1' },
-      { type: 'chat', id: 'c2' }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
+      { type: 'chat', id: toChatId({ raw: 'c2' }) }
     ];
     __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
     await sendMessage({ content: 'Hello' });
@@ -1013,12 +1014,12 @@ describe('useChat Composable Logic', () => {
 
   it('moves a top-level chat before existing top-level chats after sending when sidebar send reorder is enabled', async () => {
     const { sendMessage } = useChat();
-    const c2 = { id: 'c2', title: 'C2', updatedAt: 0 };
+    const c2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0 };
     mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
     mockHierarchy.items = [
-      { type: 'chat_group', id: 'g1', chat_ids: [] },
-      { type: 'chat', id: 'c1' },
-      { type: 'chat', id: 'c2' }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1' }), chat_ids: [] },
+      { type: 'chat', id: toChatId({ raw: 'c1' }) },
+      { type: 'chat', id: toChatId({ raw: 'c2' }) }
     ];
 
     __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
@@ -1030,11 +1031,11 @@ describe('useChat Composable Logic', () => {
 
   it('moves a grouped chat to the top of its current group after sending when sidebar send reorder is enabled', async () => {
     const { sendMessage } = useChat();
-    const c2 = { id: 'c2', title: 'C2', updatedAt: 0, groupId: 'g1' };
+    const c2 = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
     mocks.settings.experimental = { sidebarSendMessageReorder: 'move_sent_chat' };
     mockHierarchy.items = [
-      { type: 'chat_group', id: 'g1', chat_ids: ['c1', 'c2', 'c3'] },
-      { type: 'chat', id: 'top' }
+      { type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' }), toChatId({ raw: 'c3' })] },
+      { type: 'chat', id: toChatId({ raw: 'top' }) }
     ];
 
     __testOnlySetCurrentChat({ chat: reactive({ ...c2, root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false }) as any });
@@ -1051,7 +1052,7 @@ describe('useChat Composable Logic', () => {
   it('should generate a chat title based on the first message', async () => {
     const { generateChatTitle } = useChat();
 
-    const m1: MessageNode = { id: 'm1', role: 'user', content: 'What is the capital of France?', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'What is the capital of France?', replies: { items: [] }, timestamp: 0 };
     const chatObj = reactive({
       id: 'title-test-chat',
       title: null,
@@ -1083,13 +1084,13 @@ describe('useChat Composable Logic', () => {
     const chatA = reactive({
       id: 'chat-A',
       title: null,
-      root: { items: [{ id: 'm1', role: 'user', content: 'Msg A', replies: { items: [] }, timestamp: 0 }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Msg A', replies: { items: [] }, timestamp: 0 }] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
     const chatB = reactive({
       id: 'chat-B',
       title: null,
-      root: { items: [{ id: 'm2', role: 'user', content: 'Msg B', replies: { items: [] }, timestamp: 0 }] },
+      root: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'user', content: 'Msg B', replies: { items: [] }, timestamp: 0 }] },
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any;
 
@@ -1154,9 +1155,9 @@ describe('useChat Composable Logic', () => {
   it('should update the title even if it is already set when generateChatTitle is called', async () => {
     const { generateChatTitle } = useChat();
 
-    const m1: MessageNode = { id: 'm1', role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
     const chatObj = reactive<Chat>({
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Old Title',
       root: { items: [m1] },
       createdAt: Date.now(),
@@ -1179,9 +1180,9 @@ describe('useChat Composable Logic', () => {
   it('should allow aborting title generation', async () => {
     const { generateChatTitle, abortTitleGeneration, TEST_ONLY: { __testOnlySetCurrentChat } } = useChat();
 
-    const m1: MessageNode = { id: 'm1', role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Original message', replies: { items: [] }, timestamp: 0 };
     const chatObj = reactive<Chat>({
-      id: 'chat-abort-test',
+      id: toChatId({ raw: 'chat-abort-test' }),
       title: null,
       root: { items: [m1] },
       createdAt: Date.now(),
@@ -1221,7 +1222,7 @@ describe('useChat Composable Logic', () => {
 
   it('should set currentChat to loaded chat in openChat, or null if not found', async () => {
     const { openChat, currentChat } = useChat();
-    const mockChat: Chat = { id: 'found', title: 'Found', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const mockChat: Chat = { id: toChatId({ raw: 'found' }), title: 'Found', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
 
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
     await openChat({ id: 'found' });
@@ -1235,33 +1236,33 @@ describe('useChat Composable Logic', () => {
   it('should open a message-id link without persisting the selected current leaf', async () => {
     const { openChatAtMessage, currentChat, activeMessages } = useChat();
     const mockChat: Chat = {
-      id: 'message-link-chat',
+      id: toChatId({ raw: 'message-link-chat' }),
       title: 'Message Link Chat',
       root: {
         items: [
           {
-            id: 'user-1',
+            id: toMessageId({ raw: 'user-1' }),
             role: 'user',
             content: 'Question',
             timestamp: 1,
             replies: {
               items: [
                 {
-                  id: 'assistant-1',
+                  id: toMessageId({ raw: 'assistant-1' }),
                   role: 'assistant',
                   content: 'Target answer',
                   timestamp: 2,
                   replies: {
                     items: [
                       {
-                        id: 'user-followup',
+                        id: toMessageId({ raw: 'user-followup' }),
                         role: 'user',
                         content: 'Follow up',
                         timestamp: 3,
                         replies: {
                           items: [
                             {
-                              id: 'target-leaf',
+                              id: toMessageId({ raw: 'target-leaf' }),
                               role: 'assistant',
                               content: 'Target leaf',
                               timestamp: 4,
@@ -1274,7 +1275,7 @@ describe('useChat Composable Logic', () => {
                   },
                 },
                 {
-                  id: 'assistant-2',
+                  id: toMessageId({ raw: 'assistant-2' }),
                   role: 'assistant',
                   content: 'Saved answer',
                   timestamp: 5,
@@ -1285,7 +1286,7 @@ describe('useChat Composable Logic', () => {
           },
         ],
       },
-      currentLeafId: 'assistant-2',
+      currentLeafId: toMessageId({ raw: 'assistant-2' }),
       createdAt: 0,
       updatedAt: 0,
       debugEnabled: false,
@@ -1294,7 +1295,7 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
     vi.mocked(storageService.updateChatContent).mockClear();
 
-    await openChatAtMessage({ chatId: 'message-link-chat', messageId: 'assistant-1' });
+    await openChatAtMessage({ chatId: toChatId({ raw: 'message-link-chat' }), messageId: toMessageId({ raw: 'assistant-1' }) });
 
     expect(currentChat.value?.currentLeafId).toBe('target-leaf');
     expect(activeMessages.value.map(message => message.id)).toContain('assistant-1');
@@ -1310,7 +1311,7 @@ describe('useChat Composable Logic', () => {
     const mockListModels = vi.fn().mockResolvedValue(['new-model']);
     vi.mocked(OpenAIProvider as any).prototype.listModels = mockListModels;
 
-    await fetchAvailableModels({ chatId: 'chat-1' });
+    await fetchAvailableModels({ chatId: toChatId({ raw: 'chat-1' }) });
     await flushPromises();
 
     expect(chat.modelId).toBe('');
@@ -1318,9 +1319,9 @@ describe('useChat Composable Logic', () => {
 
   describe('findRestorationIndex Logic (Bidirectional Context)', () => {
     const items: SidebarItem[] = [
-      { id: 'i1', type: 'chat', chat: { id: 'c1', title: '1', updatedAt: 0 } },
-      { id: 'i2', type: 'chat', chat: { id: 'c2', title: '2', updatedAt: 0 } },
-      { id: 'i3', type: 'chat', chat: { id: 'c3', title: '3', updatedAt: 0 } },
+      { id: 'i1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: '1', updatedAt: 0 } },
+      { id: 'i2', type: 'chat', chat: { id: toChatId({ raw: 'c2' }), title: '2', updatedAt: 0 } },
+      { id: 'i3', type: 'chat', chat: { id: toChatId({ raw: 'c3' }), title: '3', updatedAt: 0 } },
     ];
 
     it('should return index after prevId if prevId is present', () => {
@@ -1349,17 +1350,17 @@ describe('useChat Composable Logic', () => {
 
     it('should restore the last item of a group correctly in an integrated flow', async () => {
       // 1. Prepare data
-      const chat2Id = 'c2';
-      const c1 = { id: 'c1', title: '1', updatedAt: 0, groupId: 'g1' };
-      const c2 = { id: chat2Id, title: '2', updatedAt: 0, groupId: 'g1' };
-      const g1 = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [
+      const chat2Id = toChatId({ raw: 'c2' });
+      const c1 = { id: toChatId({ raw: 'c1' }), title: '1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+      const c2 = { id: chat2Id, title: '2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+      const g1 = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [
         { id: 'chat:c1', type: 'chat', chat: c1 },
         { id: 'chat:c2', type: 'chat', chat: c2 },
       ] as ChatSidebarItem[] };
 
       mockRootItems.length = 0;
       mockRootItems.push({ id: 'chat_group:g1', type: 'chat_group', chatGroup: g1 });
-      mockHierarchy.items = [{ type: 'chat_group', id: 'g1', chat_ids: ['c1', 'c2'] }];
+      mockHierarchy.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g1'}), chat_ids: [toChatId({ raw: 'c1' }), toChatId({ raw: 'c2' })] }];
 
       // Ensure mock loadChat returns the chat we are about to delete
       vi.mocked(storageService.loadChat).mockImplementation(async ({ id }) => {
@@ -1387,7 +1388,7 @@ describe('useChat Composable Logic', () => {
       // 4. Simulate Tab B removing it from hierarchy
       await storageService.updateHierarchy({ updater: ({ current: curr }) => {
         const g = curr.items[0] as HierarchyChatGroupNode;
-        g.chat_ids = ['c1'];
+        g.chat_ids = [toChatId({ raw: 'c1' })];
         return curr;
       } });
       await chatStore.loadChats();

@@ -8,19 +8,20 @@ import {
   getReadonlyChat,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatId, VolumeId } from '@/models/ids';
 
 export type ChatMountsAdapter = {
   getMounts({
     chatId,
   }: {
-    chatId: Readonly<Ref<string>>;
+    chatId: Readonly<Ref<ChatId>>;
   }): ComputedRef<Mount[]>;
 
   addMount({
     chatId,
     mount,
   }: {
-    chatId: string;
+    chatId: ChatId;
     mount: Mount;
   }): Promise<void>;
 
@@ -28,8 +29,8 @@ export type ChatMountsAdapter = {
     chatId,
     volumeId,
   }: {
-    chatId: string;
-    volumeId: string;
+    chatId: ChatId;
+    volumeId: VolumeId;
   }): Promise<void>;
 
   updateMount({
@@ -37,8 +38,8 @@ export type ChatMountsAdapter = {
     volumeId,
     readOnly,
   }: {
-    chatId: string;
-    volumeId: string;
+    chatId: ChatId;
+    volumeId: VolumeId;
     readOnly: boolean;
   }): Promise<void>;
 
@@ -49,7 +50,7 @@ export function useChatMounts(): ChatMountsAdapter {
   function getMounts({
     chatId,
   }: {
-    chatId: Readonly<Ref<string>>;
+    chatId: Readonly<Ref<ChatId>>;
   }): ComputedRef<Mount[]> {
     return computed(() => getReadonlyChat({ chatId: chatId.value })?.mounts ?? []);
   }
@@ -58,7 +59,7 @@ export function useChatMounts(): ChatMountsAdapter {
     chatId,
     mount,
   }: {
-    chatId: string;
+    chatId: ChatId;
     mount: Mount;
   }): Promise<void> {
     await storageService.addMountToChat({
@@ -80,8 +81,8 @@ export function useChatMounts(): ChatMountsAdapter {
     chatId,
     volumeId,
   }: {
-    chatId: string;
-    volumeId: string;
+    chatId: ChatId;
+    volumeId: VolumeId;
   }): Promise<void> {
     await storageService.removeMountFromChat({
       chatId,
@@ -102,8 +103,8 @@ export function useChatMounts(): ChatMountsAdapter {
     volumeId,
     readOnly,
   }: {
-    chatId: string;
-    volumeId: string;
+    chatId: ChatId;
+    volumeId: VolumeId;
     readOnly: boolean;
   }): Promise<void> {
     await storageService.updateChatMount({

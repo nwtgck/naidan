@@ -2,6 +2,7 @@ import type { WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat, WeshVirtual
 import { NAIDAN_SYSFS_ROOT_PATH } from './constants'
 import { createRootEntry } from './entries/root'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsStorageReader } from './types'
+import { toChatGroupId, toChatId } from '@/models/ids'
 
 export class NaidanSysfsProvider implements WeshVirtualMountProvider {
   private readonly context: NaidanSysfsContext
@@ -24,8 +25,8 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
       reader,
       visibility,
       binaryObjectAccess,
-      currentChatId,
-      currentChatGroupId,
+      currentChatId: toChatId({ raw: currentChatId }),
+      currentChatGroupId: currentChatGroupId === undefined ? undefined : toChatGroupId({ raw: currentChatGroupId }),
     }
     this.rootEntry = createRootEntry()
   }

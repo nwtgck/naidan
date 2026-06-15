@@ -8,6 +8,8 @@ import type { GeneratedImageBlock } from '@/utils/image-generation';
 import type { MessageNode } from '@/models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
+import { toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
   node: Readonly<MessageNode>;
@@ -21,7 +23,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'preview-attachment', objId: string): void;
+  (e: 'preview-attachment', objId: BinaryObjectId): void;
   (e: 'select-node', node: Readonly<MessageNode>): void;
 }>();
 
@@ -68,7 +70,7 @@ const thumbnailUrls = ref<Record<string, string>>({});
 
 const inlineImages = computed(() => {
   if (!props.node.content) return [];
-  const images: GeneratedImageBlock[] = [];
+  const images: Array<GeneratedImageBlock & { binaryObjectId: BinaryObjectId }> = [];
   const regex = new RegExp('```' + IMAGE_BLOCK_LANG + '\\n([\\s\\S]*?)\\n```', 'g');
   let match;
   while ((match = regex.exec(props.node.content)) !== null) {
@@ -78,7 +80,10 @@ const inlineImages = computed(() => {
       const parsed = JSON.parse(jsonStr);
       const result = GeneratedImageBlockSchema.safeParse(parsed);
       if (result.success) {
-        images.push(result.data);
+        images.push({
+          ...result.data,
+          binaryObjectId: toBinaryObjectId({ raw: result.data.binaryObjectId }),
+        });
       } else {
         console.warn('Failed to validate inline image schema in ChatDebugTreeNode:', result.error);
         addErrorEvent({

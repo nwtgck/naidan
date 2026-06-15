@@ -7,6 +7,7 @@ import {
   triggerCurrentChat,
   updateChatMeta,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 
 type ReasoningEffort = Reasoning['effort'];
 
@@ -27,21 +28,21 @@ export type ChatMetadataAdapter = {
     chatId,
     title,
   }: {
-    chatId: string;
+    chatId: ChatId;
     title: string;
   }): Promise<void>;
 
   toggleDebug({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<void>;
 
   updateModel({
     chatId,
     modelId,
   }: {
-    chatId: string;
+    chatId: ChatId;
     modelId: string | undefined;
   }): Promise<void>;
 
@@ -49,29 +50,29 @@ export type ChatMetadataAdapter = {
     chatId,
     chatGroupId,
   }: {
-    chatId: string;
-    chatGroupId: string | undefined;
+    chatId: ChatId;
+    chatGroupId: ChatGroupId | undefined;
   }): Promise<void>;
 
   updateSettings({
     chatId,
     updates,
   }: {
-    chatId: string;
+    chatId: ChatId;
     updates: ChatSettingsUpdate;
   }): Promise<void>;
 
   reasoningEffort({
     chatId,
   }: {
-    chatId: Readonly<Ref<string>>;
+    chatId: Readonly<Ref<ChatId>>;
   }): ComputedRef<ReasoningEffort | undefined>;
 
   updateReasoningEffort({
     chatId,
     effort,
   }: {
-    chatId: string;
+    chatId: ChatId;
     effort: ReasoningEffort | undefined;
   }): Promise<void>;
 
@@ -83,7 +84,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     title,
   }: {
-    chatId: string;
+    chatId: ChatId;
     title: string;
   }): Promise<void> {
     const liveChat = getLiveChatById({ chatId });
@@ -114,7 +115,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
   async function toggleDebug({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<void> {
     const targetChat = getLiveChatById({ chatId });
     if (targetChat === null) {
@@ -147,7 +148,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     modelId,
   }: {
-    chatId: string;
+    chatId: ChatId;
     modelId: string | undefined;
   }): Promise<void> {
     const liveChat = getLiveChatById({ chatId });
@@ -178,12 +179,12 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     chatGroupId,
   }: {
-    chatId: string;
-    chatGroupId: string | undefined;
+    chatId: ChatId;
+    chatGroupId: ChatGroupId | undefined;
   }): Promise<void> {
     const liveChat = getLiveChatById({ chatId });
     if (liveChat !== null) {
-      liveChat.groupId = chatGroupId;
+      liveChat.groupId = chatGroupId === undefined ? undefined : chatGroupId;
       liveChat.updatedAt = Date.now();
       triggerCurrentChat({ chatId });
     }
@@ -198,7 +199,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
 
         return {
           ...current,
-          groupId: chatGroupId,
+          groupId: chatGroupId === undefined ? undefined : chatGroupId,
           updatedAt: Date.now(),
         };
       },
@@ -210,7 +211,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     updates,
   }: {
-    chatId: string;
+    chatId: ChatId;
     updates: ChatSettingsUpdate;
   }): Promise<void> {
     const liveChat = getLiveChatById({ chatId });
@@ -266,7 +267,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
   function reasoningEffort({
     chatId,
   }: {
-    chatId: Readonly<Ref<string>>;
+    chatId: Readonly<Ref<ChatId>>;
   }): ComputedRef<ReasoningEffort | undefined> {
     return computed(() => getLiveChatById({
       chatId: chatId.value,
@@ -277,7 +278,7 @@ export function useChatMetadata(): ChatMetadataAdapter {
     chatId,
     effort,
   }: {
-    chatId: string;
+    chatId: ChatId;
     effort: ReasoningEffort | undefined;
   }): Promise<void> {
     const liveChat = getLiveChatById({ chatId });

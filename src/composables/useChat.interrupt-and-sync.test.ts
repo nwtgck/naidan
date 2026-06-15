@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
@@ -147,8 +148,8 @@ describe('useChat Interrupt and Sync Tests', () => {
   }, 15000);
 
   it('should save intermediate image generation results to storage', async () => {
-    const chatId = 'sync-test';
-    const assistantId = 'assistant-1';
+    const chatId = toChatId({ raw: 'sync-test' });
+    const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
       id: chatId, title: 'Sync Test',
       root: {
@@ -198,8 +199,8 @@ describe('useChat Interrupt and Sync Tests', () => {
   }, 15000);
 
   it('should save "[Generation Aborted]" suffix to storage when regular chat generation is aborted', async () => {
-    const chatId = 'abort-test';
-    const assistantId = 'assistant-1';
+    const chatId = toChatId({ raw: 'abort-test' });
+    const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
       id: chatId, title: 'Abort Test',
       root: {
@@ -258,8 +259,8 @@ describe('useChat Interrupt and Sync Tests', () => {
   }, 15000);
 
   it('should request external abort before regenerateMessage and continue', async () => {
-    const chatId = 'external-regen-test';
-    const assistantId = 'assistant-1';
+    const chatId = toChatId({ raw: 'external-regen-test' });
+    const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
       id: chatId,
       title: 'External Regen',
@@ -319,7 +320,7 @@ describe('useChat Interrupt and Sync Tests', () => {
   }, 15000);
 
   it('should abort active compact processing before editMessage and continue', async () => {
-    const chatId = 'compact-edit-test';
+    const chatId = toChatId({ raw: 'compact-edit-test' });
     const chat = reactive({
       id: chatId,
       title: 'Compact Edit',
@@ -366,7 +367,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       params.onChunk({ chunk: 'Edited Response' });
     });
 
-    await editMessage({ messageId: 'user-1', newContent: 'Updated content' });
+    await editMessage({ messageId: toMessageId({ raw: 'user-1' }), newContent: 'Updated content' });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(compactAbort).toHaveBeenCalledTimes(1);

@@ -2,6 +2,7 @@ import type { ChatGroup } from '@/models/types'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry } from '@/services/wesh/naidan-sysfs/types'
 import { createChatGroupDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-group'
+import { toChatGroupId } from '@/models/ids'
 
 function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
@@ -32,7 +33,7 @@ async function loadChatGroup({
   if (!ids.includes(chatGroupId)) {
     return undefined
   }
-  return context.reader.loadChatGroup({ chatGroupId })
+  return context.reader.loadChatGroup({ chatGroupId: toChatGroupId({ raw: chatGroupId }) })
 }
 
 export function createChatGroupsDirectoryEntry(): NaidanSysfsDirectoryEntry {

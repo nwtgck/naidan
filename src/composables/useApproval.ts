@@ -1,5 +1,5 @@
 import { computed, reactive, type ComputedRef } from 'vue';
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { Semaphore } from '@/utils/concurrency';
 import type {
   ApprovalActionId,
@@ -179,7 +179,7 @@ export async function ensureApproval({
       }
 
       const request: ApprovalActiveRequest = {
-        requestId: generateId(),
+        requestId: generateOpaqueId(),
         chatId,
         action,
         preview,

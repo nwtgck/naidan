@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),
@@ -136,10 +137,10 @@ describe('Sidebar Selection State', () => {
 
   beforeEach(() => {
     mockChatGroups.value = [
-      { id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
     ];
     mockChats.value = [
-      { id: 'c1', title: 'Chat 1', updatedAt: 0 }
+      { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 }
     ];
     mockCurrentChat.value = null;
     mockCurrentChatGroup.value = null;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'vue';
 import { useLayout } from '@/composables/useLayout';
-import { generateId } from '@/utils/id';
+import { generateId, generateOpaqueId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
@@ -25,6 +25,7 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AdvancedTextEditorV3.vue') });
 
@@ -36,6 +37,7 @@ import {
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, Chat, ChatGroup, LmParameters } from '@/models/types';
+import type { AttachmentId, BinaryObjectId, ChatId, VolumeId } from '@/models/ids';
 
 const { setToolEnabled } = useChatTools();
 const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
@@ -46,7 +48,7 @@ const { showConfirm } = useConfirm();
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
 const props = defineProps<{
-  chatId: string;
+  chatId: ChatId;
   chat: Chat;
   chatGroup: ChatGroup | null;
   resolvedLmParameters: LmParameters | undefined;
@@ -216,10 +218,10 @@ const attachments = ref<Attachment[]>([]);
 const attachmentUrls = ref<Record<string, string>>({});
 
 // Image Editor integration
-const editingAttachmentId = ref<string | undefined>(undefined);
+const editingAttachmentId = ref<AttachmentId | undefined>(undefined);
 const editingAttachment = computed(() => attachments.value.find(a => a.id === editingAttachmentId.value));
 
-function openImageEditor({ id }: { id: string }) {
+function openImageEditor({ id }: { id: AttachmentId }) {
   editingAttachmentId.value = id;
 }
 
@@ -244,7 +246,7 @@ function saveEditedImage({ blob }: { blob: Blob }) {
     // Update the attachment with the new blob and a new binary object identity
     attachments.value[index] = {
       ...original,
-      binaryObjectId: generateId(),
+      binaryObjectId: generateId<BinaryObjectId>(),
       status: 'memory',
       blob,
       size: blob.size,
@@ -295,10 +297,10 @@ async function processFiles({ files }: { files: File[] }) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
 
-    const attachmentId = generateId();
+    const attachmentId = generateId<AttachmentId>();
     const attachment: Attachment = {
       id: attachmentId,
-      binaryObjectId: generateId(),
+      binaryObjectId: generateId<BinaryObjectId>(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
@@ -324,7 +326,7 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
   return path;
 }
 
-async function finishMount({ volumeId, name }: { volumeId: string; name: string }) {
+async function finishMount({ volumeId, name }: { volumeId: VolumeId; name: string }) {
   if (!chat.value) return;
   const mountPath = generateChatMountPath({ baseName: name });
   await chatMounts.addMount({
@@ -342,7 +344,7 @@ async function attachCopyAsVolume({ entries, name }: {
   name: string;
 }) {
   if (!chat.value) return;
-  const copyId = generateId();
+  const copyId = generateOpaqueId();
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
   activeCopies.value = [...activeCopies.value, copy];
@@ -513,7 +515,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
   }
 }
 
-async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Promise<void> {
+async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Promise<void> {
   if (!chat.value) return;
   const mounts = chatMountList.value;
   if (mounts.length === 0) return;
@@ -538,7 +540,7 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
   } });
 }
 
-async function handleDetachMount({ volumeId }: { volumeId: string }) {
+async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
   if (!chat.value) return;
   let volumeType: 'opfs' | 'host' | undefined;
   for await (const vol of storageService.listVolumes()) {
@@ -579,7 +581,7 @@ async function handleDetachMount({ volumeId }: { volumeId: string }) {
   }
 }
 
-async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
+async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: VolumeId; readOnly: boolean }) {
   if (!chat.value) return;
 
   let volumeType: 'opfs' | 'host' | undefined;
@@ -654,7 +656,7 @@ async function handlePaste({ event }: { event: ClipboardEvent }) {
   }
 }
 
-function removeAttachment({ id }: { id: string }) {
+function removeAttachment({ id }: { id: AttachmentId }) {
   attachments.value = attachments.value.filter(a => a.id !== id);
   nextTick(() => adjustTextareaHeight({}));
 }

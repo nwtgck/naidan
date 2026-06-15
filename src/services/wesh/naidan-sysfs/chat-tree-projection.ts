@@ -1,6 +1,8 @@
 import type { Chat, ChatMeta, MessageNode } from '@/models/types'
 import { getChatBranchIterator } from '@/utils/chat-tree'
 import type { NaidanSysfsContext } from '@/services/wesh/naidan-sysfs/types'
+import { toChatId } from '@/models/ids';
+import type { MessageId } from '@/models/ids';
 
 export interface NaidanSysfsLeafBranch {
   leafId: string;
@@ -16,8 +18,8 @@ export async function loadSysfsChat({
   chatId: string;
   path: string;
 }): Promise<Chat> {
-  const metadata = await context.reader.loadChatMeta({ chatId })
-  const content = await context.reader.loadChatContent({ chatId })
+  const metadata = await context.reader.loadChatMeta({ chatId: toChatId({ raw: chatId }) })
+  const content = await context.reader.loadChatContent({ chatId: toChatId({ raw: chatId }) })
   if (metadata === undefined || content === undefined) {
     throw new Error(`Path not found: ${path}`)
   }
@@ -34,8 +36,8 @@ export function resolveActiveLeafId({
   contentCurrentLeafId,
 }: {
   metadata: ChatMeta;
-  contentCurrentLeafId: string | undefined;
-}): string | undefined {
+  contentCurrentLeafId: MessageId | undefined;
+}): MessageId | undefined {
   return contentCurrentLeafId ?? metadata.currentLeafId
 }
 

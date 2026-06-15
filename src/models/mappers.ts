@@ -18,6 +18,10 @@ import type {
   BinaryObjectDto,
   LmParametersDto,
   MountDto,
+  TextOrBinaryObjectDto,
+  ToolCallDto,
+  ToolExecutionResultDto,
+  VolumeDto,
 } from './dto';
 import type {
   Role,
@@ -26,6 +30,7 @@ import type {
   UserMessageNode,
   SystemMessageNode,
   MessageBranch,
+  ToolCall,
   Chat,
   ChatGroup,
   ChatSummary,
@@ -45,8 +50,20 @@ import type {
   BinaryObject,
   LmParameters,
   Mount,
+  Volume,
   ToolConfigPersistence,
 } from './types';
+import type { ToolExecutionResult, TextOrBinaryObject } from '@/services/tools/types';
+import {
+  toAttachmentId,
+  toBinaryObjectId,
+  toChatGroupId,
+  toChatId,
+  toMessageId,
+  toProviderProfileId,
+  toToolCallId,
+  toVolumeId,
+} from '@/models/ids';
 
 
 const toolConfigPersistenceToExperimentalDto = ({
@@ -85,7 +102,7 @@ const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
   const type = dto.type;
   switch (type) {
   case 'volume':
-    return { type: 'volume', volumeId: dto.volumeId, mountPath: dto.mountPath, readOnly: dto.readOnly };
+    return { type: 'volume', volumeId: toVolumeId({ raw: dto.volumeId }), mountPath: dto.mountPath, readOnly: dto.readOnly };
   default: {
     const _ex: never = type;
     throw new Error(`Unhandled mount type: ${_ex}`);
@@ -122,9 +139,13 @@ export const hierarchyToDomain = ({ dto }: { dto: HierarchyDto }): Hierarchy => 
   items: dto.items.map(item => {
     switch (item.type) {
     case 'chat':
-      return { type: 'chat', id: item.id };
+      return { type: 'chat', id: toChatId({ raw: item.id }) };
     case 'chat_group':
-      return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+      return {
+        type: 'chat_group',
+        id: toChatGroupId({ raw: item.id }),
+        chat_ids: item.chat_ids.map(raw => toChatId({ raw })),
+      };
     default: {
       const _ex: never = item;
       throw new Error(`Unhandled hierarchy item type: ${_ex}`);
@@ -139,7 +160,11 @@ export const hierarchyToDto = ({ domain }: { domain: Hierarchy }): HierarchyDto 
     case 'chat':
       return { type: 'chat', id: item.id };
     case 'chat_group':
-      return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+      return {
+        type: 'chat_group',
+        id: item.id,
+        chat_ids: item.chat_ids,
+      };
     default: {
       const _ex: never = item;
       throw new Error(`Unhandled hierarchy item type: ${_ex}`);
@@ -149,7 +174,7 @@ export const hierarchyToDto = ({ domain }: { domain: Hierarchy }): HierarchyDto 
 });
 
 export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
-  id: dto.id,
+  id: toChatId({ raw: dto.id }),
   title: dto.title,
   createdAt: dto.createdAt,
   updatedAt: dto.updatedAt,
@@ -181,9 +206,9 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
   lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
   autoTitleEnabled: dto.autoTitleEnabled,
   titleModelId: dto.titleModelId,
-  currentLeafId: dto.currentLeafId,
-  originChatId: dto.originChatId,
-  originMessageId: dto.originMessageId,
+  currentLeafId: dto.currentLeafId === undefined ? undefined : toMessageId({ raw: dto.currentLeafId }),
+  originChatId: dto.originChatId === undefined ? undefined : toChatId({ raw: dto.originChatId }),
+  originMessageId: dto.originMessageId === undefined ? undefined : toMessageId({ raw: dto.originMessageId }),
   mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
   toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
 });
@@ -196,7 +221,7 @@ export const chatGroupToDomain = (
   { dto, hierarchy, chatMetas }: { dto: ChatGroupDto, hierarchy: Hierarchy, chatMetas: ChatMeta[] }
 ): ChatGroup => {
   const node = hierarchy.items.find(
-    i => i.type === 'chat_group' && i.id === dto.id
+    i => i.type === 'chat_group' && i.id === toChatGroupId({ raw: dto.id })
   ) as HierarchyChatGroupNode | undefined;
 
   const chatIds = node?.chat_ids || [];
@@ -210,13 +235,13 @@ export const chatGroupToDomain = (
         id: cid,
         title: meta?.title || null,
         updatedAt: meta?.updatedAt || 0,
-        groupId: dto.id
+        groupId: toChatGroupId({ raw: dto.id })
       }
     };
   });
 
   return {
-    id: dto.id,
+    id: toChatGroupId({ raw: dto.id }),
     name: dto.name,
     isCollapsed: dto.isCollapsed,
     updatedAt: dto.updatedAt,
@@ -310,6 +335,95 @@ export const lmParametersToDto = (
   };
 };
 
+
+const toolCallToDomain = ({ dto }: { dto: ToolCallDto }): ToolCall => ({
+  ...dto,
+  id: toToolCallId({ raw: dto.id }),
+});
+
+const toolCallToDto = ({ domain }: { domain: ToolCall }): ToolCallDto => ({
+  ...domain,
+  id: domain.id,
+});
+
+const textOrBinaryObjectToDomain = ({ dto }: { dto: TextOrBinaryObjectDto }): TextOrBinaryObject => {
+  switch (dto.type) {
+  case 'text':
+    return dto;
+  case 'binary_object':
+    return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.id }) };
+  default: {
+    const _ex: never = dto;
+    throw new Error(`Unhandled text or binary object type: ${(_ex as { type: string }).type}`);
+  }
+  }
+};
+
+const textOrBinaryObjectToDto = ({ domain }: { domain: TextOrBinaryObject }): TextOrBinaryObjectDto => {
+  switch (domain.type) {
+  case 'text':
+    return domain;
+  case 'binary_object':
+    return { type: 'binary_object', id: domain.id };
+  default: {
+    const _ex: never = domain;
+    throw new Error(`Unhandled text or binary object type: ${(_ex as { type: string }).type}`);
+  }
+  }
+};
+
+const toolExecutionResultToDomain = ({ dto }: { dto: ToolExecutionResultDto }): ToolExecutionResult => {
+  switch (dto.status) {
+  case 'executing':
+    return { toolCallId: toToolCallId({ raw: dto.toolCallId }), status: 'executing' };
+  case 'success':
+    return {
+      toolCallId: toToolCallId({ raw: dto.toolCallId }),
+      status: 'success',
+      content: textOrBinaryObjectToDomain({ dto: dto.content }),
+    };
+  case 'error':
+    return {
+      toolCallId: toToolCallId({ raw: dto.toolCallId }),
+      status: 'error',
+      error: {
+        code: dto.error.code,
+        message: textOrBinaryObjectToDomain({ dto: dto.error.message }),
+      },
+    };
+  default: {
+    const _ex: never = dto;
+    throw new Error(`Unhandled tool execution result status: ${(_ex as { status: string }).status}`);
+  }
+  }
+};
+
+const toolExecutionResultToDto = ({ domain }: { domain: ToolExecutionResult }): ToolExecutionResultDto => {
+  switch (domain.status) {
+  case 'executing':
+    return { toolCallId: domain.toolCallId, status: 'executing' };
+  case 'success':
+    return {
+      toolCallId: domain.toolCallId,
+      status: 'success',
+      content: textOrBinaryObjectToDto({ domain: domain.content }),
+    };
+  case 'error':
+    return {
+      toolCallId: domain.toolCallId,
+      status: 'error',
+      error: {
+        code: domain.error.code,
+        message: textOrBinaryObjectToDto({ domain: domain.error.message }),
+      },
+    };
+  default: {
+    const _ex: never = domain;
+    throw new Error(`Unhandled tool execution result status: ${(_ex as { status: string }).status}`);
+  }
+  }
+};
+
 export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
   const type = endpoint.type;
   switch (type) {
@@ -335,8 +449,8 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
   if ('binaryObjectId' in dto) {
     // V2
     const base = {
-      id: dto.id,
-      binaryObjectId: dto.binaryObjectId,
+      id: toAttachmentId({ raw: dto.id }),
+      binaryObjectId: toBinaryObjectId({ raw: dto.binaryObjectId }),
       originalName: dto.name,
       // Metadata will be hydrated by the StorageProvider
       mimeType: 'application/octet-stream',
@@ -357,8 +471,8 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
   } else {
     // V1 (Legacy)
     const base = {
-      id: dto.id,
-      binaryObjectId: dto.id, // Legacy use id as binaryObjectId
+      id: toAttachmentId({ raw: dto.id }),
+      binaryObjectId: toBinaryObjectId({ raw: dto.id }), // Legacy use id as binaryObjectId
       originalName: dto.originalName,
       mimeType: dto.mimeType,
       size: dto.size,
@@ -390,7 +504,7 @@ const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
 
 export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNode => {
   const common = {
-    id: dto.id,
+    id: toMessageId({ raw: dto.id }),
     content: dto.content,
     timestamp: dto.timestamp,
     replies: {
@@ -422,7 +536,7 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       error: undefined,
       modelId: dto.modelId,
       lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
-      toolCalls: dto.toolCalls,
+      toolCalls: dto.toolCalls?.map(dto => toolCallToDomain({ dto })),
       results: undefined,
     };
   case 'system':
@@ -449,7 +563,7 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      results: dto.results,
+      results: dto.results.map(dto => toolExecutionResultToDomain({ dto })),
     };
   default: {
     const _ex: never = dto;
@@ -490,7 +604,7 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       thinking: domain.thinking,
       modelId: domain.modelId,
       lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
-      toolCalls: domain.toolCalls,
+      toolCalls: domain.toolCalls?.map(domain => toolCallToDto({ domain })),
       results: undefined,
     };
   case 'system':
@@ -515,7 +629,7 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      results: domain.results,
+      results: domain.results.map(domain => toolExecutionResultToDto({ domain })),
     };
   default: {
     const _ex: never = domain;
@@ -538,7 +652,7 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
   const legacyMsgs = messages as LegacyMessage[];
   const nodes: MessageNode[] = legacyMsgs.map(m => {
     const common = {
-      id: m.id,
+      id: toMessageId({ raw: m.id }),
       content: m.content,
       timestamp: m.timestamp,
       replies: { items: [] },
@@ -660,10 +774,10 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
   };
 
   return {
-    id,
+    id: toChatId({ raw: id }),
     title,
     root,
-    currentLeafId,
+    currentLeafId: currentLeafId === undefined ? undefined : toMessageId({ raw: currentLeafId }),
     createdAt,
     updatedAt,
     debugEnabled: debugEnabled ?? false,
@@ -671,8 +785,8 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     modelId,
     autoTitleEnabled: dto.autoTitleEnabled,
     titleModelId: dto.titleModelId,
-    originChatId,
-    originMessageId,
+    originChatId: originChatId === undefined ? undefined : toChatId({ raw: originChatId }),
+    originMessageId: originMessageId === undefined ? undefined : toMessageId({ raw: originMessageId }),
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: lmParameters }),
     mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
@@ -712,7 +826,7 @@ export const chatContentToDto = ({ domain }: { domain: ChatContent }): ChatConte
 
 export const chatContentToDomain = ({ dto }: { dto: ChatContentDto }): ChatContent => ({
   root: { items: dto.root.items.map(dto => messageNodeToDomain({ dto })) },
-  currentLeafId: dto.currentLeafId,
+  currentLeafId: dto.currentLeafId === undefined ? undefined : toMessageId({ raw: dto.currentLeafId }),
 });
 
 export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
@@ -867,11 +981,13 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       })();
       return {
         ...pRest,
+        id: toProviderProfileId({ raw: pRest.id }),
         ...pEndpointInfo,
         lmParameters: lmParametersToDomain({ dto: pRest.lmParameters }),
       };
     }) ?? [],
     lmParameters: lmParametersToDomain({ dto: rest.lmParameters }),
+    mounts: rest.mounts.map(dto => mountToDomain({ dto })),
   };
 };
 
@@ -941,7 +1057,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
 };
 
 export const binaryObjectToDomain = ({ dto }: { dto: BinaryObjectDto }): BinaryObject => ({
-  id: dto.id,
+  id: toBinaryObjectId({ raw: dto.id }),
   mimeType: dto.mimeType,
   size: dto.size,
   createdAt: dto.createdAt,
@@ -956,11 +1072,9 @@ export const binaryObjectToDto = ({ domain }: { domain: BinaryObject }): BinaryO
   name: domain.name,
 });
 
-import type { Volume } from '@/models/types';
-import type { VolumeDto } from '@/models/dto';
 
 export const volumeToDomain = ({ dto }: { dto: VolumeDto }): Volume => ({
-  id: dto.id,
+  id: toVolumeId({ raw: dto.id }),
   name: dto.name,
   type: dto.type,
   createdAt: dto.createdAt,

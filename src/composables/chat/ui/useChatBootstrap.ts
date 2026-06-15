@@ -7,6 +7,7 @@ import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import type { Settings } from '@/models/types';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from '@/composables/useSettings';
+import type { ChatId } from '@/models/ids';
 
 export type ChatBootstrapAdapter = {
   loadChats(): Promise<void>;
@@ -14,7 +15,7 @@ export type ChatBootstrapAdapter = {
   openChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<unknown>;
 
   TEST_ONLY: Record<never, never>;
@@ -82,7 +83,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   async function openChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return await chatNavigation.openChat({
       chatId,

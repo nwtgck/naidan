@@ -1,3 +1,4 @@
+import type { ChatId } from '@/models/ids';
 import { storageService } from '@/services/storage';
 import {
   chatRuntimeStore,
@@ -10,7 +11,7 @@ import {
 export function abortProcessingForChat({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): void {
   const activeGeneration = chatRuntimeStore.getActiveGeneration({ chatId });
   if (activeGeneration !== undefined) {

@@ -3,6 +3,7 @@ import { watch, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import ChatGroupSettingsPanel from '@/components/ChatGroupSettingsPanel.vue';
+import { toChatGroupId } from '@/models/ids';
 
 const route = useRoute();
 const chatNavigation = useChatNavigation();
@@ -15,7 +16,7 @@ async function syncGroup() {
   const params = route.params as unknown as RouteParams;
   const id = params.id;
   if (id) {
-    chatNavigation.openChatGroup({ groupId: id });
+    chatNavigation.openChatGroup({ groupId: toChatGroupId({ raw: id }) });
   }
 }
 

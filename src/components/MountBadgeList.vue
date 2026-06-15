@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Mount } from '@/models/types';
+import type { VolumeId } from '@/models/ids';
 import { FolderIcon, LockIcon, UnlockIcon, XIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -11,9 +12,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'toggle-read-only': [{ volumeId: string; readOnly: boolean }];
-  remove: [{ volumeId: string }];
-  'open-explorer': [{ volumeId: string }];
+  'toggle-read-only': [{ volumeId: VolumeId; readOnly: boolean }];
+  remove: [{ volumeId: VolumeId }];
+  'open-explorer': [{ volumeId: VolumeId }];
 }>();
 
 function displayPath({ mountPath }: { mountPath: string }): string {

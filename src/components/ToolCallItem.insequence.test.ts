@@ -4,6 +4,7 @@ import { computed, h } from 'vue';
 import ToolCallItem from './ToolCallItem.vue';
 import type { CombinedToolCall } from '@/models/types';
 import { useToolCallOutput } from '@/composables/chat/ui/useToolCallOutput';
+import { toMessageId, toToolCallId } from '@/models/ids';
 
 vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
@@ -27,10 +28,10 @@ vi.mock('@/composables/chat/ui/useToolCallOutput', () => ({
 }));
 
 const makeToolCall = (): CombinedToolCall => ({
-  id: 'tc-1',
-  nodeId: 'node-1',
-  call: { id: 'call-1', type: 'function', function: { name: 'shell_execute', arguments: '{}' } },
-  result: { toolCallId: 'call-1', status: 'success', content: { type: 'text', text: 'done' } },
+  id: toToolCallId({ raw: 'tc-1' }),
+  nodeId: toMessageId({ raw: 'node-1' }),
+  call: { id: toToolCallId({ raw: 'call-1' }), type: 'function', function: { name: 'shell_execute', arguments: '{}' } },
+  result: { toolCallId: toToolCallId({ raw: 'call-1' }), status: 'success', content: { type: 'text', text: 'done' } },
 });
 
 const inSeq = { global: { provide: { inSequence: true } } };

@@ -5,6 +5,7 @@ import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
 import { NetworkIcon } from 'lucide-vue-next';
 import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/models/types';
+import { toAttachmentId, toBinaryObjectId, toChatId } from '@/models/ids';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
@@ -112,7 +113,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   };
 
   const createMockChat = (rootItems: MessageNode[] = []): Chat => ({
-    id: 'chat-1',
+    id: toChatId({ raw: 'chat-1' }),
     title: 'Test Chat',
     root: { items: rootItems },
     debugEnabled: true,
@@ -412,8 +413,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     // Branch A -> B (with image 1)
     // Branch A -> C (with image 2)
     const img1 = {
-      id: 'att-1',
-      binaryObjectId: 'obj-1',
+      id: toAttachmentId({ raw: 'att-1' }),
+      binaryObjectId: toBinaryObjectId({ raw: 'obj-1' }),
       mimeType: 'image/png',
       status: 'persisted' as const,
       originalName: 'img1.png',
@@ -421,8 +422,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       uploadedAt: Date.now()
     };
     const img2 = {
-      id: 'att-2',
-      binaryObjectId: 'obj-2',
+      id: toAttachmentId({ raw: 'att-2' }),
+      binaryObjectId: toBinaryObjectId({ raw: 'obj-2' }),
       mimeType: 'image/png',
       status: 'persisted' as const,
       originalName: 'img2.png',
@@ -443,8 +444,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     // Mock storageService.getBinaryObject to return valid objects
     const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
-      if (binaryObjectId === 'obj-1') return { id: 'obj-1', mimeType: 'image/png', name: 'img1.png' } as any;
-      if (binaryObjectId === 'obj-2') return { id: 'obj-2', mimeType: 'image/png', name: 'img2.png' } as any;
+      if (binaryObjectId === 'obj-1') return { id: toBinaryObjectId({ raw: 'obj-1' }), mimeType: 'image/png', name: 'img1.png' } as any;
+      if (binaryObjectId === 'obj-2') return { id: toBinaryObjectId({ raw: 'obj-2' }), mimeType: 'image/png', name: 'img2.png' } as any;
       return null;
     });
 

@@ -1,4 +1,5 @@
 import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import type { MessageId } from '@/models/ids';
 
 type OutlineVisibility = 'hidden' | 'visible';
 
@@ -10,7 +11,7 @@ export function useChatPaneSession({
   const showCompactSettings = ref(false);
   const showNeuralSyncEffect = ref(false);
   const outlineVisibility = ref<OutlineVisibility>('hidden');
-  const initialOutlineMessageId = ref<string | undefined>(undefined);
+  const initialOutlineMessageId = ref<MessageId | undefined>(undefined);
   const hideNeuralSyncEffectTimer = ref<number | undefined>(undefined);
 
   function clearNeuralSyncEffectTimer() {
@@ -44,7 +45,7 @@ export function useChatPaneSession({
   function toggleOutline({
     getCurrentViewportMessageId,
   }: {
-    getCurrentViewportMessageId: () => string | undefined;
+    getCurrentViewportMessageId: () => MessageId | undefined;
   }) {
     const currentVisibility = outlineVisibility.value;
     switch (currentVisibility) {

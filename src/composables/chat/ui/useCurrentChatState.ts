@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue';
 import type { Chat, ChatGroup, MessageNode, SidebarItem } from '@/models/types';
 import type { Settings } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 import { useSettings } from '@/composables/useSettings';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { createChatCurrentBridge } from '@/composables/chat/chat-current-bridge';
@@ -16,7 +17,7 @@ import {
 export type CurrentChatStateAdapter = {
   currentChat: ComputedRef<Readonly<Chat> | null>;
   currentChatGroup: ComputedRef<Readonly<ChatGroup> | null>;
-  currentChatId: ComputedRef<string | undefined>;
+  currentChatId: ComputedRef<ChatId | undefined>;
   activeMessages: ComputedRef<MessageNode[]>;
   allMessages: ComputedRef<MessageNode[]>;
   resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;

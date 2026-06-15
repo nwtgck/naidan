@@ -5,13 +5,14 @@ import {
   currentChatRef,
   loadData,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 
 export type ChatGroupsAdapter = {
   updateChatGroupMetadata({
     chatGroupId,
     updates,
   }: {
-    chatGroupId: string;
+    chatGroupId: ChatGroupId;
     updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }): Promise<void>;
 
@@ -19,8 +20,8 @@ export type ChatGroupsAdapter = {
     chatId,
     chatGroupId,
   }: {
-    chatId: string;
-    chatGroupId: string | undefined;
+    chatId: ChatId;
+    chatGroupId: ChatGroupId | undefined;
   }): Promise<void>;
 
   TEST_ONLY: Record<never, never>;
@@ -31,7 +32,7 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatGroupId,
     updates,
   }: {
-    chatGroupId: string;
+    chatGroupId: ChatGroupId;
     updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }): Promise<void> {
     if (currentChatGroupRef.value?.id === chatGroupId) {
@@ -57,27 +58,30 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatId,
     chatGroupId,
   }: {
-    chatId: string;
-    chatGroupId: string | undefined;
+    chatId: ChatId;
+    chatGroupId: ChatGroupId | undefined;
   }): Promise<void> {
-    if (currentChatRef.value?.id === chatId) {
-      currentChatRef.value.groupId = chatGroupId;
+    const targetChatId = chatId;
+    const targetGroupId = chatGroupId;
+
+    if (currentChatRef.value?.id === targetChatId) {
+      currentChatRef.value.groupId = targetGroupId;
       currentChatRef.value.updatedAt = Date.now();
     }
 
     await storageService.updateHierarchy({ updater: ({ current }) => {
-      let detachedChatId: string | undefined;
+      let detachedChatId: ChatId | undefined;
 
       current.items = current.items.filter((item) => {
         switch (item.type) {
         case 'chat':
-          if (item.id === chatId) {
+          if (item.id === targetChatId) {
             detachedChatId = item.id;
             return false;
           }
           return true;
         case 'chat_group': {
-          const chatIndex = item.chat_ids.indexOf(chatId);
+          const chatIndex = item.chat_ids.indexOf(targetChatId);
           if (chatIndex !== -1) {
             detachedChatId = item.chat_ids[chatIndex];
             item.chat_ids.splice(chatIndex, 1);
@@ -92,15 +96,15 @@ export function useChatGroups(): ChatGroupsAdapter {
       });
 
       if (detachedChatId === undefined) {
-        detachedChatId = chatId;
+        detachedChatId = targetChatId;
       }
 
-      if (chatGroupId === undefined) {
+      if (targetGroupId === undefined) {
         current.items.unshift({ type: 'chat', id: detachedChatId });
         return current;
       }
 
-      const groupNode = current.items.find((item) => item.type === 'chat_group' && item.id === chatGroupId);
+      const groupNode = current.items.find((item) => item.type === 'chat_group' && item.id === targetGroupId);
       if (groupNode === undefined || groupNode.type !== 'chat_group') {
         throw new Error('Chat group not found in hierarchy');
       }

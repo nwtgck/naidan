@@ -8,6 +8,8 @@ import type { MessageNode, Chat } from '@/models/types';
 import { useSettings } from '@/composables/useSettings';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import MessageItem from './MessageItem.vue';
+import { toChatId, toMessageId } from '@/models/ids';
+import type { ChatId } from '@/models/ids';
 
 const props = defineProps<{
   match?: ContentMatch;
@@ -31,10 +33,12 @@ async function loadContext() {
 
   isLoading.value = true;
   try {
-    const fullChat = await storageService.loadChat({ id: chatId });
+    const fullChat = await storageService.loadChat({ id: toChatId({ raw: chatId }) });
     if (fullChat) {
       // If we have a match, use its leaf. Otherwise use the chat's current leaf.
-      const targetLeafId = props.match?.targetLeafId || fullChat.currentLeafId;
+      const targetLeafId = props.match?.targetLeafId === undefined
+        ? fullChat.currentLeafId
+        : toMessageId({ raw: props.match.targetLeafId });
       const virtualChat: Chat = {
         ...fullChat,
         currentLeafId: targetLeafId
@@ -69,7 +73,10 @@ const visibleMessages = computed(() => {
   return branchMessages.value.slice(start, end);
 });
 
-const previewChatId = computed(() => props.match?.chatId || props.chat?.chatId);
+const previewChatId = computed<ChatId | undefined>(() => {
+  const raw = props.match?.chatId || props.chat?.chatId;
+  return raw === undefined ? undefined : toChatId({ raw });
+});
 
 // Dummy handlers for MessageItem
 const handleDummy = () => {};

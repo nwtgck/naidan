@@ -265,10 +265,13 @@ export const ToolCallSchemaDto = z.object({
   }),
 });
 
+export type ToolCallDto = z.infer<typeof ToolCallSchemaDto>;
+
 export const TextOrBinaryObjectSchemaDto = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string(), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTextOrBinaryObjectTextSchemaDto }) }),
   z.object({ type: z.literal('binary_object'), id: z.string(), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalTextOrBinaryObjectBinaryObjectSchemaDto }) }),
 ]);
+export type TextOrBinaryObjectDto = z.infer<typeof TextOrBinaryObjectSchemaDto>;
 
 export const ToolExecutionResultSchemaDto = z.discriminatedUnion('status', [
   z.object({ toolCallId: z.string(), status: z.literal('executing'), experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalToolExecutionResultExecutingSchemaDto }) }),
@@ -289,6 +292,7 @@ export const ToolExecutionResultSchemaDto = z.discriminatedUnion('status', [
     }),
   }),
 ]);
+export type ToolExecutionResultDto = z.infer<typeof ToolExecutionResultSchemaDto>;
 
 export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
   resolveMissingAsUndefined(z.discriminatedUnion('role', [

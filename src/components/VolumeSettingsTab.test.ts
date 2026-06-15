@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import VolumeSettingsTab from './VolumeSettingsTab.vue';
 import { storageService } from '@/services/storage';
 import type { Volume, Mount } from '@/models/types';
+import { toVolumeId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -36,11 +37,11 @@ vi.mock('../services/storage', () => ({
 // --- Helpers ---
 
 function makeVolume(overrides: Partial<Volume> = {}): Volume {
-  return { id: 'vol-1', name: 'My Docs', type: 'opfs', createdAt: 0, ...overrides };
+  return { id: toVolumeId({ raw: 'vol-1' }), name: 'My Docs', type: 'opfs', createdAt: 0, ...overrides };
 }
 
 function makeMount(volumeId: string): Mount {
-  return { type: 'volume', volumeId, mountPath: '/docs', readOnly: true };
+  return { type: 'volume', volumeId: toVolumeId({ raw: volumeId }), mountPath: '/docs', readOnly: true };
 }
 
 function setupStorageMock(volumes: Volume[], mounts: Mount[]) {
@@ -420,7 +421,7 @@ describe('VolumeSettingsTab - Add Folder mode selection', () => {
     // @ts-expect-error: File System Access API mock
     window.showDirectoryPicker = mockPicker;
 
-    vi.mocked(storageService.createVolume).mockResolvedValue(makeVolume({ id: 'new-vol', type: 'host' }));
+    vi.mocked(storageService.createVolume).mockResolvedValue(makeVolume({ id: toVolumeId({ raw: 'new-vol' }), type: 'host' }));
     vi.mocked(storageService.mountVolume).mockResolvedValue(undefined as any);
     vi.mocked(storageService.listVolumes).mockReturnValue((async function* () {})());
     vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [] } as any);
@@ -441,7 +442,7 @@ describe('VolumeSettingsTab - Add Folder mode selection', () => {
     // @ts-expect-error: File System Access API mock
     window.showDirectoryPicker = mockPicker;
 
-    vi.mocked(storageService.createVolume).mockResolvedValue(makeVolume({ id: 'new-vol', type: 'host' }));
+    vi.mocked(storageService.createVolume).mockResolvedValue(makeVolume({ id: toVolumeId({ raw: 'new-vol' }), type: 'host' }));
     vi.mocked(storageService.mountVolume).mockResolvedValue(undefined as any);
     vi.mocked(storageService.listVolumes).mockReturnValue((async function* () {})());
     vi.mocked(storageService.loadSettings).mockResolvedValue({ mounts: [] } as any);
@@ -466,7 +467,7 @@ describe('VolumeSettingsTab - Permission re-request on save', () => {
   });
 
   it('calls requestPermission for host volume when saving mount settings', async () => {
-    const vol = makeVolume({ id: 'vol-1', type: 'host' });
+    const vol = makeVolume({ id: toVolumeId({ raw: 'vol-1' }), type: 'host' });
     const m = makeMount(vol.id);
 
     const queryPermission = vi.fn().mockResolvedValue('prompt');
@@ -496,7 +497,7 @@ describe('VolumeSettingsTab - Permission re-request on save', () => {
   });
 
   it('does not call requestPermission for opfs volumes', async () => {
-    const vol = makeVolume({ id: 'vol-1', type: 'opfs' });
+    const vol = makeVolume({ id: toVolumeId({ raw: 'vol-1' }), type: 'opfs' });
     const m = makeMount(vol.id);
 
     vi.mocked(storageService.listVolumes)

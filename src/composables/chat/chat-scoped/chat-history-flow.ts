@@ -27,6 +27,7 @@ import {
 import {
   abortProcessingForChat,
 } from '@/composables/chat/chat-scoped/chat-processing-abort';
+import type { ChatId, ChatGroupId, MessageId } from '@/models/ids';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
@@ -35,9 +36,9 @@ export async function forkChatForChat({
   chatId,
   messageId,
 }: {
-  chatId: string;
-  messageId: string;
-}): Promise<string | null> {
+  chatId: ChatId;
+  messageId: MessageId;
+}): Promise<ChatId | null> {
   return await forkChatFromTarget({
     targetChat: getLiveChatById({ chatId }),
     messageId,
@@ -50,8 +51,8 @@ export async function editMessageForChat({
   newContent,
   lmParameters,
 }: {
-  chatId: string;
-  messageId: string;
+  chatId: ChatId;
+  messageId: MessageId;
   newContent: string;
   lmParameters: LmParameters | undefined;
 }): Promise<void> {
@@ -71,8 +72,8 @@ export async function switchVersionForChat({
   chatId,
   messageId,
 }: {
-  chatId: string;
-  messageId: string;
+  chatId: ChatId;
+  messageId: MessageId;
 }): Promise<void> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -89,7 +90,7 @@ export async function commitFullHistoryManipulationForChat({
   messages,
   systemPrompt,
 }: {
-  chatId: string;
+  chatId: ChatId;
   messages: HistoryItem[];
   systemPrompt: SystemPrompt | undefined;
 }): Promise<void> {
@@ -163,8 +164,8 @@ async function forkChatFromTarget({
   messageId,
 }: {
   targetChat: Chat | Readonly<Chat> | null;
-  messageId: string;
-}): Promise<string | null> {
+  messageId: MessageId;
+}): Promise<ChatId | null> {
   if (targetChat === null) {
     return null;
   }
@@ -245,7 +246,7 @@ async function forkChatFromTarget({
     clonedNodes[index]!.replies.items.push(clonedNodes[index + 1]!);
   }
 
-  const newChatId = generateId();
+  const newChatId = generateId<ChatId>();
   const newChat: Chat = reactive({
     ...toRaw(mutableChat),
     id: newChatId,
@@ -287,7 +288,7 @@ async function editMessageInTarget({
   lmParameters,
 }: {
   targetChat: Chat | Readonly<Chat>;
-  messageId: string;
+  messageId: MessageId;
   newContent: string;
   lmParameters: LmParameters | undefined;
 }): Promise<void> {
@@ -309,7 +310,7 @@ async function editMessageInTarget({
   switch (node.role) {
   case 'assistant': {
     const correctedNode: AssistantMessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'assistant',
       content: newContent,
       attachments: undefined,
@@ -369,7 +370,7 @@ async function switchVersionInTarget({
   messageId,
 }: {
   targetChat: Chat | Readonly<Chat>;
-  messageId: string;
+  messageId: MessageId;
 }): Promise<void> {
   const mutableChat = getLiveChat({ chat: targetChat });
   const node = findNodeInBranch({ items: mutableChat.root.items, targetId: messageId });
@@ -392,8 +393,8 @@ function prependForkedChatToHierarchy({
   chatGroupId,
 }: {
   current: Hierarchy;
-  newChatId: string;
-  chatGroupId: string | null | undefined;
+  newChatId: ChatId;
+  chatGroupId: ChatGroupId | null | undefined;
 }): Hierarchy {
   const node: HierarchyNode = { type: 'chat', id: newChatId };
   if (chatGroupId) {
@@ -420,7 +421,7 @@ async function sendEditedMessage({
   lmParameters,
 }: {
   mutableChat: Chat;
-  messageId: string;
+  messageId: MessageId;
   newContent: string;
   attachments: UserMessageNode['attachments'] | undefined;
   lmParameters: LmParameters | undefined;

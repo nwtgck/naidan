@@ -22,6 +22,7 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch';
 // IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
+import type { VolumeId } from '@/models/ids';
 
 // Lazily load heavier or secondary settings components, but prefetch them when idle.
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
@@ -65,22 +66,22 @@ const showExportModal = ref(false);
 const chatGroupMounts = computed<readonly Mount[]>(() => currentChatGroup.value?.mounts ?? []);
 const existingChatGroupMountPaths = computed(() => chatGroupMounts.value.map(m => m.mountPath));
 
-async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
+async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: VolumeId; mountPath: string; readOnly: boolean }) {
   const chatGroupId = currentChatGroup.value?.id;
   if (!chatGroupId) return;
   await chatGroupMountsActions.addMount({
     chatGroupId,
-    mount: { type: 'volume', volumeId, mountPath, readOnly },
+    mount: { type: 'volume', volumeId: volumeId, mountPath, readOnly },
   });
 }
 
-async function handleChatGroupMountRemove({ volumeId }: { volumeId: string }) {
+async function handleChatGroupMountRemove({ volumeId }: { volumeId: VolumeId }) {
   const chatGroupId = currentChatGroup.value?.id;
   if (!chatGroupId) return;
   await chatGroupMountsActions.removeMount({ chatGroupId, volumeId });
 }
 
-async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
+async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volumeId: VolumeId; readOnly: boolean }) {
   const chatGroupId = currentChatGroup.value?.id;
   if (!chatGroupId) return;
   const mount = chatGroupMounts.value.find(m => m.volumeId === volumeId);
@@ -88,7 +89,7 @@ async function handleChatGroupMountToggleReadOnly({ volumeId, readOnly }: { volu
   await chatGroupMountsActions.updateMount({ chatGroupId, volumeId, mountPath: mount.mountPath, readOnly });
 }
 
-async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: string }) {
+async function handleOpenChatGroupMountExplorer({ volumeId }: { volumeId: VolumeId }) {
   const mounts = chatGroupMounts.value;
   if (mounts.length === 0) return;
   const workerMounts: WeshMount[] = [];

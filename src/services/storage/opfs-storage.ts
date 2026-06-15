@@ -1,4 +1,5 @@
 import { generateId } from '@/utils/id';
+import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 import type { Chat, Settings, ChatGroup, SidebarItem, MessageNode, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/models/types';
 import {
   type ChatMetaDto,
@@ -22,6 +23,7 @@ import {
   settingsToDomain,
   settingsToDto,
   hierarchyToDomain,
+  hierarchyToDto,
   chatMetaToDto,
   chatMetaToDomain,
   chatContentToDto,
@@ -29,7 +31,8 @@ import {
   buildSidebarItemsFromHierarchy,
   binaryObjectToDomain,
   volumeToDomain,
-} from '@/models/mappers';import { IStorageProvider } from './interface';
+} from '@/models/mappers';
+import { IStorageProvider } from './interface';
 
 import {
   type MigrationStateDto,
@@ -37,6 +40,7 @@ import {
   MigrationStateSchemaDto,
   BinaryShardIndexSchemaDto,
 } from '@/models/dto';
+import { toBinaryObjectId, toChatGroupId, toChatId } from '@/models/ids';
 
 interface FileSystemFileHandleWithWritable extends FileSystemFileHandle {
   createWritable(): Promise<FileSystemWritableFileStream>;
@@ -112,7 +116,7 @@ export class OPFSStorageProvider extends IStorageProvider {
             switch (fileKind) {
             case 'file': {
               const blob = await (fileEntry as FileSystemFileHandle).getFile();
-              const newBinaryObjectId = generateId();
+              const newBinaryObjectId = generateId<BinaryObjectId>();
 
               // Save to new location with NEW ID
               await this.saveFile({ blob, binaryObjectId: newBinaryObjectId, name: fileEntry.name });
@@ -393,7 +397,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await writable.close();
   }
 
-  async saveChatContent({ id, content }: { id: string; content: ChatContent }): Promise<void> {
+  async saveChatContent({ id, content }: { id: ChatId; content: ChatContent }): Promise<void> {
     const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
     const dir = await this.getDir({ name: 'chat-contents' });
@@ -403,7 +407,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await writable.close();
   }
 
-  async loadChat({ id }: { id: string }): Promise<Chat | null> {
+  async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
     try {
       const metaDir = await this.getDir({ name: 'chat-metas' });
       const contentDir = await this.getDir({ name: 'chat-contents' });
@@ -420,7 +424,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const hierarchy = await this.loadHierarchy();
       if (hierarchy) {
         const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
-        if (group) chat.groupId = group.id;
+        if (group) chat.groupId = toChatGroupId({ raw: group.id });
       }
 
       // Hydrate attachments with metadata from BinaryObject indices
@@ -432,7 +436,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null> {
+  async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
     try {
       const metaDir = await this.getDir({ name: 'chat-metas' });
       const metaFile = await (await metaDir.getFileHandle(`${id}.json`)).getFile();
@@ -442,7 +446,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       const hierarchy = await this.loadHierarchy();
       if (hierarchy) {
         const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
-        if (group) meta.groupId = group.id;
+        if (group) meta.groupId = toChatGroupId({ raw: group.id });
       }
 
       return meta;
@@ -451,7 +455,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatContent({ id }: { id: string }): Promise<ChatContent | null> {
+  async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
     try {
       const contentDir = await this.getDir({ name: 'chat-contents' });
       const contentFile = await (await contentDir.getFileHandle(`${id}.json`)).getFile();
@@ -467,7 +471,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteChat({ id }: { id: string }): Promise<void> {
+  async deleteChat({ id }: { id: ChatId }): Promise<void> {
     try {
       const metaDir = await this.getDir({ name: 'chat-metas' });
       const contentDir = await this.getDir({ name: 'chat-contents' });
@@ -486,7 +490,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await writable.close();
   }
 
-  async loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null> {
+  async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
     try {
       const dir = await this.getDir({ name: 'chat-groups' });
       const file = await (await dir.getFileHandle(`${id}.json`)).getFile();
@@ -498,14 +502,14 @@ export class OPFSStorageProvider extends IStorageProvider {
       ]);
 
       const chatMetas = allMetas.map(dto => chatMetaToDomain({ dto }));
-      const h = hierarchy || { items: [] };
+      const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
       return chatGroupToDomain({ dto: groupDto, hierarchy: h, chatMetas });
     } catch {
       return null;
     }
   }
 
-  async deleteChatGroup({ id }: { id: string }): Promise<void> {
+  async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
     try {
       const dir = await this.getDir({ name: 'chat-groups' });
       await dir.removeEntry(`${id}.json`);
@@ -530,7 +534,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
   async saveFile({ blob, binaryObjectId, name, mimeType }: {
     blob: Blob;
-    binaryObjectId: string;
+    binaryObjectId: BinaryObjectId;
     name: string;
     mimeType?: string;
   }): Promise<void> {
@@ -561,7 +565,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.saveShardIndex({ shard: shard, index: index });
   }
 
-  async getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null> {
+  async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
     try {
       const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
       const dir = await this.getShardDir({ shard: shard });
@@ -579,11 +583,12 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null> {
+  async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null> {
     try {
       const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
       const index = await this.loadShardIndex({ shard: shard });
-      return index.objects[binaryObjectId] || null;
+      const dto = index.objects[binaryObjectId];
+      return dto === undefined ? null : binaryObjectToDomain({ dto });
     } catch (e) {
       console.error('Failed to get binary object info:', e);
       return null;
@@ -644,7 +649,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void> {
+  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
     await this.ensureRoot();
     const shard = this.getBinaryObjectShardPath({ id: binaryObjectId });
     const dir = await this.getShardDir({ shard: shard });
@@ -704,13 +709,14 @@ export class OPFSStorageProvider extends IStorageProvider {
       this.listChatGroupsRaw(),
     ]);
 
-    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy: hierarchy || { items: [] }, chatMetas: [] }));
+    const h = hierarchyToDomain({ dto: hierarchy || { items: [] } });
+    const chatGroups = rawGroups.map(dto => chatGroupToDomain({ dto, hierarchy: h, chatMetas: [] }));
     const chatMetas = rawMetas.map(dto => chatMetaToDomain({ dto }));
 
     const contentStream = async function* (this: OPFSStorageProvider): AsyncGenerator<MigrationChunkDto> {
       // 1. Stream all chats
       for (const meta of rawMetas) {
-        const chat = await this.loadChat({ id: meta.id });
+        const chat = await this.loadChat({ id: toChatId({ raw: meta.id }) });
         if (chat) {
           yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
         }
@@ -727,7 +733,7 @@ export class OPFSStorageProvider extends IStorageProvider {
             const index = await this.loadShardIndex({ shard: shard });
             for (const bId of Object.keys(index.objects)) {
               const meta = index.objects[bId]!;
-              const blob = await this.getFile({ binaryObjectId: bId });
+              const blob = await this.getFile({ binaryObjectId: toBinaryObjectId({ raw: bId }) });
               if (blob) {
                 yield {
                   type: 'binary_object' as const,
@@ -765,7 +771,7 @@ export class OPFSStorageProvider extends IStorageProvider {
           endpointType: 'openai',
           endpointUrl: '',
         } as Settings,
-        hierarchy: hierarchy || { items: [] },
+        hierarchy: h,
         chatMetas,
         chatGroups,
       },
@@ -779,7 +785,7 @@ export class OPFSStorageProvider extends IStorageProvider {
 
     // 1. Restore Structural Metadata
     if (structure.settings) await this.saveSettings({ settings: structure.settings });
-    if (structure.hierarchy) await this.saveHierarchy({ hierarchy: structure.hierarchy });
+    if (structure.hierarchy) await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
     if (structure.chatMetas) {
       for (const meta of structure.chatMetas) await this.saveChatMeta({ meta });
     }
@@ -800,7 +806,7 @@ export class OPFSStorageProvider extends IStorageProvider {
       case 'binary_object':
         await this.saveFile({
           blob: chunk.blob,
-          binaryObjectId: chunk.id,
+          binaryObjectId: toBinaryObjectId({ raw: chunk.id }),
           name: chunk.name,
           mimeType: chunk.mimeType
         });
@@ -903,7 +909,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     type: VolumeType;
     sourceHandle: FileSystemDirectoryHandle;
   }): Promise<Volume> {
-    const id = generateId();
+    const id = generateId<VolumeId>();
     const createdAt = Date.now();
     const shard = this.getVolumeShardPath({ id });
 
@@ -952,7 +958,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
     signal?: AbortSignal;
   }): Promise<Volume> {
-    const id = generateId();
+    const id = generateId<VolumeId>();
     const createdAt = Date.now();
     const shard = this.getVolumeShardPath({ id });
 
@@ -1001,7 +1007,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     return volumeToDomain({ dto: volumeDto });
   }
 
-  async getVolumeDirectoryHandle({ volumeId }: { volumeId: string }): Promise<FileSystemDirectoryHandle | null> {
+  async getVolumeDirectoryHandle({ volumeId }: { volumeId: VolumeId }): Promise<FileSystemDirectoryHandle | null> {
     try {
       const shard = this.getVolumeShardPath({ id: volumeId });
       const index = await this.loadVolumeShardIndex({ shard });
@@ -1027,7 +1033,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     }
   }
 
-  async renameVolume({ volumeId, name }: { volumeId: string; name: string }): Promise<void> {
+  async renameVolume({ volumeId, name }: { volumeId: VolumeId; name: string }): Promise<void> {
     const shard = this.getVolumeShardPath({ id: volumeId });
     const index = await this.loadVolumeShardIndex({ shard });
     const volume = index.volumes[volumeId];
@@ -1036,7 +1042,7 @@ export class OPFSStorageProvider extends IStorageProvider {
     await this.saveVolumeShardIndex({ shard, index });
   }
 
-  async deleteVolume({ volumeId }: { volumeId: string }): Promise<void> {
+  async deleteVolume({ volumeId }: { volumeId: VolumeId }): Promise<void> {
     const shard = this.getVolumeShardPath({ id: volumeId });
 
     try {

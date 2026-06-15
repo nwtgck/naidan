@@ -4,6 +4,7 @@ import { useSettings } from '@/composables/useSettings';
 import { getAllMessages, getChatBranchIterator } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { getReadonlyChat, rootItems } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatId } from '@/models/ids';
 
 export type ChatPaneStateAdapter = {
   chat: ComputedRef<Readonly<Chat> | null>;
@@ -19,7 +20,7 @@ export type ChatPaneStateAdapter = {
 export function useChatPaneState({
   chatId,
 }: {
-  chatId: Readonly<Ref<string>>;
+  chatId: Readonly<Ref<ChatId>>;
 }): ChatPaneStateAdapter {
   const { settings } = useSettings();
 

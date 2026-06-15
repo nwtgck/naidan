@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useImageGeneration } from './useImageGeneration';
 
@@ -50,7 +51,7 @@ vi.mock('../services/lm/ollama', async (importOriginal) => {
 });
 
 describe('useImageGeneration', () => {
-  const chatId = 'test-chat-123';
+  const chatId = toChatId({ raw: 'test-chat-123' });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -175,7 +176,7 @@ describe('useImageGeneration', () => {
   });
 
   describe('handleImageGeneration', () => {
-    const assistantId = 'msg-assistant-1';
+    const assistantId = toMessageId({ raw: 'msg-assistant-1' });
     const mockChat = {
       id: chatId,
       root: {
@@ -392,7 +393,7 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        chatId: 'progress-test-chat',
+        chatId: toChatId({ raw: 'progress-test-chat' }),
         storageType: 'opfs'
       });
 

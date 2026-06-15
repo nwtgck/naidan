@@ -3,6 +3,8 @@ import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
 import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
+import type { ChatId } from '@/models/ids';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -24,7 +26,7 @@ vi.mock('../services/storage', () => ({
       const chat = mockChatStorage.get(id);
       if (!chat) return null;
       const cloned = JSON.parse(JSON.stringify(chat));
-      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(toChatId({ raw: id })));
       cloned.groupId = group?.id || null;
       return cloned;
     }),
@@ -36,7 +38,7 @@ vi.mock('../services/storage', () => ({
       const chat = mockChatStorage.get(id);
       if (!chat) return null;
       const cloned = JSON.parse(JSON.stringify(chat));
-      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(toChatId({ raw: id })));
       cloned.groupId = group?.id || null;
       return cloned;
     }),
@@ -142,7 +144,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
   const { errorCount, clearEvents } = useGlobalEvents();
 
   // Helper to wait for a chat to appear in activeGenerations
-  const waitForRegistry = async (id: string) => {
+  const waitForRegistry = async (id: ChatId) => {
     try {
       await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000, interval: 50 });
     } catch (e) {
@@ -240,7 +242,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     // 3. Simulate Tab B moving Chat A into a group
     await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: 'group-g', chat_ids: [chatAId] }];
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'group-g' }), chat_ids: [chatAId] }];
       return curr;
     } });
 
@@ -451,13 +453,13 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     // 2. Move to Group B
     await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: 'g-b', chat_ids: [chatAId] }];
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-b' }), chat_ids: [chatAId] }];
       return curr;
     } });
 
     // 3. Move to Group C
     await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: 'g-c', chat_ids: [chatAId] }];
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-c' }), chat_ids: [chatAId] }];
       return curr;
     } });
 

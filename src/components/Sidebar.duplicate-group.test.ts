@@ -5,6 +5,7 @@ import ChatGroupActions from './ChatGroupActions.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
+import { toChatGroupId } from '@/models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -117,7 +118,7 @@ describe('Sidebar Duplicate Group Feature', () => {
   });
 
   beforeEach(() => {
-    mockChatGroups.value = [{ id: 'g1', name: 'Original Group', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Original Group', isCollapsed: false, updatedAt: 0, items: [] }];
     mockChats.value = [];
     vi.clearAllMocks();
   });

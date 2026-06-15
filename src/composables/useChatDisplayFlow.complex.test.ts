@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import type { MessageNode, Chat } from '@/models/types';
+import { toChatId, toMessageId, toToolCallId } from '@/models/ids';
 
 describe('useChatDisplayFlow complex scenario', () => {
   const createChat = (messages: MessageNode[]) => {
@@ -10,10 +11,10 @@ describe('useChatDisplayFlow complex scenario', () => {
       messages[i]!.replies.items = [messages[i+1]!];
     }
     return computed<Chat>(() => ({
-      id: 'test-chat',
+      id: toChatId({ raw: 'test-chat' }),
       title: 'Test',
       root: { items: messages.length > 0 ? [messages[0]!] : [] },
-      currentLeafId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
+      currentLeafId: messages.length > 0 ? messages[messages.length - 1]!.id : undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false
@@ -22,12 +23,12 @@ describe('useChatDisplayFlow complex scenario', () => {
 
   it('correctly atomizes and groups the reported complex scenario with full JSON validation', () => {
     const messages: MessageNode[] = [
-      { id: 'u1', role: 'user', content: 'Calc', timestamp: 0, replies: { items: [] }, attachments: [], lmParameters: undefined, thinking: undefined, error: undefined, modelId: undefined, toolCalls: undefined, results: undefined } as MessageNode,
-      { id: 'a1', role: 'assistant', content: '<think>T1</think>', timestamp: 0, replies: { items: [] }, toolCalls: [{ id: 'tc1', type: 'function', function: { name: 'c', arguments: '{}' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined } as MessageNode,
-      { id: 't1', role: 'tool', content: undefined, timestamp: 0, replies: { items: [] }, results: [{ toolCallId: 'tc1', status: 'success', content: { type: 'text', text: 'R1' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined } as MessageNode,
-      { id: 'am', role: 'assistant', content: '<think>TM</think>Body', timestamp: 0, replies: { items: [] }, toolCalls: [{ id: 'tcm', type: 'function', function: { name: 'c', arguments: '{}' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined } as MessageNode,
-      { id: 'tm', role: 'tool', content: undefined, timestamp: 0, replies: { items: [] }, results: [{ toolCallId: 'tcm', status: 'success', content: { type: 'text', text: 'RM' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined } as MessageNode,
-      { id: 'al', role: 'assistant', content: '<think>TL</think>End', timestamp: 0, replies: { items: [] }, attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined } as MessageNode,
+      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'Calc', timestamp: 0, replies: { items: [] }, attachments: [], lmParameters: undefined, thinking: undefined, error: undefined, modelId: undefined, toolCalls: undefined, results: undefined } as MessageNode,
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '<think>T1</think>', timestamp: 0, replies: { items: [] }, toolCalls: [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'c', arguments: '{}' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined } as MessageNode,
+      { id: toMessageId({ raw: 't1' }), role: 'tool', content: undefined, timestamp: 0, replies: { items: [] }, results: [{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R1' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined } as MessageNode,
+      { id: toMessageId({ raw: 'am' }), role: 'assistant', content: '<think>TM</think>Body', timestamp: 0, replies: { items: [] }, toolCalls: [{ id: toToolCallId({ raw: 'tcm' }), type: 'function', function: { name: 'c', arguments: '{}' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined } as MessageNode,
+      { id: toMessageId({ raw: 'tm' }), role: 'tool', content: undefined, timestamp: 0, replies: { items: [] }, results: [{ toolCallId: toToolCallId({ raw: 'tcm' }), status: 'success', content: { type: 'text', text: 'RM' } }], attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined } as MessageNode,
+      { id: toMessageId({ raw: 'al' }), role: 'assistant', content: '<think>TL</think>End', timestamp: 0, replies: { items: [] }, attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined } as MessageNode,
     ];
 
     const { chatFlow } = useChatDisplayFlow({
@@ -116,8 +117,8 @@ describe('useChatDisplayFlow complex scenario', () => {
 
   it('correctly handles streaming state with active thinking and waiting', () => {
     const messages: MessageNode[] = [
-      { id: 'u1', role: 'user', content: 'Hi', timestamp: 0, replies: { items: [] }, attachments: [], lmParameters: undefined, thinking: undefined, error: undefined, modelId: undefined, toolCalls: undefined, results: undefined } as MessageNode,
-      { id: 'a1', role: 'assistant', content: 'Answer<think>Active', timestamp: 0, replies: { items: [] }, attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined } as MessageNode,
+      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'Hi', timestamp: 0, replies: { items: [] }, attachments: [], lmParameters: undefined, thinking: undefined, error: undefined, modelId: undefined, toolCalls: undefined, results: undefined } as MessageNode,
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: 'Answer<think>Active', timestamp: 0, replies: { items: [] }, attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined } as MessageNode,
     ];
 
     const { chatFlow } = useChatDisplayFlow({
@@ -167,14 +168,14 @@ describe('useChatDisplayFlow complex scenario', () => {
   it('handles multiple think blocks and intermixed tool groups', () => {
     const messages: MessageNode[] = [
       {
-        id: 'a1', role: 'assistant',
+        id: toMessageId({ raw: 'a1' }), role: 'assistant',
         content: '<think>T1</think>C1<think>T2</think>',
-        timestamp: 0, replies: { items: [] }, toolCalls: [{ id: 'tc1', type: 'function', function: { name: 'f', arguments: '{}' } }],
+        timestamp: 0, replies: { items: [] }, toolCalls: [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'f', arguments: '{}' } }],
         attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, results: undefined
       } as MessageNode,
       {
-        id: 't1', role: 'tool', content: undefined, timestamp: 0, replies: { items: [] },
-        results: [{ toolCallId: 'tc1', status: 'success', content: { type: 'text', text: 'R' } }],
+        id: toMessageId({ raw: 't1' }), role: 'tool', content: undefined, timestamp: 0, replies: { items: [] },
+        results: [{ toolCallId: toToolCallId({ raw: 'tc1' }), status: 'success', content: { type: 'text', text: 'R' } }],
         attachments: undefined, thinking: undefined, error: undefined, modelId: undefined, lmParameters: undefined, toolCalls: undefined
       } as MessageNode,
     ];
@@ -196,7 +197,7 @@ describe('useChatDisplayFlow complex scenario', () => {
   it('handles empty assistant messages and single internal atoms', () => {
     const messages: MessageNode[] = [
       {
-        id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] },
+        id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: 0, replies: { items: [] },
         attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined
       } as MessageNode,
     ];
@@ -216,7 +217,7 @@ describe('useChatDisplayFlow complex scenario', () => {
   it('does NOT create a sequence for a single internal atom', () => {
     const messages: MessageNode[] = [
       {
-        id: 'a1', role: 'assistant', content: '<think>Just one think</think>', timestamp: 0, replies: { items: [] },
+        id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '<think>Just one think</think>', timestamp: 0, replies: { items: [] },
         attachments: undefined, thinking: undefined, error: undefined, modelId: 'm', lmParameters: undefined, toolCalls: undefined, results: undefined
       } as MessageNode,
     ];

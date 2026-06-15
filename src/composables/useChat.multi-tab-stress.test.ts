@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
 import type { Chat, Hierarchy } from '@/models/types';
+import { toChatId, toMessageId } from '@/models/ids';
 
 /**
  * Multi-Tab Stress & Glitch Tests
@@ -111,9 +112,9 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
     const chatStoreB = useChat();
 
     const chat1: Chat = {
-      id: 'c1', title: 'C1',
-      root: { items: [{ id: 'm1', role: 'user', content: 'Hi', replies: { items: [{ id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, timestamp: 0 }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: 'a1'
+      id: toChatId({ raw: 'c1' }), title: 'C1',
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Hi', replies: { items: [{ id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, timestamp: 0 }] },
+      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'a1' })
     };
     mocks.mockChatStorage.set('c1', chat1);
 
@@ -124,7 +125,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
       const now = i * 100;
       vi.setSystemTime(now);
       if (i % 5 === 0 || i === 49) {
-        await storageService.updateChatContent({ id: 'c1', updater: () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }) });
+        await storageService.updateChatContent({ id: toChatId({ raw: 'c1' }), updater: () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }) });
       }
     }
 
@@ -135,7 +136,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
 
   it('Reliability: Tab B should not lose selection if storage is temporarily busy/null', async () => {
     const chatStoreB = useChat();
-    const chat1: Chat = { id: 'c1', title: 'C1', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const chat1: Chat = { id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
     mocks.mockChatStorage.set('c1', chat1);
 
     await chatStoreB.openChat({ id: 'c1' });
@@ -160,7 +161,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
       activeSaves--;
     });
 
-    const chat: Chat = { id: 'c1', title: 'T', root: { items: [{ id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const chat: Chat = { id: toChatId({ raw: 'c1' }), title: 'T', root: { items: [{ id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
 
     vi.useRealTimers();
 

@@ -3,6 +3,7 @@ import { useChat } from './useChat';
 import { ref } from 'vue';
 import { storageService } from '@/services/storage';
 import type { SidebarItem } from '@/models/types';
+import { toChatGroupId, toMessageId } from '@/models/ids';
 
 type TestHierarchyNode =
   | { type: 'chat'; id: string }
@@ -70,7 +71,7 @@ describe('useChat Fork Insertion Logic', () => {
     const chat = useChat();
 
     chat.rootItems.value = [
-      { id: 'chat_group:1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', items: [], isCollapsed: false, updatedAt: 0 } } as SidebarItem,
+      { id: 'chat_group:1', type: 'chat_group', chatGroup: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', items: [], isCollapsed: false, updatedAt: 0 } } as SidebarItem,
       { id: 'chat:a', type: 'chat', chat: { id: 'a', title: 'A', updatedAt: 0, groupId: null } } as SidebarItem,
     ];
 
@@ -90,7 +91,7 @@ describe('useChat Fork Insertion Logic', () => {
       return chat.rootItems.value;
     });
 
-    await chat.forkChat({ messageId: 'm1' });
+    await chat.forkChat({ messageId: toMessageId({ raw: 'm1' }) });
 
     // Expected: Chat Group, Fork, Chat A
     expect(chat.rootItems.value[0]?.type).toBe('chat_group');
@@ -144,7 +145,7 @@ describe('useChat Fork Insertion Logic', () => {
       return chat.rootItems.value;
     });
 
-    await chat.forkChat({ messageId: 'm1' });
+    await chat.forkChat({ messageId: toMessageId({ raw: 'm1' }) });
 
     // Expected: Chat Group with [Fork, Chat A]
     const groupItem = chat.rootItems.value[0];

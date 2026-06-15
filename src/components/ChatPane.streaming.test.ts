@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -107,7 +108,7 @@ function mountChatPane({
 }) {
   return mount(ChatPane, {
     props: {
-      chatId: useChat().currentChat.value?.id ?? 'chat-1',
+      chatId: useChat().currentChat.value?.id ?? toChatId({ raw: 'chat-1' }),
     },
     global,
   });

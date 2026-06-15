@@ -14,6 +14,7 @@ import type {
   SearchScope,
   SearchSource,
 } from '@/services/global-search/types';
+import { toChatId } from '@/models/ids';
 
 export type { ContentMatch, FlatSearchResultItem, SearchResultItem, SearchRoleFilter, SearchScope };
 
@@ -271,7 +272,7 @@ export function useChatSearch() {
         }
 
         try {
-          const content = await storageService.loadChatContent({ id: chat.id });
+          const content = await storageService.loadChatContent({ id: toChatId({ raw: chat.id }) });
           if (content) {
             const response = await searchClient.searchChatContent({
               request: {

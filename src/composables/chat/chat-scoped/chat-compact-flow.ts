@@ -15,6 +15,7 @@ import { generateId } from '@/utils/id';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import type { ChatId, MessageId } from '@/models/ids';
 import {
   chatRuntimeStore,
   contextCompactRuntime,
@@ -32,9 +33,9 @@ import {
 export type CompactCurrentBranchResult =
   | {
       status: 'compacted';
-      chatId: string;
-      compactNodeId: string;
-      currentLeafId: string;
+      chatId: ChatId;
+      compactNodeId: MessageId;
+      currentLeafId: MessageId;
     }
   | {
       status: 'skipped';
@@ -55,7 +56,7 @@ export async function runCompactCurrentBranchForChat({
   keepRecentMessages,
   instructionOverride,
 }: {
-  chatId: string;
+  chatId: ChatId;
   keepRecentMessages: number;
   instructionOverride: string | undefined;
 }): Promise<CompactCurrentBranchResult> {
@@ -218,12 +219,12 @@ export async function runCompactCurrentBranchForChat({
       compactContent: finalCompactContent,
       suffix: split.suffix,
       compactModelId: resolvedModel,
-      createMessageId: () => generateId(),
+      createMessageId: () => generateId<MessageId>(),
       now: () => Date.now(),
     });
 
     mutableChat.root.items.push(branchResult.compactNode);
-    mutableChat.currentLeafId = branchResult.currentLeafId;
+    mutableChat.currentLeafId = branchResult.currentLeafId === undefined ? undefined : branchResult.currentLeafId;
     mutableChat.updatedAt = Date.now();
 
     await updateChatContent({
@@ -296,7 +297,7 @@ export async function runCompactCurrentBranchForChat({
 export function abortContextCompactForChat({
   chatId,
 }: {
-  chatId: string | undefined;
+  chatId: ChatId | undefined;
 }): void {
   if (chatId === undefined) {
     return;

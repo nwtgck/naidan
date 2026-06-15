@@ -3,6 +3,7 @@ import { watch, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import CurrentChatPane from '@/components/CurrentChatPane.vue';
+import { toChatId, toMessageId } from '@/models/ids';
 
 const router = useRouter();
 const currentRoute = computed(() => router?.currentRoute?.value);
@@ -18,15 +19,24 @@ const chatId = computed(() => {
 });
 
 const leafId = computed(() => currentRoute.value?.query?.leaf?.toString());
-const messageId = computed(() => currentRoute.value?.query?.['message-id']?.toString());
+const messageId = computed(() => {
+  const raw = currentRoute.value?.query?.['message-id']?.toString();
+  return raw === undefined ? undefined : toMessageId({ raw });
+});
 
 async function syncChat() {
   const id = chatId.value;
   if (id) {
     if (messageId.value) {
-      await chatNavigation.openChatAtMessage({ chatId: id, messageId: messageId.value });
+      await chatNavigation.openChatAtMessage({
+        chatId: toChatId({ raw: id }),
+        messageId: messageId.value,
+      });
     } else {
-      await chatNavigation.openChat({ chatId: id, leafId: leafId.value });
+      await chatNavigation.openChat({
+        chatId: toChatId({ raw: id }),
+        leafId: leafId.value === undefined ? undefined : toMessageId({ raw: leafId.value }),
+      });
     }
   }
 }

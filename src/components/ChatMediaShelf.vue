@@ -13,15 +13,17 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageDownloadButton from './ImageDownloadButton.vue';
+import { toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
-  chatId: string;
+  chatId: ChatId;
   messages: MessageNode[];
 }>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'jump-to-message', messageId: string): void;
+  (e: 'jump-to-message', messageId: MessageId): void;
 }>();
 
 const { downloadBinaryObject } = useBinaryActions();
@@ -33,8 +35,8 @@ const mediaOrder = ref<MediaOrder>('forward');
 
 interface MediaItem {
   id: string;
-  messageId: string;
-  binaryObjectId: string;
+  messageId: MessageId;
+  binaryObjectId: BinaryObjectId;
   mimeType: string;
   size: number;
   name?: string;
@@ -49,7 +51,7 @@ interface MediaItem {
 }
 
 interface MediaGroup {
-  messageId: string;
+  messageId: MessageId;
   prompt?: string;
   items: MediaItem[];
   timestamp: number;
@@ -89,11 +91,12 @@ const mediaGroups = computed(() => {
         const result = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1] || '{}'));
         if (result.success) {
           const data = result.data;
+          const binaryObjectId = toBinaryObjectId({ raw: data.binaryObjectId });
           if (!sharedPrompt) sharedPrompt = data.prompt;
           items.push({
             id: data.binaryObjectId,
             messageId: msg.id,
-            binaryObjectId: data.binaryObjectId,
+            binaryObjectId,
             mimeType: 'image/png',
             size: 0,
             prompt: data.prompt,
@@ -242,7 +245,7 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem; withMet
 };
 
 const copiedPromptId = ref<string | null>(null);
-const copyPrompt = async ({ prompt, messageId }: { prompt: string; messageId: string }) => {
+const copyPrompt = async ({ prompt, messageId }: { prompt: string; messageId: MessageId }) => {
   try {
     await navigator.clipboard.writeText(prompt);
     copiedPromptId.value = messageId;

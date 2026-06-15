@@ -4,6 +4,7 @@ import { storageService } from '@/services/storage';
 import type { LLMProvider } from '@/services/lm/types';
 import type { ToolExecutionResult } from '@/services/tools/types';
 import { fileToDataUrl } from '@/utils/chat-tree';
+import type { MessageId } from '@/models/ids';
 
 export type ContextCompactProgress =
   | { phase: 'idle' }
@@ -59,7 +60,7 @@ export type ContextCompactSplit = {
 export type ContextCompactBranchResult = {
   compactNode: AssistantMessageNode;
   copiedSuffixHead: MessageNode | undefined;
-  currentLeafId: string;
+  currentLeafId: MessageId;
 };
 
 export type ChatPaneHeaderMoreAction =
@@ -515,7 +516,7 @@ function cloneLinearMessageNode({
   timestamp,
 }: {
   node: MessageNode;
-  id: string;
+  id: MessageId;
   timestamp: number;
 }): MessageNode {
   switch (node.role) {
@@ -592,11 +593,11 @@ export function deepCopyCompactSuffix({
   now,
 }: {
   suffix: readonly MessageNode[];
-  createMessageId: () => string;
+  createMessageId: () => MessageId;
   now: () => number;
 }): {
   copiedHead: MessageNode | undefined;
-  copiedLeafId: string | undefined;
+  copiedLeafId: MessageId | undefined;
 } {
   if (suffix.length === 0) {
     return {
@@ -632,7 +633,7 @@ export function createCompactBranchFromResponse({
   compactContent: string;
   suffix: readonly MessageNode[];
   compactModelId: string | undefined;
-  createMessageId: () => string;
+  createMessageId: () => MessageId;
   now: () => number;
 }): ContextCompactBranchResult {
   const compactNode: AssistantMessageNode = {
@@ -802,7 +803,7 @@ export function createContextCompactBranch({
     compactContent,
     suffix,
     compactModelId: undefined,
-    createMessageId: () => generateId(),
+    createMessageId: () => generateId<MessageId>(),
     now: () => Date.now(),
   });
 }

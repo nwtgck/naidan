@@ -3,6 +3,7 @@ import { useChat } from './useChat';
 import type { Chat, SidebarItem, ChatSummary, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { nextTick, reactive, toRaw } from 'vue';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -146,7 +147,7 @@ describe('useChat Cross-Tab Synchronization', () => {
   it('should reflect sidebar changes when reordered in another tab', async () => {
     const { rootItems, loadChats } = chatStore;
     await loadChats();
-    const newItem: SidebarItem = { id: 'chat:chat-1', type: 'chat', chat: { id: 'chat-1', title: 'C1', updatedAt: Date.now(), groupId: null } };
+    const newItem: SidebarItem = { id: 'chat:chat-1', type: 'chat', chat: { id: toChatId({ raw: 'chat-1' }), title: 'C1', updatedAt: Date.now(), groupId: null } };
     mocks.mockRootItems.push(newItem);
     vi.advanceTimersByTime(1000); // Reset throttle state by aging the last reload
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group' });
@@ -212,7 +213,7 @@ describe('useChat Cross-Tab Synchronization', () => {
     await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     mocks.mockChatStorage.clear();
     mocks.mockRootItems.length = 0;
-    const migratedChatSummary: ChatSummary = { id: 'm1', title: 'M', updatedAt: Date.now(), groupId: null };
+    const migratedChatSummary: ChatSummary = { id: toChatId({ raw: 'm1' }), title: 'M', updatedAt: Date.now(), groupId: null };
     mocks.mockRootItems.push({ id: 'chat:m1', type: 'chat', chat: migratedChatSummary });
     await simulateExternalEvent({ type: 'migration' });
 
@@ -234,14 +235,14 @@ describe('useChat Cross-Tab Synchronization', () => {
       id: 'chat_group:group-x',
       type: 'chat_group',
       chatGroup: {
-        id: 'group-x', name: 'X', isCollapsed: false, updatedAt: 0,
-        items: [{ id: `chat:${chatId}`, type: 'chat', chat: { id: chatId, title: 'T', updatedAt: 0, groupId: 'group-x' } }]
+        id: toChatGroupId({ raw: 'group-x' }), name: 'X', isCollapsed: false, updatedAt: 0,
+        items: [{ id: `chat:${chatId}`, type: 'chat', chat: { id: chatId, title: 'T', updatedAt: 0, groupId: toChatGroupId({ raw: 'group-x' }) } }]
       }
     });
 
     // Also update the meta in storage so loadChat returns the correct groupId
     const meta = mocks.mockChatStorage.get(chatId);
-    if (meta) meta.groupId = 'group-x';
+    if (meta) meta.groupId = toChatGroupId({ raw: 'group-x' });
 
     vi.advanceTimersByTime(1000);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
@@ -264,10 +265,10 @@ describe('useChat Cross-Tab Synchronization', () => {
     const chatId = chat!.id;
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chatStore.currentChat.value! as any });
     mocks.mockRootItems.length = 0;
-    mocks.mockRootItems.push({ id: 'chat_group:ge', type: 'chat_group', chatGroup: { id: 'ge', name: 'E', items: [{ id: `chat:${chatId}`, type: 'chat', chat: { id: chatId, title: 'C', updatedAt: 0, groupId: 'ge' } }], isCollapsed: false, updatedAt: 0 } });
+    mocks.mockRootItems.push({ id: 'chat_group:ge', type: 'chat_group', chatGroup: { id: toChatGroupId({ raw: 'ge' }), name: 'E', items: [{ id: `chat:${chatId}`, type: 'chat', chat: { id: chatId, title: 'C', updatedAt: 0, groupId: toChatGroupId({ raw: 'ge' }) } }], isCollapsed: false, updatedAt: 0 } });
 
     const meta = mocks.mockChatStorage.get(chatId);
-    if (meta) meta.groupId = 'ge';
+    if (meta) meta.groupId = toChatGroupId({ raw: 'ge' });
 
     vi.advanceTimersByTime(2000);
     await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });

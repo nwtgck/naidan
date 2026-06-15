@@ -8,6 +8,7 @@ import ImageInfoDisplay from '@/components/ImageInfoDisplay.vue';
 import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { toBinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
   json: string;
@@ -52,7 +53,8 @@ async function loadImage() {
   error.value = undefined;
 
   try {
-    const blob = await storageService.getFile({ binaryObjectId: parsed.value.binaryObjectId });
+    const binaryObjectId = toBinaryObjectId({ raw: parsed.value.binaryObjectId });
+    const blob = await storageService.getFile({ binaryObjectId });
     if (blob) {
       if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
       imageUrl.value = URL.createObjectURL(blob);
@@ -78,16 +80,18 @@ onUnmounted(() => {
 async function handlePreview() {
   if (!parsed.value) return;
 
+  const binaryObjectId = toBinaryObjectId({ raw: parsed.value.binaryObjectId });
+
   if (handleContextualPreview) {
-    await handleContextualPreview({ id: parsed.value.binaryObjectId });
+    await handleContextualPreview({ id: binaryObjectId });
     return;
   }
 
-  const obj = await storageService.getBinaryObject({ binaryObjectId: parsed.value.binaryObjectId });
+  const obj = await storageService.getBinaryObject({ binaryObjectId });
   if (obj) {
     openPreview({
       objects: [obj],
-      initialId: parsed.value.binaryObjectId
+      initialId: binaryObjectId
     });
   }
 }
@@ -95,8 +99,10 @@ async function handlePreview() {
 async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
   if (!parsed.value) return;
 
+  const binaryObjectId = toBinaryObjectId({ raw: parsed.value.binaryObjectId });
+
   await ImageDownloadHydrator.download({
-    id: parsed.value.binaryObjectId,
+    id: binaryObjectId,
     prompt: parsed.value.prompt || '',
     steps: parsed.value.steps,
     seed: parsed.value.seed,

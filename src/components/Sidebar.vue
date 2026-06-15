@@ -20,6 +20,7 @@ import {
   BotIcon, PanelLeftIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
   SearchIcon, GhostIcon, MessageSquarePlusIcon
 } from 'lucide-vue-next';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupActions.vue') });
 import { useLayout } from '@/composables/useLayout';
@@ -50,7 +51,7 @@ const chatGroups = currentChatState.chatGroups;
 function isProcessing({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }) {
   return isChatProcessing({ chatId });
 }
@@ -61,7 +62,7 @@ function setChatGroupCollapsed({
   groupId,
   isCollapsed,
 }: {
-  groupId: string;
+  groupId: ChatGroupId;
   isCollapsed: boolean;
 }) {
   void sidebarStructure.setChatGroupCollapsed({
@@ -84,7 +85,7 @@ function createChatGroup({
 function deleteChatGroup({
   id,
 }: {
-  id: string;
+  id: ChatGroupId;
 }) {
   return chatOrganization.deleteChatGroup({
     id,
@@ -96,7 +97,7 @@ function createNewChat({
   modelId,
   systemPrompt,
 }: {
-  groupId: string | undefined;
+  groupId: ChatGroupId | undefined;
   modelId: string | undefined;
   systemPrompt: ChatGroup['systemPrompt'];
 }) {
@@ -110,7 +111,7 @@ function createNewChat({
 function openChat({
   id,
 }: {
-  id: string;
+  id: ChatId;
 }) {
   return chatNavigation.openChat({
     chatId: id,
@@ -121,7 +122,7 @@ function openChat({
 function openChatGroup({
   id,
 }: {
-  id: string;
+  id: ChatGroupId;
 }) {
   chatNavigation.openChatGroup({
     groupId: id,
@@ -131,7 +132,7 @@ function openChatGroup({
 function deleteChat({
   id,
 }: {
-  id: string;
+  id: ChatId;
 }) {
   return chatLifecycle.deleteChat({
     id,
@@ -143,7 +144,7 @@ function renameChat({
   id,
   newTitle,
 }: {
-  id: string;
+  id: ChatId;
   newTitle: string;
 }) {
   return chatMetadata.rename({
@@ -171,29 +172,34 @@ defineEmits<{
 
 const sidebarItemsLocal = ref<SidebarItem[]>([]);
 const isDragging = ref(false);
-const dragHoverGroup = ref<string | null>(null);
+const dragHoverGroup = ref<ChatGroupId | null>(null);
 let dragHoverTimeout: ReturnType<typeof setTimeout> | null = null;
 let isInternalUpdate = false;
 
-const editingId = ref<string | null>(null);
+const editingId = ref<ChatId | null>(null);
 const editingTitle = ref('');
 const isCreatingChatGroup = ref(false);
 const newChatGroupName = ref('');
-const editingChatGroupId = ref<string | null>(null);
+const editingChatGroupId = ref<ChatGroupId | null>(null);
 const editingChatGroupName = ref('');
 const skipLeaveAnimation = ref(false);
 const lastNavigatedId = ref<string | null>(null);
 
-const activeActionGroupId = ref<string | null>(null);
+const activeActionGroupId = ref<ChatGroupId | null>(null);
 
 const COMPACT_THRESHOLD = 5;
-const expandedGroupIds = ref<Set<string>>(new Set());
-const collapsingGroupIds = ref<Set<string>>(new Set());
+const expandedGroupIds = ref<Set<ChatGroupId>>(new Set());
+const collapsingGroupIds = ref<Set<ChatGroupId>>(new Set());
 
 const navContainer = ref<HTMLElement | null>(null);
 
+type VisibleSidebarNavigationItem =
+  | { type: 'chat'; id: ChatId }
+  | { type: 'chat_group'; id: ChatGroupId }
+  | { type: 'expand_button'; id: string; groupId: ChatGroupId };
+
 const visibleItems = computed(() => {
-  const result: { type: 'chat' | 'chat_group' | 'expand_button'; id: string; groupId?: string }[] = [];
+  const result: VisibleSidebarNavigationItem[] = [];
   function collect({ list }: { list: SidebarItem[] }) {
     for (const item of list) {
       switch (item.type) {
@@ -258,7 +264,7 @@ function isSidebarItemVisible({
 function ensureChatVisibleInCompactGroup({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }) {
   for (const item of sidebarItemsLocal.value) {
     switch (item.type) {
@@ -284,15 +290,15 @@ function ensureChatVisibleInCompactGroup({
   }
 }
 
+type ScheduleSidebarItemScrollArgs =
+  | { itemType: 'chat'; id: ChatId | undefined; onlyWhenOutOfView: boolean }
+  | { itemType: 'chat_group'; id: ChatGroupId | undefined; onlyWhenOutOfView: boolean };
+
 async function scheduleSidebarItemScroll({
   itemType,
   id,
   onlyWhenOutOfView,
-}: {
-  itemType: 'chat' | 'chat_group';
-  id: string | undefined;
-  onlyWhenOutOfView: boolean;
-}) {
+}: ScheduleSidebarItemScrollArgs) {
   if (!id || typeof document === 'undefined' || !navContainer.value) return;
 
   switch (itemType) {
@@ -399,11 +405,11 @@ watch(activeFocusAreaVersion, () => {
   });
 });
 
-function isGroupCompactExpanded({ groupId }: { groupId: string }) {
+function isGroupCompactExpanded({ groupId }: { groupId: ChatGroupId }) {
   return expandedGroupIds.value.has(groupId);
 }
 
-function toggleGroupCompactExpansion({ groupId }: { groupId: string }) {
+function toggleGroupCompactExpansion({ groupId }: { groupId: ChatGroupId }) {
   if (expandedGroupIds.value.has(groupId)) {
     collapsingGroupIds.value.add(groupId);
     expandedGroupIds.value.delete(groupId);
@@ -554,7 +560,7 @@ async function onDragEnd() {
   }, 100);
 }
 
-function onDragOverGroup({ groupId }: { groupId: string }) {
+function onDragOverGroup({ groupId }: { groupId: ChatGroupId }) {
   if (!isDragging.value) return;
   if (dragHoverGroup.value === groupId) return;
 
@@ -649,7 +655,7 @@ async function handleDeleteChatGroup({ group }: { group: ChatGroup }) {
   await deleteChatGroup({ id: group.id });
 }
 
-async function handleNewChat({ groupId }: { groupId: string | undefined }) {
+async function handleNewChat({ groupId }: { groupId: ChatGroupId | undefined }) {
   setActiveFocusArea({ area: 'chat' });
   await createNewChat({
     groupId,
@@ -661,12 +667,12 @@ async function handleNewChat({ groupId }: { groupId: string | undefined }) {
   }
 }
 
-async function handleOpenChat({ id }: { id: string }) {
+async function handleOpenChat({ id }: { id: ChatId }) {
   await openChat({ id });
   router.push(`/chat/${id}`);
 }
 
-async function handleOpenChatGroup({ id }: { id: string }) {
+async function handleOpenChatGroup({ id }: { id: ChatGroupId }) {
   openChatGroup({ id });
   router.push(`/chat-group/${id}`);
 }
@@ -678,13 +684,13 @@ watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId,
   }
 });
 
-async function handleDeleteChat({ id }: { id: string }) {
+async function handleDeleteChat({ id }: { id: ChatId }) {
   const isCurrent = currentChat.value?.id === id;
   await deleteChat({ id });
   if (isCurrent) router.push('/');
 }
 
-function startEditing({ id, title }: { id: string; title: string | null }) {
+function startEditing({ id, title }: { id: ChatId; title: string | null }) {
   editingId.value = id;
   editingTitle.value = title || '';
 }
@@ -713,7 +719,7 @@ async function handleGlobalModelChange({ newModelId }: { newModelId: string | un
   await updateGlobalModel({ modelId: newModelId });
 }
 
-function getGroupItems({ groupId }: { groupId: string }) {
+function getGroupItems({ groupId }: { groupId: ChatGroupId }) {
   const group = sidebarItemsLocal.value.find(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
   if (!group || group.type !== 'chat_group') return [];
 
@@ -724,7 +730,7 @@ function getGroupItems({ groupId }: { groupId: string }) {
   return items.slice(0, COMPACT_THRESHOLD);
 }
 
-function updateGroupItems({ groupId, newItems }: { groupId: string; newItems: ChatSidebarItem[] }) {
+function updateGroupItems({ groupId, newItems }: { groupId: ChatGroupId; newItems: ChatSidebarItem[] }) {
   const groupIndex = sidebarItemsLocal.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
   if (groupIndex === -1) return;
 
@@ -740,7 +746,7 @@ function updateGroupItems({ groupId, newItems }: { groupId: string; newItems: Ch
   }
 }
 
-function useGroupItemsModel({ groupId }: { groupId: string }) {
+function useGroupItemsModel({ groupId }: { groupId: ChatGroupId }) {
   return computed({
     get: () => getGroupItems({ groupId }),
     set: (val) => updateGroupItems({ groupId, newItems: val })

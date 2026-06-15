@@ -11,17 +11,18 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
 import type { ChatPaneHeaderMoreAction } from '@/services/context-compact';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 
 type HeaderChat = {
-  readonly id: string;
+  readonly id: ChatId;
   readonly title: string | null;
-  readonly groupId?: string | null;
-  readonly originChatId?: string;
+  readonly groupId?: ChatGroupId | null;
+  readonly originChatId?: ChatId;
   readonly debugEnabled: boolean;
 };
 
 type HeaderChatGroup = {
-  readonly id: string;
+  readonly id: ChatGroupId;
   readonly name: string;
 };
 
@@ -44,7 +45,7 @@ const emit = defineEmits<{
   (e: 'edit-title'): void;
   (e: 'update:show-chat-settings', value: boolean): void;
   (e: 'fork-last-message'): void;
-  (e: 'move-to-group', groupId: string | null): void;
+  (e: 'move-to-group', groupId: ChatGroupId | null): void;
   (e: 'toggle-outline'): void;
   (e: 'print'): void;
   (e: 'search-chat'): void;
@@ -77,7 +78,7 @@ function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
 
 useEventTargetListener(document, 'pointerdown', (event) => handleDocumentPointerDown({ event }));
 
-function emitMoveToGroup({ groupId }: { groupId: string | null }) {
+function emitMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
   emit('move-to-group', groupId);
   showMoveMenu.value = false;
 }

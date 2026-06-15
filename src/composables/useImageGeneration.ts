@@ -18,6 +18,7 @@ import { reencodeImage } from '@/utils/image-processing';
 import { naturalSort, sanitizeFilename } from '@/utils/string';
 import type { Chat, ChatContent, Attachment } from '@/models/types';
 import { findNodeInBranch } from '@/utils/chat-tree';
+import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
 
 // Shared state across all instances to maintain consistency
 const imageModeMap = ref<Record<string, boolean>>({});
@@ -30,47 +31,47 @@ const imageSeedMap = ref<Record<string, number | 'browser_random' | undefined>>(
 const imageProgressMap = ref<Record<string, { currentStep: number, totalSteps: number } | undefined>>({});
 
 export function useImageGeneration() {
-  const isImageMode = ({ chatId }: { chatId: string }) => !!imageModeMap.value[chatId];
+  const isImageMode = ({ chatId }: { chatId: ChatId }) => !!imageModeMap.value[chatId];
 
-  const toggleImageMode = ({ chatId }: { chatId: string }) => {
+  const toggleImageMode = ({ chatId }: { chatId: ChatId }) => {
     imageModeMap.value[chatId] = !imageModeMap.value[chatId];
   };
 
-  const getResolution = ({ chatId }: { chatId: string }) => {
+  const getResolution = ({ chatId }: { chatId: ChatId }) => {
     return imageResolutionMap.value[chatId] || { width: 512, height: 512 };
   };
 
   const updateResolution = ({ chatId, width, height }: {
-    chatId: string,
+    chatId: ChatId,
     width: number,
     height: number
   }) => {
     imageResolutionMap.value[chatId] = { width, height };
   };
 
-  const getCount = ({ chatId }: { chatId: string }) => {
+  const getCount = ({ chatId }: { chatId: ChatId }) => {
     return imageCountMap.value[chatId] || 1;
   };
 
   const updateCount = ({ chatId, count }: {
-    chatId: string,
+    chatId: ChatId,
     count: number
   }) => {
     imageCountMap.value[chatId] = count;
   };
 
-  const getSteps = ({ chatId }: { chatId: string }) => {
+  const getSteps = ({ chatId }: { chatId: ChatId }) => {
     return imageStepsMap.value[chatId];
   };
 
   const updateSteps = ({ chatId, steps }: {
-    chatId: string,
+    chatId: ChatId,
     steps: number | undefined
   }) => {
     imageStepsMap.value[chatId] = steps;
   };
 
-  const getSeed = ({ chatId }: { chatId: string }) => {
+  const getSeed = ({ chatId }: { chatId: ChatId }) => {
     // If the chatId is not in the map, return the default ('browser_random')
     if (!(chatId in imageSeedMap.value)) {
       return 'browser_random';
@@ -79,25 +80,25 @@ export function useImageGeneration() {
   };
 
   const updateSeed = ({ chatId, seed }: {
-    chatId: string,
+    chatId: ChatId,
     seed: number | 'browser_random' | undefined
   }) => {
     imageSeedMap.value[chatId] = seed;
   };
 
-  const getPersistAs = ({ chatId }: { chatId: string }): ImageRequestParams['persistAs'] => {
+  const getPersistAs = ({ chatId }: { chatId: ChatId }): ImageRequestParams['persistAs'] => {
     return imagePersistAsMap.value[chatId] || 'original';
   };
 
   const updatePersistAs = ({ chatId, format }: {
-    chatId: string,
+    chatId: ChatId,
     format: ImageRequestParams['persistAs']
   }) => {
     imagePersistAsMap.value[chatId] = format;
   };
 
   const setImageModel = ({ chatId, modelId }: {
-    chatId: string,
+    chatId: ChatId,
     modelId: string | undefined
   }) => {
     if (modelId === undefined) {
@@ -108,7 +109,7 @@ export function useImageGeneration() {
   };
 
   const getSelectedImageModel = ({ chatId, availableModels }: {
-    chatId: string,
+    chatId: ChatId,
     availableModels: string[]
   }) => {
     const allImageModels = getImageGenerationModels({ models: availableModels });
@@ -179,8 +180,8 @@ export function useImageGeneration() {
     incTask,
     decTask
   }: {
-    chatId: string,
-    assistantId: string,
+    chatId: ChatId,
+    assistantId: MessageId,
     prompt: string,
     width: number,
     height: number,
@@ -197,10 +198,10 @@ export function useImageGeneration() {
     signal: AbortSignal | undefined,
     getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined,
 
-    updateChatContent: ({ chatId, updater }: { chatId: string, updater: ({ current }: { current: ChatContent }) => ChatContent }) => Promise<void>,
-    triggerChatRef: ({ chatId }: { chatId: string }) => void,
-    incTask: ({ chatId, type }: { chatId: string, type: 'process' }) => void,
-    decTask: ({ chatId, type }: { chatId: string, type: 'process' }) => void
+    updateChatContent: ({ chatId, updater }: { chatId: ChatId, updater: ({ current }: { current: ChatContent }) => ChatContent }) => Promise<void>,
+    triggerChatRef: ({ chatId }: { chatId: ChatId }) => void,
+    incTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void,
+    decTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void
   }) => {
     const target = getLiveChat({ chat: { id: chatId } as Chat });
     if (!target) return;
@@ -302,7 +303,7 @@ export function useImageGeneration() {
         switch (storageType) {
         case 'opfs':
         case 'memory': {
-          const binaryObjectId = generateId();
+          const binaryObjectId = generateId<BinaryObjectId>();
           const fileName = sanitizeFilename({
             base: prompt,
             suffix: extension,
@@ -394,10 +395,10 @@ export function useImageGeneration() {
     steps: number | undefined,
     seed: number | 'browser_random' | undefined,
     persistAs: ImageRequestParams['persistAs'],
-    chatId: string,
+    chatId: ChatId,
     attachments: Attachment[],
     availableModels: string[],
-    sendMessage: ({ content, parentId, attachments }: { content: string, parentId: string | undefined, attachments: Attachment[] }) => Promise<boolean>
+    sendMessage: ({ content, parentId, attachments }: { content: string, parentId: MessageId | undefined, attachments: Attachment[] }) => Promise<boolean>
   }): Promise<boolean> => {
     const prevMode = !!imageModeMap.value[chatId];
     const prevRes = imageResolutionMap.value[chatId];

@@ -6,6 +6,7 @@ import Sidebar from './Sidebar.vue';
 import CurrentChatPane from './CurrentChatPane.vue';
 import { useLayout } from '@/composables/useLayout';
 import type { ChatGroup, ChatSummary, SidebarItem, MessageNode, Chat } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 const { mockScrollIntoViewSafe } = vi.hoisted(() => ({
   mockScrollIntoViewSafe: vi.fn(),
@@ -154,7 +155,7 @@ describe('Sidebar Focus Sync', () => {
       debugEnabled: false,
     };
     mockCurrentChatGroup.value = null;
-    mockChats.value = [{ id: 'chat-1', title: 'Chat 1', updatedAt: 0 }];
+    mockChats.value = [{ id: toChatId({ raw: 'chat-1' }), title: 'Chat 1', updatedAt: 0 }];
     mockChatGroups.value = [];
     mockActiveMessages.value = [];
 
@@ -223,7 +224,7 @@ describe('Sidebar Focus Sync', () => {
     mockCurrentChatGroup.value = { id: 'g1' };
     mockChats.value = [];
     mockChatGroups.value = [{
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       isCollapsed: false,
       updatedAt: 0,

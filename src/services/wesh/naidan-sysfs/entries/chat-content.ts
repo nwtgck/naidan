@@ -5,6 +5,7 @@ import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-
 import { renderMessageJson } from '@/services/wesh/naidan-sysfs/render/message-json'
 import { renderMessageMarkdown } from '@/services/wesh/naidan-sysfs/render/message-markdown'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry } from '@/services/wesh/naidan-sysfs/types'
+import { toChatId } from '@/models/ids';
 
 function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
@@ -43,8 +44,8 @@ async function* loadBranchNodes({
   chatId: string;
   path: string;
 }): AsyncGenerator<MessageNode> {
-  const metadata = await context.reader.loadChatMeta({ chatId })
-  const content = await context.reader.loadChatContent({ chatId })
+  const metadata = await context.reader.loadChatMeta({ chatId: toChatId({ raw: chatId }) })
+  const content = await context.reader.loadChatContent({ chatId: toChatId({ raw: chatId }) })
   if (metadata === undefined || content === undefined) {
     throw new Error(`Path not found: ${path}`)
   }

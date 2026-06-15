@@ -9,6 +9,7 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
+import { toToolCallId, type ToolCallId } from '@/models/ids';
 import { zodToJsonSchema } from '@/utils/llm-tools';
 import type { LmParameters, ChatMessage } from '@/models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
@@ -81,10 +82,10 @@ export class OpenAIProvider implements LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: ({ id, event }: { id: string; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: ToolCallId; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
     onToolResult?: ({ id, result }: {
-      id: string;
+      id: ToolCallId;
       result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
@@ -237,7 +238,7 @@ export class OpenAIProvider implements LLMProvider {
 
                 if (!accumulatedToolCalls.has(key)) {
                   accumulatedToolCalls.set(key, {
-                    id: tc.id || currentId,
+                    id: toToolCallId({ raw: tc.id || currentId }),
                     type: 'function',
                     function: { name: '', arguments: '' }
                   });
@@ -253,7 +254,7 @@ export class OpenAIProvider implements LLMProvider {
                     record.function.arguments += tc.function.arguments;
                   }
                 }
-                if (tc.id) record.id = tc.id;
+                if (tc.id) record.id = toToolCallId({ raw: tc.id });
               }
             }
           } catch (e) {

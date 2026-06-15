@@ -1,5 +1,6 @@
 import { useChatTmpDirectory } from '@/composables/chat/ui/useChatTmpDirectory'
 import { useSettings } from '@/composables/useSettings'
+import type { ChatGroupId, ChatId } from '@/models/ids'
 import type { Mount } from '@/models/types'
 import { storageService } from '@/services/storage'
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy'
@@ -15,8 +16,8 @@ export async function buildWorkerMountsForChat({
 }: {
   chatMounts: readonly Mount[]
   chatGroupMounts: readonly Mount[] | undefined
-  chatId: string | undefined
-  chatGroupId: string | undefined
+  chatId: ChatId | undefined
+  chatGroupId: ChatGroupId | undefined
   naidanSysfsAccessScope: NaidanSysfsAccessScope
 }): Promise<WeshMount[]> {
   const { settings } = useSettings()

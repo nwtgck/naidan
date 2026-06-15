@@ -61,6 +61,7 @@ import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
+import { toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
 
 export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 
@@ -106,7 +107,7 @@ export function useChat() {
     mount: import('@/models/types').Mount;
   }) {
     await useChatMounts().addMount({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
       mount,
     });
   }
@@ -119,8 +120,8 @@ export function useChat() {
     volumeId: string;
   }) {
     await useChatMounts().removeMount({
-      chatId,
-      volumeId,
+      chatId: toChatId({ raw: chatId }),
+      volumeId: toVolumeId({ raw: volumeId }),
     });
   }
 
@@ -134,8 +135,8 @@ export function useChat() {
     readOnly: boolean;
   }) {
     await useChatMounts().updateMount({
-      chatId,
-      volumeId,
+      chatId: toChatId({ raw: chatId }),
+      volumeId: toVolumeId({ raw: volumeId }),
       readOnly,
     });
   }
@@ -148,7 +149,7 @@ export function useChat() {
     mount: import('@/models/types').Mount;
   }) {
     await useChatGroupMounts().addMount({
-      chatGroupId: groupId,
+      chatGroupId: toChatGroupId({ raw: groupId }),
       mount,
     });
   }
@@ -161,8 +162,8 @@ export function useChat() {
     volumeId: string;
   }) {
     await useChatGroupMounts().removeMount({
-      chatGroupId: groupId,
-      volumeId,
+      chatGroupId: toChatGroupId({ raw: groupId }),
+      volumeId: toVolumeId({ raw: volumeId }),
     });
   }
 
@@ -178,8 +179,8 @@ export function useChat() {
     readOnly: boolean;
   }) {
     await useChatGroupMounts().updateMount({
-      chatGroupId: groupId,
-      volumeId,
+      chatGroupId: toChatGroupId({ raw: groupId }),
+      volumeId: toVolumeId({ raw: volumeId }),
       mountPath,
       readOnly,
     });
@@ -198,8 +199,8 @@ export function useChat() {
     leafId?: string;
   }) {
     return await chatNavigation.openChat({
-      chatId: id,
-      leafId,
+      chatId: toChatId({ raw: id }),
+      leafId: leafId === undefined ? undefined : toMessageId({ raw: leafId }),
     });
   }
 
@@ -211,8 +212,8 @@ export function useChat() {
     messageId: string;
   }) {
     return await chatNavigation.openChatAtMessage({
-      chatId,
-      messageId,
+      chatId: toChatId({ raw: chatId }),
+      messageId: toMessageId({ raw: messageId }),
     });
   }
 
@@ -222,7 +223,7 @@ export function useChat() {
     id: string | null;
   }) {
     chatNavigation.openChatGroup({
-      groupId: id,
+      groupId: id === null ? null : toChatGroupId({ raw: id }),
     });
   }
 
@@ -236,7 +237,7 @@ export function useChat() {
     systemPrompt: Chat['systemPrompt'];
   }) {
     return await chatLifecycle.createNewChat({
-      groupId,
+      groupId: groupId === undefined ? undefined : toChatGroupId({ raw: groupId }),
       modelId,
       systemPrompt,
     });
@@ -250,7 +251,7 @@ export function useChat() {
     injectAddToast?: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }) {
     await chatLifecycle.deleteChat({
-      id,
+      id: toChatId({ raw: id }),
       injectAddToast,
     });
   }
@@ -267,7 +268,7 @@ export function useChat() {
     newTitle: string;
   }) {
     await chatMetadata.rename({
-      chatId: id,
+      chatId: toChatId({ raw: id }),
       title: newTitle,
     });
   }
@@ -280,7 +281,7 @@ export function useChat() {
     modelId: string | undefined;
   }) {
     await chatMetadata.updateModel({
-      chatId: id,
+      chatId: toChatId({ raw: id }),
       modelId,
     });
   }
@@ -293,8 +294,8 @@ export function useChat() {
     groupId: string | null;
   }) {
     await chatMetadata.updateGroupOverride({
-      chatId: id,
-      chatGroupId: groupId ?? undefined,
+      chatId: toChatId({ raw: id }),
+      chatGroupId: groupId === null ? undefined : toChatGroupId({ raw: groupId }),
     });
   }
 
@@ -306,7 +307,7 @@ export function useChat() {
     updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }) {
     await chatMetadata.updateSettings({
-      chatId: id,
+      chatId: toChatId({ raw: id }),
       updates,
     });
   }
@@ -317,7 +318,7 @@ export function useChat() {
     chatId: string;
   }) {
     return chatMetadata.reasoningEffort({
-      chatId: computed(() => chatId),
+      chatId: computed(() => toChatId({ raw: chatId })),
     }).value;
   }
 
@@ -356,7 +357,7 @@ export function useChat() {
     }
 
     return await chatModelsOwner.fetchForChat({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
     });
   }
 
@@ -411,7 +412,7 @@ export function useChat() {
     model: string | undefined;
     signal: AbortSignal | undefined;
   }) {
-    const chat = chatCurrentBridge.getChatTargetById({ id: chatId });
+    const chat = chatCurrentBridge.getChatTargetById({ id: toChatId({ raw: chatId }) });
     if (chat === null) {
       return;
     }
@@ -422,8 +423,8 @@ export function useChat() {
     }
 
     await handleImageGenerationForChat({
-      chatId,
-      assistantId,
+      chatId: toChatId({ raw: chatId }),
+      assistantId: toMessageId({ raw: assistantId }),
       prompt,
       width,
       height,
@@ -476,7 +477,7 @@ export function useChat() {
     persistAs,
     attachments,
   }: {
-    chatId: string;
+    chatId: import('@/models/ids').ChatId;
     prompt: string;
     width: number;
     height: number;
@@ -499,7 +500,7 @@ export function useChat() {
       availableModels: availableModels.value,
       sendMessage: ({ content, parentId, attachments }) => {
         return sendMessageForChat({
-          chatId,
+          chatId: chatId,
           content,
           parentId,
           attachments,
@@ -524,14 +525,14 @@ export function useChat() {
 
     if (signal !== undefined) {
       return await chatTitleOwner.generateTitle({
-        chatId,
+        chatId: toChatId({ raw: chatId }),
         signal,
         titleModelIdOverride,
       });
     }
 
     return await chatTitleOwner.generateTitle({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
       signal: undefined,
       titleModelIdOverride,
     });
@@ -544,7 +545,7 @@ export function useChat() {
   }) {
     if (chatId !== undefined) {
       chatTitleOwner.abortTitleGeneration({
-        chatId,
+        chatId: toChatId({ raw: chatId }),
       });
       return;
     }
@@ -570,7 +571,7 @@ export function useChat() {
   }): Promise<void> {
     await generateResponseForAssistant({
       chat,
-      assistantId,
+      assistantId: toMessageId({ raw: assistantId }),
       lmParameters,
       onReady,
     });
@@ -593,7 +594,7 @@ export function useChat() {
       return await sendMessageToTargetChat({
         targetChat: chatTarget,
         content,
-        parentId,
+        parentId: parentId === undefined || parentId === null ? parentId : toMessageId({ raw: parentId }),
         attachments,
         lmParameters,
       });
@@ -607,7 +608,7 @@ export function useChat() {
     return await chatConversation.sendMessage({
       chatId: currentChatId,
       content,
-      parentId,
+      parentId: parentId === undefined || parentId === null ? parentId : toMessageId({ raw: parentId }),
       attachments,
       lmParameters,
     });
@@ -627,9 +628,9 @@ export function useChat() {
     lmParameters: LmParameters | undefined;
   }): Promise<boolean> {
     return await chatConversation.sendMessage({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
       content,
-      parentId,
+      parentId: parentId === undefined || parentId === null ? parentId : toMessageId({ raw: parentId }),
       attachments,
       lmParameters,
     });
@@ -642,7 +643,7 @@ export function useChat() {
   }) {
     if (chatId !== undefined) {
       chatCompaction.abort({
-        chatId,
+        chatId: toChatId({ raw: chatId }),
       });
       return;
     }
@@ -663,7 +664,7 @@ export function useChat() {
   }) {
     if (chatId !== undefined) {
       chatConversation.abort({
-        chatId,
+        chatId: toChatId({ raw: chatId }),
       });
       return;
     }
@@ -706,7 +707,7 @@ export function useChat() {
     instructionOverride: string | undefined;
   }) {
     return await chatCompaction.compactCurrentBranch({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
       keepRecentMessages,
       instructionOverride,
     });
@@ -721,8 +722,8 @@ export function useChat() {
   }): Promise<string | null> {
     if (chatId !== undefined) {
       return await chatBranches.forkChat({
-        chatId,
-        messageId,
+        chatId: toChatId({ raw: chatId }),
+        messageId: toMessageId({ raw: messageId }),
       });
     }
 
@@ -732,7 +733,7 @@ export function useChat() {
     }
     return await chatBranches.forkChat({
       chatId: currentChatId,
-      messageId,
+      messageId: toMessageId({ raw: messageId }),
     });
   }
 
@@ -744,8 +745,8 @@ export function useChat() {
     messageId: string;
   }): Promise<string | null> {
     return await chatBranches.forkChat({
-      chatId,
-      messageId,
+      chatId: toChatId({ raw: chatId }),
+      messageId: toMessageId({ raw: messageId }),
     });
   }
 
@@ -764,7 +765,7 @@ export function useChat() {
     }
     await chatBranches.editMessage({
       chatId: currentChatId,
-      messageId,
+      messageId: toMessageId({ raw: messageId }),
       newContent,
       lmParameters,
     });
@@ -782,8 +783,8 @@ export function useChat() {
     lmParameters?: LmParameters;
   }): Promise<void> {
     await chatBranches.editMessage({
-      chatId,
-      messageId,
+      chatId: toChatId({ raw: chatId }),
+      messageId: toMessageId({ raw: messageId }),
       newContent,
       lmParameters,
     });
@@ -800,7 +801,7 @@ export function useChat() {
     }
     await chatBranches.switchVersion({
       chatId: currentChatId,
-      messageId,
+      messageId: toMessageId({ raw: messageId }),
     });
   }
 
@@ -812,8 +813,8 @@ export function useChat() {
     messageId: string;
   }): Promise<void> {
     await chatBranches.switchVersion({
-      chatId,
-      messageId,
+      chatId: toChatId({ raw: chatId }),
+      messageId: toMessageId({ raw: messageId }),
     });
   }
 
@@ -825,7 +826,7 @@ export function useChat() {
     chatId?: string;
   }): MessageNode[] {
     const targetChat = chatId !== undefined
-      ? chatCurrentBridge.getChatTargetById({ id: chatId })
+      ? chatCurrentBridge.getChatTargetById({ id: toChatId({ raw: chatId }) })
       : chatCurrentBridge.getCurrentChat();
     if (targetChat === null) {
       return [];
@@ -833,7 +834,7 @@ export function useChat() {
 
     return [...getSiblingsInChatBranch({
       root: targetChat.root,
-      messageId,
+      messageId: toMessageId({ raw: messageId }),
     })];
   }
 
@@ -848,7 +849,7 @@ export function useChat() {
     }
     await chatConversation.regenerateMessage({
       chatId: currentChatId,
-      failedMessageId,
+      failedMessageId: toMessageId({ raw: failedMessageId }),
     });
   }
 
@@ -860,8 +861,8 @@ export function useChat() {
     failedMessageId: string;
   }): Promise<void> {
     await chatConversation.regenerateMessage({
-      chatId,
-      failedMessageId,
+      chatId: toChatId({ raw: chatId }),
+      failedMessageId: toMessageId({ raw: failedMessageId }),
     });
   }
 
@@ -882,7 +883,7 @@ export function useChat() {
     chatId: string;
   }) {
     await chatMetadata.toggleDebug({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
     });
   }
 
@@ -894,7 +895,7 @@ export function useChat() {
     effort: Reasoning['effort'];
   }) {
     await chatMetadata.updateReasoningEffort({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
       effort,
     });
   }

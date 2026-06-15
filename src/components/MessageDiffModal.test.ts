@@ -3,10 +3,11 @@ import { mount } from '@vue/test-utils';
 import MessageDiffModal from './MessageDiffModal.vue';
 import type { MessageNode } from '@/models/types';
 import { nextTick } from 'vue';
+import { toMessageId } from '@/models/ids';
 
 describe('MessageDiffModal', () => {
   const createMessage = (id: string, content: string, timestamp: number): MessageNode => ({
-    id,
+    id: toMessageId({ raw: id }),
     role: 'assistant',
     content,
     timestamp,

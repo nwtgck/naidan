@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -69,17 +70,17 @@ describe('abortProcessingForChat', () => {
     });
 
     abortProcessingForChat({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
     await vi.runAllTimersAsync();
 
     expect(abortGeneration).toHaveBeenCalledTimes(1);
     expect(mockDeleteActiveGeneration).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
     expect(abortCompaction).toHaveBeenCalledTimes(1);
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
     expect(mockNotify).toHaveBeenCalledWith({
       event: {
@@ -95,7 +96,7 @@ describe('abortProcessingForChat', () => {
     mockHasExternalGeneration.mockReturnValue(true);
 
     abortProcessingForChat({
-      chatId: 'chat-2',
+      chatId: toChatId({ raw: 'chat-2' }),
     });
 
     expect(mockDeleteActiveGeneration).not.toHaveBeenCalled();
@@ -108,7 +109,7 @@ describe('abortProcessingForChat', () => {
       },
     });
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({
-      chatId: 'chat-2',
+      chatId: toChatId({ raw: 'chat-2' }),
     });
   });
 });

@@ -5,6 +5,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
 import type { FocusArea } from '@/composables/useLayout';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -160,9 +161,9 @@ describe('Sidebar Keyboard Navigation', () => {
     mockActiveFocusArea.value = 'sidebar';
     mockChatGroups.value = [];
     mockChats.value = [
-      { id: '1', title: 'Chat 1', updatedAt: 0 },
-      { id: '2', title: 'Chat 2', updatedAt: 0 },
-      { id: '3', title: 'Chat 3', updatedAt: 0 },
+      { id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0 },
+      { id: toChatId({ raw: '2' }), title: 'Chat 2', updatedAt: 0 },
+      { id: toChatId({ raw: '3' }), title: 'Chat 3', updatedAt: 0 },
     ];
     mockCurrentChat.value = { id: '1' };
     mockCurrentChatGroup.value = null;
@@ -199,8 +200,8 @@ describe('Sidebar Keyboard Navigation', () => {
   });
 
   it('includes chat groups in navigation', async () => {
-    mockChatGroups.value = [{ id: 'g1', name: 'Group 1', isCollapsed: true, updatedAt: 0, items: [] }];
-    mockChats.value = [{ id: '1', title: 'Chat 1', updatedAt: 0 }];
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: true, updatedAt: 0, items: [] }];
+    mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0 }];
     mockCurrentChatGroup.value = { id: 'g1' };
     mockCurrentChat.value = null;
 
@@ -213,8 +214,8 @@ describe('Sidebar Keyboard Navigation', () => {
   });
 
   it('selects a chat group when navigating to it', async () => {
-    mockChatGroups.value = [{ id: 'g1', name: 'Group 1', isCollapsed: true, updatedAt: 0, items: [] }];
-    mockChats.value = [{ id: '1', title: 'Chat 1', updatedAt: 0 }];
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: true, updatedAt: 0, items: [] }];
+    mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0 }];
     mockCurrentChat.value = { id: '1' };
     mockCurrentChatGroup.value = null;
 
@@ -227,7 +228,7 @@ describe('Sidebar Keyboard Navigation', () => {
   });
 
   it('expands a collapsed group on ArrowRight', async () => {
-    const group = { id: 'g1', name: 'Group 1', isCollapsed: true, updatedAt: 0, items: [] };
+    const group = { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: true, updatedAt: 0, items: [] };
     mockChatGroups.value = [group];
     mockCurrentChatGroup.value = group;
     mockCurrentChat.value = null;
@@ -241,7 +242,7 @@ describe('Sidebar Keyboard Navigation', () => {
   });
 
   it('collapses an expanded group on ArrowLeft', async () => {
-    const group = { id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] };
+    const group = { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] };
     mockChatGroups.value = [group];
     mockCurrentChatGroup.value = group;
     mockCurrentChat.value = null;
@@ -256,11 +257,11 @@ describe('Sidebar Keyboard Navigation', () => {
 
   it('jumps to parent group on ArrowLeft from a grouped chat', async () => {
     const group1: ChatGroup = {
-      id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
-      items: [{ id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Chat 1', updatedAt: 0, groupId: 'g1' } }]
+      id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
+      items: [{ id: 'chat:1', type: 'chat', chat: { id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } }]
     };
     mockChatGroups.value = [group1];
-    mockChats.value = [{ id: '1', title: 'Chat 1', updatedAt: 0, groupId: 'g1' }];
+    mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }];
     mockCurrentChat.value = { id: '1', groupId: 'g1' };
     mockCurrentChatGroup.value = null;
 
@@ -273,10 +274,10 @@ describe('Sidebar Keyboard Navigation', () => {
   });
 
   it('correctly navigates down through multiple groups and chats', async () => {
-    const chat1: ChatSummary = { id: 'c1', title: 'C1', updatedAt: 0 };
+    const chat1: ChatSummary = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 };
     mockChatGroups.value = [
-      { id: 'g1', name: 'G1', isCollapsed: true, updatedAt: 0, items: [] },
-      { id: 'g2', name: 'G2', isCollapsed: true, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: true, updatedAt: 0, items: [] },
+      { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: true, updatedAt: 0, items: [] }
     ];
     mockChats.value = [chat1];
     mockCurrentChatGroup.value = { id: 'g1' };
@@ -297,10 +298,10 @@ describe('Sidebar Keyboard Navigation', () => {
   it('recovers navigation when current item is hidden (e.g. parent collapsed)', async () => {
     mockChatGroups.value = [
       {
-        id: 'g1', name: 'G1', isCollapsed: true, updatedAt: 0,
-        items: [{ id: 'chat:hidden', type: 'chat', chat: { id: 'hidden', title: 'Hidden', updatedAt: 0, groupId: 'g1' } }]
+        id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: true, updatedAt: 0,
+        items: [{ id: 'chat:hidden', type: 'chat', chat: { id: toChatId({ raw: 'hidden' }), title: 'Hidden', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } }]
       },
-      { id: 'g2', name: 'G2', isCollapsed: true, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: true, updatedAt: 0, items: [] }
     ];
     mockCurrentChat.value = { id: 'hidden', groupId: 'g1' };
     mockCurrentChatGroup.value = null;
@@ -313,11 +314,11 @@ describe('Sidebar Keyboard Navigation', () => {
   });
 
   it('handles rapid navigation correctly despite store update lags', async () => {
-    const group1: ChatGroup = { id: 'g1', name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
-    const group2: ChatGroup = { id: 'g2', name: 'G2', isCollapsed: false, updatedAt: 0, items: [] };
-    const chat1: ChatSummary = { id: 'c1', title: 'C1', updatedAt: 0, groupId: 'g1' };
-    const chat2: ChatSummary = { id: 'c2', title: 'C2', updatedAt: 0, groupId: 'g2' };
-    const chat3: ChatSummary = { id: 'c3', title: 'C3', updatedAt: 0, groupId: 'g2' };
+    const group1: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: false, updatedAt: 0, items: [] };
+    const group2: ChatGroup = { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: false, updatedAt: 0, items: [] };
+    const chat1: ChatSummary = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) };
+    const chat2: ChatSummary = { id: toChatId({ raw: 'c2' }), title: 'C2', updatedAt: 0, groupId: toChatGroupId({ raw: 'g2' }) };
+    const chat3: ChatSummary = { id: toChatId({ raw: 'c3' }), title: 'C3', updatedAt: 0, groupId: toChatGroupId({ raw: 'g2' }) };
 
     group1.items = [{ id: 'chat:c1', type: 'chat', chat: chat1 }];
     group2.items = [{ id: 'chat:c2', type: 'chat', chat: chat2 }, { id: 'chat:c3', type: 'chat', chat: chat3 }];
@@ -349,7 +350,7 @@ describe('Sidebar Keyboard Navigation', () => {
 
   it('triggers scrollIntoView when chat is selected', async () => {
     const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
-    mockChats.value = [{ id: '1', title: 'Chat 1', updatedAt: 0 }];
+    mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0 }];
 
     mockCurrentChat.value = { id: '1' };
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });
@@ -364,7 +365,7 @@ describe('Sidebar Keyboard Navigation', () => {
 
   it('triggers scrollIntoView when group is selected', async () => {
     const scrollToSpy = vi.spyOn(HTMLElement.prototype, 'scrollTo');
-    mockChatGroups.value = [{ id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }];
 
     mockCurrentChatGroup.value = { id: 'g1' };
     mount(Sidebar, { global: { plugins: [router], stubs: globalStubs } });

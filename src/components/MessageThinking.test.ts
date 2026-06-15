@@ -2,12 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import MessageThinking from './MessageThinking.vue';
 import type { MessageNode } from '@/models/types';
+import { toMessageId } from '@/models/ids';
 
 const withInSequence = { global: { provide: { inSequence: true } } };
 
 describe('MessageThinking Stability and Layout', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({
-    id: 'test-id',
+    id: toMessageId({ raw: 'test-id' }),
     role: 'assistant',
     content,
     thinking,
@@ -72,7 +73,7 @@ describe('MessageThinking Stability and Layout', () => {
 
 describe('MessageThinking in-sequence preview', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({
-    id: 'test-id',
+    id: toMessageId({ raw: 'test-id' }),
     role: 'assistant',
     content,
     thinking,

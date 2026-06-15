@@ -12,6 +12,7 @@ import {
   PencilIcon,
   InfoIcon,
 } from 'lucide-vue-next';
+import type { VolumeId } from '@/models/ids';
 
 const props = defineProps<{
   /** Existing mount paths used to avoid conflicts when suggesting a default path. */
@@ -27,7 +28,7 @@ const emit = defineEmits<{
    * Fired after a volume is created. The parent is responsible for mounting it
    * (globally via storageService or as a chat group mount).
    */
-  created: [{ volumeId: string; mountPath: string; readOnly: boolean }];
+  created: [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
 }>();
 
 const { addToast } = useToast();

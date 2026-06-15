@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { MessageId } from '@/models/ids';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import ChatPane from './ChatPane.vue';
 import UnselectedChatPane from './UnselectedChatPane.vue';
 
 const props = defineProps<{
   autoSendPrompt?: string;
-  targetMessageId?: string;
+  targetMessageId?: MessageId;
 }>();
 
 const emit = defineEmits<{

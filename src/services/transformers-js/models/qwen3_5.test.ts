@@ -6,6 +6,7 @@ import {
   normalizeQwen3_5ToolCallsForTemplate,
   shouldRetryQwen3_5WithoutContinuation,
 } from './qwen3_5';
+import { toToolCallId } from '@/models/ids';
 
 describe('transformers-js-qwen3_5', () => {
   it('detects Qwen3.5 from model type or model id', () => {
@@ -29,7 +30,7 @@ describe('transformers-js-qwen3_5', () => {
     const normalized = normalizeQwen3_5ToolCallsForTemplate({
       toolCalls: [
         {
-          id: 'call_1',
+          id: toToolCallId({ raw: 'call_1' }),
           type: 'function',
           function: {
             name: 'shell_execute',
@@ -91,7 +92,7 @@ hello<|im_end|>
       messages: [
         {
           role: 'tool',
-          tool_call_id: 'call_1',
+          tool_call_id: toToolCallId({ raw: 'call_1' }),
           content: 'Exit Code: 0',
         },
       ],

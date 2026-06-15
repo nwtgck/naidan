@@ -2,6 +2,7 @@ import { generateId } from './id';
 import { toRaw } from 'vue';
 import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { MessageId } from '@/models/ids';
 
 export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -117,7 +118,7 @@ export interface HistoryItem {
 export function createBranchFromMessages({ messages }: { messages: HistoryItem[] }): MessageNode[] {
   const nodes: MessageNode[] = messages.map(m => {
     const common = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       content: m.content,
       timestamp: Date.now(),
       replies: { items: [] }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { generateId } from '@/utils/id';
+import { generateId, generateOpaqueId } from '@/utils/id';
 import { ref, watch, onUnmounted, computed } from 'vue';
 import draggable from 'vuedraggable';
 import {
@@ -14,6 +14,7 @@ import type { Attachment, SystemPrompt } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
+import type { AttachmentId, BinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -56,7 +57,7 @@ watch(() => props.isOpen, async (open) => {
     editableMessages.value = activeMessages.value
       .filter(m => m.role !== 'tool') // Filter out tool nodes from Super Edit
       .map(m => ({
-        localId: generateId(),
+        localId: generateOpaqueId(),
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content || '',
         modelId: m.modelId,
@@ -134,7 +135,7 @@ function predictNextRole({ index }: { index: number }): 'user' | 'assistant' {
 function addMessage({ index }: { index: number }) {
   const role = predictNextRole({ index });
   editableMessages.value.splice(index + 1, 0, {
-    localId: generateId(),
+    localId: generateOpaqueId(),
     role,
     content: ''
   });
@@ -150,7 +151,7 @@ function duplicateMessage({ index }: { index: number }) {
 
   editableMessages.value.splice(index + 1, 0, {
     ...msg,
-    localId: generateId(),
+    localId: generateOpaqueId(),
     attachments: msg.attachments ? [...msg.attachments] : undefined
   });
 }
@@ -169,10 +170,10 @@ async function handleFileSelect({ event, index }: { event: Event; index: number 
   for (const file of Array.from(target.files)) {
     if (!file.type.startsWith('image/')) continue;
 
-    const attachmentId = generateId();
+    const attachmentId = generateId<AttachmentId>();
     const attachment: Attachment = {
       id: attachmentId,
-      binaryObjectId: generateId(),
+      binaryObjectId: generateId<BinaryObjectId>(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
@@ -204,10 +205,10 @@ async function handlePaste({ event, index }: { event: ClipboardEvent; index: num
     if (!msg.attachments) msg.attachments = [];
 
     for (const file of files) {
-      const attachmentId = generateId();
+      const attachmentId = generateId<AttachmentId>();
       const attachment: Attachment = {
         id: attachmentId,
-        binaryObjectId: generateId(),
+        binaryObjectId: generateId<BinaryObjectId>(),
         originalName: file.name,
         mimeType: file.type,
         size: file.size,

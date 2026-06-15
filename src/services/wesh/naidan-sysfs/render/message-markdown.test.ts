@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { renderMessageMarkdown } from './message-markdown'
 import type { ToolMessageNode, UserMessageNode } from '@/models/types'
+import { toAttachmentId, toBinaryObjectId, toMessageId, toToolCallId } from '@/models/ids';
 
 describe('renderMessageMarkdown', () => {
   it('renders attachments as hidden binary placeholders with exact output', () => {
     const node: UserMessageNode = {
-      id: 'user-1',
+      id: toMessageId({ raw: 'user-1' }),
       role: 'user',
       content: 'hello',
       timestamp: 1,
       replies: { items: [] },
       attachments: [{
-        id: 'attachment-1',
-        binaryObjectId: 'binary-1',
+        id: toAttachmentId({ raw: 'attachment-1' }),
+        binaryObjectId: toBinaryObjectId({ raw: 'binary-1' }),
         originalName: 'note.pdf',
         mimeType: 'application/pdf',
         size: 1234,
@@ -48,7 +49,7 @@ results: []
   it('truncates long text tool results with an exact marker', () => {
     const longText = 'x'.repeat(4001)
     const node: ToolMessageNode = {
-      id: 'tool-1',
+      id: toMessageId({ raw: 'tool-1' }),
       role: 'tool',
       content: undefined,
       timestamp: 2,
@@ -60,7 +61,7 @@ results: []
       lmParameters: undefined,
       toolCalls: undefined,
       results: [{
-        toolCallId: 'call-1',
+        toolCallId: toToolCallId({ raw: 'call-1' }),
         status: 'success',
         content: {
           type: 'text',

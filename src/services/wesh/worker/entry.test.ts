@@ -3,6 +3,7 @@ import { chatMetaToDomain } from '@/models/mappers'
 import type { ChatContent, ChatGroup, ChatMeta } from '@/models/types'
 import { chatContentToDto, chatGroupToDto, chatMetaToDto } from '@/models/mappers'
 import { renderChatMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/metadata-markdown'
+import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 vi.mock('comlink', () => ({
   expose: vi.fn(),
@@ -151,10 +152,10 @@ describe('wesh.worker', () => {
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     const chatMeta: ChatMeta = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Local Chat',
-      groupId: 'chat-group-1',
-      currentLeafId: 'a1chatMetadataAbCdEf',
+      groupId: toChatGroupId({ raw: 'chat-group-1' }),
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: false,
@@ -173,11 +174,11 @@ describe('wesh.worker', () => {
       mounts: [],
     }
     const chatContent: ChatContent = {
-      currentLeafId: 'a1chatMetadataAbCdEf',
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
       root: { items: [] },
     }
     const chatGroup: ChatGroup = {
-      id: 'chat-group-1',
+      id: toChatGroupId({ raw: 'chat-group-1' }),
       name: 'Local Group',
       isCollapsed: false,
       updatedAt: 200,
@@ -192,15 +193,15 @@ describe('wesh.worker', () => {
         id: 'chat:chat-1',
         type: 'chat',
         chat: {
-          id: 'chat-1',
+          id: toChatId({ raw: 'chat-1' }),
           title: 'Local Chat',
           updatedAt: 200,
-          groupId: 'chat-group-1',
+          groupId: toChatGroupId({ raw: 'chat-group-1' }),
         },
       }],
     }
     const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) })
-    expectedMetadata.groupId = 'chat-group-1'
+    expectedMetadata.groupId = toChatGroupId({ raw: 'chat-group-1' })
 
     await workerApi.init(
       {

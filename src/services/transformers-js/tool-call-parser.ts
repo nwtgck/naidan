@@ -1,4 +1,6 @@
 import type { ToolCall } from '@/models/types';
+import type { ToolCallId } from '@/models/ids';
+import { generateId } from '@/utils/id';
 
 const TOOL_CALL_OPEN = '<tool_call>';
 const TOOL_CALL_CLOSE = '</tool_call>';
@@ -106,7 +108,7 @@ export class ToolCallStreamParser {
     try {
       const parsed = JSON.parse(this.buffer.trim()) as { name: string; arguments: Record<string, unknown> };
       this.parsedToolCalls.push({
-        id: `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+        id: generateId<ToolCallId>(),
         type: 'function',
         function: {
           name: parsed.name,

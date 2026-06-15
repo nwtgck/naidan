@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import type { ObjectDirective } from 'vue';
 import type { Volume, Mount } from '@/models/types';
+import type { VolumeId } from '@/models/ids';
 import { useToast } from '@/composables/useToast';
 import {
   FolderSymlinkIcon,
@@ -35,11 +36,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  add: [{ volumeId: string; mountPath: string; readOnly: boolean }];
-  remove: [{ volumeId: string }];
-  'update-mount': [{ volumeId: string; mountPath: string; readOnly: boolean }];
-  'rename-volume': [{ volumeId: string; name: string }];
-  'delete-volume': [{ volumeId: string }];
+  add: [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
+  remove: [{ volumeId: VolumeId }];
+  'update-mount': [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
+  'rename-volume': [{ volumeId: VolumeId; name: string }];
+  'delete-volume': [{ volumeId: VolumeId }];
 }>();
 
 const mountedVolumes = computed(() =>
@@ -50,7 +51,7 @@ const unmountedVolumes = computed(() =>
   props.volumes.filter(vol => !props.mounts.some(m => m.type === 'volume' && m.volumeId === vol.id))
 );
 
-function getMount({ volId }: { volId: string }): Mount | undefined {
+function getMount({ volId }: { volId: VolumeId }): Mount | undefined {
   return props.mounts.find(m => m.type === 'volume' && m.volumeId === volId);
 }
 
@@ -77,7 +78,7 @@ function formatDate({ timestamp }: { timestamp: number }) {
 }
 
 // --- Inline mount edit form ---
-const editingMountId = ref<string | null>(null);
+const editingMountId = ref<VolumeId | null>(null);
 const editForm = ref({ mountPath: '', readOnly: true });
 
 function startEditing({ volume }: { volume: Volume }) {
@@ -87,7 +88,7 @@ function startEditing({ volume }: { volume: Volume }) {
   editForm.value = { mountPath: mount.mountPath, readOnly: mount.readOnly };
 }
 
-function saveMountSettings({ volId }: { volId: string }) {
+function saveMountSettings({ volId }: { volId: VolumeId }) {
   let path = editForm.value.mountPath;
   if (!path.startsWith('/')) path = '/' + path;
   emit('update-mount', { volumeId: volId, mountPath: path, readOnly: editForm.value.readOnly });
@@ -95,7 +96,7 @@ function saveMountSettings({ volId }: { volId: string }) {
 }
 
 // --- Inline name edit ---
-const editingNameId = ref<string | null>(null);
+const editingNameId = ref<VolumeId | null>(null);
 const editingNameValue = ref('');
 
 function startEditingName({ volume }: { volume: Volume }) {
@@ -108,7 +109,7 @@ function cancelEditingName() {
   editingNameValue.value = '';
 }
 
-function saveVolumeName({ volId }: { volId: string }) {
+function saveVolumeName({ volId }: { volId: VolumeId }) {
   const trimmed = editingNameValue.value.trim();
   if (!trimmed) {
     addToast({ message: 'Name cannot be empty' });
@@ -119,7 +120,7 @@ function saveVolumeName({ volId }: { volId: string }) {
 }
 
 // --- More menu ---
-const menuOpenVolumeId = ref<string | null>(null);
+const menuOpenVolumeId = ref<VolumeId | null>(null);
 
 
 defineExpose({

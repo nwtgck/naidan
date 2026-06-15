@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ChatId, MessageId } from '@/models/ids';
 import { computed, nextTick, ref, watch } from 'vue';
 import { EyeIcon, ListIcon, XIcon } from 'lucide-vue-next';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
@@ -11,18 +12,18 @@ type OutlineRole = MessageNode['role'];
 type ScrollHintVisibility = 'hidden' | 'visible';
 
 const props = defineProps<{
-  chatId: string;
+  chatId: ChatId;
   visibility: OutlineVisibility;
   flowItems: ChatFlowItem[];
-  initialMessageId?: string;
+  initialMessageId?: MessageId;
 }>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'select-message', messageId: string): void;
+  (e: 'select-message', messageId: MessageId): void;
 }>();
 
-const peekMessageId = ref<string | undefined>(undefined);
+const peekMessageId = ref<MessageId | undefined>(undefined);
 const outlineBody = ref<HTMLElement | null>(null);
 const topScrollHintVisibility = ref<ScrollHintVisibility>('hidden');
 const bottomScrollHintVisibility = ref<ScrollHintVisibility>('hidden');
@@ -97,7 +98,7 @@ watch(peekMessageId, () => {
   nextTick(() => updateScrollHints());
 });
 
-function togglePeek({ messageId }: { messageId: string }) {
+function togglePeek({ messageId }: { messageId: MessageId }) {
   const currentPeekMessageId = peekMessageId.value;
   if (currentPeekMessageId === messageId) {
     peekMessageId.value = undefined;

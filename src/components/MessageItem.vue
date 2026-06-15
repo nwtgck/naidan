@@ -20,6 +20,8 @@ import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '@/services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+import { toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageGenerationSettings.vue') });
 const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ReasoningSettings.vue') });
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./MessageDiffModal.vue') });
@@ -40,7 +42,7 @@ import {
 } from '@/utils/image-generation';
 
 const props = withDefaults(defineProps<{
-  chatId: string;
+  chatId: ChatId;
   message: MessageNode;
   siblings?: MessageNode[];
   canGenerateImage?: boolean;
@@ -66,10 +68,10 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  (e: 'fork', messageId: string): void;
-  (e: 'edit', messageId: string, newContent: string, lmParameters: LmParameters | undefined): void;
-  (e: 'switch-version', messageId: string): void;
-  (e: 'regenerate', messageId: string): void;
+  (e: 'fork', messageId: MessageId): void;
+  (e: 'edit', messageId: MessageId, newContent: string, lmParameters: LmParameters | undefined): void;
+  (e: 'switch-version', messageId: MessageId): void;
+  (e: 'regenerate', messageId: MessageId): void;
   (e: 'abort'): void;
 }>();
 
@@ -131,7 +133,7 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
   setPreferredEditorMode({ mode });
 }
 
-async function handlePreviewImage({ id }: { id: string }) {
+async function handlePreviewImage({ id }: { id: BinaryObjectId }) {
   // To support next/prev navigation, we'd ideally pass all images in this chat or message.
   // For now, let's at least try to fetch metadata for the clicked one.
   const obj = await storageService.getBinaryObject({ binaryObjectId: id });
@@ -148,7 +150,7 @@ async function handlePreviewImage({ id }: { id: string }) {
         const hid = (el as HTMLElement).dataset.id;
         if (hid && !allImages.find(i => i.id === hid)) {
           // Fetch meta if missing
-          const meta = await storageService.getBinaryObject({ binaryObjectId: hid });
+          const meta = await storageService.getBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: hid }) });
           if (meta) allImages.push(meta);
         }
       }

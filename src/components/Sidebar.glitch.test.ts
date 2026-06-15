@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatSummary, SidebarItem } from '@/models/types';
+import { toChatId } from '@/models/ids';
 
 const mockChats = ref<ChatSummary[]>([]);
 const mockActiveTasks = reactive(new Set<string>());
@@ -95,8 +96,8 @@ describe('Sidebar Glitch Reproduction', () => {
 
   beforeEach(() => {
     mockChats.value = [
-      { id: 'chat-1', title: 'Chat 1', updatedAt: 0 },
-      { id: 'chat-2', title: 'Chat 2', updatedAt: 0 },
+      { id: toChatId({ raw: 'chat-1' }), title: 'Chat 1', updatedAt: 0 },
+      { id: toChatId({ raw: 'chat-2' }), title: 'Chat 2', updatedAt: 0 },
     ];
     mockActiveTasks.clear();
     vi.clearAllMocks();
