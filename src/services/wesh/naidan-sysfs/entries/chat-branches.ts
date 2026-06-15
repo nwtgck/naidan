@@ -1,4 +1,5 @@
 import type { Chat, MessageNode } from '@/models/types'
+import type { ChatId, MessageId } from '@/models/ids'
 import {
   NAIDAN_SYSFS_BRANCH_CURRENT_JSON_SYMLINK_NAME,
   NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME,
@@ -85,9 +86,9 @@ function createLeafSymlinkTarget({
   format,
   leafId,
 }: {
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
-  leafId: string;
+  leafId: MessageId;
 }): string {
   return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}/branches/leaves-${createFormatExtension({ format })}/${leafId}`
 }
@@ -148,9 +149,9 @@ function createTreeBranchSymlinkEntry({
   format,
   leafId,
 }: {
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
-  leafId: string;
+  leafId: MessageId;
 }): NaidanSysfsSymlinkEntry {
   const targetPath = createLeafSymlinkTarget({ chatId, format, leafId })
   return {
@@ -192,7 +193,7 @@ function createLeafMetadataEntry({
   format,
 }: {
   chat: Chat;
-  leafId: string;
+  leafId: MessageId;
   nodes: MessageNode[];
   format: NaidanSysfsBranchFormat;
 }): NaidanSysfsFileEntry {
@@ -309,7 +310,7 @@ function createLeavesDirectoryEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
 }): NaidanSysfsDirectoryEntry {
   return {
@@ -354,7 +355,7 @@ function createCurrentBranchSymlinkEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
 }): NaidanSysfsSymlinkEntry {
   return {
@@ -388,7 +389,7 @@ function createTreeDirectoryEntry({
   nodes,
   sequenceStart,
 }: {
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
   nodes: MessageNode[];
   sequenceStart: number;
@@ -474,7 +475,7 @@ export function createChatBranchesDirectoryEntry({
   chatId,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',

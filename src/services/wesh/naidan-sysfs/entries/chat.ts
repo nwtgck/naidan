@@ -1,4 +1,5 @@
 import type { ChatMeta } from '@/models/types'
+import type { ChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import {
   NAIDAN_SYSFS_BRANCHES_DIRECTORY_NAME,
@@ -13,7 +14,6 @@ import { createChatContentDirectoryEntry } from '@/services/wesh/naidan-sysfs/en
 import { renderChatMetadataJson } from '@/services/wesh/naidan-sysfs/render/metadata-json'
 import { renderChatMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/metadata-markdown'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry } from '@/services/wesh/naidan-sysfs/types'
-import { toChatId } from '@/models/ids';
 
 function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
@@ -29,10 +29,10 @@ async function loadMetadata({
   path,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   path: string;
 }): Promise<ChatMeta> {
-  const metadata = await context.reader.loadChatMeta({ chatId: toChatId({ raw: chatId }) })
+  const metadata = await context.reader.loadChatMeta({ chatId })
   if (metadata === undefined) {
     throw new Error(`Path not found: ${path}`)
   }
@@ -45,7 +45,7 @@ function createMetadataFileEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: 'markdown' | 'json';
 }): NaidanSysfsFileEntry {
   return {
@@ -98,7 +98,7 @@ export function createChatDirectoryEntry({
   chatId,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',

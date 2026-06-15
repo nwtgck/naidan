@@ -69,7 +69,7 @@ import {
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
-import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
+import type { BinaryObjectId, ChatId, MessageId, ToolCallId } from '@/models/ids';
 import {
   useChatOrganization,
 } from '@/composables/chat/ui/useChatOrganization';
@@ -1212,7 +1212,7 @@ async function persistToolContent({
 }: {
   text: string;
   type: 'result' | 'error';
-  toolCallId: string;
+  toolCallId: ToolCallId;
 }): Promise<PersistedToolContent> {
   const binaryThreshold = 100 * 1024;
   if (text.length > binaryThreshold) {

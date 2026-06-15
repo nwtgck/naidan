@@ -1,4 +1,5 @@
 import { UNTITLED_CHAT_TITLE } from '@/models/constants'
+import { toChatId, toMessageId } from '@/models/ids'
 
 import { searchChatTree, searchLinearBranch } from '@/utils/chat-search'
 import { getChatBranchIterator } from '@/utils/chat-tree'
@@ -121,8 +122,8 @@ export function createGlobalSearchWorker(): IGlobalSearchWorker {
         matches = searchLinearBranch({
           branch,
           query: validated.searchQuery,
-          chatId: validated.chat.id,
-          targetLeafId: validated.content.currentLeafId,
+          chatId: toChatId({ raw: validated.chat.id }),
+          targetLeafId: validated.content.currentLeafId === undefined ? undefined : toMessageId({ raw: validated.content.currentLeafId }),
           roleFilter: validated.roleFilter,
         })
         break
@@ -134,7 +135,7 @@ export function createGlobalSearchWorker(): IGlobalSearchWorker {
         matches = searchChatTree({
           root: validated.content.root as unknown as MessageBranch,
           query: validated.searchQuery,
-          chatId: validated.chat.id,
+          chatId: toChatId({ raw: validated.chat.id }),
           activeBranchIds,
           roleFilter: validated.roleFilter,
         })

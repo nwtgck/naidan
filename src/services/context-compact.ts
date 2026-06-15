@@ -54,7 +54,7 @@ export type ContextCompactPromptMode =
 export type ContextCompactSplit = {
   prefix: MessageNode[];
   suffix: MessageNode[];
-  boundaryMessageId: string;
+  boundaryMessageId: MessageId;
 };
 
 export type ContextCompactBranchResult = {
@@ -81,7 +81,7 @@ export function getHeaderCompactBoundary({
 }: {
   path: readonly MessageNode[];
   keepRecentMessages: number;
-}): string | undefined {
+}): MessageId | undefined {
   if (path.length <= keepRecentMessages) {
     return undefined;
   }
@@ -95,7 +95,7 @@ export function splitCompactPath({
   boundaryMessageId,
 }: {
   path: readonly MessageNode[];
-  boundaryMessageId: string;
+  boundaryMessageId: MessageId;
 }): ContextCompactSplit | undefined {
   const boundaryIndex = path.findIndex(({ id }) => id === boundaryMessageId);
   if (boundaryIndex === -1) {
@@ -760,7 +760,7 @@ export function createCompactToolMessageContent({
   content,
   promptMode,
 }: {
-  messageId: string;
+  messageId: MessageId;
   content: string;
   promptMode: ContextCompactPromptMode;
 }): string {

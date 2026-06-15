@@ -6,6 +6,7 @@ import {
   isVolumeScanned,
   TEST_ONLY,
 } from './volume-extension-cache';
+import { toVolumeId } from '@/models/ids';
 
 function makeFileHandle(name: string): FileSystemFileHandle {
   return { kind: 'file', name } as FileSystemFileHandle;
@@ -30,20 +31,20 @@ beforeEach(() => {
 
 describe('getVolumeExtensions', () => {
   it('returns an empty set for an unknown volumeId', () => {
-    expect(getVolumeExtensions({ volumeId: 'unknown' }).size).toBe(0);
+    expect(getVolumeExtensions({ volumeId: toVolumeId({ raw: 'unknown' }) }).size).toBe(0);
   });
 });
 
 describe('isVolumeScanned', () => {
   it('returns false before a scan starts', () => {
-    expect(isVolumeScanned({ volumeId: 'vol-x' })).toBe(false);
+    expect(isVolumeScanned({ volumeId: toVolumeId({ raw: 'vol-x' }) })).toBe(false);
   });
 
   it('returns true once a scan has been started for the volume', async () => {
     const handle = makeDirHandle('root', []);
-    startVolumeExtensionScan({ volumeId: 'vol-x', handle });
-    await TEST_ONLY.scanPromises.get('vol-x');
-    expect(isVolumeScanned({ volumeId: 'vol-x' })).toBe(true);
+    startVolumeExtensionScan({ volumeId: toVolumeId({ raw: 'vol-x' }), handle });
+    await TEST_ONLY.scanPromises.get(toVolumeId({ raw: 'vol-x' }));
+    expect(isVolumeScanned({ volumeId: toVolumeId({ raw: 'vol-x' }) })).toBe(true);
   });
 });
 
@@ -55,10 +56,10 @@ describe('startVolumeExtensionScan', () => {
       ['notes.txt', makeFileHandle('notes.txt')],
     ]);
 
-    startVolumeExtensionScan({ volumeId: 'vol-flat', handle });
-    await TEST_ONLY.scanPromises.get('vol-flat');
+    startVolumeExtensionScan({ volumeId: toVolumeId({ raw: 'vol-flat' }), handle });
+    await TEST_ONLY.scanPromises.get(toVolumeId({ raw: 'vol-flat' }));
 
-    const exts = getVolumeExtensions({ volumeId: 'vol-flat' });
+    const exts = getVolumeExtensions({ volumeId: toVolumeId({ raw: 'vol-flat' }) });
     expect(exts.has('.docx')).toBe(true);
     expect(exts.has('.xlsx')).toBe(true);
     expect(exts.has('.txt')).toBe(true);
@@ -69,10 +70,10 @@ describe('startVolumeExtensionScan', () => {
     const sub = makeDirHandle('sub', [['deep', deep]]);
     const handle = makeDirHandle('root', [['sub', sub]]);
 
-    startVolumeExtensionScan({ volumeId: 'vol-deep', handle });
-    await TEST_ONLY.scanPromises.get('vol-deep');
+    startVolumeExtensionScan({ volumeId: toVolumeId({ raw: 'vol-deep' }), handle });
+    await TEST_ONLY.scanPromises.get(toVolumeId({ raw: 'vol-deep' }));
 
-    expect(getVolumeExtensions({ volumeId: 'vol-deep' }).has('.pptx')).toBe(true);
+    expect(getVolumeExtensions({ volumeId: toVolumeId({ raw: 'vol-deep' }) }).has('.pptx')).toBe(true);
   });
 
   it('normalises extensions to lowercase', async () => {
@@ -80,10 +81,10 @@ describe('startVolumeExtensionScan', () => {
       ['REPORT.DOCX', makeFileHandle('REPORT.DOCX')],
     ]);
 
-    startVolumeExtensionScan({ volumeId: 'vol-case', handle });
-    await TEST_ONLY.scanPromises.get('vol-case');
+    startVolumeExtensionScan({ volumeId: toVolumeId({ raw: 'vol-case' }), handle });
+    await TEST_ONLY.scanPromises.get(toVolumeId({ raw: 'vol-case' }));
 
-    expect(getVolumeExtensions({ volumeId: 'vol-case' }).has('.docx')).toBe(true);
+    expect(getVolumeExtensions({ volumeId: toVolumeId({ raw: 'vol-case' }) }).has('.docx')).toBe(true);
   });
 
   it('replaces an ongoing scan for the same volumeId when called again', async () => {
@@ -104,15 +105,15 @@ describe('startVolumeExtensionScan', () => {
       },
     } as unknown as FileSystemDirectoryHandle;
 
-    startVolumeExtensionScan({ volumeId: 'vol-replace', handle: neverHandle });
+    startVolumeExtensionScan({ volumeId: toVolumeId({ raw: 'vol-replace' }), handle: neverHandle });
 
     // Second scan: fast, with a real file — replaces (and aborts) the first
     const fastHandle = makeDirHandle('root', [['data.xlsx', makeFileHandle('data.xlsx')]]);
-    startVolumeExtensionScan({ volumeId: 'vol-replace', handle: fastHandle });
+    startVolumeExtensionScan({ volumeId: toVolumeId({ raw: 'vol-replace' }), handle: fastHandle });
 
-    await TEST_ONLY.scanPromises.get('vol-replace');
+    await TEST_ONLY.scanPromises.get(toVolumeId({ raw: 'vol-replace' }));
 
-    expect(getVolumeExtensions({ volumeId: 'vol-replace' }).has('.xlsx')).toBe(true);
+    expect(getVolumeExtensions({ volumeId: toVolumeId({ raw: 'vol-replace' }) }).has('.xlsx')).toBe(true);
   });
 });
 
@@ -127,13 +128,13 @@ describe('abortOngoingScans', () => {
       },
     } as unknown as FileSystemDirectoryHandle;
 
-    startVolumeExtensionScan({ volumeId: 'vol-abort', handle });
+    startVolumeExtensionScan({ volumeId: toVolumeId({ raw: 'vol-abort' }), handle });
     abortOngoingScans();
 
     // Await the scan promise — it should resolve quickly after abort
-    await TEST_ONLY.scanPromises.get('vol-abort');
+    await TEST_ONLY.scanPromises.get(toVolumeId({ raw: 'vol-abort' }));
 
     // Signal was aborted before the file entry could be recorded
-    expect(getVolumeExtensions({ volumeId: 'vol-abort' }).size).toBe(0);
+    expect(getVolumeExtensions({ volumeId: toVolumeId({ raw: 'vol-abort' }) }).size).toBe(0);
   });
 });

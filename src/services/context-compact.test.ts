@@ -108,10 +108,10 @@ describe('context-compact', () => {
         content: `message ${index + 1}`,
       }));
 
-    expect(splitCompactPath({ path, boundaryMessageId: 'msg-3' })).toEqual({
+    expect(splitCompactPath({ path, boundaryMessageId: toMessageId({ raw: 'msg-3' }) })).toEqual({
       prefix: path.slice(0, 3),
       suffix: path.slice(3),
-      boundaryMessageId: 'msg-3',
+      boundaryMessageId: toMessageId({ raw: 'msg-3' }),
     });
   });
 

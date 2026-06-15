@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { searchChatTree, searchLinearBranch } from './chat-search';
 import type { MessageBranch, MessageNode } from '@/models/types';
-import { toMessageId, toChatId } from '@/models/ids';
+import { toChatId, toMessageId } from '@/models/ids';
 
 describe('searchChatTree', () => {
   const createNode = (id: string, content: string, replies: MessageNode[] = []): MessageNode => ({
@@ -86,7 +86,7 @@ describe('searchLinearBranch', () => {
       createNode('2', 'Hidden text in linear path'),
     ];
 
-    const matches = searchLinearBranch({ branch, query: 'Hidden', chatId: toChatId({ raw: 'chat-1' }), targetLeafId: '99' });
+    const matches = searchLinearBranch({ branch, query: 'Hidden', chatId: toChatId({ raw: 'chat-1' }), targetLeafId: toMessageId({ raw: '99' }) });
     expect(matches).toHaveLength(1);
     expect(matches[0]!.messageId).toBe('2');
     expect(matches[0]!.targetLeafId).toBe('99');

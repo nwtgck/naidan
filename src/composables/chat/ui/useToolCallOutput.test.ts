@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toToolCallId } from '@/models/ids';
 
 const { mockGetVolatileToolOutput } = vi.hoisted(() => ({
   mockGetVolatileToolOutput: vi.fn(),
@@ -28,12 +29,12 @@ describe('useToolCallOutput', () => {
     const toolCallOutput = useToolCallOutput();
 
     expect(toolCallOutput.getOutput({
-      toolCallId: 'tool-call-1',
+      toolCallId: toToolCallId({ raw: 'tool-call-1' }),
       status: 'executing',
     }).value).toBe('streaming output');
 
     expect(mockGetVolatileToolOutput).toHaveBeenCalledWith({
-      toolCallId: 'tool-call-1',
+      toolCallId: toToolCallId({ raw: 'tool-call-1' }),
     });
   });
 
@@ -41,12 +42,12 @@ describe('useToolCallOutput', () => {
     const toolCallOutput = useToolCallOutput();
 
     expect(toolCallOutput.getOutput({
-      toolCallId: 'tool-call-1',
+      toolCallId: toToolCallId({ raw: 'tool-call-1' }),
       status: 'success',
     }).value).toBeUndefined();
 
     expect(toolCallOutput.getOutput({
-      toolCallId: 'tool-call-1',
+      toolCallId: toToolCallId({ raw: 'tool-call-1' }),
       status: 'error',
     }).value).toBeUndefined();
 

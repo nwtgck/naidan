@@ -1,4 +1,5 @@
 import type { ChatGroup } from '@/models/types'
+import type { ChatId } from '@/models/ids'
 import {
   NAIDAN_SYSFS_CHATS_DIRECTORY_NAME,
   NAIDAN_SYSFS_METADATA_JSON_FILE_NAME,
@@ -82,7 +83,7 @@ function createRestrictedChatsDirectoryEntry(): NaidanSysfsRestrictedDirectoryEn
   }
 }
 
-function createChatGroupChatSymlinkEntry({ chatId }: { chatId: string }): NaidanSysfsSymlinkEntry {
+function createChatGroupChatSymlinkEntry({ chatId }: { chatId: ChatId }): NaidanSysfsSymlinkEntry {
   return {
     kind: 'symlink',
     async stat({ path }: { path: string }) {
@@ -101,7 +102,7 @@ function createChatGroupChatSymlinkName({
   chatId,
 }: {
   index: number;
-  chatId: string;
+  chatId: ChatId;
 }): string {
   return `${index}-chat-${chatId}`
 }

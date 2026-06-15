@@ -13,7 +13,7 @@ export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
   });
 }
 
-export function findNodeInBranch({ items, targetId }: { items: MessageNode[], targetId: string }): MessageNode | null {
+export function findNodeInBranch({ items, targetId }: { items: MessageNode[], targetId: MessageId }): MessageNode | null {
   for (const item of items) {
     if (toRaw(item).id === targetId) return item;
     const found = findNodeInBranch({ items: item.replies.items, targetId });
@@ -22,7 +22,7 @@ export function findNodeInBranch({ items, targetId }: { items: MessageNode[], ta
   return null;
 }
 
-export function findParentInBranch({ items, childId }: { items: MessageNode[], childId: string }): MessageNode | null {
+export function findParentInBranch({ items, childId }: { items: MessageNode[], childId: MessageId }): MessageNode | null {
   for (const item of items) {
     if (toRaw(item).replies.items.some(child => toRaw(child).id === childId)) return item;
     const found = findParentInBranch({ items: item.replies.items, childId });
@@ -38,7 +38,7 @@ export function* getChatBranchIterator({ chat }: { chat: Chat | Readonly<Chat> }
   const targetId = chat.currentLeafId;
   const path: MessageNode[] = [];
 
-  function findPath({ nodes, target }: { nodes: MessageNode[], target: string }): boolean {
+  function findPath({ nodes, target }: { nodes: MessageNode[], target: MessageId }): boolean {
     for (const node of nodes) {
       path.push(node);
       if (toRaw(node).id === target) return true;

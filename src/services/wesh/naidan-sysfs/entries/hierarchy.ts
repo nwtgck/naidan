@@ -1,4 +1,5 @@
 import type { SidebarItem } from '@/models/types'
+import type { ChatGroupId, ChatId } from '@/models/ids'
 import { NAIDAN_SYSFS_ROOT_PATH } from '@/services/wesh/naidan-sysfs/constants'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
@@ -7,7 +8,7 @@ function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-function createChatSymlinkEntry({ chatId }: { chatId: string }): NaidanSysfsSymlinkEntry {
+function createChatSymlinkEntry({ chatId }: { chatId: ChatId }): NaidanSysfsSymlinkEntry {
   return {
     kind: 'symlink',
     async stat({ path }: { path: string }) {
@@ -21,7 +22,7 @@ function createChatSymlinkEntry({ chatId }: { chatId: string }): NaidanSysfsSyml
   }
 }
 
-function createChatGroupSymlinkEntry({ chatGroupId }: { chatGroupId: string }): NaidanSysfsSymlinkEntry {
+function createChatGroupSymlinkEntry({ chatGroupId }: { chatGroupId: ChatGroupId }): NaidanSysfsSymlinkEntry {
   return {
     kind: 'symlink',
     async stat({ path }: { path: string }) {
@@ -40,7 +41,7 @@ function createHierarchyChatSymlinkName({
   chatId,
 }: {
   index: number;
-  chatId: string;
+  chatId: ChatId;
 }): string {
   return `${index}-chat-${chatId}`
 }
@@ -50,7 +51,7 @@ function createHierarchyChatGroupSymlinkName({
   chatGroupId,
 }: {
   index: number;
-  chatGroupId: string;
+  chatGroupId: ChatGroupId;
 }): string {
   return `${index}-chat-group-${chatGroupId}`
 }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { LanguagesIcon, ChevronDownIcon, CheckIcon, RefreshCwIcon } from 'lucide-vue-next';
+import type { MessageId } from '@/models/ids';
 import { webSpeechService, type SpeechLanguage } from '@/services/web-speech';
 
 const props = defineProps<{
-  messageId: string;
+  messageId: MessageId;
   content: string;
   isMini?: boolean;
   align?: 'up' | 'down';

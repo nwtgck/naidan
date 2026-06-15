@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
+import type { ProviderProfileId } from '@/models/ids';
 import type { ProviderProfile } from '@/models/types';
 import {
   BookmarkPlusIcon, PencilIcon, TrashIcon, CheckIcon
@@ -21,10 +22,10 @@ const { updateProviderProfiles } = useSettings();
 const { addToast } = useToast();
 
 // Profile Editing State
-const editingProviderProfileId = ref<string | null>(null);
+const editingProviderProfileId = ref<ProviderProfileId | null>(null);
 const editingProviderProfileName = ref('');
 
-async function handleDeleteProviderProfile({ id }: { id: string }) {
+async function handleDeleteProviderProfile({ id }: { id: ProviderProfileId }) {
   const index = props.profiles.findIndex(p => p.id === id);
   if (index === -1) return;
 

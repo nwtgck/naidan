@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import type { ChatId } from '@/models/ids';
 import type { Attachment } from '@/models/types';
 
 interface ChatDraft {
@@ -7,7 +8,7 @@ interface ChatDraft {
   attachmentUrls: Record<string, string>;
 }
 
-const drafts = reactive(new Map<string, ChatDraft>());
+const drafts = reactive(new Map<ChatId, ChatDraft>());
 
 const globalDraft = reactive<ChatDraft>({
   input: '',
@@ -16,7 +17,7 @@ const globalDraft = reactive<ChatDraft>({
 });
 
 export function useChatDraft() {
-  const getDraft = ({ chatId }: { chatId: string | undefined }): ChatDraft => {
+  const getDraft = ({ chatId }: { chatId: ChatId | undefined }): ChatDraft => {
     if (!chatId) return globalDraft;
 
     if (!drafts.has(chatId)) {
@@ -25,14 +26,14 @@ export function useChatDraft() {
     return drafts.get(chatId)!;
   };
 
-  const saveDraft = ({ chatId, draft }: { chatId: string | undefined, draft: { input: string, attachments: Attachment[], attachmentUrls: Record<string, string> } }) => {
+  const saveDraft = ({ chatId, draft }: { chatId: ChatId | undefined, draft: { input: string, attachments: Attachment[], attachmentUrls: Record<string, string> } }) => {
     const d = getDraft({ chatId });
     d.input = draft.input;
     d.attachments = [...draft.attachments];
     d.attachmentUrls = { ...draft.attachmentUrls };
   };
 
-  const clearDraft = ({ chatId }: { chatId: string | undefined }) => {
+  const clearDraft = ({ chatId }: { chatId: ChatId | undefined }) => {
     const d = chatId ? drafts.get(chatId) : globalDraft;
     if (d) {
       // Note: We don't revoke here because the URLs might still be in use by the UI

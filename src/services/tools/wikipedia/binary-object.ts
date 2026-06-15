@@ -55,7 +55,7 @@ export function buildWikipediaBinaryObjectName({
 export function buildSysfsNaidanBinaryObjectDataFilePath({
   binaryObjectId,
 }: {
-  binaryObjectId: string;
+  binaryObjectId: BinaryObjectId;
 }): string {
   return `${NAIDAN_SYSFS_MOUNT_PATH}/binary-objects/by-id/${binaryObjectId}/data`
 }

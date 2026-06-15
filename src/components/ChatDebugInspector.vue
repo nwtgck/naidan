@@ -10,7 +10,7 @@ import type { BinaryObject, MessageNode } from '@/models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
 import { toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
   show: boolean;
@@ -37,7 +37,7 @@ function handleSelectNode({ node }: { node: Readonly<MessageNode> }) {
   selectedNode.value = node;
 }
 
-function handleOpenMessage({ messageId }: { messageId: string }) {
+function handleOpenMessage({ messageId }: { messageId: MessageId }) {
   const query = { ...(router.currentRoute.value.query ?? {}) };
   delete query.leaf;
   router.push({ query: { ...query, 'message-id': messageId } });

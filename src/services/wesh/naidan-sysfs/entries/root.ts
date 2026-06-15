@@ -1,4 +1,5 @@
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
+import type { ChatGroupId, ChatId } from '@/models/ids'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
 import {
   NAIDAN_SYSFS_BINARY_OBJECTS_DIRECTORY_NAME,
@@ -59,7 +60,7 @@ function createVersionFileEntry(): NaidanSysfsFileEntry {
 function createCurrentChatSymlinkEntry({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): NaidanSysfsSymlinkEntry {
   return {
     kind: 'symlink',
@@ -77,7 +78,7 @@ function createCurrentChatSymlinkEntry({
 function createCurrentChatGroupSymlinkEntry({
   chatGroupId,
 }: {
-  chatGroupId: string;
+  chatGroupId: ChatGroupId;
 }): NaidanSysfsSymlinkEntry {
   return {
     kind: 'symlink',

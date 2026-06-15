@@ -1,3 +1,5 @@
+import type { ChatId } from '@/models/ids'
+import { toChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry } from '@/services/wesh/naidan-sysfs/types'
 import { createChatDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat'
@@ -6,7 +8,7 @@ function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-export async function listVisibleChatIds({ context }: { context: NaidanSysfsContext }): Promise<string[]> {
+export async function listVisibleChatIds({ context }: { context: NaidanSysfsContext }): Promise<ChatId[]> {
   switch (context.visibility) {
   case 'current_chat_only':
     return [context.currentChatId]
@@ -65,10 +67,10 @@ export function createChatsDirectoryEntry(): NaidanSysfsDirectoryEntry {
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
       const visibleIds = await listVisibleChatIds({ context })
-      if (!visibleIds.includes(name)) {
+      if (!visibleIds.includes(toChatId({ raw: name }))) {
         return undefined
       }
-      return createChatDirectoryEntry({ context, chatId: name })
+      return createChatDirectoryEntry({ context, chatId: toChatId({ raw: name }) })
     },
   }
 }

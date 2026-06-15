@@ -1,3 +1,5 @@
+import type { ChatId } from '@/models/ids';
+
 export type ApprovalActionId =
   | 'tool.wikipedia.search'
   | 'tool.wikipedia.get_page';
@@ -29,7 +31,7 @@ export type ApprovalEnsureResult =
   | { status: 'denied' };
 
 export type ApprovalEnsureRequest = {
-  chatId: string;
+  chatId: ChatId;
   action: ApprovalAction;
   preview: ApprovalPreview | undefined;
   signal: AbortSignal | undefined;
@@ -41,20 +43,20 @@ export type EnsureApproval = ({
   preview,
   signal,
 }: {
-  chatId: string;
+  chatId: ChatId;
   action: ApprovalAction;
   preview: ApprovalPreview | undefined;
   signal: AbortSignal | undefined;
 }) => Promise<ApprovalEnsureResult>;
 
 export type ToolApprovalContext = {
-  chatId: string;
+  chatId: ChatId;
   ensureApproval: EnsureApproval;
 };
 
 export type ApprovalActiveRequest = {
   requestId: string;
-  chatId: string;
+  chatId: ChatId;
   action: ApprovalAction;
   preview: ApprovalPreview | undefined;
 };

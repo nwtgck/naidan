@@ -6,6 +6,7 @@ import {
   saveWikipediaPageTextAsBinaryObject,
   WIKIPEDIA_INLINE_CONTENT_MAX_LINES,
 } from './binary-object'
+import { toBinaryObjectId } from '@/models/ids'
 
 const { mockSaveFile, mockGenerateId } = vi.hoisted(() => ({
   mockSaveFile: vi.fn(),
@@ -68,7 +69,7 @@ describe('buildWikipediaBinaryObjectName', () => {
 describe('buildSysfsNaidanBinaryObjectDataFilePath', () => {
   it('builds the sysfs data path from the mount path', () => {
     expect(buildSysfsNaidanBinaryObjectDataFilePath({
-      binaryObjectId: 'bin-1',
+      binaryObjectId: toBinaryObjectId({ raw: 'bin-1' }),
     })).toBe('/sys/fs/naidan/binary-objects/by-id/bin-1/data')
   })
 })

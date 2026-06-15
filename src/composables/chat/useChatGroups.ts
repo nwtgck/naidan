@@ -61,11 +61,8 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatId: ChatId;
     chatGroupId: ChatGroupId | undefined;
   }): Promise<void> {
-    const targetChatId = chatId;
-    const targetGroupId = chatGroupId;
-
-    if (currentChatRef.value?.id === targetChatId) {
-      currentChatRef.value.groupId = targetGroupId;
+    if (currentChatRef.value?.id === chatId) {
+      currentChatRef.value.groupId = chatGroupId;
       currentChatRef.value.updatedAt = Date.now();
     }
 
@@ -75,13 +72,13 @@ export function useChatGroups(): ChatGroupsAdapter {
       current.items = current.items.filter((item) => {
         switch (item.type) {
         case 'chat':
-          if (item.id === targetChatId) {
+          if (item.id === chatId) {
             detachedChatId = item.id;
             return false;
           }
           return true;
         case 'chat_group': {
-          const chatIndex = item.chat_ids.indexOf(targetChatId);
+          const chatIndex = item.chat_ids.indexOf(chatId);
           if (chatIndex !== -1) {
             detachedChatId = item.chat_ids[chatIndex];
             item.chat_ids.splice(chatIndex, 1);
@@ -96,15 +93,15 @@ export function useChatGroups(): ChatGroupsAdapter {
       });
 
       if (detachedChatId === undefined) {
-        detachedChatId = targetChatId;
+        detachedChatId = chatId;
       }
 
-      if (targetGroupId === undefined) {
+      if (chatGroupId === undefined) {
         current.items.unshift({ type: 'chat', id: detachedChatId });
         return current;
       }
 
-      const groupNode = current.items.find((item) => item.type === 'chat_group' && item.id === targetGroupId);
+      const groupNode = current.items.find((item) => item.type === 'chat_group' && item.id === chatGroupId);
       if (groupNode === undefined || groupNode.type !== 'chat_group') {
         throw new Error('Chat group not found in hierarchy');
       }

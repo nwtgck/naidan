@@ -7,13 +7,14 @@ import { computed, onMounted } from 'vue';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { usePrint } from '@/composables/usePrint';
+import type { MessageId } from '@/models/ids';
 import MessageItem from './MessageItem.vue';
 
 const { currentChat, currentChatId, activeMessages } = useCurrentChatState();
 const { markPrintReady } = usePrint();
 const chatTitle = computed(() => currentChat.value?.title || 'Chat History');
 
-function getCurrentChatSiblings({ messageId }: { messageId: string }) {
+function getCurrentChatSiblings({ messageId }: { messageId: MessageId }) {
   const chat = currentChat.value;
   const chatId = currentChatId.value;
   if (chatId === undefined || chat === null) {
