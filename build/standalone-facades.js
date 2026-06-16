@@ -39,6 +39,10 @@ export const STANDALONE_FACADES = [
     facadePath: '@/services/privacy-fetch',
     standalonePath: 'src/services/privacy-fetch/index-standalone.ts',
   },
+  {
+    facadePath: '@/services/fake-lm',
+    standalonePath: 'src/services/fake-lm/index-standalone.ts',
+  },
 ]
 
 export const STANDALONE_WORKER_CLIENT_FACADES = [

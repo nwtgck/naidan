@@ -15,6 +15,7 @@ import type { LmParameters, ChatMessage } from '@/models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
+import { getDefaultLmFetch, type LmFetch } from '@/services/lm/fetch';
 import { type LLMProvider } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
@@ -69,10 +70,11 @@ export class OpenAIProvider implements LLMProvider {
   private config: {
     endpoint: string;
     headers?: [string, string][];
+    fetcher: LmFetch;
   };
 
-  constructor({ endpoint, headers }: { endpoint: string; headers?: [string, string][] }) {
-    this.config = { endpoint, headers };
+  constructor({ endpoint, headers, fetcher }: { endpoint: string; headers?: [string, string][]; fetcher?: LmFetch }) {
+    this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
   async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
@@ -91,7 +93,7 @@ export class OpenAIProvider implements LLMProvider {
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { endpoint, headers } = this.config;
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
 
     // Local copy to manage the conversation loop (tool calls/results)
@@ -131,7 +133,7 @@ export class OpenAIProvider implements LLMProvider {
 
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await fetcher(url, {
           method: 'POST',
           headers: [
             ['Content-Type', 'application/json'],
@@ -360,11 +362,11 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
-    const { endpoint, headers } = this.config;
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/models`;
     let response: Response;
     try {
-      response = await fetch(url, { signal, headers });
+      response = await fetcher(url, { signal, headers });
     } catch (e) {
       const isAbort = e instanceof Error && e.name === 'AbortError';
       if (!isAbort) {

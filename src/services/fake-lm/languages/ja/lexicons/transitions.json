@@ -1,0 +1,16 @@
+{
+  "connectors": [
+    {"value": "一方で", "weight": 12},
+    {"value": "つまり", "weight": 11},
+    {"value": "たしかに", "weight": 10},
+    {"value": "場合によっては", "weight": 9},
+    {"value": "ここで大切なのは", "weight": 8},
+    {"value": "逆に言えば", "weight": 7},
+    {"value": "それでも", "weight": 6},
+    {"value": "ただし", "weight": 5},
+    {"value": "このとき", "weight": 12},
+    {"value": "もう少し見ると", "weight": 11},
+    {"value": "なぜなら", "weight": 10},
+    {"value": "そのため", "weight": 9}
+  ]
+}

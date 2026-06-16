@@ -3,9 +3,7 @@ import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, En
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { LLMProvider } from '@/services/lm/types';
 import type { Tool } from '@/services/tools/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import { createLmProvider } from '@/services/lm/providerFactory';
 import { storageService } from '@/services/storage';
 import { getEnabledTools } from '@/services/tools/factory';
 import { findLastToolConfigByKey, llmToolNamesFromToolConfigs } from '@/services/tools/tool-config';
@@ -939,24 +937,15 @@ function createGenerationProvider({
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
 }): LLMProvider {
-  switch (endpointType) {
-  case 'openai':
-    if (endpointUrl === undefined) {
-      throw new Error('OpenAI generation requires an endpoint URL');
-    }
-    return new OpenAIProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-  case 'ollama':
-    if (endpointUrl === undefined) {
-      throw new Error('Ollama generation requires an endpoint URL');
-    }
-    return new OllamaProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-  case 'transformers_js':
-    return new TransformersJsProvider();
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unsupported endpoint type: ${_ex}`);
+  if (endpointUrl === undefined && endpointType !== 'transformers_js') {
+    throw new Error(`${endpointType} generation requires an endpoint URL`);
   }
-  }
+
+  return createLmProvider({
+    endpointType,
+    endpointUrl,
+    endpointHttpHeaders,
+  });
 }
 
 async function buildGenerationMessages({

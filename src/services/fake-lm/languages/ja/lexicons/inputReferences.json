@@ -1,0 +1,14 @@
+{
+  "inputReferences": [
+    {"value": "その話", "weight": 12},
+    {"value": "今の言葉", "weight": 11},
+    {"value": "このあたり", "weight": 10},
+    {"value": "さっきの名前", "weight": 9},
+    {"value": "手前の用件", "weight": 8},
+    {"value": "目の前の話題", "weight": 8},
+    {"value": "短い合図", "weight": 7},
+    {"value": "置きかけの問い", "weight": 7},
+    {"value": "今の入口", "weight": 6},
+    {"value": "まだ小さな依頼", "weight": 6}
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "items": [
+    {"weight": 9, "affinity": {"greeting": 1}, "parts": [{"slot": "inputGreeting"}, " ", {"slot": "inputReference"}, " stays near ", {"slot": "nounPhrase"}, ", so we can begin slowly."], "requires": ["inputGreeting"]},
+    {"weight": 7, "affinity": {"greeting": 1}, "parts": [{"slot": "inputGreeting"}, " ", {"slot": "nounPhrase"}, " is still quiet, and the first answer can remain small."], "requires": ["inputGreeting"]},
+    {"weight": 8, "affinity": {"technical": 1}, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, " sits near ", {"slot": "abstractNoun"}, " before becoming a full answer."]},
+    {"weight": 8, "affinity": {"request": 1}, "requires": ["inputKeyword"], "parts": ["I will not hurry ", {"slot": "inputKeyword"}, "; it waits beside ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 7, "affinity": {"question": 1}, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, " is easier to see after ", {"slot": "nounPhrase"}, " moves aside."]},
+    {"weight": 5, "parts": ["First, ", {"slot": "inputReference"}, " becomes a small ", {"slot": "abstractNoun"}, "."]},
+    {"weight": 1, "parts": ["In other words, ", {"slot": "nounPhrase"}, " is not always ", {"slot": "nounPhrase"}, " yet."], "containsNotAlways": true},
+    {"weight": 1, "parts": [{"slot": "nounPhrase"}, " does not always end as ", {"slot": "nounPhrase"}, "."], "containsNotAlways": true},
+    {"weight": 8, "parts": ["The important part is not to turn ", {"slot": "nounPhrase"}, " into ", {"slot": "nounPhrase"}, " too early."]},
+    {"weight": 7, "parts": ["For ", {"slot": "nounPhrase"}, ", it is better to look at the distance from ", {"slot": "nounPhrase"}, " first."]},
+    {"weight": 7, "parts": ["Meanwhile, ", {"slot": "nounPhrase"}, " becomes a little quieter near ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 6, "parts": ["In this case, it is slightly early to treat ", {"slot": "nounPhrase"}, " as ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 6, "parts": ["First, place ", {"slot": "nounPhrase"}, " aside and then look at the order of ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 5, "parts": ["However, deciding everything from ", {"slot": "nounPhrase"}, " makes ", {"slot": "nounPhrase"}, " sleepy."]},
+    {"weight": 5, "parts": ["While ", {"slot": "nounPhrase"}, " remains, ", {"slot": "nounPhrase"}, " can be arranged as a small answer."]},
+    {"weight": 6, "parts": ["Therefore, ", {"slot": "nounPhrase"}, " is placed a little behind ", {"slot": "nounPhrase"}, "."]}
+  ]
+}

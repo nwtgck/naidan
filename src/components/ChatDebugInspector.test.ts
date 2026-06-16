@@ -135,6 +135,20 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     vi.clearAllMocks();
   });
 
+  it('emits a fake LM setup event from the header shortcut', async () => {
+    const chat = createMockChat([]);
+    const wrapper = mountInspector(chat, []);
+
+    const button = wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]');
+
+    expect(button.exists()).toBe(true);
+    expect(button.attributes('disabled')).toBeUndefined();
+
+    await button.trigger('click');
+
+    expect(wrapper.emitted('enable-fake-lm')).toHaveLength(1);
+  });
+
   it('Scenario 1: Pure Linear Path (A -> B -> C)', async () => {
     const chat = createMockChat([
       createNode('A', 'user', 'A', [

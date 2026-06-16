@@ -1,9 +1,7 @@
 import { toRaw } from 'vue';
 import type { ChatGroup, EndpointType } from '@/models/types';
 import type { LLMProvider } from '@/services/lm/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import { createLmProvider } from '@/services/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import {
@@ -150,18 +148,9 @@ function createProviderForEndpoint({
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
 }): LLMProvider {
-  const headers = endpointHttpHeaders ? JSON.parse(JSON.stringify(endpointHttpHeaders)) as [string, string][] : undefined;
-
-  switch (endpointType) {
-  case 'openai':
-    return new OpenAIProvider({ endpoint: endpointUrl || '', headers });
-  case 'ollama':
-    return new OllamaProvider({ endpoint: endpointUrl || '', headers });
-  case 'transformers_js':
-    return new TransformersJsProvider();
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
-  }
-  }
+  return createLmProvider({
+    endpointType,
+    endpointUrl,
+    endpointHttpHeaders,
+  });
 }

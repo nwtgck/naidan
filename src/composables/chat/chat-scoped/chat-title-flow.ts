@@ -1,9 +1,7 @@
 import type { Chat, ChatMessage } from '@/models/types';
 import type { ChatId } from '@/models/ids';
 import type { LLMProvider } from '@/services/lm/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import { createLmProvider } from '@/services/lm/providerFactory';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
@@ -230,22 +228,13 @@ function createTitleProvider({
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
 }): LLMProvider {
-  switch (endpointType) {
-  case 'openai':
-    if (endpointUrl === undefined) {
-      throw new Error('OpenAI title generation requires an endpoint URL');
-    }
-    return new OpenAIProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-  case 'ollama':
-    if (endpointUrl === undefined) {
-      throw new Error('Ollama title generation requires an endpoint URL');
-    }
-    return new OllamaProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-  case 'transformers_js':
-    return new TransformersJsProvider();
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unsupported endpoint type for title generation: ${_ex}`);
+  if (endpointUrl === undefined && endpointType !== 'transformers_js') {
+    throw new Error(`${endpointType} title generation requires an endpoint URL`);
   }
-  }
+
+  return createLmProvider({
+    endpointType,
+    endpointUrl,
+    endpointHttpHeaders,
+  });
 }

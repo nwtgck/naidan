@@ -1,0 +1,24 @@
+{
+  "items": [
+    {"weight": 8, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, " does not enter the sentence yet; it waits near ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 7, "affinity": {"technical": 1}, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, " behaves like ", {"slot": "abstractNoun"}, " beside ", {"slot": "physicalNoun"}, "."]},
+    {"weight": 6, "affinity": {"request": 1}, "requires": ["inputKeyword"], "parts": ["Here, ", {"slot": "inputKeyword"}, " is not rushed past ", {"slot": "timeNoun"}, "."]},
+    {"weight": 5, "affinity": {"question": 1}, "requires": ["inputKeyword"], "parts": ["For ", {"slot": "inputKeyword"}, ", the remaining shape matters more than the answer."]},
+    {"weight": 4, "parts": ["If left alone, ", {"slot": "inputReference"}, " becomes ", {"slot": "nounPhrase"}, " near the quiet edge."]},
+    {"weight": 1, "parts": ["In other words, ", {"slot": "nounPhrase"}, " is not always ", {"slot": "nounPhrase"}, " yet."], "containsNotAlways": true},
+    {"weight": 1, "parts": [{"slot": "nounPhrase"}, " does not always end as ", {"slot": "nounPhrase"}, "."], "containsNotAlways": true},
+    {"weight": 8, "parts": ["The important part is not to turn ", {"slot": "nounPhrase"}, " into ", {"slot": "nounPhrase"}, " too early."]},
+    {"weight": 7, "parts": ["For ", {"slot": "nounPhrase"}, ", it is better to look at the distance from ", {"slot": "nounPhrase"}, " first."]},
+    {"weight": 7, "parts": ["Meanwhile, ", {"slot": "nounPhrase"}, " becomes a little quieter near ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 6, "parts": ["In this case, it is slightly early to treat ", {"slot": "nounPhrase"}, " as ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 6, "parts": ["First, place ", {"slot": "nounPhrase"}, " aside and then look at the order of ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 5, "parts": ["However, deciding everything from ", {"slot": "nounPhrase"}, " makes ", {"slot": "nounPhrase"}, " sleepy."]},
+    {"weight": 5, "parts": ["While ", {"slot": "nounPhrase"}, " remains, ", {"slot": "nounPhrase"}, " can be arranged as a small answer."]},
+    {"weight": 6, "parts": ["Therefore, ", {"slot": "nounPhrase"}, " is placed a little behind ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 6, "parts": ["Here, the location of ", {"slot": "nounPhrase"}, " stands out more than the brightness of ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 6, "parts": [{"slot": "timeNoun"}, " keeps ", {"slot": "nounPhrase"}, " near a ", {"slot": "wrongAdjective"}, " ", {"slot": "physicalNoun"}, "."]},
+    {"weight": 5, "parts": ["Before explaining ", {"slot": "nounPhrase"}, ", it helps to make ", {"slot": "nounPhrase"}, " a little rounder."]},
+    {"weight": 5, "parts": ["The answer inside ", {"slot": "nounPhrase"}, " still sleeps beside ", {"slot": "physicalNoun"}, "."]},
+    {"weight": 4, "parts": ["At least for now, counting ", {"slot": "nounPhrase"}, " near ", {"slot": "nounPhrase"}, " is enough."]}
+  ]
+}

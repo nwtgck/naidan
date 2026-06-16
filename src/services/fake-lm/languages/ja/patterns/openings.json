@@ -1,0 +1,20 @@
+{
+  "items": [
+    {"weight": 9, "affinity": {"greeting": 1}, "parts": [{"slot": "inputGreeting"}, {"slot": "inputReference"}, "を", {"slot": "nounPhrase"}, "の横に置いて、ゆっくり始めます。"], "requires": ["inputGreeting"]},
+    {"weight": 7, "affinity": {"greeting": 1}, "parts": [{"slot": "inputGreeting"}, {"slot": "nounPhrase"}, "がまだ静かなので、少しだけ前に進めます。"], "requires": ["inputGreeting"]},
+    {"weight": 8, "affinity": {"technical": 1}, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, "については、", {"slot": "abstractNoun"}, "の順番だけを先に見ます。"]},
+    {"weight": 8, "affinity": {"request": 1}, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, "を急いで答えにせず、", {"slot": "nounPhrase"}, "の横へ置きます。"]},
+    {"weight": 7, "affinity": {"question": 1}, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, "の近くにある", {"slot": "nounPhrase"}, "から、まだ小さく確かめます。"]},
+    {"weight": 5, "parts": ["まず、", {"slot": "inputReference"}, "を小さな", {"slot": "abstractNoun"}, "として並べます。"]},
+    {"weight": 1, "parts": ["つまり、", {"slot": "nounPhrase"}, "がまだ", {"slot": "nounPhrase"}, "であるとは限りません。"], "containsNotAlways": true},
+    {"weight": 1, "parts": [{"slot": "nounPhrase"}, "はいつでも", {"slot": "nounPhrase"}, "になるわけではありません。"], "containsNotAlways": true},
+    {"weight": 8, "parts": ["ここで大切なのは、", {"slot": "nounPhrase"}, "を急いで", {"slot": "nounPhrase"}, "にしないことです。"]},
+    {"weight": 7, "parts": [{"slot": "nounPhrase"}, "については、", {"slot": "nounPhrase"}, "との距離を先に見た方がよさそうです。"]},
+    {"weight": 7, "parts": ["一方で、", {"slot": "nounPhrase"}, "は", {"slot": "nounPhrase"}, "の近くで少しだけ静かになります。"]},
+    {"weight": 6, "parts": ["この場合、", {"slot": "nounPhrase"}, "を", {"slot": "nounPhrase"}, "として扱うには少し早いです。"]},
+    {"weight": 6, "parts": ["まず、", {"slot": "nounPhrase"}, "を横に置いてから", {"slot": "nounPhrase"}, "の順番を見ます。"]},
+    {"weight": 5, "parts": ["ただし、", {"slot": "nounPhrase"}, "だけで全体を決めると", {"slot": "nounPhrase"}, "が眠くなります。"]},
+    {"weight": 5, "parts": [{"slot": "nounPhrase"}, "が残っているあいだは、", {"slot": "nounPhrase"}, "を小さな答えとして並べます。"]},
+    {"weight": 6, "parts": ["そのため、", {"slot": "nounPhrase"}, "は", {"slot": "nounPhrase"}, "よりも少し後ろに置かれます。"]}
+  ]
+}

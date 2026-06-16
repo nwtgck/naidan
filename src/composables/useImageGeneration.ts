@@ -2,6 +2,7 @@ import { generateId } from '@/utils/id';
 import { ref } from 'vue';
 import { UNKNOWN_STEPS } from '@/services/lm/types';
 import { OllamaProvider } from '@/services/lm/ollama';
+import { createLmFetch } from '@/services/lm/providerFactory';
 import { storageService } from '@/services/storage';
 import {
   getImageGenerationModels,
@@ -142,7 +143,8 @@ export function useImageGeneration() {
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
     const provider = new OllamaProvider({
       endpoint: endpointUrl,
-      headers: endpointHttpHeaders
+      headers: endpointHttpHeaders,
+      fetcher: createLmFetch({ endpointUrl }),
     });
 
     return await provider.generateImage({

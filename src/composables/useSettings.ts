@@ -3,10 +3,7 @@ import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, t
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
-import type { LLMProvider } from '@/services/lm/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import { createLmProvider } from '@/services/lm/providerFactory';
 import { transformersJsService } from '@/services/transformers-js';
 import { StorageTypeSchemaDto } from '@/models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
@@ -221,23 +218,11 @@ export function useSettings(): UseSettingsApi {
     }
     isFetchingModels.value = true;
     try {
-      const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      let provider: LLMProvider;
-      switch (type) {
-      case 'openai':
-        provider = new OpenAIProvider({ endpoint: url || '', headers: mutableHeaders });
-        break;
-      case 'ollama':
-        provider = new OllamaProvider({ endpoint: url || '', headers: mutableHeaders });
-        break;
-      case 'transformers_js':
-        provider = new TransformersJsProvider();
-        break;
-      default: {
-        const _ex: never = type;
-        throw new Error(`Unsupported endpoint type: ${_ex}`);
-      }
-      }
+      const provider = createLmProvider({
+        endpointType: type,
+        endpointUrl: url,
+        endpointHttpHeaders: headers,
+      });
 
       const models = await provider.listModels({});
       availableModels.value = models;
