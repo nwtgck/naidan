@@ -12,6 +12,18 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      value: {
+        experimental: {
+          fakeLm: 'disabled',
+        },
+      },
+    },
+  }),
+}));
+
 // Mock image processing
 const mockReencodeImage = vi.fn().mockImplementation(({ format }: { format: string }) => {
   return Promise.resolve(new Blob([`reencoded-${format}`], { type: `image/${format}` }));

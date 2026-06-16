@@ -80,6 +80,24 @@ const toolConfigPersistenceToExperimentalDto = ({
   }
 };
 
+const fakeLmToExperimentalDto = ({
+  status,
+}: {
+  status: 'disabled' | 'enabled' | undefined;
+}): 'enabled' | undefined => {
+  const normalized = status ?? 'disabled';
+  switch (normalized) {
+  case 'disabled':
+    return undefined;
+  case 'enabled':
+    return 'enabled';
+  default: {
+    const _exhaustive: never = normalized;
+    throw new Error(`Unhandled fake LM setting: ${String(_exhaustive)}`);
+  }
+  }
+};
+
 const toolConfigsToDomain = ({
   toolConfigs,
 }: {
@@ -950,6 +968,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
         ? {}
         : { markdownRendering: rest.experimental.markdownRendering }),
       toolConfigPersistence: rest.experimental?.toolConfigPersistence ?? 'disabled',
+      fakeLm: rest.experimental?.fakeLm ?? 'disabled',
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
       ...(rest.experimental?.unreadable === undefined
         ? {}
@@ -1033,6 +1052,9 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       markdownRendering: rest.experimental?.markdownRendering,
       toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
         persistence: rest.experimental?.toolConfigPersistence,
+      }),
+      fakeLm: fakeLmToExperimentalDto({
+        status: rest.experimental?.fakeLm,
       }),
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
     },

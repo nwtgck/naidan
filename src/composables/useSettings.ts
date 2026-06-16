@@ -4,6 +4,7 @@ import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
 import { createLmProvider } from '@/services/lm/providerFactory';
+import { preloadFakeLmLanguagePacks, type FakeLmDebugModeStatus } from '@/services/fake-lm';
 import { transformersJsService } from '@/services/transformers-js';
 import { StorageTypeSchemaDto } from '@/models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
@@ -45,6 +46,7 @@ interface UseSettingsApi {
   setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => void;
   setOnboardingDraft: ({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) => void;
   setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => void;
+  setFakeLmDebugModeStatus: ({ status }: { status: FakeLmDebugModeStatus }) => Promise<void>;
   setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => void;
   setSearchContextSize: ({ size }: { size: number }) => void;
   TEST_ONLY: {
@@ -62,6 +64,7 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
     const fresh = await storageService.loadSettings();
     if (fresh) {
       _settings.value = fresh;
+      preloadFakeLmIfEnabled({ status: fresh.experimental?.fakeLm ?? 'disabled' });
     }
   }
 } });
@@ -83,6 +86,22 @@ transformersJsService.subscribeModelList({ listener: async () => {
   }
   }
 } });
+
+function preloadFakeLmIfEnabled({ status }: {
+  status: FakeLmDebugModeStatus;
+}): void {
+  switch (status) {
+  case 'enabled':
+    preloadFakeLmLanguagePacks();
+    break;
+  case 'disabled':
+    break;
+  default: {
+    const _ex: never = status;
+    throw new Error(`Unhandled fake LM debug mode status: ${_ex}`);
+  }
+  }
+}
 
 export function useSettings(): UseSettingsApi {
   const loading = ref(false);
@@ -189,6 +208,7 @@ export function useSettings(): UseSettingsApi {
         const s = await storageService.loadSettings();
         if (s) {
           _settings.value = s;
+          preloadFakeLmIfEnabled({ status: s.experimental?.fakeLm ?? 'disabled' });
           if (s.endpointUrl || s.endpointType === 'transformers_js') {
             // Initial fetch of models if we have an endpoint
             fetchModels({});
@@ -222,6 +242,7 @@ export function useSettings(): UseSettingsApi {
         endpointType: type,
         endpointUrl: url,
         endpointHttpHeaders: headers,
+        fakeLmDebugModeStatus: _settings.value.experimental?.fakeLm ?? 'disabled',
       });
 
       const models = await provider.listModels({});
@@ -326,6 +347,28 @@ export function useSettings(): UseSettingsApi {
     storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), heavyContentAlertDismissed: dismissed }) });
   }
 
+  async function setFakeLmDebugModeStatus({ status }: {
+    status: FakeLmDebugModeStatus;
+  }): Promise<void> {
+    _settings.value.experimental = {
+      ..._settings.value.experimental,
+      fakeLm: status,
+    };
+
+    await storageService.updateSettings({ updater: ({ current: curr }) => {
+      const base = curr ?? _settings.value;
+      return {
+        ...base,
+        experimental: {
+          ...base.experimental,
+          fakeLm: status,
+        },
+      };
+    } });
+
+    preloadFakeLmIfEnabled({ status });
+  }
+
   function setSearchPreviewMode({ mode }: { mode: SearchPreviewMode }) {
     _searchPreviewMode.value = mode;
   }
@@ -373,6 +416,7 @@ export function useSettings(): UseSettingsApi {
     setIsOnboardingDismissed,
     setOnboardingDraft,
     setHeavyContentAlertDismissed,
+    setFakeLmDebugModeStatus,
     setSearchPreviewMode,
     setSearchContextSize,
     TEST_ONLY: {

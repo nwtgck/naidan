@@ -186,10 +186,33 @@ describe('Settings Mapping', () => {
     const domain = settingsToDomain({ dto });
 
     expect(domain.experimental?.toolConfigPersistence).toBe('disabled');
+    expect(domain.experimental?.fakeLm).toBe('disabled');
     expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
   });
 
-  it('preserves sidebar send reorder through settings mapping', () => {
+  it('omits disabled fake LM mode from the settings DTO', () => {
+    const domain: Settings = {
+      endpointType: 'openai',
+      endpointUrl: 'http://localhost',
+      endpointHttpHeaders: undefined,
+      defaultModelId: 'gpt-4',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: false,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      experimental: {
+        fakeLm: 'disabled',
+      },
+    };
+
+    expect(settingsToDto({ domain }).experimental?.fakeLm).toBeUndefined();
+  });
+
+  it('preserves experimental settings through settings mapping', () => {
     const domain: Settings = {
       endpointType: 'openai',
       endpointUrl: 'http://localhost',
@@ -206,6 +229,7 @@ describe('Settings Mapping', () => {
       experimental: {
         markdownRendering: undefined,
         toolConfigPersistence: 'enabled',
+        fakeLm: 'enabled',
         sidebarSendMessageReorder: 'move_sent_chat',
       },
     };
@@ -214,8 +238,10 @@ describe('Settings Mapping', () => {
     const mapped = settingsToDomain({ dto });
 
     expect(dto.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(dto.experimental?.fakeLm).toBe('enabled');
     expect(dto.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
     expect(mapped.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(mapped.experimental?.fakeLm).toBe('enabled');
     expect(mapped.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
   });
 });

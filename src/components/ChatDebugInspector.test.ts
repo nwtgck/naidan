@@ -52,6 +52,27 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
+const mockSettings = vi.hoisted(() => ({
+  value: {
+    experimental: {
+      fakeLm: 'disabled',
+    },
+  },
+}));
+
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: mockSettings,
+  }),
+}));
+
+vi.mock('@/services/fake-lm', () => ({
+  FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
+  useFakeLmDebugMode: () => ({
+    fakeLmDebugModeAvailability: { value: 'available' },
+  }),
+}));
+
 // Mock Clipboard
 Object.assign(navigator, {
   clipboard: {

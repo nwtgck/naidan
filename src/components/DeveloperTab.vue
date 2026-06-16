@@ -8,6 +8,7 @@ import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 import { FAKE_LM_ENDPOINT_URL, preloadFakeLmLanguagePacks, useFakeLmDebugMode, type FakeLmDebugModeStatus } from '@/services/fake-lm';
+import { useSettings } from '@/composables/useSettings';
 
 defineProps<{
   storageType: string;
@@ -16,7 +17,9 @@ defineProps<{
 const { createSampleChat, createLongSampleChat } = useSampleChat();
 const { showConfirm } = useConfirm();
 const { needRefresh, setNeedRefresh } = usePWAUpdate();
-const { fakeLmDebugModeAvailability, fakeLmDebugModeStatus, setFakeLmDebugModeStatus } = useFakeLmDebugMode();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
+const { settings, setFakeLmDebugModeStatus } = useSettings();
+const fakeLmDebugModeStatus = computed<FakeLmDebugModeStatus>(() => settings.value.experimental?.fakeLm ?? 'disabled');
 
 const isFakeLmDebugModeAvailable = computed(() => fakeLmDebugModeAvailability.value === 'available');
 preloadFakeLmLanguagePacks();
@@ -75,12 +78,12 @@ function handleReload() {
   window.location.reload();
 }
 
-function toggleFakeLmDebugMode() {
+async function toggleFakeLmDebugMode() {
   if (!isFakeLmDebugModeAvailable.value) {
     return;
   }
 
-  setFakeLmDebugModeStatus({
+  await setFakeLmDebugModeStatus({
     status: getNextFakeLmDebugModeStatus({ status: fakeLmDebugModeStatus.value }),
   });
 }

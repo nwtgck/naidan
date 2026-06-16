@@ -587,6 +587,7 @@ vi.mock('../composables/useSettings', () => ({
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
     save: mockSaveSettings,
+    setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
   }),
 }));
 
@@ -623,8 +624,6 @@ vi.mock('@/services/fake-lm', () => ({
   FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
   useFakeLmDebugMode: () => ({
     fakeLmDebugModeAvailability: mockFakeLmDebugModeAvailability,
-    fakeLmDebugModeStatus: { value: 'disabled' },
-    setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
   }),
 }));
 

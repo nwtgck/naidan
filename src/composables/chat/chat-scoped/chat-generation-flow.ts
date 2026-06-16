@@ -941,10 +941,12 @@ function createGenerationProvider({
     throw new Error(`${endpointType} generation requires an endpoint URL`);
   }
 
+  const { settings } = useSettings();
   return createLmProvider({
     endpointType,
     endpointUrl,
     endpointHttpHeaders,
+    fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }
 

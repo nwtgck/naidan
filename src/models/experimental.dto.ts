@@ -83,6 +83,7 @@ export const ExperimentalSettingsSchemaDto = resolveMissingAsUndefined(z.object(
     z.literal('monolithic_html'),
   ])),
   toolConfigPersistence: missingAsUndefined(z.literal('enabled')),
+  fakeLm: missingAsUndefined(z.literal('enabled')),
   sidebarSendMessageReorder: missingAsUndefined(z.union([
     z.literal('disabled'),
     z.literal('move_sent_chat'),

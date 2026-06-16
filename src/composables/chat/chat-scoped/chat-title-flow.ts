@@ -232,9 +232,11 @@ function createTitleProvider({
     throw new Error(`${endpointType} title generation requires an endpoint URL`);
   }
 
+  const { settings } = useSettings();
   return createLmProvider({
     endpointType,
     endpointUrl,
     endpointHttpHeaders,
+    fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }

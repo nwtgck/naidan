@@ -10,6 +10,7 @@ import type { BinaryObject, MessageNode } from '@/models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
 import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
+import { useSettings } from '@/composables/useSettings';
 import { idToRaw, toBinaryObjectId } from '@/models/ids';
 import type { BinaryObjectId, MessageId } from '@/models/ids';
 
@@ -27,7 +28,9 @@ const emit = defineEmits<{
 
 const router = useRouter();
 const { addErrorEvent } = useGlobalEvents();
-const { fakeLmDebugModeAvailability, fakeLmDebugModeStatus } = useFakeLmDebugMode();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
+const { settings } = useSettings();
+const fakeLmDebugModeStatus = computed(() => settings.value.experimental?.fakeLm ?? 'disabled');
 const mode = ref<'active' | 'tree' | 'raw'>('active');
 const isHighlightEnabled = ref(true);
 const isContentCollapsed = ref(false);

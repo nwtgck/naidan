@@ -82,7 +82,7 @@ import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
 import type { ApprovalUiDecision } from '@/services/approval';
 
 const { addToast } = useToast();
-const { fakeLmDebugModeAvailability, setFakeLmDebugModeStatus } = useFakeLmDebugMode();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 const { openFileExplorer } = useFileExplorerModal();
 const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
 const { state: previewState, closePreview } = useImagePreview({ scoped: true });
@@ -231,6 +231,7 @@ const container = ref<HTMLElement | null>(null);
 const {
   settings,
   save: saveSettings,
+  setFakeLmDebugModeStatus,
 } = useSettings();
 const router = useRouter();
 
@@ -981,7 +982,7 @@ async function handleEnableFakeLmForChat() {
   if (!chatValue) return;
   if (!canUseFakeLmDebugModeInChatPane()) return;
 
-  setFakeLmDebugModeStatus({ status: 'enabled' });
+  await setFakeLmDebugModeStatus({ status: 'enabled' });
 
   await chatMetadata.updateSettings({
     chatId: chatValue.id,

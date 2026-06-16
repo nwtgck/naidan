@@ -281,6 +281,7 @@ async function handleConnect() {
       endpointType: effectiveType.value,
       endpointUrl: url ?? undefined,
       endpointHttpHeaders: customHeaders.value,
+      fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
     });
     const models = await provider.listModels({ signal: abortController.signal });
 

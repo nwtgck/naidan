@@ -140,6 +140,7 @@ const normalizedMockSettings: Settings = {
   systemPrompt: undefined,
   experimental: {
     ...mockSettings.experimental,
+    fakeLm: 'disabled',
     toolConfigPersistence: 'disabled',
   },
 };

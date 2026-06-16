@@ -148,9 +148,11 @@ function createProviderForEndpoint({
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
 }): LLMProvider {
+  const { settings } = useSettings();
   return createLmProvider({
     endpointType,
     endpointUrl,
     endpointHttpHeaders,
+    fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
   });
 }
