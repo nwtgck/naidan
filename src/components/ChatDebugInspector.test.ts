@@ -52,6 +52,27 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
+const mockSettings = vi.hoisted(() => ({
+  value: {
+    experimental: {
+      fakeLm: 'disabled',
+    },
+  },
+}));
+
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: mockSettings,
+  }),
+}));
+
+vi.mock('@/services/fake-lm', () => ({
+  FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
+  useFakeLmDebugMode: () => ({
+    fakeLmDebugModeAvailability: { value: 'available' },
+  }),
+}));
+
 // Mock Clipboard
 Object.assign(navigator, {
   clipboard: {
@@ -133,6 +154,20 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('emits a fake LM setup event from the header shortcut', async () => {
+    const chat = createMockChat([]);
+    const wrapper = mountInspector(chat, []);
+
+    const button = wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]');
+
+    expect(button.exists()).toBe(true);
+    expect(button.attributes('disabled')).toBeUndefined();
+
+    await button.trigger('click');
+
+    expect(wrapper.emitted('enable-fake-lm')).toHaveLength(1);
   });
 
   it('Scenario 1: Pure Linear Path (A -> B -> C)', async () => {

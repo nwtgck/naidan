@@ -587,6 +587,7 @@ vi.mock('../composables/useSettings', () => ({
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
     save: mockSaveSettings,
+    setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
   }),
 }));
 
@@ -601,9 +602,11 @@ vi.mock('mermaid', () => ({
 
 
 
-const { mockAddToast, mockGenerateChatShareURL } = vi.hoisted(() => ({
+const { mockAddToast, mockFakeLmDebugModeAvailability, mockGenerateChatShareURL, mockSetFakeLmDebugModeStatus } = vi.hoisted(() => ({
   mockAddToast: vi.fn(),
+  mockFakeLmDebugModeAvailability: { value: 'available' },
   mockGenerateChatShareURL: vi.fn(),
+  mockSetFakeLmDebugModeStatus: vi.fn(),
 }));
 
 vi.mock('../composables/useToast', () => ({
@@ -614,6 +617,14 @@ vi.mock('../composables/useToast', () => ({
 
 vi.mock('../services/import-export/chat-url-share', () => ({
   generateChatShareURL: mockGenerateChatShareURL,
+}));
+
+
+vi.mock('@/services/fake-lm', () => ({
+  FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
+  useFakeLmDebugMode: () => ({
+    fakeLmDebugModeAvailability: mockFakeLmDebugModeAvailability,
+  }),
 }));
 
 vi.mock('../composables/useFileExplorerModal', () => ({
@@ -684,6 +695,7 @@ function resetMocks() {
       };
     }
   });
+  mockFakeLmDebugModeAvailability.value = 'available';
   mockStreaming.value = false;
   mockGeneratingTitle.value = false;
   mockActiveGenerations.clear();
@@ -1102,6 +1114,69 @@ Question`,
     const inspector = wrapper.find('[data-testid="chat-inspector"]');
     expect(inspector.exists()).toBe(true);
     expect(inspector.text()).toContain('Chat Inspector');
+  });
+
+  it('should configure the current chat for fake LM from the inspector shortcut', async () => {
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.debugEnabled = true;
+      mockCurrentChat.value.endpointType = 'openai';
+      mockCurrentChat.value.endpointUrl = 'https://example.com';
+    }
+
+    wrapper = mountChatPane({
+      global: {
+        plugins: [router],
+      },
+    });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]').trigger('click');
+    await flushPromises();
+
+    expect(mockSetFakeLmDebugModeStatus).toHaveBeenCalledWith({ status: 'enabled' });
+    expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+      id: '1',
+      updates: {
+        endpointType: 'ollama',
+        endpointUrl: 'https://fake-lm.invalid',
+      },
+    });
+    expect(mockCurrentChat.value?.endpointType).toBe('ollama');
+    expect(mockCurrentChat.value?.endpointUrl).toBe('https://fake-lm.invalid');
+    expect(mockAddToast).toHaveBeenCalledWith({
+      message: 'Fake LM enabled for this chat via https://fake-lm.invalid',
+      duration: 3000,
+    });
+  });
+
+  it('should not configure fake LM from the inspector shortcut when the facade is unavailable', async () => {
+    mockFakeLmDebugModeAvailability.value = 'unavailable_in_standalone';
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.debugEnabled = true;
+      mockCurrentChat.value.endpointType = 'openai';
+      mockCurrentChat.value.endpointUrl = 'https://example.com';
+    }
+
+    wrapper = mountChatPane({
+      global: {
+        plugins: [router],
+      },
+    });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]').trigger('click');
+    await flushPromises();
+
+    expect(mockSetFakeLmDebugModeStatus).not.toHaveBeenCalled();
+    expect(mockUpdateChatSettings).not.toHaveBeenCalledWith({
+      id: '1',
+      updates: {
+        endpointType: 'ollama',
+        endpointUrl: 'https://fake-lm.invalid',
+      },
+    });
+    expect(mockCurrentChat.value?.endpointType).toBe('openai');
+    expect(mockCurrentChat.value?.endpointUrl).toBe('https://example.com');
   });
 
   it('should open the title dialog and save a manual title', async () => {

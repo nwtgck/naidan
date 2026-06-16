@@ -15,6 +15,7 @@ import type { LmParameters, ChatMessage, MultimodalContent } from '@/models/type
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
+import { getDefaultLmFetch, type LmFetch } from '@/services/lm/fetch';
 import { type LLMProvider, UNKNOWN_STEPS } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
@@ -97,10 +98,11 @@ export class OllamaProvider implements LLMProvider {
   private config: {
     endpoint: string;
     headers?: [string, string][];
+    fetcher: LmFetch;
   };
 
-  constructor({ endpoint, headers }: { endpoint: string; headers?: [string, string][] }) {
-    this.config = { endpoint, headers };
+  constructor({ endpoint, headers, fetcher }: { endpoint: string; headers?: [string, string][]; fetcher?: LmFetch }) {
+    this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
   async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
@@ -119,7 +121,7 @@ export class OllamaProvider implements LLMProvider {
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { endpoint, headers } = this.config;
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
 
     const currentMessages = [...messages];
@@ -248,7 +250,7 @@ export class OllamaProvider implements LLMProvider {
 
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await fetcher(url, {
           method: 'POST',
           headers: [
             ['Content-Type', 'application/json'],
@@ -287,7 +289,7 @@ export class OllamaProvider implements LLMProvider {
 
         if (isRetryable) {
           body.think = true; // Fallback to basic thinking
-          response = await fetch(url, {
+          response = await fetcher(url, {
             method: 'POST',
             headers: [
               ['Content-Type', 'application/json'],
@@ -486,11 +488,11 @@ export class OllamaProvider implements LLMProvider {
   }
 
   async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
-    const { endpoint, headers } = this.config;
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
     let response: Response;
     try {
-      response = await fetch(url, { signal, headers });
+      response = await fetcher(url, { signal, headers });
     } catch (e) {
       const isAbort = e instanceof Error && e.name === 'AbortError';
       if (!isAbort) {
@@ -539,7 +541,7 @@ export class OllamaProvider implements LLMProvider {
     onProgress: ({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) => void;
     signal: AbortSignal | undefined;
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> {
-    const { endpoint, headers } = this.config;
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/generate`;
 
     const b64Images = images.length > 0
@@ -559,7 +561,7 @@ export class OllamaProvider implements LLMProvider {
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await fetcher(url, {
         method: 'POST',
         headers: [
           ['Content-Type', 'application/json'],

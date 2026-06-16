@@ -1,0 +1,12 @@
+{
+  "inputReferences": [
+    {"value": "that note", "weight": 12},
+    {"value": "the recent phrase", "weight": 11},
+    {"value": "this small topic", "weight": 10},
+    {"value": "the nearby request", "weight": 9},
+    {"value": "the current word", "weight": 8},
+    {"value": "the front edge of it", "weight": 7},
+    {"value": "the last signal", "weight": 7},
+    {"value": "this quiet input", "weight": 6}
+  ]
+}

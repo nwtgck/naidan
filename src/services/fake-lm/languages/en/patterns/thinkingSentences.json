@@ -1,0 +1,18 @@
+{
+  "items": [
+    {"weight": 10, "requires": ["inputKeyword"], "parts": ["I set ", {"slot": "inputKeyword"}, " beside ", {"slot": "nounPhrase"}, " before answering."]},
+    {"weight": 8, "requires": ["inputKeyword"], "parts": ["The order of ", {"slot": "inputKeyword"}, " and ", {"slot": "abstractNoun"}, " should be checked first."]},
+    {"weight": 7, "affinity": {"technical": 1}, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, " should stay soft near ", {"slot": "physicalNoun"}, "."]},
+    {"weight": 6, "parts": ["I leave ", {"slot": "inputReference"}, " unnamed and return only ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 8, "parts": ["Place ", {"slot": "nounPhrase"}, " near ", {"slot": "nounPhrase"}, " before making it an answer."]},
+    {"weight": 7, "parts": ["Do not explain ", {"slot": "nounPhrase"}, " too quickly yet."]},
+    {"weight": 8, "parts": ["Look at the order of ", {"slot": "nounPhrase"}, " and ", {"slot": "nounPhrase"}, " first."]},
+    {"weight": 7, "parts": ["Move ", {"slot": "nounPhrase"}, " aside and return only ", {"slot": "nounPhrase"}, " to the main text."]},
+    {"weight": 6, "parts": [{"slot": "nounPhrase"}, " is still round, so keep ", {"slot": "nounPhrase"}, " to the side."]},
+    {"weight": 6, "parts": ["For now, do not decide ", {"slot": "nounPhrase"}, "; only check the lightness of ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 7, "parts": ["Before returning ", {"slot": "nounPhrase"}, " to the content, check its distance from ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 5, "parts": ["Lower ", {"slot": "nounPhrase"}, " slightly so ", {"slot": "nounPhrase"}, " does not become too sleepy."]},
+    {"weight": 5, "parts": ["Keep ", {"slot": "abstractNoun"}, " soft and use only the margin of ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 5, "parts": ["Shift ", {"slot": "nounPhrase"}, " once more before moving toward a conclusion."]}
+  ]
+}

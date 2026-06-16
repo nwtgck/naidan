@@ -9,6 +9,8 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { BinaryObject, MessageNode } from '@/models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
+import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
+import { useSettings } from '@/composables/useSettings';
 import { idToRaw, toBinaryObjectId } from '@/models/ids';
 import type { BinaryObjectId, MessageId } from '@/models/ids';
 
@@ -21,10 +23,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void;
+  (e: 'enable-fake-lm'): void;
 }>();
 
 const router = useRouter();
 const { addErrorEvent } = useGlobalEvents();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
+const { settings } = useSettings();
+const fakeLmDebugModeStatus = computed(() => settings.value.experimental?.fakeLm ?? 'disabled');
 const mode = ref<'active' | 'tree' | 'raw'>('active');
 const isHighlightEnabled = ref(true);
 const isContentCollapsed = ref(false);
@@ -32,6 +38,14 @@ const selectedNode = ref<Readonly<MessageNode> | null>(null);
 const isTreeMapCollapsed = ref(false);
 
 const activeIds = computed(() => new Set(props.activeMessages.map(m => m.id)));
+const canEnableFakeLmForChat = computed(() => fakeLmDebugModeAvailability.value === 'available');
+const fakeLmButtonTitle = computed(() => {
+  if (!canEnableFakeLmForChat.value) {
+    return 'Fake LM is only available in hosted builds. Standalone builds do not bundle fake LM.';
+  }
+
+  return `Set this chat to Ollama at ${FAKE_LM_ENDPOINT_URL} and enable global Fake LM debug mode.`;
+});
 
 function handleSelectNode({ node }: { node: Readonly<MessageNode> }) {
   selectedNode.value = node;
@@ -151,6 +165,14 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: Bin
   }
 }
 
+function handleEnableFakeLm() {
+  if (!canEnableFakeLmForChat.value) {
+    return;
+  }
+
+  emit('enable-fake-lm');
+}
+
 function handleClose() {
   emit('close');
 }
@@ -221,6 +243,23 @@ defineExpose({
                 <span>{{ m.label }}</span>
               </button>
             </div>
+
+            <!-- Fake LM Shortcut -->
+            <button
+              @click="handleEnableFakeLm"
+              class="px-3 py-2 rounded-xl border transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider"
+              :class="canEnableFakeLmForChat ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:scale-105 active:scale-95' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-300 dark:text-gray-600 cursor-not-allowed'"
+              :disabled="!canEnableFakeLmForChat"
+              :title="fakeLmButtonTitle"
+              data-testid="chat-inspector-enable-fake-lm"
+            >
+              <BugIcon class="w-4 h-4" />
+              <span>Fake LM</span>
+              <span
+                v-if="fakeLmDebugModeStatus === 'enabled'"
+                class="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8px]"
+              >On</span>
+            </button>
 
             <!-- Global Highlighting Toggle -->
             <button

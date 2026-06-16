@@ -3,10 +3,8 @@ import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, t
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
-import type { LLMProvider } from '@/services/lm/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import { createLmProvider } from '@/services/lm/providerFactory';
+import { preloadFakeLmLanguagePacks, type FakeLmDebugModeStatus } from '@/services/fake-lm';
 import { transformersJsService } from '@/services/transformers-js';
 import { StorageTypeSchemaDto } from '@/models/dto';
 import { useGlobalEvents } from './useGlobalEvents';
@@ -48,6 +46,7 @@ interface UseSettingsApi {
   setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => void;
   setOnboardingDraft: ({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) => void;
   setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => void;
+  setFakeLmDebugModeStatus: ({ status }: { status: FakeLmDebugModeStatus }) => Promise<void>;
   setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => void;
   setSearchContextSize: ({ size }: { size: number }) => void;
   TEST_ONLY: {
@@ -65,6 +64,7 @@ storageService.subscribeToChanges({ listener: async ({ event }) => {
     const fresh = await storageService.loadSettings();
     if (fresh) {
       _settings.value = fresh;
+      preloadFakeLmIfEnabled({ status: fresh.experimental?.fakeLm ?? 'disabled' });
     }
   }
 } });
@@ -86,6 +86,22 @@ transformersJsService.subscribeModelList({ listener: async () => {
   }
   }
 } });
+
+function preloadFakeLmIfEnabled({ status }: {
+  status: FakeLmDebugModeStatus;
+}): void {
+  switch (status) {
+  case 'enabled':
+    preloadFakeLmLanguagePacks();
+    break;
+  case 'disabled':
+    break;
+  default: {
+    const _ex: never = status;
+    throw new Error(`Unhandled fake LM debug mode status: ${_ex}`);
+  }
+  }
+}
 
 export function useSettings(): UseSettingsApi {
   const loading = ref(false);
@@ -192,6 +208,7 @@ export function useSettings(): UseSettingsApi {
         const s = await storageService.loadSettings();
         if (s) {
           _settings.value = s;
+          preloadFakeLmIfEnabled({ status: s.experimental?.fakeLm ?? 'disabled' });
           if (s.endpointUrl || s.endpointType === 'transformers_js') {
             // Initial fetch of models if we have an endpoint
             fetchModels({});
@@ -221,23 +238,12 @@ export function useSettings(): UseSettingsApi {
     }
     isFetchingModels.value = true;
     try {
-      const mutableHeaders = headers ? JSON.parse(JSON.stringify(headers)) : undefined;
-      let provider: LLMProvider;
-      switch (type) {
-      case 'openai':
-        provider = new OpenAIProvider({ endpoint: url || '', headers: mutableHeaders });
-        break;
-      case 'ollama':
-        provider = new OllamaProvider({ endpoint: url || '', headers: mutableHeaders });
-        break;
-      case 'transformers_js':
-        provider = new TransformersJsProvider();
-        break;
-      default: {
-        const _ex: never = type;
-        throw new Error(`Unsupported endpoint type: ${_ex}`);
-      }
-      }
+      const provider = createLmProvider({
+        endpointType: type,
+        endpointUrl: url,
+        endpointHttpHeaders: headers,
+        fakeLmDebugModeStatus: _settings.value.experimental?.fakeLm ?? 'disabled',
+      });
 
       const models = await provider.listModels({});
       availableModels.value = models;
@@ -341,6 +347,28 @@ export function useSettings(): UseSettingsApi {
     storageService.updateSettings({ updater: ({ current: curr }) => ({ ...(curr || _settings.value), heavyContentAlertDismissed: dismissed }) });
   }
 
+  async function setFakeLmDebugModeStatus({ status }: {
+    status: FakeLmDebugModeStatus;
+  }): Promise<void> {
+    _settings.value.experimental = {
+      ..._settings.value.experimental,
+      fakeLm: status,
+    };
+
+    await storageService.updateSettings({ updater: ({ current: curr }) => {
+      const base = curr ?? _settings.value;
+      return {
+        ...base,
+        experimental: {
+          ...base.experimental,
+          fakeLm: status,
+        },
+      };
+    } });
+
+    preloadFakeLmIfEnabled({ status });
+  }
+
   function setSearchPreviewMode({ mode }: { mode: SearchPreviewMode }) {
     _searchPreviewMode.value = mode;
   }
@@ -388,6 +416,7 @@ export function useSettings(): UseSettingsApi {
     setIsOnboardingDismissed,
     setOnboardingDraft,
     setHeavyContentAlertDismissed,
+    setFakeLmDebugModeStatus,
     setSearchPreviewMode,
     setSearchContextSize,
     TEST_ONLY: {

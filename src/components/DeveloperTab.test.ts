@@ -19,6 +19,36 @@ vi.mock('../composables/useSampleChat', () => ({
   useSampleChat: vi.fn(),
 }));
 
+const {
+  mockFakeLmDebugModeAvailability,
+  mockFakeLmSettings,
+  mockPreloadFakeLmLanguagePacks,
+  mockSaveSettings,
+  mockSetFakeLmDebugModeStatus,
+} = vi.hoisted(() => ({
+  mockFakeLmDebugModeAvailability: { value: 'available' },
+  mockFakeLmSettings: { value: { experimental: { fakeLm: 'disabled' } } },
+  mockPreloadFakeLmLanguagePacks: vi.fn(),
+  mockSaveSettings: vi.fn(),
+  mockSetFakeLmDebugModeStatus: vi.fn(),
+}));
+
+vi.mock('@/services/fake-lm', () => ({
+  FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
+  preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
+  useFakeLmDebugMode: () => ({
+    fakeLmDebugModeAvailability: mockFakeLmDebugModeAvailability,
+  }),
+}));
+
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: mockFakeLmSettings,
+    save: mockSaveSettings,
+    setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
+  }),
+}));
+
 describe('DeveloperTab', () => {
   const needRefresh = ref(false);
   const setNeedRefresh = vi.fn();
@@ -29,6 +59,8 @@ describe('DeveloperTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     needRefresh.value = false;
+    mockFakeLmDebugModeAvailability.value = 'available';
+    mockFakeLmSettings.value = { experimental: { fakeLm: 'disabled' } };
 
     (usePWAUpdate as any).mockReturnValue({
       needRefresh,
@@ -52,6 +84,16 @@ describe('DeveloperTab', () => {
     expect(wrapper.text()).toContain('Developer Tools');
     expect(wrapper.find('[data-testid="toggle-pwa-update-button"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="setting-create-long-sample-button"]').exists()).toBe(true);
+  });
+
+  it('persists fake LM debug mode through settings', async () => {
+    const wrapper = mount(DeveloperTab, {
+      props: { storageType: 'localStorage' }
+    });
+
+    await wrapper.find('[data-testid="fake-lm-debug-mode-toggle"]').trigger('click');
+
+    expect(mockSetFakeLmDebugModeStatus).toHaveBeenCalledWith({ status: 'enabled' });
   });
 
   it('creates a long sample chat when the long sample button is clicked', async () => {

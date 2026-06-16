@@ -373,6 +373,7 @@ export interface Settings {
      * not written to ChatMeta.experimental.toolConfigs.
      */
     toolConfigPersistence?: ToolConfigPersistence;
+    fakeLm?: 'disabled' | 'enabled';
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat';
     readonly unreadable?: {
       readonly [key: string]: unknown;

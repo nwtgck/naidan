@@ -1,0 +1,26 @@
+{
+  "items": [
+    {"weight": 10, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, "をすぐ答えにせず、", {"slot": "nounPhrase"}, "の近くに置きます。"]},
+    {"weight": 8, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, "と", {"slot": "abstractNoun"}, "の順番を先に見ます。"]},
+    {"weight": 7, "affinity": {"technical": 1}, "requires": ["inputKeyword"], "parts": [{"slot": "inputKeyword"}, "が硬くなりすぎないように、", {"slot": "physicalNoun"}, "の横へ下げます。"]},
+    {"weight": 6, "parts": [{"slot": "inputReference"}, "をまだ説明せず、", {"slot": "nounPhrase"}, "だけを本文へ戻します。"]},
+    {"weight": 8, "parts": [{"slot": "nounPhrase"}, "をすぐ答えにせず、", {"slot": "nounPhrase"}, "の近くに置きます。"]},
+    {"weight": 7, "parts": ["まだ", {"slot": "nounPhrase"}, "を急いで説明しない方がよさそうです。"]},
+    {"weight": 8, "parts": [{"slot": "nounPhrase"}, "と", {"slot": "nounPhrase"}, "の順番を先に見ます。"]},
+    {"weight": 7, "parts": [{"slot": "nounPhrase"}, "を少し離して、", {"slot": "nounPhrase"}, "だけを本文へ戻します。"]},
+    {"weight": 6, "parts": [{"slot": "nounPhrase"}, "がまだ丸いので、", {"slot": "nounPhrase"}, "は横に置いておきます。"]},
+    {"weight": 6, "parts": ["ここでは", {"slot": "nounPhrase"}, "を決めず、", {"slot": "nounPhrase"}, "の軽さだけを確かめます。"]},
+    {"weight": 7, "parts": [{"slot": "nounPhrase"}, "を本文へ戻す前に、", {"slot": "nounPhrase"}, "との距離を見ます。"]},
+    {"weight": 5, "parts": [{"slot": "nounPhrase"}, "が眠くなりすぎないように、", {"slot": "nounPhrase"}, "を少し後ろへ下げます。"]},
+    {"weight": 6, "parts": [{"slot": "timeNoun"}, "の近くにある", {"slot": "abstractNoun"}, "を、まだ結論にはしません。"]},
+    {"weight": 5, "parts": [{"slot": "physicalNoun"}, "の向きを見てから、", {"slot": "nounPhrase"}, "を小さく戻します。"]},
+    {"weight": 6, "parts": [{"slot": "livingNoun"}, "の形をした", {"slot": "abstractNoun"}, "は、一度だけ表の外に出します。"]},
+    {"weight": 6, "parts": ["先に", {"slot": "nounPhrase"}, "を並べ、", {"slot": "nounPhrase"}, "はあとで確認します。"]},
+    {"weight": 5, "parts": [{"slot": "nounPhrase"}, "が重すぎるので、", {"slot": "timeNoun"}, "の手前で止めます。"]},
+    {"weight": 4, "parts": [{"slot": "nounPhrase"}, "を見たあとで、", {"slot": "physicalNoun"}, "に残った", {"slot": "abstractNoun"}, "を拾います。"]},
+    {"weight": 5, "parts": ["今は", {"slot": "abstractNoun"}, "を強く言わず、", {"slot": "nounPhrase"}, "の余白だけを使います。"]},
+    {"weight": 5, "parts": [{"slot": "nounPhrase"}, "を本文に入れる前に、", {"slot": "nounPhrase"}, "が眠っていないか確かめます。"]},
+    {"weight": 4, "parts": [{"slot": "normalAdjective"}, {"slot": "physicalNoun"}, "を基準にすると、", {"slot": "nounPhrase"}, "が少し見やすくなります。"]},
+    {"weight": 4, "parts": ["結論へ行く前に、", {"slot": "nounPhrase"}, "をもう一度だけ横へずらします。"]}
+  ]
+}

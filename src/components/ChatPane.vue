@@ -78,9 +78,11 @@ import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
 import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/services/context-compact';
 import { useApproval } from '@/composables/useApproval';
+import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
 import type { ApprovalUiDecision } from '@/services/approval';
 
 const { addToast } = useToast();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 const { openFileExplorer } = useFileExplorerModal();
 const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
 const { state: previewState, closePreview } = useImagePreview({ scoped: true });
@@ -229,6 +231,7 @@ const container = ref<HTMLElement | null>(null);
 const {
   settings,
   save: saveSettings,
+  setFakeLmDebugModeStatus,
 } = useSettings();
 const router = useRouter();
 
@@ -960,6 +963,41 @@ function handleToggleDebug() {
   });
 }
 
+function canUseFakeLmDebugModeInChatPane(): boolean {
+  const availability = fakeLmDebugModeAvailability.value;
+  switch (availability) {
+  case 'available':
+    return true;
+  case 'unavailable_in_standalone':
+    return false;
+  default: {
+    const _ex: never = availability;
+    throw new Error(`Unhandled fake LM debug mode availability: ${_ex}`);
+  }
+  }
+}
+
+async function handleEnableFakeLmForChat() {
+  const chatValue = chat.value;
+  if (!chatValue) return;
+  if (!canUseFakeLmDebugModeInChatPane()) return;
+
+  await setFakeLmDebugModeStatus({ status: 'enabled' });
+
+  await chatMetadata.updateSettings({
+    chatId: chatValue.id,
+    updates: {
+      endpointType: 'ollama',
+      endpointUrl: FAKE_LM_ENDPOINT_URL,
+    },
+  });
+
+  addToast({
+    message: `Fake LM enabled for this chat via ${FAKE_LM_ENDPOINT_URL}`,
+    duration: 3000,
+  });
+}
+
 function jumpToOrigin() {
   if (chat.value?.originChatId) {
     router.push(`/chat/${idToRaw({ id: chat.value.originChatId })}`);
@@ -1307,6 +1345,7 @@ watch(
         :chat="chat"
         :active-messages="activeMessages"
         @close="handleToggleDebug()"
+        @enable-fake-lm="handleEnableFakeLmForChat()"
         data-testid="chat-inspector"
       />
     </div>
