@@ -1226,7 +1226,7 @@ defineExpose({
                       @click.stop="toggleGroupCompactExpansion({ groupId: element.chatGroup.id })"
                       class="w-full flex items-center justify-between p-2 rounded-xl text-[10px] font-bold focus:outline-none transition-all"
                       :class="[
-                        focusedId === `expand-${element.chatGroup.id}`
+                        focusedId === `expand-${idToRaw({ id: element.chatGroup.id })}`
                           ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm'
                           : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50',
                         !isGroupCompactExpanded({ groupId: element.chatGroup.id }) ? 'bg-gradient-to-b from-transparent to-gray-50/30 dark:to-gray-800/20' : ''

@@ -341,7 +341,7 @@ defineExpose({
 
           <div class="flex items-center gap-1 shrink-0">
             <button
-              :data-testid="`volume-add-btn-${volume.id}`"
+              :data-testid="`volume-add-btn-${idToRaw({ id: volume.id })}`"
               @click="emit('add', { volumeId: volume.id, mountPath: generateDefaultPath({ baseName: volume.name }), readOnly: true })"
               class="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all font-bold text-[10px]"
             >

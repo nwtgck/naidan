@@ -25,7 +25,6 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { formatSettingsSourceLabel, type SettingsSource } from '@/utils/settings-labels';
 
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
-
 const ImageEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageEditor.vue') });
 const AdvancedTextEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AdvancedTextEditorV3.vue') });
 
@@ -218,6 +217,10 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
 const attachments = ref<Attachment[]>([]);
 const attachmentUrls = ref<Record<string, string>>({});
 
+// TODO: Remove this raw mirror once we find a way to expose branded IDs from
+// `defineExpose()` without triggering vue-tsc TS4023 on the generated public
+// surface (`__VLS_base` using `idBrand`). Internally this component should keep
+// branded IDs; only the TEST_ONLY exposed boundary is downgraded to raw strings.
 type TestOnlyAttachment =
   | (Omit<Extract<Attachment, { status: 'persisted' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string })
   | (Omit<Extract<Attachment, { status: 'memory' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string })

@@ -570,7 +570,7 @@ defineExpose({
               v-if="thumbnails[idToRaw({ id: obj.id })]"
               :src="thumbnails[idToRaw({ id: obj.id })]"
               class="w-full h-full object-contain transition-transform group-hover:scale-110"
-              :data-testid="`binary-thumbnail-${obj.id}`"
+              :data-testid="`binary-thumbnail-${idToRaw({ id: obj.id })}`"
             />
             <div v-else class="flex flex-col items-center gap-2 opacity-40">
               <EyeIcon v-if="obj.mimeType.startsWith('image/')" class="w-8 h-8 text-blue-500" />

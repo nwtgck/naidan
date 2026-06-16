@@ -1,7 +1,7 @@
 import { ref, computed, toRaw, triggerRef, type ComputedRef, type Ref } from 'vue';
 import type { Chat } from '@/models/types';
 import type { ChatId, MessageId, ToolCallId } from '@/models/ids';
-import type { LlmToolName, ToolCallRecord, ToolConfig } from '@/services/tools/types';
+import type { LlmToolName, TextOrBinaryObject, ToolCallRecord, ToolConfig } from '@/services/tools/types';
 import {
   isLlmToolEnabledInToolConfigs,
   isLlmToolName,
@@ -29,7 +29,7 @@ interface ChatToolsApi {
   updateToolCall: ({ messageId, toolCallId, update }: {
     messageId: MessageId;
     toolCallId: ToolCallId;
-    update: | { status: 'success'; result: { content: import('@/services/tools/types').TextOrBinaryObject } } | { status: 'error'; error: { message: import('@/services/tools/types').TextOrBinaryObject } }
+    update: | { status: 'success'; result: { content: TextOrBinaryObject } } | { status: 'error'; error: { message: TextOrBinaryObject } }
   }) => void;
   clearToolCallsForMessage: ({ messageId }: { messageId: MessageId }) => void;
   TEST_ONLY: {
@@ -219,7 +219,7 @@ export function useChatTools(): ChatToolsApi {
   const updateToolCall = ({ messageId, toolCallId, update }: {
     messageId: MessageId;
     toolCallId: ToolCallId;
-    update: | { status: 'success'; result: { content: import('@/services/tools/types').TextOrBinaryObject } } | { status: 'error'; error: { message: import('@/services/tools/types').TextOrBinaryObject } }
+    update: | { status: 'success'; result: { content: TextOrBinaryObject } } | { status: 'error'; error: { message: TextOrBinaryObject } }
   }) => {
     const current = _messageToolCalls.value.get(messageId);
     if (!current) return;
