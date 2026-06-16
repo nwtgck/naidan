@@ -7,6 +7,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { FolderIcon, FolderInputIcon, Loader2Icon } from 'lucide-vue-next';
 import VolumeCreator from './VolumeCreator.vue';
 import VolumeMountList from './VolumeMountList.vue';
+import type { VolumeId } from '@/models/ids';
 
 const volumes = ref<Volume[]>([]);
 const mounts = ref<Mount[]>([]);
@@ -37,9 +38,9 @@ async function loadData() {
 
 // --- VolumeCreator event handler ---
 
-async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
+async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId: VolumeId; mountPath: string; readOnly: boolean }) {
   try {
-    await storageService.mountVolume({ volumeId, mountPath, readOnly });
+    await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     await loadData();
   } catch (e) {
     addToast({ message: 'Failed to add folder' });
@@ -48,9 +49,9 @@ async function handleVolumeCreated({ volumeId, mountPath, readOnly }: { volumeId
 
 // --- VolumeMountList event handlers ---
 
-async function handleMountAdd({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
+async function handleMountAdd({ volumeId, mountPath, readOnly }: { volumeId: VolumeId; mountPath: string; readOnly: boolean }) {
   try {
-    await storageService.mountVolume({ volumeId, mountPath, readOnly });
+    await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     const vol = volumes.value.find(v => v.id === volumeId);
     if (vol) addToast({ message: `"${vol.name}" is now in use` });
     await loadData();
@@ -59,10 +60,10 @@ async function handleMountAdd({ volumeId, mountPath, readOnly }: { volumeId: str
   }
 }
 
-async function handleMountRemove({ volumeId }: { volumeId: string }) {
+async function handleMountRemove({ volumeId }: { volumeId: VolumeId }) {
   try {
     const vol = volumes.value.find(v => v.id === volumeId);
-    await storageService.unmountVolume({ volumeId });
+    await storageService.unmountVolume({ volumeId: volumeId });
     if (vol) addToast({ message: `"${vol.name}" is no longer in use` });
     await loadData();
   } catch (e) {
@@ -70,7 +71,7 @@ async function handleMountRemove({ volumeId }: { volumeId: string }) {
   }
 }
 
-async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: string; mountPath: string; readOnly: boolean }) {
+async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: VolumeId; mountPath: string; readOnly: boolean }) {
   try {
     const isCollision = mounts.value.some(m =>
       m.mountPath === mountPath && !(m.type === 'volume' && m.volumeId === volumeId)
@@ -79,8 +80,8 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
       addToast({ message: 'Mount path already in use' });
       return;
     }
-    await storageService.unmountVolume({ volumeId });
-    await storageService.mountVolume({ volumeId, mountPath, readOnly });
+    await storageService.unmountVolume({ volumeId: volumeId });
+    await storageService.mountVolume({ volumeId: volumeId, mountPath, readOnly });
     await loadData();
     addToast({ message: 'Path settings updated' });
 
@@ -88,7 +89,7 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
     if (volume) {
       switch (volume.type) {
       case 'host': {
-        const handle = await storageService.getVolumeDirectoryHandle({ volumeId });
+        const handle = await storageService.getVolumeDirectoryHandle({ volumeId: volumeId });
         if (handle) {
           const mode = readOnly ? 'read' : 'readwrite';
           // @ts-expect-error: File System Access API
@@ -117,9 +118,9 @@ async function handleMountUpdate({ volumeId, mountPath, readOnly }: { volumeId: 
   }
 }
 
-async function handleVolumeRename({ volumeId, name }: { volumeId: string; name: string }) {
+async function handleVolumeRename({ volumeId, name }: { volumeId: VolumeId; name: string }) {
   try {
-    await storageService.renameVolume({ volumeId, name });
+    await storageService.renameVolume({ volumeId: volumeId, name });
     await loadData();
   } catch (e) {
     console.error('Failed to rename volume:', e);
@@ -127,7 +128,7 @@ async function handleVolumeRename({ volumeId, name }: { volumeId: string; name: 
   }
 }
 
-async function handleVolumeDelete({ volumeId }: { volumeId: string }) {
+async function handleVolumeDelete({ volumeId }: { volumeId: VolumeId }) {
   const volume = volumes.value.find(v => v.id === volumeId);
   if (!volume) return;
 
@@ -167,8 +168,8 @@ async function handleVolumeDelete({ volumeId }: { volumeId: string }) {
   if (!confirmed) return;
 
   try {
-    await storageService.unmountVolume({ volumeId });
-    await storageService.deleteVolume({ volumeId });
+    await storageService.unmountVolume({ volumeId: volumeId });
+    await storageService.deleteVolume({ volumeId: volumeId });
     await loadData();
     addToast({ message: successMessage });
   } catch (e) {

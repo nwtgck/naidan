@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined'
+import { idToRaw } from '@/models/ids'
 import type { NaidanSysfsRemoteReader } from '@/services/wesh/naidan-sysfs/types'
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
@@ -186,8 +187,8 @@ export function mapWeshMountsToWorkerMounts({ mounts }: {
         storageType: mount.storageType,
         visibility: mount.visibility,
         binaryObjectAccess: mount.binaryObjectAccess,
-        currentChatId: mount.currentChatId,
-        currentChatGroupId: mount.currentChatGroupId,
+        currentChatId: idToRaw({ id: mount.currentChatId }),
+        currentChatGroupId: mount.currentChatGroupId === undefined ? undefined : idToRaw({ id: mount.currentChatGroupId }),
       }
     default: {
       const _ex: never = mount

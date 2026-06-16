@@ -1,3 +1,4 @@
+import { toChatGroupId, toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Comlink from 'comlink'
 
@@ -200,8 +201,8 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
         storageType: 'local',
         visibility: 'current_chat_only',
         binaryObjectAccess: 'data',
-        currentChatId: 'chat-1',
-        currentChatGroupId: 'chat-group-1',
+        currentChatId: toChatId({ raw: 'chat-1' }),
+        currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       }],
       user: 'user',
       initialEnv: {},
@@ -217,8 +218,8 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
           storageType: 'local',
           visibility: 'current_chat_only',
           binaryObjectAccess: 'data',
-          currentChatId: 'chat-1',
-          currentChatGroupId: 'chat-group-1',
+          currentChatId: toChatId({ raw: 'chat-1' }),
+          currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
         }],
       }),
       expect.objectContaining({

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
+import { idToRaw } from '@/models/ids';
 
 // Mock dependencies
 vi.mock('../services/storage', () => ({
@@ -101,7 +102,7 @@ describe('useChat Error Handling', () => {
       params.onChunk({ chunk: 'Success' });
     });
 
-    await regenerateMessage({ failedMessageId: failedMsg!.id });
+    await regenerateMessage({ failedMessageId: idToRaw({ id: failedMsg!.id }) });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for success retry
 
     // Should have a NEW assistant message at the end

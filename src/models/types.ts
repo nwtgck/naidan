@@ -7,6 +7,16 @@
  * inconsistencies.
  */
 import type { ToolConfig, ToolExecutionResult } from '@/services/tools/types';
+import type {
+  AttachmentId,
+  BinaryObjectId,
+  ChatGroupId,
+  ChatId,
+  MessageId,
+  ProviderProfileId,
+  ToolCallId,
+  VolumeId,
+} from '@/models/ids';
 
 // --- Domain Definitions (Business Logic Layer) ---
 
@@ -59,7 +69,7 @@ export type MultimodalContent =
   | { type: 'image_url'; image_url: { url: string } };
 
 export interface ToolCall {
-  id: string;
+  id: ToolCallId;
   type: 'function';
   function: {
     name: string;
@@ -71,12 +81,12 @@ export interface ChatMessage {
   role: string;
   content: string | MultimodalContent[];
   tool_calls?: ToolCall[];
-  tool_call_id?: string;
+  tool_call_id?: ToolCallId;
 }
 
 export interface AttachmentBase {
-  id: string;           // Attachment ID
-  binaryObjectId: string; // Pointer to the immutable Binary Object
+  id: AttachmentId; // Attachment ID
+  binaryObjectId: BinaryObjectId; // Pointer to the immutable Binary Object
   originalName: string;
   mimeType: string;
   size: number;
@@ -89,7 +99,7 @@ export type Attachment =
   | (AttachmentBase & { status: 'missing' });
 
 export type MessageNodeBase = {
-  id: string;
+  id: MessageId;
   content: string | undefined;
   timestamp: number;
   replies: MessageBranch;
@@ -150,18 +160,18 @@ export type MessageBranch = {
 };
 
 export interface CombinedToolCall {
-  id: string; // The toolCallId
-  nodeId: string; // The ToolMessageNode's ID
+  id: ToolCallId; // The toolCallId
+  nodeId: MessageId; // The ToolMessageNode's ID
   call: ToolCall;
   result: ToolExecutionResult;
 }
 
 export interface Chat {
-  id: string;
+  id: ChatId;
   title: string | null;
-  groupId?: string | null;
+  groupId?: ChatGroupId | null;
   root: MessageBranch;
-  currentLeafId?: string;
+  currentLeafId?: MessageId;
 
   createdAt: number;
   updatedAt: number;
@@ -175,8 +185,8 @@ export interface Chat {
   modelId?: string;
   autoTitleEnabled?: boolean;
   titleModelId?: string;
-  originChatId?: string;
-  originMessageId?: string;
+  originChatId?: ChatId;
+  originMessageId?: MessageId;
 
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
@@ -190,10 +200,10 @@ export interface Chat {
  * Used for sidebar listing and lightweight synchronization.
  */
 export interface ChatMeta {
-  id: string;
+  id: ChatId;
   title: string | null;
-  groupId?: string | null;
-  currentLeafId?: string;
+  groupId?: ChatGroupId | null;
+  currentLeafId?: MessageId;
   createdAt: number;
   updatedAt: number;
   debugEnabled: boolean;
@@ -201,8 +211,8 @@ export interface ChatMeta {
   modelId?: string;
   autoTitleEnabled?: boolean;
   titleModelId?: string;
-  originChatId?: string;
-  originMessageId?: string;
+  originChatId?: ChatId;
+  originMessageId?: MessageId;
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
   mounts?: Mount[];
@@ -215,7 +225,7 @@ export interface ChatMeta {
  */
 export interface ChatContent {
   root: MessageBranch;
-  currentLeafId?: string;
+  currentLeafId?: MessageId;
 }
 
 export type ChatSummary = Pick<Chat, 'id' | 'title' | 'updatedAt' | 'groupId'>;
@@ -224,7 +234,7 @@ export type ChatSidebarItem =
   | { id: string; type: 'chat'; chat: ChatSummary };
 
 export interface ChatGroup {
-  id: string;
+  id: ChatGroupId;
   name: string;
   isCollapsed: boolean;
   items: ChatSidebarItem[]; // Order is defined by array index
@@ -250,13 +260,13 @@ export type SidebarItem =
  */
 export interface HierarchyChatNode {
   type: 'chat';
-  id: string;
+  id: ChatId;
 }
 
 export interface HierarchyChatGroupNode {
   type: 'chat_group';
-  id: string;
-  chat_ids: string[];
+  id: ChatGroupId;
+  chat_ids: ChatId[];
 }
 
 export type HierarchyNode = HierarchyChatNode | HierarchyChatGroupNode;
@@ -266,7 +276,7 @@ export interface Hierarchy {
 }
 
 export interface BinaryObject {
-  id: string;
+  id: BinaryObjectId;
   mimeType: string;
   size: number;
   createdAt: number;
@@ -282,7 +292,7 @@ export interface BinaryObject {
 export type VolumeType = 'opfs' | 'host';
 
 export interface Volume {
-  id: string;
+  id: VolumeId;
   name: string;
   type: VolumeType;
   createdAt: number;
@@ -295,7 +305,7 @@ export interface MountBase {
 
 export interface MountVolume extends MountBase {
   type: 'volume';
-  volumeId: string;
+  volumeId: VolumeId;
 }
 
 /**
@@ -329,7 +339,7 @@ export interface StorageSnapshot {
  * but are NOT directly referenced during runtime request resolution.
  */
 export interface ProviderProfile {
-  id: string;
+  id: ProviderProfileId;
   name: string;
   endpointType: EndpointType;
   endpointUrl?: string;

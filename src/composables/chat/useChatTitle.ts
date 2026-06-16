@@ -2,6 +2,7 @@ import {
   abortTitleGenerationForChat,
   generateChatTitleForChat,
 } from '@/composables/chat/chat-scoped/chat-title-flow';
+import type { ChatId } from '@/models/ids';
 
 export type ChatTitleCommandsAdapter = {
   generateTitle({
@@ -9,7 +10,7 @@ export type ChatTitleCommandsAdapter = {
     titleModelIdOverride,
     signal,
   }: {
-    chatId: string;
+    chatId: ChatId;
     titleModelIdOverride: string | undefined;
     signal: AbortSignal | undefined;
   }): Promise<string | null | undefined>;
@@ -17,7 +18,7 @@ export type ChatTitleCommandsAdapter = {
   abortTitleGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   TEST_ONLY: Record<never, never>;
@@ -29,7 +30,7 @@ export function useChatTitle(): ChatTitleCommandsAdapter {
     titleModelIdOverride,
     signal,
   }: {
-    chatId: string;
+    chatId: ChatId;
     titleModelIdOverride: string | undefined;
     signal: AbortSignal | undefined;
   }): Promise<string | null | undefined> {
@@ -43,7 +44,7 @@ export function useChatTitle(): ChatTitleCommandsAdapter {
   function abortTitleGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void {
     abortTitleGenerationForChat({ chatId });
   }

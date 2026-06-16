@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import BinaryObjectsTab from './BinaryObjectsTab.vue';
 import { storageService } from '@/services/storage';
 import type { BinaryObject } from '@/models/types';
+import { idToRaw, toBinaryObjectId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -116,7 +117,7 @@ vi.spyOn(document, 'createElement').mockImplementation((tag) => {
 // --- Test Data ---
 
 const mockObjects: BinaryObject[] = Array.from({ length: 150 }, (_, i) => ({
-  id: `${i + 1}`,
+  id: toBinaryObjectId({ raw: `${i + 1}` }),
   name: `file${i + 1}.png`,
   mimeType: 'image/png',
   size: 1024,
@@ -198,7 +199,7 @@ describe('BinaryObjectsTab.vue', () => {
     // itemObserver is the second one
     const itemObserver = observerInstances[1];
     const firstRowId = mockObjects[149]!.id; // Sorted desc, so 150 is first
-    const firstRow = wrapper.get(`[data-testid="binary-object-row-${firstRowId}"]`);
+    const firstRow = wrapper.get('[data-testid="binary-object-row-' + idToRaw({ id: firstRowId }) + '"]');
 
     itemObserver?.trigger([{ isIntersecting: true, target: firstRow.element as HTMLElement }]);
 
@@ -206,7 +207,7 @@ describe('BinaryObjectsTab.vue', () => {
     vi.advanceTimersByTime(100); // Semaphore + Idle
     await flushPromises();
 
-    expect(wrapper.find(`[data-testid="binary-thumbnail-${firstRowId}"]`).exists()).toBe(true);
+    expect(wrapper.find('[data-testid="binary-thumbnail-' + idToRaw({ id: firstRowId }) + '"]').exists()).toBe(true);
   });
 
   it('cleans up thumbnails from memory when off-screen and limit exceeded', async () => {
@@ -248,9 +249,9 @@ describe('BinaryObjectsTab.vue', () => {
 
   it('sorts objects by name', async () => {
     vi.mocked(storageService.listBinaryObjects).mockReturnValue(mockAsyncIterable([
-      { id: '1', name: 'c.png', mimeType: 'image/png', size: 1024, createdAt: 1000 },
-      { id: '2', name: 'a.png', mimeType: 'image/png', size: 1024, createdAt: 1001 },
-      { id: '3', name: 'b.png', mimeType: 'image/png', size: 1024, createdAt: 1002 },
+      { id: toBinaryObjectId({ raw: '1' }), name: 'c.png', mimeType: 'image/png', size: 1024, createdAt: 1000 },
+      { id: toBinaryObjectId({ raw: '2' }), name: 'a.png', mimeType: 'image/png', size: 1024, createdAt: 1001 },
+      { id: toBinaryObjectId({ raw: '3' }), name: 'b.png', mimeType: 'image/png', size: 1024, createdAt: 1002 },
     ]) as any);
 
     const wrapper = mount(BinaryObjectsTab, { global: { stubs: globalStubs } });

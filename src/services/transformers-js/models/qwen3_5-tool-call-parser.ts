@@ -1,5 +1,7 @@
 import type { ToolCall } from '@/models/types';
 import { z } from 'zod';
+import type { ToolCallId } from '@/models/ids';
+import { generateId } from '@/utils/id';
 
 const TOOL_CALL_OPEN = '<tool_call>';
 const TOOL_CALL_CLOSE = '</tool_call>';
@@ -14,7 +16,7 @@ function buildToolCall({ name, parameters }: {
   parameters: Record<string, unknown>;
 }): ToolCall {
   return {
-    id: `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    id: generateId<ToolCallId>(),
     type: 'function',
     function: {
       name,

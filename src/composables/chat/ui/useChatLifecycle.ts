@@ -1,5 +1,6 @@
 import { reactive, toRaw } from 'vue';
 import { generateId } from '@/utils/id';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 import type { Chat, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useChatTools } from '@/composables/useChatTools';
@@ -33,7 +34,7 @@ export type ChatLifecycleAdapter = {
     modelId,
     systemPrompt,
   }: {
-    groupId: string | undefined;
+    groupId: ChatGroupId | undefined;
     modelId: string | undefined;
     systemPrompt: SystemPrompt | undefined;
   }): Promise<Chat | null>;
@@ -42,7 +43,7 @@ export type ChatLifecycleAdapter = {
     id,
     injectAddToast,
   }: {
-    id: string;
+    id: ChatId;
     injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }): Promise<void>;
 
@@ -61,7 +62,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     modelId,
     systemPrompt,
   }: {
-    groupId: string | undefined;
+    groupId: ChatGroupId | undefined;
     modelId: string | undefined;
     systemPrompt: SystemPrompt | undefined;
   }): Promise<Chat | null> {
@@ -71,7 +72,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
     currentChatGroupRef.value = null;
     creatingChat.value = true;
-    const chatId = generateId();
+    const chatId = generateId<ChatId>();
 
     try {
       const chat: Chat = reactive({
@@ -123,7 +124,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     id,
     injectAddToast,
   }: {
-    id: string;
+    id: ChatId;
     injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }): Promise<void> {
     const chat = await storageService.loadChat({ id });

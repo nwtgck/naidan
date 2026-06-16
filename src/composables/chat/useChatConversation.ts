@@ -1,4 +1,5 @@
 import type { Attachment, LmParameters } from '@/models/types';
+import type { ChatId, MessageId } from '@/models/ids';
 import { abortProcessingForChat } from '@/composables/chat/chat-scoped/chat-processing-abort';
 import {
   regenerateMessageForChat,
@@ -13,9 +14,9 @@ export type ChatConversationAdapter = {
     attachments,
     lmParameters,
   }: {
-    chatId: string;
+    chatId: ChatId;
     content: string;
-    parentId: string | null | undefined;
+    parentId: MessageId | null | undefined;
     attachments: Attachment[] | undefined;
     lmParameters: LmParameters | undefined;
   }): Promise<boolean>;
@@ -24,14 +25,14 @@ export type ChatConversationAdapter = {
     chatId,
     failedMessageId,
   }: {
-    chatId: string;
-    failedMessageId: string;
+    chatId: ChatId;
+    failedMessageId: MessageId;
   }): Promise<void>;
 
   abort({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   TEST_ONLY: Record<never, never>;
@@ -45,9 +46,9 @@ export function useChatConversation(): ChatConversationAdapter {
     attachments,
     lmParameters,
   }: {
-    chatId: string;
+    chatId: ChatId;
     content: string;
-    parentId: string | null | undefined;
+    parentId: MessageId | null | undefined;
     attachments: Attachment[] | undefined;
     lmParameters: LmParameters | undefined;
   }): Promise<boolean> {
@@ -64,8 +65,8 @@ export function useChatConversation(): ChatConversationAdapter {
     chatId,
     failedMessageId,
   }: {
-    chatId: string;
-    failedMessageId: string;
+    chatId: ChatId;
+    failedMessageId: MessageId;
   }): Promise<void> {
     await regenerateMessageForChat({
       chatId,
@@ -76,7 +77,7 @@ export function useChatConversation(): ChatConversationAdapter {
   function abort({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     abortProcessingForChat({
       chatId,

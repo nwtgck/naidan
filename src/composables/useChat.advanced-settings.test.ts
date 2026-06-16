@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { reactive } from 'vue';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
+import { idToRaw } from '@/models/ids';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { storageService } from '@/services/storage';
 
@@ -84,7 +85,7 @@ describe('useChat Advanced Settings Resolution', () => {
     mockOllamaChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'Ollama Resp' }));
 
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    await openChat({ id: chat!.id });
+    await openChat({ id: idToRaw({ id: chat!.id }) });
   });
 
   describe('System Prompt Resolution', () => {
@@ -115,7 +116,7 @@ describe('useChat Advanced Settings Resolution', () => {
     });
 
     it('overrides with Chat System Prompt when behavior is override', async () => {
-      await updateChatSettings({ id: currentChat.value!.id, updates: { systemPrompt: { content: 'Chat Custom Prompt', behavior: 'override' } } });
+      await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { systemPrompt: { content: 'Chat Custom Prompt', behavior: 'override' } } });
 
       await sendMessage({ content: 'Hi' });
       const params = mockOpenAIChat.mock.calls[0]![0];
@@ -135,7 +136,7 @@ describe('useChat Advanced Settings Resolution', () => {
           systemPrompt: 'Profile Prompt',
         } as any],
       } });
-      await updateChatSettings({ id: currentChat.value!.id, updates: { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } } });
+      await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { systemPrompt: { content: 'Chat Extra Prompt', behavior: 'append' } } });
 
       await sendMessage({ content: 'Hi' });
       const params = mockOpenAIChat.mock.calls[0]![0];
@@ -172,7 +173,7 @@ describe('useChat Advanced Settings Resolution', () => {
         } as any],
       } });
 
-      await updateChatSettings({ id: currentChat.value!.id, updates: {
+      await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: {
         lmParameters: {
           ...EMPTY_LM_PARAMETERS,
           maxCompletionTokens: 500,
@@ -199,7 +200,7 @@ describe('useChat Advanced Settings Resolution', () => {
 
   describe('Stop Sequences Handling', () => {
     it('passes stop sequences as array', async () => {
-      await updateChatSettings({ id: currentChat.value!.id, updates: { lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['\n', 'User:'], reasoning: { effort: undefined } } } });
+      await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { lmParameters: { ...EMPTY_LM_PARAMETERS, stop: ['\n', 'User:'], reasoning: { effort: undefined } } } });
       await sendMessage({ content: 'Hi' });
       const callParams = mockOpenAIChat.mock.calls[0]![0];
       const params = callParams.parameters;
@@ -213,7 +214,7 @@ describe('useChat Advanced Settings Resolution', () => {
     it('should NOT leak lmParameters from Chat A to Chat B when switching', async () => {
       // 1. Create Chat A and set custom params
       const chatA = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-      await openChat({ id: chatA!.id });
+      await openChat({ id: idToRaw({ id: chatA!.id }) });
 
       // Update with reasoning effort
       const chatAObj = {
@@ -233,7 +234,7 @@ describe('useChat Advanced Settings Resolution', () => {
       const chatB = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
 
       // Once we open B, it should be clean
-      await openChat({ id: chatB!.id });
+      await openChat({ id: idToRaw({ id: chatB!.id }) });
 
       // Verify Chat B uses defaults (global settings), not Chat A's values
       expect(currentChat.value?.lmParameters?.temperature).toBeUndefined();
@@ -265,7 +266,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
       lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: undefined } },
     } });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    await openChat({ id: chat!.id });
+    await openChat({ id: idToRaw({ id: chat!.id }) });
   });
 
   it('stores endpoint as a nested object so it survives a page reload', async () => {
@@ -281,7 +282,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     // Return the live chat so the updater receives a valid object.
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
 
-    await updateChatSettings({ id: currentChat.value!.id, updates: {
+    await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: {
       endpointType: 'openai',
       endpointUrl: 'http://chat-specific-url',
       endpointHttpHeaders: [['Authorization', 'Bearer secret']],
@@ -315,7 +316,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     // First updateChatMeta is from updateChatSettings — just let it resolve.
     vi.mocked(storageService.updateChatMeta).mockImplementationOnce(({ updater: _updater }) => Promise.resolve(undefined as any));
 
-    await updateChatSettings({ id: currentChat.value!.id, updates: {
+    await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: {
       endpointType: 'openai',
       endpointUrl: 'http://chat-specific-url',
       endpointHttpHeaders: [['Authorization', 'Bearer secret']],
@@ -335,7 +336,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     // carries the endpoint as flat fields (endpointType / endpointUrl / etc.).
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
 
-    await renameChat({ id: currentChat.value!.id, newTitle: 'New Title' });
+    await renameChat({ id: idToRaw({ id: currentChat.value!.id }), newTitle: 'New Title' });
 
     expect(capturedStorageUpdater).toBeDefined();
 
@@ -363,7 +364,7 @@ describe('Chat Specific Overrides - Endpoint Persistence', () => {
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(currentChat.value as any);
 
     // Omitting endpointType means no chat-specific endpoint override.
-    await updateChatSettings({ id: currentChat.value!.id, updates: { modelId: 'custom-model' } });
+    await updateChatSettings({ id: idToRaw({ id: currentChat.value!.id }), updates: { modelId: 'custom-model' } });
 
     const existingMeta = { id: currentChat.value!.id, title: null, createdAt: 0, updatedAt: 0, debugEnabled: false };
     const saved = await capturedStorageUpdater!({ current: existingMeta }) as Record<string, unknown>;

@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextCompactRuntime } from './context-compact-runtime';
 
@@ -12,7 +13,7 @@ describe('createContextCompactRuntime', () => {
       const runtime = createContextCompactRuntime();
 
       runtime.setProgress({
-        chatId: 'chat-compact',
+        chatId: toChatId({ raw: 'chat-compact' }),
         progress: {
           phase: 'complete',
           requestPreview: undefined,
@@ -20,7 +21,7 @@ describe('createContextCompactRuntime', () => {
         },
       });
 
-      expect(runtime.getProgress({ chatId: 'chat-compact' })).toEqual({
+      expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
         phase: 'complete',
         requestPreview: undefined,
         outputPreview: '# Compact Context',
@@ -28,7 +29,7 @@ describe('createContextCompactRuntime', () => {
 
       await vi.advanceTimersByTimeAsync(399);
 
-      expect(runtime.getProgress({ chatId: 'chat-compact' })).toEqual({
+      expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
         phase: 'complete',
         requestPreview: undefined,
         outputPreview: '# Compact Context',
@@ -36,7 +37,7 @@ describe('createContextCompactRuntime', () => {
 
       await vi.advanceTimersByTimeAsync(1);
 
-      expect(runtime.getProgress({ chatId: 'chat-compact' })).toEqual({
+      expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
         phase: 'idle',
       });
     } finally {
@@ -50,7 +51,7 @@ describe('createContextCompactRuntime', () => {
       const runtime = createContextCompactRuntime();
 
       runtime.setProgress({
-        chatId: 'chat-compact',
+        chatId: toChatId({ raw: 'chat-compact' }),
         progress: {
           phase: 'complete',
           requestPreview: undefined,
@@ -58,7 +59,7 @@ describe('createContextCompactRuntime', () => {
         },
       });
       runtime.setProgress({
-        chatId: 'chat-compact',
+        chatId: toChatId({ raw: 'chat-compact' }),
         progress: {
           phase: 'building_request',
           compactedMessageCount: 4,
@@ -69,7 +70,7 @@ describe('createContextCompactRuntime', () => {
 
       await vi.advanceTimersByTimeAsync(400);
 
-      expect(runtime.getProgress({ chatId: 'chat-compact' })).toEqual({
+      expect(runtime.getProgress({ chatId: toChatId({ raw: 'chat-compact' }) })).toEqual({
         phase: 'building_request',
         compactedMessageCount: 4,
         suffixMessageCount: 2,

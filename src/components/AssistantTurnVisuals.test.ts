@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import { h } from 'vue';
@@ -5,6 +6,7 @@ import MessageItem from './MessageItem.vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import ToolCallGroupItem from './ToolCallGroupItem.vue';
 import { generateId } from '@/utils/id';
+import type { MessageId } from '@/models/ids';
 import type { MessageNode } from '@/models/types';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
@@ -15,7 +17,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });
@@ -41,7 +43,7 @@ describe('Assistant Turn Visual Logic', () => {
    * Swift-style helper to create a base node.
    */
   const createBaseNode = ({ role, modelId }: { role: 'user' | 'assistant' | 'tool', modelId?: string }): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role,
     content: '',
     timestamp: Date.now(),

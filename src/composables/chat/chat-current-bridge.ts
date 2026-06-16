@@ -1,5 +1,6 @@
 import { computed, readonly, toRaw, triggerRef, type ComputedRef, type Ref } from 'vue';
 import type { Chat, ChatGroup } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 
 export type ChatCurrentBridge = {
   currentChat: ComputedRef<Chat | null>;
@@ -7,24 +8,24 @@ export type ChatCurrentBridge = {
 
   getCurrentChat(): Chat | null;
 
-  getCurrentChatId(): string | null;
+  getCurrentChatId(): ChatId | null;
 
   getChatTargetById({
     id,
   }: {
-    id: string;
+    id: ChatId;
   }): Chat | null;
 
   getChatTargetByOptionalId({
     chatId,
   }: {
-    chatId: string | undefined;
+    chatId: ChatId | undefined;
   }): Chat | null;
 
   triggerCurrentChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 };
 
@@ -36,7 +37,7 @@ export function createChatCurrentBridge({
 }: {
   currentChatRef: Ref<Chat | null>;
   currentChatGroupRef: Ref<ChatGroup | null>;
-  liveChatRegistry: Map<string, Chat>;
+  liveChatRegistry: Map<ChatId, Chat>;
   getLiveChat: ({ chat }: { chat: Chat }) => Chat;
 }): ChatCurrentBridge {
   const currentChat = computed(() => currentChatRef.value ? readonly(currentChatRef.value) as Chat : null);
@@ -59,7 +60,7 @@ export function createChatCurrentBridge({
   function getChatTargetById({
     id,
   }: {
-    id: string;
+    id: ChatId;
   }) {
     const liveChat = liveChatRegistry.get(id);
     if (liveChat) return liveChat;
@@ -72,7 +73,7 @@ export function createChatCurrentBridge({
   function getChatTargetByOptionalId({
     chatId,
   }: {
-    chatId: string | undefined;
+    chatId: ChatId | undefined;
   }) {
     if (chatId) {
       return liveChatRegistry.get(chatId) || null;
@@ -83,7 +84,7 @@ export function createChatCurrentBridge({
   function triggerCurrentChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
       triggerRef(currentChatRef);

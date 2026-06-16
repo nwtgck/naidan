@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
@@ -7,6 +8,7 @@ import type { AssistantMessageNode, CombinedToolCall } from '@/models/types';
 import { ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
+import type { MessageId, ToolCallId } from '@/models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -16,7 +18,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });
@@ -31,7 +33,7 @@ vi.mock('../composables/useSettings', () => ({
 
 describe('AI Sequence Design', () => {
   const createAssistantMessage = (content: string): AssistantMessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'assistant',
     content,
     timestamp: Date.now(),
@@ -40,14 +42,14 @@ describe('AI Sequence Design', () => {
 
   const createToolCalls = (names: string[]): CombinedToolCall[] => {
     return names.map(name => ({
-      id: generateId(),
-      nodeId: generateId(),
+      id: generateId<ToolCallId>(),
+      nodeId: generateId<MessageId>(),
       call: {
-        id: generateId(),
+        id: generateId<ToolCallId>(),
         type: 'function',
         function: { name, arguments: '{}' }
       },
-      result: { toolCallId: '', status: 'success', content: { type: 'text', text: 'ok' } }
+      result: { toolCallId: generateId<ToolCallId>(), status: 'success', content: { type: 'text', text: 'ok' } }
     }));
   };
 

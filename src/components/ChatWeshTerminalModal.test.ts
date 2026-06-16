@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import ChatWeshTerminalModal from './ChatWeshTerminalModal.vue';
+import { toChatGroupId, toChatId, toVolumeId } from '@/models/ids';
 
 const mocks = vi.hoisted(() => ({
   startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
@@ -17,9 +18,7 @@ const mocks = vi.hoisted(() => ({
   ensureChatTmpDirectory: vi.fn(),
   settingsValue: {
     storageType: 'opfs' as 'opfs' | 'local' | 'memory',
-    mounts: [
-      { type: 'volume', volumeId: 'global-vol', mountPath: '/home/user/global', readOnly: true },
-    ],
+    mounts: [] as Array<{ type: 'volume'; volumeId: unknown; mountPath: string; readOnly: boolean }>,
   },
 }));
 
@@ -73,7 +72,7 @@ describe('ChatWeshTerminalModal', () => {
     vi.clearAllMocks();
     mocks.settingsValue.storageType = 'opfs';
     mocks.settingsValue.mounts = [
-      { type: 'volume', volumeId: 'global-vol', mountPath: '/home/user/global', readOnly: true },
+      { type: 'volume', volumeId: toVolumeId({ raw: 'global-vol' }), mountPath: '/home/user/global', readOnly: true },
     ];
     mocks.showConfirm.mockResolvedValue(true);
     mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
@@ -99,7 +98,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('creates a session with /tmp, global, and chat mounts', async () => {
     const chatMounts = [
-      { type: 'volume' as const, volumeId: 'chat-vol', mountPath: '/home/user/chat', readOnly: false },
+      { type: 'volume' as const, volumeId: toVolumeId({ raw: 'chat-vol' }), mountPath: '/home/user/chat', readOnly: false },
     ];
 
     mount(ChatWeshTerminalModal, {
@@ -107,14 +106,14 @@ describe('ChatWeshTerminalModal', () => {
         isOpen: true,
         chatMounts,
         chatGroupMounts: undefined,
-        chatId: 'chat-1',
-        chatGroupId: 'chat-group-1',
+        chatId: toChatId({ raw: 'chat-1' }),
+        chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
         naidanSysfsAccessScope: 'main_chats',
       },
     });
     await flushPromises();
 
-    expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
     expect(mocks.createClient).toHaveBeenCalledWith(expect.objectContaining({
       mounts: expect.arrayContaining([
         expect.objectContaining({ path: '/tmp', handle: tmpHandle, readOnly: false }),
@@ -151,8 +150,8 @@ describe('ChatWeshTerminalModal', () => {
         isOpen: true,
         chatMounts: [],
         chatGroupMounts: undefined,
-        chatId: 'chat-1',
-        chatGroupId: 'chat-group-1',
+        chatId: toChatId({ raw: 'chat-1' }),
+        chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
         naidanSysfsAccessScope: 'current_chat_only',
       },
     });

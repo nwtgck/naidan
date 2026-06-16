@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
 import type { MessageNode } from '@/models/types';
+import { toMessageId, toChatId } from '@/models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -11,7 +12,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });
@@ -22,7 +23,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
 
 describe('MessageItem Copy Protection', () => {
   const createMessage = (content: string, thinking?: string): MessageNode => ({
-    id: 'test-id',
+    id: toMessageId({ raw: 'test-id' }),
     role: 'assistant',
     content,
     thinking,

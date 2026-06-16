@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { LLMProvider } from '@/services/lm/types';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
+import type { ToolCallId } from '@/models/ids';
 import { transformersJsService } from './index';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
@@ -15,10 +16,10 @@ export class TransformersJsProvider implements LLMProvider {
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: ({ id, event }: { id: string; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: ToolCallId; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
     onToolResult?: ({ id, result }: {
-      id: string;
+      id: ToolCallId;
       result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;

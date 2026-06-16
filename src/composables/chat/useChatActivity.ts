@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { ContextCompactProgress } from '@/services/context-compact';
+import type { ChatId } from '@/models/ids';
 import {
   getChatContextCompactProgress,
   isChatGeneratingTitle,
@@ -19,7 +20,7 @@ export type ChatActivityAdapter = {
 export function useChatActivity({
   chatId,
 }: {
-  chatId: Readonly<Ref<string>>;
+  chatId: Readonly<Ref<ChatId>>;
 }): ChatActivityAdapter {
   const isProcessingState = computed(() => {
     return isChatProcessing({

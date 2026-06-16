@@ -1,6 +1,7 @@
 import type { Ref } from 'vue';
 import type { Chat, ChatGroup } from '@/models/types';
 import type { ContextCompactProgress } from '@/services/context-compact';
+import type { ChatId } from '@/models/ids';
 
 export type ChatTestSupport = {
   __testOnlySetCurrentChat({
@@ -19,7 +20,7 @@ export type ChatTestSupport = {
     chatId,
     progress,
   }: {
-    chatId: string;
+    chatId: ChatId;
     progress: ContextCompactProgress;
   }): void;
 
@@ -40,7 +41,7 @@ export function createChatTestSupport({
     chatId,
     progress,
   }: {
-    chatId: string;
+    chatId: ChatId;
     progress: ContextCompactProgress;
   }) => void;
   clearLiveChatRegistryImpl: () => void;
@@ -68,7 +69,7 @@ export function createChatTestSupport({
     chatId,
     progress,
   }: {
-    chatId: string;
+    chatId: ChatId;
     progress: ContextCompactProgress;
   }) {
     setContextCompactProgress({

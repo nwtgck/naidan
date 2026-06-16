@@ -1,4 +1,5 @@
 import type { Chat, MessageNode } from '@/models/types'
+import type { MessageId } from '@/models/ids'
 
 export function renderLeafMetadataJson({
   chat,
@@ -6,7 +7,7 @@ export function renderLeafMetadataJson({
   nodes,
 }: {
   chat: Chat;
-  leafId: string;
+  leafId: MessageId;
   nodes: MessageNode[];
 }): string {
   return JSON.stringify({

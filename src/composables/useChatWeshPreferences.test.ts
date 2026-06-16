@@ -3,6 +3,8 @@ import { reactive } from 'vue';
 import { useChatWeshPreferences } from './useChatWeshPreferences';
 import { useChatTools } from './useChatTools';
 import type { Chat } from '@/models/types';
+import type { ChatId } from '@/models/ids';
+import { toChatId } from '@/models/ids';
 import { currentChatRef, liveChatRegistry } from '@/composables/chat/global/chat-core-singletons';
 import { useSettings } from './useSettings';
 import { storageService } from '@/services/storage';
@@ -45,7 +47,7 @@ describe('useChatWeshPreferences', () => {
     id,
     toolConfigs,
   }: {
-    id: string;
+    id: ChatId;
     toolConfigs?: Chat['toolConfigs'];
   }): Chat {
     return reactive({
@@ -61,17 +63,17 @@ describe('useChatWeshPreferences', () => {
 
   it('defaults to none when a chat has no explicit selection', () => {
     const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
-    expect(getNaidanSysfsAccessScope({ chatId: 'chat-1' })).toBe('none');
+    expect(getNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }) })).toBe('none');
   });
 
   it('stores access scope per chat in memory', () => {
     const { getNaidanSysfsAccessScope, setNaidanSysfsAccessScope } = useChatWeshPreferences();
 
-    setNaidanSysfsAccessScope({ chatId: 'chat-1', accessScope: 'current_chat_only' });
-    setNaidanSysfsAccessScope({ chatId: 'chat-2', accessScope: 'main_chats' });
+    setNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }), accessScope: 'current_chat_only' });
+    setNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-2' }), accessScope: 'main_chats' });
 
-    expect(getNaidanSysfsAccessScope({ chatId: 'chat-1' })).toBe('current_chat_only');
-    expect(getNaidanSysfsAccessScope({ chatId: 'chat-2' })).toBe('main_chats');
+    expect(getNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }) })).toBe('current_chat_only');
+    expect(getNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-2' }) })).toBe('main_chats');
   });
 
   it('returns none when chatId is undefined', () => {
@@ -81,22 +83,22 @@ describe('useChatWeshPreferences', () => {
 
   it('uses a runtime overlay before persisted live chat toolConfigs', () => {
     const { getNaidanSysfsAccessScope, setNaidanSysfsAccessScope } = useChatWeshPreferences();
-    setNaidanSysfsAccessScope({ chatId: 'chat-1', accessScope: 'main_chats' });
-    liveChatRegistry.set('chat-1', createTestChat({ id: 'chat-1', toolConfigs: undefined }));
+    setNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }), accessScope: 'main_chats' });
+    liveChatRegistry.set(toChatId({ raw: 'chat-1' }), createTestChat({ id: toChatId({ raw: 'chat-1' }), toolConfigs: undefined }));
 
-    expect(getNaidanSysfsAccessScope({ chatId: 'chat-1' })).toBe('main_chats');
+    expect(getNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }) })).toBe('main_chats');
   });
 
   it('updates the runtime overlay without mutating live chat metadata when persistence is disabled', () => {
     const { getNaidanSysfsAccessScope, setNaidanSysfsAccessScope } = useChatWeshPreferences();
-    const chat = createTestChat({ id: 'chat-1', toolConfigs: undefined });
-    liveChatRegistry.set('chat-1', chat);
+    const chat = createTestChat({ id: toChatId({ raw: 'chat-1' }), toolConfigs: undefined });
+    liveChatRegistry.set(toChatId({ raw: 'chat-1' }), chat);
 
-    setNaidanSysfsAccessScope({ chatId: 'chat-1', accessScope: 'current_chat_only' });
+    setNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }), accessScope: 'current_chat_only' });
 
-    expect(getNaidanSysfsAccessScope({ chatId: 'chat-1' })).toBe('current_chat_only');
+    expect(getNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }) })).toBe('current_chat_only');
     expect(chat.toolConfigs).toBeUndefined();
-    expect(useChatTools().TEST_ONLY._runtimeToolConfigsByChat.value.get('chat-1')).toEqual([{
+    expect(useChatTools().TEST_ONLY._runtimeToolConfigsByChat.value.get(toChatId({ raw: 'chat-1' }))).toEqual([{
       key: 'builtin.wesh',
       naidanSysfs: {
         accessScope: 'current_chat_only',
@@ -108,10 +110,10 @@ describe('useChatWeshPreferences', () => {
   it('persists access scope into chat metadata when persistence is enabled', () => {
     setToolConfigPersistence({ persistence: 'enabled' });
     const { setNaidanSysfsAccessScope } = useChatWeshPreferences();
-    const chat = createTestChat({ id: 'chat-1', toolConfigs: undefined });
-    liveChatRegistry.set('chat-1', chat);
+    const chat = createTestChat({ id: toChatId({ raw: 'chat-1' }), toolConfigs: undefined });
+    liveChatRegistry.set(toChatId({ raw: 'chat-1' }), chat);
 
-    setNaidanSysfsAccessScope({ chatId: 'chat-1', accessScope: 'current_chat_only' });
+    setNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }), accessScope: 'current_chat_only' });
 
     expect(chat.toolConfigs).toEqual([{
       key: 'builtin.wesh',
@@ -120,7 +122,7 @@ describe('useChatWeshPreferences', () => {
       },
     }]);
     expect(storageService.updateChatMeta).toHaveBeenCalledWith({
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       updater: expect.any(Function),
     });
   });

@@ -4,6 +4,7 @@ import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat, ChatGroup, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { MigrationChunkDto } from '@/models/dto';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -89,9 +90,9 @@ vi.stubGlobal('navigator', { storage: mockNavigatorStorage });
 
 // --- Test Data ---
 const mockChat: Chat = {
-  id: '123e4567-e89b-12d3-a456-426614174000',
+  id: toChatId({ raw: '123e4567-e89b-12d3-a456-426614174000' }),
   title: 'Test Chat',
-  groupId: '987fcdeb-51a2-43d1-9456-426614174000',
+  groupId: toChatGroupId({ raw: '987fcdeb-51a2-43d1-9456-426614174000' }),
   root: { items: [] },
   createdAt: Date.now(),
   updatedAt: Date.now(),
@@ -110,7 +111,7 @@ const mockChat: Chat = {
 };
 
 const mockChatGroup: ChatGroup = {
-  id: '987fcdeb-51a2-43d1-9456-426614174000',
+  id: toChatGroupId({ raw: '987fcdeb-51a2-43d1-9456-426614174000' }),
   name: 'Test Group',
   updatedAt: Date.now(),
   items: [],
@@ -157,7 +158,7 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.saveChatMeta({ meta: mockChat });
     await provider.saveHierarchy({ hierarchy: {
       items: [
-        { type: 'chat_group', id: mockChatGroup.id, chat_ids: [mockChat.id] }
+        { type: 'chat_group', id: idToRaw({ id: mockChatGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] }
       ]
     } });
 

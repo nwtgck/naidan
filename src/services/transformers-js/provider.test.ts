@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import type { ToolCall } from '@/models/types';
+import { toToolCallId } from '@/models/ids';
 
 // Mock the service
 const mockService = {
@@ -114,7 +115,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_1',
+        id: toToolCallId({ raw: 'call_1' }),
         type: 'function',
         function: { name: 'my_tool', arguments: '{"input":"hello"}' },
       };
@@ -155,7 +156,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_unknown',
+        id: toToolCallId({ raw: 'call_unknown' }),
         type: 'function',
         function: { name: 'nonexistent_tool', arguments: '{}' },
       };
@@ -189,7 +190,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_bad_json',
+        id: toToolCallId({ raw: 'call_bad_json' }),
         type: 'function',
         function: { name: 'my_tool', arguments: 'not valid json' },
       };
@@ -225,7 +226,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_err',
+        id: toToolCallId({ raw: 'call_err' }),
         type: 'function',
         function: { name: 'failing_tool', arguments: '{"input":"x"}' },
       };
@@ -260,7 +261,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_abort',
+        id: toToolCallId({ raw: 'call_abort' }),
         type: 'function',
         function: { name: 'my_tool', arguments: '{"input":"x"}' },
       };

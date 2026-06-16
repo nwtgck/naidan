@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),
@@ -24,8 +25,8 @@ vi.mock('../composables/useChat', () => ({
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${idToRaw({ id: g.id })}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${idToRaw({ id: c.id })}`, type: 'chat', chat: c }));
       return items;
     }),
     openChatGroup: vi.fn(({ id }) => {
@@ -57,8 +58,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     chatGroups: computed(() => mockChatGroups.value),
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${idToRaw({ id: g.id })}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${idToRaw({ id: c.id })}`, type: 'chat', chat: c }));
       return items;
     }),
     TEST_ONLY: {},
@@ -69,7 +70,7 @@ vi.mock('../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: () => ({
     openChat: ({ chatId }: { chatId: string; leafId?: string }) => {
       mockCurrentChatGroup.value = null;
-      mockCurrentChat.value = mockChats.value.find(c => c.id === chatId) ?? null;
+      mockCurrentChat.value = mockChats.value.find(c => idToRaw({ id: c.id }) === chatId) ?? null;
     },
     openChatAtMessage: vi.fn(),
     openChatGroup: ({ groupId }: { groupId: string | null }) => {
@@ -77,7 +78,7 @@ vi.mock('../composables/chat/ui/useChatNavigation', () => ({
         mockCurrentChatGroup.value = null;
         return;
       }
-      mockCurrentChatGroup.value = mockChatGroups.value.find(g => g.id === groupId) ?? null;
+      mockCurrentChatGroup.value = mockChatGroups.value.find(g => idToRaw({ id: g.id }) === groupId) ?? null;
     },
     TEST_ONLY: {},
   }),
@@ -136,10 +137,10 @@ describe('Sidebar Selection State', () => {
 
   beforeEach(() => {
     mockChatGroups.value = [
-      { id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
     ];
     mockChats.value = [
-      { id: 'c1', title: 'Chat 1', updatedAt: 0 }
+      { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 }
     ];
     mockCurrentChat.value = null;
     mockCurrentChatGroup.value = null;

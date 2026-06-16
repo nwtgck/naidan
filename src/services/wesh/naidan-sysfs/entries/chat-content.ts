@@ -1,4 +1,6 @@
 import type { MessageNode } from '@/models/types'
+import { idToRaw } from '@/models/ids'
+import type { ChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import { getChatBranchIterator } from '@/utils/chat-tree'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
@@ -31,7 +33,7 @@ function createMessageFileName({ index, node, format }: {
     }
     }
   })()
-  return `${index + 1}-${node.role}-${node.id}.${extension}`
+  return `${index + 1}-${node.role}-${idToRaw({ id: node.id })}.${extension}`
 }
 
 async function* loadBranchNodes({
@@ -40,7 +42,7 @@ async function* loadBranchNodes({
   path,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   path: string;
 }): AsyncGenerator<MessageNode> {
   const metadata = await context.reader.loadChatMeta({ chatId })
@@ -114,7 +116,7 @@ export function createChatContentDirectoryEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: 'markdown' | 'json';
 }): NaidanSysfsDirectoryEntry {
   return {

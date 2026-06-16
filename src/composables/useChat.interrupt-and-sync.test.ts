@@ -1,3 +1,4 @@
+import { idToRaw, toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
@@ -147,8 +148,8 @@ describe('useChat Interrupt and Sync Tests', () => {
   }, 15000);
 
   it('should save intermediate image generation results to storage', async () => {
-    const chatId = 'sync-test';
-    const assistantId = 'assistant-1';
+    const chatId = toChatId({ raw: 'sync-test' });
+    const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
       id: chatId, title: 'Sync Test',
       root: {
@@ -179,8 +180,8 @@ describe('useChat Interrupt and Sync Tests', () => {
     });
 
     await handleImageGeneration({
-      chatId,
-      assistantId,
+      chatId: idToRaw({ id: chatId }),
+      assistantId: idToRaw({ id: assistantId }),
       prompt: 'two cats',
       width: 512,
       height: 512,
@@ -198,8 +199,8 @@ describe('useChat Interrupt and Sync Tests', () => {
   }, 15000);
 
   it('should save "[Generation Aborted]" suffix to storage when regular chat generation is aborted', async () => {
-    const chatId = 'abort-test';
-    const assistantId = 'assistant-1';
+    const chatId = toChatId({ raw: 'abort-test' });
+    const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
       id: chatId, title: 'Abort Test',
       root: {
@@ -237,13 +238,13 @@ describe('useChat Interrupt and Sync Tests', () => {
     const { generateResponse, abortChat, isProcessing } = chatStore;
 
     // 2. Start generation
-    const genPromise = generateResponse({ chat: chat, assistantId: assistantId });
+    const genPromise = generateResponse({ chat: chat, assistantId: idToRaw({ id: assistantId }) });
 
     // 3. Wait for it to be processing
     await vi.waitUntil(() => isProcessing({ chatId }));
 
     // 4. Abort the chat
-    abortChat({ chatId: chatId });
+    abortChat({ chatId: idToRaw({ id: chatId }) });
 
     await genPromise;
     await vi.waitUntil(() => !isProcessing({ chatId }));
@@ -258,8 +259,8 @@ describe('useChat Interrupt and Sync Tests', () => {
   }, 15000);
 
   it('should request external abort before regenerateMessage and continue', async () => {
-    const chatId = 'external-regen-test';
-    const assistantId = 'assistant-1';
+    const chatId = toChatId({ raw: 'external-regen-test' });
+    const assistantId = toMessageId({ raw: 'assistant-1' });
     const chat = reactive({
       id: chatId,
       title: 'External Regen',
@@ -305,7 +306,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       params.onChunk({ chunk: 'Regenerated' });
     });
 
-    await regenerateMessage({ failedMessageId: assistantId });
+    await regenerateMessage({ failedMessageId: idToRaw({ id: assistantId }) });
 
     expect(vi.mocked(storageService.notify)).toHaveBeenCalledWith({
       event: expect.objectContaining({
@@ -319,7 +320,7 @@ describe('useChat Interrupt and Sync Tests', () => {
   }, 15000);
 
   it('should abort active compact processing before editMessage and continue', async () => {
-    const chatId = 'compact-edit-test';
+    const chatId = toChatId({ raw: 'compact-edit-test' });
     const chat = reactive({
       id: chatId,
       title: 'Compact Edit',
@@ -333,7 +334,7 @@ describe('useChat Interrupt and Sync Tests', () => {
             replies: {
               items: [
                 {
-                  id: 'assistant-1',
+                  id: toMessageId({ raw: 'assistant-1' }),
                   role: 'assistant',
                   content: 'Old response',
                   timestamp: 0,
@@ -345,7 +346,7 @@ describe('useChat Interrupt and Sync Tests', () => {
           },
         ],
       },
-      currentLeafId: 'assistant-1',
+      currentLeafId: toMessageId({ raw: 'assistant-1' }),
       modelId: 'gpt-4',
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -357,16 +358,16 @@ describe('useChat Interrupt and Sync Tests', () => {
     const compactController = new AbortController();
     const compactAbort = vi.spyOn(compactController, 'abort').mockImplementation(() => {
       TEST_ONLY.activeContextCompactions.delete(chatId);
-      TEST_ONLY.activeTaskCounts.delete(`process:${chatId}`);
+      TEST_ONLY.activeTaskCounts.delete(`process:${idToRaw({ id: chatId })}`);
     });
     TEST_ONLY.activeContextCompactions.set(chatId, compactController);
-    TEST_ONLY.activeTaskCounts.set(`process:${chatId}`, 1);
+    TEST_ONLY.activeTaskCounts.set(`process:${idToRaw({ id: chatId })}`, 1);
 
     mockLlm.chat.mockImplementationOnce(async (params: any) => {
       params.onChunk({ chunk: 'Edited Response' });
     });
 
-    await editMessage({ messageId: 'user-1', newContent: 'Updated content' });
+    await editMessage({ messageId: idToRaw({ id: toMessageId({ raw: 'user-1' }) }), newContent: 'Updated content' });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
     expect(compactAbort).toHaveBeenCalledTimes(1);

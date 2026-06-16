@@ -1,20 +1,20 @@
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { describe, it, expect, vi } from 'vitest';
 import { ChatSchemaDto } from './dto';
 
 vi.mock('../utils/id', () => ({
-  generateId: vi.fn(() => 'test-id')
+  generateOpaqueId: vi.fn(() => 'test-id')
 }));
 
 describe('Zod Schemas', () => {
   it('should validate a correct chat object', () => {
     const chat = {
-      id: generateId(),
+      id: generateOpaqueId(),
       title: 'Hello',
       root: {
         items: [
           {
-            id: generateId(),
+            id: generateOpaqueId(),
             role: 'user',
             content: 'Hi',
             timestamp: 123456,

@@ -18,6 +18,8 @@ import { reencodeImage } from '@/utils/image-processing';
 import { naturalSort, sanitizeFilename } from '@/utils/string';
 import type { Chat, ChatContent, Attachment } from '@/models/types';
 import { findNodeInBranch } from '@/utils/chat-tree';
+import { idToRaw } from '@/models/ids';
+import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
 
 // Shared state across all instances to maintain consistency
 const imageModeMap = ref<Record<string, boolean>>({});
@@ -30,89 +32,89 @@ const imageSeedMap = ref<Record<string, number | 'browser_random' | undefined>>(
 const imageProgressMap = ref<Record<string, { currentStep: number, totalSteps: number } | undefined>>({});
 
 export function useImageGeneration() {
-  const isImageMode = ({ chatId }: { chatId: string }) => !!imageModeMap.value[chatId];
+  const isImageMode = ({ chatId }: { chatId: ChatId }) => !!imageModeMap.value[idToRaw({ id: chatId })];
 
-  const toggleImageMode = ({ chatId }: { chatId: string }) => {
-    imageModeMap.value[chatId] = !imageModeMap.value[chatId];
+  const toggleImageMode = ({ chatId }: { chatId: ChatId }) => {
+    imageModeMap.value[idToRaw({ id: chatId })] = !imageModeMap.value[idToRaw({ id: chatId })];
   };
 
-  const getResolution = ({ chatId }: { chatId: string }) => {
-    return imageResolutionMap.value[chatId] || { width: 512, height: 512 };
+  const getResolution = ({ chatId }: { chatId: ChatId }) => {
+    return imageResolutionMap.value[idToRaw({ id: chatId })] || { width: 512, height: 512 };
   };
 
   const updateResolution = ({ chatId, width, height }: {
-    chatId: string,
+    chatId: ChatId,
     width: number,
     height: number
   }) => {
-    imageResolutionMap.value[chatId] = { width, height };
+    imageResolutionMap.value[idToRaw({ id: chatId })] = { width, height };
   };
 
-  const getCount = ({ chatId }: { chatId: string }) => {
-    return imageCountMap.value[chatId] || 1;
+  const getCount = ({ chatId }: { chatId: ChatId }) => {
+    return imageCountMap.value[idToRaw({ id: chatId })] || 1;
   };
 
   const updateCount = ({ chatId, count }: {
-    chatId: string,
+    chatId: ChatId,
     count: number
   }) => {
-    imageCountMap.value[chatId] = count;
+    imageCountMap.value[idToRaw({ id: chatId })] = count;
   };
 
-  const getSteps = ({ chatId }: { chatId: string }) => {
-    return imageStepsMap.value[chatId];
+  const getSteps = ({ chatId }: { chatId: ChatId }) => {
+    return imageStepsMap.value[idToRaw({ id: chatId })];
   };
 
   const updateSteps = ({ chatId, steps }: {
-    chatId: string,
+    chatId: ChatId,
     steps: number | undefined
   }) => {
-    imageStepsMap.value[chatId] = steps;
+    imageStepsMap.value[idToRaw({ id: chatId })] = steps;
   };
 
-  const getSeed = ({ chatId }: { chatId: string }) => {
+  const getSeed = ({ chatId }: { chatId: ChatId }) => {
     // If the chatId is not in the map, return the default ('browser_random')
-    if (!(chatId in imageSeedMap.value)) {
+    if (!(idToRaw({ id: chatId }) in imageSeedMap.value)) {
       return 'browser_random';
     }
-    return imageSeedMap.value[chatId];
+    return imageSeedMap.value[idToRaw({ id: chatId })];
   };
 
   const updateSeed = ({ chatId, seed }: {
-    chatId: string,
+    chatId: ChatId,
     seed: number | 'browser_random' | undefined
   }) => {
-    imageSeedMap.value[chatId] = seed;
+    imageSeedMap.value[idToRaw({ id: chatId })] = seed;
   };
 
-  const getPersistAs = ({ chatId }: { chatId: string }): ImageRequestParams['persistAs'] => {
-    return imagePersistAsMap.value[chatId] || 'original';
+  const getPersistAs = ({ chatId }: { chatId: ChatId }): ImageRequestParams['persistAs'] => {
+    return imagePersistAsMap.value[idToRaw({ id: chatId })] || 'original';
   };
 
   const updatePersistAs = ({ chatId, format }: {
-    chatId: string,
+    chatId: ChatId,
     format: ImageRequestParams['persistAs']
   }) => {
-    imagePersistAsMap.value[chatId] = format;
+    imagePersistAsMap.value[idToRaw({ id: chatId })] = format;
   };
 
   const setImageModel = ({ chatId, modelId }: {
-    chatId: string,
+    chatId: ChatId,
     modelId: string | undefined
   }) => {
     if (modelId === undefined) {
-      delete imageModelOverrideMap.value[chatId];
+      delete imageModelOverrideMap.value[idToRaw({ id: chatId })];
     } else {
-      imageModelOverrideMap.value[chatId] = modelId;
+      imageModelOverrideMap.value[idToRaw({ id: chatId })] = modelId;
     }
   };
 
   const getSelectedImageModel = ({ chatId, availableModels }: {
-    chatId: string,
+    chatId: ChatId,
     availableModels: string[]
   }) => {
     const allImageModels = getImageGenerationModels({ models: availableModels });
-    const overridden = imageModelOverrideMap.value[chatId];
+    const overridden = imageModelOverrideMap.value[idToRaw({ id: chatId })];
     if (overridden && allImageModels.includes(overridden)) {
       return overridden;
     }
@@ -179,8 +181,8 @@ export function useImageGeneration() {
     incTask,
     decTask
   }: {
-    chatId: string,
-    assistantId: string,
+    chatId: ChatId,
+    assistantId: MessageId,
     prompt: string,
     width: number,
     height: number,
@@ -197,10 +199,10 @@ export function useImageGeneration() {
     signal: AbortSignal | undefined,
     getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined,
 
-    updateChatContent: ({ chatId, updater }: { chatId: string, updater: ({ current }: { current: ChatContent }) => ChatContent }) => Promise<void>,
-    triggerChatRef: ({ chatId }: { chatId: string }) => void,
-    incTask: ({ chatId, type }: { chatId: string, type: 'process' }) => void,
-    decTask: ({ chatId, type }: { chatId: string, type: 'process' }) => void
+    updateChatContent: ({ chatId, updater }: { chatId: ChatId, updater: ({ current }: { current: ChatContent }) => ChatContent }) => Promise<void>,
+    triggerChatRef: ({ chatId }: { chatId: ChatId }) => void,
+    incTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void,
+    decTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void
   }) => {
     const target = getLiveChat({ chat: { id: chatId } as Chat });
     if (!target) return;
@@ -254,7 +256,7 @@ export function useImageGeneration() {
         if (signal?.aborted) break;
 
         // Clear progress for the new image starting to avoid showing stale progress from the previous image
-        delete imageProgressMap.value[chatId];
+        delete imageProgressMap.value[idToRaw({ id: chatId })];
 
         let activeSeed: number | undefined = undefined;
         if (typeof seed === 'number' && seed >= 0) {
@@ -275,7 +277,7 @@ export function useImageGeneration() {
           endpointUrl,
           endpointHttpHeaders,
           onProgress: ({ currentStep, totalSteps }) => {
-            imageProgressMap.value[chatId] = { currentStep, totalSteps };
+            imageProgressMap.value[idToRaw({ id: chatId })] = { currentStep, totalSteps };
           },
           signal
         });
@@ -302,7 +304,7 @@ export function useImageGeneration() {
         switch (storageType) {
         case 'opfs':
         case 'memory': {
-          const binaryObjectId = generateId();
+          const binaryObjectId = generateId<BinaryObjectId>();
           const fileName = sanitizeFilename({
             base: prompt,
             suffix: extension,
@@ -313,7 +315,7 @@ export function useImageGeneration() {
           const { width: dw, height: dh } = getDisplayDimensions({ width, height });
 
           blocks.push({
-            binaryObjectId,
+            binaryObjectId: idToRaw({ id: binaryObjectId }),
             displayWidth: dw,
             displayHeight: dh,
             width,
@@ -362,7 +364,7 @@ export function useImageGeneration() {
         assistantNode.content = 'Failed to generate image.';
       }
     } finally {
-      delete imageProgressMap.value[chatId];
+      delete imageProgressMap.value[idToRaw({ id: chatId })];
       decTask({ chatId, type: 'process' });
       await updateChatContent({
         chatId: mutableChat.id,
@@ -394,25 +396,25 @@ export function useImageGeneration() {
     steps: number | undefined,
     seed: number | 'browser_random' | undefined,
     persistAs: ImageRequestParams['persistAs'],
-    chatId: string,
+    chatId: ChatId,
     attachments: Attachment[],
     availableModels: string[],
-    sendMessage: ({ content, parentId, attachments }: { content: string, parentId: string | undefined, attachments: Attachment[] }) => Promise<boolean>
+    sendMessage: ({ content, parentId, attachments }: { content: string, parentId: MessageId | undefined, attachments: Attachment[] }) => Promise<boolean>
   }): Promise<boolean> => {
-    const prevMode = !!imageModeMap.value[chatId];
-    const prevRes = imageResolutionMap.value[chatId];
-    const prevCount = imageCountMap.value[chatId];
-    const prevSteps = imageStepsMap.value[chatId];
-    const prevSeed = imageSeedMap.value[chatId];
-    const prevPersistAs = imagePersistAsMap.value[chatId];
+    const prevMode = !!imageModeMap.value[idToRaw({ id: chatId })];
+    const prevRes = imageResolutionMap.value[idToRaw({ id: chatId })];
+    const prevCount = imageCountMap.value[idToRaw({ id: chatId })];
+    const prevSteps = imageStepsMap.value[idToRaw({ id: chatId })];
+    const prevSeed = imageSeedMap.value[idToRaw({ id: chatId })];
+    const prevPersistAs = imagePersistAsMap.value[idToRaw({ id: chatId })];
     const model = getSelectedImageModel({ chatId, availableModels });
 
-    imageModeMap.value[chatId] = true;
-    imageResolutionMap.value[chatId] = { width, height };
-    imageCountMap.value[chatId] = count;
-    imageStepsMap.value[chatId] = steps;
-    imageSeedMap.value[chatId] = seed;
-    imagePersistAsMap.value[chatId] = persistAs;
+    imageModeMap.value[idToRaw({ id: chatId })] = true;
+    imageResolutionMap.value[idToRaw({ id: chatId })] = { width, height };
+    imageCountMap.value[idToRaw({ id: chatId })] = count;
+    imageStepsMap.value[idToRaw({ id: chatId })] = steps;
+    imageSeedMap.value[idToRaw({ id: chatId })] = seed;
+    imagePersistAsMap.value[idToRaw({ id: chatId })] = persistAs;
 
     try {
       // Sentinel for history needs a string or number.
@@ -423,12 +425,12 @@ export function useImageGeneration() {
         : prompt;
       return await sendMessage({ content, parentId: undefined, attachments });
     } finally {
-      imageModeMap.value[chatId] = prevMode;
-      if (prevRes) imageResolutionMap.value[chatId] = prevRes;
-      if (prevCount !== undefined) imageCountMap.value[chatId] = prevCount;
-      imageStepsMap.value[chatId] = prevSteps;
-      imageSeedMap.value[chatId] = prevSeed;
-      if (prevPersistAs !== undefined) imagePersistAsMap.value[chatId] = prevPersistAs;
+      imageModeMap.value[idToRaw({ id: chatId })] = prevMode;
+      if (prevRes) imageResolutionMap.value[idToRaw({ id: chatId })] = prevRes;
+      if (prevCount !== undefined) imageCountMap.value[idToRaw({ id: chatId })] = prevCount;
+      imageStepsMap.value[idToRaw({ id: chatId })] = prevSteps;
+      imageSeedMap.value[idToRaw({ id: chatId })] = prevSeed;
+      if (prevPersistAs !== undefined) imagePersistAsMap.value[idToRaw({ id: chatId })] = prevPersistAs;
     }
   };
 

@@ -1,4 +1,6 @@
+import type { ChatGroupId } from '@/models/ids'
 import type { ChatGroup } from '@/models/types'
+import { idToRaw, toChatGroupId } from '@/models/ids'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry } from '@/services/wesh/naidan-sysfs/types'
 import { createChatGroupDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-group'
@@ -7,7 +9,7 @@ function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-export async function listVisibleChatGroupIds({ context }: { context: NaidanSysfsContext }): Promise<string[]> {
+export async function listVisibleChatGroupIds({ context }: { context: NaidanSysfsContext }): Promise<ChatGroupId[]> {
   switch (context.visibility) {
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
@@ -26,7 +28,7 @@ async function loadChatGroup({
   chatGroupId,
 }: {
   context: NaidanSysfsContext;
-  chatGroupId: string;
+  chatGroupId: ChatGroupId;
 }): Promise<ChatGroup | undefined> {
   const ids = await listVisibleChatGroupIds({ context })
   if (!ids.includes(chatGroupId)) {
@@ -52,9 +54,9 @@ export function createChatGroupsDirectoryEntry(): NaidanSysfsDirectoryEntry {
       const ids = await listVisibleChatGroupIds({ context })
       for (const chatGroupId of ids) {
         yield {
-          name: chatGroupId,
+          name: idToRaw({ id: chatGroupId }),
           type: 'directory',
-          fullPath: `${path}/${chatGroupId}`,
+          fullPath: `${path}/${idToRaw({ id: chatGroupId })}`,
         }
       }
     },
@@ -68,7 +70,7 @@ export function createChatGroupsDirectoryEntry(): NaidanSysfsDirectoryEntry {
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
-      const chatGroup = await loadChatGroup({ context, chatGroupId: name })
+      const chatGroup = await loadChatGroup({ context, chatGroupId: toChatGroupId({ raw: name }) })
       if (chatGroup === undefined) {
         return undefined
       }

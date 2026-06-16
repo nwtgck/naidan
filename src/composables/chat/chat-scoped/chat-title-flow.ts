@@ -1,4 +1,5 @@
 import type { Chat, ChatMessage } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 import type { LLMProvider } from '@/services/lm/types';
 import { OpenAIProvider } from '@/services/lm/openai';
 import { OllamaProvider } from '@/services/lm/ollama';
@@ -22,7 +23,7 @@ import {
 export function isGeneratingChatTitle({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): boolean {
   return isGeneratingTitle({ chatId });
 }
@@ -30,7 +31,7 @@ export function isGeneratingChatTitle({
 export function abortTitleGenerationForChat({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): void {
   if (!chatRuntimeStore.activeTitleGenerations.has(chatId)) {
     return;
@@ -45,7 +46,7 @@ export async function generateChatTitleForChat({
   titleModelIdOverride,
   signal,
 }: {
-  chatId: string;
+  chatId: ChatId;
   titleModelIdOverride: string | undefined;
   signal: AbortSignal | undefined;
 }): Promise<string | undefined> {

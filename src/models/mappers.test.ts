@@ -1,8 +1,9 @@
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { describe, it, expect } from 'vitest';
 import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto, settingsToDomain, settingsToDto } from './mappers';
 import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode, Settings } from './types';
 import type { MessageNodeDto, SettingsDto } from './dto';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 describe('MessageNode Mapping (Discriminated Union)', () => {
   it('should map user message with lmParameters and thinking: undefined', () => {
@@ -141,12 +142,12 @@ describe('Sidebar assembly', () => {
   it('should filter out orphan chat entries from hierarchy', () => {
     const hierarchy: Hierarchy = {
       items: [
-        { type: 'chat', id: 'exists' },
-        { type: 'chat', id: 'orphan' }
+        { type: 'chat', id: toChatId({ raw: 'exists' }) },
+        { type: 'chat', id: toChatId({ raw: 'orphan' }) }
       ]
     };
     const metas: ChatMeta[] = [
-      { id: 'exists', title: 'Exists', updatedAt: 100, createdAt: 100, debugEnabled: false }
+      { id: toChatId({ raw: 'exists' }), title: 'Exists', updatedAt: 100, createdAt: 100, debugEnabled: false }
     ];
     const groups: ChatGroup[] = [];
 
@@ -158,7 +159,7 @@ describe('Sidebar assembly', () => {
   it('should filter out orphan groups from hierarchy', () => {
     const hierarchy: Hierarchy = {
       items: [
-        { type: 'chat_group', id: 'orphan-group', chat_ids: [] }
+        { type: 'chat_group', id: toChatGroupId({ raw: 'orphan-group' }), chat_ids: [] }
       ]
     };
     const items = buildSidebarItemsFromHierarchy({ hierarchy, chatMetas: [], chatGroups: [] });
@@ -221,10 +222,10 @@ describe('Settings Mapping', () => {
 
 describe('Legacy Migration (Flat to Tree)', () => {
   it('should migrate linear messages to a recursive tree structure', () => {
-    const legacyId1 = generateId();
-    const legacyId2 = generateId();
+    const legacyId1 = generateOpaqueId();
+    const legacyId2 = generateOpaqueId();
     const legacyChat: any = {
-      id: generateId(),
+      id: generateOpaqueId(),
       title: 'Legacy',
       messages: [
         { id: legacyId1, role: 'user', content: 'Hi', timestamp: 1 },

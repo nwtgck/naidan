@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { renderMessageJson } from './message-json'
 import type { ToolMessageNode } from '@/models/types'
+import { toMessageId, toToolCallId } from '@/models/ids';
 
 describe('renderMessageJson', () => {
   it('truncates long text tool results with an exact marker', () => {
     const longText = 'y'.repeat(4001)
     const node: ToolMessageNode = {
-      id: 'tool-1',
+      id: toMessageId({ raw: 'tool-1' }),
       role: 'tool',
       content: undefined,
       timestamp: 2,
@@ -18,7 +19,7 @@ describe('renderMessageJson', () => {
       lmParameters: undefined,
       toolCalls: undefined,
       results: [{
-        toolCallId: 'call-1',
+        toolCallId: toToolCallId({ raw: 'call-1' }),
         status: 'success',
         content: {
           type: 'text',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { ref, computed, watch } from 'vue';
 import {
   XIcon, ChefHatIcon, CopyIcon, CheckIcon, PlusIcon, Trash2Icon, InfoIcon, GlobeIcon, AlertCircleIcon, MessageSquareQuoteIcon
@@ -29,7 +29,7 @@ const recipeForm = ref({
 
 function initForm() {
   const modelPatterns = props.initialModelId
-    ? generateDefaultModelPatterns({ modelId: props.initialModelId }).map(p => ({ id: generateId(), pattern: p, caseSensitive: false }))
+    ? generateDefaultModelPatterns({ modelId: props.initialModelId }).map(p => ({ id: generateOpaqueId(), pattern: p, caseSensitive: false }))
     : [];
 
   recipeForm.value = {
@@ -71,7 +71,7 @@ const exportedRecipeJson = computed(() => {
 });
 
 function addModelPattern() {
-  recipeForm.value.models.push({ id: generateId(), pattern: '', caseSensitive: false });
+  recipeForm.value.models.push({ id: generateOpaqueId(), pattern: '', caseSensitive: false });
 }
 
 function removeModelPattern({ id }: { id: string }) {

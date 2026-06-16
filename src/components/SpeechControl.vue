@@ -2,10 +2,11 @@
 import { computed, watch } from 'vue';
 import { Volume2Icon, PauseIcon, SquareIcon, RotateCcwIcon } from 'lucide-vue-next';
 import { webSpeechService } from '@/services/web-speech';
+import type { MessageId } from '@/models/ids';
 import { isImageGenerationPending, isImageGenerationProcessed } from '@/utils/image-generation';
 
 const props = defineProps<{
-  messageId: string;
+  messageId: MessageId;
   content: string;
   isGenerating?: boolean;
   showFullControls?: boolean;

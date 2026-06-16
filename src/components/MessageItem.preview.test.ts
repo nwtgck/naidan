@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import MessageItem from './MessageItem.vue';
 import { storageService } from '@/services/storage';
 import type { MessageNode } from '@/models/types';
+import { toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -13,7 +14,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });
@@ -50,14 +51,14 @@ vi.stubGlobal('URL', {
 // --- Test Data ---
 
 const mockMessage: MessageNode = {
-  id: 'msg-1',
+  id: toMessageId({ raw: 'msg-1' }),
   role: 'user',
   content: 'Hello with image',
   timestamp: 1000,
   attachments: [
     {
-      id: 'att-1',
-      binaryObjectId: 'bin-1',
+      id: toAttachmentId({ raw: 'att-1' }),
+      binaryObjectId: toBinaryObjectId({ raw: 'bin-1' }),
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -76,7 +77,7 @@ describe('MessageItem.vue Preview Integration', () => {
   it('triggers preview when an attachment image is clicked', async () => {
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({
-      id: 'bin-1',
+      id: toBinaryObjectId({ raw: 'bin-1' }),
       name: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -108,7 +109,7 @@ describe('MessageItem.vue Preview Integration', () => {
   it('triggers preview when a generated image is clicked', async () => {
     const genId = '00000000-0000-4000-8000-000000000001';
     const genImageMsg: MessageNode = {
-      id: 'msg-2',
+      id: toMessageId({ raw: 'msg-2' }),
       role: 'assistant',
       content: `Here is your image:\n\n\`\`\`naidan_experimental_image
 {"binaryObjectId":"${genId}","displayWidth":512,"displayHeight":512,"prompt":"a sunset"}
@@ -119,7 +120,7 @@ describe('MessageItem.vue Preview Integration', () => {
 
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({
-      id: genId,
+      id: toBinaryObjectId({ raw: genId }),
       name: 'generated.png',
       mimeType: 'image/png',
       size: 500,

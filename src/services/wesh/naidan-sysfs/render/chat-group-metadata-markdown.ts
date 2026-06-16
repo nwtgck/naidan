@@ -1,3 +1,4 @@
+import { idToRaw } from '@/models/ids'
 import type { ChatGroup } from '@/models/types'
 
 function formatValue({ value }: { value: unknown }): string {
@@ -18,7 +19,7 @@ export function renderChatGroupMetadataMarkdown({ chatGroup }: { chatGroup: Chat
   return `\
 # Chat Group Metadata
 
-id: ${chatGroup.id}
+id: ${idToRaw({ id: chatGroup.id })}
 name: ${chatGroup.name}
 isCollapsed: ${chatGroup.isCollapsed}
 updatedAt: ${chatGroup.updatedAt}
@@ -32,6 +33,6 @@ endpoint: ${formatValue({ value: chatGroup.endpoint ? {
     httpHeaders: chatGroup.endpoint.httpHeaders?.map(([name]) => [name, '[masked]']),
   } : undefined })}
 mounts: ${formatValue({ value: chatGroup.mounts })}
-items: ${formatValue({ value: chatGroup.items.map(item => item.chat.id) })}
+items: ${formatValue({ value: chatGroup.items.map(item => idToRaw({ id: item.chat.id })) })}
 `
 }

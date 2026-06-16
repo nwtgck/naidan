@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
 import { reactive } from 'vue';
+import { toChatGroupId } from '@/models/ids';
 
 vi.mock('../services/storage', () => ({
   storageService: {
@@ -52,7 +53,7 @@ describe('useChat.duplicateChatGroup', () => {
     // Inject mock data into rootItems (which is internal but exposed via sidebarItems/rootItems in useChat)
     rootItems.value = [{ id: 'g1', type: 'chat_group', chatGroup: originalGroup as any }];
 
-    const newGroupId = await duplicateChatGroup({ groupId: 'g1' });
+    const newGroupId = await duplicateChatGroup({ groupId: toChatGroupId({ raw: 'g1' }) });
 
     expect(newGroupId).toBeDefined();
     expect(storageService.updateChatGroup).toHaveBeenCalledWith({ id: expect.any(String), updater: expect.any(Function) });
@@ -79,7 +80,7 @@ describe('useChat.duplicateChatGroup', () => {
       capturedHierarchy = updater({ current: capturedHierarchy });
     });
 
-    await duplicateChatGroup({ groupId: 'g1' });
+    await duplicateChatGroup({ groupId: toChatGroupId({ raw: 'g1' }) });
 
     expect(capturedHierarchy.items).toHaveLength(2);
     expect(capturedHierarchy.items[0].id).toBe('g1');

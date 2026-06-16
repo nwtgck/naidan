@@ -1,14 +1,15 @@
 import { storageService } from '@/services/storage';
 import { MemoryStorageProvider } from '@/services/storage/memory-storage';
 import { ImportExportService, type IImportExportStorage } from './service';
-import { hierarchyToDomain } from '@/models/mappers';
+import { hierarchyToDomain, hierarchyToDto } from '@/models/mappers';
 import type { MessageNode, Settings } from '@/models/types';
+import type { BinaryObjectId, ChatId } from '@/models/ids';
 
 /**
  * Generates a URL that contains a zipped version of the current chat.
  * This URL can be shared and when opened, the chat will be imported into the recipient's storage.
  */
-export async function generateChatShareURL({ chatId }: { chatId: string }): Promise<string> {
+export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Promise<string> {
   const chat = await storageService.loadChat({ id: chatId });
   if (!chat) throw new Error('Chat not found');
 
@@ -48,12 +49,12 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
   await memoryProvider.saveChatContent({ id: chat.id, content: chat });
 
   // 3. Hierarchy (minimal)
-  await memoryProvider.saveHierarchy({ hierarchy: {
+  await memoryProvider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: {
     items: [{ type: 'chat', id: chat.id }]
-  } });
+  } }) });
 
   // 4. Attachments
-  const binaryObjectIds = new Set<string>();
+  const binaryObjectIds = new Set<BinaryObjectId>();
   const collectBinaryIds = ({ nodes }: { nodes: MessageNode[] }) => {
     for (const node of nodes) {
       if (node.role === 'user' && node.attachments) {

@@ -13,6 +13,8 @@ import { useFileExplorerModal } from './composables/useFileExplorerModal';
 import { useTheme } from './composables/useTheme';
 import { usePrint } from './composables/usePrint';
 import Sidebar from './components/Sidebar.vue';
+import { idToRaw } from '@/models/ids';
+import type { ChatGroupId } from '@/models/ids';
 
 // Async components for print mode to keep initial bundle small.
 const PrintView = defineAsyncComponent(() => import('./components/PrintView.vue'));
@@ -159,7 +161,7 @@ watch(
       setActiveFocusArea({ area: 'chat' });
       await chatLifecycle.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
       if (currentChatState.currentChat.value) {
-        router.push(`/chat/${currentChatState.currentChat.value.id}`);
+        router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
       }
       return;
     }
@@ -168,9 +170,9 @@ watch(
     // We only trigger this if 'q' is provided. 'system-prompt' or 'model' alone
     // does not trigger a new chat.
     if (q) {
-      let targetGroupId: string | undefined = undefined;
+      let targetGroupId: ChatGroupId | undefined = undefined;
       if (typeof chatGroupId === 'string') {
-        const group = currentChatState.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
+        const group = currentChatState.chatGroups.value.find(g => idToRaw({ id: g.id }) === chatGroupId || g.name === chatGroupId);
         if (group) {
           targetGroupId = group.id;
         } else {
@@ -194,7 +196,7 @@ watch(
       if (currentChatState.currentChat.value) {
         const id = currentChatState.currentChat.value.id;
         router.push({
-          path: `/chat/${id}`,
+          path: `/chat/${idToRaw({ id })}`,
           query: { q: q.toString() }
         });
       }
@@ -216,7 +218,7 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
       systemPrompt: undefined
     });
     if (currentChatState.currentChat.value) {
-      router.push(`/chat/${currentChatState.currentChat.value.id}`);
+      router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
     }
   }
 

@@ -1,4 +1,5 @@
 import type { LlmToolName, Tool } from './types';
+import type { ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
 import { WikipediaGetPageTool, WikipediaSearchTool } from './wikipedia';
@@ -29,8 +30,8 @@ export async function getEnabledTools({
   settings: Settings;
   chatGroupMounts?: Mount[];
   chatMounts?: Mount[];
-  chatId: string | undefined;
-  chatGroupId: string | undefined;
+  chatId: ChatId | undefined;
+  chatGroupId: ChatGroupId | undefined;
   naidanSysfsAccessScope: NaidanSysfsAccessScope;
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): Promise<Tool[]> {
@@ -99,7 +100,7 @@ export async function getEnabledTools({
         throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`)
       }
       }
-      const volumeHandles = new Map<string, FileSystemDirectoryHandle>();
+      const volumeHandles = new Map<VolumeId, FileSystemDirectoryHandle>();
       for (const m of allMounts) {
         const handle = await storageService.getVolumeDirectoryHandle({ volumeId: m.volumeId });
         if (handle) {
@@ -177,8 +178,8 @@ function hasEnabledNaidanSysfsMount({
   naidanSysfsAccessScope,
 }: {
   settings: Settings;
-  chatId: string | undefined;
-  chatGroupId: string | undefined;
+  chatId: ChatId | undefined;
+  chatGroupId: ChatGroupId | undefined;
   naidanSysfsAccessScope: NaidanSysfsAccessScope;
 }): boolean {
   switch (naidanSysfsAccessScope) {
@@ -211,8 +212,8 @@ function canExposeWikipediaToolsForGeneration({
 }: {
   enabledNames: LlmToolName[];
   settings: Settings;
-  chatId: string | undefined;
-  chatGroupId: string | undefined;
+  chatId: ChatId | undefined;
+  chatGroupId: ChatGroupId | undefined;
   naidanSysfsAccessScope: NaidanSysfsAccessScope;
   tmpHandle: FileSystemDirectoryHandle | undefined;
 }): boolean {

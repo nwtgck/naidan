@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
+import type { ChatId } from '@/models/ids';
 
 // --- Mocks ---
 vi.mock('../services/storage', () => ({
@@ -67,7 +68,7 @@ describe('useChat Streaming State Logic', () => {
   const { currentChat, TEST_ONLY, streaming, sendMessage, createNewChat, abortChat } = chatStore;
   const { activeGenerations, __testOnlySetCurrentChat } = TEST_ONLY;
 
-  const waitForRegistry = async (id: string) => {
+  const waitForRegistry = async (id: ChatId) => {
     await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000 });
   };
 

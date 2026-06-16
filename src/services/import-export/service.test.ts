@@ -5,6 +5,7 @@ import type { SettingsDto, ChatMetaDto, ChatGroupDto } from '@/models/dto';
 import type { ImportConfig } from './types';
 import type { Mocked } from 'vitest';
 import type { Settings, ChatMeta } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';
@@ -100,7 +101,7 @@ describe('ImportExportService', () => {
   });
 
   const createValidChatMeta = (overrides: Partial<ChatMeta> = {}): ChatMeta => ({
-    id: UUID_C1,
+    id: toChatId({ raw: UUID_C1 }),
     title: 'Test Chat',
     updatedAt: 1000,
     createdAt: 1000,
@@ -151,15 +152,15 @@ describe('ImportExportService', () => {
           } as any,
           hierarchy: {
             items: [
-              { type: 'chat_group', id: UUID_G1, chat_ids: [UUID_C1] },
-              { type: 'chat', id: UUID_C2 }
+              { type: 'chat_group', id: toChatGroupId({ raw: UUID_G1}), chat_ids: [toChatId({ raw: UUID_C1 })] },
+              { type: 'chat', id: toChatId({ raw: UUID_C2 })}
             ]
           },
           chatMetas: [
-            { id: UUID_C1, title: 'Test 1', updatedAt: 1000, createdAt: 1000, debugEnabled: false },
-            { id: UUID_C2, title: 'Test 2', updatedAt: 1000, createdAt: 1000, debugEnabled: false }
+            { id: toChatId({ raw: UUID_C1 }), title: 'Test 1', updatedAt: 1000, createdAt: 1000, debugEnabled: false },
+            { id: toChatId({ raw: UUID_C2 }), title: 'Test 2', updatedAt: 1000, createdAt: 1000, debugEnabled: false }
           ],
-          chatGroups: [{ id: UUID_G1, name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }]
+          chatGroups: [{ id: toChatGroupId({ raw: UUID_G1 }), name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }]
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test 1', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
@@ -211,8 +212,8 @@ describe('ImportExportService', () => {
             storageType: 'local',
             providerProfiles: []
           } as any,
-          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
-          chatMetas: [{ id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
+          hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
+          chatMetas: [{ id: toChatId({ raw: UUID_C1 }), title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
           chatGroups: []
         },
         contentStream: (async function* () {
@@ -254,8 +255,8 @@ describe('ImportExportService', () => {
             storageType: 'local',
             providerProfiles: []
           } as any,
-          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
-          chatMetas: [{ id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
+          hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
+          chatMetas: [{ id: toChatId({ raw: UUID_C1 }), title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
           chatGroups: []
         },
         contentStream: (async function* () {
@@ -296,9 +297,9 @@ describe('ImportExportService', () => {
             storageType: 'local',
             providerProfiles: []
           } as any,
-          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
-          chatMetas: [{ id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
-          chatGroups: [{ id: UUID_G1, name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }]
+          hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
+          chatMetas: [{ id: toChatId({ raw: UUID_C1 }), title: 'Test', updatedAt: 1000, createdAt: 1000, debugEnabled: false }],
+          chatGroups: [{ id: toChatGroupId({ raw: UUID_G1 }), name: 'Group', updatedAt: 1000, isCollapsed: false, items: [] }]
         },
         contentStream: (async function* () {
           yield { type: 'chat', data: { id: UUID_C1, title: 'Test', updatedAt: 1000, createdAt: 1000, root: { items: [] } } as any };
@@ -366,8 +367,8 @@ describe('ImportExportService', () => {
             storageType: 'local',
             providerProfiles: []
           } as any,
-          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
-          chatMetas: [createValidChatMeta({ id: UUID_C1 })],
+          hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
+          chatMetas: [createValidChatMeta({ id: toChatId({ raw: UUID_C1 }) })],
           chatGroups: []
         },
         contentStream: (async function* () {
@@ -475,8 +476,8 @@ describe('ImportExportService', () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {
           settings: createValidSettings(),
-          hierarchy: { items: [{ type: 'chat', id: UUID_C1 }] },
-          chatMetas: [createValidChatMeta({ id: UUID_C1 })],
+          hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
+          chatMetas: [createValidChatMeta({ id: toChatId({ raw: UUID_C1 }) })],
           chatGroups: []
         },
         contentStream: (async function* () {

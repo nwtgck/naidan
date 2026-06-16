@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { ref, watch } from 'vue';
 import {
   ChefHatIcon, SaveIcon, AlertTriangleIcon
@@ -72,7 +72,7 @@ function handleAnalyzeRecipes() {
     const match = matchRecipeModels({ recipeModels: recipe.models, availableModelIds: props.availableModels });
 
     newAnalyzed.push({
-      id: generateId(),
+      id: generateOpaqueId(),
       recipe,
       selected: true,
       matchedModelId: match.modelId,

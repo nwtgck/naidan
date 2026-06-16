@@ -6,6 +6,7 @@ import { renderMessageMarkdown } from './naidan-sysfs/render/message-markdown'
 import { NAIDAN_SYSFS_VERSION_TEXT } from './naidan-sysfs/constants'
 import { createMountedNaidanSysfsWesh, executeInWesh, mainChatContent, mainChatMetadata, siblingChatMetadata } from './naidan-sysfs.test-helpers'
 import type { Wesh } from './index'
+import { toMessageId } from '@/models/ids'
 
 describe('naidan sysfs current_chat_with_chat_group', () => {
   let wesh: Wesh
@@ -62,7 +63,7 @@ version
         root: mainChatContent.root,
         currentLeafId: mainChatContent.currentLeafId,
       },
-      leafId: 'Xa4aX1Y2z3A4b5C6d7E8',
+      leafId: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
       nodes: [
         mainChatContent.root.items[0]!,
         mainChatContent.root.items[0]!.replies.items[0]!,

@@ -1,3 +1,4 @@
+import { idToRaw, toChatId } from '@/models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
@@ -59,7 +60,7 @@ describe('useChat Delete Undo Logic', () => {
   });
 
   it('should delay storage deletion and abort until toast is closed', async () => {
-    const chatId = 'test-chat-id';
+    const chatId = toChatId({ raw: 'test-chat-id' });
     const mockAbort = vi.fn();
 
     // 1. Mock an active generation
@@ -76,7 +77,7 @@ describe('useChat Delete Undo Logic', () => {
     } as any);
 
     // 3. Trigger delete
-    await deleteChat({ id: chatId });
+    await deleteChat({ id: idToRaw({ id: chatId }) });
 
     // VERIFY: Toast was shown and returned truthy ID
     expect(mockAddToast).toHaveBeenCalled();
@@ -97,7 +98,7 @@ describe('useChat Delete Undo Logic', () => {
   });
 
   it('should NOT execute cleanup if Undo is clicked', async () => {
-    const chatId = 'test-chat-id';
+    const chatId = toChatId({ raw: 'test-chat-id' });
     const mockAbort = vi.fn();
 
     activeGenerations.set(chatId, {
@@ -111,7 +112,7 @@ describe('useChat Delete Undo Logic', () => {
       root: { items: [] }
     } as any);
 
-    await deleteChat({ id: chatId });
+    await deleteChat({ id: idToRaw({ id: chatId }) });
 
     // 4. Simulate Undo click (reason: action)
     if (capturedOnClose) await capturedOnClose({ reason: 'action' });

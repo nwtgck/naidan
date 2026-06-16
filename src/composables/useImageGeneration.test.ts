@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useImageGeneration } from './useImageGeneration';
 
@@ -50,7 +51,7 @@ vi.mock('../services/lm/ollama', async (importOriginal) => {
 });
 
 describe('useImageGeneration', () => {
-  const chatId = 'test-chat-123';
+  const chatId = toChatId({ raw: 'test-chat-123' });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -175,7 +176,7 @@ describe('useImageGeneration', () => {
   });
 
   describe('handleImageGeneration', () => {
-    const assistantId = 'msg-assistant-1';
+    const assistantId = toMessageId({ raw: 'msg-assistant-1' });
     const mockChat = {
       id: chatId,
       root: {
@@ -392,7 +393,7 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        chatId: 'progress-test-chat',
+        chatId: toChatId({ raw: 'progress-test-chat' }),
         storageType: 'opfs'
       });
 
@@ -405,13 +406,13 @@ describe('useImageGeneration', () => {
       const { OllamaProvider } = await import('@/services/lm/ollama');
 
       // Set stale progress
-      imageProgressMap.value[chatId] = { currentStep: 50, totalSteps: 50 };
+      imageProgressMap.value['progress-test-chat'] = { currentStep: 50, totalSteps: 50 };
 
       // Spy on generateImage and check progress map state when it's called
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockImplementation(async (params: any) => {
           // When this is called, the progress map should have been cleared by the loop
-          expect(imageProgressMap.value[chatId]).toBeUndefined();
+          expect(imageProgressMap.value['progress-test-chat']).toBeUndefined();
 
           // Simulate some progress
           if (params.onProgress) params.onProgress({ currentStep: 1, totalSteps: 10 });
@@ -423,6 +424,7 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
+        chatId: toChatId({ raw: 'progress-test-chat' }),
         count: 2,
         storageType: 'opfs'
       });

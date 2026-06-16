@@ -1,4 +1,5 @@
 import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions'
+import type { ChatGroupId, ChatId } from '@/models/ids'
 import type { Mount } from '@/models/types'
 import { buildWorkerMountsForChat } from '@/services/wesh/chat-worker-mounts'
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types'
@@ -15,8 +16,8 @@ const store = createWeshTerminalSessions({
 type SessionArgs = {
   chatMounts: readonly Mount[]
   chatGroupMounts: readonly Mount[] | undefined
-  chatId: string | undefined
-  chatGroupId: string | undefined
+  chatId: ChatId | undefined
+  chatGroupId: ChatGroupId | undefined
   naidanSysfsAccessScope: NaidanSysfsAccessScope
 }
 

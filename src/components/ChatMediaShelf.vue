@@ -13,15 +13,17 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
 import { ImageDownloadHydrator } from './ImageDownloadHydrator';
 import ImageDownloadButton from './ImageDownloadButton.vue';
+import { idToRaw, toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
-  chatId: string;
+  chatId: ChatId;
   messages: MessageNode[];
 }>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'jump-to-message', messageId: string): void;
+  (e: 'jump-to-message', messageId: MessageId): void;
 }>();
 
 const { downloadBinaryObject } = useBinaryActions();
@@ -33,8 +35,8 @@ const mediaOrder = ref<MediaOrder>('forward');
 
 interface MediaItem {
   id: string;
-  messageId: string;
-  binaryObjectId: string;
+  messageId: MessageId;
+  binaryObjectId: BinaryObjectId;
   mimeType: string;
   size: number;
   name?: string;
@@ -49,7 +51,7 @@ interface MediaItem {
 }
 
 interface MediaGroup {
-  messageId: string;
+  messageId: MessageId;
   prompt?: string;
   items: MediaItem[];
   timestamp: number;
@@ -67,7 +69,7 @@ const mediaGroups = computed(() => {
       msg.attachments.forEach(att => {
         if (att.mimeType.startsWith('image/') && att.status !== 'missing') {
           items.push({
-            id: att.id,
+            id: idToRaw({ id: att.id }),
             messageId: msg.id,
             binaryObjectId: att.binaryObjectId,
             mimeType: att.mimeType,
@@ -89,11 +91,12 @@ const mediaGroups = computed(() => {
         const result = GeneratedImageBlockSchema.safeParse(JSON.parse(match[1] || '{}'));
         if (result.success) {
           const data = result.data;
+          const binaryObjectId = toBinaryObjectId({ raw: data.binaryObjectId });
           if (!sharedPrompt) sharedPrompt = data.prompt;
           items.push({
             id: data.binaryObjectId,
             messageId: msg.id,
-            binaryObjectId: data.binaryObjectId,
+            binaryObjectId,
             mimeType: 'image/png',
             size: 0,
             prompt: data.prompt,
@@ -151,14 +154,14 @@ const isSupportedMap = ref<Record<string, boolean>>({});
 const thumbnailObserver = ref<IntersectionObserver | null>(null);
 
 const loadMediaDetails = async ({ item }: { item: MediaItem }) => {
-  if (thumbnails.value[item.binaryObjectId]) return;
+  if (thumbnails.value[idToRaw({ id: item.binaryObjectId })]) return;
 
   try {
     const blob = await storageService.getFile({ binaryObjectId: item.binaryObjectId });
     if (blob) {
-      thumbnails.value[item.binaryObjectId] = URL.createObjectURL(blob);
+      thumbnails.value[idToRaw({ id: item.binaryObjectId })] = URL.createObjectURL(blob);
       const support = await ImageDownloadHydrator.detectSupport({ blob });
-      isSupportedMap.value[item.binaryObjectId] = support;
+      isSupportedMap.value[idToRaw({ id: item.binaryObjectId })] = support;
     }
   } catch (e) {
     console.error('Failed to load shelf media details:', e);
@@ -171,7 +174,7 @@ const setupObserver = () => {
       if (entry.isIntersecting) {
         const id = (entry.target as HTMLElement).dataset.id;
         if (id) {
-          const item = allMediaItems.value.find(i => i.binaryObjectId === id);
+          const item = allMediaItems.value.find(i => idToRaw({ id: i.binaryObjectId }) === id);
           if (item) loadMediaDetails({ item });
         }
       }
@@ -241,8 +244,8 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem; withMet
   }
 };
 
-const copiedPromptId = ref<string | null>(null);
-const copyPrompt = async ({ prompt, messageId }: { prompt: string; messageId: string }) => {
+const copiedPromptId = ref<MessageId | null>(null);
+const copyPrompt = async ({ prompt, messageId }: { prompt: string; messageId: MessageId }) => {
   try {
     await navigator.clipboard.writeText(prompt);
     copiedPromptId.value = messageId;
@@ -326,7 +329,7 @@ defineExpose({
       <template v-else>
         <div
           v-for="group in mediaGroups"
-          :key="group.messageId"
+          :key="idToRaw({ id: group.messageId })"
           class="flex flex-col gap-3 group/group relative hover:z-30"
         >
           <!-- Message Header: Jump Button & Shared Prompt -->
@@ -374,14 +377,14 @@ defineExpose({
             <div
               v-for="item in group.items"
               :key="item.id"
-              :data-id="item.binaryObjectId"
+              :data-id="idToRaw({ id: item.binaryObjectId })"
               class="media-item-trigger relative w-36 h-36 shrink-0 group/item hover:z-40"
               @click="handlePreview({ item })"
             >
               <div class="absolute inset-0 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-sm hover:shadow-md hover:border-blue-500/50 transition-all overflow-hidden">
                 <img
-                  v-if="thumbnails[item.binaryObjectId]"
-                  :src="thumbnails[item.binaryObjectId]"
+                  v-if="thumbnails[idToRaw({ id: item.binaryObjectId })]"
+                  :src="thumbnails[idToRaw({ id: item.binaryObjectId })]"
                   class="w-full h-full object-cover transition-transform group-hover/item:scale-110"
                 />
                 <div v-else class="w-full h-full flex items-center justify-center">
@@ -396,7 +399,7 @@ defineExpose({
               <div class="absolute top-2 right-2 z-50 flex flex-col gap-1.5 opacity-0 group-hover/item:opacity-100 transition-all origin-top-right overflow-visible">
                 <div @click.stop>
                   <ImageDownloadButton
-                    :is-supported="isSupportedMap[item.binaryObjectId]"
+                    :is-supported="isSupportedMap[idToRaw({ id: item.binaryObjectId })]"
                     :on-download="(options) => handleDownload({ item, withMetadata: options.withMetadata })"
                     :align="item.index === 1 ? 'left' : 'right'"
                   />

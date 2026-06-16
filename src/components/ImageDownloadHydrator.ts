@@ -5,6 +5,8 @@ import ImageIndexBadge from './ImageIndexBadge.vue';
 import { detectFormat, embedMetadataInPng, embedMetadataInWebp, UNSUPPORTED } from '@/utils/image-metadata';
 import { sanitizeFilename } from '@/utils/string';
 import type { StorageService } from '@/services/storage';
+import { toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId } from '@/models/ids';
 
 /**
  * ImageDownloadHydrator handles the manual attachment of the Vue-based
@@ -22,7 +24,7 @@ export const ImageDownloadHydrator = {
     // Detect format for metadata support
     let isSupported = false;
     try {
-      const activeBlob = blob || await storageService.getFile({ binaryObjectId: id });
+      const activeBlob = blob || await storageService.getFile({ binaryObjectId: toBinaryObjectId({ raw: id }) });
       if (activeBlob) {
         isSupported = await this.detectSupport({ blob: activeBlob });
       }
@@ -80,7 +82,7 @@ export const ImageDownloadHydrator = {
    * Orchestrates the download of a generated image, optionally embedding metadata.
    */
   async download({ id, prompt, steps, seed, model, withMetadata, storageService, onError }: {
-    id: string,
+    id: BinaryObjectId,
     prompt: string,
     steps: number | undefined,
     seed: number | undefined,

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { BinaryObject } from '@/models/types';
+import { idToRaw } from '@/models/ids';
+import type { BinaryObjectId } from '@/models/ids';
 import { storageService } from '@/services/storage';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {
@@ -11,7 +13,7 @@ import {
 
 interface Props {
   objects: BinaryObject[];
-  initialId: string;
+  initialId: BinaryObjectId;
 }
 
 const props = defineProps<Props>();
@@ -245,7 +247,7 @@ defineExpose({
           </div>
 
           <transition name="preview-fade" mode="out-in">
-            <div v-if="previewUrl" :key="currentObject.id" class="w-full h-full flex items-center justify-center">
+            <div v-if="previewUrl" :key="idToRaw({ id: currentObject.id })" class="w-full h-full flex items-center justify-center">
               <div
                 v-if="isImage"
                 class="relative transition-transform duration-75 ease-out select-none flex items-center justify-center"

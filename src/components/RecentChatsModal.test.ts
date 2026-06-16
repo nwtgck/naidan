@@ -6,6 +6,7 @@ import type { ChatSummary } from '@/models/types';
 import { setupScrollToMock } from '@/utils/test-utils';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { toChatId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -89,8 +90,8 @@ describe('RecentChatsModal Component', () => {
     setupScrollToMock();
     mockIsRecentOpen.value = true;
     mockRecentChats.value = [
-      { id: 'c1', title: 'Chat 1', accessedAt: Date.now(), updatedAt: Date.now() },
-      { id: 'c2', title: null, accessedAt: Date.now() - 1000, updatedAt: Date.now() - 1000 },
+      { id: toChatId({ raw: 'c1' }), title: 'Chat 1', accessedAt: Date.now(), updatedAt: Date.now() },
+      { id: toChatId({ raw: 'c2' }), title: null, accessedAt: Date.now() - 1000, updatedAt: Date.now() - 1000 },
     ];
     vi.clearAllMocks();
     vi.mocked(useChatNavigation).mockReturnValue({

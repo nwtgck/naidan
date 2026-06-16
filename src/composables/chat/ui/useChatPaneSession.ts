@@ -1,16 +1,34 @@
 import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import type { MessageId } from '@/models/ids';
 
 type OutlineVisibility = 'hidden' | 'visible';
+
+interface ChatPaneSession {
+  showCompactSettings: Ref<boolean>;
+  showNeuralSyncEffect: Ref<boolean>;
+  outlineVisibility: Ref<OutlineVisibility>;
+  initialOutlineMessageId: Ref<MessageId | undefined>;
+  openCompactSettings: () => void;
+  closeCompactSettings: () => void;
+  toggleOutline: ({ getCurrentViewportMessageId }: { getCurrentViewportMessageId: () => MessageId | undefined }) => void;
+  closeOutline: () => void;
+  playNeuralSyncEffect: () => void;
+  clearNeuralSyncEffect: () => void;
+  TEST_ONLY: {
+    hideNeuralSyncEffectTimer: Ref<number | undefined>;
+    clearNeuralSyncEffectTimer: () => void;
+  };
+}
 
 export function useChatPaneSession({
   chatIdentityKey,
 }: {
   chatIdentityKey: Readonly<Ref<string>>;
-}) {
+}): ChatPaneSession {
   const showCompactSettings = ref(false);
   const showNeuralSyncEffect = ref(false);
   const outlineVisibility = ref<OutlineVisibility>('hidden');
-  const initialOutlineMessageId = ref<string | undefined>(undefined);
+  const initialOutlineMessageId = ref<MessageId | undefined>(undefined);
   const hideNeuralSyncEffectTimer = ref<number | undefined>(undefined);
 
   function clearNeuralSyncEffectTimer() {
@@ -44,7 +62,7 @@ export function useChatPaneSession({
   function toggleOutline({
     getCurrentViewportMessageId,
   }: {
-    getCurrentViewportMessageId: () => string | undefined;
+    getCurrentViewportMessageId: () => MessageId | undefined;
   }) {
     const currentVisibility = outlineVisibility.value;
     switch (currentVisibility) {

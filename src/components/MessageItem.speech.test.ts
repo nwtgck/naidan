@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
@@ -12,7 +13,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });
@@ -23,7 +24,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
 
 describe('MessageItem Speech Controls', () => {
   const createMessage = (content: string, id: string = 'msg-1') => ({
-    id,
+    id: toMessageId({ raw: id }),
     role: 'assistant' as const,
     content,
     timestamp: Date.now(),

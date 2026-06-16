@@ -4,6 +4,7 @@ import { useSettings } from './useSettings';
 import { storageService } from '@/services/storage';
 import { ref, reactive } from 'vue';
 import type { Attachment } from '@/models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId } from '@/models/ids';
 
 // Mock dependencies
 const chats = new Map<string, any>();
@@ -135,11 +136,11 @@ describe('useChat - Attachment & Migration Logic', () => {
   it('should keep attachments in memory status when using LocalStorage', async () => {
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    const chatObj = await openChat({ id: newChat!.id });
+    const chatObj = await openChat({ id: idToRaw({ id: newChat!.id }) });
 
     const mockAttachment: Attachment = {
-      id: '550e8400-e29b-41d4-a716-446655440000',
-      binaryObjectId: '550e8400-e29b-41d4-a716-446655440000',
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440000' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440000' }),
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -164,11 +165,11 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    const chatObj = await openChat({ id: newChat!.id });
+    const chatObj = await openChat({ id: idToRaw({ id: newChat!.id }) });
 
     const mockAttachment: Attachment = {
-      id: '550e8400-e29b-41d4-a716-446655440001',
-      binaryObjectId: '550e8400-e29b-41d4-a716-446655440001',
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440001' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440001' }),
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -206,8 +207,8 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     const mockBlob = new Blob(['binary data'], { type: 'image/png' });
     const mockAttachment: Attachment = {
-      id: '550e8400-e29b-41d4-a716-446655440002',
-      binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440002' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440002' }),
       originalName: 'to-migrate.png',
       mimeType: 'image/png',
       size: 100,
@@ -259,7 +260,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       name: 'to-migrate.png',
     });
 
-    const chat = await storageService.loadChat({ id: 'rescue-chat' });
+    const chat = await storageService.loadChat({ id: toChatId({ raw: 'rescue-chat' }) });
     const finalMsg = chat!.root.items[0];
     expect(finalMsg?.attachments).toBeDefined();
     const finalAtts = finalMsg!.attachments!;

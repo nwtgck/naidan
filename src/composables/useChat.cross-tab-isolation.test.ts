@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { nextTick } from 'vue';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Shared State across "tabs" (modules) ---
 const STORAGE_KEY = '__CROSS_TAB_TEST_STORAGE__';
@@ -90,7 +91,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
           return ((s.hierarchy.items || []) as TestHierarchyNode[]).map((node) => {
             if (node.type === 'chat') {
               const chat = s.chats.get(node.id);
-              return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: chat?.title || null, updatedAt: chat?.updatedAt || 0, groupId: chat?.groupId || null } };
+              return { id: `chat:${node.id}`, type: 'chat', chat: { id: toChatId({ raw: node.id }), title: chat?.title || null, updatedAt: chat?.updatedAt || 0, groupId: chat?.groupId || null } };
             }
             if (node.type === 'chat_group') {
               const group = s.groups.get(node.id);
@@ -100,7 +101,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
                   ...group,
                   items: (node.chat_ids || []).map((cid: string) => {
                     const c = s.chats.get(cid);
-                    return { id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: c?.title || null, updatedAt: c?.updatedAt || 0, groupId: node.id } };
+                    return { id: `chat:${cid}`, type: 'chat', chat: { id: toChatId({ raw: cid }), title: c?.title || null, updatedAt: c?.updatedAt || 0, groupId: toChatGroupId({ raw: node.id }) } };
                   })
                 }
               };
@@ -218,8 +219,8 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     await vi.advanceTimersByTimeAsync(600);
-    await tabB.openChat({ id: chat!.id });
-    await tabA.renameChat({ id: chat!.id, newTitle: 'New Title' });
+    await tabB.openChat({ id: idToRaw({ id: chat!.id }) });
+    await tabA.renameChat({ id: idToRaw({ id: chat!.id }), newTitle: 'New Title' });
     await vi.advanceTimersByTimeAsync(600);
     await nextTick();
     expect(tabB.currentChat.value?.title).toBe('New Title');
@@ -252,7 +253,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat({ id: chat!.id });
+    await tabB.openChat({ id: idToRaw({ id: chat!.id }) });
 
     const p = tabA.sendMessage({ content: 'Hello' });
     await vi.advanceTimersByTimeAsync(1000);
@@ -280,7 +281,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     const tabB = await createTab();
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat({ id: chat!.id });
+    await tabB.openChat({ id: idToRaw({ id: chat!.id }) });
     expect(tabB.currentChat.value).not.toBeNull();
 
     const { storageService } = await import('@/services/storage');
@@ -298,7 +299,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
 
     const chat = await tabA.createNewChat({ groupId: undefined, modelId: 'gpt-4', systemPrompt: undefined });
     vi.advanceTimersByTime(600);
-    await tabB.openChat({ id: chat!.id });
+    await tabB.openChat({ id: idToRaw({ id: chat!.id }) });
 
     // 1. Tab A starts sending a message
     const sendPromise = tabA.sendMessage({ content: 'Slow msg' });
@@ -355,7 +356,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     expect(tab2.isTaskRunning({ chatId: chat2!.id })).toBe(true);
 
     // 5. Tab 1 requests abort for chat2 (which is running in Tab 2)
-    tab1.abortChat({ chatId: chat2!.id });
+    tab1.abortChat({ chatId: idToRaw({ id: chat2!.id }) });
     await vi.advanceTimersByTimeAsync(200);
     await p2;
 
@@ -366,7 +367,7 @@ describe('useChat Comprehensive Cross-Tab Sync', () => {
     expect(tab2.isTaskRunning({ chatId: chat1!.id })).toBe(true);
 
     // Cleanup p1
-    tab1.abortChat({ chatId: chat1!.id });
+    tab1.abortChat({ chatId: idToRaw({ id: chat1!.id }) });
     await vi.advanceTimersByTimeAsync(200);
     await p1;
   });

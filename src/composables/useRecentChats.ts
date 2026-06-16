@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import { useChatListData } from '@/composables/chat/ui/useChatListData';
+import { idToRaw } from '@/models/ids';
 import { useOverlay } from './useOverlay';
 import type { ChatSummary } from '@/models/types';
 
@@ -60,7 +61,7 @@ export function useRecentChats() {
     // Filter to ensure only existing chats are returned and include accessedAt
     return recentChatEntries.value
       .map(entry => {
-        const chat = chats.value.find(c => c.id === entry.id);
+        const chat = chats.value.find(c => idToRaw({ id: c.id }) === entry.id);
         return chat ? { ...chat, accessedAt: entry.accessedAt } : undefined;
       })
       .filter((c): c is ChatSummary & { accessedAt: number } => c !== undefined);

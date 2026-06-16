@@ -1,3 +1,4 @@
+import type { ChatGroupId, ChatId } from '@/models/ids'
 import type { StorageType } from '@/models/types'
 import { NAIDAN_SYSFS_MOUNT_PATH, type NaidanSysfsBinaryObjectAccess, type NaidanSysfsVisibility, type WeshMount } from '@/services/wesh/types'
 
@@ -11,8 +12,8 @@ export function createNaidanSysfsMount({
   storageType: StorageType;
   visibility: NaidanSysfsVisibility;
   binaryObjectAccess: NaidanSysfsBinaryObjectAccess;
-  currentChatId: string | undefined;
-  currentChatGroupId: string | undefined;
+  currentChatId: ChatId | undefined;
+  currentChatGroupId: ChatGroupId | undefined;
 }): WeshMount | undefined {
   if (currentChatId === undefined) {
     return undefined

@@ -3,6 +3,8 @@ import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
 import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
+import type { ChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -24,7 +26,7 @@ vi.mock('../services/storage', () => ({
       const chat = mockChatStorage.get(id);
       if (!chat) return null;
       const cloned = JSON.parse(JSON.stringify(chat));
-      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(toChatId({ raw: id })));
       cloned.groupId = group?.id || null;
       return cloned;
     }),
@@ -36,7 +38,7 @@ vi.mock('../services/storage', () => ({
       const chat = mockChatStorage.get(id);
       if (!chat) return null;
       const cloned = JSON.parse(JSON.stringify(chat));
-      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(toChatId({ raw: id })));
       cloned.groupId = group?.id || null;
       return cloned;
     }),
@@ -142,11 +144,11 @@ describe('useChat Concurrency & Stale State Protection', () => {
   const { errorCount, clearEvents } = useGlobalEvents();
 
   // Helper to wait for a chat to appear in activeGenerations
-  const waitForRegistry = async (id: string) => {
+  const waitForRegistry = async (id: ChatId) => {
     try {
       await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000, interval: 50 });
     } catch (e) {
-      console.error(`Timed out waiting for chat ${id} in activeGenerations. Current keys:`, Array.from(activeGenerations.keys()));
+      console.error('Timed out waiting for chat ' + idToRaw({ id }) + ' in activeGenerations. Current keys:', Array.from(activeGenerations.keys()));
       throw e;
     }
   };
@@ -240,7 +242,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     // 3. Simulate Tab B moving Chat A into a group
     await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: 'group-g', chat_ids: [chatAId] }];
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'group-g' }), chat_ids: [chatAId] }];
       return curr;
     } });
 
@@ -273,7 +275,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // Manual rename happens while streaming
-    await renameChat({ id: chatAId, newTitle: 'Manual New Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'Manual New Title' });
 
     resolveA!();
     await sendPromise;
@@ -302,14 +304,14 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // Delete chat while it's still generating in background
-    await deleteChat({ id: chatAId });
-    expect(mockChatStorage.has(chatAId)).toBe(false);
+    await deleteChat({ id: idToRaw({ id: chatAId }) });
+    expect(mockChatStorage.has(idToRaw({ id: chatAId }))).toBe(false);
 
     resolveA!();
     await sendPromise;
 
     // Verify chat was not recreated in storage
-    expect(mockChatStorage.has(chatAId)).toBe(false);
+    expect(mockChatStorage.has(idToRaw({ id: chatAId }))).toBe(false);
   });
 
   it('should not resurrect chats after deleteAllChats', async () => {
@@ -377,7 +379,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     expect(currentChat.value?.id).not.toBe(chatAId);
 
     // 3. Rename A in background (simulating sidebar edit)
-    await renameChat({ id: chatAId, newTitle: 'New Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'New Title' });
 
     // 4. Finish A
     resolveA!();
@@ -417,7 +419,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await vi.waitUntil(() => mockLlmChat.mock.calls.length >= 2); // Wait for title gen to start
 
     // 3. User manually renames while title gen is "calculating"
-    await renameChat({ id: chatAId, newTitle: 'User Manual Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'User Manual Title' });
     expect(chatA.title).toBe('User Manual Title');
 
     // 4. Let auto-title finish
@@ -451,13 +453,13 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     // 2. Move to Group B
     await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: 'g-b', chat_ids: [chatAId] }];
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-b' }), chat_ids: [chatAId] }];
       return curr;
     } });
 
     // 3. Move to Group C
     await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-      curr.items = [{ type: 'chat_group', id: 'g-c', chat_ids: [chatAId] }];
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-c' }), chat_ids: [chatAId] }];
       return curr;
     } });
 

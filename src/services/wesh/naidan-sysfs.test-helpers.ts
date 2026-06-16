@@ -3,12 +3,15 @@ import { Wesh } from './index'
 import { NaidanSysfsProvider } from './naidan-sysfs/provider'
 import { NAIDAN_SYSFS_ROOT_PATH } from './naidan-sysfs/constants'
 import type { ChatContent, ChatGroup, ChatMeta, Hierarchy, SidebarItem } from '@/models/types'
+import { idToRaw } from '@/models/ids'
 import type { NaidanSysfsStorageReader } from './naidan-sysfs/types'
 import type { NaidanSysfsVisibility } from './types'
+import type { BinaryObjectId, ChatGroupId, ChatId } from '@/models/ids'
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from './utils/test-stream'
+import { toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
 
 function createReaderStub({
   metadataById,
@@ -41,17 +44,17 @@ function createReaderStub({
     async listChatGroups() {
       return chatGroups
     },
-    async loadChatMeta({ chatId }: { chatId: string }) {
-      return metadataById[chatId]
+    async loadChatMeta({ chatId }: { chatId: ChatId }) {
+      return metadataById[idToRaw({ id: chatId })]
     },
-    async loadChatContent({ chatId }: { chatId: string }) {
-      return contentById[chatId]
+    async loadChatContent({ chatId }: { chatId: ChatId }) {
+      return contentById[idToRaw({ id: chatId })]
     },
-    async loadChat({ chatId }: { chatId: string }) {
+    async loadChat({ chatId }: { chatId: ChatId }) {
       void chatId
       return undefined
     },
-    async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
+    async loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }) {
       return chatGroups.find(({ id }) => id === chatGroupId)
     },
     async *listBinaryObjects() {
@@ -59,11 +62,11 @@ function createReaderStub({
         yield object
       }
     },
-    async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
+    async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
       void binaryObjectId
       return undefined
     },
-    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
+    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
       void binaryObjectId
       return undefined
     },
@@ -71,10 +74,10 @@ function createReaderStub({
 }
 
 export const mainChatMetadata: ChatMeta = {
-  id: 'chat-1',
+  id: toChatId({ raw: 'chat-1' }),
   title: 'Main Chat',
-  groupId: 'chat-group-1',
-  currentLeafId: 'Xa4aX1Y2z3A4b5C6d7E8',
+  groupId: toChatGroupId({ raw: 'chat-group-1' }),
+  currentLeafId: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
   createdAt: 100,
   updatedAt: 200,
   debugEnabled: true,
@@ -86,36 +89,36 @@ export const mainChatMetadata: ChatMeta = {
   modelId: 'gpt-5',
   autoTitleEnabled: true,
   titleModelId: 'gpt-5-mini',
-  originChatId: 'origin-chat',
-  originMessageId: 'origin-message',
+  originChatId: toChatId({ raw: 'origin-chat' }),
+  originMessageId: toMessageId({ raw: 'origin-message' }),
   systemPrompt: { behavior: 'append', content: 'Be concise.' },
   lmParameters: undefined,
-  mounts: [{ type: 'volume', volumeId: 'vol-1', mountPath: '/data', readOnly: true }],
+  mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/data', readOnly: true }],
 }
 
 export const siblingChatMetadata: ChatMeta = {
   ...mainChatMetadata,
-  id: 'chat-2',
+  id: toChatId({ raw: 'chat-2' }),
   title: 'Sibling Chat',
-  currentLeafId: 'Qa2sN6O7p8Q9r0S1t2U3',
+  currentLeafId: toMessageId({ raw: 'Qa2sN6O7p8Q9r0S1t2U3' }),
   updatedAt: 250,
 }
 
 export const individualChatMetadata: ChatMeta = {
   ...mainChatMetadata,
-  id: 'chat-3',
+  id: toChatId({ raw: 'chat-3' }),
   title: 'Individual Chat',
   groupId: null,
-  currentLeafId: 'Ra2iS1T2u3V4w5X6y7Z8',
+  currentLeafId: toMessageId({ raw: 'Ra2iS1T2u3V4w5X6y7Z8' }),
   updatedAt: 300,
 }
 
 export const mainChatContent: ChatContent = {
-  currentLeafId: 'Xa4aX1Y2z3A4b5C6d7E8',
+  currentLeafId: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
   root: {
     items: [
       {
-        id: 'Ku1rA1B2c3D4e5F6g7H8',
+        id: toMessageId({ raw: 'Ku1rA1B2c3D4e5F6g7H8' }),
         role: 'user',
         content: 'Root user',
         timestamp: 2000,
@@ -129,7 +132,7 @@ export const mainChatContent: ChatContent = {
         replies: {
           items: [
             {
-              id: 'La2rF6G7h8J9k0L1m2N3',
+              id: toMessageId({ raw: 'La2rF6G7h8J9k0L1m2N3' }),
               role: 'assistant',
               content: 'Root assistant',
               timestamp: 2001,
@@ -143,7 +146,7 @@ export const mainChatContent: ChatContent = {
               replies: {
                 items: [
                   {
-                    id: 'Mu3aL1M2n3P4q5R6s7T8',
+                    id: toMessageId({ raw: 'Mu3aL1M2n3P4q5R6s7T8' }),
                     role: 'user',
                     content: 'Branch A user',
                     timestamp: 2002,
@@ -157,7 +160,7 @@ export const mainChatContent: ChatContent = {
                     replies: {
                       items: [
                         {
-                          id: 'Na4bR6S7t8V9w0X1y2Z3',
+                          id: toMessageId({ raw: 'Na4bR6S7t8V9w0X1y2Z3' }),
                           role: 'assistant',
                           content: 'Branch A first leaf',
                           timestamp: 2003,
@@ -171,7 +174,7 @@ export const mainChatContent: ChatContent = {
                           replies: { items: [] },
                         },
                         {
-                          id: 'Xa4aX1Y2z3A4b5C6d7E8',
+                          id: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
                           role: 'assistant',
                           content: 'Branch A current leaf',
                           timestamp: 2004,
@@ -188,7 +191,7 @@ export const mainChatContent: ChatContent = {
                     },
                   },
                   {
-                    id: 'Pu3bC6D7e8F9g0H1i2J3',
+                    id: toMessageId({ raw: 'Pu3bC6D7e8F9g0H1i2J3' }),
                     role: 'user',
                     content: 'Branch B user',
                     timestamp: 2005,
@@ -202,7 +205,7 @@ export const mainChatContent: ChatContent = {
                     replies: {
                       items: [
                         {
-                          id: 'Sa4cH1J2k3L4m5N6p7Q8',
+                          id: toMessageId({ raw: 'Sa4cH1J2k3L4m5N6p7Q8' }),
                           role: 'assistant',
                           content: 'Branch B leaf',
                           timestamp: 2006,
@@ -242,11 +245,11 @@ function createLinearContent({
   assistantText: string;
 }): ChatContent {
   return {
-    currentLeafId: leafId,
+    currentLeafId: toMessageId({ raw: leafId }),
     root: {
       items: [
         {
-          id: userId,
+          id: toMessageId({ raw: userId }),
           role: 'user',
           content: userText,
           timestamp: 3000,
@@ -260,7 +263,7 @@ function createLinearContent({
           replies: {
             items: [
               {
-                id: assistantId,
+                id: toMessageId({ raw: assistantId }),
                 role: 'assistant',
                 content: assistantText,
                 timestamp: 3001,
@@ -298,7 +301,7 @@ export const individualChatContent = createLinearContent({
 })
 
 export const chatGroup: ChatGroup = {
-  id: 'chat-group-1',
+  id: toChatGroupId({ raw: 'chat-group-1' }),
   name: 'Primary Group',
   isCollapsed: false,
   updatedAt: 350,
@@ -312,10 +315,10 @@ export const chatGroup: ChatGroup = {
   titleModelId: 'gpt-5-mini',
   systemPrompt: { behavior: 'append', content: 'Group prompt.' },
   lmParameters: undefined,
-  mounts: [{ type: 'volume', volumeId: 'vol-2', mountPath: '/shared', readOnly: true }],
+  mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'vol-2' }), mountPath: '/shared', readOnly: true }],
   items: [
-    { id: 'chat:chat-1', type: 'chat', chat: { id: 'chat-1', title: 'Main Chat', updatedAt: 200, groupId: 'chat-group-1' } },
-    { id: 'chat:chat-2', type: 'chat', chat: { id: 'chat-2', title: 'Sibling Chat', updatedAt: 250, groupId: 'chat-group-1' } },
+    { id: 'chat:chat-1', type: 'chat', chat: { id: toChatId({ raw: 'chat-1' }), title: 'Main Chat', updatedAt: 200, groupId: toChatGroupId({ raw: 'chat-group-1' }) } },
+    { id: 'chat:chat-2', type: 'chat', chat: { id: toChatId({ raw: 'chat-2' }), title: 'Sibling Chat', updatedAt: 250, groupId: toChatGroupId({ raw: 'chat-group-1' }) } },
   ],
 }
 
@@ -330,7 +333,7 @@ function createSidebarItems(): SidebarItem[] {
       id: 'chat:chat-3',
       type: 'chat',
       chat: {
-        id: 'chat-3',
+        id: toChatId({ raw: 'chat-3' }),
         title: 'Individual Chat',
         updatedAt: 300,
         groupId: null,
@@ -386,8 +389,8 @@ export async function createMountedNaidanSysfsWeshWithCurrentChat({
         sidebarItems: createSidebarItems(),
         hierarchy: {
           items: [
-            { type: 'chat_group', id: 'chat-group-1', chat_ids: ['chat-1', 'chat-2'] },
-            { type: 'chat', id: 'chat-3' },
+            { type: 'chat_group', id: toChatGroupId({ raw: 'chat-group-1'}), chat_ids: [toChatId({ raw: 'chat-1' }), toChatId({ raw: 'chat-2' })] },
+            { type: 'chat', id: toChatId({ raw: 'chat-3' }) },
           ],
         },
       }),

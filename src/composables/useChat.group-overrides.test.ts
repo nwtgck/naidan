@@ -4,6 +4,7 @@ import { storageService } from '@/services/storage';
 import { reactive, nextTick } from 'vue';
 import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 // Mock storage
 const mockRootItems: SidebarItem[] = [];
@@ -75,7 +76,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('resolves settings with Chat > Group > Global priority', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [],
       updatedAt: 0,
@@ -86,10 +87,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'chat-model',
       createdAt: 0,
       updatedAt: 0,
@@ -123,7 +124,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('resolves system prompt with nested overrides/appends correctly', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [],
       updatedAt: 0,
@@ -132,10 +133,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'base-model',
       createdAt: 0,
       updatedAt: 0,
@@ -167,7 +168,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('uses Group modelId if Chat override is missing', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'G',
       items: [],
       updatedAt: 0,
@@ -176,10 +177,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: '',
       createdAt: 0,
       updatedAt: 0,
@@ -204,20 +205,20 @@ describe('useChat Group Overrides Resolution', () => {
   });
 
   it('clears currentChatGroup when opening a chat or creating a new one', async () => {
-    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
+    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
 
     vi.mocked(storageService.loadChat).mockResolvedValue({ id: 'c1', title: 'C1' } as any);
     await chatStore.openChat({ id: 'c1' });
     expect(chatStore.currentChatGroup.value).toBeNull();
 
-    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
+    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
     await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     expect(chatStore.currentChatGroup.value).toBeNull();
   });
 
   it('inherits endpoint URL and headers from Group if Chat overrides are missing', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'G',
       items: [],
       updatedAt: 0,
@@ -230,10 +231,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'some-model',
       createdAt: 0,
       updatedAt: 0,
@@ -260,14 +261,14 @@ describe('useChat Group Overrides Resolution', () => {
   it('merges LM parameters across all 3 levels (Chat > Group > Global)', async () => {
     // Global: temperature: 0.7
     const group: ChatGroup = {
-      id: 'g1', name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
       lmParameters: { ...EMPTY_LM_PARAMETERS, topP: 0.5, temperature: 0.9, reasoning: { effort: undefined } }, // Overrides Global temp
     };
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
@@ -298,14 +299,14 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('suppresses Global prompt when Group uses override behavior with empty content', async () => {
     const group: ChatGroup = {
-      id: 'g1', name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
       systemPrompt: { content: '', behavior: 'override' },
     };
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
@@ -326,20 +327,20 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('updates resolved settings dynamically when chat is moved to a group', async () => {
     const group: ChatGroup = {
-      id: 'g1', name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
       modelId: 'group-model',
     };
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: null, // Initially no group
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: '', createdAt: 0, updatedAt: 0, debugEnabled: false,
     });
 
     chatStore.rootItems.value = [
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group },
-      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C', updatedAt: 0 } }
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C', updatedAt: 0 } }
     ];
     mockRootItems.push(...chatStore.rootItems.value);
 
@@ -357,7 +358,7 @@ describe('useChat Group Overrides Resolution', () => {
     );
 
     // 2. Move chat to group
-    chat.groupId = 'g1';
+    chat.groupId = toChatGroupId({ raw: 'g1' });
     await nextTick();
 
     await chatStore.sendMessage({ content: 'Hi again', parentId: null, attachments: [], chatTarget: chat });
@@ -376,7 +377,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('inherits endpoint URL and headers from Group if Chat overrides are missing', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'G',
       items: [],
       updatedAt: 0,
@@ -389,10 +390,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'some-model',
       createdAt: 0,
       updatedAt: 0,

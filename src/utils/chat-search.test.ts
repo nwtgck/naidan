@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { searchChatTree, searchLinearBranch } from './chat-search';
 import type { MessageBranch, MessageNode } from '@/models/types';
+import { toChatId, toMessageId } from '@/models/ids';
 
 describe('searchChatTree', () => {
   const createNode = (id: string, content: string, replies: MessageNode[] = []): MessageNode => ({
-    id,
+    id: toMessageId({ raw: id }),
     role: 'user',
     content,
     replies: { items: replies },
@@ -19,7 +20,7 @@ describe('searchChatTree', () => {
       ]
     };
 
-    const matches = searchChatTree({ root, query: 'world', chatId: 'chat-1' });
+    const matches = searchChatTree({ root, query: 'world', chatId: toChatId({ raw: 'chat-1' }) });
     expect(matches).toHaveLength(1);
     expect(matches[0]!.messageId).toBe('1');
     expect(matches[0]!.targetLeafId).toBe('1');
@@ -34,7 +35,7 @@ describe('searchChatTree', () => {
 
     const root: MessageBranch = { items: [node1] };
 
-    const matches = searchChatTree({ root, query: 'Target', chatId: 'chat-1' });
+    const matches = searchChatTree({ root, query: 'Target', chatId: toChatId({ raw: 'chat-1' }) });
     expect(matches).toHaveLength(1);
     expect(matches[0]!.messageId).toBe('2');
     // The target leaf for navigation should be the deepest node in that branch (node3)
@@ -54,7 +55,7 @@ describe('searchChatTree', () => {
 
     const root: MessageBranch = { items: [node1] };
 
-    const matches = searchChatTree({ root, query: 'specific', chatId: 'chat-1' });
+    const matches = searchChatTree({ root, query: 'specific', chatId: toChatId({ raw: 'chat-1' }) });
     expect(matches).toHaveLength(2);
     const ids = matches.map(m => m.messageId).sort();
     expect(ids).toEqual(['2a', '2b']);
@@ -65,14 +66,14 @@ describe('searchChatTree', () => {
       items: [createNode('1', 'HeLLo ThErE')]
     };
 
-    const matches = searchChatTree({ root, query: 'hello', chatId: 'chat-1' });
+    const matches = searchChatTree({ root, query: 'hello', chatId: toChatId({ raw: 'chat-1' }) });
     expect(matches).toHaveLength(1);
   });
 });
 
 describe('searchLinearBranch', () => {
   const createNode = (id: string, content: string): MessageNode => ({
-    id,
+    id: toMessageId({ raw: id }),
     role: 'user',
     content,
     replies: { items: [] },
@@ -85,7 +86,7 @@ describe('searchLinearBranch', () => {
       createNode('2', 'Hidden text in linear path'),
     ];
 
-    const matches = searchLinearBranch({ branch, query: 'Hidden', chatId: 'chat-1', targetLeafId: '99' });
+    const matches = searchLinearBranch({ branch, query: 'Hidden', chatId: toChatId({ raw: 'chat-1' }), targetLeafId: toMessageId({ raw: '99' }) });
     expect(matches).toHaveLength(1);
     expect(matches[0]!.messageId).toBe('2');
     expect(matches[0]!.targetLeafId).toBe('99');

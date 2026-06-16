@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount as baseMount, flushPromises } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
+import { toBinaryObjectId, toChatId } from '@/models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -11,7 +12,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });
@@ -91,7 +92,7 @@ describe('MessageItem Image Generation', () => {
     // Reset storage service mocks for each test
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({
-      id: 'default-id',
+      id: toBinaryObjectId({ raw: 'default-id' }),
       name: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -140,7 +141,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' },
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
         components: { ImageDownloadButton }
       }
@@ -175,7 +176,7 @@ describe('MessageItem Image Generation', () => {
 
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({
-      id: binaryObjectId,
+      id: toBinaryObjectId({ raw: binaryObjectId }),
       name: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -183,7 +184,7 @@ describe('MessageItem Image Generation', () => {
     });
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' },
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
         components: { ImageDownloadButton }
       }
@@ -260,7 +261,7 @@ describe('MessageItem Image Generation', () => {
     vi.mocked(storageService.getFile).mockResolvedValue(null);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' }
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) }
     });
 
     await flushPromises();
@@ -277,7 +278,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' }
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) }
     });
 
     await flushPromises();
@@ -319,7 +320,7 @@ describe('MessageItem Image Generation', () => {
 
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/webp' }));
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({
-      id: binaryObjectId,
+      id: toBinaryObjectId({ raw: binaryObjectId }),
       name: 'blue cat.webp',
       mimeType: 'image/webp',
       size: 123,
@@ -327,7 +328,7 @@ describe('MessageItem Image Generation', () => {
     });
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' },
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
         components: { ImageDownloadButton }
       }
@@ -384,7 +385,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: 'test-chat' },
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'test-chat' }) },
       global: {
         components: { ImageDownloadButton }
       }
@@ -440,7 +441,7 @@ describe('MessageItem Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: 'parallel-test' }
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'parallel-test' }) }
     });
 
     // Check skeletons immediately after mount
@@ -491,7 +492,7 @@ describe('MessageItem Image Generation', () => {
     };
 
     const wrapper = mount(MessageItem, {
-      props: { message, isCurrentChatStreaming: false, chatId: 'cache-test' }
+      props: { message, isCurrentChatStreaming: false, chatId: toChatId({ raw: 'cache-test' }) }
     });
 
     // 1. Wait for first hydration

@@ -7,6 +7,9 @@ import {
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/utils/gpt-oss-harmony';
 import type { WorkerToolDefinition } from '@/services/transformers-js/types';
+import type { ToolCallId } from '@/models/ids';
+import { idToRaw } from '@/models/ids';
+import { generateId } from '@/utils/id';
 
 interface GenerationResult {
   past_key_values: unknown;
@@ -138,7 +141,7 @@ export async function generateGptOss({
               break;
             }
             pendingToolCalls.push({
-              id: `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+              id: generateId<ToolCallId>(),
               type: 'function',
               function: {
                 name: functionName,
@@ -220,12 +223,12 @@ function buildGptOssToolResultTokens({
   for (const message of messages) {
     if (!message.tool_calls) continue;
     for (const toolCall of message.tool_calls) {
-      idToName.set(toolCall.id, toolCall.function.name);
+      idToName.set(idToRaw({ id: toolCall.id }), toolCall.function.name);
     }
   }
 
   const harmonyText = messages.filter(message => message.tool_call_id).map(message => {
-    const functionName = idToName.get(message.tool_call_id!) ?? 'tool';
+    const functionName = idToName.get(idToRaw({ id: message.tool_call_id! })) ?? 'tool';
     const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
     return `<|start|>${functionName} to=assistant<|channel|>commentary<|message|>${content}<|end|>`;
   }).join('');
@@ -279,7 +282,7 @@ function buildGptOssPromptMessages({
     role: message.role,
     content: typeof message.content === 'string' ? message.content : '',
     tool_calls: message.tool_calls,
-    tool_call_id: message.tool_call_id,
+    tool_call_id: message.tool_call_id === undefined ? undefined : idToRaw({ id: message.tool_call_id }),
   }));
 
   // Keep gpt-oss close to the last known-good naidan path: pass the user's

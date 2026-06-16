@@ -1,3 +1,5 @@
+import type { ChatId, MessageId } from '@/models/ids';
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -15,7 +17,7 @@ const mockActiveMessages = ref<any[]>([]);
 const mockCurrentChatGroup = ref(null);
 
 const mockChatStore = {
-  currentChat: ref({ id: 'chat-1', modelId: 'm1', root: { items: [] } }),
+  currentChat: ref({ id: toChatId({ raw: 'chat-1' }), modelId: 'm1', root: { items: [] } }),
   streaming: ref(new Set()),
   generatingTitle: ref(false),
   activeMessages: mockActiveMessages,
@@ -213,16 +215,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockChatStore.currentChat.value?.id ?? 'chat-1',
+      chatId: props?.chatId ?? mockChatStore.currentChat.value?.id ?? toChatId({ raw: 'chat-1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },

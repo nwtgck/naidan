@@ -20,6 +20,7 @@ import type {
   NaidanSysfsEntry,
   NaidanSysfsFileEntry,
 } from '@/services/wesh/naidan-sysfs/types'
+import { toBinaryObjectId } from '@/models/ids';
 
 function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
@@ -85,7 +86,7 @@ function createBinaryObjectDataFileEntry({
     kind: 'file',
     async stat({ path }: { path: string }) {
       void path
-      const blob = await context.reader.getBinaryObjectBlob({ binaryObjectId: object.id })
+      const blob = await context.reader.getBinaryObjectBlob({ binaryObjectId: toBinaryObjectId({ raw: object.id }) })
       if (blob === undefined) {
         throw new Error(`Path not found: data for binary object ${object.id}`)
       }
@@ -108,7 +109,7 @@ function createBinaryObjectDataFileEntry({
       }
       }
 
-      const blob = await context.reader.getBinaryObjectBlob({ binaryObjectId: object.id })
+      const blob = await context.reader.getBinaryObjectBlob({ binaryObjectId: toBinaryObjectId({ raw: object.id }) })
       if (blob === undefined) {
         throw new Error(`Path not found: ${path}`)
       }
@@ -216,7 +217,7 @@ function createBinaryObjectByIdDirectoryEntry(): NaidanSysfsDirectoryEntry {
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
-      const object = await context.reader.getBinaryObject({ binaryObjectId: name })
+      const object = await context.reader.getBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: name }) })
       if (object === undefined) {
         return undefined
       }

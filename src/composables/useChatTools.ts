@@ -1,6 +1,7 @@
-import { ref, computed, toRaw, triggerRef } from 'vue';
+import { ref, computed, toRaw, triggerRef, type ComputedRef, type Ref } from 'vue';
 import type { Chat } from '@/models/types';
-import type { LlmToolName, ToolCallRecord, ToolConfig } from '@/services/tools/types';
+import type { ChatId, MessageId, ToolCallId } from '@/models/ids';
+import type { LlmToolName, TextOrBinaryObject, ToolCallRecord, ToolConfig } from '@/services/tools/types';
 import {
   isLlmToolEnabledInToolConfigs,
   isLlmToolName,
@@ -8,12 +9,35 @@ import {
   setLlmToolEnabledInToolConfigs,
 } from '@/services/tools/tool-config';
 import { currentChatRef, getLiveChatById } from '@/composables/chat/global/chat-core-singletons';
+import { idToRaw } from '@/models/ids';
 import { storageService } from '@/services/storage';
 import { useSettings } from '@/composables/useSettings';
 
-const _runtimeToolConfigsByChat = ref<Map<string, ToolConfig[]>>(new Map());
-const _messageToolCalls = ref<Map<string, ToolCallRecord[]>>(new Map());
-const _currentChatId = ref<string | null>(null);
+const _runtimeToolConfigsByChat = ref<Map<ChatId, ToolConfig[]>>(new Map());
+const _messageToolCalls = ref<Map<MessageId, ToolCallRecord[]>>(new Map());
+const _currentChatId = ref<ChatId | null>(null);
+
+interface ChatToolsApi {
+  isToolEnabled: ({ name }: { name: string }) => boolean;
+  setToolEnabled: ({ name, enabled }: { name: string; enabled: boolean }) => void;
+  toggleTool: ({ name }: { name: string }) => void;
+  setCurrentChatId: ({ chatId }: { chatId: ChatId | null }) => void;
+  updateToolConfigsForCurrentChat: ({ updater }: { updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined }) => void;
+  enabledToolNames: ComputedRef<LlmToolName[]>;
+  getToolCallsForMessage: ({ messageId }: { messageId: MessageId }) => ToolCallRecord[];
+  addToolCall: ({ messageId, toolCall }: { messageId: MessageId; toolCall: ToolCallRecord }) => void;
+  updateToolCall: ({ messageId, toolCallId, update }: {
+    messageId: MessageId;
+    toolCallId: ToolCallId;
+    update: | { status: 'success'; result: { content: TextOrBinaryObject } } | { status: 'error'; error: { message: TextOrBinaryObject } }
+  }) => void;
+  clearToolCallsForMessage: ({ messageId }: { messageId: MessageId }) => void;
+  TEST_ONLY: {
+    _messageToolCalls: Ref<Map<MessageId, ToolCallRecord[]>>;
+    _runtimeToolConfigsByChat: Ref<Map<ChatId, ToolConfig[]>>;
+    _currentChatId: Ref<ChatId | null>;
+  };
+}
 
 function getCurrentLiveChat(): Chat | null {
   if (_currentChatId.value === null) return null;
@@ -33,7 +57,7 @@ export function getEffectiveToolConfigsForChat({
   chatId,
   persistedToolConfigs,
 }: {
-  chatId: string;
+  chatId: ChatId;
   persistedToolConfigs: ToolConfig[] | undefined;
 }): ToolConfig[] | undefined {
   if (_runtimeToolConfigsByChat.value.has(chatId)) {
@@ -47,7 +71,7 @@ function setRuntimeToolConfigsForChat({
   chatId,
   toolConfigs,
 }: {
-  chatId: string;
+  chatId: ChatId;
   toolConfigs: ToolConfig[] | undefined;
 }) {
   const next = new Map(_runtimeToolConfigsByChat.value);
@@ -55,14 +79,14 @@ function setRuntimeToolConfigsForChat({
   _runtimeToolConfigsByChat.value = next;
 }
 
-function clearRuntimeToolConfigsForChat({ chatId }: { chatId: string }) {
+function clearRuntimeToolConfigsForChat({ chatId }: { chatId: ChatId }) {
   if (!_runtimeToolConfigsByChat.value.has(chatId)) return;
   const next = new Map(_runtimeToolConfigsByChat.value);
   next.delete(chatId);
   _runtimeToolConfigsByChat.value = next;
 }
 
-function triggerCurrentChatIfNeeded({ chatId }: { chatId: string }) {
+function triggerCurrentChatIfNeeded({ chatId }: { chatId: ChatId }) {
   if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
     triggerRef(currentChatRef);
   }
@@ -77,7 +101,7 @@ function persistToolConfigs({
   chatId,
   toolConfigs,
 }: {
-  chatId: string;
+  chatId: ChatId;
   toolConfigs: ToolConfig[] | undefined;
 }) {
   if (!isToolConfigPersistenceEnabled()) {
@@ -88,7 +112,7 @@ function persistToolConfigs({
     id: chatId,
     updater: ({ current }) => {
       if (current === null) {
-        throw new Error(`Cannot update tool configs for missing chat: ${chatId}`);
+        throw new Error('Cannot update tool configs for missing chat: ' + idToRaw({ id: chatId }));
       }
       return {
         ...current,
@@ -104,7 +128,7 @@ export function updateToolConfigsForChat({
   chatId,
   updater,
 }: {
-  chatId: string;
+  chatId: ChatId;
   updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined;
 }) {
   const liveChat = getLiveChatById({ chatId });
@@ -126,7 +150,7 @@ export function updateToolConfigsForChat({
   persistToolConfigs({ chatId, toolConfigs: nextToolConfigs });
 }
 
-export function useChatTools() {
+export function useChatTools(): ChatToolsApi {
   const isToolEnabled = ({ name }: { name: string }) => {
     if (!isLlmToolName(name)) return false;
     if (_currentChatId.value === null) return false;
@@ -164,7 +188,7 @@ export function useChatTools() {
     setToolEnabled({ name, enabled: !isToolEnabled({ name }) });
   };
 
-  const setCurrentChatId = ({ chatId }: { chatId: string | null }) => {
+  const setCurrentChatId = ({ chatId }: { chatId: ChatId | null }) => {
     _currentChatId.value = chatId;
   };
 
@@ -179,11 +203,11 @@ export function useChatTools() {
     return llmToolNamesFromToolConfigs({ toolConfigs });
   });
 
-  const getToolCallsForMessage = ({ messageId }: { messageId: string }) => {
+  const getToolCallsForMessage = ({ messageId }: { messageId: MessageId }) => {
     return _messageToolCalls.value.get(messageId) || [];
   };
 
-  const addToolCall = ({ messageId, toolCall }: { messageId: string; toolCall: ToolCallRecord }) => {
+  const addToolCall = ({ messageId, toolCall }: { messageId: MessageId; toolCall: ToolCallRecord }) => {
     const current = _messageToolCalls.value.get(messageId) || [];
     if (current.some(c => c.id === toolCall.id)) return;
 
@@ -193,9 +217,9 @@ export function useChatTools() {
   };
 
   const updateToolCall = ({ messageId, toolCallId, update }: {
-    messageId: string;
-    toolCallId: string;
-    update: | { status: 'success'; result: { content: import('@/services/tools/types').TextOrBinaryObject } } | { status: 'error'; error: { message: import('@/services/tools/types').TextOrBinaryObject } }
+    messageId: MessageId;
+    toolCallId: ToolCallId;
+    update: | { status: 'success'; result: { content: TextOrBinaryObject } } | { status: 'error'; error: { message: TextOrBinaryObject } }
   }) => {
     const current = _messageToolCalls.value.get(messageId);
     if (!current) return;
@@ -211,7 +235,7 @@ export function useChatTools() {
     _messageToolCalls.value = nextMap;
   };
 
-  const clearToolCallsForMessage = ({ messageId }: { messageId: string }) => {
+  const clearToolCallsForMessage = ({ messageId }: { messageId: MessageId }) => {
     const nextMap = new Map(_messageToolCalls.value);
     nextMap.delete(messageId);
     _messageToolCalls.value = nextMap;

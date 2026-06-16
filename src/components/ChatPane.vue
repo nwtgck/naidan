@@ -46,6 +46,9 @@ const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
+import type { ChatId } from '@/models/ids';
+import { idToRaw, toMessageId } from '@/models/ids';
+import type { ChatGroupId, MessageId } from '@/models/ids';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -99,9 +102,9 @@ const chatTitle = useChatTitle();
 const chatMetadata = useChatMetadata();
 const { getSortedImageModels } = useImageGeneration();
 const props = defineProps<{
-  chatId: string
+  chatId: ChatId
   autoSendPrompt?: string
-  targetMessageId?: string
+  targetMessageId?: MessageId
 }>();
 
 const emit = defineEmits<{
@@ -137,7 +140,7 @@ const isDebugEnabled = computed(() => chat.value?.debugEnabled === true);
 const chatIdentityKey = computed(() => {
   const chatId = props.chatId;
   const leafId = chat.value?.currentLeafId ?? 'no-leaf';
-  return `${chatId}:${leafId}`;
+  return `${idToRaw({ id: chatId })}:${leafId === 'no-leaf' ? leafId : idToRaw({ id: leafId })}`;
 });
 
 const chatAreaSession = useChatPaneSession({
@@ -255,7 +258,7 @@ function getCurrentViewportMessageId() {
   const targetY = containerRect.top + Math.min(120, containerRect.height * 0.25);
   const messageElements = Array.from(scrollContainer.querySelectorAll('[id^="message-"]'));
 
-  let closest: { id: string; distance: number } | undefined;
+  let closest: { id: MessageId; distance: number } | undefined;
   for (const element of messageElements) {
     if (!(element instanceof HTMLElement)) continue;
     const rect = element.getBoundingClientRect();
@@ -264,7 +267,7 @@ function getCurrentViewportMessageId() {
     const distance = Math.abs(rect.top - targetY);
     if (!closest || distance < closest.distance) {
       closest = {
-        id: element.id.replace(/^message-/, ''),
+        id: toMessageId({ raw: element.id.replace(/^message-/, '') }),
         distance,
       };
     }
@@ -279,7 +282,7 @@ function toggleOutline() {
   });
 }
 
-function jumpToOutlineMessage({ messageId }: { messageId: string }) {
+function jumpToOutlineMessage({ messageId }: { messageId: MessageId }) {
   jumpToMessage({ messageId });
   closeOutline();
 }
@@ -293,7 +296,7 @@ function clearTargetMessageQuery() {
   router.replace({ query });
 }
 
-async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
+async function handleMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   await chatGroups.moveChatToGroup({
@@ -553,11 +556,11 @@ async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatPan
   return true;
 }
 
-async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: string, behavior: ScrollBehavior }) {
+async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: MessageId, behavior: ScrollBehavior }) {
   return scrollAnchorToTop({
     target: {
       kind: 'message',
-      anchorId: `message-${userTurnId}`,
+      anchorId: `message-${idToRaw({ id: userTurnId })}`,
       messageId: userTurnId,
     },
     behavior,
@@ -586,9 +589,9 @@ async function scrollInitialOpenTarget({ target }: { target: ChatPaneInitialOpen
   }
 }
 
-function jumpToMessage({ messageId }: { messageId: string }): boolean {
+function jumpToMessage({ messageId }: { messageId: MessageId }): boolean {
   if (!container.value) return false;
-  const el = container.value.querySelector(`#message-${messageId}`);
+  const el = container.value.querySelector(`#message-${idToRaw({ id: messageId })}`);
   if (el instanceof HTMLElement) {
     scrollIntoViewSafe({
       container: container.value,
@@ -612,7 +615,7 @@ watch(
     const flowKey = chatFlow.value.map((item) => {
       switch (item.type) {
       case 'message':
-        return `${item.node.id}:${item.mode}`;
+        return `${idToRaw({ id: item.node.id })}:${item.mode}`;
       case 'process_sequence':
         return `${item.id}:${item.items.length}`;
       case 'tool_group':
@@ -635,7 +638,7 @@ watch(
       lastJumpedTargetMessageKey.value = undefined;
       return;
     }
-    const targetKey = `${chatId ?? ''}:${leafId ?? ''}:${messageId}:${flowKey}`;
+    const targetKey = `${chatId === undefined ? '' : idToRaw({ id: chatId })}:${leafId === undefined ? '' : idToRaw({ id: leafId })}:${idToRaw({ id: messageId })}:${flowKey}`;
     if (lastJumpedTargetMessageKey.value === targetKey) return;
 
     await nextTick();
@@ -713,8 +716,8 @@ async function updateActiveTitleModel({
   modelId,
 }: {
   source: SettingsSource;
-  chatId: string;
-  chatGroupId: string | undefined;
+  chatId: ChatId;
+  chatGroupId: ChatGroupId | undefined;
   modelId: string | undefined;
 }) {
   switch (source) {
@@ -738,6 +741,12 @@ async function updateActiveTitleModel({
   }
 }
 
+function handleSearchChatFromHeader() {
+  if (chat.value) {
+    useGlobalSearch().openSearch({ chatId: idToRaw({ id: chat.value.id }) });
+  }
+}
+
 watch(
   showTitleDialog,
   (isOpen) => {
@@ -754,7 +763,7 @@ const autoScroll = useChatPaneAutoScroll({
   processingStatus: computed(() => isChatStreaming.value ? 'processing' : 'idle'),
 });
 
-const responseViewportReserve = ref<{ chatId: string, navigationKey: string, userTurnId: string, heightPx: number } | undefined>(undefined);
+const responseViewportReserve = ref<{ chatId: ChatId, navigationKey: string, userTurnId: MessageId, heightPx: number } | undefined>(undefined);
 
 const isResponseViewportReserveActive = computed(() => {
   if (props.targetMessageId) return false;
@@ -783,11 +792,11 @@ function getElementTopInContainer({
   return scrollContainer.scrollTop + elementRect.top - containerRect.top;
 }
 
-function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: string }) {
+function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: MessageId }) {
   const scrollContainer = container.value;
   if (!scrollContainer) return 0;
 
-  const userElement = scrollContainer.querySelector(`#message-${userTurnId}`);
+  const userElement = scrollContainer.querySelector(`#message-${idToRaw({ id: userTurnId })}`);
   if (!(userElement instanceof HTMLElement)) return 0;
 
   const userTop = getElementTopInContainer({
@@ -800,7 +809,7 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
   return Math.max(0, Math.ceil(userTop - maxScrollTopWithoutReserve));
 }
 
-async function handleEdit({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) {
+async function handleEdit({ messageId, newContent, lmParameters }: { messageId: MessageId, newContent: string, lmParameters?: LmParameters }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   await chatBranches.editMessage({
@@ -811,7 +820,7 @@ async function handleEdit({ messageId, newContent, lmParameters }: { messageId: 
   });
 }
 
-async function handleRegenerate({ messageId }: { messageId: string }) {
+async function handleRegenerate({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   await chatConversation.regenerateMessage({
@@ -852,7 +861,7 @@ function handleAbortContextCompact() {
   });
 }
 
-function handleSwitchVersion({ messageId }: { messageId: string }) {
+function handleSwitchVersion({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   void chatBranches.switchVersion({
@@ -861,7 +870,7 @@ function handleSwitchVersion({ messageId }: { messageId: string }) {
   });
 }
 
-async function handleFork({ messageId }: { messageId: string }) {
+async function handleFork({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   const newId = await chatBranches.forkChat({
@@ -869,7 +878,7 @@ async function handleFork({ messageId }: { messageId: string }) {
     messageId,
   });
   if (newId) {
-    router.push(`/chat/${newId}`);
+    router.push(`/chat/${idToRaw({ id: newId })}`);
   }
 }
 
@@ -903,7 +912,7 @@ function handleForkLastMessage() {
   }
 }
 
-function getChatSiblings({ messageId }: { messageId: string }) {
+function getChatSiblings({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return [];
   return [...getSiblingsInChatBranch({
@@ -953,7 +962,7 @@ function handleToggleDebug() {
 
 function jumpToOrigin() {
   if (chat.value?.originChatId) {
-    router.push(`/chat/${chat.value.originChatId}`);
+    router.push(`/chat/${idToRaw({ id: chat.value.originChatId })}`);
   }
 }
 
@@ -1058,7 +1067,7 @@ watch(
       @move-to-group="groupId => handleMoveToGroup({ groupId })"
       @toggle-outline="toggleOutline()"
       @print="handlePrint"
-      @search-chat="() => { if (chat) useGlobalSearch().openSearch({ chatId: chat.id }); }"
+      @search-chat="handleSearchChatFromHeader"
       @open-history="showHistoryModal = true"
       @compact-context="handleCompactContext()"
       @export-chat="exportChat"

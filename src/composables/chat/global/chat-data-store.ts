@@ -1,13 +1,15 @@
 import { isProxy, reactive, ref, toRaw, triggerRef, watch, type Ref } from 'vue';
+import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
 import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { findDeepestLeaf, findNodeInBranch } from '@/utils/chat-tree';
+import { idToRaw, toChatId } from '@/models/ids';
 
 export type ChatDataStore = {
   rootItems: Ref<SidebarItem[]>;
   currentChatRef: Ref<Chat | null>;
   currentChatGroupRef: Ref<ChatGroup | null>;
-  liveChatRegistry: Map<string, Chat>;
+  liveChatRegistry: Map<ChatId, Chat>;
 
   loadData(): Promise<void>;
   replaceSidebarItems({
@@ -25,7 +27,7 @@ export type ChatDataStore = {
   unregisterLiveInstance({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   getLiveChat({
@@ -37,42 +39,42 @@ export type ChatDataStore = {
   getLiveChatById({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Chat | null;
 
   getReadonlyChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Readonly<Chat> | null;
 
   openChat({
     id,
     leafId,
   }: {
-    id: string;
-    leafId: string | undefined;
+    id: ChatId;
+    leafId: MessageId | undefined;
   }): Promise<Chat | null>;
 
   openChatAtMessage({
     chatId,
     messageId,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
   }): Promise<Chat | null>;
 
   openChatGroup({
     id,
   }: {
-    id: string | null;
+    id: ChatGroupId | null;
   }): void;
 
   updateChatContent({
     id,
     updater,
   }: {
-    id: string;
+    id: ChatId;
 
     updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>;
   }): Promise<void>;
@@ -81,7 +83,7 @@ export type ChatDataStore = {
     id,
     updater,
   }: {
-    id: string;
+    id: ChatId;
 
     updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
   }): Promise<void>;
@@ -97,17 +99,17 @@ export function createChatDataStore({
   onMigration,
 }: {
   applyVolatileAssistantErrorsToChat: ({ chat }: { chat: Chat }) => void;
-  hasActiveGeneration: ({ chatId }: { chatId: string }) => boolean;
-  isTaskRunning: ({ chatId }: { chatId: string }) => boolean;
-  onExternalGenerationStarted: ({ chatId }: { chatId: string }) => void;
-  onExternalGenerationStopped: ({ chatId }: { chatId: string }) => void;
-  onExternalGenerationAbortRequest: ({ chatId }: { chatId: string }) => void;
+  hasActiveGeneration: ({ chatId }: { chatId: ChatId }) => boolean;
+  isTaskRunning: ({ chatId }: { chatId: ChatId }) => boolean;
+  onExternalGenerationStarted: ({ chatId }: { chatId: ChatId }) => void;
+  onExternalGenerationStopped: ({ chatId }: { chatId: ChatId }) => void;
+  onExternalGenerationAbortRequest: ({ chatId }: { chatId: ChatId }) => void;
   onMigration: () => void;
 }): ChatDataStore {
   const rootItems = ref<SidebarItem[]>([]);
   const currentChatRef = ref<Chat | null>(null);
   const currentChatGroupRef = ref<ChatGroup | null>(null);
-  const liveChatRegistry = reactive(new Map<string, Chat>());
+  const liveChatRegistry = reactive(new Map<ChatId, Chat>());
 
   function registerLiveInstance({
     chat,
@@ -131,7 +133,7 @@ export function createChatDataStore({
   function unregisterLiveInstance({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) return;
     if (!isTaskRunning({ chatId })) {
@@ -150,7 +152,7 @@ export function createChatDataStore({
       parentGroupId,
     }: {
       items: SidebarItem[];
-      parentGroupId: string | null;
+      parentGroupId: ChatGroupId | null;
     }) => {
       for (const item of items) {
         switch (item.type) {
@@ -247,7 +249,7 @@ export function createChatDataStore({
   function getLiveChatById({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Chat | null {
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
       return currentChatRef.value;
@@ -259,7 +261,7 @@ export function createChatDataStore({
   function getReadonlyChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Readonly<Chat> | null {
     const liveChat = getLiveChatById({ chatId });
     return liveChat;
@@ -269,7 +271,7 @@ export function createChatDataStore({
     id,
     updater,
   }: {
-    id: string;
+    id: ChatId;
 
     updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>;
   }) {
@@ -290,7 +292,7 @@ export function createChatDataStore({
     id,
     updater,
   }: {
-    id: string;
+    id: ChatId;
 
     updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
   }) {
@@ -325,8 +327,8 @@ export function createChatDataStore({
     id,
     leafId,
   }: {
-    id: string;
-    leafId: string | undefined;
+    id: ChatId;
+    leafId: MessageId | undefined;
   }) {
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
@@ -368,8 +370,8 @@ export function createChatDataStore({
     chatId,
     messageId,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
   }) {
     const chat = await openChat({ id: chatId, leafId: undefined });
     if (!chat) return null;
@@ -388,7 +390,7 @@ export function createChatDataStore({
   function openChatGroup({
     id,
   }: {
-    id: string | null;
+    id: ChatGroupId | null;
   }) {
     if (id === null) {
       currentChatGroupRef.value = null;
@@ -420,35 +422,37 @@ export function createChatDataStore({
     case 'chat_meta_and_chat_group': {
       debouncedSidebarReload();
 
-      if (event.id && currentChatRef.value && toRaw(currentChatRef.value).id === event.id) {
-        const fresh = await storageService.loadChat({ id: event.id });
+      if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
+        const chatId = toChatId({ raw: event.id });
+        const fresh = await storageService.loadChat({ id: chatId });
         if (fresh && currentChatRef.value) {
           applyVolatileAssistantErrorsToChat({ chat: fresh });
           Object.assign(currentChatRef.value, fresh);
           triggerRef(currentChatRef);
-        } else if (!hasActiveGeneration({ chatId: event.id })) {
+        } else if (!hasActiveGeneration({ chatId })) {
           currentChatRef.value = null;
         }
       }
 
-      if (event.id && currentChatGroupRef.value?.id === event.id) {
+      if (event.id && currentChatGroupRef.value && idToRaw({ id: currentChatGroupRef.value.id }) === event.id) {
         const allGroups = await storageService.listChatGroups();
-        currentChatGroupRef.value = allGroups.find((group) => group.id === event.id) || null;
+        currentChatGroupRef.value = allGroups.find((group) => idToRaw({ id: group.id }) === event.id) || null;
       }
       break;
     }
     case 'chat_content_generation': {
+      const chatId = toChatId({ raw: event.id });
       switch (event.status) {
       case 'started':
-        if (!hasActiveGeneration({ chatId: event.id })) {
-          onExternalGenerationStarted({ chatId: event.id });
+        if (!hasActiveGeneration({ chatId })) {
+          onExternalGenerationStarted({ chatId });
         }
         break;
       case 'stopped':
-        onExternalGenerationStopped({ chatId: event.id });
+        onExternalGenerationStopped({ chatId });
         break;
       case 'abort_request':
-        onExternalGenerationAbortRequest({ chatId: event.id });
+        onExternalGenerationAbortRequest({ chatId });
         break;
       default: {
         const _ex: never = event.status;
@@ -458,9 +462,10 @@ export function createChatDataStore({
       break;
     }
     case 'chat_content': {
-      if (event.id && currentChatRef.value && toRaw(currentChatRef.value).id === event.id) {
-        if (!hasActiveGeneration({ chatId: event.id })) {
-          const fresh = await storageService.loadChat({ id: event.id });
+      if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
+        const chatId = toChatId({ raw: event.id });
+        if (!hasActiveGeneration({ chatId })) {
+          const fresh = await storageService.loadChat({ id: chatId });
           if (fresh && currentChatRef.value) {
             applyVolatileAssistantErrorsToChat({ chat: fresh });
             currentChatRef.value.root = fresh.root;

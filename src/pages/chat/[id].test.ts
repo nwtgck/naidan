@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick, ref } from 'vue';
@@ -48,7 +49,7 @@ describe('ChatPage', () => {
     };
 
     mount(ChatPage);
-    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-123', leafId: undefined });
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-123' }), leafId: undefined });
   });
 
   it('watches route.params.id and calls openChat', async () => {
@@ -58,14 +59,14 @@ describe('ChatPage', () => {
     };
 
     mount(ChatPage);
-    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-123', leafId: undefined });
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-123' }), leafId: undefined });
 
     mockRouter.currentRoute.value = {
       params: { id: 'chat-456' },
       query: {},
     };
     await nextTick();
-    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-456', leafId: undefined });
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-456' }), leafId: undefined });
   });
 
   it('watches leaf query parameter and calls openChat', async () => {
@@ -75,14 +76,14 @@ describe('ChatPage', () => {
     };
 
     mount(ChatPage);
-    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-123', leafId: 'leaf-1' });
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-123' }), leafId: 'leaf-1' });
 
     mockRouter.currentRoute.value = {
       params: { id: 'chat-123' },
       query: { leaf: 'leaf-2' },
     };
     await nextTick();
-    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: 'chat-123', leafId: 'leaf-2' });
+    expect(mockOpenChat).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-123' }), leafId: 'leaf-2' });
   });
 
   it('watches message-id query parameter and opens at that message', async () => {
@@ -92,7 +93,7 @@ describe('ChatPage', () => {
     };
 
     mount(ChatPage);
-    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat-123', messageId: 'message-1' });
+    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-123' }), messageId: toMessageId({ raw: 'message-1' }) });
     expect(mockOpenChat).not.toHaveBeenCalled();
 
     mockRouter.currentRoute.value = {
@@ -100,7 +101,7 @@ describe('ChatPage', () => {
       query: { 'message-id': 'message-2' },
     };
     await nextTick();
-    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat-123', messageId: 'message-2' });
+    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-123' }), messageId: toMessageId({ raw: 'message-2' }) });
   });
 
   it('passes message-id query parameter to CurrentChatPane as the target message', () => {
@@ -121,7 +122,7 @@ describe('ChatPage', () => {
     };
 
     mount(ChatPage);
-    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat-123', messageId: 'message-1' });
+    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-123' }), messageId: toMessageId({ raw: 'message-1' }) });
     expect(mockOpenChat).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import type { ChatMeta } from '@/models/types'
+import type { ChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import {
   NAIDAN_SYSFS_BRANCHES_DIRECTORY_NAME,
@@ -28,7 +29,7 @@ async function loadMetadata({
   path,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   path: string;
 }): Promise<ChatMeta> {
   const metadata = await context.reader.loadChatMeta({ chatId })
@@ -44,7 +45,7 @@ function createMetadataFileEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: 'markdown' | 'json';
 }): NaidanSysfsFileEntry {
   return {
@@ -97,7 +98,7 @@ export function createChatDirectoryEntry({
   chatId,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',

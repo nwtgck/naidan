@@ -23,6 +23,7 @@ const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () =
 import { ENDPOINT_PRESETS } from '@/models/constants';
 import type { Chat } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { idToRaw } from '@/models/ids';
 import { naturalSort } from '@/utils/string';
 import { hasChatOverrides } from '@/utils/chat-settings-resolver';
 
@@ -151,7 +152,7 @@ async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number]
 }
 
 async function handleQuickProviderProfileChange() {
-  const providerProfile = settings.value.providerProfiles?.find(p => p.id === selectedProviderProfileId.value);
+  const providerProfile = settings.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
     localSettings.value.endpointType = providerProfile.endpointType;
     localSettings.value.endpointUrl = providerProfile.endpointUrl;
@@ -322,7 +323,7 @@ defineExpose({
                   style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                 >
                   <option value="" disabled>Load from saved profiles...</option>
-                  <option v-for="p in settings.providerProfiles" :key="p.id" :value="p.id">{{ p.name }} ({{ p.endpointType === 'ollama' ? 'Ollama' : 'OpenAI' }})</option>
+                  <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ p.endpointType === 'ollama' ? 'Ollama' : 'OpenAI' }})</option>
                 </select>
               </div>
 

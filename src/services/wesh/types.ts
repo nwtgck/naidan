@@ -1,3 +1,5 @@
+import type { ChatGroupId, ChatId } from '@/models/ids';
+
 // --- Kernel & Process Types ---
 
 export type WeshFileType = 'file' | 'directory' | 'fifo' | 'chardev' | 'symlink';
@@ -275,8 +277,8 @@ export interface WeshNaidanSysfsMount {
   storageType: 'local' | 'opfs' | 'memory';
   visibility: NaidanSysfsVisibility;
   binaryObjectAccess: NaidanSysfsBinaryObjectAccess;
-  currentChatId: string;
-  currentChatGroupId: string | undefined;
+  currentChatId: ChatId;
+  currentChatGroupId: ChatGroupId | undefined;
 }
 
 export type WeshMount = WeshDirectoryMount | WeshNaidanSysfsMount;

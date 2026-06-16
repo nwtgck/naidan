@@ -1,4 +1,5 @@
 import type { ChatMessage, LmParameters } from '@/models/types';
+import type { ToolCallId } from '@/models/ids';
 import type { LLMProvider } from '@/services/lm/types';
 import type { Tool } from '@/services/tools/types';
 
@@ -13,10 +14,10 @@ export class TransformersJsProvider implements LLMProvider {
     onChunk: ({ chunk }: { chunk: string }) => void;
     parameters?: LmParameters;
     tools?: Tool[];
-    onToolCall?: ({ id, toolName, args }: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: ({ id, event }: { id: string; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: ToolCallId; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
     onToolResult?: ({ id, result }: {
-      id: string;
+      id: ToolCallId;
       result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;

@@ -5,6 +5,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { ref, nextTick, reactive, computed } from 'vue';
 import { useLayout } from '@/composables/useLayout';
 import type { ChatGroup, SidebarItem } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 vi.mock('@/utils/dom', () => ({
   scrollIntoViewSafe: vi.fn(),
@@ -14,7 +15,7 @@ const mockCurrentChat = ref<{ id: string; groupId?: string | null } | null>(null
 const mockCurrentChatGroup = ref<{ id: string } | null>(null);
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockSidebarItems = ref<SidebarItem[]>([
-  { id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat', updatedAt: 0 } },
+  { id: 'chat:1', type: 'chat', chat: { id: toChatId({ raw: '1' }), title: 'Test Chat', updatedAt: 0 } },
 ]);
 const mockOpenChat = vi.fn();
 const mockOpenChatGroup = vi.fn();
@@ -132,7 +133,7 @@ describe('Sidebar Collapse Functionality', () => {
     mockCurrentChatGroup.value = null;
     mockChatGroups.value = [];
     mockSidebarItems.value = [
-      { id: 'chat:1', type: 'chat', chat: { id: '1', title: 'Test Chat', updatedAt: 0 } },
+      { id: 'chat:1', type: 'chat', chat: { id: toChatId({ raw: '1' }), title: 'Test Chat', updatedAt: 0 } },
     ];
     vi.clearAllMocks();
     (useLayout as any).mockReturnValue({
@@ -223,7 +224,7 @@ describe('Sidebar Collapse Functionality', () => {
     isSidebarOpen.value = false;
     mockCurrentChat.value = { id: '1', groupId: 'group1' };
     mockCurrentChatGroup.value = null;
-    mockChatGroups.value = [{ id: 'group1', name: 'Test Group', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'group1' }), name: 'Test Group', isCollapsed: false, updatedAt: 0, items: [] }];
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: { 'lucide-vue-next': true, 'Logo': true } },
@@ -241,7 +242,7 @@ describe('Sidebar Collapse Functionality', () => {
     isSidebarOpen.value = true;
     mockCurrentChat.value = { id: '1', groupId: 'group1' };
     mockCurrentChatGroup.value = null;
-    mockChatGroups.value = [{ id: 'group1', name: 'Test Group', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'group1' }), name: 'Test Group', isCollapsed: false, updatedAt: 0, items: [] }];
 
     const wrapper = mount(Sidebar, {
       global: { plugins: [router], stubs: { 'lucide-vue-next': true, 'Logo': true } },

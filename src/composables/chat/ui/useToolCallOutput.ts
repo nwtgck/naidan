@@ -1,12 +1,13 @@
 import { computed, type ComputedRef } from 'vue';
 import { chatVolatileState } from '@/composables/chat/global/chat-core-singletons';
+import type { ToolCallId } from '@/models/ids';
 
 export type ToolCallOutputAdapter = {
   getOutput({
     toolCallId,
     status,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
     status: 'executing' | 'success' | 'error';
   }): ComputedRef<string | undefined>;
 
@@ -18,7 +19,7 @@ export function useToolCallOutput(): ToolCallOutputAdapter {
     toolCallId,
     status,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
     status: 'executing' | 'success' | 'error';
   }) {
     return computed(() => {

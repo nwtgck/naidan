@@ -1,3 +1,4 @@
+import { toMessageId } from '@/models/ids';
 import { computed, nextTick, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatPaneSession } from './useChatPaneSession';
@@ -17,7 +18,7 @@ describe('useChatPaneSession', () => {
 
       session.openCompactSettings();
       session.toggleOutline({
-        getCurrentViewportMessageId: () => 'message-1',
+        getCurrentViewportMessageId: () => toMessageId({ raw: 'message-1' }),
       });
       session.playNeuralSyncEffect();
 
@@ -64,7 +65,7 @@ describe('useChatPaneSession', () => {
     });
 
     session.toggleOutline({
-      getCurrentViewportMessageId: () => 'message-42',
+      getCurrentViewportMessageId: () => toMessageId({ raw: 'message-42' }),
     });
 
     expect(session.outlineVisibility.value).toBe('visible');

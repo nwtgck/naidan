@@ -1,4 +1,4 @@
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { ref, computed } from 'vue';
 
 export type EventType = 'info' | 'warn' | 'error' | 'debug';
@@ -27,7 +27,7 @@ const events = ref<GlobalEvent[]>([]);
 export function useGlobalEvents() {
   const addEvent = ({ type, source, message, details }: { type: EventType; source: string; message: string; details?: ErrorDetailValue }) => {
     events.value.push({
-      id: generateId(),
+      id: generateOpaqueId(),
       timestamp: Date.now(),
       type,
       source,

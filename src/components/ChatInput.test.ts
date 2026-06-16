@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
+import { toVolumeId, toChatId } from '@/models/ids';
 
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: {
@@ -156,7 +157,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
       if (mount.volumeId === undefined) {
         continue;
       }
-      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: toVolumeId({ raw: mount.volumeId }) });
       if (handle === undefined) {
         continue;
       }
@@ -176,7 +177,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
       if (mount.volumeId === undefined) {
         continue;
       }
-      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: toVolumeId({ raw: mount.volumeId }) });
       if (handle === undefined) {
         continue;
       }
@@ -455,7 +456,7 @@ describe('ChatInput Integration', () => {
 
   const getWrapper = () => mount(ChatInput, {
     props: {
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       chat: mockCurrentChat.value!,
       chatGroup: mockCurrentChatGroup.value,
       resolvedLmParameters: undefined,
@@ -548,7 +549,7 @@ describe('ChatInput Integration', () => {
     await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
     await flushPromises();
 
-    expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
     expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
@@ -803,7 +804,7 @@ describe('ChatInput Integration', () => {
       id: 'chat-2',
       lmParameters: { reasoning: { effort: 'high' } }
     };
-    await wrapper.setProps({ chatId: 'chat-2' });
+    await wrapper.setProps({ chatId: toChatId({ raw: 'chat-2' }) });
     await nextTick();
 
     // Verify it reflects the NEW chat's state

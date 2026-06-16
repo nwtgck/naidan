@@ -1,4 +1,4 @@
-import { generateId } from '@/utils/id'
+import { generateOpaqueId } from '@/utils/id'
 import { createPrivacyFetchError } from './errors'
 import { PRIVACY_FETCH_PROTOCOL } from './protocol'
 import { privacyFetchBrokerToParentMessageSchema } from './schemas'
@@ -277,7 +277,7 @@ export function createPrivacyFetchBrokerClient({
         })
       }
 
-      const requestId = generateId<string>()
+      const requestId = generateOpaqueId()
 
       return new Promise<PrivacyFetchResponse>((resolve, reject) => {
         let settled = false

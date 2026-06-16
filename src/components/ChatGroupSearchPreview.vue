@@ -9,6 +9,8 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useRouter } from 'vue-router';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import SearchPreview from './SearchPreview.vue';
+import { idToRaw } from '@/models/ids';
+import type { ChatId } from '@/models/ids';
 
 const props = defineProps<{
   groupId: string;
@@ -21,14 +23,15 @@ const { closeSearch } = useGlobalSearch();
 
 const chats = ref<ChatSummary[]>([]);
 const isLoading = ref(false);
-const selectedChatId = ref<string | null>(null);
+const selectedChatId = ref<ChatId | null>(null);
 const chatListContainer = ref<HTMLElement | null>(null);
+const exposedSelectedChatId = computed(() => selectedChatId.value === null ? null : idToRaw({ id: selectedChatId.value }));
 
 const selectedChat = computed(() => chats.value.find(c => c.id === selectedChatId.value) || null);
 
-async function selectAndNavigate({ chatId }: { chatId: string }) {
+async function selectAndNavigate({ chatId }: { chatId: ChatId }) {
   await openChat({ chatId });
-  router.push(`/chat/${chatId}`);
+  router.push(`/chat/${idToRaw({ id: chatId })}`);
   closeSearch();
 }
 
@@ -64,7 +67,7 @@ function navigate({ direction }: { direction: 'up' | 'down' }) {
     // Ensure the selected item is visible
     nextTick(() => {
       if (!chatListContainer.value) return;
-      const el = chatListContainer.value.querySelector(`[data-group-chat-id="${nextChat.id}"]`);
+      const el = chatListContainer.value.querySelector(`[data-group-chat-id="${idToRaw({ id: nextChat.id })}"]`);
       if (el instanceof HTMLElement) {
         scrollIntoViewSafe({
           container: chatListContainer.value,
@@ -86,7 +89,7 @@ function handleEnter() {
 defineExpose({
   navigate,
   handleEnter,
-  selectedChatId,
+  selectedChatId: exposedSelectedChatId,
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   },
@@ -96,7 +99,7 @@ const selectedSearchResultItem = computed<Extract<SearchResultItem, { type: 'cha
   if (!selectedChat.value) return undefined;
   return {
     type: 'chat',
-    chatId: selectedChat.value.id,
+    chatId: idToRaw({ id: selectedChat.value.id }),
     title: selectedChat.value.title,
     updatedAt: selectedChat.value.updatedAt,
     matchType: 'title',
@@ -109,7 +112,7 @@ async function loadChats() {
   try {
     const allChats = await storageService.listChats();
     const groupChats = allChats
-      .filter(c => c.groupId === props.groupId)
+      .filter(c => c.groupId !== undefined && c.groupId !== null && idToRaw({ id: c.groupId }) === props.groupId)
       .sort((a, b) => b.updatedAt - a.updatedAt);
 
     chats.value = groupChats;
@@ -160,9 +163,9 @@ watch(() => props.groupId, loadChats, { immediate: true });
         <div v-else ref="chatListContainer" class="flex-1 overflow-y-auto p-3 space-y-1 scrollbar-hide">
           <div
             v-for="chat in chats"
-            :key="chat.id"
+            :key="idToRaw({ id: chat.id })"
             @click="selectedChatId = chat.id"
-            :data-group-chat-id="chat.id"
+            :data-group-chat-id="idToRaw({ id: chat.id })"
             class="w-full h-12 flex items-center gap-3 px-3 rounded-xl transition-all cursor-pointer group relative overflow-hidden shrink-0"
             :class="selectedChatId === chat.id
               ? 'bg-blue-50 dark:bg-blue-900/20 shadow-sm border border-blue-100/50 dark:border-blue-800/50'

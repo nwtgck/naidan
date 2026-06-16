@@ -5,13 +5,14 @@ import {
   currentChatRef,
   loadData,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 
 export type ChatGroupsAdapter = {
   updateChatGroupMetadata({
     chatGroupId,
     updates,
   }: {
-    chatGroupId: string;
+    chatGroupId: ChatGroupId;
     updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }): Promise<void>;
 
@@ -19,8 +20,8 @@ export type ChatGroupsAdapter = {
     chatId,
     chatGroupId,
   }: {
-    chatId: string;
-    chatGroupId: string | undefined;
+    chatId: ChatId;
+    chatGroupId: ChatGroupId | undefined;
   }): Promise<void>;
 
   TEST_ONLY: Record<never, never>;
@@ -31,7 +32,7 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatGroupId,
     updates,
   }: {
-    chatGroupId: string;
+    chatGroupId: ChatGroupId;
     updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }): Promise<void> {
     if (currentChatGroupRef.value?.id === chatGroupId) {
@@ -57,8 +58,8 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatId,
     chatGroupId,
   }: {
-    chatId: string;
-    chatGroupId: string | undefined;
+    chatId: ChatId;
+    chatGroupId: ChatGroupId | undefined;
   }): Promise<void> {
     if (currentChatRef.value?.id === chatId) {
       currentChatRef.value.groupId = chatGroupId;
@@ -66,7 +67,7 @@ export function useChatGroups(): ChatGroupsAdapter {
     }
 
     await storageService.updateHierarchy({ updater: ({ current }) => {
-      let detachedChatId: string | undefined;
+      let detachedChatId: ChatId | undefined;
 
       current.items = current.items.filter((item) => {
         switch (item.type) {

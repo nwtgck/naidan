@@ -1,4 +1,5 @@
 import { generateId } from '@/utils/id';
+import type { MessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { flushPromises, mount as baseMount } from '@vue/test-utils';
 import MessageItem from './MessageItem.vue';
@@ -7,6 +8,7 @@ import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { CheckIcon } from 'lucide-vue-next';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -16,7 +18,7 @@ const mount: any = (component: unknown, options?: Record<string, unknown>) => {
     return baseMount(component, {
       ...normalizedOptions,
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         ...props,
       },
     });
@@ -39,7 +41,7 @@ vi.mock('../services/storage', () => ({
 
 describe('MessageItem Rendering', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'assistant'): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role,
     content,
     timestamp: Date.now(),
@@ -93,7 +95,7 @@ print("hello")
   it('displays the assistant model name with correct casing', () => {
     const modelId = 'gemma3:1b-Assistant-Case';
     const message: MessageNode = {
-      id: 'msg-1',
+      id: toMessageId({ raw: 'msg-1' }),
       role: 'assistant',
       content: 'Hello',
       modelId,
@@ -223,7 +225,7 @@ print("hello")
 
   it('copies a message link via more actions menu', async () => {
     const message = createMessage('Linkable message');
-    const wrapper = mount(MessageItem, { props: { chatId: 'chat-1', message }, attachTo: document.body });
+    const wrapper = mount(MessageItem, { props: { chatId: toChatId({ raw: 'chat-1' }), message }, attachTo: document.body });
 
     const writeText = vi.fn().mockImplementation(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', {
@@ -240,7 +242,7 @@ print("hello")
     await (copyLinkBtn as HTMLButtonElement).click();
     await nextTick();
 
-    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}${window.location.pathname}${window.location.search}#/chat/chat-1?message-id=${message.id}`);
+    expect(writeText).toHaveBeenCalledWith(window.location.origin + window.location.pathname + window.location.search + '#/chat/chat-1?message-id=' + idToRaw({ id: message.id }));
 
     wrapper.unmount();
   });
@@ -441,7 +443,7 @@ console.log(1);
 
 describe('MessageItem Keyboard Shortcuts', () => {
   const createMessage = (content: string, role: 'user' | 'assistant' = 'user'): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role,
     content,
     timestamp: Date.now(),
@@ -522,7 +524,7 @@ describe('MessageItem Keyboard Shortcuts', () => {
 
 describe('MessageItem Attachment Rendering', () => {
   const createMessageWithAttachments = (attachments: any[]): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'user',
     content: 'Message with images',
     timestamp: Date.now(),
@@ -629,7 +631,7 @@ describe('MessageItem Attachment Rendering', () => {
 
 describe('MessageItem States', () => {
   const createAssistantMessage = (content: string, error?: string): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'assistant',
     content,
     error,
@@ -704,7 +706,7 @@ describe('MessageItem States', () => {
 describe('MessageItem Edit Labels', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => {
     const common = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       content: 'Some content',
       timestamp: Date.now(),
       replies: { items: [] }
@@ -783,7 +785,7 @@ describe('MessageItem Edit Labels', () => {
   it('preserves lmParameters when resending a user message', async () => {
     const lmParameters = { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' as const } };
     const message: UserMessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'user',
       content: 'Original content',
       timestamp: Date.now(),
@@ -809,7 +811,7 @@ describe('MessageItem Edit Labels', () => {
 describe('MessageItem Action Visibility', () => {
   const createMessage = (role: 'user' | 'assistant'): MessageNode => {
     const common = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       content: 'Some content',
       timestamp: Date.now(),
       replies: { items: [] }
@@ -854,13 +856,13 @@ describe('MessageItem Action Visibility', () => {
 describe('MessageItem Touch Support', () => {
   it('applies touch-visible class to attachment download buttons', async () => {
     const message: MessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'user',
       content: 'Message with images',
       timestamp: Date.now(),
       attachments: [{
-        id: 'att-1',
-        binaryObjectId: 'binary-id-1',
+        id: toAttachmentId({ raw: 'att-1' }),
+        binaryObjectId: toBinaryObjectId({ raw: 'binary-id-1' }),
         status: 'memory',
         blob: new Blob([''], { type: 'image/png' }),
         originalName: 'mem.png',
@@ -887,7 +889,7 @@ describe('MessageItem Touch Support', () => {
 
 describe('MessageItem Abort Button', () => {
   const createAssistantMessage = (content: string): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'assistant',
     content,
     timestamp: Date.now(),
@@ -935,7 +937,7 @@ describe('MessageItem Abort Button', () => {
   describe('Reasoning Effort Badge', () => {
     it('shows "Think" badge and correct tooltip for low/medium/high effort', () => {
       const message = {
-        id: 'msg-1',
+        id: toMessageId({ raw: 'msg-1' }),
         role: 'assistant',
         content: 'Hello',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'medium' } },
@@ -953,7 +955,7 @@ describe('MessageItem Abort Button', () => {
 
     it('shows "Off" badge and correct tooltip for "none" effort', () => {
       const message = {
-        id: 'msg-1',
+        id: toMessageId({ raw: 'msg-1' }),
         role: 'assistant',
         content: 'Hello',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'none' } },
@@ -971,7 +973,7 @@ describe('MessageItem Abort Button', () => {
 
     it('hides badge when effort is undefined (Default)', () => {
       const message = {
-        id: 'msg-1',
+        id: toMessageId({ raw: 'msg-1' }),
         role: 'assistant',
         content: 'Hello',
         lmParameters: EMPTY_LM_PARAMETERS,
@@ -989,7 +991,7 @@ describe('MessageItem Abort Button', () => {
   describe('MessageItem Edit Mode Auto-Expansion', () => {
     it('should auto-expand tools panel when editing a message with non-default reasoning effort', async () => {
       const message = {
-        id: 'msg-1',
+        id: toMessageId({ raw: 'msg-1' }),
         role: 'user',
         content: 'Hello',
         lmParameters: { ...EMPTY_LM_PARAMETERS, reasoning: { effort: 'high' } },
@@ -1010,7 +1012,7 @@ describe('MessageItem Abort Button', () => {
 
     it('should NOT auto-expand tools panel when editing a message with default reasoning effort', async () => {
       const message = {
-        id: 'msg-1',
+        id: toMessageId({ raw: 'msg-1' }),
         role: 'user',
         content: 'Hello',
         lmParameters: EMPTY_LM_PARAMETERS,
@@ -1031,7 +1033,7 @@ describe('MessageItem Abort Button', () => {
 
 describe('MessageItem Actions Menu', () => {
   const createMessage = (content: string): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'assistant',
     content,
     timestamp: Date.now(),
@@ -1115,7 +1117,7 @@ describe('MessageItem Actions Menu', () => {
 
 describe('MessageItem showGeneratingIndicator', () => {
   const createAssistantMessage = (content: string, thinking?: string): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'assistant',
     content,
     thinking,

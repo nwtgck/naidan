@@ -1,5 +1,6 @@
 import type { Chat, Settings, ChatGroup, SidebarItem, ChatSummary, ChatMeta, ChatContent, StorageSnapshot, BinaryObject, Volume, VolumeType } from '@/models/types';
 import type { ChatMetaDto, ChatGroupDto, HierarchyDto } from '@/models/dto';
+import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 
 export type { ChatSummary };
 
@@ -34,15 +35,15 @@ export abstract class IStorageProvider {
   }): Promise<Volume>;
 
   abstract getVolumeDirectoryHandle({ volumeId }: {
-    volumeId: string;
+    volumeId: VolumeId;
   }): Promise<FileSystemDirectoryHandle | null>;
 
   abstract deleteVolume({ volumeId }: {
-    volumeId: string;
+    volumeId: VolumeId;
   }): Promise<void>;
 
   abstract renameVolume({ volumeId, name }: {
-    volumeId: string;
+    volumeId: VolumeId;
     name: string;
   }): Promise<void>;
 
@@ -111,16 +112,16 @@ export abstract class IStorageProvider {
   /**
    * Saves only the chat content (message tree) to a dedicated file.
    */
-  abstract saveChatContent({ id, content }: { id: string; content: ChatContent }): Promise<void>;
+  abstract saveChatContent({ id, content }: { id: ChatId; content: ChatContent }): Promise<void>;
 
-  abstract loadChat({ id }: { id: string }): Promise<Chat | null>;
-  abstract loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null>;
-  abstract loadChatContent({ id }: { id: string }): Promise<ChatContent | null>;
-  abstract deleteChat({ id }: { id: string }): Promise<void>;
+  abstract loadChat({ id }: { id: ChatId }): Promise<Chat | null>;
+  abstract loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null>;
+  abstract loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null>;
+  abstract deleteChat({ id }: { id: ChatId }): Promise<void>;
 
   abstract saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void>;
-  abstract loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null>;
-  abstract deleteChatGroup({ id }: { id: string }): Promise<void>;
+  abstract loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null>;
+  abstract deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void>;
 
   abstract saveSettings({ settings }: { settings: Settings }): Promise<void>;
   abstract loadSettings(): Promise<Settings | null>;
@@ -129,13 +130,13 @@ export abstract class IStorageProvider {
   // --- File Storage ---
   abstract saveFile({ blob, binaryObjectId, name, mimeType }: {
     blob: Blob;
-    binaryObjectId: string;
+    binaryObjectId: BinaryObjectId;
     name: string;
     mimeType?: string;
   }): Promise<void>;
-  abstract getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null>;
-  abstract getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null>;
+  abstract getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null>;
+  abstract getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null>;
   abstract hasAttachments(): Promise<boolean>;
   abstract listBinaryObjects(): AsyncIterable<BinaryObject>;
-  abstract deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void>;
+  abstract deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void>;
 }

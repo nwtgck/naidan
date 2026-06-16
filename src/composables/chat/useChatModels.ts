@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { EndpointType } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 import {
   availableModels,
   fetchingModels,
@@ -23,7 +24,7 @@ export type ChatModelsAdapter = {
   fetchForChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<string[]>;
 
   fetchForGlobalEndpoint(): Promise<string[]>;
@@ -43,7 +44,7 @@ export function useChatModels(): ChatModelsAdapter {
   async function fetchForChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<string[]> {
     return await fetchModelsForChat({
       chatId,

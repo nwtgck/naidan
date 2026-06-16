@@ -1,6 +1,7 @@
 import { ref, shallowRef } from 'vue';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import type { SidebarItem } from '@/models/types';
+import { chatContentToDto } from '@/models/mappers';
 import { storageService } from '@/services/storage';
 import { createGlobalSearchWorkerClient } from '@/services/global-search/worker/client';
 import type {
@@ -14,6 +15,7 @@ import type {
   SearchScope,
   SearchSource,
 } from '@/services/global-search/types';
+import { idToRaw, toChatId } from '@/models/ids';
 
 export type { ContentMatch, FlatSearchResultItem, SearchResultItem, SearchRoleFilter, SearchScope };
 
@@ -28,7 +30,7 @@ function flattenSidebarForSearch({ sidebarItems }: {
       switch (item.type) {
       case 'chat_group':
         chatGroups.push({
-          id: item.chatGroup.id,
+          id: idToRaw({ id: item.chatGroup.id }),
           name: item.chatGroup.name,
           updatedAt: item.chatGroup.updatedAt,
           chatCount: item.chatGroup.items.length,
@@ -38,10 +40,10 @@ function flattenSidebarForSearch({ sidebarItems }: {
           case 'chat':
             chats.push({
               chat: {
-                id: chatItem.chat.id,
+                id: idToRaw({ id: chatItem.chat.id }),
                 title: chatItem.chat.title,
                 updatedAt: chatItem.chat.updatedAt,
-                groupId: chatItem.chat.groupId,
+                groupId: chatItem.chat.groupId === undefined || chatItem.chat.groupId === null ? chatItem.chat.groupId : idToRaw({ id: chatItem.chat.groupId }),
               },
               groupName: item.chatGroup.name,
             })
@@ -56,10 +58,10 @@ function flattenSidebarForSearch({ sidebarItems }: {
       case 'chat':
         chats.push({
           chat: {
-            id: item.chat.id,
+            id: idToRaw({ id: item.chat.id }),
             title: item.chat.title,
             updatedAt: item.chat.updatedAt,
-            groupId: item.chat.groupId,
+            groupId: item.chat.groupId === undefined || item.chat.groupId === null ? item.chat.groupId : idToRaw({ id: item.chat.groupId }),
           },
           groupName: undefined,
         })
@@ -271,7 +273,7 @@ export function useChatSearch() {
         }
 
         try {
-          const content = await storageService.loadChatContent({ id: chat.id });
+          const content = await storageService.loadChatContent({ id: toChatId({ raw: chat.id }) });
           if (content) {
             const response = await searchClient.searchChatContent({
               request: {
@@ -281,7 +283,7 @@ export function useChatSearch() {
                 roleFilter,
                 chat,
                 groupName,
-                content,
+                content: chatContentToDto({ domain: content }),
               },
             })
             const matches: ContentMatch[] = response.matches

@@ -1,3 +1,4 @@
+import { toChatGroupId, toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem'
 import {
@@ -31,8 +32,8 @@ describe('useFileExplorerModal', () => {
         storageType: 'opfs',
         visibility: 'current_chat_with_chat_group',
         binaryObjectAccess: 'data',
-        currentChatId: 'chat-1',
-        currentChatGroupId: 'chat-group-1',
+        currentChatId: toChatId({ raw: 'chat-1' }),
+        currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       }],
       initialPath: ['home', 'user', 'project'],
     } })

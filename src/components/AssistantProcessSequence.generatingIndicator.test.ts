@@ -4,6 +4,7 @@ import { h, defineComponent } from 'vue';
 import AssistantProcessSequence from './AssistantProcessSequence.vue';
 import type { ChatFlowItem, SequenceStats } from '@/composables/useChatDisplayFlow';
 import type { MessageNode } from '@/models/types';
+import { toMessageId } from '@/models/ids';
 
 // Cursor stub used in place of <GeneratingIndicator> to test slot rendering.
 const CursorStub = defineComponent({
@@ -14,7 +15,7 @@ const CursorStub = defineComponent({
 });
 
 const makeMessage = (): MessageNode => ({
-  id: 'msg-1',
+  id: toMessageId({ raw: 'msg-1' }),
   role: 'assistant',
   content: 'Hello',
   timestamp: Date.now(),

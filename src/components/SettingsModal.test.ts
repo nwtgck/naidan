@@ -1,3 +1,4 @@
+import { toProviderProfileId } from '@/models/ids';
 // Mock the dynamic import for licenses
 vi.mock('../assets/licenses.json', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
 
@@ -1090,8 +1091,8 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const vm = wrapper.vm as unknown as { form: { providerProfiles: Partial<ProviderProfile>[] } };
       vm.form.providerProfiles = [
-        { id: '1', name: 'With Title', endpointType: 'ollama', titleModelId: 't-1' },
-        { id: '2', name: 'Without Title', endpointType: 'openai' },
+        { id: toProviderProfileId({ raw: '1' }), name: 'With Title', endpointType: 'ollama', titleModelId: 't-1' },
+        { id: toProviderProfileId({ raw: '2' }), name: 'Without Title', endpointType: 'openai' },
       ];
 
       const navButtons = wrapper.findAll('nav button');
@@ -1115,7 +1116,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       const initialProfile = {
-        id: 'undo-1',
+        id: toProviderProfileId({ raw: 'undo-1' }),
         name: 'Undo Me',
         endpointType: 'ollama' as const,
         endpointUrl: 'http://localhost:11434',
@@ -1155,7 +1156,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const vm = wrapper.vm as unknown as { form: { providerProfiles: ProviderProfile[] } };
       vm.form.providerProfiles = [{
-        id: '1',
+        id: toProviderProfileId({ raw: '1' }),
         name: 'Test Profile',
         endpointType: 'ollama' as const,
         endpointUrl: 'http://localhost:11434',

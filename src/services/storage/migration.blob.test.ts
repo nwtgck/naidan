@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { storageService } from './index';
+import { toChatId } from '@/models/ids';
 
 // Polyfill Blob.arrayBuffer if missing in test environment
 if (!Blob.prototype.arrayBuffer) {
@@ -141,18 +142,18 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       debugEnabled: false
     };
 
-    await storageService.updateChatContent({ id: chat.id, updater: () => ({
+    await storageService.updateChatContent({ id: toChatId({ raw: chat.id }), updater: () => ({
       root: chat.root,
       currentLeafId: undefined
     } as any) });
-    await storageService.updateChatMeta({ id: chat.id, updater: () => chat as any });
+    await storageService.updateChatMeta({ id: toChatId({ raw: chat.id }), updater: () => chat as any });
     await storageService.updateHierarchy({ updater: ({ current: curr }) => {
-      curr.items.push({ type: 'chat', id: chat.id });
+      curr.items.push({ type: 'chat', id: toChatId({ raw: chat.id })});
       return curr;
     } });
     await storageService.switchProvider({ type: 'opfs' });
 
-    const loadedChat = await storageService.loadChat({ id: '550e8400-e29b-41d4-a716-446655440000' });
+    const loadedChat = await storageService.loadChat({ id: toChatId({ raw: '550e8400-e29b-41d4-a716-446655440000' }) });
     expect(loadedChat).toBeDefined();
     const firstNode = loadedChat!.root.items[0]!;
     expect(firstNode).toBeDefined();

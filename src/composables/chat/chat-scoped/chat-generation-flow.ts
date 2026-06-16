@@ -69,13 +69,15 @@ import {
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
+import type { BinaryObjectId, ChatId, MessageId, ToolCallId } from '@/models/ids';
+import { idToRaw } from '@/models/ids';
 import {
   useChatOrganization,
 } from '@/composables/chat/ui/useChatOrganization';
 
 type PersistedToolContent =
   | { type: 'text'; text: string }
-  | { type: 'binary_object'; id: string };
+  | { type: 'binary_object'; id: BinaryObjectId };
 
 type ResolvedGenerationSettings = {
   endpointType: EndpointType;
@@ -94,9 +96,9 @@ export async function sendMessageForChat({
   attachments,
   lmParameters,
 }: {
-  chatId: string;
+  chatId: ChatId;
   content: string;
-  parentId: string | null | undefined;
+  parentId: MessageId | null | undefined;
   attachments: Attachment[] | undefined;
   lmParameters: LmParameters | undefined;
 }): Promise<boolean> {
@@ -117,7 +119,7 @@ export async function sendMessageToCurrentChat({
   lmParameters,
 }: {
   content: string;
-  parentId: string | null | undefined;
+  parentId: MessageId | null | undefined;
   attachments: Attachment[] | undefined;
   lmParameters: LmParameters | undefined;
 }): Promise<boolean> {
@@ -139,7 +141,7 @@ export async function sendMessageToTargetChat({
 }: {
   targetChat: Chat | Readonly<Chat> | null;
   content: string;
-  parentId: string | null | undefined;
+  parentId: MessageId | null | undefined;
   attachments: Attachment[] | undefined;
   lmParameters: LmParameters | undefined;
 }): Promise<boolean> {
@@ -235,7 +237,7 @@ export async function sendMessageToTargetChat({
     }
 
     const userMessage: UserMessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'user',
       content: finalContent,
       attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
@@ -250,7 +252,7 @@ export async function sendMessageToTargetChat({
     };
 
     const assistantMessage: AssistantMessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'assistant',
       content: imageModeEnabled
         ? createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING
@@ -339,7 +341,7 @@ export async function generateResponseForAssistant({
   onReady,
 }: {
   chat: Chat | Readonly<Chat>;
-  assistantId: string;
+  assistantId: MessageId;
   lmParameters: LmParameters | undefined;
   onReady: (() => void) | undefined;
 }): Promise<void> {
@@ -373,7 +375,7 @@ export async function generateResponseForAssistant({
   storageService.notify({
     event: {
       type: 'chat_content_generation',
-      id: mutableChat.id,
+      id: idToRaw({ id: mutableChat.id }),
       status: 'started',
       timestamp: Date.now(),
     },
@@ -459,7 +461,7 @@ export async function generateResponseForAssistant({
 
           if (generationState.currentAssistantNode.content !== '' || (generationState.currentAssistantNode.toolCalls?.length ?? 0) > 0) {
             const newNode: AssistantMessageNode = reactive({
-              id: generateId(),
+              id: generateId<MessageId>(),
               role: 'assistant',
               content: '',
               timestamp: Date.now(),
@@ -483,7 +485,7 @@ export async function generateResponseForAssistant({
         onToolCall: ({ id, toolName, args }) => {
           if (generationState.currentToolNode === null) {
             const toolNode: ToolMessageNode = reactive({
-              id: generateId(),
+              id: generateId<MessageId>(),
               role: 'tool',
               results: [],
               content: undefined,
@@ -686,7 +688,7 @@ export async function generateResponseForAssistant({
       storageService.notify({
         event: {
           type: 'chat_content_generation',
-          id: mutableChat.id,
+          id: idToRaw({ id: mutableChat.id }),
           status: 'stopped',
           timestamp: Date.now(),
         },
@@ -716,8 +718,8 @@ export async function regenerateMessageForChat({
   chatId,
   failedMessageId,
 }: {
-  chatId: string;
-  failedMessageId: string;
+  chatId: ChatId;
+  failedMessageId: MessageId;
 }): Promise<void> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -733,7 +735,7 @@ export async function regenerateMessageForChat({
 export async function regenerateMessageForCurrentChat({
   failedMessageId,
 }: {
-  failedMessageId: string;
+  failedMessageId: MessageId;
 }): Promise<void> {
   if (currentChatRef.value === null) {
     return;
@@ -750,7 +752,7 @@ async function regenerateMessageForTarget({
   failedMessageId,
 }: {
   targetChat: Chat | Readonly<Chat>;
-  failedMessageId: string;
+  failedMessageId: MessageId;
 }): Promise<void> {
   const chatId = targetChat.id;
   if (isProcessing({ chatId })) {
@@ -775,7 +777,7 @@ async function regenerateMessageForTarget({
     }
 
     const newAssistantMessage: AssistantMessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
@@ -963,7 +965,7 @@ async function buildGenerationMessages({
   systemPromptMessages,
 }: {
   chat: Chat;
-  assistantId: string;
+  assistantId: MessageId;
   systemPromptMessages: string[];
 }): Promise<ChatMessage[]> {
   const messages: ChatMessage[] = [];
@@ -1138,8 +1140,8 @@ async function handleImageGenerationWithDefaults({
   model,
   signal,
 }: {
-  chatId: string;
-  assistantId: string;
+  chatId: ChatId;
+  assistantId: MessageId;
   prompt: string;
   width: number;
   height: number;
@@ -1211,13 +1213,13 @@ async function persistToolContent({
 }: {
   text: string;
   type: 'result' | 'error';
-  toolCallId: string;
+  toolCallId: ToolCallId;
 }): Promise<PersistedToolContent> {
   const binaryThreshold = 100 * 1024;
   if (text.length > binaryThreshold) {
     const blob = new Blob([text], { type: 'text/plain' });
-    const binaryId = generateId();
-    await storageService.saveFile({ blob, binaryObjectId: binaryId, name: `tool_${type}_${toolCallId}.txt` });
+    const binaryId = generateId<BinaryObjectId>();
+    await storageService.saveFile({ blob, binaryObjectId: binaryId, name: `tool_${type}_${idToRaw({ id: toolCallId })}.txt` });
     return { type: 'binary_object', id: binaryId };
   }
 

@@ -14,6 +14,7 @@ import {
   rootItems,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatId } from '@/models/ids';
 import {
   resolveChatEndpointForChat,
   resolveGlobalEndpoint,
@@ -23,7 +24,7 @@ export async function fetchModelsForChat({
   chatId,
   errorSource,
 }: {
-  chatId: string;
+  chatId: ChatId;
   errorSource: string;
 }): Promise<string[]> {
   const { settings } = useSettings();
