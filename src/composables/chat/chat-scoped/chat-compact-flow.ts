@@ -224,7 +224,7 @@ export async function runCompactCurrentBranchForChat({
     });
 
     mutableChat.root.items.push(branchResult.compactNode);
-    mutableChat.currentLeafId = branchResult.currentLeafId === undefined ? undefined : branchResult.currentLeafId;
+    mutableChat.currentLeafId = branchResult.currentLeafId;
     mutableChat.updatedAt = Date.now();
 
     await updateChatContent({

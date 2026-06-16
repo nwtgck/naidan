@@ -4,7 +4,7 @@ import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat, ChatGroup, Settings } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { MigrationChunkDto } from '@/models/dto';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -158,7 +158,7 @@ describe('Storage Migration (Round-Trip)', () => {
     await provider.saveChatMeta({ meta: mockChat });
     await provider.saveHierarchy({ hierarchy: {
       items: [
-        { type: 'chat_group', id: mockChatGroup.id, chat_ids: [mockChat.id] }
+        { type: 'chat_group', id: idToRaw({ id: mockChatGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] }
       ]
     } });
 

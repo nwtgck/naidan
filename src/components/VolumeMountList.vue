@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import type { ObjectDirective } from 'vue';
 import type { Volume, Mount } from '@/models/types';
+import { idToRaw } from '@/models/ids';
 import type { VolumeId } from '@/models/ids';
 import { useToast } from '@/composables/useToast';
 import {
@@ -148,7 +149,7 @@ defineExpose({
       <div class="grid grid-cols-1 gap-4">
         <div
           v-for="volume in mountedVolumes"
-          :key="volume.id"
+          :key="idToRaw({ id: volume.id })"
           class="group bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/30 rounded-2xl shadow-sm hover:shadow-md transition-all"
         >
           <div class="p-4 flex items-center justify-between gap-4">
@@ -296,7 +297,7 @@ defineExpose({
       <div class="grid grid-cols-1 gap-3">
         <div
           v-for="volume in unmountedVolumes"
-          :key="volume.id"
+          :key="idToRaw({ id: volume.id })"
           class="group flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl hover:border-gray-200 dark:hover:border-gray-600 transition-all"
         >
           <div class="flex items-center gap-4">

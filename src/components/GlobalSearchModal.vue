@@ -12,6 +12,7 @@ import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
+import { idToRaw } from '@/models/ids';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { highlightSearchTextAsHtml } from '@/lib/security/allowedHtml';
 import type { AllowedHtml } from '@/lib/security/allowedHtml';
@@ -135,13 +136,13 @@ const handleClickOutsideGroupSelector = ({ event }: { event: MouseEvent }) => {
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutsideGroupSelector({ event }));
 
 const selectedGroups = computed(() => {
-  return chatGroups.value.filter(g => chatGroupIds.value.includes(g.id));
+  return chatGroups.value.filter(g => chatGroupIds.value.includes(idToRaw({ id: g.id })));
 });
 
 const targetChatTitle = computed(() => {
   if (!chatId.value) return undefined;
   // If it's the current chat, we can get it from currentChat
-  if (currentChat.value?.id === chatId.value) return currentChat.value.title || UNTITLED_CHAT_TITLE;
+  if (currentChat.value && idToRaw({ id: currentChat.value.id }) === chatId.value) return currentChat.value.title || UNTITLED_CHAT_TITLE;
   // Otherwise we'd need to fetch it or rely on a generic name
   return 'Filtered Chat';
 });
@@ -525,17 +526,17 @@ defineExpose({
                     <div class="max-h-64 overflow-y-auto p-1">
                       <button
                         v-for="group in chatGroups"
-                        :key="group.id"
-                        @click="toggleGroupFilter({ groupId: group.id })"
+                        :key="idToRaw({ id: group.id })"
+                        @click="toggleGroupFilter({ groupId: idToRaw({ id: group.id }) })"
                         class="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors"
-                        :class="chatGroupIds.includes(group.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:indigo-text-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
-                        :data-testid="'group-filter-item-' + group.id"
+                        :class="chatGroupIds.includes(idToRaw({ id: group.id })) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:indigo-text-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                        :data-testid="'group-filter-item-' + idToRaw({ id: group.id })"
                       >
                         <div class="flex items-center gap-2 overflow-hidden">
                           <FolderIcon class="w-3.5 h-3.5 shrink-0 opacity-60" />
                           <span class="truncate">{{ group.name }}</span>
                         </div>
-                        <CheckIcon v-if="chatGroupIds.includes(group.id)" class="w-3.5 h-3.5 shrink-0" />
+                        <CheckIcon v-if="chatGroupIds.includes(idToRaw({ id: group.id }))" class="w-3.5 h-3.5 shrink-0" />
                       </button>
                       <div v-if="chatGroups.length === 0" class="p-4 text-center text-[10px] text-gray-400 italic">No groups available</div>
                     </div>
@@ -562,11 +563,11 @@ defineExpose({
 
                 <div
                   v-for="group in selectedGroups"
-                  :key="group.id"
+                  :key="idToRaw({ id: group.id })"
                   class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
                 >
                   <span>{{ group.name }}</span>
-                  <button @click="toggleGroupFilter({ groupId: group.id })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
+                  <button @click="toggleGroupFilter({ groupId: idToRaw({ id: group.id }) })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
                     <XIcon class="w-2.5 h-2.5" />
                   </button>
                 </div>

@@ -1,6 +1,7 @@
 import { NAIDAN_SYSFS_MOUNT_PATH } from '@/services/wesh/types'
 import { storageService } from '@/services/storage'
 import { generateId } from '@/utils/id'
+import { idToRaw } from '@/models/ids'
 import type { BinaryObjectId } from '@/models/ids'
 
 export const WIKIPEDIA_INLINE_CONTENT_MAX_LINES = 80
@@ -57,7 +58,7 @@ export function buildSysfsNaidanBinaryObjectDataFilePath({
 }: {
   binaryObjectId: BinaryObjectId;
 }): string {
-  return `${NAIDAN_SYSFS_MOUNT_PATH}/binary-objects/by-id/${binaryObjectId}/data`
+  return `${NAIDAN_SYSFS_MOUNT_PATH}/binary-objects/by-id/${idToRaw({ id: binaryObjectId })}/data`
 }
 
 export async function saveWikipediaPageTextAsBinaryObject({

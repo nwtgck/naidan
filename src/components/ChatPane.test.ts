@@ -8,7 +8,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { setupScrollToMock } from '@/utils/test-utils';
 import type { WeshMount } from '@/services/wesh/types';
-import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
 
 // Mock router
 const router = createRouter({
@@ -73,14 +73,14 @@ const mockActiveMessages = ref<MessageNode[]>([]);
 const mockChatFlowOverride = ref<ChatFlowItem[] | null>(null);
 
 const mockGetLiveChat = vi.fn().mockImplementation((chat) => {
-  if (mockCurrentChat.value && mockCurrentChat.value.id === (chat.id || chat)) {
+  if (mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === (chat.id || chat)) {
     return mockCurrentChat.value;
   }
   return chat;
 });
 
 const mockUpdateChatSettings = vi.fn().mockImplementation(({ id, updates }) => {
-  if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
+  if (mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === id) {
     Object.assign(mockCurrentChat.value, updates);
   }
 });
@@ -184,13 +184,13 @@ vi.mock('../composables/useChat', () => ({
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
     getReasoningEffort: vi.fn(({ chatId }) => {
-      if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
+      if (mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         return mockCurrentChat.value.lmParameters?.reasoning?.effort;
       }
       return undefined;
     }),
     updateReasoningEffort: vi.fn(({ chatId, effort }) => {
-      if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
+      if (mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         const lmParameters = { ...(mockCurrentChat.value.lmParameters || EMPTY_LM_PARAMETERS), reasoning: { effort } };
         mockCurrentChat.value.lmParameters = lmParameters;
       }
@@ -244,11 +244,11 @@ vi.mock('../composables/chat/ui/useChatPaneState', () => ({
 
 vi.mock('../composables/chat/chat-activity-queries', () => ({
   isChatProcessing: ({ chatId }: { chatId: string }) =>
-    !!mockCurrentChat.value && mockCurrentChat.value.id === chatId && (mockStreaming.value || mockActiveGenerations.has(chatId)),
+    !!mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === chatId && (mockStreaming.value || mockActiveGenerations.has(chatId)),
   getChatContextCompactProgress: ({ chatId }: { chatId: string }) =>
-    mockCurrentChat.value?.id === chatId ? mockContextCompactProgress.value : { phase: 'idle' },
+    mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId ? mockContextCompactProgress.value : { phase: 'idle' },
   isChatGeneratingTitle: ({ chatId }: { chatId: string }) =>
-    mockCurrentChat.value?.id === chatId ? mockGeneratingTitle.value : false,
+    mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId ? mockGeneratingTitle.value : false,
 }));
 
 function mountChatPane({
@@ -403,7 +403,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
       }),
     toggleDebug: ({ chatId }: { chatId: string }) => {
       mockToggleChatDebug();
-      if (mockCurrentChat.value?.id === chatId) {
+      if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
           debugEnabled: !mockCurrentChat.value.debugEnabled,
@@ -411,13 +411,13 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
       }
     },
     updateModel: ({ chatId, modelId }: { chatId: string; modelId: string | undefined }) => {
-      if (mockCurrentChat.value?.id === chatId) {
+      if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
           modelId,
         };
         queueMicrotask(() => {
-          if (mockCurrentChat.value?.id === chatId) {
+          if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
             mockCurrentChat.value = {
               ...mockCurrentChat.value,
               modelId,
@@ -425,7 +425,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
           }
         });
         setTimeout(() => {
-          if (mockCurrentChat.value?.id === chatId) {
+          if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
             mockCurrentChat.value = {
               ...mockCurrentChat.value,
               modelId,
@@ -445,9 +445,9 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
         updates,
       }),
     reasoningEffort: ({ chatId }: { chatId: { value: string } }) =>
-      computed(() => mockCurrentChat.value?.id === chatId.value ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined),
+      computed(() => mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId.value ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined),
     updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
-      if (mockCurrentChat.value?.id === chatId) {
+      if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
           lmParameters: {
@@ -477,7 +477,7 @@ vi.mock('../composables/chat/useChatModels', () => ({
 vi.mock('../composables/chat/useChatMounts', () => ({
   useChatMounts: () => ({
     getMounts: ({ chatId }: { chatId: { value: string } }) => computed(() => {
-      if (mockCurrentChat.value?.id !== chatId.value) {
+      if (mockCurrentChat.value?.id === undefined || idToRaw({ id: mockCurrentChat.value.id }) !== chatId.value) {
         return [];
       }
 
@@ -1364,22 +1364,22 @@ Question`,
       ...mockSettings.value,
       storageType: 'opfs',
       mounts: [
-        { type: 'volume', volumeId: 'global-vol', mountPath: '/home/user/global', readOnly: true },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'global-vol' }), mountPath: '/home/user/global', readOnly: true },
       ],
     };
     mockCurrentChat.value = {
       ...(mockCurrentChat.value as Chat),
       id: toChatId({ raw: 'chat-1' }),
-      groupId: 'group-1',
+      groupId: toChatGroupId({ raw: 'group-1' }),
       mounts: [
-        { type: 'volume', volumeId: 'chat-vol', mountPath: '/home/user/chat', readOnly: false },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'chat-vol' }), mountPath: '/home/user/chat', readOnly: false },
       ],
     } as Chat;
     mockCurrentChatGroup.value = {
-      id: 'group-1',
+      id: toChatGroupId({ raw: 'group-1' }),
       name: 'Research',
       mounts: [
-        { type: 'volume', volumeId: 'group-vol', mountPath: '/home/user/group', readOnly: true },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'group-vol' }), mountPath: '/home/user/group', readOnly: true },
       ],
       items: [],
       isCollapsed: false,

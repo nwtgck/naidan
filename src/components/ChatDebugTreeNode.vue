@@ -8,12 +8,12 @@ import type { GeneratedImageBlock } from '@/utils/image-generation';
 import type { MessageNode } from '@/models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
-import { toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId } from '@/models/ids';
+import { idToRaw, toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
   node: Readonly<MessageNode>;
-  activeIds: Set<string>;
+  activeIds: Set<MessageId>;
   highlight: boolean;
   isContentCollapsed?: boolean;
   isLast?: boolean;
@@ -70,7 +70,7 @@ const thumbnailUrls = ref<Record<string, string>>({});
 
 const inlineImages = computed(() => {
   if (!props.node.content) return [];
-  const images: Array<GeneratedImageBlock & { binaryObjectId: BinaryObjectId }> = [];
+  const images: GeneratedImageBlock[] = [];
   const regex = new RegExp('```' + IMAGE_BLOCK_LANG + '\\n([\\s\\S]*?)\\n```', 'g');
   let match;
   while ((match = regex.exec(props.node.content)) !== null) {
@@ -80,10 +80,7 @@ const inlineImages = computed(() => {
       const parsed = JSON.parse(jsonStr);
       const result = GeneratedImageBlockSchema.safeParse(parsed);
       if (result.success) {
-        images.push({
-          ...result.data,
-          binaryObjectId: toBinaryObjectId({ raw: result.data.binaryObjectId }),
-        });
+        images.push(result.data);
       } else {
         console.warn('Failed to validate inline image schema in ChatDebugTreeNode:', result.error);
         addErrorEvent({
@@ -114,11 +111,11 @@ async function loadThumbnails() {
   // 1. Load from attachments
   if (props.node.attachments) {
     for (const att of props.node.attachments) {
-      if (att.mimeType.startsWith('image/') && !thumbnailUrls.value[att.binaryObjectId]) {
+      if (att.mimeType.startsWith('image/') && !thumbnailUrls.value[idToRaw({ id: att.binaryObjectId })]) {
         try {
           const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
           if (blob) {
-            thumbnailUrls.value[att.binaryObjectId] = URL.createObjectURL(blob);
+            thumbnailUrls.value[idToRaw({ id: att.binaryObjectId })] = URL.createObjectURL(blob);
           }
         } catch (e) {
           console.error('Failed to load thumbnail:', e);
@@ -131,7 +128,7 @@ async function loadThumbnails() {
   for (const img of inlineImages.value) {
     if (!thumbnailUrls.value[img.binaryObjectId]) {
       try {
-        const blob = await storageService.getFile({ binaryObjectId: img.binaryObjectId });
+        const blob = await storageService.getFile({ binaryObjectId: toBinaryObjectId({ raw: img.binaryObjectId }) });
         if (blob) {
           thumbnailUrls.value[img.binaryObjectId] = URL.createObjectURL(blob);
         }
@@ -298,7 +295,7 @@ export default {
                   <span>Generated Image Reference</span>
                 </div>
                 <div
-                  @click.stop="emit('preview-attachment', img.binaryObjectId)"
+                  @click.stop="emit('preview-attachment', toBinaryObjectId({ raw: img.binaryObjectId }))"
                   class="rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center w-fit max-w-full shadow-sm hover:shadow-md transition-shadow"
                 >
                   <img
@@ -320,11 +317,11 @@ export default {
             <div v-if="node.attachments && node.attachments.length" class="mt-4 flex flex-wrap gap-2">
               <div
                 v-for="att in node.attachments"
-                :key="att.id"
+                :key="idToRaw({ id: att.id })"
                 @click.stop="emit('preview-attachment', att.binaryObjectId)"
                 class="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center group/att"
               >
-                <img v-if="thumbnailUrls[att.binaryObjectId]" :src="thumbnailUrls[att.binaryObjectId]" class="w-full h-full object-cover" />
+                <img v-if="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" :src="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" class="w-full h-full object-cover" />
                 <div v-else class="flex flex-col items-center justify-center gap-1">
                   <ImageIcon v-if="att.mimeType.startsWith('image/')" class="w-4 h-4 text-gray-400" />
                   <FileIcon v-else class="w-4 h-4 text-gray-400" />
@@ -356,7 +353,7 @@ export default {
     >
       <ChatDebugTreeNode
         v-for="(child, index) in node.replies.items"
-        :key="child.id"
+        :key="idToRaw({ id: child.id })"
         :node="child"
         :active-ids="activeIds"
         :highlight="highlight"
@@ -376,7 +373,7 @@ export default {
     >
       <ChatDebugTreeNode
         v-for="(child, index) in node.replies.items"
-        :key="child.id"
+        :key="idToRaw({ id: child.id })"
         :node="child"
         :active-ids="activeIds"
         :highlight="highlight"

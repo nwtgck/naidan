@@ -1,5 +1,5 @@
 import { computed, type ComputedRef } from 'vue';
-import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Reasoning, Settings } from '@/models/types';
+import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Mount, Reasoning, Settings } from '@/models/types';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
 import { useImageGeneration } from '@/composables/useImageGeneration';
@@ -61,7 +61,9 @@ import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
-import { toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
+import type { ChatId, MessageId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
+import type { ImageRequestParams } from '@/utils/image-generation';
 
 export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 
@@ -104,7 +106,7 @@ export function useChat() {
     mount,
   }: {
     chatId: string;
-    mount: import('@/models/types').Mount;
+    mount: Mount;
   }) {
     await useChatMounts().addMount({
       chatId: toChatId({ raw: chatId }),
@@ -146,7 +148,7 @@ export function useChat() {
     mount,
   }: {
     groupId: string;
-    mount: import('@/models/types').Mount;
+    mount: Mount;
   }) {
     await useChatGroupMounts().addMount({
       chatGroupId: toChatGroupId({ raw: groupId }),
@@ -407,7 +409,7 @@ export function useChat() {
     count: number;
     steps: number | undefined;
     seed: number | 'browser_random' | undefined;
-    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'] | undefined;
+    persistAs: ImageRequestParams['persistAs'] | undefined;
     images: { blob: Blob }[];
     model: string | undefined;
     signal: AbortSignal | undefined;
@@ -477,14 +479,14 @@ export function useChat() {
     persistAs,
     attachments,
   }: {
-    chatId: import('@/models/ids').ChatId;
+    chatId: ChatId;
     prompt: string;
     width: number;
     height: number;
     count: number;
     steps: number | undefined;
     seed: number | 'browser_random' | undefined;
-    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'];
+    persistAs: ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }) {
     return await sendImageRequestForChatImpl({
@@ -621,16 +623,16 @@ export function useChat() {
     attachments,
     lmParameters,
   }: {
-    chatId: string;
+    chatId: ChatId;
     content: string;
-    parentId: string | null | undefined;
+    parentId: MessageId | null | undefined;
     attachments: Attachment[] | undefined;
     lmParameters: LmParameters | undefined;
   }): Promise<boolean> {
     return await chatConversation.sendMessage({
-      chatId: toChatId({ raw: chatId }),
+      chatId,
       content,
-      parentId: parentId === undefined || parentId === null ? parentId : toMessageId({ raw: parentId }),
+      parentId,
       attachments,
       lmParameters,
     });
@@ -721,20 +723,22 @@ export function useChat() {
     chatId?: string;
   }): Promise<string | null> {
     if (chatId !== undefined) {
-      return await chatBranches.forkChat({
+      const forkedChatId = await chatBranches.forkChat({
         chatId: toChatId({ raw: chatId }),
         messageId: toMessageId({ raw: messageId }),
       });
+      return forkedChatId === null ? null : idToRaw({ id: forkedChatId });
     }
 
     const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return null;
     }
-    return await chatBranches.forkChat({
+    const forkedChatId = await chatBranches.forkChat({
       chatId: currentChatId,
       messageId: toMessageId({ raw: messageId }),
     });
+    return forkedChatId === null ? null : idToRaw({ id: forkedChatId });
   }
 
   async function forkChatForChat({
@@ -744,10 +748,11 @@ export function useChat() {
     chatId: string;
     messageId: string;
   }): Promise<string | null> {
-    return await chatBranches.forkChat({
+    const forkedChatId = await chatBranches.forkChat({
       chatId: toChatId({ raw: chatId }),
       messageId: toMessageId({ raw: messageId }),
     });
+    return forkedChatId === null ? null : idToRaw({ id: forkedChatId });
   }
 
   async function editMessage({
@@ -952,7 +957,7 @@ export function useChat() {
     count: number;
     steps: number | undefined;
     seed: number | 'browser_random' | undefined;
-    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'];
+    persistAs: ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }) {
     const currentChatId = chatCurrentBridge.getCurrentChatId();

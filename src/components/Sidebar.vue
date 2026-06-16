@@ -20,6 +20,7 @@ import {
   BotIcon, PanelLeftIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
   SearchIcon, GhostIcon, MessageSquarePlusIcon
 } from 'lucide-vue-next';
+import { idToRaw } from '@/models/ids';
 import type { ChatGroupId, ChatId } from '@/models/ids';
 
 const ChatGroupActions = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupActions.vue') });
@@ -193,13 +194,12 @@ const collapsingGroupIds = ref<Set<ChatGroupId>>(new Set());
 
 const navContainer = ref<HTMLElement | null>(null);
 
-type VisibleSidebarNavigationItem =
-  | { type: 'chat'; id: ChatId }
-  | { type: 'chat_group'; id: ChatGroupId }
-  | { type: 'expand_button'; id: string; groupId: ChatGroupId };
-
 const visibleItems = computed(() => {
-  const result: VisibleSidebarNavigationItem[] = [];
+  const result: (
+    | { type: 'chat'; id: ChatId }
+    | { type: 'chat_group'; id: ChatGroupId }
+    | { type: 'expand_button'; id: string; groupId: ChatGroupId }
+  )[] = [];
   function collect({ list }: { list: SidebarItem[] }) {
     for (const item of list) {
       switch (item.type) {
@@ -220,7 +220,7 @@ const visibleItems = computed(() => {
           if (items.length > COMPACT_THRESHOLD) {
             result.push({
               type: 'expand_button',
-              id: `expand-${item.chatGroup.id}`,
+              id: `expand-${idToRaw({ id: item.chatGroup.id })}`,
               groupId: item.chatGroup.id
             });
           }
@@ -238,10 +238,22 @@ const visibleItems = computed(() => {
 });
 
 const focusedId = computed(() => {
-  if (lastNavigatedId.value && visibleItems.value.some(i => i.id === lastNavigatedId.value)) {
+  if (lastNavigatedId.value && visibleItems.value.some(i => {
+    switch (i.type) {
+    case 'expand_button':
+      return i.id === lastNavigatedId.value;
+    case 'chat':
+    case 'chat_group':
+      return idToRaw({ id: i.id }) === lastNavigatedId.value;
+    default: {
+      const _ex: never = i;
+      throw new Error(`Unhandled item type: ${((_ex satisfies never) as { readonly type: string }).type}`);
+    }
+    }
+  })) {
     return lastNavigatedId.value;
   }
-  return currentChatGroup.value?.id || currentChat.value?.id || null;
+  return currentChatGroup.value ? idToRaw({ id: currentChatGroup.value.id }) : currentChat.value ? idToRaw({ id: currentChat.value.id }) : null;
 });
 
 function isSidebarItemVisible({
@@ -290,15 +302,19 @@ function ensureChatVisibleInCompactGroup({
   }
 }
 
-type ScheduleSidebarItemScrollArgs =
-  | { itemType: 'chat'; id: ChatId | undefined; onlyWhenOutOfView: boolean }
-  | { itemType: 'chat_group'; id: ChatGroupId | undefined; onlyWhenOutOfView: boolean };
-
 async function scheduleSidebarItemScroll({
   itemType,
   id,
   onlyWhenOutOfView,
-}: ScheduleSidebarItemScrollArgs) {
+}: {
+  itemType: 'chat';
+  id: ChatId | undefined;
+  onlyWhenOutOfView: boolean;
+} | {
+  itemType: 'chat_group';
+  id: ChatGroupId | undefined;
+  onlyWhenOutOfView: boolean;
+}) {
   if (!id || typeof document === 'undefined' || !navContainer.value) return;
 
   switch (itemType) {
@@ -323,9 +339,9 @@ async function scheduleSidebarItemScroll({
       const selector = (() => {
         switch (itemType) {
         case 'chat':
-          return `[data-sidebar-chat-id="${id}"]`;
+          return `[data-sidebar-chat-id="${idToRaw({ id })}"]`;
         case 'chat_group':
-          return `[data-sidebar-group-id="${id}"]`;
+          return `[data-sidebar-group-id="${idToRaw({ id })}"]`;
         default: {
           const _ex: never = itemType;
           return _ex;
@@ -663,23 +679,23 @@ async function handleNewChat({ groupId }: { groupId: ChatGroupId | undefined }) 
     systemPrompt: undefined
   });
   if (currentChat.value) {
-    router.push(`/chat/${currentChat.value.id}`);
+    router.push(`/chat/${idToRaw({ id: currentChat.value.id })}`);
   }
 }
 
 async function handleOpenChat({ id }: { id: ChatId }) {
   await openChat({ id });
-  router.push(`/chat/${id}`);
+  router.push(`/chat/${idToRaw({ id })}`);
 }
 
 async function handleOpenChatGroup({ id }: { id: ChatGroupId }) {
   openChatGroup({ id });
-  router.push(`/chat-group/${id}`);
+  router.push(`/chat-group/${idToRaw({ id })}`);
 }
 
 // Clear lastNavigatedId when store catches up to prevent stale index calculations
 watch([() => currentChat.value?.id, () => currentChatGroup.value?.id], ([chatId, groupId]) => {
-  if (chatId === lastNavigatedId.value || groupId === lastNavigatedId.value) {
+  if ((chatId && idToRaw({ id: chatId }) === lastNavigatedId.value) || (groupId && idToRaw({ id: groupId }) === lastNavigatedId.value)) {
     lastNavigatedId.value = null;
   }
 });
@@ -817,7 +833,19 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       e.preventDefault();
       const item = visibleItems.value[nextIndex];
       if (item) {
-        lastNavigatedId.value = item.id;
+        switch (item.type) {
+        case 'expand_button':
+          lastNavigatedId.value = item.id;
+          break;
+        case 'chat':
+        case 'chat_group':
+          lastNavigatedId.value = idToRaw({ id: item.id });
+          break;
+        default: {
+          const _ex: never = item;
+          throw new Error(`Unhandled item type: ${((_ex satisfies never) as { readonly type: string }).type}`);
+        }
+        }
         const type = item.type;
         switch (type) {
         case 'chat':
@@ -841,7 +869,19 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       e.preventDefault();
       const item = visibleItems.value[nextIndex];
       if (item) {
-        lastNavigatedId.value = item.id;
+        switch (item.type) {
+        case 'expand_button':
+          lastNavigatedId.value = item.id;
+          break;
+        case 'chat':
+        case 'chat_group':
+          lastNavigatedId.value = idToRaw({ id: item.id });
+          break;
+        default: {
+          const _ex: never = item;
+          throw new Error(`Unhandled item type: ${((_ex satisfies never) as { readonly type: string }).type}`);
+        }
+        }
         const type = item.type;
         switch (type) {
         case 'chat':
@@ -871,7 +911,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
         nextTick(() => {
           const itemAfterExpansion = visibleItems.value[currentIndex];
           if (itemAfterExpansion && itemAfterExpansion.type === 'chat') {
-            lastNavigatedId.value = itemAfterExpansion.id;
+            lastNavigatedId.value = idToRaw({ id: itemAfterExpansion.id });
             handleOpenChat({ id: itemAfterExpansion.id });
           }
         });
@@ -900,7 +940,7 @@ onKeyStroke(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'], (e) => {
       const rawChat = toRaw(currentChat.value);
       if (rawChat?.groupId) {
         e.preventDefault();
-        lastNavigatedId.value = rawChat.groupId;
+        lastNavigatedId.value = idToRaw({ id: rawChat.groupId });
         handleOpenChatGroup({ id: rawChat.groupId });
       }
     }

@@ -1,5 +1,5 @@
+import { idToRaw, toChatId } from '@/models/ids'
 import type { ChatId } from '@/models/ids'
-import { toChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry } from '@/services/wesh/naidan-sysfs/types'
 import { createChatDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat'
@@ -50,9 +50,9 @@ export function createChatsDirectoryEntry(): NaidanSysfsDirectoryEntry {
     }): AsyncIterable<WeshDirEntry> {
       for (const chatId of await listVisibleChatIds({ context })) {
         yield {
-          name: chatId,
+          name: idToRaw({ id: chatId }),
           type: 'directory',
-          fullPath: `${path}/${chatId}`,
+          fullPath: `${path}/${idToRaw({ id: chatId })}`,
         }
       }
     },

@@ -1,6 +1,6 @@
 import type { ChatGroupId } from '@/models/ids'
 import type { ChatGroup } from '@/models/types'
-import { toChatGroupId } from '@/models/ids'
+import { idToRaw, toChatGroupId } from '@/models/ids'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry } from '@/services/wesh/naidan-sysfs/types'
 import { createChatGroupDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-group'
@@ -54,9 +54,9 @@ export function createChatGroupsDirectoryEntry(): NaidanSysfsDirectoryEntry {
       const ids = await listVisibleChatGroupIds({ context })
       for (const chatGroupId of ids) {
         yield {
-          name: chatGroupId,
+          name: idToRaw({ id: chatGroupId }),
           type: 'directory',
-          fullPath: `${path}/${chatGroupId}`,
+          fullPath: `${path}/${idToRaw({ id: chatGroupId })}`,
         }
       }
     },

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { BinaryObject, ChatContent, ChatGroup, ChatMeta } from '@/models/types'
+import { idToRaw } from '@/models/ids'
+import type { BinaryObjectId, ChatGroupId, ChatId } from '@/models/ids'
 import type { NaidanSysfsStorageReader } from './types'
 import { NaidanSysfsProvider } from './provider'
 import { NAIDAN_SYSFS_ROOT_PATH, NAIDAN_SYSFS_VERSION_TEXT } from './constants'
@@ -19,7 +21,7 @@ function createReaderStub({
   binaryObjects?: BinaryObject[];
   binaryObjectBlobs?: Record<string, Blob>;
 }): NaidanSysfsStorageReader {
-  const objects = new Map((binaryObjects ?? []).map(object => [object.id, createNaidanSysfsBinaryObject({ object })]))
+  const objects = new Map((binaryObjects ?? []).map(object => [object.id, createNaidanSysfsBinaryObject({ object: { ...object, id: idToRaw({ id: object.id }) } })]))
   return {
     async loadHierarchy() {
       return { items: [] }
@@ -27,14 +29,14 @@ function createReaderStub({
     async getSidebarStructure() {
       if (chatGroup !== undefined) {
         return [{
-          id: `chat_group:${chatGroup.id}`,
+          id: `chat_group:${idToRaw({ id: chatGroup.id })}`,
           type: 'chat_group' as const,
           chatGroup,
         }]
       }
       if (metadata !== undefined) {
         return [{
-          id: `chat:${metadata.id}`,
+          id: `chat:${idToRaw({ id: metadata.id })}`,
           type: 'chat' as const,
           chat: {
             id: metadata.id,
@@ -52,23 +54,23 @@ function createReaderStub({
     async listChatGroups() {
       return chatGroup === undefined ? [] : [chatGroup]
     },
-    async loadChatMeta({ chatId }: { chatId: string }) {
+    async loadChatMeta({ chatId }: { chatId: ChatId }) {
       if (chatId !== metadata?.id) {
         return undefined
       }
       return metadata
     },
-    async loadChatContent({ chatId }: { chatId: string }) {
+    async loadChatContent({ chatId }: { chatId: ChatId }) {
       if (chatId !== metadata?.id) {
         return undefined
       }
       return content
     },
-    async loadChat({ chatId }: { chatId: string }) {
+    async loadChat({ chatId }: { chatId: ChatId }) {
       void chatId
       return undefined
     },
-    async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
+    async loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }) {
       if (chatGroupId !== chatGroup?.id) {
         return undefined
       }
@@ -79,11 +81,11 @@ function createReaderStub({
         yield object
       }
     },
-    async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
-      return objects.get(toBinaryObjectId({ raw: binaryObjectId }))
+    async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
+      return objects.get(binaryObjectId)
     },
-    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
-      return binaryObjectBlobs?.[binaryObjectId]
+    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
+      return binaryObjectBlobs?.[idToRaw({ id: binaryObjectId })]
     },
   }
 }

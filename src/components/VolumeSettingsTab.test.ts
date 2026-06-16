@@ -40,8 +40,8 @@ function makeVolume(overrides: Partial<Volume> = {}): Volume {
   return { id: toVolumeId({ raw: 'vol-1' }), name: 'My Docs', type: 'opfs', createdAt: 0, ...overrides };
 }
 
-function makeMount(volumeId: string): Mount {
-  return { type: 'volume', volumeId: toVolumeId({ raw: volumeId }), mountPath: '/docs', readOnly: true };
+function makeMount(volumeId: ReturnType<typeof toVolumeId>): Mount {
+  return { type: 'volume', volumeId, mountPath: '/docs', readOnly: true };
 }
 
 function setupStorageMock(volumes: Volume[], mounts: Mount[]) {

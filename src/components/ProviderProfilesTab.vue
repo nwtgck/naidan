@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useToast } from '@/composables/useToast';
+import { idToRaw } from '@/models/ids';
 import type { ProviderProfileId } from '@/models/ids';
 import type { ProviderProfile } from '@/models/types';
 import {
@@ -104,7 +105,7 @@ defineExpose({
       <div v-else class="grid grid-cols-1 gap-5">
         <div
           v-for="providerProfile in profiles"
-          :key="providerProfile.id"
+          :key="idToRaw({ id: providerProfile.id })"
           class="group p-6 bg-white dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-3xl flex items-center justify-between transition-all hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/5"
           data-testid="provider-profile-item"
         >

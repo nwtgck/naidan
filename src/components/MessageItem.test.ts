@@ -8,7 +8,7 @@ import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { CheckIcon } from 'lucide-vue-next';
 import { nextTick, ref } from 'vue';
 import { useSettings } from '@/composables/useSettings';
-import { toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/models/ids';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toMessageId, toChatId } from '@/models/ids';
 
 const mount: any = (component: unknown, options?: Record<string, unknown>) => {
   if (component === MessageItem) {
@@ -242,7 +242,7 @@ print("hello")
     await (copyLinkBtn as HTMLButtonElement).click();
     await nextTick();
 
-    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}${window.location.pathname}${window.location.search}#/chat/chat-1?message-id=${message.id}`);
+    expect(writeText).toHaveBeenCalledWith(window.location.origin + window.location.pathname + window.location.search + '#/chat/chat-1?message-id=' + idToRaw({ id: message.id }));
 
     wrapper.unmount();
   });

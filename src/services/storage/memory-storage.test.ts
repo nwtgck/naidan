@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStorageProvider } from './memory-storage';
 import type { Chat, ChatGroup } from '@/models/types';
-import { toBinaryObjectId, toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toBinaryObjectId, toChatGroupId, toChatId } from '@/models/ids';
 
 describe('MemoryStorageProvider', () => {
   let provider: MemoryStorageProvider;
@@ -40,7 +40,7 @@ describe('MemoryStorageProvider', () => {
 
     await provider.saveChatContent({ id: mockChat.id, content: mockChat });
     await provider.saveChatMeta({ meta: mockChat });
-    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: mockChat.id }] } });
+    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: idToRaw({ id: mockChat.id }) }] } });
     const list = await provider.listChats();
     expect(list).toHaveLength(1);
     expect(list[0]?.id).toBe(mockChat.id);
@@ -130,7 +130,7 @@ describe('MemoryStorageProvider', () => {
 
       await provider.saveHierarchy({ hierarchy: {
         items: [
-          { type: 'chat_group', id: mockGroup.id, chat_ids: [mockChat.id] }
+          { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] }
         ]
       } });
 

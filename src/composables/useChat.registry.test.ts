@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { ref, nextTick, toRaw } from 'vue';
+import { idToRaw } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -89,7 +90,7 @@ describe('useChat Registry Lifecycle', () => {
 
     const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
-    await openChat({ id: chatId! });
+    await openChat({ id: idToRaw({ id: chatId! }) });
     const chat = currentChat.value!;
 
     // 1. Start fetch models (long running)
@@ -97,7 +98,7 @@ describe('useChat Registry Lifecycle', () => {
     const modelPromise = new Promise<string[]>(r => resolveModels = r);
     mockListModels.mockReturnValue(modelPromise);
 
-    const fetchTask = fetchAvailableModels({ chatId: chat.id });
+    const fetchTask = fetchAvailableModels({ chatId: idToRaw({ id: chat.id }) });
 
     // Wait for the registry to populate via fetchAvailableModels (using busy check)
     await vi.waitUntil(() => toRaw(chatStore.getLiveChat({ chat: chat as any })) === toRaw(chat), { timeout: 1000 });
@@ -135,8 +136,8 @@ describe('useChat Registry Lifecycle', () => {
 
     // Now it should be gone from registry
     mockLoadChat.mockClear();
-    await openChat({ id: chatId! });
-    expect(mockLoadChat).toHaveBeenCalledWith({ id: chatId! });
+    await openChat({ id: idToRaw({ id: chatId! }) });
+    expect(mockLoadChat).toHaveBeenCalledWith({ id: idToRaw({ id: chatId! }) });
     expect(currentChat.value).not.toBe(chat);
   });
 
@@ -147,7 +148,7 @@ describe('useChat Registry Lifecycle', () => {
 
     const chatObj = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chatObj?.id;
-    await openChat({ id: chatId! });
+    await openChat({ id: idToRaw({ id: chatId! }) });
     const chat = currentChat.value!;
 
     // Switch away to ensure it's not kept alive by currentChat
@@ -160,10 +161,10 @@ describe('useChat Registry Lifecycle', () => {
     // If it's leaked in registry, openChat will return the same instance
     // If NOT leaked, it will call storageService.loadChat
     mockLoadChat.mockClear();
-    await openChat({ id: chatId! });
+    await openChat({ id: idToRaw({ id: chatId! }) });
 
     // THIS IS EXPECTED TO FAIL IF THERE IS A LEAK
-    expect(mockLoadChat).toHaveBeenCalledWith({ id: chatId! });
+    expect(mockLoadChat).toHaveBeenCalledWith({ id: idToRaw({ id: chatId! }) });
     expect(currentChat.value).not.toBe(chat);
   });
 });

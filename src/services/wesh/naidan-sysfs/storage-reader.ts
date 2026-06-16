@@ -8,7 +8,7 @@ import {
   lmParametersToDomain,
 } from '@/models/mappers'
 import type { ChatContentDto } from '@/models/dto'
-import { toBinaryObjectId, toChatGroupId, toChatId } from '@/models/ids'
+import { idToRaw, toBinaryObjectId, toChatGroupId, toChatId } from '@/models/ids'
 import type { BinaryObjectId, ChatGroupId, ChatId } from '@/models/ids'
 import type { ChatGroup, SidebarItem } from '@/models/types'
 import { storageService } from '@/services/storage'
@@ -107,12 +107,12 @@ export async function createOpfsNaidanSysfsStorageReader(): Promise<NaidanSysfsS
     },
     async *listBinaryObjects() {
       for await (const object of provider.listBinaryObjects()) {
-        yield createNaidanSysfsBinaryObject({ object })
+        yield createNaidanSysfsBinaryObject({ object: { ...object, id: idToRaw({ id: object.id }) } })
       }
     },
     async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
       const object = await provider.getBinaryObject({ binaryObjectId })
-      return object === null ? undefined : createNaidanSysfsBinaryObject({ object })
+      return object === null ? undefined : createNaidanSysfsBinaryObject({ object: { ...object, id: idToRaw({ id: object.id }) } })
     },
     async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
       return (await provider.getFile({ binaryObjectId })) ?? undefined
@@ -135,7 +135,11 @@ export function createNaidanSysfsRemoteReader({
     },
     async listChats() {
       assertStorageTypeMatches({ expectedStorageType: storageType })
-      return naidanSysfsRemoteChatSummarySchema.array().parse(await storageService.listChats())
+      return naidanSysfsRemoteChatSummarySchema.array().parse((await storageService.listChats()).map(chat => ({
+        ...chat,
+        id: idToRaw({ id: chat.id }),
+        groupId: chat.groupId === undefined || chat.groupId === null ? chat.groupId : idToRaw({ id: chat.groupId }),
+      })))
     },
     async listChatGroups() {
       assertStorageTypeMatches({ expectedStorageType: storageType })
@@ -151,7 +155,7 @@ export function createNaidanSysfsRemoteReader({
       }
       return naidanSysfsRemoteChatMetaPayloadSchema.parse({
         dto: chatMetaToDto({ domain: metadata }),
-        groupId: metadata.groupId,
+        groupId: metadata.groupId === undefined || metadata.groupId === null ? metadata.groupId : idToRaw({ id: metadata.groupId }),
       })
     },
     async loadChatContent({ chatId }: { chatId: string }) {
@@ -174,7 +178,12 @@ export function createNaidanSysfsRemoteReader({
       assertStorageTypeMatches({ expectedStorageType: storageType })
       const objects: NaidanSysfsBinaryObject[] = []
       for await (const object of storageService.listBinaryObjects()) {
-        objects.push(naidanSysfsRemoteBinaryObjectSchema.parse(createNaidanSysfsBinaryObject({ object })))
+        objects.push(naidanSysfsRemoteBinaryObjectSchema.parse(createNaidanSysfsBinaryObject({
+          object: {
+            ...object,
+            id: idToRaw({ id: object.id }),
+          },
+        })))
       }
       return objects
     },
@@ -184,7 +193,12 @@ export function createNaidanSysfsRemoteReader({
       if (object === null) {
         return undefined
       }
-      return naidanSysfsRemoteBinaryObjectSchema.parse(createNaidanSysfsBinaryObject({ object }))
+      return naidanSysfsRemoteBinaryObjectSchema.parse(createNaidanSysfsBinaryObject({
+        object: {
+          ...object,
+          id: idToRaw({ id: object.id }),
+        },
+      }))
     },
     async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
       assertStorageTypeMatches({ expectedStorageType: storageType })
@@ -199,19 +213,19 @@ function createRemoteChatSidebarItem({
   updatedAt,
   groupId,
 }: {
-  chatId: string;
+  chatId: ChatId;
   title: string | null;
   updatedAt: number;
-  groupId: string | null | undefined;
+  groupId: ChatGroupId | null | undefined;
 }): NaidanSysfsRemoteChatSidebarItem {
   return {
-    id: `chat:${chatId}`,
+    id: `chat:${idToRaw({ id: chatId })}`,
     type: 'chat',
     chat: {
-      id: chatId,
+      id: idToRaw({ id: chatId }),
       title,
       updatedAt,
-      groupId,
+      groupId: groupId === undefined || groupId === null ? groupId : idToRaw({ id: groupId }),
     },
   }
 }
@@ -409,15 +423,15 @@ export function createRemoteNaidanSysfsStorageReader({
       )
     },
     async loadChatMeta({ chatId }: { chatId: ChatId }) {
-      return loadRemoteChatMeta({ remoteReader, chatId })
+      return loadRemoteChatMeta({ remoteReader, chatId: idToRaw({ id: chatId }) })
     },
     async loadChatContent({ chatId }: { chatId: ChatId }) {
-      return loadRemoteChatContent({ remoteReader, chatId })
+      return loadRemoteChatContent({ remoteReader, chatId: idToRaw({ id: chatId }) })
     },
     async loadChat({ chatId }: { chatId: ChatId }) {
       const [metadata, content] = await Promise.all([
-        loadRemoteChatMeta({ remoteReader, chatId }),
-        loadRemoteChatContent({ remoteReader, chatId }),
+        loadRemoteChatMeta({ remoteReader, chatId: idToRaw({ id: chatId }) }),
+        loadRemoteChatContent({ remoteReader, chatId: idToRaw({ id: chatId }) }),
       ])
       if (metadata === undefined || content === undefined) {
         return undefined
@@ -429,7 +443,7 @@ export function createRemoteNaidanSysfsStorageReader({
       }
     },
     async loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }) {
-      const chatGroup = await remoteReader.loadChatGroup({ chatGroupId })
+      const chatGroup = await remoteReader.loadChatGroup({ chatGroupId: idToRaw({ id: chatGroupId }) })
       if (chatGroup === undefined) {
         return undefined
       }
@@ -444,14 +458,14 @@ export function createRemoteNaidanSysfsStorageReader({
       }
     },
     async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
-      const object = await remoteReader.getBinaryObject({ binaryObjectId })
+      const object = await remoteReader.getBinaryObject({ binaryObjectId: idToRaw({ id: binaryObjectId }) })
       if (object === undefined) {
         return undefined
       }
       return naidanSysfsRemoteBinaryObjectSchema.parse(object)
     },
     async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
-      return await remoteReader.getBinaryObjectBlob({ binaryObjectId })
+      return await remoteReader.getBinaryObjectBlob({ binaryObjectId: idToRaw({ id: binaryObjectId }) })
     },
   }
 }

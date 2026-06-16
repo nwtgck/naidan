@@ -406,13 +406,13 @@ describe('useImageGeneration', () => {
       const { OllamaProvider } = await import('@/services/lm/ollama');
 
       // Set stale progress
-      imageProgressMap.value[chatId] = { currentStep: 50, totalSteps: 50 };
+      imageProgressMap.value['progress-test-chat'] = { currentStep: 50, totalSteps: 50 };
 
       // Spy on generateImage and check progress map state when it's called
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockImplementation(async (params: any) => {
           // When this is called, the progress map should have been cleared by the loop
-          expect(imageProgressMap.value[chatId]).toBeUndefined();
+          expect(imageProgressMap.value['progress-test-chat']).toBeUndefined();
 
           // Simulate some progress
           if (params.onProgress) params.onProgress({ currentStep: 1, totalSteps: 10 });
@@ -424,6 +424,7 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
+        chatId: toChatId({ raw: 'progress-test-chat' }),
         count: 2,
         storageType: 'opfs'
       });

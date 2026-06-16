@@ -25,6 +25,7 @@ const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () =
 import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';
 import { ENDPOINT_PRESETS } from '@/models/constants';
+import { idToRaw } from '@/models/ids';
 import type { ProviderProfileId } from '@/models/ids';
 
 const props = defineProps<{
@@ -225,7 +226,7 @@ async function handleCreateProviderProfile() {
 }
 
 function handleQuickProviderProfileChange() {
-  const providerProfile = form.value.providerProfiles?.find(p => p.id === selectedProviderProfileId.value);
+  const providerProfile = form.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
     form.value.endpointType = providerProfile.endpointType;
     form.value.endpointUrl = providerProfile.endpointUrl;
@@ -282,7 +283,7 @@ defineExpose({
                 data-testid="setting-quick-provider-profile-select"
               >
                 <option value="" disabled>Load from saved profiles...</option>
-                <option v-for="p in form.providerProfiles" :key="p.id" :value="p.id">{{ p.name }} ({{ capitalize({ value: p.endpointType }) }})</option>
+                <option v-for="p in form.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ capitalize({ value: p.endpointType }) }})</option>
               </select>
             </div>
           </div>

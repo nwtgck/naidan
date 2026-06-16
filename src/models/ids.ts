@@ -1,13 +1,17 @@
 /**
  * Branded ID types for Naidan domain models.
  *
- * Persisted DTOs keep IDs as plain strings. Domain code uses these branded
- * string types to prevent mixing IDs that share the same runtime shape but
- * point to different entities.
+ * Naidan intentionally keeps ID values as primitive strings at runtime while
+ * preventing them from being used as raw strings implicitly in TypeScript.
+ *
+ * Do not define this as `string & { readonly [idBrand]: TName }`.
+ * If BrandedId extends string, raw string boundaries such as DTOs, storage
+ * paths, URL params, Vue keys, DOM ids, and worker payloads become invisible
+ * in review because `const raw: string = chatId` compiles.
  */
-declare const idBrand: unique symbol;
+export declare const idBrand: unique symbol;
 
-type BrandedId<TName extends string> = string & {
+type BrandedId<TName extends string> = {
   readonly [idBrand]: TName;
 };
 
@@ -20,44 +24,40 @@ export type VolumeId = BrandedId<'VolumeId'>;
 export type ProviderProfileId = BrandedId<'ProviderProfileId'>;
 export type ToolCallId = BrandedId<'ToolCallId'>;
 
-export type NaidanId =
-  | ChatId
-  | MessageId
-  | ChatGroupId
-  | AttachmentId
-  | BinaryObjectId
-  | VolumeId
-  | ProviderProfileId
-  | ToolCallId;
+export type NaidanId = BrandedId<string>;
 
 export function toChatId({ raw }: { raw: string }): ChatId {
-  return raw as ChatId;
+  return raw as unknown as ChatId;
 }
 
 export function toMessageId({ raw }: { raw: string }): MessageId {
-  return raw as MessageId;
+  return raw as unknown as MessageId;
 }
 
 export function toChatGroupId({ raw }: { raw: string }): ChatGroupId {
-  return raw as ChatGroupId;
+  return raw as unknown as ChatGroupId;
 }
 
 export function toAttachmentId({ raw }: { raw: string }): AttachmentId {
-  return raw as AttachmentId;
+  return raw as unknown as AttachmentId;
 }
 
 export function toBinaryObjectId({ raw }: { raw: string }): BinaryObjectId {
-  return raw as BinaryObjectId;
+  return raw as unknown as BinaryObjectId;
 }
 
 export function toVolumeId({ raw }: { raw: string }): VolumeId {
-  return raw as VolumeId;
+  return raw as unknown as VolumeId;
 }
 
 export function toProviderProfileId({ raw }: { raw: string }): ProviderProfileId {
-  return raw as ProviderProfileId;
+  return raw as unknown as ProviderProfileId;
 }
 
 export function toToolCallId({ raw }: { raw: string }): ToolCallId {
-  return raw as ToolCallId;
+  return raw as unknown as ToolCallId;
+}
+
+export function idToRaw({ id }: { id: NaidanId }): string {
+  return id as unknown as string;
 }

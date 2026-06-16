@@ -1,4 +1,5 @@
 import type { ChatId } from '@/models/ids';
+import { idToRaw } from '@/models/ids';
 import { storageService } from '@/services/storage';
 import {
   chatRuntimeStore,
@@ -28,7 +29,7 @@ export function abortProcessingForChat({
     storageService.notify({
       event: {
         type: 'chat_content_generation',
-        id: chatId,
+        id: idToRaw({ id: chatId }),
         status: 'abort_request',
         timestamp: Date.now(),
       },

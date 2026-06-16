@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
+import { idToRaw, toChatGroupId } from '@/models/ids';
 import { storageService } from '@/services/storage';
 
 // Mock storage
@@ -89,7 +90,7 @@ describe('useChat Settings Resolution Policy', () => {
 
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat({ id });
+    await openChat({ id: idToRaw({ id }) });
 
     // Send first message using Global A
     await sendMessage({ content: 'Message 1' });
@@ -115,8 +116,8 @@ describe('useChat Settings Resolution Policy', () => {
   it('Policy: Prioritize chat-level modelId (Pinning)', async () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat({ id });
-    await updateChatModel({ id, modelId: 'pinned-model' });
+    await openChat({ id: idToRaw({ id }) });
+    await updateChatModel({ id: idToRaw({ id }), modelId: 'pinned-model' });
 
     await sendMessage({ content: 'M1' });
     await vi.waitUntil(() => !chatStore.streaming.value);
@@ -132,8 +133,8 @@ describe('useChat Settings Resolution Policy', () => {
   it('Policy: Respect chat-level endpoint settings while following global model if not pinned', async () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat({ id });
-    await updateChatSettings({ id, updates: {
+    await openChat({ id: idToRaw({ id }) });
+    await updateChatSettings({ id: idToRaw({ id }), updates: {
       endpointType: 'ollama' as const,
       endpointUrl: 'http://pinned-ollama',
     } });
@@ -153,7 +154,7 @@ describe('useChat Settings Resolution Policy', () => {
   it('Policy: Dynamic resolution when preferred model is unavailable', async () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat({ id });
+    await openChat({ id: idToRaw({ id }) });
 
     __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), defaultModelId: 'non-existent' } });
     mockOpenAIModels.mockResolvedValue(['first-available', 'second']);
@@ -167,14 +168,14 @@ describe('useChat Settings Resolution Policy', () => {
     __testOnlySetSettings({ newSettings: { ...JSON.parse(JSON.stringify(settings.value)), endpointHttpHeaders: [['X-Global', '1']] } });
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat({ id });
+    await openChat({ id: idToRaw({ id }) });
 
     await sendMessage({ content: 'G' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), onChunk: expect.any(Function) }));
 
     // 2. Chat Override
-    await updateChatSettings({ id, updates: { endpointHttpHeaders: [['X-Chat', '3']] } });
+    await updateChatSettings({ id: idToRaw({ id }), updates: { endpointHttpHeaders: [['X-Chat', '3']] } });
     await sendMessage({ content: 'C' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), onChunk: expect.any(Function) }));
@@ -186,31 +187,31 @@ describe('useChat Settings Resolution Policy', () => {
     // 1. Initial State: Global Default
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const id = chat!.id;
-    await openChat({ id });
+    await openChat({ id: idToRaw({ id }) });
 
     expect(resolvedSettings.value?.modelId).toBe('global-gpt');
     expect(resolvedSettings.value?.sources.modelId).toBe('global');
 
     // 2. Add Group Default
     const group = reactive({
-      id: 'g1', name: 'Group 1', items: [], updatedAt: Date.now(), isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', items: [], updatedAt: Date.now(), isCollapsed: false,
       modelId: 'group-model'
     }) as any;
     rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
-    await updateChatGroupOverride({ id, groupId: 'g1' });
+    await updateChatGroupOverride({ id: idToRaw({ id }), groupId: 'g1' });
     await nextTick();
 
     expect(resolvedSettings.value?.modelId).toBe('group-model');
     expect(resolvedSettings.value?.sources.modelId).toBe('chat_group');
 
     // 3. Add Chat Override
-    await updateChatModel({ id, modelId: 'chat-model' });
+    await updateChatModel({ id: idToRaw({ id }), modelId: 'chat-model' });
     await nextTick();
     expect(resolvedSettings.value?.modelId).toBe('chat-model');
     expect(resolvedSettings.value?.sources.modelId).toBe('chat');
 
     // 4. Remove Chat Override -> Should go back to Group
-    await updateChatModel({ id, modelId: undefined as any });
+    await updateChatModel({ id: idToRaw({ id }), modelId: undefined as any });
     await nextTick();
     expect(resolvedSettings.value?.modelId).toBe('group-model');
     expect(resolvedSettings.value?.sources.modelId).toBe('chat_group');

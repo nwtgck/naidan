@@ -9,7 +9,7 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import { toToolCallId, type ToolCallId } from '@/models/ids';
+import { idToRaw, toToolCallId, type ToolCallId } from '@/models/ids';
 import { zodToJsonSchema } from '@/utils/llm-tools';
 import type { LmParameters, ChatMessage, MultimodalContent } from '@/models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
@@ -134,7 +134,7 @@ export class OllamaProvider implements LLMProvider {
         const contentType = typeof m.content;
 
         const tool_calls = m.tool_calls?.map(tc => ({
-          id: tc.id,
+          id: idToRaw({ id: tc.id }),
           type: tc.type,
           function: {
             name: tc.function.name,
@@ -153,7 +153,7 @@ export class OllamaProvider implements LLMProvider {
 
         switch (contentType) {
         case 'string':
-          return { role: m.role, content: m.content as string, tool_calls, tool_call_id: m.tool_call_id };
+          return { role: m.role, content: m.content as string, tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
         case 'object': {
           // Multimodal
           let content = '';
@@ -177,11 +177,11 @@ export class OllamaProvider implements LLMProvider {
               }
             }
           }
-          return { role: m.role, content, images, tool_calls, tool_call_id: m.tool_call_id };
+          return { role: m.role, content, images, tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
         }
         case 'undefined': {
           if (m.role === 'assistant' && tool_calls) {
-            return { role: m.role, content: '', tool_calls, tool_call_id: m.tool_call_id };
+            return { role: m.role, content: '', tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
           }
           throw new Error(`Unexpected content type for role ${m.role}: ${contentType}`);
         }

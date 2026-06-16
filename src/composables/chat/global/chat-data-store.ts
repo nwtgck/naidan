@@ -3,7 +3,7 @@ import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
 import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { findDeepestLeaf, findNodeInBranch } from '@/utils/chat-tree';
-import { toChatId } from '@/models/ids';
+import { idToRaw, toChatId } from '@/models/ids';
 
 export type ChatDataStore = {
   rootItems: Ref<SidebarItem[]>;
@@ -422,7 +422,7 @@ export function createChatDataStore({
     case 'chat_meta_and_chat_group': {
       debouncedSidebarReload();
 
-      if (event.id && currentChatRef.value && toRaw(currentChatRef.value).id === event.id) {
+      if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
         const chatId = toChatId({ raw: event.id });
         const fresh = await storageService.loadChat({ id: chatId });
         if (fresh && currentChatRef.value) {
@@ -434,9 +434,9 @@ export function createChatDataStore({
         }
       }
 
-      if (event.id && currentChatGroupRef.value?.id === event.id) {
+      if (event.id && currentChatGroupRef.value && idToRaw({ id: currentChatGroupRef.value.id }) === event.id) {
         const allGroups = await storageService.listChatGroups();
-        currentChatGroupRef.value = allGroups.find((group) => group.id === event.id) || null;
+        currentChatGroupRef.value = allGroups.find((group) => idToRaw({ id: group.id }) === event.id) || null;
       }
       break;
     }
@@ -462,7 +462,7 @@ export function createChatDataStore({
       break;
     }
     case 'chat_content': {
-      if (event.id && currentChatRef.value && toRaw(currentChatRef.value).id === event.id) {
+      if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
         const chatId = toChatId({ raw: event.id });
         if (!hasActiveGeneration({ chatId })) {
           const fresh = await storageService.loadChat({ id: chatId });

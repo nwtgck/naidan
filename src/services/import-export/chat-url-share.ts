@@ -1,7 +1,7 @@
 import { storageService } from '@/services/storage';
 import { MemoryStorageProvider } from '@/services/storage/memory-storage';
 import { ImportExportService, type IImportExportStorage } from './service';
-import { hierarchyToDomain } from '@/models/mappers';
+import { hierarchyToDomain, hierarchyToDto } from '@/models/mappers';
 import type { MessageNode, Settings } from '@/models/types';
 import type { BinaryObjectId, ChatId } from '@/models/ids';
 
@@ -49,9 +49,9 @@ export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Prom
   await memoryProvider.saveChatContent({ id: chat.id, content: chat });
 
   // 3. Hierarchy (minimal)
-  await memoryProvider.saveHierarchy({ hierarchy: {
+  await memoryProvider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: {
     items: [{ type: 'chat', id: chat.id }]
-  } });
+  } }) });
 
   // 4. Attachments
   const binaryObjectIds = new Set<BinaryObjectId>();

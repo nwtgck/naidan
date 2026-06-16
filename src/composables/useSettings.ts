@@ -1,4 +1,4 @@
-import { ref, readonly, computed } from 'vue';
+import { ref, readonly, computed, type ComputedRef, type Ref } from 'vue';
 import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, type ProviderProfile } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
@@ -27,6 +27,34 @@ const isFetchingModels = ref(false);
 export type SearchPreviewMode = 'always' | 'disabled' | 'peek';
 const _searchPreviewMode = ref<SearchPreviewMode>('always');
 const _searchContextSize = ref(2);
+
+interface UseSettingsApi {
+  settings: Readonly<Ref<Settings>>;
+  initialized: Readonly<Ref<boolean>>;
+  isOnboardingDismissed: ComputedRef<boolean>;
+  onboardingDraft: Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>;
+  availableModels: Readonly<Ref<string[]>>;
+  isFetchingModels: Readonly<Ref<boolean>>;
+  searchPreviewMode: Readonly<Ref<SearchPreviewMode>>;
+  searchContextSize: Readonly<Ref<number>>;
+  init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>;
+  save: ({ patch }: { patch: Partial<Settings> }) => Promise<void>;
+  fetchModels: ({ overrides }: { overrides?: { url: string; type: EndpointType; headers?: [string, string][] } }) => Promise<string[]>;
+  updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>;
+  updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>;
+  updateGlobalEndpoint: ({ type, url, headers }: { type: EndpointType, url: string, headers?: [string, string][] }) => Promise<void>;
+  updateSystemPrompt: ({ prompt }: { prompt: string }) => Promise<void>;
+  updateStorageType: ({ type }: { type: StorageType }) => Promise<void>;
+  setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => void;
+  setOnboardingDraft: ({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) => void;
+  setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => void;
+  setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => void;
+  setSearchContextSize: ({ size }: { size: number }) => void;
+  TEST_ONLY: {
+    __testOnlyReset: () => void;
+    __testOnlySetSettings: ({ newSettings }: { newSettings: Settings }) => void;
+  };
+}
 
 let initPromise: Promise<void> | null = null;
 
@@ -59,7 +87,7 @@ transformersJsService.subscribeModelList({ listener: async () => {
   }
 } });
 
-export function useSettings() {
+export function useSettings(): UseSettingsApi {
   const loading = ref(false);
 
   const isOnboardingDismissed = computed(() => {
@@ -341,11 +369,11 @@ export function useSettings() {
   }
 
   return {
-    settings: readonly(_settings),
+    settings: readonly(_settings) as Readonly<Ref<Settings>>,
     initialized: readonly(_initialized),
     isOnboardingDismissed,
-    onboardingDraft: readonly(_onboardingDraft),
-    availableModels: readonly(availableModels),
+    onboardingDraft: readonly(_onboardingDraft) as Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>,
+    availableModels: readonly(availableModels) as Readonly<Ref<string[]>>,
     isFetchingModels: readonly(isFetchingModels),
     searchPreviewMode: readonly(_searchPreviewMode),
     searchContextSize: readonly(_searchContextSize),

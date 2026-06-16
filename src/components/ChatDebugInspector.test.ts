@@ -5,7 +5,7 @@ import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
 import { NetworkIcon } from 'lucide-vue-next';
 import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/models/types';
-import { toAttachmentId, toBinaryObjectId, toChatId } from '@/models/ids';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/models/ids';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
@@ -73,7 +73,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       lmParameters?: LmParameters
     } = {}
   ): MessageNode => {
-    const common = { id, content, timestamp: Date.now(), replies: { items: replies } };
+    const common = { id: toMessageId({ raw: id }), content, timestamp: Date.now(), replies: { items: replies } };
     switch (role) {
     case 'user':
       return {
@@ -84,7 +84,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         error: undefined,
         modelId: undefined,
         lmParameters: extra.lmParameters || { reasoning: { effort: undefined } }
-      } as UserMessageNode;
+      } as unknown as UserMessageNode;
     case 'assistant':
       return {
         ...common,
@@ -94,7 +94,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         error: extra.error,
         modelId: extra.modelId || 'test-model',
         lmParameters: extra.lmParameters || { reasoning: { effort: undefined } }
-      } as AssistantMessageNode;
+      } as unknown as AssistantMessageNode;
     case 'system':
       return {
         ...common,
@@ -104,7 +104,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         error: undefined,
         modelId: undefined,
         lmParameters: undefined,
-      } as SystemMessageNode;
+      } as unknown as SystemMessageNode;
     default: {
       const _ex: never = role;
       throw new Error(`Unhandled role: ${_ex}`);
@@ -152,8 +152,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const linearContainers = wrapper.findAll('.ml-0');
     expect(linearContainers.length).toBeGreaterThanOrEqual(2);
 
-    const nodeB = treeNodes.find(n => n.props().node.id === 'B');
-    const nodeC = treeNodes.find(n => n.props().node.id === 'C');
+    const nodeB = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'B');
+    const nodeC = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'C');
 
     expect(nodeB?.props().hasLinearParent).toBe(true);
     expect(nodeC?.props().hasLinearParent).toBe(true);
@@ -171,8 +171,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     await nextTick();
 
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
-    const nodeA = treeNodes.find(n => n.props().node.id === 'A');
-    const nodeB = treeNodes.find(n => n.props().node.id === 'B');
+    const nodeA = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'A');
+    const nodeB = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'B');
 
     expect(nodeA?.find('.absolute.left-\\[-24px\\]').exists()).toBe(true);
     expect(nodeB?.find('.absolute.left-\\[-24px\\]').exists()).toBe(true);
@@ -194,8 +194,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     await nextTick();
 
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
-    const nodeB = treeNodes.find(n => n.props().node.id === 'B');
-    const nodeD = treeNodes.find(n => n.props().node.id === 'D');
+    const nodeB = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'B');
+    const nodeD = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'D');
 
     expect(nodeB?.find('.h-px').exists()).toBe(true);
     expect(nodeD?.find('.h-px').exists()).toBe(false);
@@ -217,7 +217,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     // Select node C
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
-    const nodeC = treeNodes.find(n => n.props().node.id === 'C');
+    const nodeC = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'C');
     await nodeC?.vm.$emit('select-node', nodeC.props().node);
     await nextTick();
 
@@ -225,9 +225,9 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const detailNodes = detailPanel.findAllComponents(ChatDebugTreeNode);
 
     expect(detailNodes.length).toBe(3);
-    expect(detailNodes[0].props().node.id).toBe('A');
-    expect(detailNodes[1].props().node.id).toBe('B');
-    expect(detailNodes[2].props().node.id).toBe('C');
+    expect(idToRaw({ id: detailNodes[0].props().node.id })).toBe('A');
+    expect(idToRaw({ id: detailNodes[1].props().node.id })).toBe('B');
+    expect(idToRaw({ id: detailNodes[2].props().node.id })).toBe('C');
   });
 
   it('Scenario 5: Tree Map Collapsibility', async () => {
@@ -444,8 +444,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     // Mock storageService.getBinaryObject to return valid objects
     const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
-      if (binaryObjectId === 'obj-1') return { id: toBinaryObjectId({ raw: 'obj-1' }), mimeType: 'image/png', name: 'img1.png' } as any;
-      if (binaryObjectId === 'obj-2') return { id: toBinaryObjectId({ raw: 'obj-2' }), mimeType: 'image/png', name: 'img2.png' } as any;
+      if (idToRaw({ id: binaryObjectId }) === 'obj-1') return { id: toBinaryObjectId({ raw: 'obj-1' }), mimeType: 'image/png', name: 'img1.png' } as any;
+      if (idToRaw({ id: binaryObjectId }) === 'obj-2') return { id: toBinaryObjectId({ raw: 'obj-2' }), mimeType: 'image/png', name: 'img2.png' } as any;
       return null;
     });
 

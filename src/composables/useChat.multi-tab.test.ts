@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
 import type { Chat, Hierarchy } from '@/models/types';
-import { toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toChatId, toMessageId } from '@/models/ids';
 
 /**
  * Multi-Tab Scenario Tests
@@ -125,14 +125,14 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     await chatStoreB.openChat({ id: 'c1' });
 
     // 1. Tab A adds a branch (Branch A). It modifies its local currentChat and calls updateChatContent.
-    await chatStoreA.regenerateMessage({ failedMessageId: toMessageId({ raw: 'm2' }) });
+    await chatStoreA.regenerateMessage({ failedMessageId: idToRaw({ id: toMessageId({ raw: 'm2' }) }) });
     await vi.waitUntil(() => !chatStoreA.streaming.value);
     const chatAfterA = mocks.mockChatStorage.get('c1');
     expect(chatAfterA.root.items[0].replies.items).toHaveLength(2);
     const branchAId = chatAfterA.root.items[0].replies.items[1].id;
 
     // 2. Tab B adds a branch (Branch B).
-    await chatStoreB.regenerateMessage({ failedMessageId: toMessageId({ raw: 'm2' }) });
+    await chatStoreB.regenerateMessage({ failedMessageId: idToRaw({ id: toMessageId({ raw: 'm2' }) }) });
     await vi.waitUntil(() => !chatStoreB.streaming.value);
 
     // 3. Verification: Branch A is lost.
@@ -162,9 +162,9 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     const genP = new Promise<void>(r => resolveGen = r);
     vi.mocked(storageService.updateChatContent).mockImplementation(async ({ id, updater }) => {
       await genP;
-      const current = mocks.mockChatStorage.get(id) || null;
+      const current = mocks.mockChatStorage.get(idToRaw({ id })) || null;
       const updated = await updater({ current: current });
-      mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
+      mocks.mockChatStorage.set(idToRaw({ id }), JSON.parse(JSON.stringify(updated)));
     });
 
     const sendP = chatStoreB.sendMessage({ content: 'Reply to me' });

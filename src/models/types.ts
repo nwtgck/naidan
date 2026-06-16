@@ -85,8 +85,8 @@ export interface ChatMessage {
 }
 
 export interface AttachmentBase {
-  id: AttachmentId;
-  binaryObjectId: BinaryObjectId;
+  id: AttachmentId; // Attachment ID
+  binaryObjectId: BinaryObjectId; // Pointer to the immutable Binary Object
   originalName: string;
   mimeType: string;
   size: number;
@@ -160,8 +160,8 @@ export type MessageBranch = {
 };
 
 export interface CombinedToolCall {
-  id: ToolCallId;
-  nodeId: MessageId;
+  id: ToolCallId; // The toolCallId
+  nodeId: MessageId; // The ToolMessageNode's ID
   call: ToolCall;
   result: ToolExecutionResult;
 }

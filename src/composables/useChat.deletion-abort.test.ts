@@ -1,4 +1,4 @@
-import { toChatId } from '@/models/ids';
+import { idToRaw, toChatId } from '@/models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
@@ -77,7 +77,7 @@ describe('useChat Delete Undo Logic', () => {
     } as any);
 
     // 3. Trigger delete
-    await deleteChat({ id: chatId });
+    await deleteChat({ id: idToRaw({ id: chatId }) });
 
     // VERIFY: Toast was shown and returned truthy ID
     expect(mockAddToast).toHaveBeenCalled();
@@ -112,7 +112,7 @@ describe('useChat Delete Undo Logic', () => {
       root: { items: [] }
     } as any);
 
-    await deleteChat({ id: chatId });
+    await deleteChat({ id: idToRaw({ id: chatId }) });
 
     // 4. Simulate Undo click (reason: action)
     if (capturedOnClose) await capturedOnClose({ reason: 'action' });

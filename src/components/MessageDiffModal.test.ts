@@ -33,7 +33,7 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: 'v3'
+        currentMessageId: toMessageId({ raw: 'v3' })
       }
     });
 
@@ -52,7 +52,7 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: 'v3'
+        currentMessageId: toMessageId({ raw: 'v3' })
       }
     });
 
@@ -84,7 +84,7 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: 'v3'
+        currentMessageId: toMessageId({ raw: 'v3' })
       }
     });
 
@@ -116,7 +116,7 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: 'v3'
+        currentMessageId: toMessageId({ raw: 'v3' })
       }
     });
 
@@ -141,7 +141,7 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: 'v3'
+        currentMessageId: toMessageId({ raw: 'v3' })
       }
     });
 
@@ -169,7 +169,7 @@ describe('MessageDiffModal', () => {
       props: {
         isOpen: true,
         siblings,
-        currentMessageId: 'v3'
+        currentMessageId: toMessageId({ raw: 'v3' })
       }
     });
 

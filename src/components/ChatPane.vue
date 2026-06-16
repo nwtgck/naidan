@@ -46,8 +46,9 @@ const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
-import { toMessageId } from '@/models/ids';
-import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
+import type { ChatId } from '@/models/ids';
+import { idToRaw, toMessageId } from '@/models/ids';
+import type { ChatGroupId, MessageId } from '@/models/ids';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -139,7 +140,7 @@ const isDebugEnabled = computed(() => chat.value?.debugEnabled === true);
 const chatIdentityKey = computed(() => {
   const chatId = props.chatId;
   const leafId = chat.value?.currentLeafId ?? 'no-leaf';
-  return `${chatId}:${leafId}`;
+  return `${idToRaw({ id: chatId })}:${leafId === 'no-leaf' ? leafId : idToRaw({ id: leafId })}`;
 });
 
 const chatAreaSession = useChatPaneSession({
@@ -559,7 +560,7 @@ async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: Messa
   return scrollAnchorToTop({
     target: {
       kind: 'message',
-      anchorId: `message-${userTurnId}`,
+      anchorId: `message-${idToRaw({ id: userTurnId })}`,
       messageId: userTurnId,
     },
     behavior,
@@ -590,7 +591,7 @@ async function scrollInitialOpenTarget({ target }: { target: ChatPaneInitialOpen
 
 function jumpToMessage({ messageId }: { messageId: MessageId }): boolean {
   if (!container.value) return false;
-  const el = container.value.querySelector(`#message-${messageId}`);
+  const el = container.value.querySelector(`#message-${idToRaw({ id: messageId })}`);
   if (el instanceof HTMLElement) {
     scrollIntoViewSafe({
       container: container.value,
@@ -614,7 +615,7 @@ watch(
     const flowKey = chatFlow.value.map((item) => {
       switch (item.type) {
       case 'message':
-        return `${item.node.id}:${item.mode}`;
+        return `${idToRaw({ id: item.node.id })}:${item.mode}`;
       case 'process_sequence':
         return `${item.id}:${item.items.length}`;
       case 'tool_group':
@@ -637,7 +638,7 @@ watch(
       lastJumpedTargetMessageKey.value = undefined;
       return;
     }
-    const targetKey = `${chatId ?? ''}:${leafId ?? ''}:${messageId}:${flowKey}`;
+    const targetKey = `${chatId === undefined ? '' : idToRaw({ id: chatId })}:${leafId === undefined ? '' : idToRaw({ id: leafId })}:${idToRaw({ id: messageId })}:${flowKey}`;
     if (lastJumpedTargetMessageKey.value === targetKey) return;
 
     await nextTick();
@@ -715,7 +716,7 @@ async function updateActiveTitleModel({
   modelId,
 }: {
   source: SettingsSource;
-  chatId: import('@/models/ids').ChatId;
+  chatId: ChatId;
   chatGroupId: ChatGroupId | undefined;
   modelId: string | undefined;
 }) {
@@ -737,6 +738,12 @@ async function updateActiveTitleModel({
     const _ex: never = source;
     throw new Error(`Unhandled title model source: ${_ex}`);
   }
+  }
+}
+
+function handleSearchChatFromHeader() {
+  if (chat.value) {
+    useGlobalSearch().openSearch({ chatId: idToRaw({ id: chat.value.id }) });
   }
 }
 
@@ -789,7 +796,7 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: Me
   const scrollContainer = container.value;
   if (!scrollContainer) return 0;
 
-  const userElement = scrollContainer.querySelector(`#message-${userTurnId}`);
+  const userElement = scrollContainer.querySelector(`#message-${idToRaw({ id: userTurnId })}`);
   if (!(userElement instanceof HTMLElement)) return 0;
 
   const userTop = getElementTopInContainer({
@@ -871,7 +878,7 @@ async function handleFork({ messageId }: { messageId: MessageId }) {
     messageId,
   });
   if (newId) {
-    router.push(`/chat/${newId}`);
+    router.push(`/chat/${idToRaw({ id: newId })}`);
   }
 }
 
@@ -955,7 +962,7 @@ function handleToggleDebug() {
 
 function jumpToOrigin() {
   if (chat.value?.originChatId) {
-    router.push(`/chat/${chat.value.originChatId}`);
+    router.push(`/chat/${idToRaw({ id: chat.value.originChatId })}`);
   }
 }
 
@@ -1060,7 +1067,7 @@ watch(
       @move-to-group="groupId => handleMoveToGroup({ groupId })"
       @toggle-outline="toggleOutline()"
       @print="handlePrint"
-      @search-chat="() => { if (chat) useGlobalSearch().openSearch({ chatId: chat.id }); }"
+      @search-chat="handleSearchChatFromHeader"
       @open-history="showHistoryModal = true"
       @compact-context="handleCompactContext()"
       @export-chat="exportChat"

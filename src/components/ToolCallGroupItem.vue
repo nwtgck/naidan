@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue';
 import { ShapesIcon, BirdIcon } from 'lucide-vue-next';
+import { idToRaw } from '@/models/ids';
 import type { CombinedToolCall } from '@/models/types';
 import type { FlowMetadata } from '@/composables/useChatDisplayFlow';
 import ToolCallItem from './ToolCallItem.vue';
@@ -105,7 +106,7 @@ defineExpose({
           <div class="flex flex-col gap-3">
             <ToolCallItem
               v-for="tc in toolCalls"
-              :key="tc.nodeId"
+              :key="idToRaw({ id: tc.nodeId })"
               :tool-call="tc"
             />
           </div>

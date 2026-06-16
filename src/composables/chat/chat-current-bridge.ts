@@ -37,7 +37,7 @@ export function createChatCurrentBridge({
 }: {
   currentChatRef: Ref<Chat | null>;
   currentChatGroupRef: Ref<ChatGroup | null>;
-  liveChatRegistry: Map<string, Chat>;
+  liveChatRegistry: Map<ChatId, Chat>;
   getLiveChat: ({ chat }: { chat: Chat }) => Chat;
 }): ChatCurrentBridge {
   const currentChat = computed(() => currentChatRef.value ? readonly(currentChatRef.value) as Chat : null);

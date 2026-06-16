@@ -3,7 +3,7 @@ import { LocalStorageProvider } from './local-storage';
 import type { Chat, ChatGroup } from '@/models/types';
 
 import { STORAGE_KEY_PREFIX } from '@/models/constants';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 const KEY_META_PREFIX = `${STORAGE_KEY_PREFIX}lsp:chat_meta:`;
 
@@ -30,14 +30,14 @@ describe('LocalStorageProvider', () => {
     await provider.saveChatMeta({ meta: mockChat });
 
     // 1. Verify Meta (Should exist at its own key)
-    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${mockChat.id}`);
+    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${idToRaw({ id: mockChat.id })}`);
     expect(rawMeta).not.toBeNull();
     const metaJson = JSON.parse(rawMeta!);
     expect(metaJson.id).toBe(mockChat.id);
     expect(metaJson.root).toBeUndefined();
 
     // 2. Verify Content (Should exist at its own key)
-    const rawContent = localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:chat_content:${mockChat.id}`);
+    const rawContent = localStorage.getItem(`${STORAGE_KEY_PREFIX}lsp:chat_content:${idToRaw({ id: mockChat.id })}`);
     expect(rawContent).not.toBeNull();
     const contentJson = JSON.parse(rawContent!);
     expect(contentJson.root).toBeDefined();
@@ -73,7 +73,7 @@ describe('LocalStorageProvider', () => {
 
     await provider.saveChatContent({ id: mockChat.id, content: mockChat });
     await provider.saveChatMeta({ meta: mockChat });
-    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: mockChat.id }] } });
+    await provider.saveHierarchy({ hierarchy: { items: [{ type: 'chat', id: idToRaw({ id: mockChat.id }) }] } });
     const list = await provider.listChats();
     expect(list).toHaveLength(1);
     expect(list[0]?.id).toBe(mockChat.id);
@@ -167,7 +167,7 @@ describe('LocalStorageProvider', () => {
       // 3. Update hierarchy to include them
       await provider.saveHierarchy({ hierarchy: {
         items: [
-          { type: 'chat_group', id: mockGroup.id, chat_ids: [mockChat.id] }
+          { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] }
         ]
       } });
 

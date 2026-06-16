@@ -70,6 +70,7 @@ import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
 import type { BinaryObjectId, ChatId, MessageId, ToolCallId } from '@/models/ids';
+import { idToRaw } from '@/models/ids';
 import {
   useChatOrganization,
 } from '@/composables/chat/ui/useChatOrganization';
@@ -374,7 +375,7 @@ export async function generateResponseForAssistant({
   storageService.notify({
     event: {
       type: 'chat_content_generation',
-      id: mutableChat.id,
+      id: idToRaw({ id: mutableChat.id }),
       status: 'started',
       timestamp: Date.now(),
     },
@@ -687,7 +688,7 @@ export async function generateResponseForAssistant({
       storageService.notify({
         event: {
           type: 'chat_content_generation',
-          id: mutableChat.id,
+          id: idToRaw({ id: mutableChat.id }),
           status: 'stopped',
           timestamp: Date.now(),
         },
@@ -1218,7 +1219,7 @@ async function persistToolContent({
   if (text.length > binaryThreshold) {
     const blob = new Blob([text], { type: 'text/plain' });
     const binaryId = generateId<BinaryObjectId>();
-    await storageService.saveFile({ blob, binaryObjectId: binaryId, name: `tool_${type}_${toolCallId}.txt` });
+    await storageService.saveFile({ blob, binaryObjectId: binaryId, name: `tool_${type}_${idToRaw({ id: toolCallId })}.txt` });
     return { type: 'binary_object', id: binaryId };
   }
 

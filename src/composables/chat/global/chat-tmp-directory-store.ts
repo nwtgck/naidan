@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import { idToRaw } from '@/models/ids';
 import type { ChatId } from '@/models/ids';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 
@@ -19,7 +20,7 @@ export async function ensureChatTmpDirectory({
     return existing;
   }
 
-  const handle = await getOPFSTmpManager().createTmpDirectory({ prefix: chatId });
+  const handle = await getOPFSTmpManager().createTmpDirectory({ prefix: idToRaw({ id: chatId }) });
   const created: ChatTmpDirectoryEntry = {
     handle,
     mountPath: '/tmp',

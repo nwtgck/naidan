@@ -5,7 +5,7 @@ import ChatGroupActions from './ChatGroupActions.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
-import { toChatGroupId } from '@/models/ids';
+import { idToRaw, toChatGroupId } from '@/models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -30,8 +30,8 @@ vi.mock('../composables/useChat', () => ({
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: idToRaw({ id: g.id }), type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: idToRaw({ id: c.id }), type: 'chat', chat: c }));
       return items;
     }),
     loadChats: vi.fn(),
@@ -60,8 +60,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     chatGroups: computed(() => mockChatGroups.value),
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: idToRaw({ id: g.id }), type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: idToRaw({ id: c.id }), type: 'chat', chat: c }));
       return items;
     }),
     TEST_ONLY: {},

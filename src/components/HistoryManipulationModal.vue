@@ -14,6 +14,7 @@ import type { Attachment, SystemPrompt } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { commitFullHistoryManipulationForChat } from '@/composables/chat/chat-scoped/chat-history-flow';
+import { idToRaw } from '@/models/ids';
 import type { AttachmentId, BinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
@@ -74,12 +75,12 @@ watch(() => props.isOpen, async (open) => {
           case 'persisted': {
             const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
             if (blob) {
-              attachmentUrls.value[att.id] = URL.createObjectURL(blob);
+              attachmentUrls.value[idToRaw({ id: att.id })] = URL.createObjectURL(blob);
             }
             break;
           }
           case 'memory':
-            attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+            attachmentUrls.value[idToRaw({ id: att.id })] = URL.createObjectURL(att.blob);
             break;
           case 'missing':
             break;
@@ -182,7 +183,7 @@ async function handleFileSelect({ event, index }: { event: Event; index: number 
       blob: file,
     };
     msg.attachments.push(attachment);
-    attachmentUrls.value[attachment.id] = URL.createObjectURL(file);
+    attachmentUrls.value[idToRaw({ id: attachment.id })] = URL.createObjectURL(file);
   }
   target.value = '';
 }
@@ -217,7 +218,7 @@ async function handlePaste({ event, index }: { event: ClipboardEvent; index: num
         blob: file,
       };
       msg.attachments.push(attachment);
-      attachmentUrls.value[attachment.id] = URL.createObjectURL(file);
+      attachmentUrls.value[idToRaw({ id: attachment.id })] = URL.createObjectURL(file);
     }
   }
 }
@@ -225,7 +226,7 @@ async function handlePaste({ event, index }: { event: ClipboardEvent; index: num
 function removeAttachment({ msgIndex, attId }: { msgIndex: number; attId: string }) {
   const msg = editableMessages.value[msgIndex];
   if (msg && msg.attachments) {
-    msg.attachments = msg.attachments.filter(a => a.id !== attId);
+    msg.attachments = msg.attachments.filter(a => idToRaw({ id: a.id }) !== attId);
     if (attachmentUrls.value[attId]) {
       URL.revokeObjectURL(attachmentUrls.value[attId]!);
       delete attachmentUrls.value[attId];
@@ -436,17 +437,17 @@ defineExpose({
                     <div class="flex-1 bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden focus-within:ring-4 focus-within:ring-blue-500/10 focus-within:border-blue-500 transition-all flex flex-col shadow-sm group-hover:shadow-md">
                       <!-- Attachments -->
                       <div v-if="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2.5 px-5 pt-5 bg-gray-50/30 dark:bg-gray-800/20">
-                        <div v-for="att in msg.attachments" :key="att.id" class="relative group/att pb-5">
+                        <div v-for="att in msg.attachments" :key="idToRaw({ id: att.id })" class="relative group/att pb-5">
                           <img
                             v-if="att.mimeType.startsWith('image/')"
-                            :src="attachmentUrls[att.id]"
+                            :src="attachmentUrls[idToRaw({ id: att.id })]"
                             class="w-20 h-20 object-cover rounded-xl border-2 border-white dark:border-gray-800 shadow-sm"
                           />
                           <div v-else class="w-20 h-20 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                             <ImageIcon class="w-8 h-8 text-gray-400" />
                           </div>
                           <button
-                            @click="removeAttachment({ msgIndex: index, attId: att.id })"
+                            @click="removeAttachment({ msgIndex: index, attId: idToRaw({ id: att.id }) })"
                             class="absolute -top-2 -right-2 p-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-lg opacity-0 group-hover/att:opacity-100 transition-opacity"
                           >
                             <XIcon class="w-3.5 h-3.5" />

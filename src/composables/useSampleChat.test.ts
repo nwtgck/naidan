@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { useSampleChat } from './useSampleChat';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
 import { storageService } from '@/services/storage';
+import { idToRaw } from '@/models/ids';
 
 // Mock dependencies
 vi.mock('@/composables/chat/ui/useChatBootstrap', () => ({
@@ -106,7 +107,7 @@ describe('useSampleChat', () => {
     const messages: Array<{ id: string; role: string; content: string | undefined }> = [];
     let current = content.root.items[0];
     while (current) {
-      messages.push({ id: current.id, role: current.role, content: current.content });
+      messages.push({ id: idToRaw({ id: current.id }), role: current.role, content: current.content });
       current = current.replies.items[0];
     }
 

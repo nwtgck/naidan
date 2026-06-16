@@ -4,6 +4,7 @@ import { ref, defineComponent, computed } from 'vue';
 import App from './App.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Chat } from './models/types';
+import { toChatId } from './models/ids';
 
 vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 
@@ -50,7 +51,7 @@ vi.mock('./composables/useChat', () => ({
     sidebarItems: ref([]),
     persistSidebarStructure: vi.fn(),
     openChat: async (id: string) => {
-      mockCurrentChat.value = { id } as Chat;
+      mockCurrentChat.value = { id: toChatId({ raw: id }) } as unknown as Chat;
     },
   }),
 }));
@@ -190,7 +191,7 @@ describe('App Navigation & Regression Tests', () => {
     expect(mountSpy).toHaveBeenCalledTimes(1);
 
     // Navigate to a chat
-    mockCurrentChat.value = { id: 'chat-1' } as Chat;
+    mockCurrentChat.value = { id: toChatId({ raw: 'chat-1' }) } as unknown as Chat;
     await router.push('/chat/chat-1');
     await flushPromises();
 
@@ -199,7 +200,7 @@ describe('App Navigation & Regression Tests', () => {
     expect(mountSpy).toHaveBeenCalledTimes(1);
 
     // Now navigate to another chat
-    mockCurrentChat.value = { id: 'chat-2' } as Chat;
+    mockCurrentChat.value = { id: toChatId({ raw: 'chat-2' }) } as unknown as Chat;
     await router.push('/chat/chat-2');
     await flushPromises();
 

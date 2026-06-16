@@ -4,7 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatSummary, SidebarItem } from '@/models/types';
-import { toChatId } from '@/models/ids';
+import { idToRaw, toChatId } from '@/models/ids';
 
 const mockChats = ref<ChatSummary[]>([]);
 const mockActiveTasks = reactive(new Set<string>());
@@ -27,7 +27,7 @@ vi.mock('../composables/useChat', () => ({
     chatGroups: ref([]),
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
-      return mockChats.value.map(c => ({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      return mockChats.value.map(c => ({ id: `chat:${idToRaw({ id: c.id })}`, type: 'chat', chat: c }));
     }),
     isTaskRunning: ({ chatId }: { chatId: string }) => Array.from(mockActiveTasks).some(t => t.endsWith(':' + chatId)),
     isProcessing: ({ chatId }: { chatId: string }) => Array.from(mockActiveTasks).some(t => t.startsWith('process:') && t.endsWith(':' + chatId)),
@@ -46,7 +46,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     resolvedSettings: computed(() => null),
     inheritedSettings: computed(() => null),
     chatGroups: computed(() => []),
-    sidebarItems: computed<SidebarItem[]>(() => mockChats.value.map(c => ({ id: `chat:${c.id}`, type: 'chat', chat: c }))),
+    sidebarItems: computed<SidebarItem[]>(() => mockChats.value.map(c => ({ id: `chat:${idToRaw({ id: c.id })}`, type: 'chat', chat: c }))),
     TEST_ONLY: {},
   }),
 }));

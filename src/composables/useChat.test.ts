@@ -8,7 +8,7 @@ import type { Chat, MessageNode, SidebarItem, ChatSidebarItem, Attachment, Hiera
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { findRestorationIndex } from '@/utils/chat-tree';
-import { toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
@@ -126,9 +126,9 @@ describe('useChat Composable Logic', () => {
       mockRootItems.length = 0;
       mockHierarchy.items.forEach(node => {
         if (node.type === 'chat') {
-          mockRootItems.push({ id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0, groupId: null } });
+          mockRootItems.push({ id: `chat:${idToRaw({ id: node.id })}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0, groupId: null } });
         } else {
-          mockRootItems.push({ id: `chat_group:${node.id}`, type: 'chat_group', chatGroup: { id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map(cid => ({ id: `chat:${cid}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0, groupId: node.id } })) } });
+          mockRootItems.push({ id: `chat_group:${idToRaw({ id: node.id })}`, type: 'chat_group', chatGroup: { id: node.id, name: 'Group', isCollapsed: false, updatedAt: 0, items: node.chat_ids.map(cid => ({ id: `chat:${idToRaw({ id: cid })}`, type: 'chat', chat: { id: cid, title: 'Chat', updatedAt: 0, groupId: node.id } })) } });
         }
       });
       return Promise.resolve();
@@ -237,14 +237,14 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.listChats).mockResolvedValue([]);
 
     // Fork at message 'm1'
-    const newId = await forkChat({ messageId: toMessageId({ raw: 'm1' }) });
+    const newId = await forkChat({ messageId: 'm1' });
 
     expect(newId).toBeDefined();
     expect(storageService.updateChatMeta).toHaveBeenCalledWith({ id: newId, updater: expect.any(Function) });
-    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(c => c[0].id === newId)![0].updater;
+    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(c => idToRaw({ id: c[0].id }) === newId)![0].updater;
     const result = await (updater as any)({});
     expect(result.title).toBe('Fork of Original');
-    expect(result.currentLeafId).toBe('m1');
+    expect(idToRaw({ id: result.currentLeafId })).toBe('m1');
     expect(storageService.updateHierarchy).toHaveBeenCalled();
   });
 
@@ -297,14 +297,14 @@ describe('useChat Composable Logic', () => {
       createdAt: 0, updatedAt: 0, debugEnabled: false, groupId: null
     }) as any });
 
-    await forkChat({ messageId: toMessageId({ raw: 'm1' }) });
+    await forkChat({ messageId: 'm1' });
 
     // Expected: g1, fork_of_c1, c1
     expect(mockHierarchy.items).toHaveLength(3);
-    expect(mockHierarchy.items[0]?.id).toBe('g1');
+    expect(idToRaw({ id: mockHierarchy.items[0]!.id })).toBe('g1');
     expect(mockHierarchy.items[1]?.type).toBe('chat');
-    expect(mockHierarchy.items[1]?.id).not.toBe('c1');
-    expect(mockHierarchy.items[2]?.id).toBe('c1');
+    expect(idToRaw({ id: mockHierarchy.items[1]!.id })).not.toBe('c1');
+    expect(idToRaw({ id: mockHierarchy.items[2]!.id })).toBe('c1');
   });
 
   it('should inherit attachments and modelId during fork', async () => {
@@ -337,15 +337,15 @@ describe('useChat Composable Logic', () => {
     __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
     mockHierarchy.items = [{ type: 'chat', id: toChatId({ raw: 'old-chat' }) }];
 
-    const newId = await forkChat({ messageId: toMessageId({ raw: 'm1' }) });
+    const newId = await forkChat({ messageId: 'm1' });
 
-    const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => call[0].id === newId);
+    const updaterCall = vi.mocked(storageService.updateChatContent).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId);
     const contentUpdater = updaterCall?.[0].updater;
     const savedContent = await (contentUpdater as any)(null);
     const clonedNode = savedContent?.root.items[0];
     expect(clonedNode?.attachments).toEqual([att]);
 
-    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => call[0].id === newId)?.[0].updater;
+    const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId)?.[0].updater;
     const savedMeta = await (updater as any)({});
     expect(savedMeta?.modelId).toBe('special-model');
   });
@@ -377,7 +377,7 @@ describe('useChat Composable Logic', () => {
     }) as any });
 
     // Edit assistant message
-    await editMessage({ messageId: toMessageId({ raw: 'm1' }), newContent: 'New Content' });
+    await editMessage({ messageId: 'm1', newContent: 'New Content' });
 
     expect(currentChat.value?.root.items).toHaveLength(2);
     const newMsg = currentChat.value?.root.items[1];
@@ -397,7 +397,7 @@ describe('useChat Composable Logic', () => {
       debugEnabled: false,
     };
     __testOnlySetCurrentChat({ chat: reactive(chatObj) as any });
-    const initial = [{ id: 'chat:chat-root-test', type: 'chat', chat: { id: 'chat-root-test', title: 'Root Test', updatedAt: Date.now() } }] as SidebarItem[];
+    const initial = [{ id: 'chat:chat-root-test', type: 'chat', chat: { id: toChatId({ raw: 'chat-root-test' }), title: 'Root Test', updatedAt: Date.now() } }] as SidebarItem[];
     rootItems.value = initial;
     mockRootItems.push(...initial);
 
@@ -409,7 +409,7 @@ describe('useChat Composable Logic', () => {
     const firstId = currentChat.value?.root.items[0]?.id;
 
     // 2. Rewrite the first message
-    await editMessage({ messageId: firstId!, newContent: 'Second version' });
+    await editMessage({ messageId: idToRaw({ id: firstId! }), newContent: 'Second version' });
     await vi.waitUntil(() => (currentChat.value?.root.items.length ?? 0) >= 2);
     triggerRef(currentChat);
 
@@ -431,7 +431,7 @@ describe('useChat Composable Logic', () => {
       debugEnabled: false,
     };
     __testOnlySetCurrentChat({ chat: reactive(chatObj) as any });
-    const initial = [{ id: 'chat:assistant-edit-test', type: 'chat', chat: { id: 'assistant-edit-test', title: 'Assistant Edit', updatedAt: Date.now() } }] as SidebarItem[];
+    const initial = [{ id: 'chat:assistant-edit-test', type: 'chat', chat: { id: toChatId({ raw: 'assistant-edit-test' }), title: 'Assistant Edit', updatedAt: Date.now() } }] as SidebarItem[];
     rootItems.value = initial;
     mockRootItems.push(...initial);
 
@@ -444,7 +444,7 @@ describe('useChat Composable Logic', () => {
     expect(assistantMsg?.role).toBe('assistant');
 
     // 2. Manually edit the assistant's message
-    await editMessage({ messageId: assistantMsg!.id, newContent: 'Manually corrected answer' });
+    await editMessage({ messageId: idToRaw({ id: assistantMsg!.id }), newContent: 'Manually corrected answer' });
     await vi.waitUntil(() => (currentChat.value?.root.items[0]?.replies.items.length ?? 0) >= 2);
     triggerRef(currentChat);
 
@@ -482,7 +482,7 @@ describe('useChat Composable Logic', () => {
     mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'Second Response' });
     });
-    await regenerateMessage({ failedMessageId: firstAssistantMsg!.id });
+    await regenerateMessage({ failedMessageId: idToRaw({ id: firstAssistantMsg!.id }) });
     await vi.waitUntil(() => (userMsg?.replies.items.length ?? 0) >= 2);
     await vi.waitUntil(() => !chatStore.streaming.value); // Also wait for content to be fully there
     triggerRef(currentChat);
@@ -497,7 +497,7 @@ describe('useChat Composable Logic', () => {
     expect(currentChat.value?.currentLeafId).toBe(secondAssistantMsg?.id);
     expect(activeMessages.value[1]?.content).toBe('Second Response');
 
-    await switchVersion({ messageId: firstAssistantMsg!.id });
+    await switchVersion({ messageId: idToRaw({ id: firstAssistantMsg!.id }) });
     triggerRef(currentChat);
 
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
@@ -591,8 +591,8 @@ describe('useChat Composable Logic', () => {
     ];
 
     await persistSidebarStructure({ topLevelItems: newItems });
-    const groupNode = mockHierarchy.items.find(i => i.id === 'g1') as HierarchyChatGroupNode;
-    expect(groupNode.chat_ids).toContain('c1');
+    const groupNode = mockHierarchy.items.find(i => i.type === 'chat_group' && idToRaw({ id: i.id }) === 'g1') as HierarchyChatGroupNode;
+    expect(groupNode.chat_ids.map(id => idToRaw({ id }))).toContain('c1');
   });
 
   it('should handle reordering chats within a chat group', async () => {
@@ -653,7 +653,7 @@ describe('useChat Composable Logic', () => {
     ];
 
     await persistSidebarStructure({ topLevelItems: newItems });
-    expect(mockHierarchy.items.find(i => i.type === 'chat' && i.id === 'c1')).toBeDefined();
+    expect(mockHierarchy.items.find(i => i.type === 'chat' && idToRaw({ id: i.id }) === 'c1')).toBeDefined();
   });
 
   it('should handle moving a chat from one chat group to another', async () => {
@@ -693,8 +693,8 @@ describe('useChat Composable Logic', () => {
     ];
 
     await persistSidebarStructure({ topLevelItems: newItems });
-    const groupNode = mockHierarchy.items.find(i => i.id === 'g2') as HierarchyChatGroupNode;
-    expect(groupNode.chat_ids).toContain('c1');
+    const groupNode = mockHierarchy.items.find(i => i.type === 'chat_group' && idToRaw({ id: i.id }) === 'g2') as HierarchyChatGroupNode;
+    expect(groupNode.chat_ids.map(id => idToRaw({ id }))).toContain('c1');
   });
 
   it('should preserve lmParameters when regenerating a message', async () => {
@@ -727,7 +727,7 @@ describe('useChat Composable Logic', () => {
     mockLlmChat.mockClear();
 
     // 2. Regenerate the message
-    await regenerateMessage({ failedMessageId: assistantMsgId });
+    await regenerateMessage({ failedMessageId: idToRaw({ id: assistantMsgId }) });
     await flushPromises();
 
     // 3. Verify that the second call ALSO used the same customParams
@@ -768,7 +768,7 @@ describe('useChat Composable Logic', () => {
     } else {
       mockLlmChat.mockClear();
       // 2. Edit the message with NEW lmParameters
-      await editMessage({ messageId: userMsgId, newContent: 'Updated Hello', lmParameters: newParams });
+      await editMessage({ messageId: idToRaw({ id: userMsgId }), newContent: 'Updated Hello', lmParameters: newParams });
     }
 
     await flushPromises();
@@ -1171,7 +1171,7 @@ describe('useChat Composable Logic', () => {
     });
 
     chatObj.title = null; // Clear title to allow auto-generation to proceed
-    await generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
+    await generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
 
     expect(chatObj.title).toBe('New Better Title');
     expect(storageService.updateChatMeta).toHaveBeenCalled();
@@ -1205,10 +1205,10 @@ describe('useChat Composable Logic', () => {
       }
     });
 
-    const promise = generateChatTitle({ chatId: chatObj.id, signal: undefined, titleModelIdOverride: undefined });
+    const promise = generateChatTitle({ chatId: idToRaw({ id: chatObj.id }), signal: undefined, titleModelIdOverride: undefined });
     expect(chatStore.generatingTitle.value).toBe(true);
 
-    abortTitleGeneration({ chatId: chatObj.id });
+    abortTitleGeneration({ chatId: idToRaw({ id: chatObj.id }) });
 
     try {
       await promise;
@@ -1295,15 +1295,15 @@ describe('useChat Composable Logic', () => {
     vi.mocked(storageService.loadChat).mockResolvedValueOnce(mockChat);
     vi.mocked(storageService.updateChatContent).mockClear();
 
-    await openChatAtMessage({ chatId: toChatId({ raw: 'message-link-chat' }), messageId: toMessageId({ raw: 'assistant-1' }) });
+    await openChatAtMessage({ chatId: 'message-link-chat', messageId: 'assistant-1' });
 
-    expect(currentChat.value?.currentLeafId).toBe('target-leaf');
-    expect(activeMessages.value.map(message => message.id)).toContain('assistant-1');
+    expect(idToRaw({ id: currentChat.value!.currentLeafId! })).toBe('target-leaf');
+    expect(activeMessages.value.map(message => idToRaw({ id: message.id }))).toContain('assistant-1');
     expect(storageService.updateChatContent).not.toHaveBeenCalled();
   });
 
   it('should clear chat modelId if it is not in the newly fetched models in fetchAvailableModels', async () => {
-    const chat = reactive({ id: 'chat-1', modelId: 'old-model', root: { items: [] } }) as any;
+    const chat = reactive({ id: toChatId({ raw: 'chat-1' }), modelId: 'old-model', root: { items: [] } }) as any;
     const { registerLiveInstance, fetchAvailableModels } = useChat();
     registerLiveInstance({ chat });
 
@@ -1311,7 +1311,7 @@ describe('useChat Composable Logic', () => {
     const mockListModels = vi.fn().mockResolvedValue(['new-model']);
     vi.mocked(OpenAIProvider as any).prototype.listModels = mockListModels;
 
-    await fetchAvailableModels({ chatId: toChatId({ raw: 'chat-1' }) });
+    await fetchAvailableModels({ chatId: 'chat-1' });
     await flushPromises();
 
     expect(chat.modelId).toBe('');
@@ -1383,7 +1383,7 @@ describe('useChat Composable Logic', () => {
       };
 
       // 3. Act: Delete C2 (the last item) with injection
-      await chatStore.deleteChat({ id: chat2Id, injectAddToast: mockAdd });
+      await chatStore.deleteChat({ id: idToRaw({ id: chat2Id }), injectAddToast: mockAdd });
 
       // 4. Simulate Tab B removing it from hierarchy
       await storageService.updateHierarchy({ updater: ({ current: curr }) => {

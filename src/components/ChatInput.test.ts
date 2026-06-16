@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
-import { toAttachmentId, toBinaryObjectId, toVolumeId, toChatId } from '@/models/ids';
+import { toVolumeId, toChatId } from '@/models/ids';
 
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: {
@@ -508,8 +508,8 @@ describe('ChatInput Integration', () => {
     const wrapper = getWrapper();
 
     wrapper.vm.TEST_ONLY.attachments.value = [{
-      id: toAttachmentId({ raw: 'att-1' }),
-      binaryObjectId: toBinaryObjectId({ raw: 'bin-1' }),
+      id: 'att-1',
+      binaryObjectId: 'bin-1',
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -678,8 +678,8 @@ describe('ChatInput Integration', () => {
     const originalBinId = 'bin-1';
 
     wrapper.vm.TEST_ONLY.attachments.value = [{
-      id: toAttachmentId({ raw: 'att-1' }),
-      binaryObjectId: toBinaryObjectId({ raw: originalBinId }),
+      id: 'att-1',
+      binaryObjectId: originalBinId,
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 10,
@@ -690,7 +690,7 @@ describe('ChatInput Integration', () => {
     await nextTick();
 
     // Trigger open
-    wrapper.vm.TEST_ONLY.editingAttachmentId.value = toAttachmentId({ raw: 'att-1' });
+    wrapper.vm.TEST_ONLY.editingAttachmentId.value = 'att-1';
     await nextTick();
     await flushPromises();
     await nextTick();

@@ -1,4 +1,5 @@
 import type { Attachment, MessageNode } from '@/models/types'
+import { idToRaw } from '@/models/ids'
 import type { ToolExecutionResult } from '@/services/tools/types'
 import { truncateNaidanSysfsTextForMarkdown } from './truncate'
 
@@ -23,13 +24,13 @@ function renderResults({ results }: { results: ToolExecutionResult[] | undefined
     ...results.map(result => {
       switch (result.status) {
       case 'executing':
-        return `- ${result.toolCallId}: executing`
+        return `- ${idToRaw({ id: result.toolCallId })}: executing`
       case 'success':
         switch (result.content.type) {
         case 'text':
-          return `- ${result.toolCallId}: success ${truncateNaidanSysfsTextForMarkdown({ text: result.content.text })}`
+          return `- ${idToRaw({ id: result.toolCallId })}: success ${truncateNaidanSysfsTextForMarkdown({ text: result.content.text })}`
         case 'binary_object':
-          return `- ${result.toolCallId}: success [binary object ${result.content.id}]`
+          return `- ${idToRaw({ id: result.toolCallId })}: success [binary object ${idToRaw({ id: result.content.id })}]`
         default: {
           const _ex: never = result.content
           throw new Error(`Unhandled tool result content: ${String(_ex)}`)
@@ -38,9 +39,9 @@ function renderResults({ results }: { results: ToolExecutionResult[] | undefined
       case 'error':
         switch (result.error.message.type) {
         case 'text':
-          return `- ${result.toolCallId}: error ${truncateNaidanSysfsTextForMarkdown({ text: result.error.message.text })}`
+          return `- ${idToRaw({ id: result.toolCallId })}: error ${truncateNaidanSysfsTextForMarkdown({ text: result.error.message.text })}`
         case 'binary_object':
-          return `- ${result.toolCallId}: error [binary object ${result.error.message.id}]`
+          return `- ${idToRaw({ id: result.toolCallId })}: error [binary object ${idToRaw({ id: result.error.message.id })}]`
         default: {
           const _ex: never = result.error.message
           throw new Error(`Unhandled tool error message: ${String(_ex)}`)
@@ -57,7 +58,7 @@ function renderResults({ results }: { results: ToolExecutionResult[] | undefined
 
 export function renderMessageMarkdown({ node }: { node: MessageNode }): string {
   const lines = [
-    `# Message ${node.id}`,
+    `# Message ${idToRaw({ id: node.id })}`,
     '',
     `role: ${node.role}`,
     `timestamp: ${node.timestamp}`,

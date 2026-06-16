@@ -1,4 +1,5 @@
 import type { MessageNode } from '@/models/types'
+import { idToRaw } from '@/models/ids'
 import type { ChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import { getChatBranchIterator } from '@/utils/chat-tree'
@@ -32,7 +33,7 @@ function createMessageFileName({ index, node, format }: {
     }
     }
   })()
-  return `${index + 1}-${node.role}-${node.id}.${extension}`
+  return `${index + 1}-${node.role}-${idToRaw({ id: node.id })}.${extension}`
 }
 
 async function* loadBranchNodes({

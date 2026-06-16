@@ -138,7 +138,7 @@ function serializeTaskKey({
 }: {
   key: ChatRuntimeTaskKey;
 }): string {
-  return `${key.kind}:${key.chatId ?? 'global'}`;
+  return `${key.kind}:${key.chatId === undefined ? 'global' : idToRaw({ id: key.chatId })}`;
 }
 
 function isChatScopedTaskKey({
@@ -148,7 +148,7 @@ function isChatScopedTaskKey({
   serializedKey: string;
   chatId: ChatId;
 }) {
-  return serializedKey.endsWith(`:${chatId}`);
+  return serializedKey.endsWith(`:${idToRaw({ id: chatId })}`);
 }
 
 export function createChatRuntimeStore(): ChatRuntimeStore {
@@ -367,3 +367,4 @@ export function createChatRuntimeStore(): ChatRuntimeStore {
     },
   };
 }
+import { idToRaw } from '@/models/ids'

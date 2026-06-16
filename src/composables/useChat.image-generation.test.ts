@@ -1,4 +1,4 @@
-import { toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
@@ -177,7 +177,7 @@ describe('useChat Image Generation', () => {
     } as any;
     chatStore.registerLiveInstance({ chat });
 
-    await chatStore.generateChatTitle({ chatId: toChatId({ raw: 'chat-title-test' }), signal: undefined, titleModelIdOverride: undefined });
+    await chatStore.generateChatTitle({ chatId: idToRaw({ id: toChatId({ raw: 'chat-title-test' }) }), signal: undefined, titleModelIdOverride: undefined });
 
     expect(mockOllamaChat).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([
@@ -206,7 +206,7 @@ describe('useChat Image Generation', () => {
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
     // Fork from assistant message 'a1'
-    const forkedChatId = await chatStore.forkChat({ messageId: toMessageId({ raw: 'a1' }), chatId: toChatId({ raw: 'chat-fork' }) });
+    const forkedChatId = await chatStore.forkChat({ messageId: idToRaw({ id: toMessageId({ raw: 'a1' }) }), chatId: idToRaw({ id: toChatId({ raw: 'chat-fork' }) }) });
 
     expect(forkedChatId).toBeDefined();
     const forkedChat = chatStore.getLiveChat({ chat: { id: forkedChatId! } as any }) as any;
@@ -215,7 +215,7 @@ describe('useChat Image Generation', () => {
 
     // Regerenerating on the forked chat should trigger image generation again
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
-    await chatStore.regenerateMessage({ failedMessageId: toMessageId({ raw: 'a1' }) });
+    await chatStore.regenerateMessage({ failedMessageId: idToRaw({ id: toMessageId({ raw: 'a1' }) }) });
 
     expect(updateSpy).toHaveBeenCalled();
   });
@@ -250,7 +250,7 @@ describe('useChat Image Generation', () => {
     const updateSpy = vi.spyOn(storageService, 'updateChatContent');
 
     // Directly call regenerateMessage to trigger background generation
-    await chatStore.regenerateMessage({ failedMessageId: toMessageId({ raw: 'a1' }) });
+    await chatStore.regenerateMessage({ failedMessageId: idToRaw({ id: toMessageId({ raw: 'a1' }) }) });
 
     // It should trigger updateChatContent at least once (for pending)
     await vi.waitFor(() => {

@@ -1,4 +1,5 @@
 import type { ChatGroup } from '@/models/types'
+import { idToRaw } from '@/models/ids'
 import type { ChatId } from '@/models/ids'
 import {
   NAIDAN_SYSFS_CHATS_DIRECTORY_NAME,
@@ -88,11 +89,11 @@ function createChatGroupChatSymlinkEntry({ chatId }: { chatId: ChatId }): Naidan
     kind: 'symlink',
     async stat({ path }: { path: string }) {
       void path
-      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
+      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
     },
     async readlink({ path }: { path: string }) {
       void path
-      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}`
+      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`
     },
   }
 }
@@ -104,7 +105,7 @@ function createChatGroupChatSymlinkName({
   index: number;
   chatId: ChatId;
 }): string {
-  return `${index}-chat-${chatId}`
+  return `${index}-chat-${idToRaw({ id: chatId })}`
 }
 
 function createChatGroupChatsDirectoryEntry({

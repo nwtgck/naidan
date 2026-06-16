@@ -28,7 +28,7 @@ import {
 import { IStorageProvider } from './interface';
 
 import { STORAGE_KEY_PREFIX } from '@/models/constants';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 const LSP_STORAGE_PREFIX = `${STORAGE_KEY_PREFIX}lsp:`;
 const KEY_HIERARCHY = `${LSP_STORAGE_PREFIX}hierarchy`;
@@ -93,7 +93,7 @@ export class LocalStorageProvider extends IStorageProvider {
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
     ChatMetaSchemaDto.parse(dto);
-    localStorage.setItem(`${KEY_META_PREFIX}${meta.id}`, JSON.stringify(dto));
+    localStorage.setItem(`${KEY_META_PREFIX}${idToRaw({ id: meta.id })}`, JSON.stringify(dto));
   }
 
   async saveChatContent({ id, content }: { id: ChatId; content: ChatContent }): Promise<void> {
@@ -102,7 +102,7 @@ export class LocalStorageProvider extends IStorageProvider {
         if (node.attachments) {
           for (const att of node.attachments) {
             if (att.status === 'memory' && att.blob) {
-              this.blobCache.set(att.id, att.blob);
+              this.blobCache.set(idToRaw({ id: att.id }), att.blob);
             }
           }
         }
@@ -115,12 +115,12 @@ export class LocalStorageProvider extends IStorageProvider {
 
     const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
-    localStorage.setItem(`${KEY_CONTENT_PREFIX}${id}`, JSON.stringify(dto));
+    localStorage.setItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`, JSON.stringify(dto));
   }
 
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
-    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${id}`);
-    const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${id}`);
+    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${idToRaw({ id })}`);
+    const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`);
     if (!rawMeta || !rawContent) return null;
 
     try {
@@ -131,7 +131,7 @@ export class LocalStorageProvider extends IStorageProvider {
       // Resolve groupId from hierarchy
       const hierarchy = await this.loadHierarchy();
       if (hierarchy) {
-        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
         if (group) chat.groupId = toChatGroupId({ raw: group.id });
       }
 
@@ -141,7 +141,7 @@ export class LocalStorageProvider extends IStorageProvider {
             for (const att of node.attachments) {
               switch (att.status) {
               case 'memory': {
-                const cached = this.blobCache.get(att.id);
+                const cached = this.blobCache.get(idToRaw({ id: att.id }));
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
                 break;
               }
@@ -167,14 +167,14 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
-    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${id}`);
+    const rawMeta = localStorage.getItem(`${KEY_META_PREFIX}${idToRaw({ id })}`);
     if (!rawMeta) return null;
     try {
       const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(JSON.parse(rawMeta)) });
       // Resolve groupId from hierarchy
       const hierarchy = await this.loadHierarchy();
       if (hierarchy) {
-        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+        const group = hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
         if (group) meta.groupId = toChatGroupId({ raw: group.id });
       }
       return meta;
@@ -184,7 +184,7 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
-    const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${id}`);
+    const rawContent = localStorage.getItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`);
     if (!rawContent) return null;
     try {
       const dto = ChatContentSchemaDto.parse(JSON.parse(rawContent));
@@ -196,7 +196,7 @@ export class LocalStorageProvider extends IStorageProvider {
             for (const att of node.attachments) {
               switch (att.status) {
               case 'memory': {
-                const cached = this.blobCache.get(att.id);
+                const cached = this.blobCache.get(idToRaw({ id: att.id }));
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
                 break;
               }
@@ -222,18 +222,18 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {
-    localStorage.removeItem(`${KEY_META_PREFIX}${id}`);
-    localStorage.removeItem(`${KEY_CONTENT_PREFIX}${id}`);
+    localStorage.removeItem(`${KEY_META_PREFIX}${idToRaw({ id })}`);
+    localStorage.removeItem(`${KEY_CONTENT_PREFIX}${idToRaw({ id })}`);
   }
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
     ChatGroupSchemaDto.parse(dto);
-    localStorage.setItem(`${KEY_GROUP_PREFIX}${chatGroup.id}`, JSON.stringify(dto));
+    localStorage.setItem(`${KEY_GROUP_PREFIX}${idToRaw({ id: chatGroup.id })}`, JSON.stringify(dto));
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
-    const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${id}`);
+    const raw = localStorage.getItem(`${KEY_GROUP_PREFIX}${idToRaw({ id })}`);
     if (!raw) return null;
     try {
       const [hierarchy, allMetas] = await Promise.all([
@@ -249,7 +249,7 @@ export class LocalStorageProvider extends IStorageProvider {
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
-    localStorage.removeItem(`${KEY_GROUP_PREFIX}${id}`);
+    localStorage.removeItem(`${KEY_GROUP_PREFIX}${idToRaw({ id })}`);
   }
 
   public override async getSidebarStructure(): Promise<SidebarItem[]> {

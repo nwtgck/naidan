@@ -4,7 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/models/types';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Shared Mock State ---
 // Using mock prefix to satisfy Vitest hoisting requirements
@@ -84,8 +84,8 @@ vi.mock('../composables/useChat', () => ({
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: idToRaw({ id: g.id }), type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: idToRaw({ id: c.id }), type: 'chat', chat: c }));
       return items;
     }),
     loadChats: mockLoadChats,
@@ -115,8 +115,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     chatGroups: computed(() => mockChatGroups.value),
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: idToRaw({ id: g.id }), type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: idToRaw({ id: c.id }), type: 'chat', chat: c }));
       return items;
     }),
     TEST_ONLY: {},

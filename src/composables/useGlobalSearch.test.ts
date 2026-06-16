@@ -1,4 +1,3 @@
-import { toChatId } from '@/models/ids';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useGlobalSearch } from './useGlobalSearch';
 
@@ -10,14 +9,14 @@ describe('useGlobalSearch Composable', () => {
   });
 
   it('should open search with filters', () => {
-    openSearch({ groupIds: ['g1'], chatId: toChatId({ raw: 'c1' }) });
+    openSearch({ groupIds: ['g1'], chatId: 'c1' });
     expect(isSearchOpen.value).toBe(true);
     expect(chatGroupIds.value).toEqual(['g1']);
     expect(chatId.value).toBe('c1');
   });
 
   it('should reset filters on close', () => {
-    openSearch({ groupIds: ['g1'], chatId: toChatId({ raw: 'c1' }) });
+    openSearch({ groupIds: ['g1'], chatId: 'c1' });
     closeSearch();
     expect(isSearchOpen.value).toBe(false);
     expect(chatGroupIds.value).toEqual([]);

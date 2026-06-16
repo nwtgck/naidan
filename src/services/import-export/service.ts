@@ -34,7 +34,7 @@ import {
 } from '@/models/mappers';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/models/types';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, MessageId, ProviderProfileId } from '@/models/ids';
 
 // Helper to format date YYYY-MM-DD
@@ -154,7 +154,7 @@ export class ImportExportService {
 
       const groupFolder = root.folder('chat-groups');
       for (const group of structure.chatGroups) {
-        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
+        groupFolder!.file(`${idToRaw({ id: group.id })}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
       }
       // chat-metas.json is intentionally omitted when chat is excluded
     } else {
@@ -162,7 +162,7 @@ export class ImportExportService {
 
       const groupFolder = root.folder('chat-groups');
       for (const group of structure.chatGroups) {
-        groupFolder!.file(`${group.id}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
+        groupFolder!.file(`${idToRaw({ id: group.id })}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
       }
 
       const metasDto = structure.chatMetas.map(domain => chatMetaToDto({ domain }));
@@ -650,7 +650,7 @@ export class ImportExportService {
           const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
           if (result.success) {
             const dto = result.data;
-            const newId = generateId<ChatGroupId>();
+            const newId = idToRaw({ id: generateId<ChatGroupId>() });
             groupIdMap.set(dto.id, newId);
             dto.id = newId;
             if (config.data.chatGroupNamePrefix) dto.name = `${config.data.chatGroupNamePrefix}${dto.name}`;
@@ -671,7 +671,7 @@ export class ImportExportService {
           if (res.success) {
             const dto = res.data;
             const originalId = dto.id;
-            const newId = generateId<ChatId>();
+            const newId = idToRaw({ id: generateId<ChatId>() });
             chatIdMap.set(originalId, newId);
             dto.id = newId;
             if (config.data.chatTitlePrefix && dto.title) dto.title = `${config.data.chatTitlePrefix}${dto.title}`;
@@ -682,7 +682,7 @@ export class ImportExportService {
     }
 
     // 3. Hierarchy
-    const currentHierarchy = hierarchyToDomain({ dto: await this.storage.loadHierarchy() || { items: [] } });
+    const currentHierarchy = await this.storage.loadHierarchy() || { items: [] };
     const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
     let importedHierarchyItems: HierarchyNode[] = [];
     if (hierarchyFile) {
@@ -755,7 +755,7 @@ export class ImportExportService {
             const messageIdMap = new Map<string, string>();
             const process = ({ node }: { node: MessageNodeDto }) => {
               const oldMsgId = node.id;
-              const newMsgId = generateId<MessageId>();
+              const newMsgId = idToRaw({ id: generateId<MessageId>() });
               messageIdMap.set(oldMsgId, newMsgId);
               node.id = newMsgId;
 
@@ -763,13 +763,13 @@ export class ImportExportService {
                 node.attachments.forEach(a => {
                   // remap attachment ID (the reference)
                   const originalAttId = a.id;
-                  a.id = generateId<AttachmentId>();
+                  a.id = idToRaw({ id: generateId<AttachmentId>() });
 
                   // Resolve binaryObjectId from V1 or V2
                   const oldBinaryId = ('binaryObjectId' in a) ? a.binaryObjectId : originalAttId;
 
                   if (!binaryRemapMap.has(oldBinaryId)) {
-                    binaryRemapMap.set(oldBinaryId, generateId<BinaryObjectId>());
+                    binaryRemapMap.set(oldBinaryId, idToRaw({ id: generateId<BinaryObjectId>() }));
                   }
 
                   const newBinaryId = binaryRemapMap.get(oldBinaryId)!;

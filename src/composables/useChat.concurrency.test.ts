@@ -4,7 +4,7 @@ import { storageService } from '@/services/storage';
 import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import type { ChatId } from '@/models/ids';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -148,7 +148,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     try {
       await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000, interval: 50 });
     } catch (e) {
-      console.error(`Timed out waiting for chat ${id} in activeGenerations. Current keys:`, Array.from(activeGenerations.keys()));
+      console.error('Timed out waiting for chat ' + idToRaw({ id }) + ' in activeGenerations. Current keys:', Array.from(activeGenerations.keys()));
       throw e;
     }
   };
@@ -275,7 +275,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // Manual rename happens while streaming
-    await renameChat({ id: chatAId, newTitle: 'Manual New Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'Manual New Title' });
 
     resolveA!();
     await sendPromise;
@@ -304,14 +304,14 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // Delete chat while it's still generating in background
-    await deleteChat({ id: chatAId });
-    expect(mockChatStorage.has(chatAId)).toBe(false);
+    await deleteChat({ id: idToRaw({ id: chatAId }) });
+    expect(mockChatStorage.has(idToRaw({ id: chatAId }))).toBe(false);
 
     resolveA!();
     await sendPromise;
 
     // Verify chat was not recreated in storage
-    expect(mockChatStorage.has(chatAId)).toBe(false);
+    expect(mockChatStorage.has(idToRaw({ id: chatAId }))).toBe(false);
   });
 
   it('should not resurrect chats after deleteAllChats', async () => {
@@ -379,7 +379,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     expect(currentChat.value?.id).not.toBe(chatAId);
 
     // 3. Rename A in background (simulating sidebar edit)
-    await renameChat({ id: chatAId, newTitle: 'New Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'New Title' });
 
     // 4. Finish A
     resolveA!();
@@ -419,7 +419,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await vi.waitUntil(() => mockLlmChat.mock.calls.length >= 2); // Wait for title gen to start
 
     // 3. User manually renames while title gen is "calculating"
-    await renameChat({ id: chatAId, newTitle: 'User Manual Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'User Manual Title' });
     expect(chatA.title).toBe('User Manual Title');
 
     // 4. Let auto-title finish

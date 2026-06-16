@@ -3,8 +3,10 @@ import { Wesh } from './index'
 import { NaidanSysfsProvider } from './naidan-sysfs/provider'
 import { NAIDAN_SYSFS_ROOT_PATH } from './naidan-sysfs/constants'
 import type { ChatContent, ChatGroup, ChatMeta, Hierarchy, SidebarItem } from '@/models/types'
+import { idToRaw } from '@/models/ids'
 import type { NaidanSysfsStorageReader } from './naidan-sysfs/types'
 import type { NaidanSysfsVisibility } from './types'
+import type { BinaryObjectId, ChatGroupId, ChatId } from '@/models/ids'
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
@@ -42,17 +44,17 @@ function createReaderStub({
     async listChatGroups() {
       return chatGroups
     },
-    async loadChatMeta({ chatId }: { chatId: string }) {
-      return metadataById[chatId]
+    async loadChatMeta({ chatId }: { chatId: ChatId }) {
+      return metadataById[idToRaw({ id: chatId })]
     },
-    async loadChatContent({ chatId }: { chatId: string }) {
-      return contentById[chatId]
+    async loadChatContent({ chatId }: { chatId: ChatId }) {
+      return contentById[idToRaw({ id: chatId })]
     },
-    async loadChat({ chatId }: { chatId: string }) {
+    async loadChat({ chatId }: { chatId: ChatId }) {
       void chatId
       return undefined
     },
-    async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
+    async loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }) {
       return chatGroups.find(({ id }) => id === chatGroupId)
     },
     async *listBinaryObjects() {
@@ -60,11 +62,11 @@ function createReaderStub({
         yield object
       }
     },
-    async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }) {
+    async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
       void binaryObjectId
       return undefined
     },
-    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: string }) {
+    async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
       void binaryObjectId
       return undefined
     },

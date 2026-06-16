@@ -7,6 +7,7 @@ import { computed, onMounted } from 'vue';
 import { getSiblingsInChatBranch } from '@/composables/chat/chat-branch-helpers';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { usePrint } from '@/composables/usePrint';
+import { idToRaw } from '@/models/ids';
 import type { MessageId } from '@/models/ids';
 import MessageItem from './MessageItem.vue';
 
@@ -50,7 +51,7 @@ defineExpose({
     <div class="chat-print-messages">
       <MessageItem
         v-for="msg in activeMessages"
-        :key="msg.id"
+        :key="idToRaw({ id: msg.id })"
         :chat-id="currentChat.id"
         :message="msg"
         :siblings="getCurrentChatSiblings({ messageId: msg.id })"

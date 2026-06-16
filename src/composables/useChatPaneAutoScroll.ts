@@ -1,4 +1,5 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
+import { idToRaw } from '@/models/ids';
 import type { MessageNode } from '@/models/types';
 import type { ChatId, MessageId } from '@/models/ids';
 import type { ChatFlowItem } from './useChatDisplayFlow';
@@ -73,7 +74,7 @@ function getInitialOpenTarget({ latestUserTurnId }: { latestUserTurnId: MessageI
   }
   return {
     kind: 'message',
-    anchorId: `message-${latestUserTurnId}`,
+    anchorId: `message-${idToRaw({ id: latestUserTurnId })}`,
     messageId: latestUserTurnId,
   };
 }
@@ -88,7 +89,7 @@ function getScrollTargetForItem({ item }: { item: ChatFlowItem }): ChatPaneScrol
     case 'tool':
       return {
         kind: 'message',
-        anchorId: `message-${item.node.id}`,
+        anchorId: `message-${idToRaw({ id: item.node.id })}`,
         messageId: item.node.id,
       };
     case 'user':
@@ -148,7 +149,7 @@ function getFirstAssistantVisibleTarget({
 }
 
 function getNavigationKey({ chat }: { chat: ChatPaneContext }): string {
-  return `${chat.id}:${chat.currentLeafId ?? ''}`;
+  return `${idToRaw({ id: chat.id })}:${chat.currentLeafId === undefined ? '' : idToRaw({ id: chat.currentLeafId })}`;
 }
 
 function getOpenedResponseState({
@@ -208,7 +209,14 @@ export function useChatPaneAutoScroll({
   activeMessages: MaybeReadonlyRef<readonly MessageNode[]>;
   chatFlow: MaybeReadonlyRef<readonly ChatFlowItem[]>;
   processingStatus: MaybeReadonlyRef<ChatPaneProcessingStatus>;
-}) {
+}): {
+  snapshot: Readonly<Ref<ChatPaneAutoScrollSnapshot>>;
+  consumeScrollAction: () => ChatPaneAutoScrollAction | undefined;
+  markAssistantAutoScrolled: ({ chatId, navigationKey, userTurnId }: { chatId: ChatId; navigationKey: string; userTurnId: MessageId }) => void;
+  TEST_ONLY: {
+    state: Ref<ChatPaneAutoScrollState>;
+  };
+} {
   const state = ref<ChatPaneAutoScrollState>({ kind: 'uninitialized' });
 
   const snapshot = computed<ChatPaneAutoScrollSnapshot>(() => {

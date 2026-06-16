@@ -1,4 +1,5 @@
 import { storageService } from '@/services/storage';
+import { idToRaw } from '@/models/ids';
 import { useConfirm } from './useConfirm';
 import { useImagePreview } from './useImagePreview';
 import type { BinaryObject } from '@/models/types';
@@ -10,7 +11,7 @@ export function useBinaryActions() {
 
   const deleteBinaryObject = async ({ id }: { id: BinaryObjectId }) => {
     const obj = await storageService.getBinaryObject({ binaryObjectId: id });
-    const name = obj?.name || id;
+    const name = obj?.name || idToRaw({ id });
 
     const confirmed = await showConfirm({
       title: 'Delete Binary Object?',
@@ -38,7 +39,7 @@ export function useBinaryActions() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = obj.name || obj.id;
+    a.download = obj.name || idToRaw({ id: obj.id });
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

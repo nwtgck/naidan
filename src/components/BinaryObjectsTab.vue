@@ -13,6 +13,7 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
+import { idToRaw } from '@/models/ids';
 
 const objects = ref<BinaryObject[]>([]);
 const isLoading = ref(true);
@@ -67,7 +68,7 @@ const filteredObjects = computed(() => {
     const q = searchQuery.value.toLowerCase();
     result = result.filter(f =>
       (f.name || 'unnamed').toLowerCase().includes(q) ||
-      f.id.toLowerCase().includes(q) ||
+      idToRaw({ id: f.id }).toLowerCase().includes(q) ||
       f.mimeType.toLowerCase().includes(q)
     );
   }
@@ -116,7 +117,7 @@ const renderedObjects = computed(() => {
 const objectMap = computed(() => {
   const map = new Map<string, BinaryObject>();
   for (const obj of objects.value) {
-    map.set(obj.id, obj);
+    map.set(idToRaw({ id: obj.id }), obj);
   }
   return map;
 });
@@ -241,10 +242,10 @@ const createThumbnailUrl = ({ blob, size = 120 }: { blob: Blob; size?: number })
 };
 
 const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
-  if (thumbnails.value[obj.id] || thumbnailLoading.value.has(obj.id)) return;
+  if (thumbnails.value[idToRaw({ id: obj.id })] || thumbnailLoading.value.has(idToRaw({ id: obj.id }))) return;
   if (!obj.mimeType.startsWith('image/')) return;
 
-  thumbnailLoading.value.add(obj.id);
+  thumbnailLoading.value.add(idToRaw({ id: obj.id }));
   try {
     await thumbnailSemaphore.run({ task: async () => {
       const blob = await storageService.getFile({ binaryObjectId: obj.id });
@@ -262,8 +263,8 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
           });
         });
 
-        if (!thumbnails.value[obj.id]) {
-          thumbnails.value[obj.id] = thumbUrl;
+        if (!thumbnails.value[idToRaw({ id: obj.id })]) {
+          thumbnails.value[idToRaw({ id: obj.id })] = thumbUrl;
           thumbnailCount.value++;
         }
       }
@@ -271,7 +272,7 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
   } catch (e) {
     console.error('Failed to load thumbnail:', e);
   } finally {
-    thumbnailLoading.value.delete(obj.id);
+    thumbnailLoading.value.delete(idToRaw({ id: obj.id }));
   }
 };
 
@@ -356,13 +357,13 @@ const registerObserver = ({ el, id }: { el: HTMLElement | null; id: string }) =>
 
 // Cleanup on data removal
 watch(objects, (newObjs, oldObjs) => {
-  const newIds = new Set(newObjs.map(o => o.id));
+  const newIds = new Set(newObjs.map(o => idToRaw({ id: o.id })));
   if (oldObjs) {
     for (const oldObj of oldObjs) {
-      if (!newIds.has(oldObj.id)) {
-        const url = thumbnails.value[oldObj.id];
+      if (!newIds.has(idToRaw({ id: oldObj.id }))) {
+        const url = thumbnails.value[idToRaw({ id: oldObj.id })];
         if (url) URL.revokeObjectURL(url);
-        delete thumbnails.value[oldObj.id];
+        delete thumbnails.value[idToRaw({ id: oldObj.id })];
         thumbnailCount.value--;
       }
     }
@@ -493,20 +494,20 @@ defineExpose({
             </tr>
             <tr
               v-for="obj in renderedObjects"
-              :key="obj.id"
-              :ref="el => registerObserver({ el: el as HTMLElement, id: obj.id })"
+              :key="idToRaw({ id: obj.id })"
+              :ref="el => registerObserver({ el: el as HTMLElement, id: idToRaw({ id: obj.id }) })"
               @click="handlePreview({ obj })"
               class="group cursor-pointer hover:bg-blue-50/30 dark:hover:bg-blue-900/5 transition-colors"
-              :data-testid="`binary-object-row-${obj.id}`"
+              :data-testid="`binary-object-row-${idToRaw({ id: obj.id })}`"
             >
               <td class="px-6 py-3">
                 <div class="flex items-center gap-3 min-w-0">
                   <div class="w-10 h-10 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg shrink-0 overflow-hidden border border-gray-100 dark:border-gray-700">
                     <img
-                      v-if="thumbnails[obj.id]"
-                      :src="thumbnails[obj.id]"
+                      v-if="thumbnails[idToRaw({ id: obj.id })]"
+                      :src="thumbnails[idToRaw({ id: obj.id })]"
                       class="w-full h-full object-cover"
-                      :data-testid="`binary-thumbnail-${obj.id}`"
+                      :data-testid="`binary-thumbnail-${idToRaw({ id: obj.id })}`"
                     />
                     <div v-else class="flex items-center justify-center w-full h-full">
                       <EyeIcon v-if="obj.mimeType.startsWith('image/')" class="w-4 h-4 text-blue-500 opacity-50" />
@@ -531,7 +532,7 @@ defineExpose({
                     @click.stop="handleDownload({ obj })"
                     class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
                     title="Download"
-                    :data-testid="`download-button-${obj.id}`"
+                    :data-testid="`download-button-${idToRaw({ id: obj.id })}`"
                   >
                     <DownloadIcon class="w-4 h-4" />
                   </button>
@@ -539,7 +540,7 @@ defineExpose({
                     @click.stop="handleDelete({ obj })"
                     class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-lg transition-colors"
                     title="Delete"
-                    :data-testid="`delete-button-${obj.id}`"
+                    :data-testid="`delete-button-${idToRaw({ id: obj.id })}`"
                   >
                     <Trash2Icon class="w-4 h-4" />
                   </button>
@@ -557,17 +558,17 @@ defineExpose({
 
         <div
           v-for="obj in renderedObjects"
-          :key="obj.id"
-          :ref="el => registerObserver({ el: el as HTMLElement, id: obj.id })"
+          :key="idToRaw({ id: obj.id })"
+          :ref="el => registerObserver({ el: el as HTMLElement, id: idToRaw({ id: obj.id }) })"
           @click="handlePreview({ obj })"
           class="group relative aspect-square bg-gray-50 dark:bg-gray-800 rounded-2xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-blue-500 hover:shadow-lg transition-all"
-          :data-testid="`binary-object-grid-${obj.id}`"
+          :data-testid="`binary-object-grid-${idToRaw({ id: obj.id })}`"
         >
           <!-- Thumbnail -->
           <div class="absolute inset-0 flex items-center justify-center p-4">
             <img
-              v-if="thumbnails[obj.id]"
-              :src="thumbnails[obj.id]"
+              v-if="thumbnails[idToRaw({ id: obj.id })]"
+              :src="thumbnails[idToRaw({ id: obj.id })]"
               class="w-full h-full object-contain transition-transform group-hover:scale-110"
               :data-testid="`binary-thumbnail-${obj.id}`"
             />

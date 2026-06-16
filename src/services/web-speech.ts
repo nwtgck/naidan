@@ -25,7 +25,7 @@ class WebSpeechService {
   private isExpectingMore = false;
   private lastDetectedMessageId: MessageId | null = null;
 
-  public readonly state = reactive<WebSpeechState>({
+  public readonly state: WebSpeechState = reactive<WebSpeechState>({
     status: 'inactive',
     activeMessageId: null,
     detectedLang: null,

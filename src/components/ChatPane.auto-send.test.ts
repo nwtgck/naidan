@@ -7,7 +7,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
-import { toChatId } from '@/models/ids';
+import { idToRaw, toChatId } from '@/models/ids';
 
 // Mock router
 const router = createRouter({
@@ -124,7 +124,7 @@ vi.mock('../composables/chat/ui/useChatPaneState', () => ({
 
 vi.mock('../composables/chat/chat-activity-queries', () => ({
   isChatProcessing: ({ chatId }: { chatId: string }) =>
-    !!mockCurrentChat.value && mockCurrentChat.value.id === chatId && mockStreaming.value,
+    !!mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === chatId && mockStreaming.value,
   getChatContextCompactProgress: () => ({ phase: 'idle' }),
   isChatGeneratingTitle: () => false,
 }));

@@ -5,7 +5,7 @@ import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFil
 import { OPFSStorageProvider } from '@/services/storage/opfs-storage'
 import type { ChatContent, ChatGroup, ChatMeta } from '@/models/types'
 import { renderChatMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/metadata-markdown'
-import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 describe('file-explorer.worker.impl', () => {
   let worker: ReturnType<typeof createFileExplorerWorker>
@@ -448,7 +448,7 @@ describe('file-explorer.worker.impl', () => {
                   items: chatGroup.items.map(item => ({
                     id: item.id,
                     type: 'chat',
-                    chat: item.chat,
+                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
                   })),
                 },
               }]
@@ -467,7 +467,7 @@ describe('file-explorer.worker.impl', () => {
                 items: chatGroup.items.map(item => ({
                   id: item.id,
                   type: 'chat',
-                  chat: item.chat,
+                  chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
                 })),
               }]
             },
@@ -489,7 +489,7 @@ describe('file-explorer.worker.impl', () => {
                   items: chatGroup.items.map(item => ({
                     id: item.id,
                     type: 'chat',
-                    chat: item.chat,
+                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
                   })),
                 }
                 : undefined

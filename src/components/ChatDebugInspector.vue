@@ -9,7 +9,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { BinaryObject, MessageNode } from '@/models/types';
 import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
-import { toBinaryObjectId } from '@/models/ids';
+import { idToRaw, toBinaryObjectId } from '@/models/ids';
 import type { BinaryObjectId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
@@ -40,7 +40,7 @@ function handleSelectNode({ node }: { node: Readonly<MessageNode> }) {
 function handleOpenMessage({ messageId }: { messageId: MessageId }) {
   const query = { ...(router.currentRoute.value.query ?? {}) };
   delete query.leaf;
-  router.push({ query: { ...query, 'message-id': messageId } });
+  router.push({ query: { ...query, 'message-id': idToRaw({ id: messageId }) } });
   emit('close');
 }
 
@@ -257,7 +257,7 @@ defineExpose({
           <div v-if="mode === 'active'" class="flex-1 overflow-y-auto p-6 space-y-2 max-w-4xl mx-auto thin-scrollbar">
             <ChatDebugTreeNode
               v-for="m in activeMessages"
-              :key="m.id"
+              :key="idToRaw({ id: m.id })"
               :node="{ ...m, replies: { items: [] } }"
               :active-ids="activeIds"
               :highlight="isHighlightEnabled"
@@ -287,7 +287,7 @@ defineExpose({
               <div v-if="!isTreeMapCollapsed && chat?.root?.items" class="relative" :class="chat.root.items.length > 1 ? 'ml-6' : ''">
                 <ChatDebugTreeNode
                   v-for="(node, index) in chat.root.items"
-                  :key="node.id"
+                  :key="idToRaw({ id: node.id })"
                   :node="node"
                   :active-ids="activeIds"
                   :highlight="isHighlightEnabled"
@@ -319,7 +319,7 @@ defineExpose({
                 </div>
                 <ChatDebugTreeNode
                   v-for="m in selectedPath"
-                  :key="m.id"
+                  :key="idToRaw({ id: m.id })"
                   :node="{ ...m, replies: { items: [] } }"
                   :active-ids="activeIds"
                   :highlight="isHighlightEnabled"

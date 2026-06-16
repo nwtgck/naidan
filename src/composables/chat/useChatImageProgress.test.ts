@@ -1,5 +1,6 @@
 import { computed } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toChatId } from '@/models/ids';
 
 const {
   mockImageProgressMap,
@@ -28,7 +29,7 @@ describe('useChatImageProgress', () => {
     };
 
     const chatImageProgress = useChatImageProgress({
-      chatId: computed(() => 'chat-1'),
+      chatId: computed(() => toChatId({ raw: 'chat-1' })),
     });
 
     expect(chatImageProgress.progress.value).toEqual({ currentStep: 2, totalSteps: 8 });
@@ -38,7 +39,7 @@ describe('useChatImageProgress', () => {
 
   it('returns undefined progress when the chat has no active image generation', () => {
     const chatImageProgress = useChatImageProgress({
-      chatId: computed(() => 'chat-1'),
+      chatId: computed(() => toChatId({ raw: 'chat-1' })),
     });
 
     expect(chatImageProgress.progress.value).toBeUndefined();

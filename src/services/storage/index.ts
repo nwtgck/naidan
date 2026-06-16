@@ -10,7 +10,7 @@ import { chatToDto, hierarchyToDomain, hierarchyToDto } from '@/models/mappers';
 import type { MigrationChunkDto } from '@/models/dto';
 import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 import { StorageSynchronizer, type ChangeListener, type StorageChangeEvent } from './synchronizer';
-import { toChatId } from '@/models/ids';
+import { idToRaw, toChatId } from '@/models/ids';
 
 
 /**
@@ -165,7 +165,7 @@ export class StorageService {
           : omitToolConfigsFromChatMeta({ meta: updated });
         await this.getProvider().saveChatMeta({ meta: metaToSave });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
-      this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
+      this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'updateChatMeta' });
       throw e;
@@ -186,8 +186,8 @@ export class StorageService {
         const current = await this.loadChatContent({ id });
         const updated = await updater({ current: current });
         await this.getProvider().saveChatContent({ id, content: updated });
-      }, lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${id}`, ...this.getLockOptions({ source: 'updateChatContent' }) });
-      this.notify({ event: { type: 'chat_content', id, timestamp: Date.now() } });
+      }, lockKey: `${LOCK_CHAT_CONTENT_PREFIX}${idToRaw({ id })}`, ...this.getLockOptions({ source: 'updateChatContent' }) });
+      this.notify({ event: { type: 'chat_content', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'updateChatContent' });
       throw e;
@@ -203,7 +203,7 @@ export class StorageService {
       await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().deleteChat({ id });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChat' }) });
-      this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
+      this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'deleteChat' });
       throw e;
@@ -217,7 +217,7 @@ export class StorageService {
         const updated = await updater({ current: current });
         await this.getProvider().saveChatGroup({ chatGroup: updated });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatGroup' }) });
-      this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
+      this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'updateChatGroup' });
       throw e;
@@ -233,7 +233,7 @@ export class StorageService {
       await this.synchronizer.withLock({ fn: async () => {
         await this.getProvider().deleteChatGroup({ id });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'deleteChatGroup' }) });
-      this.notify({ event: { type: 'chat_meta_and_chat_group', id, timestamp: Date.now() } });
+      this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {
       this.handleStorageError({ error: e, source: 'deleteChatGroup' });
       throw e;
@@ -401,7 +401,7 @@ export class StorageService {
 
   async addMountToChat({ chatId, mount }: { chatId: ChatId; mount: Mount }): Promise<void> {
     await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat not found: ${chatId}`);
+      if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       const existing = current.mounts ?? [];
       return { ...current, mounts: [...existing, mount] };
     } });
@@ -409,7 +409,7 @@ export class StorageService {
 
   async removeMountFromChat({ chatId, volumeId }: { chatId: ChatId; volumeId: VolumeId }): Promise<void> {
     await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat not found: ${chatId}`);
+      if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
@@ -419,7 +419,7 @@ export class StorageService {
 
   async updateChatMount({ chatId, volumeId, readOnly }: { chatId: ChatId; volumeId: VolumeId; readOnly: boolean }): Promise<void> {
     await this.updateChatMeta({ id: chatId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat not found: ${chatId}`);
+      if (!current) throw new Error(`Chat not found: ${idToRaw({ id: chatId })}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).map(m =>
@@ -431,7 +431,7 @@ export class StorageService {
 
   async addMountToChatGroup({ groupId, mount }: { groupId: ChatGroupId; mount: Mount }): Promise<void> {
     await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat group not found: ${groupId}`);
+      if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       const existing = current.mounts ?? [];
       return { ...current, mounts: [...existing, mount] };
     } });
@@ -439,7 +439,7 @@ export class StorageService {
 
   async removeMountFromChatGroup({ groupId, volumeId }: { groupId: ChatGroupId; volumeId: VolumeId }): Promise<void> {
     await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat group not found: ${groupId}`);
+      if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).filter(m => !(m.type === 'volume' && m.volumeId === volumeId)),
@@ -449,7 +449,7 @@ export class StorageService {
 
   async updateChatGroupMount({ groupId, volumeId, mountPath, readOnly }: { groupId: ChatGroupId; volumeId: VolumeId; mountPath: string; readOnly: boolean }): Promise<void> {
     await this.updateChatGroup({ id: groupId, updater: ({ current }) => {
-      if (!current) throw new Error(`Chat group not found: ${groupId}`);
+      if (!current) throw new Error(`Chat group not found: ${idToRaw({ id: groupId })}`);
       return {
         ...current,
         mounts: (current.mounts ?? []).map(m =>
@@ -514,7 +514,7 @@ export class StorageService {
                           if (att.blob) {
                             rescued.push({
                               type: 'binary_object',
-                              id: att.binaryObjectId,
+                              id: idToRaw({ id: att.binaryObjectId }),
                               name: att.originalName,
                               mimeType: att.mimeType,
                               size: att.size,

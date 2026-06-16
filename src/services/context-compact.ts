@@ -4,6 +4,7 @@ import { storageService } from '@/services/storage';
 import type { LLMProvider } from '@/services/lm/types';
 import type { ToolExecutionResult } from '@/services/tools/types';
 import { fileToDataUrl } from '@/utils/chat-tree';
+import { idToRaw } from '@/models/ids';
 import type { MessageId } from '@/models/ids';
 
 export type ContextCompactProgress =
@@ -171,7 +172,7 @@ export function createCompactConversationMessageContent({
   case 'with_message_ids':
     // The messageId prefix may reduce inference-cache reuse, but it makes sysfs-based
     // source lookup much more reliable for compact branches.
-    return `messageId=${node.id}\n\n${content}`;
+    return 'messageId=' + idToRaw({ id: node.id }) + '\n\n' + content;
   case 'without_message_ids':
     return content;
   default: {
@@ -766,7 +767,7 @@ export function createCompactToolMessageContent({
 }): string {
   switch (promptMode) {
   case 'with_message_ids':
-    return `messageId=${messageId}\n\n${content}`;
+    return 'messageId=' + idToRaw({ id: messageId }) + '\n\n' + content;
   case 'without_message_ids':
     return content;
   default: {

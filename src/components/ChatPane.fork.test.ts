@@ -305,7 +305,7 @@ describe('ChatPane Fork Functionality', () => {
   });
 
   it('should change jump-to-origin button icon to ArrowUp', async () => {
-    mockCurrentChat.value.originChatId = toChatId({ raw: 'parent-id' });
+    mockCurrentChat.value.originChatId = 'parent-id';
     const wrapper = mountChatPane( {
       global: { plugins: [router] },
     });

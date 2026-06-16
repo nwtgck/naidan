@@ -3,11 +3,28 @@ import type { MessageId } from '@/models/ids';
 
 type OutlineVisibility = 'hidden' | 'visible';
 
+interface ChatPaneSession {
+  showCompactSettings: Ref<boolean>;
+  showNeuralSyncEffect: Ref<boolean>;
+  outlineVisibility: Ref<OutlineVisibility>;
+  initialOutlineMessageId: Ref<MessageId | undefined>;
+  openCompactSettings: () => void;
+  closeCompactSettings: () => void;
+  toggleOutline: ({ getCurrentViewportMessageId }: { getCurrentViewportMessageId: () => MessageId | undefined }) => void;
+  closeOutline: () => void;
+  playNeuralSyncEffect: () => void;
+  clearNeuralSyncEffect: () => void;
+  TEST_ONLY: {
+    hideNeuralSyncEffectTimer: Ref<number | undefined>;
+    clearNeuralSyncEffectTimer: () => void;
+  };
+}
+
 export function useChatPaneSession({
   chatIdentityKey,
 }: {
   chatIdentityKey: Readonly<Ref<string>>;
-}) {
+}): ChatPaneSession {
   const showCompactSettings = ref(false);
   const showNeuralSyncEffect = ref(false);
   const outlineVisibility = ref<OutlineVisibility>('hidden');

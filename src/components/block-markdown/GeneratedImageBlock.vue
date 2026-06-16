@@ -53,8 +53,7 @@ async function loadImage() {
   error.value = undefined;
 
   try {
-    const binaryObjectId = toBinaryObjectId({ raw: parsed.value.binaryObjectId });
-    const blob = await storageService.getFile({ binaryObjectId });
+    const blob = await storageService.getFile({ binaryObjectId: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
     if (blob) {
       if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
       imageUrl.value = URL.createObjectURL(blob);
@@ -80,18 +79,16 @@ onUnmounted(() => {
 async function handlePreview() {
   if (!parsed.value) return;
 
-  const binaryObjectId = toBinaryObjectId({ raw: parsed.value.binaryObjectId });
-
   if (handleContextualPreview) {
-    await handleContextualPreview({ id: binaryObjectId });
+    await handleContextualPreview({ id: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
     return;
   }
 
-  const obj = await storageService.getBinaryObject({ binaryObjectId });
+  const obj = await storageService.getBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
   if (obj) {
     openPreview({
       objects: [obj],
-      initialId: binaryObjectId
+      initialId: toBinaryObjectId({ raw: parsed.value.binaryObjectId })
     });
   }
 }
@@ -99,10 +96,8 @@ async function handlePreview() {
 async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
   if (!parsed.value) return;
 
-  const binaryObjectId = toBinaryObjectId({ raw: parsed.value.binaryObjectId });
-
   await ImageDownloadHydrator.download({
-    id: binaryObjectId,
+    id: toBinaryObjectId({ raw: parsed.value.binaryObjectId }),
     prompt: parsed.value.prompt || '',
     steps: parsed.value.steps,
     seed: parsed.value.seed,

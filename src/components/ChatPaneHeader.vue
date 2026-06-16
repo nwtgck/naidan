@@ -11,6 +11,7 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
 import type { ChatPaneHeaderMoreAction } from '@/services/context-compact';
+import { idToRaw } from '@/models/ids';
 import type { ChatGroupId, ChatId } from '@/models/ids';
 
 type HeaderChat = {
@@ -259,7 +260,7 @@ defineExpose({
 
                 <button
                   v-for="group in chatGroups"
-                  :key="group.id"
+                  :key="idToRaw({ id: group.id })"
                   @click="emitMoveToGroup({ groupId: group.id })"
                   class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
                   :class="chat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"

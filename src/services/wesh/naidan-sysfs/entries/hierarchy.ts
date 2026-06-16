@@ -1,4 +1,5 @@
 import type { SidebarItem } from '@/models/types'
+import { idToRaw } from '@/models/ids'
 import type { ChatGroupId, ChatId } from '@/models/ids'
 import { NAIDAN_SYSFS_ROOT_PATH } from '@/services/wesh/naidan-sysfs/constants'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
@@ -13,11 +14,11 @@ function createChatSymlinkEntry({ chatId }: { chatId: ChatId }): NaidanSysfsSyml
     kind: 'symlink',
     async stat({ path }: { path: string }) {
       void path
-      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
+      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
     },
     async readlink({ path }: { path: string }) {
       void path
-      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}`
+      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`
     },
   }
 }
@@ -27,11 +28,11 @@ function createChatGroupSymlinkEntry({ chatGroupId }: { chatGroupId: ChatGroupId
     kind: 'symlink',
     async stat({ path }: { path: string }) {
       void path
-      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/${chatGroupId}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
+      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/${idToRaw({ id: chatGroupId })}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
     },
     async readlink({ path }: { path: string }) {
       void path
-      return `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/${chatGroupId}`
+      return `${NAIDAN_SYSFS_ROOT_PATH}/chat-groups/${idToRaw({ id: chatGroupId })}`
     },
   }
 }
@@ -43,7 +44,7 @@ function createHierarchyChatSymlinkName({
   index: number;
   chatId: ChatId;
 }): string {
-  return `${index}-chat-${chatId}`
+  return `${index}-chat-${idToRaw({ id: chatId })}`
 }
 
 function createHierarchyChatGroupSymlinkName({
@@ -53,7 +54,7 @@ function createHierarchyChatGroupSymlinkName({
   index: number;
   chatGroupId: ChatGroupId;
 }): string {
-  return `${index}-chat-group-${chatGroupId}`
+  return `${index}-chat-group-${idToRaw({ id: chatGroupId })}`
 }
 
 async function listVisibleHierarchyItems({ context }: { context: NaidanSysfsContext }): Promise<SidebarItem[]> {

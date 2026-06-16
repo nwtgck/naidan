@@ -37,6 +37,7 @@ import {
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, Chat, ChatGroup, LmParameters } from '@/models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/models/ids';
 import type { AttachmentId, BinaryObjectId, ChatId, VolumeId } from '@/models/ids';
 
 const { setToolEnabled } = useChatTools();
@@ -217,9 +218,44 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
 const attachments = ref<Attachment[]>([]);
 const attachmentUrls = ref<Record<string, string>>({});
 
+type TestOnlyAttachment =
+  | (Omit<Extract<Attachment, { status: 'persisted' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string })
+  | (Omit<Extract<Attachment, { status: 'memory' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string })
+  | (Omit<Extract<Attachment, { status: 'missing' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string });
+
 // Image Editor integration
 const editingAttachmentId = ref<AttachmentId | undefined>(undefined);
 const editingAttachment = computed(() => attachments.value.find(a => a.id === editingAttachmentId.value));
+const testOnlyAttachments = computed({
+  get: (): TestOnlyAttachment[] => attachments.value.map(attachment => ({
+    ...attachment,
+    id: idToRaw({ id: attachment.id }),
+    binaryObjectId: idToRaw({ id: attachment.binaryObjectId }),
+  })),
+  set: (value: TestOnlyAttachment[]) => {
+    attachments.value = value.map(attachment => ({
+      ...attachment,
+      id: toAttachmentId({ raw: attachment.id }),
+      binaryObjectId: toBinaryObjectId({ raw: attachment.binaryObjectId }),
+    }));
+  }
+});
+const testOnlyEditingAttachmentId = computed({
+  get: () => editingAttachmentId.value === undefined ? undefined : idToRaw({ id: editingAttachmentId.value }),
+  set: (value: string | undefined) => {
+    editingAttachmentId.value = value === undefined ? undefined : toAttachmentId({ raw: value });
+  }
+});
+const testOnlyEditingAttachment = computed(() => {
+  if (editingAttachment.value === undefined) {
+    return undefined;
+  }
+  return {
+    ...editingAttachment.value,
+    id: idToRaw({ id: editingAttachment.value.id }),
+    binaryObjectId: idToRaw({ id: editingAttachment.value.binaryObjectId }),
+  } satisfies TestOnlyAttachment;
+});
 
 function openImageEditor({ id }: { id: AttachmentId }) {
   editingAttachmentId.value = id;
@@ -237,10 +273,10 @@ function saveEditedImage({ blob }: { blob: Blob }) {
     const original = attachments.value[index]!;
 
     // Explicitly revoke old URL to ensure UI refresh
-    const oldUrl = attachmentUrls.value[original.id];
+    const oldUrl = attachmentUrls.value[idToRaw({ id: original.id })];
     if (oldUrl) {
       URL.revokeObjectURL(oldUrl);
-      delete attachmentUrls.value[original.id];
+      delete attachmentUrls.value[idToRaw({ id: original.id })];
     }
 
     // Update the attachment with the new blob and a new binary object identity
@@ -258,7 +294,7 @@ function saveEditedImage({ blob }: { blob: Blob }) {
 watch(attachments, (newAtts) => {
   // Revoke URLs for removed attachments
   Object.keys(attachmentUrls.value).forEach(id => {
-    if (!newAtts.find(a => a.id === id)) {
+    if (!newAtts.find(a => idToRaw({ id: a.id }) === id)) {
       const url = attachmentUrls.value[id];
       if (url) {
         URL.revokeObjectURL(url);
@@ -272,10 +308,10 @@ watch(attachments, (newAtts) => {
     const status = att.status;
     switch (status) {
     case 'memory': {
-      const existingUrl = attachmentUrls.value[att.id];
+      const existingUrl = attachmentUrls.value[idToRaw({ id: att.id })];
       // If we don't have a URL (newly added or just revoked in saveEditedImage), create one
       if (!existingUrl) {
-        attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+        attachmentUrls.value[idToRaw({ id: att.id })] = URL.createObjectURL(att.blob);
       }
       break;
     }
@@ -1026,9 +1062,9 @@ function focusInput() {
 
 defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, processDropItems, formatLabel,
   TEST_ONLY: {
-    attachments,
-    editingAttachmentId,
-    editingAttachment,
+    attachments: testOnlyAttachments,
+    editingAttachmentId: testOnlyEditingAttachmentId,
+    editingAttachment: testOnlyEditingAttachment,
     openAdvancedEditor,
     handleAdvancedEditorModeUpdate,
     selectedReasoningEffort
@@ -1116,10 +1152,10 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
-        <div v-for="att in attachments" :key="att.id" class="relative group/att">
+        <div v-for="att in attachments" :key="idToRaw({ id: att.id })" class="relative group/att">
           <div class="bg-transparency-grid rounded-lg overflow-hidden" style="--grid-size: 10px;">
             <img
-              :src="attachmentUrls[att.id]"
+              :src="attachmentUrls[idToRaw({ id: att.id })]"
               class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
             />
           </div>
@@ -1263,7 +1299,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     <Teleport to="body">
       <ImageEditor
         v-if="editingAttachment"
-        :image-url="attachmentUrls[editingAttachment.id]!"
+        :image-url="attachmentUrls[idToRaw({ id: editingAttachment.id })]!"
         :file-name="editingAttachment.originalName"
         :original-mime-type="editingAttachment.mimeType"
         @cancel="closeImageEditor"

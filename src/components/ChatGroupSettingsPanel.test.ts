@@ -8,7 +8,7 @@ import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
-import { toChatGroupId, toVolumeId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toVolumeId } from '@/models/ids';
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -135,7 +135,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.updateChatGroup.mockImplementation(async ({ id, updater }: { id: string; updater: ({ current }: { current: ChatGroup | null }) => ChatGroup }) => {
-      if (mockGroup.id === id) {
+      if (idToRaw({ id: mockGroup.id }) === id) {
         const next = updater({ current: mockGroup });
         mockUpdateChatGroupMetadata({ id, updates: next });
         Object.assign(mockGroup, next);

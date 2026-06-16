@@ -8,7 +8,7 @@ import type { MessageNode, Chat } from '@/models/types';
 import { useSettings } from '@/composables/useSettings';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import MessageItem from './MessageItem.vue';
-import { toChatId, toMessageId } from '@/models/ids';
+import { idToRaw, toChatId, toMessageId } from '@/models/ids';
 import type { ChatId } from '@/models/ids';
 
 const props = defineProps<{
@@ -47,7 +47,7 @@ async function loadContext() {
       branchMessages.value = branch;
 
       if (props.match) {
-        matchedIndex.value = branch.findIndex(m => m.id === props.match?.messageId);
+        matchedIndex.value = branch.findIndex(m => idToRaw({ id: m.id }) === props.match?.messageId);
       } else {
         // If no match, "focus" on the last message
         matchedIndex.value = branch.length - 1;
@@ -128,13 +128,13 @@ defineExpose({
           <span class="text-[10px] font-bold text-gray-300 uppercase tracking-[0.2em]">... previous messages ...</span>
         </div>
 
-        <div v-for="msg in visibleMessages" :key="msg.id" class="relative">
-          <div v-if="match && msg.id === match.messageId" class="absolute inset-0 bg-yellow-50/30 dark:bg-yellow-900/5 border-y-2 border-yellow-200/50 dark:border-yellow-900/20 pointer-events-none z-0"></div>
+        <div v-for="msg in visibleMessages" :key="idToRaw({ id: msg.id })" class="relative">
+          <div v-if="match && idToRaw({ id: msg.id }) === match.messageId" class="absolute inset-0 bg-yellow-50/30 dark:bg-yellow-900/5 border-y-2 border-yellow-200/50 dark:border-yellow-900/20 pointer-events-none z-0"></div>
           <MessageItem
             :chat-id="previewChatId!"
             :message="msg"
             class="relative z-10"
-            :class="{ 'opacity-50 grayscale-[0.5]': match && msg.id !== match.messageId }"
+            :class="{ 'opacity-50 grayscale-[0.5]': match && idToRaw({ id: msg.id }) !== match.messageId }"
             @fork="handleDummy"
             @edit="handleDummy"
             @switch-version="handleDummy"

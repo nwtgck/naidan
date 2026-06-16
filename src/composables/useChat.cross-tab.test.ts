@@ -3,7 +3,7 @@ import { useChat } from './useChat';
 import type { Chat, SidebarItem, ChatSummary, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
 import { nextTick, reactive, toRaw } from 'vue';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -122,8 +122,8 @@ describe('useChat Cross-Tab Synchronization', () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
     const updatedChat = { ...currentChat.value!, title: 'New Title' };
-    mocks.mockChatStorage.set(chatId, JSON.parse(JSON.stringify(updatedChat)));
-    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
+    mocks.mockChatStorage.set(idToRaw({ id: chatId }), JSON.parse(JSON.stringify(updatedChat)));
+    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }) });
 
     vi.advanceTimersByTime(600);
     await nextTick();
@@ -135,8 +135,8 @@ describe('useChat Cross-Tab Synchronization', () => {
     const chat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     const chatId = chat!.id;
 
-    mocks.mockChatStorage.delete(chatId);
-    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
+    mocks.mockChatStorage.delete(idToRaw({ id: chatId }));
+    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }) });
 
     vi.advanceTimersByTime(600);
     await nextTick();
@@ -164,8 +164,8 @@ describe('useChat Cross-Tab Synchronization', () => {
     const chatId = chat!.id;
     const updatedChat = JSON.parse(JSON.stringify(chat));
     updatedChat.root.items.push({ id: 'msg-ext', role: 'user', content: 'Ext', timestamp: Date.now(), replies: { items: [] } });
-    mocks.mockChatStorage.set(chatId, updatedChat);
-    await simulateExternalEvent({ type: 'chat_content', id: chatId });
+    mocks.mockChatStorage.set(idToRaw({ id: chatId }), updatedChat);
+    await simulateExternalEvent({ type: 'chat_content', id: idToRaw({ id: chatId }) });
 
     vi.advanceTimersByTime(600);
     await nextTick();
@@ -180,8 +180,8 @@ describe('useChat Cross-Tab Synchronization', () => {
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     const updatedChat = JSON.parse(JSON.stringify(chat));
     updatedChat.root.items.push({ id: 'msg-ext', role: 'user', content: 'Ext', timestamp: Date.now(), replies: { items: [] } });
-    mocks.mockChatStorage.set(chatId, updatedChat);
-    await simulateExternalEvent({ type: 'chat_content', id: chatId });
+    mocks.mockChatStorage.set(idToRaw({ id: chatId }), updatedChat);
+    await simulateExternalEvent({ type: 'chat_content', id: idToRaw({ id: chatId }) });
 
     vi.advanceTimersByTime(600);
     await nextTick();
@@ -197,8 +197,8 @@ describe('useChat Cross-Tab Synchronization', () => {
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chat as any });
     const updatedChat = JSON.parse(JSON.stringify(chat));
     updatedChat.title = 'External Title';
-    mocks.mockChatStorage.set(chatId, updatedChat);
-    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
+    mocks.mockChatStorage.set(idToRaw({ id: chatId }), updatedChat);
+    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }) });
 
     vi.advanceTimersByTime(600);
     await nextTick();
@@ -236,25 +236,25 @@ describe('useChat Cross-Tab Synchronization', () => {
       type: 'chat_group',
       chatGroup: {
         id: toChatGroupId({ raw: 'group-x' }), name: 'X', isCollapsed: false, updatedAt: 0,
-        items: [{ id: `chat:${chatId}`, type: 'chat', chat: { id: chatId, title: 'T', updatedAt: 0, groupId: toChatGroupId({ raw: 'group-x' }) } }]
+        items: [{ id: `chat:${idToRaw({ id: chatId })}`, type: 'chat', chat: { id: chatId, title: 'T', updatedAt: 0, groupId: toChatGroupId({ raw: 'group-x' }) } }]
       }
     });
 
     // Also update the meta in storage so loadChat returns the correct groupId
-    const meta = mocks.mockChatStorage.get(chatId);
+    const meta = mocks.mockChatStorage.get(idToRaw({ id: chatId }));
     if (meta) meta.groupId = toChatGroupId({ raw: 'group-x' });
 
     vi.advanceTimersByTime(1000);
-    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
+    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }) });
     vi.advanceTimersByTime(1000);
     await nextTick();
     await Promise.resolve();
     await nextTick();
     await Promise.resolve();
 
-    expect(chatStore.currentChat.value?.groupId).toBe('group-x');
-    await (updateChatMeta as any)({ id: chatId, updater: () => chat as any });
-    expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('group-x');
+    expect(chatStore.currentChat.value?.groupId).toBe(toChatGroupId({ raw: 'group-x' }));
+    await (updateChatMeta as any)({ id: idToRaw({ id: chatId }), updater: () => chat as any });
+    expect(mocks.mockChatStorage.get(idToRaw({ id: chatId }))?.groupId).toBe(toChatGroupId({ raw: 'group-x' }));
     activeGenerations.delete(chatId);
   });
 
@@ -265,13 +265,13 @@ describe('useChat Cross-Tab Synchronization', () => {
     const chatId = chat!.id;
     activeGenerations.set(chatId, { controller: new AbortController(), chat: chatStore.currentChat.value! as any });
     mocks.mockRootItems.length = 0;
-    mocks.mockRootItems.push({ id: 'chat_group:ge', type: 'chat_group', chatGroup: { id: toChatGroupId({ raw: 'ge' }), name: 'E', items: [{ id: `chat:${chatId}`, type: 'chat', chat: { id: chatId, title: 'C', updatedAt: 0, groupId: toChatGroupId({ raw: 'ge' }) } }], isCollapsed: false, updatedAt: 0 } });
+    mocks.mockRootItems.push({ id: 'chat_group:ge', type: 'chat_group', chatGroup: { id: toChatGroupId({ raw: 'ge' }), name: 'E', items: [{ id: `chat:${idToRaw({ id: chatId })}`, type: 'chat', chat: { id: chatId, title: 'C', updatedAt: 0, groupId: toChatGroupId({ raw: 'ge' }) } }], isCollapsed: false, updatedAt: 0 } });
 
-    const meta = mocks.mockChatStorage.get(chatId);
+    const meta = mocks.mockChatStorage.get(idToRaw({ id: chatId }));
     if (meta) meta.groupId = toChatGroupId({ raw: 'ge' });
 
     vi.advanceTimersByTime(2000);
-    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: chatId });
+    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: idToRaw({ id: chatId }) });
 
     vi.advanceTimersByTime(2000);
     await nextTick();
@@ -281,9 +281,9 @@ describe('useChat Cross-Tab Synchronization', () => {
     await nextTick();
     await Promise.resolve();
 
-    expect(chatStore.currentChat.value?.groupId).toBe('ge');
-    await (updateChatMeta as any)({ id: chatId, updater: () => chatStore.currentChat.value! as any });
-    expect(mocks.mockChatStorage.get(chatId)?.groupId).toBe('ge');
+    expect(chatStore.currentChat.value?.groupId).toBe(toChatGroupId({ raw: 'ge' }));
+    await (updateChatMeta as any)({ id: idToRaw({ id: chatId }), updater: () => chatStore.currentChat.value! as any });
+    expect(mocks.mockChatStorage.get(idToRaw({ id: chatId }))?.groupId).toBe(toChatGroupId({ raw: 'ge' }));
     activeGenerations.delete(chatId);
   });
 
@@ -294,8 +294,8 @@ describe('useChat Cross-Tab Synchronization', () => {
     const group = Array.from(mocks.mockGroupStorage.values())[0];
     __testOnlySetCurrentChatGroup({ group: reactive(group) });
     const renamed = { ...group, name: 'New' };
-    mocks.mockGroupStorage.set(groupId, renamed);
-    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: groupId });
+    mocks.mockGroupStorage.set(idToRaw({ id: groupId }), renamed);
+    await simulateExternalEvent({ type: 'chat_meta_and_chat_group', id: idToRaw({ id: groupId }) });
 
     vi.advanceTimersByTime(600);
     await nextTick();
