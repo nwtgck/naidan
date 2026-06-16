@@ -12,6 +12,52 @@ export type MarkdownInlinePart =
   | { type: 'html'; html: AllowedHtml }
   | { type: 'image'; payload: ExternalImagePayload };
 
+type MarkdownLinkKind =
+  | 'external-http'
+  | 'same-origin-http'
+  | 'non-http'
+  | 'invalid';
+
+function getCurrentPageHref(): string | undefined {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  return window.location.href;
+}
+
+function classifyMarkdownLink({
+  href,
+  currentPageHref,
+}: {
+  href: string;
+  currentPageHref: string | undefined;
+}): MarkdownLinkKind {
+  try {
+    const url = currentPageHref === undefined
+      ? new URL(href)
+      : new URL(href, currentPageHref);
+
+    switch (url.protocol) {
+    case 'http:':
+    case 'https:': {
+      if (currentPageHref === undefined) {
+        return 'external-http';
+      }
+
+      const currentPageUrl = new URL(currentPageHref);
+      return url.origin === currentPageUrl.origin
+        ? 'same-origin-http'
+        : 'external-http';
+    }
+    default:
+      return 'non-http';
+    }
+  } catch {
+    return 'invalid';
+  }
+}
+
 function createDOMPurifyForCurrentWindow() {
   const t = typeof window;
   switch (t) {
@@ -33,6 +79,47 @@ function createDOMPurifyForCurrentWindow() {
 
 const markdownDOMPurify = createDOMPurifyForCurrentWindow();
 const highlightDOMPurify = createDOMPurifyForCurrentWindow();
+
+markdownDOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.nodeName !== 'A' || !(node instanceof Element)) {
+    return;
+  }
+
+  const href = node.getAttribute('href');
+
+  // Normalize author- or model-provided navigation attributes so all Markdown
+  // links follow Naidan's policy rather than trusting raw HTML attributes.
+  node.removeAttribute('target');
+  node.removeAttribute('rel');
+  node.removeAttribute('referrerpolicy');
+  node.removeAttribute('data-naidan-external-link');
+
+  if (!href) {
+    return;
+  }
+
+  const kind = classifyMarkdownLink({
+    href,
+    currentPageHref: getCurrentPageHref(),
+  });
+
+  switch (kind) {
+  case 'external-http':
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+    node.setAttribute('referrerpolicy', 'no-referrer');
+    node.setAttribute('data-naidan-external-link', 'true');
+    return;
+  case 'same-origin-http':
+  case 'non-http':
+  case 'invalid':
+    return;
+  default: {
+    const _ex: never = kind;
+    return _ex;
+  }
+  }
+});
 
 markdownDOMPurify.addHook('afterSanitizeElements', (node) => {
   // Convert sanitized Markdown <img> tags to a Vue-hydrated custom placeholder.
@@ -86,7 +173,13 @@ export function sanitizeMarkdownHtml({
     html: markdownDOMPurify.sanitize(html, {
       USE_PROFILES: { html: true, svg: true },
       FORBID_ATTR: ['onerror', 'onclick', 'onload'],
-      ADD_ATTR: ['target', 'data-payload'],
+      ADD_ATTR: [
+        'target',
+        'rel',
+        'referrerpolicy',
+        'data-payload',
+        'data-naidan-external-link',
+      ],
       ADD_TAGS: ['naidan-external-image'],
       ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp|blob|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
     }),

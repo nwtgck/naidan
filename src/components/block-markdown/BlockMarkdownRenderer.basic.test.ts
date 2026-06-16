@@ -76,6 +76,12 @@ Hello World
       preserveAttributes: undefined,
       whitespaceSensitiveTags: undefined
     })).toBe('<div><p><span><a href="https://google.com">Google</a></span></p></div>');
+
+    const link = wrapper.get('a');
+    expect(link.attributes('target')).toBe('_blank');
+    expect(link.attributes('rel')).toBe('noopener noreferrer');
+    expect(link.attributes('referrerpolicy')).toBe('no-referrer');
+    expect(link.attributes('data-naidan-external-link')).toBe('true');
   });
 
   it('renders images', () => {
