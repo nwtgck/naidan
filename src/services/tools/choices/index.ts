@@ -43,7 +43,8 @@ export function renderChoicesResult({
   choice: string;
 }): string {
   return `\
-Zero-based Index: ${index}
+Selected:
+Number: ${index + 1}
 ${choice}`;
 }
 

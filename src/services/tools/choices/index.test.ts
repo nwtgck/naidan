@@ -53,7 +53,7 @@ Second line`, 'Other'],
     });
   });
 
-  it('waits for the selection and returns its zero-based index and full text as Markdown', async () => {
+  it('waits for the selection and returns its one-based number and full text as Markdown', async () => {
     const requestChoice = vi.fn().mockResolvedValue({ index: 1 });
     const tool = createChoicesTool({
       chatId: toChatId({ raw: 'chat-a' }),
@@ -76,7 +76,8 @@ Second line`, 'Other'],
     expect(result).toEqual({
       status: 'success',
       content: `\
-Zero-based Index: 1
+Selected:
+Number: 2
 Tests`,
     });
   });
@@ -108,7 +109,8 @@ Tests`,
       index: 0,
       choice: '**Use the API**',
     })).toBe(`\
-Zero-based Index: 0
+Selected:
+Number: 1
 **Use the API**`);
   });
 });
