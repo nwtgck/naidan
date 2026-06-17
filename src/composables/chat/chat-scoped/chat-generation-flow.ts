@@ -1,13 +1,13 @@
 import { reactive, toRaw } from 'vue';
 import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import type { Tool } from '@/services/tools/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
 import { storageService } from '@/services/storage';
 import { getEnabledTools } from '@/services/tools/factory';
 import { markExecutingToolResultsAsInterrupted } from '@/services/tools/interruption';
-import { findLastToolConfigByKey, llmToolNamesFromToolConfigs } from '@/services/tools/tool-config';
+import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/services/tools/tool-config';
 import { getEffectiveToolConfigsForChat } from '@/composables/useChatTools';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
@@ -969,7 +969,7 @@ function createGenerationProvider({
   endpointType: EndpointType;
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
-}): LLMProvider {
+}): LmProvider {
   if (endpointUrl === undefined && endpointType !== 'transformers_js') {
     throw new Error(`${endpointType} generation requires an endpoint URL`);
   }
@@ -1127,7 +1127,7 @@ async function getEnabledToolsForChat({
     chatId: chat.id,
     persistedToolConfigs: chat.toolConfigs,
   });
-  const enabledNames = llmToolNamesFromToolConfigs({ toolConfigs });
+  const enabledNames = lmToolNamesFromToolConfigs({ toolConfigs });
   const shellExecuteEnabled = enabledNames.includes('shell_execute');
   const weshToolConfig = findLastToolConfigByKey({ toolConfigs, key: 'builtin.wesh' });
   const chatTmpDirectory = shellExecuteEnabled && shouldIncludeWritableTmpMount({ storageType: settings.value.storageType })

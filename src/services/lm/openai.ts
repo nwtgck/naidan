@@ -10,13 +10,13 @@
  */
 import { z } from 'zod';
 import { toToolCallId, type ToolCallId } from '@/models/ids';
-import { zodToJsonSchema } from '@/utils/llm-tools';
+import { zodToJsonSchema } from '@/utils/lm-tools';
 import type { LmParameters, ChatMessage } from '@/models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
 import { getDefaultLmFetch, type LmFetch } from '@/services/lm/fetch';
-import { type LLMProvider } from './types';
+import { type LmProvider } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
 
@@ -66,7 +66,7 @@ interface OpenAICompletionRequest {
   }[];
 }
 
-export class OpenAIProvider implements LLMProvider {
+export class OpenAIProvider implements LmProvider {
   private config: {
     endpoint: string;
     headers?: [string, string][];
@@ -354,7 +354,7 @@ export class OpenAIProvider implements LLMProvider {
             content: result
           });
         }
-        continue; // Loop for next response from LLM
+        continue; // Loop for next response from LM
       }
 
       break; // No more tool calls or we already sent content

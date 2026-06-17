@@ -2,7 +2,7 @@
 
 Wesh Terminal is an experimental human-facing UX layer for inspecting Wesh behavior.
 
-Wesh core remains the source of truth for command execution semantics. Terminal-side completion, tokenization, prompt rendering, keyboard handling, and output-control behavior may intentionally duplicate small shell-like logic because they do not affect LLM tool call execution.
+Wesh core remains the source of truth for command execution semantics. Terminal-side completion, tokenization, prompt rendering, keyboard handling, and output-control behavior may intentionally duplicate small shell-like logic because they do not affect LM tool call execution.
 
 Keep this duplication local to `src/features/wesh-terminal`. If a terminal-side behavior proves stable and useful outside the UI, it can later be promoted into `src/services/wesh` as a shared core facility.
 

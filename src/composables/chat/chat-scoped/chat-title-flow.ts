@@ -1,6 +1,6 @@
 import type { Chat, ChatMessage } from '@/models/types';
 import type { ChatId } from '@/models/ids';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
@@ -227,7 +227,7 @@ function createTitleProvider({
   endpointType: NonNullable<Chat['endpointType']>;
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
-}): LLMProvider {
+}): LmProvider {
   if (endpointUrl === undefined && endpointType !== 'transformers_js') {
     throw new Error(`${endpointType} title generation requires an endpoint URL`);
   }

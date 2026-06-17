@@ -1,12 +1,12 @@
 import { ref, computed, toRaw, triggerRef, type ComputedRef, type Ref } from 'vue';
 import type { Chat } from '@/models/types';
 import type { ChatId, MessageId, ToolCallId } from '@/models/ids';
-import type { LlmToolName, TextOrBinaryObject, ToolCallRecord, ToolConfig } from '@/services/tools/types';
+import type { LmToolName, TextOrBinaryObject, ToolCallRecord, ToolConfig } from '@/services/tools/types';
 import {
-  isLlmToolEnabledInToolConfigs,
-  isLlmToolName,
-  llmToolNamesFromToolConfigs,
-  setLlmToolEnabledInToolConfigs,
+  isLmToolEnabledInToolConfigs,
+  isLmToolName,
+  lmToolNamesFromToolConfigs,
+  setLmToolEnabledInToolConfigs,
 } from '@/services/tools/tool-config';
 import { currentChatRef, getLiveChatById } from '@/composables/chat/global/chat-core-singletons';
 import { idToRaw } from '@/models/ids';
@@ -23,7 +23,7 @@ interface ChatToolsApi {
   toggleTool: ({ name }: { name: string }) => void;
   setCurrentChatId: ({ chatId }: { chatId: ChatId | null }) => void;
   updateToolConfigsForCurrentChat: ({ updater }: { updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined }) => void;
-  enabledToolNames: ComputedRef<LlmToolName[]>;
+  enabledToolNames: ComputedRef<LmToolName[]>;
   getToolCallsForMessage: ({ messageId }: { messageId: MessageId }) => ToolCallRecord[];
   addToolCall: ({ messageId, toolCall }: { messageId: MessageId; toolCall: ToolCallRecord }) => void;
   updateToolCall: ({ messageId, toolCallId, update }: {
@@ -152,7 +152,7 @@ export function updateToolConfigsForChat({
 
 export function useChatTools(): ChatToolsApi {
   const isToolEnabled = ({ name }: { name: string }) => {
-    if (!isLlmToolName(name)) return false;
+    if (!isLmToolName(name)) return false;
     if (_currentChatId.value === null) return false;
 
     const liveChat = getCurrentLiveChat();
@@ -160,7 +160,7 @@ export function useChatTools(): ChatToolsApi {
       chatId: _currentChatId.value,
       persistedToolConfigs: liveChat?.toolConfigs,
     });
-    return isLlmToolEnabledInToolConfigs({ toolConfigs, name });
+    return isLmToolEnabledInToolConfigs({ toolConfigs, name });
   };
 
   const updateToolConfigsForCurrentChat = ({
@@ -173,10 +173,10 @@ export function useChatTools(): ChatToolsApi {
   };
 
   const setToolEnabled = ({ name, enabled }: { name: string; enabled: boolean }) => {
-    if (!isLlmToolName(name)) return;
+    if (!isLmToolName(name)) return;
 
     updateToolConfigsForCurrentChat({
-      updater: ({ toolConfigs }) => setLlmToolEnabledInToolConfigs({
+      updater: ({ toolConfigs }) => setLmToolEnabledInToolConfigs({
         toolConfigs,
         name,
         enabled,
@@ -192,7 +192,7 @@ export function useChatTools(): ChatToolsApi {
     _currentChatId.value = chatId;
   };
 
-  const enabledToolNames = computed((): LlmToolName[] => {
+  const enabledToolNames = computed((): LmToolName[] => {
     if (_currentChatId.value === null) return [];
 
     const liveChat = getCurrentLiveChat();
@@ -200,7 +200,7 @@ export function useChatTools(): ChatToolsApi {
       chatId: _currentChatId.value,
       persistedToolConfigs: liveChat?.toolConfigs,
     });
-    return llmToolNamesFromToolConfigs({ toolConfigs });
+    return lmToolNamesFromToolConfigs({ toolConfigs });
   });
 
   const getToolCallsForMessage = ({ messageId }: { messageId: MessageId }) => {

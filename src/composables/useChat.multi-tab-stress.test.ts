@@ -83,10 +83,10 @@ vi.mock('./useSettings', () => ({
 vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
 vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
-const mockLlmChat = vi.fn();
+const mockLmChat = vi.fn();
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
-    return { chat: (...args: any[]) => mockLlmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
+    return { chat: (...args: any[]) => mockLmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
   },
 }));
 

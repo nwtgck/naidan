@@ -53,13 +53,13 @@ vi.mock('./useConfirm', () => ({
   }),
 }));
 
-// Mock LLM Provider
-const mockLlmChat = vi.fn();
+// Mock LM Provider
+const mockLmChat = vi.fn();
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
-      chat: mockLlmChat,
+      chat: mockLmChat,
       listModels: vi.fn().mockResolvedValue(['gpt-4']),
     };
   },
@@ -139,8 +139,8 @@ describe('useChat Tool Chaining', () => {
     });
     __testOnlySetCurrentChat({ chat });
 
-    // Mock LLM to return two tool calls
-    mockLlmChat.mockImplementation(async (params) => {
+    // Mock LM to return two tool calls
+    mockLmChat.mockImplementation(async (params) => {
       const { onToolCall, onToolResult, onChunk, onAssistantMessageStart } = params;
 
       // Iteration 1: Assistant makes tool calls

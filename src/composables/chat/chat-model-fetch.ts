@@ -1,6 +1,6 @@
 import { toRaw } from 'vue';
 import type { ChatGroup, EndpointType } from '@/models/types';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
@@ -147,7 +147,7 @@ function createProviderForEndpoint({
   endpointType: EndpointType;
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
-}): LLMProvider {
+}): LmProvider {
   const { settings } = useSettings();
   return createLmProvider({
     endpointType,

@@ -1,13 +1,13 @@
 import type { ChatMessage, LmParameters } from '@/models/types';
 import type { ToolCallId } from '@/models/ids';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import type { Tool } from '@/services/tools/types';
 
 function createUnsupportedError(): Error {
   return new Error('Transformers.js is not available in standalone mode');
 }
 
-export class TransformersJsProvider implements LLMProvider {
+export class TransformersJsProvider implements LmProvider {
   async chat({ messages: _messages, model: _model, onChunk: _onChunk, parameters: _parameters, tools: _tools, onToolCall: _onToolCall, onToolEvent: _onToolEvent, onToolResult: _onToolResult, onAssistantMessageStart: _onAssistantMessageStart, signal: _signal }: {
     messages: ChatMessage[];
     model: string;

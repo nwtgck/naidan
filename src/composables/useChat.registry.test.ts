@@ -53,12 +53,12 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-const mockLlmChat = vi.fn();
+const mockLmChat = vi.fn();
 const mockListModels = vi.fn();
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
-    chat = mockLlmChat;
+    chat = mockLmChat;
     listModels = mockListModels;
   },
 }));
@@ -75,7 +75,7 @@ describe('useChat Registry Lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     chats.clear();
-    mockLlmChat.mockReset().mockResolvedValue(undefined);
+    mockLmChat.mockReset().mockResolvedValue(undefined);
     mockListModels.mockReset().mockResolvedValue(['gpt-4']);
   });
 
@@ -106,7 +106,7 @@ describe('useChat Registry Lifecycle', () => {
     // 2. Start sendMessage({ content: which also awaits fetchAvailableModels })
     let resolveChat: () => void;
     const chatPromise = new Promise<void>(r => resolveChat = r);
-    mockLlmChat.mockReturnValue(chatPromise);
+    mockLmChat.mockReturnValue(chatPromise);
 
     const sendTask = sendMessage({ content: 'Hello' });
 
@@ -120,8 +120,8 @@ describe('useChat Registry Lifecycle', () => {
     // 4. Resolve generation
     resolveChat!();
 
-    // Title gen also uses mockLlmChat, make it resolve immediately
-    mockLlmChat.mockResolvedValue(undefined);
+    // Title gen also uses mockLmChat, make it resolve immediately
+    mockLmChat.mockResolvedValue(undefined);
 
     await sendTask;
 

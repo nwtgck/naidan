@@ -3,7 +3,7 @@ import { createFakeLmFetchForEndpoint, type FakeLmDebugModeStatus } from '@/serv
 import { getDefaultLmFetch, type LmFetch } from '@/services/lm/fetch';
 import { OllamaProvider } from '@/services/lm/ollama';
 import { OpenAIProvider } from '@/services/lm/openai';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import { TransformersJsProvider } from '@/services/transformers-js/provider';
 
 export function createLmProvider({ endpointType, endpointUrl, endpointHttpHeaders, fakeLmDebugModeStatus }: {
@@ -11,7 +11,7 @@ export function createLmProvider({ endpointType, endpointUrl, endpointHttpHeader
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
   fakeLmDebugModeStatus: FakeLmDebugModeStatus;
-}): LLMProvider {
+}): LmProvider {
   const headers = cloneEndpointHttpHeaders({ headers: endpointHttpHeaders });
 
   switch (endpointType) {

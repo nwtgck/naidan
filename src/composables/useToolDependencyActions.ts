@@ -6,7 +6,7 @@ import {
   WIKIPEDIA_SEARCH_TOOL_NAME,
 } from '@/services/tools/wikipedia'
 import {
-  setLlmToolEnabledInToolConfigs,
+  setLmToolEnabledInToolConfigs,
   setWeshNaidanSysfsAccessScopeInToolConfigs,
 } from '@/services/tools/tool-config'
 
@@ -43,17 +43,17 @@ export function useToolDependencyActions() {
     const accessScope = getNaidanSysfsAccessScope({ chatId })
     updateToolConfigsForCurrentChat({
       updater: ({ toolConfigs }) => {
-        let nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        let nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs,
           name: 'shell_execute',
           enabled: true,
         })
-        nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs: nextToolConfigs,
           name: WIKIPEDIA_SEARCH_TOOL_NAME,
           enabled: true,
         })
-        nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs: nextToolConfigs,
           name: WIKIPEDIA_GET_PAGE_TOOL_NAME,
           enabled: true,
@@ -84,12 +84,12 @@ export function useToolDependencyActions() {
   function disableWikipediaToolsForCurrentChat(): void {
     updateToolConfigsForCurrentChat({
       updater: ({ toolConfigs }) => {
-        let nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        let nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs,
           name: WIKIPEDIA_SEARCH_TOOL_NAME,
           enabled: false,
         })
-        nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs: nextToolConfigs,
           name: WIKIPEDIA_GET_PAGE_TOOL_NAME,
           enabled: false,
@@ -102,17 +102,17 @@ export function useToolDependencyActions() {
   function disableShellToolForCurrentChat(): void {
     updateToolConfigsForCurrentChat({
       updater: ({ toolConfigs }) => {
-        let nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        let nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs,
           name: 'shell_execute',
           enabled: false,
         })
-        nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs: nextToolConfigs,
           name: WIKIPEDIA_SEARCH_TOOL_NAME,
           enabled: false,
         })
-        nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs: nextToolConfigs,
           name: WIKIPEDIA_GET_PAGE_TOOL_NAME,
           enabled: false,
@@ -129,12 +129,12 @@ export function useToolDependencyActions() {
           toolConfigs,
           accessScope: 'none',
         })
-        nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs: nextToolConfigs,
           name: WIKIPEDIA_SEARCH_TOOL_NAME,
           enabled: false,
         })
-        nextToolConfigs = setLlmToolEnabledInToolConfigs({
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
           toolConfigs: nextToolConfigs,
           name: WIKIPEDIA_GET_PAGE_TOOL_NAME,
           enabled: false,

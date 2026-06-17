@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OpenAIProvider } from '@/services/lm/openai';
 import { OllamaProvider } from '@/services/lm/ollama';
 
-describe('LLM Providers - Multimodal Requests', () => {
+describe('LM Providers - Multimodal Requests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();

@@ -46,7 +46,7 @@ if (!global.crypto) {
   };
 }
 
-// Mock LLM provider
+// Mock LM provider
 vi.mock('../services/lm/ollama', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/lm/ollama')>();
   return {

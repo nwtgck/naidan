@@ -17,11 +17,11 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM providers
-const mockLlmChat = vi.fn();
+// Mock LM providers
+const mockLmChat = vi.fn();
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
-    chat = mockLlmChat;
+    chat = mockLmChat;
     listModels = vi.fn().mockResolvedValue(['gpt-4']);
   },
 }));
@@ -74,7 +74,7 @@ describe('useChat Interruption', () => {
 
     // 1. Start a slow generation
     let firstGenAborted = false;
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;
       signal.addEventListener('abort', () => {
         firstGenAborted = true;
@@ -102,7 +102,7 @@ describe('useChat Interruption', () => {
     const firstAssistantMsgId = userMsg.replies.items[0].id;
 
     // 2. Call regenerate while first one is still running
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'Second Response' });
     });
 
@@ -137,7 +137,7 @@ describe('useChat Interruption', () => {
 
     // 1. Start a slow generation
     let firstGenAborted = false;
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;
       signal.addEventListener('abort', () => {
         firstGenAborted = true;
@@ -154,7 +154,7 @@ describe('useChat Interruption', () => {
     const userMsg = chat.root.items[0];
 
     // 2. Call editMessage (resend) while first one is still running
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'Edited Response' });
     });
 

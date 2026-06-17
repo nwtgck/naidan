@@ -35,7 +35,7 @@ export class CalculatorTool implements Tool {
         content: String(result),
       };
     } catch (error) {
-      // Calculation errors should be communicated to the LLM.
+      // Calculation errors should be communicated to the LM.
       return {
         status: 'error',
         code: 'execution_failed',

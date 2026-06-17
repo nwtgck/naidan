@@ -1,4 +1,4 @@
-import type { LlmToolName, Tool } from './types';
+import type { LmToolName, Tool } from './types';
 import type { ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
@@ -29,7 +29,7 @@ export async function getEnabledTools({
   tmpHandle,
   requestChoice,
 }: {
-  enabledNames: LlmToolName[];
+  enabledNames: LmToolName[];
   settings: Settings;
   chatGroupMounts?: Mount[];
   chatMounts?: Mount[];
@@ -224,7 +224,7 @@ function canExposeWikipediaToolsForGeneration({
   naidanSysfsAccessScope,
   tmpHandle,
 }: {
-  enabledNames: LlmToolName[];
+  enabledNames: LmToolName[];
   settings: Settings;
   chatId: ChatId | undefined;
   chatGroupId: ChatGroupId | undefined;

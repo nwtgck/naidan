@@ -10,7 +10,7 @@ vi.mock('../../composables/useGlobalEvents', () => ({
   })),
 }));
 
-describe('LLM Providers Reasoning', () => {
+describe('LM Providers Reasoning', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();

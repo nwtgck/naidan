@@ -1,16 +1,16 @@
-import type { BuiltinToolKey, LlmToolName, ToolConfig, WeshToolConfig } from '@/services/tools/types';
+import type { BuiltinToolKey, LmToolName, ToolConfig, WeshToolConfig } from '@/services/tools/types';
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 
-export function llmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.calculator' }): readonly ['calculator'];
-export function llmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.choices' }): readonly ['choices'];
-export function llmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wikipedia' }): readonly ['wikipedia_search', 'wikipedia_get_page'];
-export function llmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wesh' }): readonly ['shell_execute'];
-export function llmToolNamesForBuiltinToolKey({ key }: { key: BuiltinToolKey }): readonly LlmToolName[];
-export function llmToolNamesForBuiltinToolKey({
+export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.calculator' }): readonly ['calculator'];
+export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.choices' }): readonly ['choices'];
+export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wikipedia' }): readonly ['wikipedia_search', 'wikipedia_get_page'];
+export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wesh' }): readonly ['shell_execute'];
+export function lmToolNamesForBuiltinToolKey({ key }: { key: BuiltinToolKey }): readonly LmToolName[];
+export function lmToolNamesForBuiltinToolKey({
   key,
 }: {
   key: BuiltinToolKey;
-}): readonly LlmToolName[] {
+}): readonly LmToolName[] {
   switch (key) {
   case 'builtin.calculator':
     return ['calculator'];
@@ -27,10 +27,10 @@ export function llmToolNamesForBuiltinToolKey({
   }
 }
 
-export function builtinToolKeyForLlmToolName({
+export function builtinToolKeyForLmToolName({
   name,
 }: {
-  name: LlmToolName;
+  name: LmToolName;
 }): BuiltinToolKey {
   switch (name) {
   case 'calculator':
@@ -44,12 +44,12 @@ export function builtinToolKeyForLlmToolName({
     return 'builtin.wesh';
   default: {
     const _ex: never = name;
-    throw new Error(`Unhandled LLM tool name: ${_ex}`);
+    throw new Error(`Unhandled LM tool name: ${_ex}`);
   }
   }
 }
 
-export function isLlmToolName(name: string): name is LlmToolName {
+export function isLmToolName(name: string): name is LmToolName {
   switch (name) {
   case 'calculator':
   case 'choices':
@@ -152,18 +152,18 @@ export function setBuiltinToolEnabledInToolConfigs({
   });
 }
 
-export function setLlmToolEnabledInToolConfigs({
+export function setLmToolEnabledInToolConfigs({
   toolConfigs,
   name,
   enabled,
 }: {
   toolConfigs: ToolConfig[] | undefined;
-  name: LlmToolName;
+  name: LmToolName;
   enabled: boolean;
 }): ToolConfig[] | undefined {
   return setBuiltinToolEnabledInToolConfigs({
     toolConfigs,
-    key: builtinToolKeyForLlmToolName({ name }),
+    key: builtinToolKeyForLmToolName({ name }),
     enabled,
   });
 }
@@ -201,27 +201,27 @@ export function isBuiltinToolEnabledInToolConfigs({
   return findLastToolConfigByKey({ toolConfigs, key }) !== undefined;
 }
 
-export function isLlmToolEnabledInToolConfigs({
+export function isLmToolEnabledInToolConfigs({
   toolConfigs,
   name,
 }: {
   toolConfigs: ToolConfig[] | undefined;
-  name: LlmToolName;
+  name: LmToolName;
 }): boolean {
   return isBuiltinToolEnabledInToolConfigs({
     toolConfigs,
-    key: builtinToolKeyForLlmToolName({ name }),
+    key: builtinToolKeyForLmToolName({ name }),
   });
 }
 
-export function llmToolNamesFromToolConfigs({
+export function lmToolNamesFromToolConfigs({
   toolConfigs,
 }: {
   toolConfigs: ToolConfig[] | undefined;
-}): LlmToolName[] {
-  const names = new Set<LlmToolName>();
+}): LmToolName[] {
+  const names = new Set<LmToolName>();
   for (const toolConfig of toolConfigs ?? []) {
-    for (const name of llmToolNamesForBuiltinToolKey({ key: toolConfig.key })) {
+    for (const name of lmToolNamesForBuiltinToolKey({ key: toolConfig.key })) {
       names.add(name);
     }
   }

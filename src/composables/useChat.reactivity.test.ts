@@ -32,7 +32,7 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM
+// Mock LM
 let onChunkCallback: (params: { chunk: string }) => void;
 vi.mock('../services/lm/openai', () => {
   class MockOpenAI {

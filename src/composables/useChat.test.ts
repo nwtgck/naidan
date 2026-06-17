@@ -64,8 +64,8 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM Provider
-const mockLlmChat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+// Mock LM Provider
+const mockLmChat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
   params.onChunk({ chunk: 'Hello' });
   await new Promise(r => setTimeout(r, 10)); // Simulate network delay
   params.onChunk({ chunk: ' World' });
@@ -75,7 +75,7 @@ vi.mock('../services/lm/openai', () => {
   return {
     OpenAIProvider: function() {
       return {
-        chat: mockLlmChat,
+        chat: mockLmChat,
         listModels: vi.fn().mockResolvedValue(['gpt-4']),
       };
     },
@@ -86,7 +86,7 @@ vi.mock('../services/lm/ollama', () => {
   return {
     OllamaProvider: function() {
       return {
-        chat: mockLlmChat,
+        chat: mockLmChat,
         listModels: vi.fn().mockResolvedValue(['gpt-4']),
       };
     },
@@ -172,10 +172,10 @@ describe('useChat Composable Logic', () => {
       createdAt: Date.now(), updatedAt: Date.now(), debugEnabled: false,
     }) as any });
 
-    // Mock a slow LLM response
+    // Mock a slow LM response
     let resolveGen: () => void;
     const genStarted = new Promise<void>(resolve => resolveGen = resolve);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'Started...' });
       resolveGen();
       await new Promise(r => setTimeout(r, 100)); // Simulate slow generation
@@ -465,7 +465,7 @@ describe('useChat Composable Logic', () => {
     }) as any });
 
     // 1. Send first message and get first response
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'First Response' });
     });
     await sendMessage({ content: 'Hello' });
@@ -479,7 +479,7 @@ describe('useChat Composable Logic', () => {
     expect(currentChat.value?.currentLeafId).toBe(firstAssistantMsg?.id);
 
     // 2. Regenerate
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'Second Response' });
     });
     await regenerateMessage({ failedMessageId: idToRaw({ id: firstAssistantMsg!.id }) });
@@ -716,22 +716,22 @@ describe('useChat Composable Logic', () => {
     await sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: undefined, lmParameters: customParams });
     await flushPromises();
 
-    // The mockLlmChat should have been called with customParams
-    expect(mockLlmChat).toHaveBeenCalledWith(expect.objectContaining({
+    // The mockLmChat should have been called with customParams
+    expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
       parameters: expect.objectContaining({
         reasoning: { effort: 'high' }
       })
     }));
 
     const assistantMsgId = currentChat.value!.currentLeafId!;
-    mockLlmChat.mockClear();
+    mockLmChat.mockClear();
 
     // 2. Regenerate the message
     await regenerateMessage({ failedMessageId: idToRaw({ id: assistantMsgId }) });
     await flushPromises();
 
     // 3. Verify that the second call ALSO used the same customParams
-    expect(mockLlmChat).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
       parameters: expect.objectContaining({
         reasoning: { effort: 'high' }
       })
@@ -766,7 +766,7 @@ describe('useChat Composable Logic', () => {
       liveChat.root.items.push({ id: toMessageId({ raw: manualId }), role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] }, thinking: undefined, modelId: undefined });
       await editMessage({ messageId: manualId, newContent: 'Updated Hello', lmParameters: newParams });
     } else {
-      mockLlmChat.mockClear();
+      mockLmChat.mockClear();
       // 2. Edit the message with NEW lmParameters
       await editMessage({ messageId: idToRaw({ id: userMsgId }), newContent: 'Updated Hello', lmParameters: newParams });
     }
@@ -774,7 +774,7 @@ describe('useChat Composable Logic', () => {
     await flushPromises();
 
     // 3. Verify that the resulting generation used the NEW parameters
-    expect(mockLlmChat).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockLmChat).toHaveBeenCalledWith(expect.objectContaining({
       parameters: expect.objectContaining({
         reasoning: { effort: 'low' }
       })
@@ -788,7 +788,7 @@ describe('useChat Composable Logic', () => {
     }) as any });
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockLlmChat.mockImplementationOnce(async () => {
+    mockLmChat.mockImplementationOnce(async () => {
       throw new Error('Could not be cloned');
     });
 
@@ -810,7 +810,7 @@ describe('useChat Composable Logic', () => {
     }) as any });
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockLlmChat.mockImplementationOnce(async () => {
+    mockLmChat.mockImplementationOnce(async () => {
       throw new Error('Could not be cloned');
     });
 
@@ -1063,8 +1063,8 @@ describe('useChat Composable Logic', () => {
     });
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
-    // Mock the LLM provider for title generation
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+    // Mock the LM provider for title generation
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'Paris' });
       params.onChunk({ chunk: ' Title' });
     });
@@ -1096,7 +1096,7 @@ describe('useChat Composable Logic', () => {
 
     // Start generating title for Chat A
     __testOnlySetCurrentChat({ chat: chatA });
-    mockLlmChat.mockImplementationOnce(async () => {
+    mockLmChat.mockImplementationOnce(async () => {
       await new Promise(resolve => setTimeout(resolve, 50));
     });
 
@@ -1166,7 +1166,7 @@ describe('useChat Composable Logic', () => {
     });
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       params.onChunk({ chunk: 'New Better Title' });
     });
 
@@ -1192,7 +1192,7 @@ describe('useChat Composable Logic', () => {
     __testOnlySetCurrentChat({ chat: chatObj as any });
 
     let wasAborted = false;
-    mockLlmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
+    mockLmChat.mockImplementationOnce(async (params: { signal?: AbortSignal }) => {
       try {
         await new Promise((_resolve, reject) => {
           params.signal?.addEventListener('abort', () => {

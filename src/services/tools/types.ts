@@ -13,14 +13,14 @@ export type ToolExecutionErrorCode = 'invalid_arguments' | 'execution_failed' | 
  *
  * This is the stable identifier Naidan uses for persisted settings and runtime
  * configuration. It identifies the Naidan-side implementation/capability, not
- * the name exposed to the LLM.
+ * the name exposed to the LM.
  *
  * For example, Wesh is a Naidan implementation detail, so its persisted key is
- * `builtin.wesh`. The LLM should not see `wesh` because that name does not
- * explain what the tool does. The LLM-facing tool name is `shell_execute`,
+ * `builtin.wesh`. The LM should not see `wesh` because that name does not
+ * explain what the tool does. The LM-facing tool name is `shell_execute`,
  * which describes the capability in model terms.
  *
- * Do not send this key to the LLM and do not show it as a user-facing tool
+ * Do not send this key to the LM and do not show it as a user-facing tool
  * name. Users should normally see this only in persisted JSON, exports, or
  * debug/developer views.
  */
@@ -31,16 +31,16 @@ export type BuiltinToolKey =
   | 'builtin.wesh';
 
 /**
- * LLM-visible tool/function name.
+ * LM-visible tool/function name.
  *
  * This is the name sent to model APIs and stored in historical tool calls.
  * It should describe the capability in terms the model can understand.
  *
  * Do not use this as Naidan's persisted tool config identifier. A single
- * Naidan tool key may map to one or more LLM-facing names, and the names do
+ * Naidan tool key may map to one or more LM-facing names, and the names do
  * not have to match the Naidan implementation identity.
  */
-export type LlmToolName =
+export type LmToolName =
   | 'calculator'
   | 'choices'
   | 'wikipedia_search'
@@ -94,14 +94,14 @@ export type ToolExecutionEvent =
 /**
  * Result of a tool execution.
  *
- * - 'success': The tool executed its logic and produced a result for the LLM.
+ * - 'success': The tool executed its logic and produced a result for the LM.
  * - 'error': The tool encountered a logical error (e.g., invalid input, calculation failure)
- *            that SHOULD be communicated back to the LLM so it can respond to the user.
+ *            that SHOULD be communicated back to the LM so it can respond to the user.
  *
  * Exception Handling:
  * - Tools should THROW an Error only for unexpected system/infrastructure failures
  *   (e.g., missing dependencies, internal bugs).
- * - Logical failures that the LLM can recover from or explain should be returned as { status: 'error' }.
+ * - Logical failures that the LM can recover from or explain should be returned as { status: 'error' }.
  */
 export type ToolExecutionResult = { toolCallId: ToolCallId } & (
   | { status: 'executing' }
@@ -126,7 +126,7 @@ export type ToolCallRecord = {
 
 export interface Tool {
   /**
-   * LLM-visible function/tool name.
+   * LM-visible function/tool name.
    * This is not a stable persisted Naidan tool config key.
    */
   name: string;

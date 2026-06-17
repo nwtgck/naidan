@@ -10,8 +10,8 @@ import { useGlobalEvents } from './useGlobalEvents';
 const mockRootItems: SidebarItem[] = [];
 let mockHierarchy: Hierarchy = { items: [] };
 
-// Mock LLM Provider
-const mockLlm = {
+// Mock LM Provider
+const mockLm = {
   chat: vi.fn(),
   generateImage: vi.fn(),
   listModels: vi.fn().mockResolvedValue(['gpt-4', 'x/z-image-turbo:v1']),
@@ -23,13 +23,13 @@ vi.mock('../services/lm/types', () => ({
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(function() {
-    return mockLlm;
+    return mockLm;
   }),
 }));
 
 vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: vi.fn().mockImplementation(function() {
-    return mockLlm;
+    return mockLm;
   }),
 }));
 
@@ -117,7 +117,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     let resolveGen: (value: any) => void;
     const genStarted = new Promise<any>(resolve => resolveGen = resolve);
 
-    mockLlm.chat.mockImplementation(async (params: any) => {
+    mockLm.chat.mockImplementation(async (params: any) => {
       resolveGen(params.signal);
       return new Promise((resolve) => {
         const checkAbort = () => {
@@ -174,7 +174,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     const { handleImageGeneration, availableModels } = chatStore;
     availableModels.value = ['gpt-4', 'x/z-image-turbo:v1'];
 
-    mockLlm.generateImage.mockResolvedValue({
+    mockLm.generateImage.mockResolvedValue({
       image: new Blob(['img'], { type: 'image/png' }),
       totalSteps: 10
     });
@@ -222,8 +222,8 @@ describe('useChat Interrupt and Sync Tests', () => {
     __testOnlySetCurrentChat({ chat });
     vi.mocked(storageService.loadChat).mockResolvedValue(chat);
 
-    // 1. Mock LLM to simulate an abortion
-    mockLlm.chat.mockImplementation(async ({ signal }: any) => {
+    // 1. Mock LM to simulate an abortion
+    mockLm.chat.mockImplementation(async ({ signal }: any) => {
       return new Promise((_resolve, reject) => {
         const abortHandler = () => {
           const err = new Error('Aborted');
@@ -302,7 +302,7 @@ describe('useChat Interrupt and Sync Tests', () => {
       }
     });
 
-    mockLlm.chat.mockImplementationOnce(async (params: any) => {
+    mockLm.chat.mockImplementationOnce(async (params: any) => {
       params.onChunk({ chunk: 'Regenerated' });
     });
 
@@ -363,7 +363,7 @@ describe('useChat Interrupt and Sync Tests', () => {
     TEST_ONLY.activeContextCompactions.set(chatId, compactController);
     TEST_ONLY.activeTaskCounts.set(`process:${idToRaw({ id: chatId })}`, 1);
 
-    mockLlm.chat.mockImplementationOnce(async (params: any) => {
+    mockLm.chat.mockImplementationOnce(async (params: any) => {
       params.onChunk({ chunk: 'Edited Response' });
     });
 

@@ -15,7 +15,7 @@ export interface WeshToolOptions {
 
 /**
  * Creates a tool that executes shell commands using the Wesh service.
- * The tool name and description are configurable to hide the "Wesh" name from the LLM if desired.
+ * The tool name and description are configurable to hide the "Wesh" name from the LM if desired.
  */
 export function createWeshTool({
   client,

@@ -152,7 +152,7 @@ describe('ChatPane Streaming DOM Test', () => {
     await vi.waitUntil(() => triggerChunk !== undefined, { timeout: 2000, interval: 50 });
 
     if (!triggerChunk) {
-      throw new Error('LLM chat was not triggered');
+      throw new Error('LM chat was not triggered');
     }
 
     triggerChunk({ chunk: 'Live' });

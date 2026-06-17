@@ -27,7 +27,7 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-// Mock LLM with classes
+// Mock LM with classes
 const mockChat = vi.fn();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 

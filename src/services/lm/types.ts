@@ -5,7 +5,7 @@ import type { ToolApprovalContext } from '@/services/approval';
 
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
 
-export interface LLMProvider {
+export interface LmProvider {
   chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;

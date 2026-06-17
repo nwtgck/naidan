@@ -1,7 +1,7 @@
 import { generateId } from '@/utils/id';
 import type { AssistantMessageNode, Attachment, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import type { ToolExecutionResult } from '@/services/tools/types';
 import { fileToDataUrl } from '@/utils/chat-tree';
 import { idToRaw } from '@/models/ids';
@@ -210,7 +210,7 @@ export async function createProviderForCompact({
   endpointType: EndpointType;
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
-}): Promise<LLMProvider> {
+}): Promise<LmProvider> {
   switch (endpointType) {
   case 'openai':
     if (!endpointUrl) {

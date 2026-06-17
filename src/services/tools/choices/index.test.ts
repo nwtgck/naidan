@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { toChatId } from '@/models/ids';
 import { ChoicesArgsSchema, createChoicesTool, renderChoicesResult } from './index';
-import { zodToJsonSchema } from '@/utils/llm-tools';
+import { zodToJsonSchema } from '@/utils/lm-tools';
 
 const validArgs = {
   prompt: 'Choose a direction',
@@ -27,7 +27,7 @@ Second line`, 'Other'],
     })).toThrow('Choices must be single-line text.');
   });
 
-  it('publishes a strict JSON schema for LLM tool calls', () => {
+  it('publishes a strict JSON schema for LM tool calls', () => {
     expect(zodToJsonSchema({ schema: ChoicesArgsSchema })).toMatchObject({
       type: 'object',
       properties: {

@@ -45,11 +45,11 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-const mockLlmChat = vi.fn();
+const mockLmChat = vi.fn();
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
-      chat: mockLlmChat,
+      chat: mockLmChat,
       listModels: vi.fn().mockResolvedValue(['model-1', 'chat-model', 'group-model', 'group-special-model', 'global-model']),
     };
   },
@@ -58,7 +58,7 @@ vi.mock('../services/lm/openai', () => ({
 vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
-      chat: mockLlmChat,
+      chat: mockLmChat,
       listModels: vi.fn().mockResolvedValue(['model-1', 'chat-model', 'group-model', 'group-special-model', 'global-model']),
     };
   },
@@ -105,10 +105,10 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    // Verify the LLM was called with resolved settings
+    // Verify the LM was called with resolved settings
     // Resolved System Prompt: ["Group Prompt", "Chat Prompt"]
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: 'system', content: 'Group Prompt' }),
@@ -152,7 +152,7 @@ describe('useChat Group Overrides Resolution', () => {
     // Global: "Global Prompt"
     // Group: Append "Group Instruction" -> ["Global Prompt", "Group Instruction"]
     // Chat: None -> Inherit from resolved Group
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: 'system', content: 'Global Prompt' }),
@@ -193,7 +193,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'group-special-model',
@@ -247,7 +247,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),
@@ -282,7 +282,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),
@@ -319,7 +319,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    const params = mockLlmChat.mock.calls[0]![0];
+    const params = mockLmChat.mock.calls[0]![0];
     const messages = params.messages;
     // Global "Global Prompt" should be gone. Only User message left.
     expect(messages.filter((m: any) => m.role === 'system')).toHaveLength(0);
@@ -347,7 +347,7 @@ describe('useChat Group Overrides Resolution', () => {
     // 1. Send message while Chat is NOT in group
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockLlmChat).toHaveBeenLastCalledWith(
+    expect(mockLmChat).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'global-model',
@@ -364,7 +364,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hi again', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenLastCalledWith(
+    expect(mockLmChat).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'group-model',
@@ -406,7 +406,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),

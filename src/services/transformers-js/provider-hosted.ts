@@ -1,14 +1,14 @@
 import { z } from 'zod';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import type { ToolCallId } from '@/models/ids';
 import { transformersJsService } from './index';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
 import type { WorkerToolDefinition } from './types';
-import { zodToJsonSchema } from '@/utils/llm-tools';
+import { zodToJsonSchema } from '@/utils/lm-tools';
 
-export class TransformersJsProvider implements LLMProvider {
+export class TransformersJsProvider implements LmProvider {
   async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;

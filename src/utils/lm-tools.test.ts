@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
-import { zodToJsonSchema } from './llm-tools';
+import { zodToJsonSchema } from './lm-tools';
 
 describe('zodToJsonSchema', () => {
   it('converts basic object schemas correctly', () => {

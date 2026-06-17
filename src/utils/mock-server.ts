@@ -10,7 +10,7 @@ export interface CapturedRequest {
 }
 
 /**
- * Starts a local mock HTTP server for testing LLM providers.
+ * Starts a local mock HTTP server for testing LM providers.
  * Returns the base URL and a way to close the server and access captured requests.
  */
 export async function startMockServer({ handler }: {

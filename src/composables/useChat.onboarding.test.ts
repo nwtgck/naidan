@@ -50,7 +50,7 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM Provider
+// Mock LM Provider
 const mockListModels = vi.fn();
 vi.mock('../services/lm/openai', () => {
   class MockOpenAI {

@@ -25,7 +25,7 @@ export interface WeshTerminalCompletionToken {
 }
 
 // Terminal completion intentionally lives outside Wesh core. Wesh is primarily
-// a command execution environment for LLM tool calls; this terminal layer is an
+// a command execution environment for LM tool calls; this terminal layer is an
 // experimental UI for humans inspecting Wesh behavior. The lightweight token
 // handling here may duplicate a small amount of shell-like logic, but it does
 // not affect command execution semantics and can be promoted later if it proves

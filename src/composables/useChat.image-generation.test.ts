@@ -5,7 +5,7 @@ import { storageService } from '@/services/storage';
 import { SENTINEL_IMAGE_PENDING } from '@/utils/image-generation';
 import { toRaw } from 'vue';
 
-// Mock LLM
+// Mock LM
 const mockOllamaChat = vi.fn();
 const mockOllamaGenerateImage = vi.fn().mockResolvedValue({
   image: new Blob(['test'], { type: 'image/png' }),
@@ -185,7 +185,7 @@ describe('useChat Image Generation', () => {
       ])
     }));
 
-    // Ensure the sentinel is NOT in the prompt sent to LLM
+    // Ensure the sentinel is NOT in the prompt sent to LM
     const sentPrompt = mockOllamaChat.mock.calls[0]![0].messages.find((m: any) => m.role === 'user')?.content;
     expect(sentPrompt).not.toContain('naidan_experimental');
   });

@@ -6,7 +6,7 @@ import {
   WIKIPEDIA_GET_PAGE_TOOL_NAME,
   WIKIPEDIA_SEARCH_TOOL_NAME,
 } from '@/services/tools/wikipedia'
-import { findLastToolConfigByKey, llmToolNamesFromToolConfigs } from '@/services/tools/tool-config'
+import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/services/tools/tool-config'
 import type { ToolConfig } from '@/services/tools/types'
 
 const mockSetToolEnabled = vi.fn()
@@ -66,7 +66,7 @@ describe('useToolDependencyActions', () => {
     enableWikipediaToolsForCurrentChat()
 
     expect(mockUpdateToolConfigsForCurrentChat).toHaveBeenCalledTimes(1)
-    const enabledToolNames = llmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })
+    const enabledToolNames = lmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })
     expect(enabledToolNames).toHaveLength(3)
     expect(enabledToolNames).toEqual(expect.arrayContaining([
       'shell_execute',
@@ -130,7 +130,7 @@ describe('useToolDependencyActions', () => {
 
     disableWikipediaToolsForCurrentChat()
 
-    expect(llmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })).toEqual(['shell_execute'])
+    expect(lmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })).toEqual(['shell_execute'])
     expect(mockSetToolEnabled).not.toHaveBeenCalled()
   })
 
@@ -166,7 +166,7 @@ describe('useToolDependencyActions', () => {
 
     disableNaidanSysfsForCurrentChat()
 
-    expect(llmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })).toEqual(['shell_execute'])
+    expect(lmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })).toEqual(['shell_execute'])
     expect(findLastToolConfigByKey({
       toolConfigs: updatedToolConfigs,
       key: 'builtin.wesh',

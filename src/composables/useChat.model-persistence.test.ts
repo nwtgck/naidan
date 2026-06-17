@@ -45,7 +45,7 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM Provider
+// Mock LM Provider
 const mockChat = vi.fn().mockImplementation(async (params: { model: string, onChunk: (params: { chunk: string }) => void }) => {
   params.onChunk({ chunk: 'Response from ' + params.model });
 });

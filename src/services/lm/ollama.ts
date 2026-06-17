@@ -10,13 +10,13 @@
  */
 import { z } from 'zod';
 import { idToRaw, toToolCallId, type ToolCallId } from '@/models/ids';
-import { zodToJsonSchema } from '@/utils/llm-tools';
+import { zodToJsonSchema } from '@/utils/lm-tools';
 import type { LmParameters, ChatMessage, MultimodalContent } from '@/models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
 import { getDefaultLmFetch, type LmFetch } from '@/services/lm/fetch';
-import { type LLMProvider, UNKNOWN_STEPS } from './types';
+import { type LmProvider, UNKNOWN_STEPS } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
 
@@ -94,7 +94,7 @@ async function blobToBase64({ blob }: { blob: Blob }): Promise<string> {
   });
 }
 
-export class OllamaProvider implements LLMProvider {
+export class OllamaProvider implements LmProvider {
   private config: {
     endpoint: string;
     headers?: [string, string][];

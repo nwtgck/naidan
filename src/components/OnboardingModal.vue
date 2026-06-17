@@ -2,7 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
 import { type EndpointType, type Settings as SettingsType } from '@/models/types';
 import { ENDPOINT_PRESETS } from '@/models/constants';
@@ -277,7 +277,7 @@ async function handleConnect() {
       }
     }
 
-    const provider: LLMProvider = createLmProvider({
+    const provider: LmProvider = createLmProvider({
       endpointType: effectiveType.value,
       endpointUrl: url ?? undefined,
       endpointHttpHeaders: customHeaders.value,
