@@ -12,6 +12,7 @@ describe('experimental tool config DTO', () => {
       experimental: {
         toolConfigs: [
           { key: 'builtin.calculator' },
+          { key: 'builtin.choices' },
           { key: 'builtin.calculator' },
           {
             key: 'builtin.wesh',
@@ -26,6 +27,7 @@ describe('experimental tool config DTO', () => {
     const domain = chatMetaToDomain({ dto });
     expect(domain.toolConfigs).toEqual([
       { key: 'builtin.calculator' },
+      { key: 'builtin.choices' },
       { key: 'builtin.calculator' },
       {
         key: 'builtin.wesh',

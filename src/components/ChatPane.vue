@@ -35,6 +35,7 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import ChatApprovalPanel from './chat-approval/ChatApprovalPanel.vue';
+import ChatChoicesPanel from './chat-choices/ChatChoicesPanel.vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
@@ -78,6 +79,7 @@ import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
 import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/services/context-compact';
 import { useApproval } from '@/composables/useApproval';
+import { useChoices } from '@/composables/useChoices';
 import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
 import type { ApprovalUiDecision } from '@/services/approval';
 
@@ -95,6 +97,7 @@ const {
   toggleChatWeshTerminal,
 } = useLayout();
 const approval = useApproval();
+const choices = useChoices();
 const chatConversation = useChatConversation();
 const chatBranches = useChatBranches();
 const chatCompaction = useChatCompaction();
@@ -137,6 +140,7 @@ const {
 });
 const contextCompactProgress = computed<ContextCompactProgress>(() => getChatContextCompactProgress({ chatId: props.chatId }));
 const activeApprovalRequest = computed(() => approval.getActiveApprovalRequest({ chatId: props.chatId }).value);
+const activeChoiceRequest = computed(() => choices.getActiveChoiceRequest({ chatId: props.chatId }).value);
 const isGeneratingTitle = computed(() => isChatGeneratingTitle({ chatId: props.chatId }));
 const isDebugEnabled = computed(() => chat.value?.debugEnabled === true);
 const chatIdentityKey = computed(() => {
@@ -947,6 +951,21 @@ function handleApprovalDecision({
   });
 }
 
+function handleChoiceSelection({
+  index,
+}: {
+  index: number;
+}): void {
+  const request = activeChoiceRequest.value;
+  if (request === undefined) {
+    return;
+  }
+  choices.resolveChoiceRequest({
+    requestId: request.requestId,
+    index,
+  });
+}
+
 function handleAbortGeneration() {
   const chatValue = chat.value;
   if (!chatValue) return;
@@ -1369,7 +1388,7 @@ watch(
       :inherited-model-source="inheritedSettings?.sources.modelId"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
-      :above-input-visibility="activeApprovalRequest !== undefined ? 'visible' : 'hidden'"
+      :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
       :can-generate-image="canGenerateImage"
       :has-image-model="hasImageModel"
@@ -1384,6 +1403,11 @@ watch(
           v-if="activeApprovalRequest !== undefined"
           :request="activeApprovalRequest"
           @decide="decision => handleApprovalDecision({ decision })"
+        />
+        <ChatChoicesPanel
+          v-else-if="activeChoiceRequest !== undefined"
+          :request="activeChoiceRequest"
+          @select="index => handleChoiceSelection({ index })"
         />
       </template>
     </ChatInput>

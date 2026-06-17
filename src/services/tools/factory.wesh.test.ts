@@ -75,6 +75,7 @@ describe('getEnabledTools shell_execute', () => {
     const [toolA] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleA,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       naidanSysfsAccessScope: 'current_chat_only',
@@ -86,6 +87,7 @@ describe('getEnabledTools shell_execute', () => {
     const [toolB] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleB,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-2' }),
       chatGroupId: undefined,
       naidanSysfsAccessScope: 'main_chats',
@@ -164,6 +166,7 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
       naidanSysfsAccessScope: 'current_chat_with_chat_group',
@@ -185,6 +188,7 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: undefined,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       naidanSysfsAccessScope: 'current_chat_only',
@@ -223,6 +227,7 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       naidanSysfsAccessScope: 'none',
@@ -246,6 +251,7 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['wikipedia_search', 'wikipedia_get_page'],
       tmpHandle: { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       naidanSysfsAccessScope: 'current_chat_only',
@@ -265,6 +271,7 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
       tmpHandle,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       naidanSysfsAccessScope: 'none',
@@ -283,6 +290,7 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
       tmpHandle: undefined,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       naidanSysfsAccessScope: 'current_chat_only',
@@ -312,6 +320,7 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['wikipedia_search', 'shell_execute', 'wikipedia_get_page'],
       tmpHandle,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       naidanSysfsAccessScope: 'current_chat_only',
@@ -338,6 +347,7 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: undefined,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       naidanSysfsAccessScope: 'current_chat_with_chat_group',
@@ -376,6 +386,7 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
       naidanSysfsAccessScope: 'current_chat_with_chat_group',
@@ -403,6 +414,7 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
       naidanSysfsAccessScope: 'current_chat_with_chat_group',
@@ -427,6 +439,7 @@ Mounted directories:
     const [tool] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
+      requestChoice: undefined,
       chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
       naidanSysfsAccessScope: 'current_chat_with_chat_group',

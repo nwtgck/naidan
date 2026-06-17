@@ -6,6 +6,7 @@ import type { Tool } from '@/services/tools/types';
 import { createLmProvider } from '@/services/lm/providerFactory';
 import { storageService } from '@/services/storage';
 import { getEnabledTools } from '@/services/tools/factory';
+import { markExecutingToolResultsAsInterrupted } from '@/services/tools/interruption';
 import { findLastToolConfigByKey, llmToolNamesFromToolConfigs } from '@/services/tools/tool-config';
 import { getEffectiveToolConfigsForChat } from '@/composables/useChatTools';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
@@ -35,6 +36,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useToast } from '@/composables/useToast';
 import { useApproval } from '@/composables/useApproval';
+import { useChoices } from '@/composables/useChoices';
 import {
   availableModels,
   chatRuntimeStore,
@@ -389,6 +391,7 @@ export async function generateResponseForAssistant({
 
   const parentNode = findParentInBranch({ items: mutableChat.root.items, childId: assistantId });
   const imageRequest = parentNode ? parseImageRequest({ content: parentNode.content || '' }) : null;
+  const currentGenerationToolCallIds = new Set<ToolCallId>();
 
   try {
     if (imageRequest) {
@@ -481,6 +484,7 @@ export async function generateResponseForAssistant({
           }
         },
         onToolCall: ({ id, toolName, args }) => {
+          currentGenerationToolCallIds.add(id);
           if (generationState.currentToolNode === null) {
             const toolNode: ToolMessageNode = reactive({
               id: generateId<MessageId>(),
@@ -582,6 +586,7 @@ export async function generateResponseForAssistant({
           }
 
           chatVolatileState.deleteVolatileToolOutput({ toolCallId: id });
+          currentGenerationToolCallIds.delete(id);
         },
         onChunk: async ({ chunk }) => {
           generationState.currentAssistantNode.content += chunk;
@@ -636,6 +641,34 @@ export async function generateResponseForAssistant({
     }
   } catch (error) {
     signalReady();
+    let interruptedToolCount = 0;
+    for (const message of getAllMessages({ chat: mutableChat })) {
+      switch (message.role) {
+      case 'tool':
+        interruptedToolCount += markExecutingToolResultsAsInterrupted({
+          results: message.results,
+          toolCallIds: currentGenerationToolCallIds,
+        });
+        break;
+      case 'user':
+      case 'assistant':
+      case 'system':
+        break;
+      default: {
+        const _ex: never = message;
+        throw new Error(`Unhandled message role: ${((_ex satisfies never) as { readonly role: string }).role}`);
+      }
+      }
+    }
+    for (const toolCallId of currentGenerationToolCallIds) {
+      chatVolatileState.deleteVolatileToolOutput({ toolCallId });
+    }
+    currentGenerationToolCallIds.clear();
+
+    if (interruptedToolCount > 0) {
+      notifyChatChanged({ chatId: mutableChat.id });
+    }
+
     const lastOpen = assistantNode.content.lastIndexOf('<think>');
     const lastClose = assistantNode.content.lastIndexOf('</think>');
     if (lastOpen > -1 && lastClose < lastOpen) {
@@ -1089,6 +1122,7 @@ async function getEnabledToolsForChat({
   chat: Chat;
 }): Promise<Tool[]> {
   const { settings } = useSettings();
+  const { requestChoice } = useChoices();
   const toolConfigs = getEffectiveToolConfigsForChat({
     chatId: chat.id,
     persistedToolConfigs: chat.toolConfigs,
@@ -1114,6 +1148,7 @@ async function getEnabledToolsForChat({
     chatGroupId: chat.groupId ?? undefined,
     naidanSysfsAccessScope: weshToolConfig?.naidanSysfs.accessScope ?? 'none',
     tmpHandle: chatTmpDirectory?.handle,
+    requestChoice,
   });
 }
 

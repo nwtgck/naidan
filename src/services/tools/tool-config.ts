@@ -2,6 +2,7 @@ import type { BuiltinToolKey, LlmToolName, ToolConfig, WeshToolConfig } from '@/
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 
 export function llmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.calculator' }): readonly ['calculator'];
+export function llmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.choices' }): readonly ['choices'];
 export function llmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wikipedia' }): readonly ['wikipedia_search', 'wikipedia_get_page'];
 export function llmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.wesh' }): readonly ['shell_execute'];
 export function llmToolNamesForBuiltinToolKey({ key }: { key: BuiltinToolKey }): readonly LlmToolName[];
@@ -13,6 +14,8 @@ export function llmToolNamesForBuiltinToolKey({
   switch (key) {
   case 'builtin.calculator':
     return ['calculator'];
+  case 'builtin.choices':
+    return ['choices'];
   case 'builtin.wikipedia':
     return ['wikipedia_search', 'wikipedia_get_page'];
   case 'builtin.wesh':
@@ -32,6 +35,8 @@ export function builtinToolKeyForLlmToolName({
   switch (name) {
   case 'calculator':
     return 'builtin.calculator';
+  case 'choices':
+    return 'builtin.choices';
   case 'wikipedia_search':
   case 'wikipedia_get_page':
     return 'builtin.wikipedia';
@@ -47,6 +52,7 @@ export function builtinToolKeyForLlmToolName({
 export function isLlmToolName(name: string): name is LlmToolName {
   switch (name) {
   case 'calculator':
+  case 'choices':
   case 'wikipedia_search':
   case 'wikipedia_get_page':
   case 'shell_execute':
@@ -77,6 +83,8 @@ export function createDefaultToolConfigForBuiltinToolKey({
   switch (key) {
   case 'builtin.calculator':
     return { key: 'builtin.calculator' };
+  case 'builtin.choices':
+    return { key: 'builtin.choices' };
   case 'builtin.wikipedia':
     return { key: 'builtin.wikipedia' };
   case 'builtin.wesh':

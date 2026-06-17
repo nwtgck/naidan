@@ -2,6 +2,8 @@ import type { LlmToolName, Tool } from './types';
 import type { ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 import type { Settings, Mount } from '@/models/types';
 import { CalculatorTool } from './calculator';
+import { createChoicesTool } from './choices';
+import type { RequestChoice } from '@/services/choices';
 import { WikipediaGetPageTool, WikipediaSearchTool } from './wikipedia';
 import { createWeshTool } from './wesh';
 import { createFileProtocolCompatibleWeshWorkerClient } from '@/services/wesh/worker/client';
@@ -25,6 +27,7 @@ export async function getEnabledTools({
   chatGroupId,
   naidanSysfsAccessScope,
   tmpHandle,
+  requestChoice,
 }: {
   enabledNames: LlmToolName[];
   settings: Settings;
@@ -34,6 +37,7 @@ export async function getEnabledTools({
   chatGroupId: ChatGroupId | undefined;
   naidanSysfsAccessScope: NaidanSysfsAccessScope;
   tmpHandle: FileSystemDirectoryHandle | undefined;
+  requestChoice: RequestChoice | undefined;
 }): Promise<Tool[]> {
   const tools: Tool[] = [];
   const canExposeWikipediaTools = canExposeWikipediaToolsForGeneration({
@@ -49,6 +53,16 @@ export async function getEnabledTools({
     switch (name) {
     case 'calculator':
       tools.push(new CalculatorTool());
+      break;
+
+    case 'choices':
+      if (chatId === undefined || requestChoice === undefined) {
+        break;
+      }
+      tools.push(createChoicesTool({
+        chatId,
+        requestChoice,
+      }));
       break;
 
     case 'wikipedia_search':

@@ -26,6 +26,7 @@ export type ToolExecutionErrorCode = 'invalid_arguments' | 'execution_failed' | 
  */
 export type BuiltinToolKey =
   | 'builtin.calculator'
+  | 'builtin.choices'
   | 'builtin.wikipedia'
   | 'builtin.wesh';
 
@@ -41,12 +42,17 @@ export type BuiltinToolKey =
  */
 export type LlmToolName =
   | 'calculator'
+  | 'choices'
   | 'wikipedia_search'
   | 'wikipedia_get_page'
   | 'shell_execute';
 
 export type CalculatorToolConfig = {
   key: 'builtin.calculator';
+};
+
+export type ChoicesToolConfig = {
+  key: 'builtin.choices';
 };
 
 export type WikipediaToolConfig = {
@@ -69,6 +75,7 @@ export type WeshToolConfig = {
 
 export type ToolConfig =
   | CalculatorToolConfig
+  | ChoicesToolConfig
   | WikipediaToolConfig
   | WeshToolConfig;
 

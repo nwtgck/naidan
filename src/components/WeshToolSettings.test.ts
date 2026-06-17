@@ -112,11 +112,14 @@ describe('WeshToolSettings.vue', () => {
     expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(false);
   });
 
-  it('shows sysfs settings when shell in browser is enabled', async () => {
+  it('shows shell settings as a full-width grid row when shell in browser is enabled', async () => {
     const wrapper = mount(WeshToolSettings);
     await flushPromises();
 
-    expect(wrapper.find('[data-testid="naidan-sysfs-settings"]').exists()).toBe(true);
+    const settings = wrapper.get('[data-testid="naidan-sysfs-settings"]');
+    expect(settings.classes()).toContain('sm:col-span-2');
+    expect(settings.text()).toContain('Shell settings');
+    expect(settings.text()).not.toContain('Enabled');
   });
 
   it('shows a read-only note for local storage', async () => {

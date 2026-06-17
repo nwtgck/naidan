@@ -47,6 +47,7 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('lucide-vue-next', () => ({
   CalculatorIcon: { template: '<span>Calculator</span>' },
+  ListIcon: { template: '<span>Choices</span>' },
   BookOpenIcon: { template: '<span>Wikipedia</span>' },
   TerminalIcon: { template: '<span>Terminal</span>' },
 }));
@@ -157,6 +158,16 @@ describe('LmToolsSettings.vue', () => {
     await wrapper.find('[data-testid="tool-calculator-toggle"]').trigger('click');
 
     expect(mockToggleTool).toHaveBeenCalledWith({ name: 'calculator' });
+  });
+
+  it('toggles choices independently', async () => {
+    mockIsFeatureEnabled.mockReturnValue(true);
+
+    const wrapper = mount(LmToolsSettings);
+    await flushPromises();
+    await wrapper.find('[data-testid="tool-choices-toggle"]').trigger('click');
+
+    expect(mockToggleTool).toHaveBeenCalledWith({ name: 'choices' });
   });
 
   it('shows the sysfs usage note in the wikipedia card', async () => {

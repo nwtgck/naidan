@@ -8,6 +8,10 @@ export const ExperimentalCalculatorToolConfigSchemaDto = resolveMissingAsUndefin
   key: z.literal('builtin.calculator'),
 }));
 
+export const ExperimentalChoicesToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
+  key: z.literal('builtin.choices'),
+}));
+
 export const ExperimentalWikipediaToolConfigSchemaDto = resolveMissingAsUndefined(z.object({
   key: z.literal('builtin.wikipedia'),
 }));
@@ -29,6 +33,7 @@ export const ExperimentalWeshToolConfigSchemaDto = resolveMissingAsUndefined(z.o
 
 export const ExperimentalToolConfigSchemaDto = z.discriminatedUnion('key', [
   ExperimentalCalculatorToolConfigSchemaDto,
+  ExperimentalChoicesToolConfigSchemaDto,
   ExperimentalWikipediaToolConfigSchemaDto,
   ExperimentalWeshToolConfigSchemaDto,
 ]);

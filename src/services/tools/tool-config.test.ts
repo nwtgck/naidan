@@ -10,9 +10,11 @@ import {
 describe('tool config', () => {
   it('keeps Naidan keys separate from LLM-visible tool names', () => {
     expect(llmToolNamesForBuiltinToolKey({ key: 'builtin.calculator' })).toEqual(['calculator']);
+    expect(llmToolNamesForBuiltinToolKey({ key: 'builtin.choices' })).toEqual(['choices']);
     expect(llmToolNamesForBuiltinToolKey({ key: 'builtin.wikipedia' })).toEqual(['wikipedia_search', 'wikipedia_get_page']);
     expect(llmToolNamesForBuiltinToolKey({ key: 'builtin.wesh' })).toEqual(['shell_execute']);
 
+    expect(builtinToolKeyForLlmToolName({ name: 'choices' })).toBe('builtin.choices');
     expect(builtinToolKeyForLlmToolName({ name: 'shell_execute' })).toBe('builtin.wesh');
   });
 
@@ -21,9 +23,10 @@ describe('tool config', () => {
       toolConfigs: [
         { key: 'builtin.calculator' },
         { key: 'builtin.calculator' },
+        { key: 'builtin.choices' },
         { key: 'builtin.wikipedia' },
       ],
-    })).toEqual(['calculator', 'wikipedia_search', 'wikipedia_get_page']);
+    })).toEqual(['calculator', 'choices', 'wikipedia_search', 'wikipedia_get_page']);
   });
 
   it('uses singleton upsert semantics for current builtin tool UI writes', () => {
