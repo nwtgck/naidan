@@ -21,6 +21,7 @@ const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => 
 const ProviderProfilePreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ProviderProfilePreview.vue') });
 // Lazily load upsell UI
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
+const OllamaManagementView = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./OllamaManagementView.vue') });
 
 import { useConfirm } from '@/composables/useConfirm';
 import { usePrompt } from '@/composables/usePrompt';
@@ -423,6 +424,25 @@ defineExpose({
                 <div v-else class="text-[11px] text-gray-400 italic ml-1">No custom headers configured.</div>
               </div>
             </div>
+
+            <Transition
+              enter-active-class="grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none"
+              enter-from-class="grid-rows-[0fr] opacity-0"
+              enter-to-class="grid-rows-[1fr] opacity-100"
+              leave-active-class="grid transition-[grid-template-rows,opacity] duration-150 ease-in motion-reduce:transition-none"
+              leave-from-class="grid-rows-[1fr] opacity-100"
+              leave-to-class="grid-rows-[0fr] opacity-0"
+            >
+              <div v-if="form.endpointType === 'ollama'" class="grid" data-testid="ollama-management-transition">
+                <div class="overflow-hidden">
+                  <OllamaManagementView
+                    :endpoint-url="form.endpointUrl"
+                    :endpoint-http-headers="form.endpointHttpHeaders"
+                    :fake-lm-debug-mode-status="form.experimental?.fakeLm ?? 'disabled'"
+                  />
+                </div>
+              </div>
+            </Transition>
           </section>
 
           <section class="space-y-6 pt-6 border-t border-gray-100 dark:border-gray-800">

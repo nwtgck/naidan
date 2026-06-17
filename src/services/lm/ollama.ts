@@ -42,6 +42,51 @@ const OllamaTagsSchema = z.object({
   })),
 });
 
+const OllamaRunningModelSchema = z.object({
+  name: z.string(),
+  model: z.string().optional(),
+  size: z.number().nonnegative().optional(),
+  digest: z.string().optional(),
+  details: z.object({
+    parent_model: z.string().optional(),
+    format: z.string().optional(),
+    family: z.string().optional(),
+    families: z.array(z.string()).nullable().optional(),
+    parameter_size: z.string().optional(),
+    quantization_level: z.string().optional(),
+  }).optional(),
+  expires_at: z.string().optional(),
+  size_vram: z.number().nonnegative().optional(),
+  context_length: z.number().int().nonnegative().optional(),
+});
+
+const OllamaPsSchema = z.object({
+  models: z.array(OllamaRunningModelSchema),
+});
+
+const OllamaUnloadResponseSchema = z.object({
+  done: z.literal(true),
+  done_reason: z.literal('unload'),
+});
+
+export interface OllamaRunningModel {
+  readonly name: string;
+  readonly model: string | undefined;
+  readonly size: number | undefined;
+  readonly digest: string | undefined;
+  readonly expiresAt: string | undefined;
+  readonly sizeVram: number | undefined;
+  readonly contextLength: number | undefined;
+  readonly details: {
+    readonly parentModel: string | undefined;
+    readonly format: string | undefined;
+    readonly family: string | undefined;
+    readonly families: readonly string[] | undefined;
+    readonly parameterSize: string | undefined;
+    readonly quantizationLevel: string | undefined;
+  };
+}
+
 const OllamaImageStreamChunkSchema = z.discriminatedUnion('done', [
   z.object({
     done: z.literal(false),
@@ -79,6 +124,33 @@ interface OllamaChatRequest {
       parameters: unknown;
     };
   }[];
+}
+
+function createOllamaNetworkErrorMessage({ error }: {
+  error: unknown;
+}): string {
+  let message = `Network error or CORS issue: ${error instanceof Error ? error.message : String(error)}`;
+  if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+    message += ". Since you are running from a file URL, ensure Ollama is started with OLLAMA_ORIGINS='*' (e.g., OLLAMA_ORIGINS='*' ollama serve).";
+  }
+  return message;
+}
+
+async function readOllamaErrorDetails({ response }: {
+  response: Response;
+}): Promise<string> {
+  try {
+    const rawError: unknown = await response.json();
+    const parsed = z.object({ error: z.unknown().optional() }).safeParse(rawError);
+    if (parsed.success && parsed.data.error !== undefined) {
+      return typeof parsed.data.error === 'string'
+        ? parsed.data.error
+        : JSON.stringify(parsed.data.error);
+    }
+    return JSON.stringify(rawError);
+  } catch {
+    return response.statusText;
+  }
 }
 
 async function blobToBase64({ blob }: { blob: Blob }): Promise<string> {
@@ -528,6 +600,110 @@ export class OllamaProvider implements LmProvider {
     // Validate with Zod
     const validated = OllamaTagsSchema.parse(rawJson);
     return validated.models.map((m) => m.name);
+  }
+
+  async listRunningModels({ signal }: {
+    signal?: AbortSignal;
+  }): Promise<readonly OllamaRunningModel[]> {
+    const { endpoint, headers, fetcher } = this.config;
+    const url = `${endpoint.replace(/\/$/, '')}/api/ps`;
+    let response: Response;
+
+    try {
+      response = await fetcher(url, { signal, headers });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+
+      const message = createOllamaNetworkErrorMessage({ error });
+      addErrorEvent({
+        source: 'OllamaProvider:listRunningModels',
+        message,
+        details: { error, url, method: 'GET' },
+      });
+      throw new Error(message);
+    }
+
+    if (!response.ok) {
+      const details = await readOllamaErrorDetails({ response });
+      const message = `Failed to fetch running models (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OllamaProvider:listRunningModels',
+        message,
+        details: { status: response.status, statusText: response.statusText, url },
+      });
+      throw new Error(message);
+    }
+
+    const validated = OllamaPsSchema.parse(await response.json());
+    return validated.models.map((model) => ({
+      name: model.name,
+      model: model.model,
+      size: model.size,
+      digest: model.digest,
+      expiresAt: model.expires_at,
+      sizeVram: model.size_vram,
+      contextLength: model.context_length,
+      details: {
+        parentModel: model.details?.parent_model,
+        format: model.details?.format,
+        family: model.details?.family,
+        families: model.details?.families ?? undefined,
+        parameterSize: model.details?.parameter_size,
+        quantizationLevel: model.details?.quantization_level,
+      },
+    }));
+  }
+
+  async unloadModel({ model, signal }: {
+    model: string;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    const { endpoint, headers, fetcher } = this.config;
+    const url = `${endpoint.replace(/\/$/, '')}/api/generate`;
+    let response: Response;
+
+    try {
+      response = await fetcher(url, {
+        method: 'POST',
+        headers: [
+          ['Content-Type', 'application/json'],
+          ...(headers ?? []),
+        ],
+        body: JSON.stringify({
+          model,
+          stream: false,
+          keep_alive: 0,
+        }),
+        signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+
+      const message = createOllamaNetworkErrorMessage({ error });
+      addErrorEvent({
+        source: 'OllamaProvider:unloadModel',
+        message,
+        details: { error, url, method: 'POST', model },
+      });
+      throw new Error(message);
+    }
+
+    if (!response.ok) {
+      const details = await readOllamaErrorDetails({ response });
+      const message = `Failed to unload model (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OllamaProvider:unloadModel',
+        message,
+        details: { status: response.status, statusText: response.statusText, url, model },
+      });
+      throw new Error(message);
+    }
+
+    OllamaUnloadResponseSchema.parse(await response.json());
   }
 
   async generateImage({ prompt, model, width, height, steps, seed, images, onProgress, signal }: {

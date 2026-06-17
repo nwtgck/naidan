@@ -1,9 +1,16 @@
+import { z } from 'zod';
 import { OLLAMA_FAKE_LM_MODELS, getFakeLmLanguageForModel, getFakeLmModeForModel } from '@/services/fake-lm/api/fakeLmModel';
 import { createFakeLmSeedFromRequest } from '@/services/fake-lm/api/fakeLmRequestSeed';
 import { FakeLmOllamaChatRequestSchema } from '@/services/fake-lm/api/schemas';
 import { analyzeFakeLmInputFromMessages } from '@/services/fake-lm/core/inputAnalysis';
 import { streamFakeLmMarkdown, type FakeLmStreamItem } from '@/services/fake-lm/core/stream';
 import { normalizeFakeLmThinkingEffort } from '@/services/fake-lm/core/thinking';
+
+const FakeLmOllamaUnloadRequestSchema = z.object({
+  model: z.string(),
+  stream: z.literal(false).optional(),
+  keep_alive: z.literal(0),
+});
 
 export async function handleFakeLmOllamaRequest({ url, init }: {
   url: URL;
@@ -13,6 +20,23 @@ export async function handleFakeLmOllamaRequest({ url, init }: {
     return Response.json({
       models: OLLAMA_FAKE_LM_MODELS.map((name) => ({ name })),
     });
+  }
+
+  if ((init?.method === undefined || init.method === 'GET') && url.pathname.endsWith('/api/ps')) {
+    return Response.json({ models: [] });
+  }
+
+  if (init?.method === 'POST' && url.pathname.endsWith('/api/generate')) {
+    const rawBody = parseJsonBody({ body: init.body });
+    const request = FakeLmOllamaUnloadRequestSchema.safeParse(rawBody);
+    if (request.success) {
+      return Response.json({
+        model: request.data.model,
+        response: '',
+        done: true,
+        done_reason: 'unload',
+      });
+    }
   }
 
   if (init?.method === 'POST' && url.pathname.endsWith('/api/chat')) {

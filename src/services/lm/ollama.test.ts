@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OllamaProvider } from './ollama';
+import type { LmFetch } from '@/services/lm/fetch';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import http from 'http';
 import type { AddressInfo } from 'net';
@@ -622,3 +623,145 @@ const EMPTY_LM_PARAMETERS = {
   stop: undefined,
   reasoning: { effort: undefined },
 };
+
+
+describe('OllamaProvider runtime model management', () => {
+  it('lists running models and maps optional API fields', async () => {
+    const fetcher = vi.fn(async () => Response.json({
+      models: [{
+        name: 'qwen3:8b',
+        model: 'qwen3:8b',
+        size: 6_442_450_944,
+        digest: 'digest-value',
+        expires_at: '9999-12-31T23:59:59Z',
+        size_vram: 5_905_580_032,
+        context_length: 8192,
+        details: {
+          parent_model: '',
+          format: 'gguf',
+          family: 'qwen3',
+          families: ['qwen3'],
+          parameter_size: '8.2B',
+          quantization_level: 'Q4_K_M',
+        },
+      }],
+    }));
+    const provider = new OllamaProvider({
+      endpoint: 'http://localhost:11434/',
+      headers: [['Authorization', 'Bearer token']],
+      fetcher,
+    });
+
+    await expect(provider.listRunningModels({ signal: undefined })).resolves.toEqual([{
+      name: 'qwen3:8b',
+      model: 'qwen3:8b',
+      size: 6_442_450_944,
+      digest: 'digest-value',
+      expiresAt: '9999-12-31T23:59:59Z',
+      sizeVram: 5_905_580_032,
+      contextLength: 8192,
+      details: {
+        parentModel: '',
+        format: 'gguf',
+        family: 'qwen3',
+        families: ['qwen3'],
+        parameterSize: '8.2B',
+        quantizationLevel: 'Q4_K_M',
+      },
+    }]);
+    expect(fetcher).toHaveBeenCalledWith('http://localhost:11434/api/ps', {
+      signal: undefined,
+      headers: [['Authorization', 'Bearer token']],
+    });
+  });
+
+  it('accepts null model families returned by Ollama', async () => {
+    const provider = new OllamaProvider({
+      endpoint: 'http://localhost:11434',
+      fetcher: vi.fn(async () => Response.json({
+        models: [{
+          name: 'custom-model:latest',
+          details: {
+            parent_model: '',
+            format: 'gguf',
+            family: '',
+            families: null,
+            parameter_size: '',
+            quantization_level: '',
+          },
+        }],
+      })),
+    });
+
+    await expect(provider.listRunningModels({ signal: undefined })).resolves.toEqual([{
+      name: 'custom-model:latest',
+      model: undefined,
+      size: undefined,
+      digest: undefined,
+      expiresAt: undefined,
+      sizeVram: undefined,
+      contextLength: undefined,
+      details: {
+        parentModel: '',
+        format: 'gguf',
+        family: '',
+        families: undefined,
+        parameterSize: '',
+        quantizationLevel: '',
+      },
+    }]);
+  });
+
+  it('rejects an invalid running model response', async () => {
+    const provider = new OllamaProvider({
+      endpoint: 'http://localhost:11434',
+      fetcher: vi.fn(async () => Response.json({ models: [{ name: 123 }] })),
+    });
+
+    await expect(provider.listRunningModels({ signal: undefined })).rejects.toThrow();
+  });
+
+  it('unloads a model through the generate endpoint', async () => {
+    const fetcher = vi.fn<LmFetch>();
+    fetcher.mockResolvedValue(Response.json({
+      done: true,
+      done_reason: 'unload',
+    }));
+    const provider = new OllamaProvider({
+      endpoint: 'http://localhost:11434/',
+      headers: [['X-API-Key', 'secret']],
+      fetcher,
+    });
+
+    await provider.unloadModel({ model: 'qwen3:8b', signal: undefined });
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe('http://localhost:11434/api/generate');
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: [
+        ['Content-Type', 'application/json'],
+        ['X-API-Key', 'secret'],
+      ],
+      signal: undefined,
+    });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      model: 'qwen3:8b',
+      stream: false,
+      keep_alive: 0,
+    });
+  });
+
+  it("rejects an unload response without Ollama's unload reason", async () => {
+    const provider = new OllamaProvider({
+      endpoint: 'http://localhost:11434',
+      fetcher: vi.fn(async () => Response.json({ done: true })),
+    });
+
+    await expect(provider.unloadModel({
+      model: 'qwen3:8b',
+      signal: undefined,
+    })).rejects.toThrow();
+  });
+});

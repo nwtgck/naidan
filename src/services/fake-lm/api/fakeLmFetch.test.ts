@@ -28,6 +28,34 @@ describe('fakeLmFetch', () => {
     });
   });
 
+
+
+  it('returns an empty Ollama running model list', async () => {
+    const response = await fakeLmFetch('https://fake-lm.invalid/api/ps');
+
+    expect(response.ok).toBe(true);
+    await expect(response.json()).resolves.toEqual({ models: [] });
+  });
+
+  it('acknowledges Ollama model unload requests', async () => {
+    const response = await fakeLmFetch('https://fake-lm.invalid/api/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'fake-lm:ja',
+        stream: false,
+        keep_alive: 0,
+      }),
+    });
+
+    expect(response.ok).toBe(true);
+    await expect(response.json()).resolves.toEqual({
+      model: 'fake-lm:ja',
+      response: '',
+      done: true,
+      done_reason: 'unload',
+    });
+  });
+
   it('streams OpenAI-compatible chat chunks', async () => {
     const response = await fakeLmFetch('https://fake-lm.invalid/v1/chat/completions', {
       method: 'POST',

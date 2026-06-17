@@ -22,10 +22,10 @@ export function createLmProvider({ endpointType, endpointUrl, endpointHttpHeader
       fetcher: createLmFetch({ endpointUrl, fakeLmDebugModeStatus }),
     });
   case 'ollama':
-    return new OllamaProvider({
-      endpoint: endpointUrl ?? '',
-      headers,
-      fetcher: createLmFetch({ endpointUrl, fakeLmDebugModeStatus }),
+    return createOllamaProvider({
+      endpointUrl,
+      endpointHttpHeaders,
+      fakeLmDebugModeStatus,
     });
   case 'transformers_js':
     return new TransformersJsProvider();
@@ -34,6 +34,18 @@ export function createLmProvider({ endpointType, endpointUrl, endpointHttpHeader
     throw new Error(`Unhandled endpoint type: ${_ex}`);
   }
   }
+}
+
+export function createOllamaProvider({ endpointUrl, endpointHttpHeaders, fakeLmDebugModeStatus }: {
+  endpointUrl: string | undefined;
+  endpointHttpHeaders: [string, string][] | undefined;
+  fakeLmDebugModeStatus: FakeLmDebugModeStatus;
+}): OllamaProvider {
+  return new OllamaProvider({
+    endpoint: endpointUrl ?? '',
+    headers: cloneEndpointHttpHeaders({ headers: endpointHttpHeaders }),
+    fetcher: createLmFetch({ endpointUrl, fakeLmDebugModeStatus }),
+  });
 }
 
 export function createLmFetch({ endpointUrl, fakeLmDebugModeStatus }: {

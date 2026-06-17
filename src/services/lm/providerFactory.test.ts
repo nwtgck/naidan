@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fakeLmFetch } from '@/services/fake-lm/api/fakeLmFetch';
-import { createLmFetch } from '@/services/lm/providerFactory';
+import { createLmFetch, createOllamaProvider } from '@/services/lm/providerFactory';
 
 describe('createLmFetch', () => {
   it('returns fake fetch only when the persisted debug mode is enabled for the fake endpoint', async () => {
@@ -22,5 +22,18 @@ describe('createLmFetch', () => {
       fakeLmDebugModeStatus: 'enabled',
     });
     expect(normalFetch).not.toBe(fakeFetch);
+  });
+});
+
+
+describe('createOllamaProvider', () => {
+  it('creates an Ollama management client using the fake LM fetch path', async () => {
+    const provider = createOllamaProvider({
+      endpointUrl: 'https://fake-lm.invalid',
+      endpointHttpHeaders: [['X-Test', 'value']],
+      fakeLmDebugModeStatus: 'enabled',
+    });
+
+    await expect(provider.listRunningModels({ signal: undefined })).resolves.toEqual([]);
   });
 });
