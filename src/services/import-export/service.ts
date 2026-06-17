@@ -570,12 +570,14 @@ export class ImportExportService {
 
     // Load all shard indices from the ZIP
     const binPrefix = rootPath + 'binary-objects/';
-    const unifiedBinIndex: Record<string, BinaryObjectDto> = {};
+    const unifiedBinIndex = new Map<string, BinaryObjectDto>();
     for (const filename of Object.keys(zip.files)) {
       if (filename.startsWith(binPrefix) && filename.endsWith('index.json')) {
         try {
           const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file(filename)!.async('string')));
-          Object.assign(unifiedBinIndex, shardIndex.objects);
+          for (const [id, object] of Object.entries(shardIndex.objects)) {
+            unifiedBinIndex.set(id, object);
+          }
         } catch (e) { /* Ignore corrupted index */ }
       }
     }
@@ -601,7 +603,7 @@ export class ImportExportService {
           const parts = filename.substring(binPrefix.length).split('/');
           if (parts.length === 2) {
             const bId = parts[1]!.replace('.bin', '');
-            const meta = unifiedBinIndex[bId];
+            const meta = unifiedBinIndex.get(bId);
             if (meta) {
               const blob = await zip.file(filename)!.async('blob');
               yield {
@@ -725,12 +727,14 @@ export class ImportExportService {
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       // 1. Unified metadata lookup for append remapping
       const binPrefix = rootPath + 'binary-objects/';
-      const unifiedBinIndex: Record<string, BinaryObjectDto> = {};
+      const unifiedBinIndex = new Map<string, BinaryObjectDto>();
       for (const filename of Object.keys(zip.files)) {
         if (filename.startsWith(binPrefix) && filename.endsWith('index.json')) {
           try {
             const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file(filename)!.async('string')));
-            Object.assign(unifiedBinIndex, shardIndex.objects);
+            for (const [id, object] of Object.entries(shardIndex.objects)) {
+              unifiedBinIndex.set(id, object);
+            }
           } catch (e) { /* skip */ }
         }
       }
@@ -814,7 +818,7 @@ export class ImportExportService {
           if (parts.length === 2) {
             const oldBinaryId = parts[1]!.replace('.bin', '');
             const newBinaryId = binaryRemapMap.get(oldBinaryId);
-            const meta = unifiedBinIndex[oldBinaryId];
+            const meta = unifiedBinIndex.get(oldBinaryId);
             if (newBinaryId && meta) {
               const blob = await zip.file(filename)!.async('blob');
               yield {

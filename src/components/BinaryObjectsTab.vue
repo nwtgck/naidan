@@ -13,7 +13,8 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 const BinaryObjectPreviewModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./BinaryObjectPreviewModal.vue') });
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
-import { idToRaw } from '@/models/ids';
+import { idToRaw, toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId } from '@/models/ids';
 
 const objects = ref<BinaryObject[]>([]);
 const isLoading = ref(true);
@@ -115,9 +116,9 @@ const renderedObjects = computed(() => {
 
 // Fast O(1) lookup
 const objectMap = computed(() => {
-  const map = new Map<string, BinaryObject>();
+  const map = new Map<BinaryObjectId, BinaryObject>();
   for (const obj of objects.value) {
-    map.set(idToRaw({ id: obj.id }), obj);
+    map.set(obj.id, obj);
   }
   return map;
 });
@@ -186,8 +187,8 @@ const handleDelete = async ({ obj }: { obj: BinaryObject }) => {
 };
 
 // Thumbnail Management
-const thumbnails = ref<Record<string, string>>({}); // Values are Object URLs
-const thumbnailLoading = ref<Set<string>>(new Set());
+const thumbnails = ref(new Map<BinaryObjectId, string>()); // Values are Object URLs
+const thumbnailLoading = ref(new Set<BinaryObjectId>());
 const visibleIds = new Set<string>(); // Not reactive for performance
 const thumbnailCount = ref(0);
 
@@ -242,10 +243,10 @@ const createThumbnailUrl = ({ blob, size = 120 }: { blob: Blob; size?: number })
 };
 
 const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
-  if (thumbnails.value[idToRaw({ id: obj.id })] || thumbnailLoading.value.has(idToRaw({ id: obj.id }))) return;
+  if (thumbnails.value.has(obj.id) || thumbnailLoading.value.has(obj.id)) return;
   if (!obj.mimeType.startsWith('image/')) return;
 
-  thumbnailLoading.value.add(idToRaw({ id: obj.id }));
+  thumbnailLoading.value.add(obj.id);
   try {
     await thumbnailSemaphore.run({ task: async () => {
       const blob = await storageService.getFile({ binaryObjectId: obj.id });
@@ -263,8 +264,8 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
           });
         });
 
-        if (!thumbnails.value[idToRaw({ id: obj.id })]) {
-          thumbnails.value[idToRaw({ id: obj.id })] = thumbUrl;
+        if (!thumbnails.value.has(obj.id)) {
+          thumbnails.value.set(obj.id, thumbUrl);
           thumbnailCount.value++;
         }
       }
@@ -272,7 +273,7 @@ const loadThumbnail = async ({ obj }: { obj: BinaryObject }) => {
   } catch (e) {
     console.error('Failed to load thumbnail:', e);
   } finally {
-    thumbnailLoading.value.delete(idToRaw({ id: obj.id }));
+    thumbnailLoading.value.delete(obj.id);
   }
 };
 
@@ -281,18 +282,18 @@ let cleanupTimeout: number | null = null;
 const performThumbnailCleanup = () => {
   if (thumbnailCount.value <= 300) return;
 
-  const idsToDelete: string[] = [];
-  for (const id in thumbnails.value) {
-    if (!visibleIds.has(id)) {
+  const idsToDelete: BinaryObjectId[] = [];
+  for (const id of thumbnails.value.keys()) {
+    if (!visibleIds.has(idToRaw({ id }))) {
       idsToDelete.push(id);
     }
     if (thumbnailCount.value - idsToDelete.length <= 200) break;
   }
 
   for (const id of idsToDelete) {
-    const url = thumbnails.value[id];
+    const url = thumbnails.value.get(id);
     if (url) URL.revokeObjectURL(url); // Clean up browser memory
-    delete thumbnails.value[id];
+    thumbnails.value.delete(id);
     thumbnailCount.value--;
   }
 };
@@ -326,7 +327,7 @@ onMounted(() => {
 
       if (entry.isIntersecting) {
         visibleIds.add(id);
-        const obj = objectMap.value.get(id);
+        const obj = objectMap.value.get(toBinaryObjectId({ raw: id }));
         if (obj) loadThumbnail({ obj });
       } else {
         visibleIds.delete(id);
@@ -341,10 +342,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   // Revoke all Object URLs to prevent memory leaks
-  for (const id in thumbnails.value) {
-    const url = thumbnails.value[id];
-    if (url) URL.revokeObjectURL(url);
-  }
+  thumbnails.value.forEach(url => URL.revokeObjectURL(url));
 });
 
 const registerObserver = ({ el, id }: { el: HTMLElement | null; id: string }) => {
@@ -357,13 +355,13 @@ const registerObserver = ({ el, id }: { el: HTMLElement | null; id: string }) =>
 
 // Cleanup on data removal
 watch(objects, (newObjs, oldObjs) => {
-  const newIds = new Set(newObjs.map(o => idToRaw({ id: o.id })));
+  const newIds = new Set<BinaryObjectId>(newObjs.map(object => object.id));
   if (oldObjs) {
     for (const oldObj of oldObjs) {
-      if (!newIds.has(idToRaw({ id: oldObj.id }))) {
-        const url = thumbnails.value[idToRaw({ id: oldObj.id })];
+      if (!newIds.has(oldObj.id)) {
+        const url = thumbnails.value.get(oldObj.id);
         if (url) URL.revokeObjectURL(url);
-        delete thumbnails.value[idToRaw({ id: oldObj.id })];
+        thumbnails.value.delete(oldObj.id);
         thumbnailCount.value--;
       }
     }
@@ -504,8 +502,8 @@ defineExpose({
                 <div class="flex items-center gap-3 min-w-0">
                   <div class="w-10 h-10 flex items-center justify-center bg-gray-50 dark:bg-gray-800 rounded-lg shrink-0 overflow-hidden border border-gray-100 dark:border-gray-700">
                     <img
-                      v-if="thumbnails[idToRaw({ id: obj.id })]"
-                      :src="thumbnails[idToRaw({ id: obj.id })]"
+                      v-if="thumbnails.get(obj.id)"
+                      :src="thumbnails.get(obj.id)"
                       class="w-full h-full object-cover"
                       :data-testid="`binary-thumbnail-${idToRaw({ id: obj.id })}`"
                     />
@@ -567,8 +565,8 @@ defineExpose({
           <!-- Thumbnail -->
           <div class="absolute inset-0 flex items-center justify-center p-4">
             <img
-              v-if="thumbnails[idToRaw({ id: obj.id })]"
-              :src="thumbnails[idToRaw({ id: obj.id })]"
+              v-if="thumbnails.get(obj.id)"
+              :src="thumbnails.get(obj.id)"
               class="w-full h-full object-contain transition-transform group-hover:scale-110"
               :data-testid="`binary-thumbnail-${idToRaw({ id: obj.id })}`"
             />

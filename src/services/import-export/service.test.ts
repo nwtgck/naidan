@@ -522,6 +522,61 @@ describe('ImportExportService', () => {
       expect(mockStorage.clearAll).toHaveBeenCalled();
       expect(mockStorage.restore).toHaveBeenCalledWith(expect.anything());
     });
+
+    it('ignores binary object metadata keys omitted by the DTO schema', async () => {
+      const retainedBinaryObjectId = 'binary-object-1';
+      const omittedBinaryObjectId = '__proto__';
+      const zip = new JSZip();
+      zip.file('export-manifest.json', '{}');
+
+      const binFolder = zip.folder('binary-objects')!.folder('prototype-keys')!;
+      const objects = Object.fromEntries([
+        retainedBinaryObjectId,
+        omittedBinaryObjectId,
+      ].map(binaryObjectId => {
+        binFolder.file(`${binaryObjectId}.bin`, new Blob([`binary ${binaryObjectId}`]));
+        return [binaryObjectId, {
+          id: binaryObjectId,
+          mimeType: 'application/octet-stream',
+          size: 11,
+          createdAt: 1000,
+          name: `${binaryObjectId}.bin`,
+        }];
+      }));
+      binFolder.file('index.json', JSON.stringify({ objects }));
+
+      mockStorage.loadSettings.mockResolvedValue(null);
+      await service.executeImport({
+        zipFile: await zip.generateAsync({ type: 'blob' }),
+        config: {
+          data: { mode: 'replace' },
+          settings: {
+            endpoint: 'none',
+            model: 'none',
+            titleModel: 'none',
+            systemPrompt: 'none',
+            lmParameters: 'none',
+            providerProfiles: 'none',
+          },
+        },
+      });
+
+      const snapshot = mockStorage.restore.mock.calls[0]![0].snapshot;
+      const chunks = [];
+      for await (const chunk of snapshot.contentStream) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks).toContainEqual(expect.objectContaining({
+        type: 'binary_object',
+        id: retainedBinaryObjectId,
+        name: `${retainedBinaryObjectId}.bin`,
+      }));
+      expect(chunks).not.toContainEqual(expect.objectContaining({
+        type: 'binary_object',
+        id: omittedBinaryObjectId,
+      }));
+    });
   });
 
   describe('Import - Append Mode (ID Remapping)', () => {

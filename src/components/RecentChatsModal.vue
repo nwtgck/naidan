@@ -9,6 +9,7 @@ import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { idToRaw } from '@/models/ids';
+import type { ChatGroupId } from '@/models/ids';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import RecentChatListItem from './RecentChatListItem.vue';
@@ -36,9 +37,9 @@ let previewHoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Optimization: Pre-map group names to avoid repeated lookups in the loop
 const groupNameMap = computed(() => {
-  const map = new Map<string, string>();
+  const map = new Map<ChatGroupId, string>();
   for (const group of chatGroups.value) {
-    map.set(idToRaw({ id: group.id }), group.name);
+    map.set(group.id, group.name);
   }
   return map;
 });
@@ -272,7 +273,7 @@ defineExpose({
                 v-memo="[idToRaw({ id: chat.id }), selectedIndex === index, activePane]"
                 :data-index="index"
                 :chat="chat"
-                :group-name="groupNameMap.get(chat.groupId ? idToRaw({ id: chat.groupId }) : '')"
+                :group-name="chat.groupId ? groupNameMap.get(chat.groupId) : undefined"
                 :is-selected="selectedIndex === index"
                 :active-pane="activePane"
                 @mouseenter="selectedIndex = index"

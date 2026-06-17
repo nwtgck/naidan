@@ -1,5 +1,5 @@
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/models/types';
-import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/models/ids';
+import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -44,7 +44,7 @@ const KEY_CONTENT_PREFIX = `${LSP_STORAGE_PREFIX}chat_content:`;
  */
 export class LocalStorageProvider extends IStorageProvider {
   readonly canPersistBinary = false;
-  private blobCache = new Map<string, Blob>();
+  private blobCache = new Map<AttachmentId, Blob>();
 
   async init(): Promise<void> {
     // No-op for localStorage
@@ -102,7 +102,7 @@ export class LocalStorageProvider extends IStorageProvider {
         if (node.attachments) {
           for (const att of node.attachments) {
             if (att.status === 'memory' && att.blob) {
-              this.blobCache.set(idToRaw({ id: att.id }), att.blob);
+              this.blobCache.set(att.id, att.blob);
             }
           }
         }
@@ -141,7 +141,7 @@ export class LocalStorageProvider extends IStorageProvider {
             for (const att of node.attachments) {
               switch (att.status) {
               case 'memory': {
-                const cached = this.blobCache.get(idToRaw({ id: att.id }));
+                const cached = this.blobCache.get(att.id);
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
                 break;
               }
@@ -196,7 +196,7 @@ export class LocalStorageProvider extends IStorageProvider {
             for (const att of node.attachments) {
               switch (att.status) {
               case 'memory': {
-                const cached = this.blobCache.get(idToRaw({ id: att.id }));
+                const cached = this.blobCache.get(att.id);
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
                 break;
               }

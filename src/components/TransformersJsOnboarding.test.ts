@@ -121,12 +121,12 @@ describe('Transformers.js Onboarding Integration', () => {
       device: 'wasm',
       isCached: false,
       isLoadingFromCache: false,
-      progressItems: {},
+      progressItems: new Map(),
     });
     (transformersJsService.listCachedModels as any).mockResolvedValue([]);
     (transformersJsService.subscribe as any).mockImplementation(({ listener }: any) => {
       // Immediate call for the first state
-      listener({ status: 'idle', progress: 0, error: undefined, isCached: false, isLoadingFromCache: false, progressItems: {} });
+      listener({ status: 'idle', progress: 0, error: undefined, isCached: false, isLoadingFromCache: false, progressItems: new Map() });
       return () => {};
     });
 

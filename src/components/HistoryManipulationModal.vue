@@ -33,7 +33,7 @@ interface EditableHistoryItem extends HistoryItem {
 }
 
 const editableMessages = ref<EditableHistoryItem[]>([]);
-const attachmentUrls = ref<Record<string, string>>({});
+const attachmentUrls = ref(new Map<AttachmentId, string>());
 const fileInputs = ref<(HTMLInputElement | null)[]>([]);
 const isDragging = ref(false);
 
@@ -48,8 +48,8 @@ watch(() => props.isOpen, async (open) => {
     setActiveFocusArea({ area: 'dialog' });
 
     // Clear old URLs
-    Object.values(attachmentUrls.value).forEach(URL.revokeObjectURL);
-    attachmentUrls.value = {};
+    attachmentUrls.value.forEach(URL.revokeObjectURL);
+    attachmentUrls.value = new Map<AttachmentId, string>();
 
     // Clone system prompt setting
     localSystemPrompt.value = currentChat.value.systemPrompt ? JSON.parse(JSON.stringify(currentChat.value.systemPrompt)) : undefined;
@@ -75,12 +75,12 @@ watch(() => props.isOpen, async (open) => {
           case 'persisted': {
             const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
             if (blob) {
-              attachmentUrls.value[idToRaw({ id: att.id })] = URL.createObjectURL(blob);
+              attachmentUrls.value.set(att.id, URL.createObjectURL(blob));
             }
             break;
           }
           case 'memory':
-            attachmentUrls.value[idToRaw({ id: att.id })] = URL.createObjectURL(att.blob);
+            attachmentUrls.value.set(att.id, URL.createObjectURL(att.blob));
             break;
           case 'missing':
             break;
@@ -98,7 +98,7 @@ watch(() => props.isOpen, async (open) => {
 });
 
 onUnmounted(() => {
-  Object.values(attachmentUrls.value).forEach(URL.revokeObjectURL);
+  attachmentUrls.value.forEach(URL.revokeObjectURL);
 });
 
 function predictNextRole({ index }: { index: number }): 'user' | 'assistant' {
@@ -183,7 +183,7 @@ async function handleFileSelect({ event, index }: { event: Event; index: number 
       blob: file,
     };
     msg.attachments.push(attachment);
-    attachmentUrls.value[idToRaw({ id: attachment.id })] = URL.createObjectURL(file);
+    attachmentUrls.value.set(attachment.id, URL.createObjectURL(file));
   }
   target.value = '';
 }
@@ -218,18 +218,19 @@ async function handlePaste({ event, index }: { event: ClipboardEvent; index: num
         blob: file,
       };
       msg.attachments.push(attachment);
-      attachmentUrls.value[idToRaw({ id: attachment.id })] = URL.createObjectURL(file);
+      attachmentUrls.value.set(attachment.id, URL.createObjectURL(file));
     }
   }
 }
 
-function removeAttachment({ msgIndex, attId }: { msgIndex: number; attId: string }) {
+function removeAttachment({ msgIndex, attId }: { msgIndex: number; attId: AttachmentId }) {
   const msg = editableMessages.value[msgIndex];
   if (msg && msg.attachments) {
-    msg.attachments = msg.attachments.filter(a => idToRaw({ id: a.id }) !== attId);
-    if (attachmentUrls.value[attId]) {
-      URL.revokeObjectURL(attachmentUrls.value[attId]!);
-      delete attachmentUrls.value[attId];
+    msg.attachments = msg.attachments.filter(attachment => attachment.id !== attId);
+    const url = attachmentUrls.value.get(attId);
+    if (url) {
+      URL.revokeObjectURL(url);
+      attachmentUrls.value.delete(attId);
     }
   }
 }
@@ -440,14 +441,14 @@ defineExpose({
                         <div v-for="att in msg.attachments" :key="idToRaw({ id: att.id })" class="relative group/att pb-5">
                           <img
                             v-if="att.mimeType.startsWith('image/')"
-                            :src="attachmentUrls[idToRaw({ id: att.id })]"
+                            :src="attachmentUrls.get(att.id)"
                             class="w-20 h-20 object-cover rounded-xl border-2 border-white dark:border-gray-800 shadow-sm"
                           />
                           <div v-else class="w-20 h-20 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                             <ImageIcon class="w-8 h-8 text-gray-400" />
                           </div>
                           <button
-                            @click="removeAttachment({ msgIndex: index, attId: idToRaw({ id: att.id }) })"
+                            @click="removeAttachment({ msgIndex: index, attId: att.id })"
                             class="absolute -top-2 -right-2 p-1.5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-full text-gray-400 hover:text-red-500 shadow-lg opacity-0 group-hover/att:opacity-100 transition-opacity"
                           >
                             <XIcon class="w-3.5 h-3.5" />

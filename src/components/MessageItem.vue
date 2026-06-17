@@ -21,7 +21,7 @@ import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '@/services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { idToRaw, toBinaryObjectId } from '@/models/ids';
-import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
+import type { AttachmentId, BinaryObjectId, ChatId, MessageId } from '@/models/ids';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageGenerationSettings.vue') });
 const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ReasoningSettings.vue') });
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./MessageDiffModal.vue') });
@@ -99,7 +99,7 @@ const editImageParams = ref({
   persistAs: 'original' as 'original' | 'webp' | 'jpeg' | 'png'
 });
 
-const attachmentUrls = ref<Record<string, string>>({});
+const attachmentUrls = ref(new Map<AttachmentId, string>());
 const messageChatId = computed(() => props.chatId);
 
 const { openPreview } = useImagePreview();
@@ -171,13 +171,13 @@ async function loadAttachments() {
   for (const att of props.message.attachments) {
     switch (att.status) {
     case 'memory':
-      attachmentUrls.value[idToRaw({ id: att.id })] = URL.createObjectURL(att.blob);
+      attachmentUrls.value.set(att.id, URL.createObjectURL(att.blob));
       break;
     case 'persisted':
       try {
         const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
         if (blob) {
-          attachmentUrls.value[idToRaw({ id: att.id })] = URL.createObjectURL(blob);
+          attachmentUrls.value.set(att.id, URL.createObjectURL(blob));
         }
       } catch (e) {
         console.error('Failed to load persisted attachment:', e);
@@ -318,7 +318,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
+  attachmentUrls.value.forEach(url => URL.revokeObjectURL(url));
 
   if (transformersUnsubscribe) transformersUnsubscribe();
 });
@@ -547,9 +547,9 @@ defineExpose({
       <!-- Attachments (Only shown in the first part of a node if any) -->
       <div v-if="isFirstInNode && message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
         <div v-for="(att, idx) in message.attachments" :key="idToRaw({ id: att.id })" class="relative group/att">
-          <template v-if="att.status !== 'missing' && attachmentUrls[idToRaw({ id: att.id })]">
+          <template v-if="att.status !== 'missing' && attachmentUrls.get(att.id)">
             <img
-              :src="attachmentUrls[idToRaw({ id: att.id })]"
+              :src="attachmentUrls.get(att.id)"
               @click="handlePreviewImage({ id: att.binaryObjectId })"
               class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
@@ -557,7 +557,7 @@ defineExpose({
               <ImageIndexBadge :index="idx + 1" :total="message.attachments.length" />
             </div>
             <a
-              :href="attachmentUrls[idToRaw({ id: att.id })]"
+              :href="attachmentUrls.get(att.id)"
               :download="att.originalName"
               class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-all z-10"
               title="Download image"

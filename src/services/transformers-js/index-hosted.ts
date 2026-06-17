@@ -24,7 +24,7 @@ let activeModelId: string | undefined = undefined;
 let loadingModelId: string | undefined = undefined;
 let loadingStatus: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
 let loadingProgress: number = 0;
-let progressItems: Record<string, ProgressInfo> = {};
+let progressItems = new Map<string, ProgressInfo>();
 let heavyFileDetectedAt: number = 0;
 let totalLoadedAmount: number = 0;
 let totalSizeAmount: number = 0;
@@ -127,7 +127,7 @@ type ProgressListener = ({
   error: string | undefined;
   isCached: boolean;
   isLoadingFromCache: boolean;
-  progressItems: Record<string, ProgressInfo>;
+  progressItems: ReadonlyMap<string, ProgressInfo>;
   loadingModelId: string | undefined;
 }) => void;
 const listeners: Set<ProgressListener> = new Set();
@@ -153,7 +153,7 @@ function updateProgress({ info }: { info: ProgressInfo }) {
   }
 
   // 2. Track per-file progress (Immutable update for Vue reactivity)
-  const currentItem = progressItems[file] || { progress: 0, loaded: 0 };
+  const currentItem = progressItems.get(file) || { progress: 0, loaded: 0 };
   const newItem = { ...currentItem, ...info };
 
   if (info.status === 'done') {
@@ -163,17 +163,16 @@ function updateProgress({ info }: { info: ProgressInfo }) {
     }
   }
 
-  progressItems = {
-    ...progressItems,
-    [file]: newItem
-  };
+  const nextProgressItems = new Map(progressItems);
+  nextProgressItems.set(file, newItem);
+  progressItems = nextProgressItems;
 
   // 3. Calculate metrics and detect phases
   let currentTotalLoaded = 0;
   let currentTotalSize = 0;
   let hasHeavyFile = false;
 
-  for (const item of Object.values(progressItems)) {
+  for (const item of progressItems.values()) {
     const name = item.file || item.name || '';
     // Identify heavy assets (weights, split data)
     const isHeavy = /\.(onnx|safetensors|bin|pth|model|data)$/i.test(name) ||
@@ -382,7 +381,7 @@ export const transformersJsService = {
     activeModelId = undefined;
     loadingStatus = 'idle';
     loadingProgress = 0;
-    progressItems = {};
+    progressItems = new Map<string, ProgressInfo>();
     heavyFileDetectedAt = 0;
     totalLoadedAmount = 0;
     totalSizeAmount = 0;
@@ -665,7 +664,7 @@ export const transformersJsService = {
       loadingModelId = modelId;
       loadingStatus = 'loading';
       loadingProgress = 0;
-      progressItems = {};
+      progressItems = new Map<string, ProgressInfo>();
       heavyFileDetectedAt = 0;
       loadingError = undefined;
       isCached = false;
@@ -780,7 +779,7 @@ export const transformersJsService = {
       loadingModelId = modelId;
       loadingStatus = 'loading';
       loadingProgress = 0;
-      progressItems = {};
+      progressItems = new Map<string, ProgressInfo>();
       heavyFileDetectedAt = 0;
       loadingError = undefined;
       isCached = false;
@@ -839,7 +838,7 @@ export const transformersJsService = {
       activeModelId = undefined;
       loadingStatus = 'idle';
       loadingProgress = 0;
-      progressItems = {};
+      progressItems = new Map<string, ProgressInfo>();
       heavyFileDetectedAt = 0;
       totalLoadedAmount = 0;
       totalSizeAmount = 0;

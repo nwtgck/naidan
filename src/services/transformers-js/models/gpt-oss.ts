@@ -219,16 +219,16 @@ function buildGptOssToolResultTokens({
   messages: ChatMessage[];
   tokenizer: PreTrainedTokenizer;
 }): Record<string, unknown> {
-  const idToName = new Map<string, string>();
+  const idToName = new Map<ToolCallId, string>();
   for (const message of messages) {
     if (!message.tool_calls) continue;
     for (const toolCall of message.tool_calls) {
-      idToName.set(idToRaw({ id: toolCall.id }), toolCall.function.name);
+      idToName.set(toolCall.id, toolCall.function.name);
     }
   }
 
   const harmonyText = messages.filter(message => message.tool_call_id).map(message => {
-    const functionName = idToName.get(idToRaw({ id: message.tool_call_id! })) ?? 'tool';
+    const functionName = idToName.get(message.tool_call_id!) ?? 'tool';
     const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
     return `<|start|>${functionName} to=assistant<|channel|>commentary<|message|>${content}<|end|>`;
   }).join('');

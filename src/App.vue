@@ -13,7 +13,7 @@ import { useFileExplorerModal } from './composables/useFileExplorerModal';
 import { useTheme } from './composables/useTheme';
 import { usePrint } from './composables/usePrint';
 import Sidebar from './components/Sidebar.vue';
-import { idToRaw } from '@/models/ids';
+import { idToRaw, toChatId } from '@/models/ids';
 import type { ChatGroupId } from '@/models/ids';
 
 // Async components for print mode to keep initial bundle small.
@@ -65,7 +65,7 @@ watch(() => route.path, (path) => {
 // Watch for chat navigation and update recent chats
 watch(() => route.path, () => {
   if (route.name === '/chat/[id]' && route.params.id && typeof route.params.id === 'string') {
-    addRecentChat({ id: route.params.id });
+    addRecentChat({ id: toChatId({ raw: route.params.id }) });
   }
 }, { immediate: true });
 

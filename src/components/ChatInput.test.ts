@@ -261,7 +261,7 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-const mockDraft = ref<any>({ input: '', attachments: [], attachmentUrls: {} });
+const mockDraft = ref<any>({ input: '', attachments: [], attachmentUrls: new Map() });
 vi.mock('../composables/useChatDraft', () => ({
   useChatDraft: () => ({
     getDraft: vi.fn(() => mockDraft.value),

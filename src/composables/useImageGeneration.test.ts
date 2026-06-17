@@ -80,6 +80,28 @@ describe('useImageGeneration', () => {
     expect(isImageMode({ chatId })).toBe(false);
   });
 
+  it('treats prototype property names as ordinary chat IDs', () => {
+    const { isImageMode, toggleImageMode, getSeed, updateSeed } = useImageGeneration();
+    const prototypeId = toChatId({ raw: '__proto__' });
+    const constructorId = toChatId({ raw: 'constructor' });
+    const toStringId = toChatId({ raw: 'toString' });
+
+    expect(isImageMode({ chatId: prototypeId })).toBe(false);
+    expect(isImageMode({ chatId: constructorId })).toBe(false);
+    expect(isImageMode({ chatId: toStringId })).toBe(false);
+    expect(getSeed({ chatId: prototypeId })).toBe('browser_random');
+
+    toggleImageMode({ chatId: prototypeId });
+    toggleImageMode({ chatId: toStringId });
+    updateSeed({ chatId: prototypeId, seed: 42 });
+
+    expect(isImageMode({ chatId: prototypeId })).toBe(true);
+    expect(isImageMode({ chatId: constructorId })).toBe(false);
+    expect(isImageMode({ chatId: toStringId })).toBe(true);
+    expect(getSeed({ chatId: prototypeId })).toBe(42);
+    expect(getSeed({ chatId: constructorId })).toBe('browser_random');
+  });
+
   it('manages resolution', () => {
     const { getResolution, updateResolution } = useImageGeneration();
     expect(getResolution({ chatId })).toEqual({ width: 512, height: 512 });
@@ -410,7 +432,7 @@ describe('useImageGeneration', () => {
       });
 
       // After generation, it should be cleared
-      expect(imageProgressMap.value['progress-test-chat']).toBeUndefined();
+      expect(imageProgressMap.value.get(toChatId({ raw: 'progress-test-chat' }))).toBeUndefined();
     });
 
     it('clears imageProgressMap at the start of each image in a batch', async () => {
@@ -418,13 +440,13 @@ describe('useImageGeneration', () => {
       const { OllamaProvider } = await import('@/services/lm/ollama');
 
       // Set stale progress
-      imageProgressMap.value['progress-test-chat'] = { currentStep: 50, totalSteps: 50 };
+      imageProgressMap.value.set(toChatId({ raw: 'progress-test-chat' }), { currentStep: 50, totalSteps: 50 });
 
       // Spy on generateImage and check progress map state when it's called
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockImplementation(async (params: any) => {
           // When this is called, the progress map should have been cleared by the loop
-          expect(imageProgressMap.value['progress-test-chat']).toBeUndefined();
+          expect(imageProgressMap.value.get(toChatId({ raw: 'progress-test-chat' }))).toBeUndefined();
 
           // Simulate some progress
           if (params.onProgress) params.onProgress({ currentStep: 1, totalSteps: 10 });

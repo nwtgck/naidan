@@ -15,7 +15,7 @@ type ProgressListener = ({
   error?: string;
   isCached?: boolean;
   isLoadingFromCache?: boolean;
-  progressItems?: Record<string, ProgressInfo>;
+  progressItems?: ReadonlyMap<string, ProgressInfo>;
   loadingModelId?: string;
 }) => void;
 
@@ -23,7 +23,7 @@ type ModelListListener = () => void;
 
 const unsupportedError = () => new Error('Transformers.js is not available in standalone mode');
 
-const progressItems: Record<string, ProgressInfo> = {};
+const progressItems = new Map<string, ProgressInfo>();
 
 export const transformersJsService = {
   subscribe({ listener }: { listener: ProgressListener }) {

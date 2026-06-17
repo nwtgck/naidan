@@ -215,7 +215,7 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
 }
 
 const attachments = ref<Attachment[]>([]);
-const attachmentUrls = ref<Record<string, string>>({});
+const attachmentUrls = ref(new Map<AttachmentId, string>());
 
 // TODO: Remove this raw mirror once we find a way to expose branded IDs from
 // `defineExpose()` without triggering vue-tsc TS4023 on the generated public
@@ -276,10 +276,10 @@ function saveEditedImage({ blob }: { blob: Blob }) {
     const original = attachments.value[index]!;
 
     // Explicitly revoke old URL to ensure UI refresh
-    const oldUrl = attachmentUrls.value[idToRaw({ id: original.id })];
+    const oldUrl = attachmentUrls.value.get(original.id);
     if (oldUrl) {
       URL.revokeObjectURL(oldUrl);
-      delete attachmentUrls.value[idToRaw({ id: original.id })];
+      attachmentUrls.value.delete(original.id);
     }
 
     // Update the attachment with the new blob and a new binary object identity
@@ -296,25 +296,22 @@ function saveEditedImage({ blob }: { blob: Blob }) {
 
 watch(attachments, (newAtts) => {
   // Revoke URLs for removed attachments
-  Object.keys(attachmentUrls.value).forEach(id => {
-    if (!newAtts.find(a => idToRaw({ id: a.id }) === id)) {
-      const url = attachmentUrls.value[id];
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
-      delete attachmentUrls.value[id];
+  for (const [id, url] of attachmentUrls.value) {
+    if (!newAtts.some(attachment => attachment.id === id)) {
+      URL.revokeObjectURL(url);
+      attachmentUrls.value.delete(id);
     }
-  });
+  }
 
   // Create or refresh URLs for new/updated attachments
   newAtts.forEach(att => {
     const status = att.status;
     switch (status) {
     case 'memory': {
-      const existingUrl = attachmentUrls.value[idToRaw({ id: att.id })];
+      const existingUrl = attachmentUrls.value.get(att.id);
       // If we don't have a URL (newly added or just revoked in saveEditedImage), create one
       if (!existingUrl) {
-        attachmentUrls.value[idToRaw({ id: att.id })] = URL.createObjectURL(att.blob);
+        attachmentUrls.value.set(att.id, URL.createObjectURL(att.blob));
       }
       break;
     }
@@ -1158,7 +1155,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
         <div v-for="att in attachments" :key="idToRaw({ id: att.id })" class="relative group/att">
           <div class="bg-transparency-grid rounded-lg overflow-hidden" style="--grid-size: 10px;">
             <img
-              :src="attachmentUrls[idToRaw({ id: att.id })]"
+              :src="attachmentUrls.get(att.id)"
               class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
             />
           </div>
@@ -1302,7 +1299,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     <Teleport to="body">
       <ImageEditor
         v-if="editingAttachment"
-        :image-url="attachmentUrls[idToRaw({ id: editingAttachment.id })]!"
+        :image-url="attachmentUrls.get(editingAttachment.id)!"
         :file-name="editingAttachment.originalName"
         :original-mime-type="editingAttachment.mimeType"
         @cancel="closeImageEditor"

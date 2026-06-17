@@ -26,7 +26,7 @@ vi.mock('../services/transformers-js', () => {
     activeModelId: undefined,
     device: 'wasm',
     isCached: false,
-    progressItems: {},
+    progressItems: new Map(),
     totalLoadedAmount: 0,
     totalSizeAmount: 0
   };

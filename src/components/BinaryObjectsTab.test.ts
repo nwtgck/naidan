@@ -219,7 +219,7 @@ describe('BinaryObjectsTab.vue', () => {
 
     // Force high count
     vm.thumbnailCount = 301;
-    vm.thumbnails['1'] = 'blob:mock-url-1';
+    vm.thumbnails.set(toBinaryObjectId({ raw: '1' }), 'blob:mock-url-1');
 
     // Trigger off-screen for id "1"
     const target = document.createElement('div');
@@ -231,7 +231,7 @@ describe('BinaryObjectsTab.vue', () => {
     vi.advanceTimersByTime(3500);
 
     // Should be deleted
-    expect(vm.thumbnails['1']).toBeUndefined();
+    expect(vm.thumbnails.get(toBinaryObjectId({ raw: '1' }))).toBeUndefined();
     expect(vm.thumbnailCount).toBe(300);
   });
 

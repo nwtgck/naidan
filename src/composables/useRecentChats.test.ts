@@ -2,11 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';
 import { useRecentChats } from './useRecentChats';
 import { useOverlay } from './useOverlay';
+import { toChatId } from '@/models/ids';
 
 const mockChats = ref([
-  { id: 'chat1', title: 'Chat 1', updatedAt: 1000 },
-  { id: 'chat2', title: 'Chat 2', updatedAt: 2000 },
-  { id: 'chat3', title: null, updatedAt: 3000 },
+  { id: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1000 },
+  { id: toChatId({ raw: 'chat2' }), title: 'Chat 2', updatedAt: 2000 },
+  { id: toChatId({ raw: 'chat3' }), title: null, updatedAt: 3000 },
 ]);
 
 vi.mock('@/composables/chat/ui/useChatListData', () => ({
@@ -34,8 +35,8 @@ describe('useRecentChats Composable', () => {
   });
 
   it('should track recent chats and exclude the latest one from switcher list', () => {
-    addRecentChat({ id: 'chat1' });
-    addRecentChat({ id: 'chat2' });
+    addRecentChat({ id: toChatId({ raw: 'chat1' }) });
+    addRecentChat({ id: toChatId({ raw: 'chat2' }) });
 
     // allRecentChats should have both in reverse order
     expect(TEST_ONLY.allRecentChats.value.map(c => c.id)).toEqual(['chat2', 'chat1']);
@@ -45,28 +46,28 @@ describe('useRecentChats Composable', () => {
   });
 
   it('should only return existing chats', () => {
-    addRecentChat({ id: 'chat1' });
-    addRecentChat({ id: 'non-existent' });
-    addRecentChat({ id: 'chat2' });
+    addRecentChat({ id: toChatId({ raw: 'chat1' }) });
+    addRecentChat({ id: toChatId({ raw: 'non-existent' }) });
+    addRecentChat({ id: toChatId({ raw: 'chat2' }) });
 
     // Latest is chat2 (excluded), then non-existent (filtered out), then chat1
     expect(recentChats.value.map(c => c.id)).toEqual(['chat1']);
   });
 
   it('should move an existing recent chat to the top', () => {
-    addRecentChat({ id: 'chat1' });
-    addRecentChat({ id: 'chat2' });
-    addRecentChat({ id: 'chat3' });
+    addRecentChat({ id: toChatId({ raw: 'chat1' }) });
+    addRecentChat({ id: toChatId({ raw: 'chat2' }) });
+    addRecentChat({ id: toChatId({ raw: 'chat3' }) });
 
     expect(TEST_ONLY.allRecentChats.value.map(c => c.id)).toEqual(['chat3', 'chat2', 'chat1']);
 
-    addRecentChat({ id: 'chat1' }); // Re-visit chat1
+    addRecentChat({ id: toChatId({ raw: 'chat1' }) }); // Re-visit chat1
     expect(TEST_ONLY.allRecentChats.value.map(c => c.id)).toEqual(['chat1', 'chat3', 'chat2']);
   });
 
   it('should limit the number of recent chats', () => {
     for (let i = 0; i < 40; i++) {
-      addRecentChat({ id: `chat-${i}` });
+      addRecentChat({ id: toChatId({ raw: `chat-${i}` }) });
     }
     expect(TEST_ONLY.recentChatEntries.value.length).toBe(32);
   });

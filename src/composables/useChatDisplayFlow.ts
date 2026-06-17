@@ -1,7 +1,7 @@
 import { computed, type ComputedRef, toRaw } from 'vue';
 import { idToRaw } from '@/models/ids';
 import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/models/types';
-import type { ChatId } from '@/models/ids';
+import type { ChatId, ToolCallId } from '@/models/ids';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 
@@ -292,7 +292,7 @@ export function useChatDisplayFlow({
 
   const calculateStats = ({ items }: { items: ChatFlowItem[] }): SequenceStats => {
     let thinkingSteps = 0;
-    const seenToolIds = new Set<string>();
+    const seenToolIds = new Set<ToolCallId>();
     const toolNames: string[] = [];
     items.forEach(item => {
       const type = item.type;
@@ -307,8 +307,8 @@ export function useChatDisplayFlow({
           const node = item.node;
           if (node.role === 'assistant' && node.toolCalls) {
             node.toolCalls.forEach(tc => {
-              if (!seenToolIds.has(idToRaw({ id: tc.id }))) {
-                seenToolIds.add(idToRaw({ id: tc.id }));
+              if (!seenToolIds.has(tc.id)) {
+                seenToolIds.add(tc.id);
                 toolNames.push(tc.function.name);
               }
             });
@@ -327,8 +327,8 @@ export function useChatDisplayFlow({
       }
       case 'tool_group':
         item.toolCalls.forEach(tc => {
-          if (!seenToolIds.has(idToRaw({ id: tc.id }))) {
-            seenToolIds.add(idToRaw({ id: tc.id }));
+          if (!seenToolIds.has(tc.id)) {
+            seenToolIds.add(tc.id);
             toolNames.push(tc.call.function.name);
           }
         });

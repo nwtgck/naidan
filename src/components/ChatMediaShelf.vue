@@ -149,19 +149,19 @@ const allMediaItems = computed(() => {
   return mediaGroups.value.flatMap(g => g.items);
 });
 
-const thumbnails = ref<Record<string, string>>({});
-const isSupportedMap = ref<Record<string, boolean>>({});
+const thumbnails = ref(new Map<BinaryObjectId, string>());
+const isSupportedMap = ref(new Map<BinaryObjectId, boolean>());
 const thumbnailObserver = ref<IntersectionObserver | null>(null);
 
 const loadMediaDetails = async ({ item }: { item: MediaItem }) => {
-  if (thumbnails.value[idToRaw({ id: item.binaryObjectId })]) return;
+  if (thumbnails.value.has(item.binaryObjectId)) return;
 
   try {
     const blob = await storageService.getFile({ binaryObjectId: item.binaryObjectId });
     if (blob) {
-      thumbnails.value[idToRaw({ id: item.binaryObjectId })] = URL.createObjectURL(blob);
+      thumbnails.value.set(item.binaryObjectId, URL.createObjectURL(blob));
       const support = await ImageDownloadHydrator.detectSupport({ blob });
-      isSupportedMap.value[idToRaw({ id: item.binaryObjectId })] = support;
+      isSupportedMap.value.set(item.binaryObjectId, support);
     }
   } catch (e) {
     console.error('Failed to load shelf media details:', e);
@@ -197,7 +197,7 @@ watch(mediaGroups, async () => {
 
 onUnmounted(() => {
   thumbnailObserver.value?.disconnect();
-  Object.values(thumbnails.value).forEach(url => URL.revokeObjectURL(url));
+  thumbnails.value.forEach(url => URL.revokeObjectURL(url));
 });
 
 const handlePreview = ({ item }: { item: MediaItem }) => {
@@ -383,8 +383,8 @@ defineExpose({
             >
               <div class="absolute inset-0 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shadow-sm hover:shadow-md hover:border-blue-500/50 transition-all overflow-hidden">
                 <img
-                  v-if="thumbnails[idToRaw({ id: item.binaryObjectId })]"
-                  :src="thumbnails[idToRaw({ id: item.binaryObjectId })]"
+                  v-if="thumbnails.get(item.binaryObjectId)"
+                  :src="thumbnails.get(item.binaryObjectId)"
                   class="w-full h-full object-cover transition-transform group-hover/item:scale-110"
                 />
                 <div v-else class="w-full h-full flex items-center justify-center">
@@ -399,7 +399,7 @@ defineExpose({
               <div class="absolute top-2 right-2 z-50 flex flex-col gap-1.5 opacity-0 group-hover/item:opacity-100 transition-all origin-top-right overflow-visible">
                 <div @click.stop>
                   <ImageDownloadButton
-                    :is-supported="isSupportedMap[idToRaw({ id: item.binaryObjectId })]"
+                    :is-supported="isSupportedMap.get(item.binaryObjectId)"
                     :on-download="(options) => handleDownload({ item, withMetadata: options.withMetadata })"
                     :align="item.index === 1 ? 'left' : 'right'"
                   />

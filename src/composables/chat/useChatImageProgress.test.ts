@@ -6,7 +6,7 @@ const {
   mockImageProgressMap,
 } = vi.hoisted(() => ({
   mockImageProgressMap: {
-    value: {} as Record<string, { currentStep: number; totalSteps: number } | undefined>,
+    value: new Map(),
   },
 }));
 
@@ -20,13 +20,13 @@ import { useChatImageProgress } from './useChatImageProgress';
 
 describe('useChatImageProgress', () => {
   beforeEach(() => {
-    mockImageProgressMap.value = {};
+    mockImageProgressMap.value = new Map();
   });
 
   it('reads image progress for the scoped chatId', () => {
-    mockImageProgressMap.value = {
-      'chat-1': { currentStep: 2, totalSteps: 8 },
-    };
+    mockImageProgressMap.value = new Map([
+      [toChatId({ raw: 'chat-1' }), { currentStep: 2, totalSteps: 8 }],
+    ]);
 
     const chatImageProgress = useChatImageProgress({
       chatId: computed(() => toChatId({ raw: 'chat-1' })),

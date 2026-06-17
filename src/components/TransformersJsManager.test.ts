@@ -87,7 +87,7 @@ describe('TransformersJsManager.vue', () => {
     device: 'wasm',
     isCached: false,
     isLoadingFromCache: false,
-    progressItems: {},
+    progressItems: new Map(),
   };
 
   beforeEach(() => {

@@ -112,7 +112,7 @@ vi.mock('../composables/useSettings', () => ({
 
 vi.mock('../composables/useChatDraft', () => ({
   useChatDraft: () => ({
-    getDraft: vi.fn(() => ({ input: '', attachments: [], attachmentUrls: {} })),
+    getDraft: vi.fn(() => ({ input: '', attachments: [], attachmentUrls: new Map() })),
     saveDraft: vi.fn(),
     clearDraft: vi.fn(),
     revokeAll: vi.fn(),

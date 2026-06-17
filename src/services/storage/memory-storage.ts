@@ -1,5 +1,5 @@
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/models/types';
-import type { BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/models/ids';
+import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -26,7 +26,7 @@ import {
   buildSidebarItemsFromHierarchy,
 } from '@/models/mappers';
 import { IStorageProvider } from './interface';
-import { idToRaw, toBinaryObjectId, toChatGroupId, toChatId } from '@/models/ids';
+import { idToRaw, toBinaryObjectId, toChatGroupId } from '@/models/ids';
 
 /**
  * Memory Storage Implementation
@@ -38,11 +38,11 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   private hierarchy: HierarchyDto = { items: [] };
   private settings: Settings | null = null;
-  private chatMetas = new Map<string, ChatMetaDto>();
-  private chatGroups = new Map<string, ChatGroupDto>();
-  private chatContents = new Map<string, ChatContentDto>();
-  private binaryObjects = new Map<string, { blob: Blob; meta: BinaryObject }>();
-  private blobCache = new Map<string, Blob>();
+  private chatMetas = new Map<ChatId, ChatMetaDto>();
+  private chatGroups = new Map<ChatGroupId, ChatGroupDto>();
+  private chatContents = new Map<ChatId, ChatContentDto>();
+  private binaryObjects = new Map<BinaryObjectId, { blob: Blob; meta: BinaryObject }>();
+  private blobCache = new Map<AttachmentId, Blob>();
 
   async init(): Promise<void> {
     // No-op for memory storage
@@ -73,7 +73,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
     ChatMetaSchemaDto.parse(dto);
-    this.chatMetas.set(idToRaw({ id: meta.id }), dto);
+    this.chatMetas.set(meta.id, dto);
   }
 
   async saveChatContent({ id, content }: { id: ChatId; content: ChatContent }): Promise<void> {
@@ -82,7 +82,7 @@ export class MemoryStorageProvider extends IStorageProvider {
         if (node.attachments) {
           for (const att of node.attachments) {
             if (att.status === 'memory' && att.blob) {
-              this.blobCache.set(idToRaw({ id: att.id }), att.blob);
+              this.blobCache.set(att.id, att.blob);
             }
           }
         }
@@ -95,12 +95,12 @@ export class MemoryStorageProvider extends IStorageProvider {
 
     const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
-    this.chatContents.set(idToRaw({ id }), dto);
+    this.chatContents.set(id, dto);
   }
 
   async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
-    const rawMeta = this.chatMetas.get(idToRaw({ id }));
-    const rawContent = this.chatContents.get(idToRaw({ id }));
+    const rawMeta = this.chatMetas.get(id);
+    const rawContent = this.chatContents.get(id);
     if (!rawMeta || !rawContent) return null;
 
     try {
@@ -118,7 +118,7 @@ export class MemoryStorageProvider extends IStorageProvider {
             for (const att of node.attachments) {
               switch (att.status) {
               case 'memory': {
-                const cached = this.blobCache.get(idToRaw({ id: att.id }));
+                const cached = this.blobCache.get(att.id);
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
                 break;
               }
@@ -144,7 +144,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
-    const rawMeta = this.chatMetas.get(idToRaw({ id }));
+    const rawMeta = this.chatMetas.get(id);
     if (!rawMeta) return null;
     try {
       const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(rawMeta) });
@@ -158,7 +158,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
-    const rawContent = this.chatContents.get(idToRaw({ id }));
+    const rawContent = this.chatContents.get(id);
     if (!rawContent) return null;
     try {
       const dto = ChatContentSchemaDto.parse(rawContent);
@@ -170,7 +170,7 @@ export class MemoryStorageProvider extends IStorageProvider {
             for (const att of node.attachments) {
               switch (att.status) {
               case 'memory': {
-                const cached = this.blobCache.get(idToRaw({ id: att.id }));
+                const cached = this.blobCache.get(att.id);
                 if (cached) (att as unknown as { blob: Blob }).blob = cached;
                 break;
               }
@@ -196,18 +196,18 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async deleteChat({ id }: { id: ChatId }): Promise<void> {
-    this.chatMetas.delete(idToRaw({ id }));
-    this.chatContents.delete(idToRaw({ id }));
+    this.chatMetas.delete(id);
+    this.chatContents.delete(id);
   }
 
   async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
     ChatGroupSchemaDto.parse(dto);
-    this.chatGroups.set(idToRaw({ id: chatGroup.id }), dto);
+    this.chatGroups.set(chatGroup.id, dto);
   }
 
   async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
-    const raw = this.chatGroups.get(idToRaw({ id }));
+    const raw = this.chatGroups.get(id);
     if (!raw) return null;
     try {
       const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
@@ -218,7 +218,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
-    this.chatGroups.delete(idToRaw({ id }));
+    this.chatGroups.delete(id);
   }
 
   public override async getSidebarStructure(): Promise<SidebarItem[]> {
@@ -297,15 +297,15 @@ export class MemoryStorageProvider extends IStorageProvider {
       name,
     };
 
-    this.binaryObjects.set(idToRaw({ id: binaryObjectId }), { blob, meta });
+    this.binaryObjects.set(binaryObjectId, { blob, meta });
   }
 
   async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
-    return this.binaryObjects.get(idToRaw({ id: binaryObjectId }))?.blob || null;
+    return this.binaryObjects.get(binaryObjectId)?.blob || null;
   }
 
   async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null> {
-    return this.binaryObjects.get(idToRaw({ id: binaryObjectId }))?.meta || null;
+    return this.binaryObjects.get(binaryObjectId)?.meta || null;
   }
 
   async hasAttachments(): Promise<boolean> {
@@ -319,7 +319,7 @@ export class MemoryStorageProvider extends IStorageProvider {
   }
 
   async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
-    this.binaryObjects.delete(idToRaw({ id: binaryObjectId }));
+    this.binaryObjects.delete(binaryObjectId);
   }
 
   async clearAll(): Promise<void> {
@@ -343,7 +343,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     const contentStream = async function* (this: MemoryStorageProvider) {
       // 1. Stream all chats
       for (const id of this.chatMetas.keys()) {
-        const chat = await this.loadChat({ id: toChatId({ raw: id }) });
+        const chat = await this.loadChat({ id });
         if (chat) yield { type: 'chat' as const, data: chatToDto({ domain: chat }) };
       }
 
@@ -351,7 +351,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       for (const [id, { blob, meta }] of this.binaryObjects.entries()) {
         yield {
           type: 'binary_object' as const,
-          id,
+          id: idToRaw({ id }),
           name: meta.name || 'file',
           mimeType: meta.mimeType,
           size: meta.size,
