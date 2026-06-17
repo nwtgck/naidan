@@ -4,6 +4,15 @@ import { ref } from 'vue';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 
+const {
+  mockFakeLmDebugModeAvailability,
+  mockPreloadFakeLmLanguagePacks,
+  mockSetFakeLmDebugModeStatus,
+} = vi.hoisted(() => ({
+  mockFakeLmDebugModeAvailability: { value: 'available' },
+  mockPreloadFakeLmLanguagePacks: vi.fn(),
+  mockSetFakeLmDebugModeStatus: vi.fn(),
+}));
 const mockShowConfirm = vi.fn();
 const mockSaveSettings = vi.fn();
 const mockSettings = ref({
@@ -14,7 +23,11 @@ const mockSettings = ref({
   defaultModelId: 'gpt-4',
   providerProfiles: [],
   mounts: [],
-  experimental: undefined as { toolConfigPersistence?: 'disabled' | 'enabled'; sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat' } | undefined,
+  experimental: undefined as {
+    fakeLm?: 'disabled' | 'enabled';
+    toolConfigPersistence?: 'disabled' | 'enabled';
+    sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat';
+  } | undefined,
 });
 
 vi.mock('@/composables/useConfirm', () => ({
@@ -27,6 +40,15 @@ vi.mock('@/composables/useSettings', () => ({
   useSettings: () => ({
     settings: mockSettings,
     save: mockSaveSettings,
+    setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
+  }),
+}));
+
+vi.mock('@/services/fake-lm', () => ({
+  FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
+  preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
+  useFakeLmDebugMode: () => ({
+    fakeLmDebugModeAvailability: mockFakeLmDebugModeAvailability,
   }),
 }));
 
@@ -44,6 +66,9 @@ describe('FeatureFlagsSettings.vue', () => {
     localStorage.clear();
     mockShowConfirm.mockReset();
     mockSaveSettings.mockReset();
+    mockSetFakeLmDebugModeStatus.mockReset();
+    mockPreloadFakeLmLanguagePacks.mockReset();
+    mockFakeLmDebugModeAvailability.value = 'available';
     mockSettings.value.experimental = undefined;
     const { TEST_ONLY } = useFeatureFlags();
     TEST_ONLY.reset();
@@ -53,10 +78,11 @@ describe('FeatureFlagsSettings.vue', () => {
     const wrapper = mount(FeatureFlagsSettings);
     const list = wrapper.find('[data-testid="experimental-feature-list"]');
 
-    expect(list.findAll('[data-testid$="-row"]')).toHaveLength(4);
+    expect(list.findAll('[data-testid$="-row"]')).toHaveLength(5);
     expect(list.classes()).toContain('divide-y');
     expect(list.classes().some(className => className.includes('grid-cols'))).toBe(false);
     expect(wrapper.find('[data-testid="feature-volume-row"] > div').classes()).toContain('flex-wrap');
+    expect(wrapper.find('[data-testid="feature-fake-lm-row"]').exists()).toBe(true);
   });
 
   it('keeps long descriptions collapsed until details are requested', async () => {
@@ -164,5 +190,33 @@ describe('FeatureFlagsSettings.vue', () => {
         },
       },
     });
+  });
+
+  it('persists fake LM debug mode through settings', async () => {
+    const wrapper = mount(FeatureFlagsSettings);
+
+    await wrapper.find('[data-testid="feature-fake-lm-toggle"]').trigger('click');
+
+    expect(mockSetFakeLmDebugModeStatus).toHaveBeenCalledWith({ status: 'enabled' });
+  });
+
+  it('preloads fake LM language packs when the settings list is created', () => {
+    mount(FeatureFlagsSettings);
+
+    expect(mockPreloadFakeLmLanguagePacks).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables fake LM in standalone builds and explains why', async () => {
+    mockFakeLmDebugModeAvailability.value = 'unavailable_in_standalone';
+    const wrapper = mount(FeatureFlagsSettings);
+    const toggle = wrapper.find('[data-testid="feature-fake-lm-toggle"]');
+
+    expect(toggle.attributes('disabled')).toBeDefined();
+
+    await wrapper.find('[data-testid="feature-fake-lm-details-toggle"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="feature-fake-lm-details"]').text()).toContain(
+      'Hosted build only. Standalone builds do not bundle fake LM.',
+    );
   });
 });

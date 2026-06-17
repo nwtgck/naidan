@@ -4,14 +4,48 @@ import { AlertTriangleIcon, FlaskConicalIcon, FolderIcon, ListRestartIcon, Termi
 import { useConfirm } from '@/composables/useConfirm';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
+import {
+  FAKE_LM_ENDPOINT_URL,
+  preloadFakeLmLanguagePacks,
+  useFakeLmDebugMode,
+  type FakeLmDebugModeStatus,
+} from '@/services/fake-lm';
 import ExperimentalFeatureRow from './ExperimentalFeatureRow.vue';
 
 const { isFeatureEnabled, setFeatureEnabled } = useFeatureFlags();
 const { showConfirm } = useConfirm();
-const { settings, save } = useSettings();
+const { settings, save, setFakeLmDebugModeStatus } = useSettings();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 
 const sidebarSendMessageReorder = computed(() => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled');
 const toolConfigPersistence = computed(() => settings.value.experimental?.toolConfigPersistence ?? 'disabled');
+const fakeLmDebugModeStatus = computed<FakeLmDebugModeStatus>(() => settings.value.experimental?.fakeLm ?? 'disabled');
+const fakeLmToggleAvailability = computed(() => {
+  switch (fakeLmDebugModeAvailability.value) {
+  case 'available':
+    return 'available';
+  case 'unavailable_in_standalone':
+    return 'unavailable';
+  default: {
+    const _ex: never = fakeLmDebugModeAvailability.value;
+    throw new Error(`Unhandled fake LM debug mode availability: ${_ex}`);
+  }
+  }
+});
+const fakeLmDebugModeDetails = computed(() => {
+  switch (fakeLmDebugModeAvailability.value) {
+  case 'available':
+    return `Use ${FAKE_LM_ENDPOINT_URL} as an OpenAI-compatible or Ollama endpoint.`;
+  case 'unavailable_in_standalone':
+    return 'Hosted build only. Standalone builds do not bundle fake LM.';
+  default: {
+    const _ex: never = fakeLmDebugModeAvailability.value;
+    throw new Error(`Unhandled fake LM debug mode availability: ${_ex}`);
+  }
+  }
+});
+
+preloadFakeLmLanguagePacks();
 
 async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool' }) {
   if (isFeatureEnabled({ feature })) {
@@ -81,11 +115,40 @@ async function handleSidebarSendMessageReorderToggle() {
   } });
 }
 
+async function handleFakeLmDebugModeToggle() {
+  switch (fakeLmToggleAvailability.value) {
+  case 'available':
+    break;
+  case 'unavailable':
+    return;
+  default: {
+    const _ex: never = fakeLmToggleAvailability.value;
+    throw new Error(`Unhandled fake LM toggle availability: ${_ex}`);
+  }
+  }
+
+  const next = (() => {
+    switch (fakeLmDebugModeStatus.value) {
+    case 'disabled':
+      return 'enabled';
+    case 'enabled':
+      return 'disabled';
+    default: {
+      const _ex: never = fakeLmDebugModeStatus.value;
+      throw new Error(`Unhandled fake LM debug mode status: ${_ex}`);
+    }
+    }
+  })();
+
+  await setFakeLmDebugModeStatus({ status: next });
+}
+
 defineExpose({
   TEST_ONLY: {
     handleFeatureToggle,
     handleToolConfigPersistenceToggle,
     handleSidebarSendMessageReorderToggle,
+    handleFakeLmDebugModeToggle,
   }
 });
 </script>
@@ -104,6 +167,7 @@ defineExpose({
           ? 'Enabled by default for this browser profile. Disable it to hide the Folders tab without changing stored folder data.'
           : 'Disabled for this browser profile. Enable it to restore the Folders tab and access stored folders again.'"
         :status="isFeatureEnabled({ feature: 'volume' }) ? 'enabled' : 'disabled'"
+        toggle-availability="available"
         :toggle-label="isFeatureEnabled({ feature: 'volume' }) ? 'Disable Folders' : 'Enable Folders'"
         toggle-test-id="feature-flag-volume-toggle"
         @toggle="handleFeatureToggle({ feature: 'volume' })"
@@ -121,6 +185,7 @@ defineExpose({
           ? 'Enabled by default for this browser profile. Disable it to hide Shell in browser from the chat tools menu.'
           : 'Disabled for this browser profile. Enable it to restore Shell in browser to the chat tools menu.'"
         :status="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'enabled' : 'disabled'"
+        toggle-availability="available"
         :toggle-label="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'Disable Shell in browser' : 'Enable Shell in browser'"
         toggle-test-id="feature-flag-wesh-tool-toggle"
         @toggle="handleFeatureToggle({ feature: 'wesh_tool' })"
@@ -138,6 +203,7 @@ defineExpose({
           ? 'When a message is sent, the chat moves to the top of its group. Top-level chats move just below chat groups.'
           : 'Disabled by default. Enable it if long chat lists make active conversations difficult to find.'"
         :status="sidebarSendMessageReorder === 'move_sent_chat' ? 'enabled' : 'disabled'"
+        toggle-availability="available"
         :toggle-label="sidebarSendMessageReorder === 'move_sent_chat' ? 'Disable Move chat on send' : 'Enable Move chat on send'"
         toggle-test-id="feature-sidebar-send-reorder-toggle"
         @toggle="handleSidebarSendMessageReorderToggle"
@@ -155,9 +221,26 @@ defineExpose({
           ? 'Tool configuration changes are persisted to chat metadata. Disable it to keep tool settings limited to the current runtime session.'
           : 'Disabled by default. Tool configuration changes affect the current runtime session but are not saved to chat metadata.'"
         :status="toolConfigPersistence === 'enabled' ? 'enabled' : 'disabled'"
+        toggle-availability="available"
         :toggle-label="toolConfigPersistence === 'enabled' ? 'Disable Tool config persistence' : 'Enable Tool config persistence'"
         toggle-test-id="feature-tool-config-persistence-toggle"
         @toggle="handleToolConfigPersistenceToggle"
+      >
+        <template #icon>
+          <FlaskConicalIcon class="h-4 w-4" />
+        </template>
+      </ExperimentalFeatureRow>
+
+      <ExperimentalFeatureRow
+        id="feature-fake-lm"
+        title="Fake LM Debug Mode"
+        summary="Uses the bundled fake LM for endpoint testing."
+        :details="fakeLmDebugModeDetails"
+        :status="fakeLmDebugModeStatus"
+        :toggle-availability="fakeLmToggleAvailability"
+        :toggle-label="fakeLmDebugModeStatus === 'enabled' ? 'Disable Fake LM Debug Mode' : 'Enable Fake LM Debug Mode'"
+        toggle-test-id="feature-fake-lm-toggle"
+        @toggle="handleFakeLmDebugModeToggle"
       >
         <template #icon>
           <FlaskConicalIcon class="h-4 w-4" />

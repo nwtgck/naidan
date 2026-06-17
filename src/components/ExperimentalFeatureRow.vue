@@ -4,6 +4,7 @@ import { AlertTriangleIcon, ChevronDownIcon } from 'lucide-vue-next';
 
 type FeatureStatus = 'disabled' | 'enabled';
 type DetailsState = 'collapsed' | 'expanded';
+type ToggleAvailability = 'available' | 'unavailable';
 
 const props = defineProps<{
   id: string;
@@ -11,6 +12,7 @@ const props = defineProps<{
   summary: string;
   details: string;
   status: FeatureStatus;
+  toggleAvailability: ToggleAvailability;
   toggleLabel: string;
   toggleTestId: string;
 }>();
@@ -94,8 +96,9 @@ defineExpose({
           <button
             type="button"
             role="switch"
-            class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-950"
+            class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-gray-950"
             :class="props.status === 'enabled' ? 'bg-amber-500 dark:bg-amber-400' : 'bg-gray-300 dark:bg-gray-700'"
+            :disabled="props.toggleAvailability === 'unavailable'"
             :aria-checked="props.status === 'enabled'"
             :aria-label="props.toggleLabel"
             :data-testid="props.toggleTestId"
