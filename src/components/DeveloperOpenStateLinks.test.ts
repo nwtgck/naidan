@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
@@ -93,6 +94,25 @@ describe('DeveloperOpenStateLinks', () => {
       exclude: ['chat', 'binary_object'],
       baseUrl: 'https://naidan.pages.dev',
     });
+  });
+
+  it('passes chat history exclusion and disables it after excluding chats', async () => {
+    vi.mocked(urlImportExportLogic.getExportURL).mockResolvedValue('https://naidan.pages.dev/#/?storage-type=local&data-zip=abc');
+    const wrapper = mount(DeveloperOpenStateLinks);
+    const history = wrapper.find('[data-testid="open-current-state-exclude-chat-history"]');
+
+    await history.setValue(true);
+    await wrapper.find('[data-testid="open-current-state-naidan.pages.dev"]').trigger('click');
+
+    expect(urlImportExportLogic.getExportURL).toHaveBeenCalledWith({
+      exclude: ['chat_history'],
+      baseUrl: 'https://naidan.pages.dev',
+    });
+
+    await wrapper.find('[data-testid="open-current-state-exclude-chats"]').setValue(true);
+    await nextTick();
+    expect((history.element as HTMLInputElement).checked).toBe(false);
+    expect(history.attributes('disabled')).toBeDefined();
   });
 
   it('copies the curated production deployment URL', async () => {

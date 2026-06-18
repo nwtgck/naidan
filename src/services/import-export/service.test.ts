@@ -1,18 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ImportExportService, type IImportExportStorage } from './service';
 import JSZip from 'jszip';
-import type { SettingsDto, ChatMetaDto, ChatGroupDto } from '@/models/dto';
+import { ChatSchemaDto } from '@/models/dto';
+import type { SettingsDto, ChatMetaDto, ChatGroupDto, MigrationChunkDto } from '@/models/dto';
 import type { ImportConfig } from './types';
 import type { Mocked } from 'vitest';
 import type { Settings, ChatMeta } from '@/models/types';
-import { toChatGroupId, toChatId } from '@/models/ids';
+import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
+import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 const UUID_G1 = '018d476a-7b3a-73fd-8000-000000000001';
 const UUID_C1 = '018d476a-7b3a-73fd-8000-000000000002';
 const UUID_C2 = '018d476a-7b3a-73fd-8000-000000000003';
 const UUID_A1 = '018d476a-7b3a-73fd-8000-000000000004';
+const UUID_A2 = '018d476a-7b3a-73fd-8000-000000000007';
+const UUID_A3 = '018d476a-7b3a-73fd-8000-000000000008';
+const UUID_A4 = '018d476a-7b3a-73fd-8000-00000000000a';
+const UUID_A5 = '018d476a-7b3a-73fd-8000-00000000000b';
 const UUID_M1 = '018d476a-7b3a-73fd-8000-000000000005';
 const UUID_M2 = '018d476a-7b3a-73fd-8000-000000000006';
+const UUID_M3 = '018d476a-7b3a-73fd-8000-000000000009';
+const UUID_M4 = '018d476a-7b3a-73fd-8000-00000000000c';
+const UUID_M5 = '018d476a-7b3a-73fd-8000-00000000000d';
+const UUID_M6 = '018d476a-7b3a-73fd-8000-00000000000e';
 const NEW_UUID = '018d476a-7b3a-73fd-8000-ffffffffffff';
 
 vi.mock('../../utils/id', () => ({
@@ -285,6 +295,346 @@ describe('ImportExportService', () => {
 
       // Binary objects should STILL BE THERE (though orphaned)
       expect(files.some(f => f.includes('binary-objects/'))).toBe(true);
+    });
+
+    it('exports every chat with only its current thread and referenced binary objects', async () => {
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: createValidSettings(),
+          hierarchy: {
+            items: [{
+              type: 'chat_group',
+              id: toChatGroupId({ raw: UUID_G1 }),
+              chat_ids: [toChatId({ raw: UUID_C1 }), toChatId({ raw: UUID_C2 })],
+            }],
+          },
+          chatMetas: [
+            createValidChatMeta({ id: toChatId({ raw: UUID_C1 }), currentLeafId: toMessageId({ raw: UUID_M3 }) }),
+            createValidChatMeta({
+              id: toChatId({ raw: UUID_C2 }),
+              title: 'Other Chat',
+              currentLeafId: toMessageId({ raw: UUID_M5 }),
+            }),
+          ],
+          chatGroups: [{
+            id: toChatGroupId({ raw: UUID_G1 }),
+            name: 'Group',
+            updatedAt: 1000,
+            isCollapsed: false,
+            items: [],
+          }],
+        },
+        contentStream: (async function* (): AsyncGenerator<MigrationChunkDto> {
+          for (const id of [UUID_A1, UUID_A2, UUID_A3, UUID_A4, UUID_A5]) {
+            yield {
+              type: 'binary_object' as const,
+              id,
+              name: `${id}.bin`,
+              mimeType: 'application/octet-stream',
+              size: 1,
+              createdAt: 1000,
+              blob: new Blob([id]),
+            };
+          }
+          yield {
+            type: 'chat' as const,
+            data: ChatSchemaDto.parse({
+              ...createValidChatMetaDto({ id: UUID_C1, currentLeafId: UUID_M3 }),
+              root: {
+                items: [{
+                  id: UUID_M1,
+                  role: 'user',
+                  content: 'root',
+                  attachments: [{ id: 'attachment-1', binaryObjectId: UUID_A1, name: 'a.txt', status: 'persisted' }],
+                  timestamp: 1,
+                  replies: {
+                    items: [
+                      {
+                        id: UUID_M2,
+                        role: 'assistant',
+                        content: 'current',
+                        timestamp: 2,
+                        replies: {
+                          items: [{
+                            id: UUID_M3,
+                            role: 'tool',
+                            results: [{
+                              toolCallId: 'current-tool-call',
+                              status: 'success',
+                              content: { type: 'binary_object', id: UUID_A2 },
+                            }],
+                            timestamp: 3,
+                            replies: { items: [] },
+                          }],
+                        },
+                      },
+                      {
+                        id: 'alternate-message',
+                        role: 'user',
+                        content: 'alternate',
+                        attachments: [{ id: 'attachment-3', binaryObjectId: UUID_A3, name: 'alternate.txt', status: 'persisted' }],
+                        timestamp: 4,
+                        replies: { items: [] },
+                      },
+                    ],
+                  },
+                }],
+              },
+            }),
+          };
+          yield {
+            type: 'chat' as const,
+            data: ChatSchemaDto.parse({
+              ...createValidChatMetaDto({ id: UUID_C2, title: 'Other Chat', currentLeafId: UUID_M5 }),
+              root: {
+                items: [{
+                  id: UUID_M4,
+                  role: 'user',
+                  content: 'other root',
+                  attachments: [{ id: 'attachment-4', binaryObjectId: UUID_A4, name: 'other.txt', status: 'persisted' }],
+                  timestamp: 5,
+                  replies: {
+                    items: [
+                      {
+                        id: UUID_M5,
+                        role: 'assistant',
+                        content: 'other current',
+                        timestamp: 6,
+                        replies: { items: [] },
+                      },
+                      {
+                        id: UUID_M6,
+                        role: 'user',
+                        content: 'other alternate',
+                        attachments: [{ id: 'attachment-5', binaryObjectId: UUID_A5, name: 'other-alternate.txt', status: 'persisted' }],
+                        timestamp: 7,
+                        replies: { items: [] },
+                      },
+                    ],
+                  },
+                }],
+              },
+            }),
+          };
+        })(),
+      });
+
+      const { stream } = await service.exportData({ exclude: ['chat_history'] });
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+      const rootFolder = Object.keys(zip.files).find(file => file.startsWith('naidan-data-'))!;
+      const hierarchy = JSON.parse(await zip.file(`${rootFolder}hierarchy.json`)!.async('string'));
+      const metas = JSON.parse(await zip.file(`${rootFolder}chat-metas.json`)!.async('string'));
+      const firstChat = JSON.parse(await zip.file(`${rootFolder}chat-contents/${UUID_C1}.json`)!.async('string'));
+      const secondChat = JSON.parse(await zip.file(`${rootFolder}chat-contents/${UUID_C2}.json`)!.async('string'));
+      const files = Object.keys(zip.files);
+
+      expect(hierarchy.items).toEqual([{ type: 'chat_group', id: UUID_G1, chat_ids: [UUID_C1, UUID_C2] }]);
+      expect(metas.entries.map((entry: ChatMetaDto) => entry.id)).toEqual([UUID_C1, UUID_C2]);
+      expect(zip.file(`${rootFolder}chat-groups/${UUID_G1}.json`)).not.toBeNull();
+      expect(firstChat.root.items[0].replies.items).toHaveLength(1);
+      expect(firstChat.root.items[0].replies.items[0].id).toBe(UUID_M2);
+      expect(firstChat.root.items[0].replies.items[0].replies.items[0].id).toBe(UUID_M3);
+      expect(firstChat.root.items[0].replies.items[0].replies.items[0].replies.items).toEqual([]);
+      expect(secondChat.root.items[0].replies.items).toHaveLength(1);
+      expect(secondChat.root.items[0].replies.items[0].id).toBe(UUID_M5);
+      expect(secondChat.root.items[0].replies.items[0].replies.items).toEqual([]);
+      expect(files.some(file => file.endsWith(`${UUID_A1}.bin`))).toBe(true);
+      expect(files.some(file => file.endsWith(`${UUID_A2}.bin`))).toBe(true);
+      expect(files.some(file => file.endsWith(`${UUID_A3}.bin`))).toBe(false);
+      expect(files.some(file => file.endsWith(`${UUID_A4}.bin`))).toBe(true);
+      expect(files.some(file => file.endsWith(`${UUID_A5}.bin`))).toBe(false);
+    });
+
+    it('preserves current-thread DTO fields and generated-image binary references', async () => {
+      const generatedImageContent = `\
+\`\`\`${IMAGE_BLOCK_LANG}
+${JSON.stringify({
+    binaryObjectId: UUID_A2,
+    displayWidth: 512,
+    displayHeight: 512,
+  })}
+\`\`\``;
+
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: createValidSettings(),
+          hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
+          chatMetas: [createValidChatMeta({
+            id: toChatId({ raw: UUID_C1 }),
+            currentLeafId: toMessageId({ raw: UUID_M2 }),
+          })],
+          chatGroups: [],
+        },
+        contentStream: (async function* (): AsyncGenerator<MigrationChunkDto> {
+          for (const id of [UUID_A1, UUID_A2, UUID_A3]) {
+            yield {
+              type: 'binary_object',
+              id,
+              name: `${id}.bin`,
+              mimeType: 'application/octet-stream',
+              size: 1,
+              createdAt: 1000,
+              blob: new Blob([id]),
+            };
+          }
+
+          yield {
+            type: 'chat',
+            data: ChatSchemaDto.parse({
+              ...createValidChatMetaDto({ id: UUID_C1, currentLeafId: UUID_M2 }),
+              root: {
+                experimental: {},
+                items: [{
+                  id: UUID_M1,
+                  role: 'user',
+                  experimental: {},
+                  content: 'root',
+                  attachments: [{
+                    id: UUID_A1,
+                    experimental: {},
+                    originalName: 'legacy.txt',
+                    mimeType: 'text/plain',
+                    size: 1,
+                    uploadedAt: 1000,
+                    status: 'persisted',
+                  }],
+                  timestamp: 1,
+                  replies: {
+                    experimental: {},
+                    items: [
+                      {
+                        id: UUID_M2,
+                        role: 'assistant',
+                        experimental: {},
+                        content: generatedImageContent,
+                        timestamp: 2,
+                        replies: { experimental: {}, items: [] },
+                      },
+                      {
+                        id: UUID_M3,
+                        role: 'user',
+                        content: 'alternate',
+                        attachments: [{
+                          id: 'alternate-attachment',
+                          binaryObjectId: UUID_A3,
+                          name: 'alternate.txt',
+                          status: 'persisted',
+                        }],
+                        timestamp: 3,
+                        replies: { items: [] },
+                      },
+                    ],
+                  },
+                }],
+              },
+            }),
+          };
+        })(),
+      });
+
+      const { stream } = await service.exportData({ exclude: ['chat_history'] });
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+      const rootFolder = Object.keys(zip.files).find(file => file.startsWith('naidan-data-'))!;
+      const chat = JSON.parse(await zip.file(`${rootFolder}chat-contents/${UUID_C1}.json`)!.async('string'));
+      const files = Object.keys(zip.files);
+      const rootNode = chat.root.items[0];
+      const currentNode = rootNode.replies.items[0];
+
+      expect(chat.root.experimental).toEqual({});
+      expect(rootNode.experimental).toEqual({});
+      expect(rootNode.replies.experimental).toEqual({});
+      expect(rootNode.attachments[0]).toEqual({
+        id: UUID_A1,
+        experimental: {},
+        originalName: 'legacy.txt',
+        mimeType: 'text/plain',
+        size: 1,
+        uploadedAt: 1000,
+        status: 'persisted',
+      });
+      expect(currentNode.experimental).toEqual({});
+      expect(currentNode.replies.experimental).toEqual({});
+      expect(files.some(file => file.endsWith(`${UUID_A1}.bin`))).toBe(true);
+      expect(files.some(file => file.endsWith(`${UUID_A2}.bin`))).toBe(true);
+      expect(files.some(file => file.endsWith(`${UUID_A3}.bin`))).toBe(false);
+    });
+
+    it('keeps an undefined current leaf while using the fallback current thread', async () => {
+      mockStorage.dumpWithoutLock.mockResolvedValue({
+        structure: {
+          settings: createValidSettings(),
+          hierarchy: { items: [{ type: 'chat', id: toChatId({ raw: UUID_C1 }) }] },
+          chatMetas: [createValidChatMeta({ id: toChatId({ raw: UUID_C1 }) })],
+          chatGroups: [],
+        },
+        contentStream: (async function* (): AsyncGenerator<MigrationChunkDto> {
+          yield {
+            type: 'chat',
+            data: ChatSchemaDto.parse({
+              ...createValidChatMetaDto({ id: UUID_C1, currentLeafId: undefined }),
+              root: {
+                items: [
+                  {
+                    id: UUID_M1,
+                    role: 'user',
+                    content: 'first root',
+                    timestamp: 1,
+                    replies: { items: [] },
+                  },
+                  {
+                    id: UUID_M2,
+                    role: 'user',
+                    content: 'fallback root',
+                    timestamp: 2,
+                    replies: {
+                      items: [{
+                        id: UUID_M3,
+                        role: 'assistant',
+                        content: 'fallback leaf',
+                        timestamp: 3,
+                        replies: { items: [] },
+                      }],
+                    },
+                  },
+                ],
+              },
+            }),
+          };
+        })(),
+      });
+
+      const { stream } = await service.exportData({ exclude: ['chat_history'] });
+      const chunks: Uint8Array[] = [];
+      const reader = stream.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value!);
+      }
+
+      const zip = await JSZip.loadAsync(new Blob(chunks as BlobPart[]));
+      const rootFolder = Object.keys(zip.files).find(file => file.startsWith('naidan-data-'))!;
+      const chat = JSON.parse(await zip.file(`${rootFolder}chat-contents/${UUID_C1}.json`)!.async('string'));
+
+      expect(chat.currentLeafId).toBeUndefined();
+      expect(chat.root.items).toHaveLength(1);
+      expect(chat.root.items[0].id).toBe(UUID_M2);
+      expect(chat.root.items[0].replies.items[0].id).toBe(UUID_M3);
     });
 
     it('includes all data by default (no exclusion)', async () => {

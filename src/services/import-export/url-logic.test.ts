@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { urlImportExportLogic } from './url-logic';
+import type { ExportExclusions } from './types';
 
 const { mockExportData, mockVerify, mockExecuteImport } = vi.hoisted(() => ({
   mockExportData: vi.fn(),
@@ -109,7 +110,7 @@ describe('URLImportExportLogic', () => {
       }),
     });
 
-    const exclude: Array<'chat' | 'binary_object'> = ['chat'];
+    const exclude: ExportExclusions = ['chat_history'];
     await urlImportExportLogic.getExportURL({ exclude, baseUrl: window.location.href });
 
     expect(mockExportData).toHaveBeenCalledWith(expect.objectContaining({ exclude }));

@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { CopyIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-vue-next';
 import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
+import { useExportExclusions } from '@/composables/useExportExclusions';
 
 type DeploymentTarget = {
   readonly kind: 'Standard' | 'Local only' | 'Curated';
@@ -46,15 +47,13 @@ const DEPLOYMENT_TARGETS: readonly DeploymentTarget[] = DEPLOYMENT_GROUPS.flatMa
 
 const { addToast } = useToast();
 const activeAction = ref<{ type: 'copy' | 'open'; host: string } | null>(null);
-const excludeChats = ref(false);
-const excludeAttachments = ref(false);
-
-function buildExcludeList() {
-  const exclude: Array<'chat' | 'binary_object'> = [];
-  if (excludeChats.value) exclude.push('chat');
-  if (excludeAttachments.value) exclude.push('binary_object');
-  return exclude;
-}
+const {
+  excludeChats,
+  excludeChatHistory,
+  excludeAttachments,
+  excludeChatHistoryDisabled,
+  buildExcludeList,
+} = useExportExclusions();
 
 async function createCurrentStateURL({ target }: { target: DeploymentTarget }) {
   return await urlImportExportLogic.getExportURL({
@@ -139,6 +138,19 @@ defineExpose({
               data-testid="open-current-state-exclude-chats"
             />
             Exclude Chats
+          </label>
+          <label
+            class="flex h-7 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
+            :class="excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-gray-300 hover:text-gray-800 dark:hover:border-gray-600 dark:hover:text-gray-200'"
+          >
+            <input
+              v-model="excludeChatHistory"
+              :disabled="excludeChatHistoryDisabled"
+              type="checkbox"
+              class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-700"
+              data-testid="open-current-state-exclude-chat-history"
+            />
+            Exclude Chat History
           </label>
           <label class="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200">
             <input

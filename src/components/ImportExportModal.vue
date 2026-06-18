@@ -15,6 +15,7 @@ import type {
   ImportPreview
 } from '@/services/import-export/types';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import { useExportExclusions } from '@/composables/useExportExclusions';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -42,8 +43,14 @@ const error = ref<string | null>(null);
 
 // Export State
 const exportName = ref('');
-const excludeChats = ref(false);
-const excludeAttachments = ref(false);
+const {
+  excludeChats,
+  excludeChatHistory,
+  excludeAttachments,
+  excludeChatHistoryDisabled,
+  buildExcludeList,
+  reset: resetExportExclusions,
+} = useExportExclusions();
 const previewFilename = computed(() => {
   const dateStr = new Date().toISOString().split('T')[0];
   // eslint-disable-next-line no-control-regex
@@ -140,22 +147,12 @@ function resetState() {
   selectedFile.value = null;
   importPreview.value = null;
   exportName.value = '';
-  excludeChats.value = false;
-  excludeAttachments.value = false;
+  resetExportExclusions();
   importConfig.value = JSON.parse(JSON.stringify(APPEND_DEFAULT_CONFIG));
 }
 
 function buildExportExclude(): ExportOptions['exclude'] {
-  const exclude: NonNullable<ExportOptions['exclude']> = [];
-
-  if (excludeChats.value) {
-    exclude.push('chat');
-  }
-
-  if (excludeAttachments.value) {
-    exclude.push('binary_object');
-  }
-
+  const exclude = buildExcludeList();
   return exclude.length === 0 ? undefined : exclude;
 }
 
@@ -360,6 +357,19 @@ defineExpose({
                       class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
                     />
                     <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chats</span>
+                  </label>
+                  <label
+                    class="flex items-center gap-2 group"
+                    :class="excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
+                  >
+                    <input
+                      v-model="excludeChatHistory"
+                      :disabled="excludeChatHistoryDisabled"
+                      data-testid="export-exclude-chat-history-checkbox"
+                      type="checkbox"
+                      class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 disabled:cursor-not-allowed"
+                    />
+                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chat History</span>
                   </label>
                   <label class="flex items-center gap-2 cursor-pointer group">
                     <input

@@ -21,6 +21,7 @@ vi.mock('@/services/storage', () => ({
   storageService: {},
 }));
 
+
 vi.mock('@/composables/useToast', () => ({
   useToast: vi.fn(() => ({
     addToast: mocks.addToast,
@@ -51,7 +52,6 @@ async function exportNow({ wrapper }: { wrapper: ReturnType<typeof mountModal> }
 describe('ImportExportModal.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-
     mocks.exportData.mockResolvedValue({
       filename: 'naidan-data-test.zip',
       stream: new Blob(['zip'], { type: 'application/zip' }),
@@ -93,6 +93,33 @@ describe('ImportExportModal.vue', () => {
     });
   });
 
+  it('passes chat history exclusion', async () => {
+    const wrapper = mountModal();
+    await openExportMode({ wrapper });
+
+    await wrapper.find('[data-testid="export-exclude-chat-history-checkbox"]').setValue(true);
+    await exportNow({ wrapper });
+
+    expect(mocks.exportData).toHaveBeenCalledWith({
+      fileNameSegment: '',
+      exclude: ['chat_history'],
+    });
+  });
+
+  it('disables and clears chat history when Exclude Chats is checked', async () => {
+    const wrapper = mountModal();
+    await openExportMode({ wrapper });
+    const history = wrapper.find('[data-testid="export-exclude-chat-history-checkbox"]');
+
+    await history.setValue(true);
+    await wrapper.find('[data-testid="export-exclude-chats-checkbox"]').setValue(true);
+    await nextTick();
+
+    const updatedHistory = wrapper.find('[data-testid="export-exclude-chat-history-checkbox"]');
+    expect((updatedHistory.element as HTMLInputElement).checked).toBe(false);
+    expect(updatedHistory.attributes('disabled')).toBeDefined();
+  });
+
   it('passes binary object exclusion when Exclude Attachments is checked', async () => {
     const wrapper = mountModal();
     await openExportMode({ wrapper });
@@ -132,6 +159,7 @@ describe('ImportExportModal.vue', () => {
     await openExportMode({ wrapper });
 
     expect((wrapper.find('[data-testid="export-exclude-chats-checkbox"]').element as HTMLInputElement).checked).toBe(false);
+    expect((wrapper.find('[data-testid="export-exclude-chat-history-checkbox"]').element as HTMLInputElement).checked).toBe(false);
     expect((wrapper.find('[data-testid="export-exclude-attachments-checkbox"]').element as HTMLInputElement).checked).toBe(false);
   });
 });

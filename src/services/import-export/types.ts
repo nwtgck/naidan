@@ -1,9 +1,14 @@
 import type { Settings } from '@/models/types';
 
 // --- Export Options ---
+export type ExportExclusions = readonly [
+  ...([] | ['chat'] | ['chat_history']),
+  ...([] | ['binary_object']),
+];
+
 export interface ExportOptions {
   fileNameSegment?: string;
-  exclude?: Array<'chat' | 'binary_object'>;
+  exclude?: ExportExclusions;
 }
 
 // --- Import Strategies ---

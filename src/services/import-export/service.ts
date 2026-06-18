@@ -30,12 +30,15 @@ import {
   settingsToDomain,
   chatGroupToDomain,
   chatMetaToDomain,
-  hierarchyToDomain
+  hierarchyToDomain,
+  chatToDomain,
+  chatToDto
 } from '@/models/mappers';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/models/types';
 import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, MessageId, ProviderProfileId } from '@/models/ids';
+import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 
 // Helper to format date YYYY-MM-DD
 function formatDate({ date }: { date: Date }): string {
@@ -55,6 +58,186 @@ function truncateByByteLength({ str, maxBytes }: { str: string, maxBytes: number
   const buf = encoder.encode(str);
   if (buf.length <= maxBytes) return str;
   return decoder.decode(buf.slice(0, maxBytes)).replace(/\uFFFD/g, '');
+}
+
+function normalizeChatDtoTree({ chatDto }: { chatDto: ChatDto }): ChatDto {
+  if (
+    chatDto.root !== undefined
+    && (chatDto.root.items.length > 0 || (chatDto.messages?.length ?? 0) === 0)
+  ) {
+    return chatDto;
+  }
+
+  return chatToDto({ domain: chatToDomain({ dto: chatDto }) });
+}
+
+function getCurrentThreadMessageDtos({ chatDto }: { chatDto: ChatDto }): MessageNodeDto[] {
+  const items = chatDto.root?.items ?? [];
+  if (items.length === 0) return [];
+
+  const path: MessageNodeDto[] = [];
+  const targetId = chatDto.currentLeafId;
+
+  function findPath({ nodes, target }: {
+    nodes: MessageNodeDto[];
+    target: string;
+  }): boolean {
+    for (const node of nodes) {
+      path.push(node);
+      if (node.id === target) return true;
+      if (findPath({ nodes: node.replies.items, target })) return true;
+      path.pop();
+    }
+    return false;
+  }
+
+  const found = targetId === undefined
+    ? false
+    : findPath({ nodes: items, target: targetId });
+
+  if (!found) {
+    path.length = 0;
+    let node = items.at(-1);
+    while (node !== undefined) {
+      path.push(node);
+      node = node.replies.items.at(-1);
+    }
+  }
+
+  return path;
+}
+
+function addGeneratedImageBinaryObjectIds({
+  content,
+  binaryObjectIds,
+}: {
+  content: string;
+  binaryObjectIds: Set<string>;
+}) {
+  const codeBlockRegex = new RegExp(
+    '```' + IMAGE_BLOCK_LANG + '[^\\n]*\\n([\\s\\S]*?)\\n```',
+    'g',
+  );
+
+  for (const match of content.matchAll(codeBlockRegex)) {
+    const json = match[1];
+    if (json === undefined) continue;
+
+    try {
+      const result = GeneratedImageBlockSchema.safeParse(JSON.parse(json));
+      if (result.success) {
+        binaryObjectIds.add(result.data.binaryObjectId);
+      }
+    } catch {
+      // Invalid generated-image blocks remain unchanged and do not affect export.
+    }
+  }
+}
+
+function addMessageBinaryObjectIds({
+  node,
+  binaryObjectIds,
+}: {
+  node: MessageNodeDto;
+  binaryObjectIds: Set<string>;
+}) {
+  if (node.content !== undefined) {
+    addGeneratedImageBinaryObjectIds({ content: node.content, binaryObjectIds });
+  }
+
+  switch (node.role) {
+  case 'user':
+    for (const attachment of node.attachments ?? []) {
+      binaryObjectIds.add(
+        'binaryObjectId' in attachment
+          ? attachment.binaryObjectId
+          : attachment.id,
+      );
+    }
+    break;
+  case 'tool':
+    for (const result of node.results) {
+      switch (result.status) {
+      case 'executing':
+        break;
+      case 'success':
+        switch (result.content.type) {
+        case 'text':
+          break;
+        case 'binary_object':
+          binaryObjectIds.add(result.content.id);
+          break;
+        default: {
+          const _ex: never = result.content;
+          throw new Error(`Unhandled tool result content: ${_ex}`);
+        }
+        }
+        break;
+      case 'error':
+        switch (result.error.message.type) {
+        case 'text':
+          break;
+        case 'binary_object':
+          binaryObjectIds.add(result.error.message.id);
+          break;
+        default: {
+          const _ex: never = result.error.message;
+          throw new Error(`Unhandled tool error message: ${_ex}`);
+        }
+        }
+        break;
+      default: {
+        const _ex: never = result;
+        throw new Error(`Unhandled tool execution result: ${_ex}`);
+      }
+      }
+    }
+    break;
+  case 'assistant':
+  case 'system':
+    break;
+  default: {
+    const _ex: never = node;
+    throw new Error(`Unhandled message role: ${_ex}`);
+  }
+  }
+}
+
+function createCurrentThreadChatDto({ chatDto }: { chatDto: ChatDto }): {
+  chatDto: ChatDto;
+  binaryObjectIds: Set<string>;
+} {
+  const normalizedChatDto = normalizeChatDtoTree({ chatDto });
+  const currentThread = getCurrentThreadMessageDtos({ chatDto: normalizedChatDto });
+  const binaryObjectIds = new Set<string>();
+
+  for (const node of currentThread) {
+    addMessageBinaryObjectIds({ node, binaryObjectIds });
+  }
+
+  let currentNode: MessageNodeDto | undefined;
+  for (let index = currentThread.length - 1; index >= 0; index--) {
+    const node = currentThread[index]!;
+    currentNode = {
+      ...node,
+      replies: {
+        ...node.replies,
+        items: currentNode === undefined ? [] : [currentNode],
+      },
+    };
+  }
+
+  return {
+    chatDto: {
+      ...normalizedChatDto,
+      root: {
+        ...(normalizedChatDto.root ?? { items: [] }),
+        items: currentNode === undefined ? [] : [currentNode],
+      },
+      messages: undefined,
+    },
+    binaryObjectIds,
+  };
 }
 
 /**
@@ -112,6 +295,7 @@ export class ImportExportService {
 
     const root = zip.folder(finalBaseName);
     if (!root) throw new Error('Failed to create root folder in ZIP');
+    const exportRoot = root;
 
     root.file('export-manifest.json', JSON.stringify({ app_version: __APP_VERSION__, exportedAt: Date.now() }, null, 2));
 
@@ -124,7 +308,8 @@ export class ImportExportService {
 
     const excludeFlags = {
       chat: false,
-      binary_object: false,
+      chatHistory: false,
+      binaryObject: false,
     };
 
     for (const item of (exclude ?? [])) {
@@ -132,8 +317,11 @@ export class ImportExportService {
       case 'chat':
         excludeFlags.chat = true;
         break;
+      case 'chat_history':
+        excludeFlags.chatHistory = true;
+        break;
       case 'binary_object':
-        excludeFlags.binary_object = true;
+        excludeFlags.binaryObject = true;
         break;
       default: {
         const _ex: never = item;
@@ -142,6 +330,9 @@ export class ImportExportService {
       }
     }
 
+    if (excludeFlags.chat && excludeFlags.chatHistory) {
+      throw new Error('Chat and chat history exclusions cannot be used together.');
+    }
     if (excludeFlags.chat) {
       // Filter hierarchy to remove chats and clear chat_ids in groups
       const filteredHierarchy: Hierarchy = {
@@ -170,41 +361,64 @@ export class ImportExportService {
     }
 
     const shardIndices = new Map<string, BinaryShardIndexDto>();
+    const currentThreadBinaryObjectIds = new Set<string>();
+    const pendingBinaryObjects: Array<Extract<MigrationChunkDto, { type: 'binary_object' }>> = [];
     const getShard = ({ id }: { id: string }) => id.slice(-2).toLowerCase();
+
+    function addBinaryObjectToZip({ chunk }: {
+      chunk: Extract<MigrationChunkDto, { type: 'binary_object' }>;
+    }) {
+      const binFolder = exportRoot.folder('binary-objects') || exportRoot;
+      const shard = getShard({ id: chunk.id });
+      const shardFolder = binFolder.folder(shard);
+      if (!shardFolder) throw new Error(`Failed to create shard folder ${shard} in ZIP`);
+
+      const fileName = `${chunk.id}.bin`;
+      shardFolder.file(fileName, chunk.blob);
+      shardFolder.file(`.${fileName}.complete`, new Blob([]));
+
+      let index = shardIndices.get(shard);
+      if (!index) {
+        index = { objects: {} };
+        shardIndices.set(shard, index);
+      }
+      index.objects[chunk.id] = {
+        id: chunk.id,
+        mimeType: chunk.mimeType,
+        size: chunk.size,
+        createdAt: chunk.createdAt,
+        name: chunk.name,
+      };
+    }
 
     try {
       for await (const chunk of contentStream) {
         const type = chunk.type;
 
         switch (type) {
-        case 'chat':
+        case 'chat': {
           if (excludeFlags.chat) break;
+          if (excludeFlags.chatHistory) {
+            const currentThreadExport = createCurrentThreadChatDto({ chatDto: chunk.data });
+            for (const binaryObjectId of currentThreadExport.binaryObjectIds) {
+              currentThreadBinaryObjectIds.add(binaryObjectId);
+            }
+            root.folder('chat-contents')!.file(
+              `${chunk.data.id}.json`,
+              JSON.stringify(currentThreadExport.chatDto, null, 2),
+            );
+            break;
+          }
           root.folder('chat-contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
           break;
+        }
         case 'binary_object': {
-          if (excludeFlags.binary_object) break;
-
-          const binFolder = root.folder('binary-objects') || root;
-          const shard = getShard({ id: chunk.id });
-          const shardFolder = binFolder.folder(shard);
-          if (!shardFolder) throw new Error(`Failed to create shard folder ${shard} in ZIP`);
-
-          const fileName = `${chunk.id}.bin`;
-          shardFolder.file(fileName, chunk.blob);
-          shardFolder.file(`.${fileName}.complete`, new Blob([]));
-
-          let index = shardIndices.get(shard);
-          if (!index) {
-            index = { objects: {} };
-            shardIndices.set(shard, index);
+          if (excludeFlags.binaryObject) break;
+          if (excludeFlags.chatHistory) {
+            pendingBinaryObjects.push(chunk);
+            break;
           }
-          index.objects[chunk.id] = {
-            id: chunk.id,
-            mimeType: chunk.mimeType,
-            size: chunk.size,
-            createdAt: chunk.createdAt,
-            name: chunk.name
-          };
+          addBinaryObjectToZip({ chunk });
           break;
         }
         default: {
@@ -214,8 +428,16 @@ export class ImportExportService {
         }
       }
 
+      if (excludeFlags.chatHistory && !excludeFlags.binaryObject) {
+        for (const chunk of pendingBinaryObjects) {
+          if (currentThreadBinaryObjectIds.has(chunk.id)) {
+            addBinaryObjectToZip({ chunk });
+          }
+        }
+      }
+
       // Write shard indexes
-      if (!excludeFlags.binary_object) {
+      if (!excludeFlags.binaryObject) {
         const binFolder = root.folder('binary-objects');
         if (binFolder) {
           for (const [shard, index] of shardIndices.entries()) {
