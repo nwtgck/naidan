@@ -1,5 +1,4 @@
 import { generateId } from '@/utils/id';
-import JSZip from 'jszip';
 import type {
   ExportOptions,
   ImportConfig,
@@ -39,6 +38,9 @@ import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, Storag
 import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, MessageId, ProviderProfileId } from '@/models/ids';
 import { GeneratedImageBlockSchema, IMAGE_BLOCK_LANG } from '@/utils/image-generation';
+import { createWebZipCompressionCodec, StreamingZipWriter } from '@/lib/zip-stream';
+import { createMemoryZipCentralDirectoryStore, createReadableZipOutput } from '@/lib/zip-stream/memory';
+import { openIndexedZipArchive, type IndexedZipArchive } from './zip-archive';
 
 // Helper to format date YYYY-MM-DD
 function formatDate({ date }: { date: Date }): string {
@@ -240,6 +242,44 @@ function createCurrentThreadChatDto({ chatDto }: { chatDto: ChatDto }): {
   };
 }
 
+interface ExportExclusionFlags {
+  chat: boolean;
+  chatHistory: boolean;
+  binaryObject: boolean;
+}
+
+function parseExportExclusions({ exclude }: Pick<ExportOptions, 'exclude'>): ExportExclusionFlags {
+  const flags: ExportExclusionFlags = {
+    chat: false,
+    chatHistory: false,
+    binaryObject: false,
+  };
+
+  for (const item of (exclude ?? [])) {
+    switch (item) {
+    case 'chat':
+      flags.chat = true;
+      break;
+    case 'chat_history':
+      flags.chatHistory = true;
+      break;
+    case 'binary_object':
+      flags.binaryObject = true;
+      break;
+    default: {
+      const _ex: never = item;
+      throw new Error(`Unknown exclusion type: ${_ex}`);
+    }
+    }
+  }
+
+  if (flags.chat && flags.chatHistory) {
+    throw new Error('Chat and chat history exclusions cannot be used together.');
+  }
+
+  return flags;
+}
+
 /**
  * Interface for the storage dependency of ImportExportService.
  */
@@ -269,16 +309,16 @@ export class ImportExportService {
    * Export data as a ZIP stream.
    */
   async exportData({ exclude, fileNameSegment }: ExportOptions): Promise<{ stream: ReadableStream<Uint8Array>, filename: string }> {
-    const zip = new JSZip();
+    // Validate caller-controlled options before creating a producer task. Errors
+    // here remain direct exportData() rejections instead of surfacing later as
+    // asynchronous stream failures after a successful return.
+    const excludeFlags = parseExportExclusions({ exclude });
     const dateStr = formatDate({ date: new Date() });
 
     // Linux filename limit is 255 bytes.
-    const SUFFIX = `-${dateStr}.zip`;
-    const PREFIX = 'naidan-data';
-    const PREFIX_BYTES = PREFIX.length;
-    const SUFFIX_BYTES = SUFFIX.length;
-
-    const AVAILABLE_BYTES = 255 - SUFFIX_BYTES - PREFIX_BYTES - 1;
+    const suffix = `-${dateStr}.zip`;
+    const prefix = 'naidan-data';
+    const availableBytes = 255 - suffix.length - prefix.length - 1;
 
     let midSegment = '';
     if (fileNameSegment) {
@@ -286,181 +326,245 @@ export class ImportExportService {
       const sanitized = fileNameSegment.replace(/[/?%*:|"<>\x00-\x1F]/g, '_').trim();
       /* eslint-enable no-control-regex */
       if (sanitized) {
-        midSegment = `-${truncateByByteLength({ str: sanitized, maxBytes: AVAILABLE_BYTES })}`;
+        midSegment = `-${truncateByByteLength({ str: sanitized, maxBytes: availableBytes })}`;
       }
     }
 
-    const finalBaseName = `${PREFIX}${midSegment}-${dateStr}`;
+    const finalBaseName = `${prefix}${midSegment}-${dateStr}`;
     const filename = `${finalBaseName}.zip`;
-
-    const root = zip.folder(finalBaseName);
-    if (!root) throw new Error('Failed to create root folder in ZIP');
-    const exportRoot = root;
-
-    root.file('export-manifest.json', JSON.stringify({ app_version: __APP_VERSION__, exportedAt: Date.now() }, null, 2));
-
+    const rootPath = `${finalBaseName}/`;
     const snapshot = await this.storage.dumpWithoutLock();
-    const { structure, contentStream } = snapshot;
-
     const { settingsToDto, hierarchyToDto, chatGroupToDto, chatMetaToDto } = await import('@/models/mappers');
+    const output = createReadableZipOutput({ highWaterMarkBytes: 512 * 1024 });
+    const centralDirectoryStore = createMemoryZipCentralDirectoryStore();
+    const writer = new StreamingZipWriter({
+      output: output.sink,
+      centralDirectoryStore,
+      compressionCodec: createWebZipCompressionCodec(),
+    });
+    const encoder = new TextEncoder();
+    const createdDirectories = new Set<string>();
+    const modifiedAt = new Date();
 
-    root.file('settings.json', JSON.stringify(settingsToDto({ domain: structure.settings }), null, 2));
-
-    const excludeFlags = {
-      chat: false,
-      chatHistory: false,
-      binaryObject: false,
+    const createByteStream = ({ bytes }: { bytes: Uint8Array }): ReadableStream<Uint8Array> => {
+      let emitted = false;
+      return new ReadableStream({
+        pull(controller) {
+          if (emitted) {
+            controller.close();
+            return;
+          }
+          emitted = true;
+          controller.enqueue(bytes);
+        },
+      });
     };
 
-    for (const item of (exclude ?? [])) {
-      switch (item) {
-      case 'chat':
-        excludeFlags.chat = true;
-        break;
-      case 'chat_history':
-        excludeFlags.chatHistory = true;
-        break;
-      case 'binary_object':
-        excludeFlags.binaryObject = true;
-        break;
-      default: {
-        const _ex: never = item;
-        throw new Error(`Unknown exclusion type: ${_ex}`);
+    const ensureDirectory = async ({ path }: { path: string }): Promise<void> => {
+      const segments = path.split('/').filter(segment => segment.length > 0);
+      let current = '';
+      for (const segment of segments) {
+        current += `${segment}/`;
+        if (createdDirectories.has(current)) {
+          continue;
+        }
+        await writer.addDirectory({ name: current, modifiedAt });
+        createdDirectories.add(current);
       }
+    };
+
+    const addFile = async ({
+      path,
+      stream,
+    }: {
+      path: string;
+      stream: ReadableStream<Uint8Array>;
+    }): Promise<void> => {
+      const slashIndex = path.lastIndexOf('/');
+      if (slashIndex >= 0) {
+        await ensureDirectory({ path: path.slice(0, slashIndex + 1) });
       }
-    }
+      await writer.addFile({
+        name: path,
+        modifiedAt,
+        compression: 'store',
+        stream,
+      });
+    };
 
-    if (excludeFlags.chat && excludeFlags.chatHistory) {
-      throw new Error('Chat and chat history exclusions cannot be used together.');
-    }
-    if (excludeFlags.chat) {
-      // Filter hierarchy to remove chats and clear chat_ids in groups
-      const filteredHierarchy: Hierarchy = {
-        ...structure.hierarchy,
-        items: structure.hierarchy.items
-          .filter((item): item is Extract<HierarchyNode, { type: 'chat_group' }> => item.type === 'chat_group')
-          .map(item => ({ ...item, chat_ids: [] }))
-      };
-      root.file('hierarchy.json', JSON.stringify(hierarchyToDto({ domain: filteredHierarchy }), null, 2));
+    const addTextFile = async ({ path, text }: { path: string; text: string }): Promise<void> => {
+      await addFile({ path, stream: createByteStream({ bytes: encoder.encode(text) }) });
+    };
 
-      const groupFolder = root.folder('chat-groups');
-      for (const group of structure.chatGroups) {
-        groupFolder!.file(`${idToRaw({ id: group.id })}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
-      }
-      // chat-metas.json is intentionally omitted when chat is excluded
-    } else {
-      root.file('hierarchy.json', JSON.stringify(hierarchyToDto({ domain: structure.hierarchy }), null, 2));
+    const addEmptyFile = async ({ path }: { path: string }): Promise<void> => {
+      await addFile({ path, stream: createByteStream({ bytes: new Uint8Array(0) }) });
+    };
 
-      const groupFolder = root.folder('chat-groups');
-      for (const group of structure.chatGroups) {
-        groupFolder!.file(`${idToRaw({ id: group.id })}.json`, JSON.stringify(chatGroupToDto({ domain: group }), null, 2));
-      }
+    const produceZip = async (): Promise<void> => {
+      try {
+        await ensureDirectory({ path: rootPath });
+        await addTextFile({
+          path: `${rootPath}export-manifest.json`,
+          text: JSON.stringify({ app_version: __APP_VERSION__, exportedAt: Date.now() }, null, 2),
+        });
+        await addTextFile({
+          path: `${rootPath}settings.json`,
+          text: JSON.stringify(settingsToDto({ domain: snapshot.structure.settings }), null, 2),
+        });
 
-      const metasDto = structure.chatMetas.map(domain => chatMetaToDto({ domain }));
-      root.file('chat-metas.json', JSON.stringify({ entries: metasDto }, null, 2));
-    }
+        if (excludeFlags.chat) {
+          const filteredHierarchy: Hierarchy = {
+            ...snapshot.structure.hierarchy,
+            items: snapshot.structure.hierarchy.items
+              .filter((item): item is Extract<HierarchyNode, { type: 'chat_group' }> => item.type === 'chat_group')
+              .map(item => ({ ...item, chat_ids: [] })),
+          };
+          await addTextFile({
+            path: `${rootPath}hierarchy.json`,
+            text: JSON.stringify(hierarchyToDto({ domain: filteredHierarchy }), null, 2),
+          });
+        } else {
+          await addTextFile({
+            path: `${rootPath}hierarchy.json`,
+            text: JSON.stringify(hierarchyToDto({ domain: snapshot.structure.hierarchy }), null, 2),
+          });
+        }
 
-    const shardIndices = new Map<string, BinaryShardIndexDto>();
-    const currentThreadBinaryObjectIds = new Set<string>();
-    const pendingBinaryObjects: Array<Extract<MigrationChunkDto, { type: 'binary_object' }>> = [];
-    const getShard = ({ id }: { id: string }) => id.slice(-2).toLowerCase();
+        for (const group of snapshot.structure.chatGroups) {
+          await addTextFile({
+            path: `${rootPath}chat-groups/${idToRaw({ id: group.id })}.json`,
+            text: JSON.stringify(chatGroupToDto({ domain: group }), null, 2),
+          });
+        }
 
-    function addBinaryObjectToZip({ chunk }: {
-      chunk: Extract<MigrationChunkDto, { type: 'binary_object' }>;
-    }) {
-      const binFolder = exportRoot.folder('binary-objects') || exportRoot;
-      const shard = getShard({ id: chunk.id });
-      const shardFolder = binFolder.folder(shard);
-      if (!shardFolder) throw new Error(`Failed to create shard folder ${shard} in ZIP`);
+        if (!excludeFlags.chat) {
+          const metasDto = snapshot.structure.chatMetas.map(domain => chatMetaToDto({ domain }));
+          await addTextFile({
+            path: `${rootPath}chat-metas.json`,
+            text: JSON.stringify({ entries: metasDto }, null, 2),
+          });
+        }
 
-      const fileName = `${chunk.id}.bin`;
-      shardFolder.file(fileName, chunk.blob);
-      shardFolder.file(`.${fileName}.complete`, new Blob([]));
+        const shardIndices = new Map<string, BinaryShardIndexDto>();
+        const currentThreadBinaryObjectIds = new Set<string>();
+        const pendingBinaryObjects: Array<Extract<MigrationChunkDto, { type: 'binary_object' }>> = [];
+        const getShard = ({ id }: { id: string }) => id.slice(-2).toLowerCase();
 
-      let index = shardIndices.get(shard);
-      if (!index) {
-        index = { objects: {} };
-        shardIndices.set(shard, index);
-      }
-      index.objects[chunk.id] = {
-        id: chunk.id,
-        mimeType: chunk.mimeType,
-        size: chunk.size,
-        createdAt: chunk.createdAt,
-        name: chunk.name,
-      };
-    }
+        const createBlobStream = ({ blob }: { blob: Blob }): ReadableStream<Uint8Array> => {
+          if (typeof blob.stream === 'function') {
+            return blob.stream();
+          }
 
-    try {
-      for await (const chunk of contentStream) {
-        const type = chunk.type;
+          return new ReadableStream<Uint8Array>({
+            async start(controller) {
+              controller.enqueue(new Uint8Array(await blob.arrayBuffer()));
+              controller.close();
+            },
+          });
+        };
 
-        switch (type) {
-        case 'chat': {
-          if (excludeFlags.chat) break;
-          if (excludeFlags.chatHistory) {
-            const currentThreadExport = createCurrentThreadChatDto({ chatDto: chunk.data });
-            for (const binaryObjectId of currentThreadExport.binaryObjectIds) {
-              currentThreadBinaryObjectIds.add(binaryObjectId);
+        const addBinaryObjectToZip = async ({
+          chunk,
+        }: {
+          chunk: Extract<MigrationChunkDto, { type: 'binary_object' }>;
+        }): Promise<void> => {
+          const shard = getShard({ id: chunk.id });
+          const fileName = `${chunk.id}.bin`;
+          const shardPath = `${rootPath}binary-objects/${shard}/`;
+          await addFile({ path: `${shardPath}${fileName}`, stream: createBlobStream({ blob: chunk.blob }) });
+          await addEmptyFile({ path: `${shardPath}.${fileName}.complete` });
+
+          let index = shardIndices.get(shard);
+          if (index === undefined) {
+            index = { objects: {} };
+            shardIndices.set(shard, index);
+          }
+          index.objects[chunk.id] = {
+            id: chunk.id,
+            mimeType: chunk.mimeType,
+            size: chunk.size,
+            createdAt: chunk.createdAt,
+            name: chunk.name,
+          };
+        };
+
+        for await (const chunk of snapshot.contentStream) {
+          switch (chunk.type) {
+          case 'chat': {
+            if (excludeFlags.chat) {
+              break;
             }
-            root.folder('chat-contents')!.file(
-              `${chunk.data.id}.json`,
-              JSON.stringify(currentThreadExport.chatDto, null, 2),
-            );
+            if (excludeFlags.chatHistory) {
+              const currentThreadExport = createCurrentThreadChatDto({ chatDto: chunk.data });
+              for (const binaryObjectId of currentThreadExport.binaryObjectIds) {
+                currentThreadBinaryObjectIds.add(binaryObjectId);
+              }
+              await addTextFile({
+                path: `${rootPath}chat-contents/${chunk.data.id}.json`,
+                text: JSON.stringify(currentThreadExport.chatDto, null, 2),
+              });
+              break;
+            }
+            await addTextFile({
+              path: `${rootPath}chat-contents/${chunk.data.id}.json`,
+              text: JSON.stringify(chunk.data, null, 2),
+            });
             break;
           }
-          root.folder('chat-contents')!.file(`${chunk.data.id}.json`, JSON.stringify(chunk.data, null, 2));
-          break;
-        }
-        case 'binary_object': {
-          if (excludeFlags.binaryObject) break;
-          if (excludeFlags.chatHistory) {
-            pendingBinaryObjects.push(chunk);
+          case 'binary_object':
+            if (excludeFlags.binaryObject) {
+              break;
+            }
+            if (excludeFlags.chatHistory) {
+              pendingBinaryObjects.push(chunk);
+              break;
+            }
+            await addBinaryObjectToZip({ chunk });
             break;
+          default: {
+            const _ex: never = chunk;
+            throw new Error(`Unknown chunk type: ${_ex}`);
           }
-          addBinaryObjectToZip({ chunk });
-          break;
-        }
-        default: {
-          const _ex: never = type;
-          throw new Error(`Unknown chunk type: ${_ex}`);
-        }
-        }
-      }
-
-      if (excludeFlags.chatHistory && !excludeFlags.binaryObject) {
-        for (const chunk of pendingBinaryObjects) {
-          if (currentThreadBinaryObjectIds.has(chunk.id)) {
-            addBinaryObjectToZip({ chunk });
           }
         }
-      }
 
-      // Write shard indexes
-      if (!excludeFlags.binaryObject) {
-        const binFolder = root.folder('binary-objects');
-        if (binFolder) {
+        if (excludeFlags.chatHistory && !excludeFlags.binaryObject) {
+          for (const chunk of pendingBinaryObjects) {
+            if (currentThreadBinaryObjectIds.has(chunk.id)) {
+              await addBinaryObjectToZip({ chunk });
+            }
+          }
+        }
+
+        if (!excludeFlags.binaryObject) {
           for (const [shard, index] of shardIndices.entries()) {
-            binFolder.folder(shard)!.file('index.json', JSON.stringify(index, null, 2));
+            await addTextFile({
+              path: `${rootPath}binary-objects/${shard}/index.json`,
+              text: JSON.stringify(index, null, 2),
+            });
           }
         }
-      }
-    } catch (err) {
-      this.globalEvents.addErrorEvent({ source: 'ImportExportService', message: 'Export dump failed', details: err as Error });
-      throw err;
-    }
 
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        zip.generateInternalStream({ type: 'uint8array', streamFiles: true })
-          .on('data', (data) => controller.enqueue(data))
-          .on('error', (err) => controller.error(err))
-          .on('end', () => controller.close())
-          .resume();
+        await writer.finalize();
+        await output.close();
+      } catch (error: unknown) {
+        this.globalEvents.addErrorEvent({
+          source: 'ImportExportService',
+          message: 'Export dump failed',
+          details: error instanceof Error ? error : new Error(String(error)),
+        });
+        try {
+          await output.abort({ reason: error });
+        } catch {
+          // The consumer may already have cancelled the stream.
+        }
+      } finally {
+        await centralDirectoryStore.dispose();
       }
-    });
+    };
 
-    return { stream, filename };
+    void produceZip();
+    return { stream: output.stream, filename };
   }
 
   /**
@@ -468,140 +572,143 @@ export class ImportExportService {
    */
   async analyze({ zipFile }: { zipFile: Blob }): Promise<ImportPreview> {
     const zip = await this.loadZip({ blob: zipFile });
-    const rootPath = this.findRootPath({ zip });
+    try {
+      const rootPath = this.findRootPath({ zip });
 
-    const stats = { chatsCount: 0, chatGroupsCount: 0, attachmentsCount: 0, hasSettings: false, providerProfilesCount: 0 };
-    const items: ImportPreviewItem[] = [];
-    const chatGroupsMap = new Map<string, PreviewChatGroup>();
-    const chatsMap = new Map<string, PreviewChat & { _groupId?: string | null }>();
+      const stats = { chatsCount: 0, chatGroupsCount: 0, attachmentsCount: 0, hasSettings: false, providerProfilesCount: 0 };
+      const items: ImportPreviewItem[] = [];
+      const chatGroupsMap = new Map<string, PreviewChatGroup>();
+      const chatsMap = new Map<string, PreviewChat & { _groupId?: string | null }>();
 
-    // 1. Settings
-    let previewSettings;
-    const settingsFile = zip.file(rootPath + 'settings.json');
-    if (settingsFile) {
-      stats.hasSettings = true;
-      try {
-        const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
-        if (result.success) {
-          stats.providerProfilesCount = result.data.providerProfiles?.length ?? 0;
-          previewSettings = settingsToDomain({ dto: result.data });
-        }
-      } catch (e) { /* Ignore */ }
-    }
-
-    // 2. Binary Objects
-    const binPrefix = rootPath + 'binary-objects/';
-    stats.attachmentsCount = Object.keys(zip.files).filter(f =>
-      f.startsWith(binPrefix) &&
-      f.endsWith('.bin') &&
-      !f.includes('/.') // Ignore markers
-    ).length;
-
-    // 3. Chat Groups
-    const groupsPrefix = rootPath + 'chat-groups/';
-    for (const filename of Object.keys(zip.files)) {
-      if (!filename.startsWith(groupsPrefix) || filename === groupsPrefix || filename.endsWith('/')) continue;
-      try {
-        const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
-        if (result.success) {
-          const dto = result.data;
-          stats.chatGroupsCount++;
-          chatGroupsMap.set(dto.id, { id: dto.id, name: dto.name, updatedAt: dto.updatedAt, items: [], isCollapsed: dto.isCollapsed, _order: 0 });
-        }
-      } catch (e) { /* Ignore */ }
-    }
-
-    // 4. Chat Metas
-    const metasFile = zip.file(rootPath + 'chat-metas.json');
-    if (metasFile) {
-      try {
-        const metasContent = await metasFile.async('string');
-        const metasJson = JSON.parse(metasContent) as { entries: unknown[] };
-        if (metasJson.entries && Array.isArray(metasJson.entries)) {
-          for (const meta of metasJson.entries) {
-            const result = ChatMetaSchemaDto.safeParse(meta);
-            if (result.success) {
-              const dto = result.data;
-              stats.chatsCount++;
-              let messageCount = 0;
-              const contentFile = zip.file(`${rootPath}chat-contents/${dto.id}.json`);
-              if (contentFile) {
-                try {
-                  const contentJson = JSON.parse(await contentFile.async('string')) as { root?: { items?: unknown[] } };
-                  messageCount = contentJson.root?.items?.length ?? 0;
-                } catch (e) { /* Ignore */ }
-              }
-              chatsMap.set(dto.id, {
-                id: dto.id,
-                title: dto.title,
-                updatedAt: dto.updatedAt,
-                messageCount,
-                _groupId: (meta as { groupId?: string | null }).groupId ?? null,
-                _order: 0
-              });
-            }
+      // 1. Settings
+      let previewSettings;
+      const settingsFile = zip.file({ name: rootPath + 'settings.json' });
+      if (settingsFile) {
+        stats.hasSettings = true;
+        try {
+          const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+          if (result.success) {
+            stats.providerProfilesCount = result.data.providerProfiles?.length ?? 0;
+            previewSettings = settingsToDomain({ dto: result.data });
           }
-        }
-      } catch (e) { /* Ignore */ }
-    }
+        } catch (e) { /* Ignore */ }
+      }
 
-    // 5. Build Hierarchy (Prefer hierarchy.json if exists, fallback to legacy fields)
-    const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
-    if (hierarchyFile) {
-      try {
-        const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')));
-        hDto.items.forEach((node, nodeIdx) => {
-          switch (node.type) {
-          case 'chat': {
-            const chat = chatsMap.get(node.id);
-            if (chat) {
-              chat._order = nodeIdx;
-              items.push({ type: 'chat', data: chat });
-            }
-            break;
+      // 2. Binary Objects
+      const binPrefix = rootPath + 'binary-objects/';
+      stats.attachmentsCount = zip.fileNames.filter(f =>
+        f.startsWith(binPrefix) &&
+        f.endsWith('.bin') &&
+        !f.includes('/.') // Ignore markers
+      ).length;
+
+      // 3. Chat Groups
+      const groupsPrefix = rootPath + 'chat-groups/';
+      for (const filename of zip.fileNames) {
+        if (!filename.startsWith(groupsPrefix) || filename === groupsPrefix || filename.endsWith('/')) continue;
+        try {
+          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
+          if (result.success) {
+            const dto = result.data;
+            stats.chatGroupsCount++;
+            chatGroupsMap.set(dto.id, { id: dto.id, name: dto.name, updatedAt: dto.updatedAt, items: [], isCollapsed: dto.isCollapsed, _order: 0 });
           }
-          case 'chat_group': {
-            const group = chatGroupsMap.get(node.id);
-            if (group) {
-              group._order = nodeIdx;
-              node.chat_ids.forEach((cid, chatIdx) => {
-                const chat = chatsMap.get(cid);
-                if (chat) {
-                  chat._order = chatIdx;
-                  group.items.push(chat);
+        } catch (e) { /* Ignore */ }
+      }
+
+      // 4. Chat Metas
+      const metasFile = zip.file({ name: rootPath + 'chat-metas.json' });
+      if (metasFile) {
+        try {
+          const metasContent = await metasFile.readText();
+          const metasJson = JSON.parse(metasContent) as { entries: unknown[] };
+          if (metasJson.entries && Array.isArray(metasJson.entries)) {
+            for (const meta of metasJson.entries) {
+              const result = ChatMetaSchemaDto.safeParse(meta);
+              if (result.success) {
+                const dto = result.data;
+                stats.chatsCount++;
+                let messageCount = 0;
+                const contentFile = zip.file({ name: `${rootPath}chat-contents/${dto.id}.json` });
+                if (contentFile) {
+                  try {
+                    const contentJson = JSON.parse(await contentFile.readText()) as { root?: { items?: unknown[] } };
+                    messageCount = contentJson.root?.items?.length ?? 0;
+                  } catch (e) { /* Ignore */ }
                 }
-              });
-              items.push({ type: 'chat_group', data: group });
+                chatsMap.set(dto.id, {
+                  id: dto.id,
+                  title: dto.title,
+                  updatedAt: dto.updatedAt,
+                  messageCount,
+                  _groupId: (meta as { groupId?: string | null }).groupId ?? null,
+                  _order: 0
+                });
+              }
             }
-            break;
           }
-          default: {
-            const _ex: never = node;
-            throw new Error(`Unhandled hierarchy node type: ${_ex}`);
-          }
-          }
-        });
-      } catch (e) {
+        } catch (e) { /* Ignore */ }
+      }
+
+      // 5. Build Hierarchy (Prefer hierarchy.json if exists, fallback to legacy fields)
+      const hierarchyFile = zip.file({ name: rootPath + 'hierarchy.json' });
+      if (hierarchyFile) {
+        try {
+          const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.readText()));
+          hDto.items.forEach((node, nodeIdx) => {
+            switch (node.type) {
+            case 'chat': {
+              const chat = chatsMap.get(node.id);
+              if (chat) {
+                chat._order = nodeIdx;
+                items.push({ type: 'chat', data: chat });
+              }
+              break;
+            }
+            case 'chat_group': {
+              const group = chatGroupsMap.get(node.id);
+              if (group) {
+                group._order = nodeIdx;
+                node.chat_ids.forEach((cid, chatIdx) => {
+                  const chat = chatsMap.get(cid);
+                  if (chat) {
+                    chat._order = chatIdx;
+                    group.items.push(chat);
+                  }
+                });
+                items.push({ type: 'chat_group', data: group });
+              }
+              break;
+            }
+            default: {
+              const _ex: never = node;
+              throw new Error(`Unhandled hierarchy node type: ${_ex}`);
+            }
+            }
+          });
+        } catch (e) {
+          this.assembleLegacyHierarchy({ chatsMap, chatGroupsMap, items });
+        }
+      } else {
         this.assembleLegacyHierarchy({ chatsMap, chatGroupsMap, items });
       }
-    } else {
-      this.assembleLegacyHierarchy({ chatsMap, chatGroupsMap, items });
-    }
 
-    const manifestFile = zip.file(rootPath + 'export-manifest.json');
-    let appVersion = 'Unknown';
-    let exportedAt = 0;
-    if (manifestFile) {
-      try {
-        const m = JSON.parse(await manifestFile.async('string'));
-        appVersion = m.app_version || 'Unknown';
-        exportedAt = m.exportedAt || 0;
-      } catch (e) { /* Ignore */ }
-    }
+      const manifestFile = zip.file({ name: rootPath + 'export-manifest.json' });
+      let appVersion = 'Unknown';
+      let exportedAt = 0;
+      if (manifestFile) {
+        try {
+          const m = JSON.parse(await manifestFile.readText());
+          appVersion = m.app_version || 'Unknown';
+          exportedAt = m.exportedAt || 0;
+        } catch (e) { /* Ignore */ }
+      }
 
-    return { appVersion, exportedAt, items, stats, previewSettings };
+      return { appVersion, exportedAt, items, stats, previewSettings };
+    } finally {
+      await zip.close();
+    }
   }
-
   private assembleLegacyHierarchy({
     chatsMap,
     chatGroupsMap,
@@ -632,77 +739,83 @@ export class ImportExportService {
    */
   async verify({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
     const zip = await this.loadZip({ blob: zipFile });
-    const rootPath = this.findRootPath({ zip });
+    try {
+      const rootPath = this.findRootPath({ zip });
 
-    let snapshot: StorageSnapshot;
-    const mode = config.data.mode;
-    switch (mode) {
-    case 'replace':
-      snapshot = await this.createRestoreSnapshot({ zip, rootPath });
-      break;
-    case 'append':
-      snapshot = await this.createAppendSnapshot({ zip, rootPath, config });
-      break;
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unhandled import mode: ${_ex}`);
-    }
-    }
+      let snapshot: StorageSnapshot;
+      const mode = config.data.mode;
+      switch (mode) {
+      case 'replace':
+        snapshot = await this.createRestoreSnapshot({ zip, rootPath });
+        break;
+      case 'append':
+        snapshot = await this.createAppendSnapshot({ zip, rootPath, config });
+        break;
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled import mode: ${_ex}`);
+      }
+      }
 
-    for await (const _ of snapshot.contentStream) { /* dry run */ }
+      for await (const _ of snapshot.contentStream) { /* dry run */ }
+    } finally {
+      await zip.close();
+    }
   }
-
   /**
    * Execute Import.
    */
   async executeImport({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
     const zip = await this.loadZip({ blob: zipFile });
-    const rootPath = this.findRootPath({ zip });
-    const settingsFile = zip.file(rootPath + 'settings.json');
+    try {
+      const rootPath = this.findRootPath({ zip });
+      const settingsFile = zip.file({ name: rootPath + 'settings.json' });
 
-    const mode = config.data.mode;
-    switch (mode) {
-    case 'replace': {
-      await this.storage.clearAll();
-      if (settingsFile) {
-        try {
-          const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
-          if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
-        } catch (e) { /* Ignore */ }
+      const mode = config.data.mode;
+      switch (mode) {
+      case 'replace': {
+        await this.storage.clearAll();
+        if (settingsFile) {
+          try {
+            const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+            if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
+          } catch (e) { /* Ignore */ }
+        }
+        const replaceSnapshot = await this.createRestoreSnapshot({ zip, rootPath });
+        await this.storage.restore({ snapshot: replaceSnapshot });
+        break;
       }
-      const replaceSnapshot = await this.createRestoreSnapshot({ zip, rootPath });
-      await this.storage.restore({ snapshot: replaceSnapshot });
-      break;
-    }
-    case 'append': {
-      if (settingsFile) {
-        try {
-          const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.async('string')));
-          if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
-        } catch (e) { /* Ignore */ }
+      case 'append': {
+        if (settingsFile) {
+          try {
+            const result = SettingsSchemaDto.safeParse(JSON.parse(await settingsFile.readText()));
+            if (result.success) await this.applySettingsImport({ zipSettings: result.data, strategies: config.settings });
+          } catch (e) { /* Ignore */ }
+        }
+        const appendSnapshot = await this.createAppendSnapshot({ zip, rootPath, config });
+        await this.storage.restore({ snapshot: appendSnapshot });
+        break;
       }
-      const appendSnapshot = await this.createAppendSnapshot({ zip, rootPath, config });
-      await this.storage.restore({ snapshot: appendSnapshot });
-      break;
-    }
-    default: {
-      const _ex: never = mode;
-      throw new Error(`Unhandled import mode: ${_ex}`);
-    }
+      default: {
+        const _ex: never = mode;
+        throw new Error(`Unhandled import mode: ${_ex}`);
+      }
+      }
+    } finally {
+      await zip.close();
     }
   }
-
-  private async loadZip({ blob }: { blob: Blob }): Promise<JSZip> {
+  private async loadZip({ blob }: { blob: Blob }): Promise<IndexedZipArchive> {
     try {
-      return await JSZip.loadAsync(blob);
+      return await openIndexedZipArchive({ blob });
     } catch (e) {
       this.globalEvents.addErrorEvent({ source: 'ImportExportService', message: 'Invalid ZIP file', details: e as Error });
       throw new Error('Invalid ZIP file');
     }
   }
 
-  private findRootPath({ zip }: { zip: JSZip }): string {
-    const manifestPath = Object.keys(zip.files).find(path => path.endsWith('export-manifest.json'));
+  private findRootPath({ zip }: { zip: IndexedZipArchive }): string {
+    const manifestPath = zip.fileNames.find(path => path.endsWith('export-manifest.json'));
     if (!manifestPath) throw new Error('Missing export-manifest.json');
 
     const lastSlash = manifestPath.lastIndexOf('/');
@@ -756,17 +869,17 @@ export class ImportExportService {
     } });
   }
 
-  private async createRestoreSnapshot({ zip, rootPath }: { zip: JSZip; rootPath: string }): Promise<StorageSnapshot> {
-    const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
+  private async createRestoreSnapshot({ zip, rootPath }: { zip: IndexedZipArchive; rootPath: string }): Promise<StorageSnapshot> {
+    const hierarchyFile = zip.file({ name: rootPath + 'hierarchy.json' });
     const hierarchyDto: HierarchyDto = hierarchyFile
-      ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')))
+      ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.readText()))
       : { items: [] };
 
-    const metasFile = zip.file(rootPath + 'chat-metas.json');
+    const metasFile = zip.file({ name: rootPath + 'chat-metas.json' });
     const metasDto: ChatMetaDto[] = [];
     if (metasFile) {
       try {
-        const json = JSON.parse(await metasFile.async('string'));
+        const json = JSON.parse(await metasFile.readText());
         if (json.entries) {
           for (const m of json.entries) {
             const res = ChatMetaSchemaDto.safeParse(m);
@@ -778,25 +891,25 @@ export class ImportExportService {
 
     const groupsPrefix = rootPath + 'chat-groups/';
     const groupsDto: ChatGroupDto[] = [];
-    for (const filename of Object.keys(zip.files)) {
+    for (const filename of zip.fileNames) {
       if (filename.startsWith(groupsPrefix) && !filename.endsWith('/') && filename !== groupsPrefix) {
         try {
-          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
+          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
           if (result.success) groupsDto.push(result.data);
         } catch (e) { /* Ignore */ }
       }
     }
 
-    const settingsFile = zip.file(rootPath + 'settings.json');
-    const settingsDto = settingsFile ? SettingsSchemaDto.parse(JSON.parse(await settingsFile.async('string'))) : null;
+    const settingsFile = zip.file({ name: rootPath + 'settings.json' });
+    const settingsDto = settingsFile ? SettingsSchemaDto.parse(JSON.parse(await settingsFile.readText())) : null;
 
     // Load all shard indices from the ZIP
     const binPrefix = rootPath + 'binary-objects/';
     const unifiedBinIndex = new Map<string, BinaryObjectDto>();
-    for (const filename of Object.keys(zip.files)) {
+    for (const filename of zip.fileNames) {
       if (filename.startsWith(binPrefix) && filename.endsWith('index.json')) {
         try {
-          const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file(filename)!.async('string')));
+          const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file({ name: filename })!.readText()));
           for (const [id, object] of Object.entries(shardIndex.objects)) {
             unifiedBinIndex.set(id, object);
           }
@@ -810,24 +923,24 @@ export class ImportExportService {
 
     const contentStream = async function* (): AsyncGenerator<MigrationChunkDto> {
       for (const meta of metasDto) {
-        const contentFile = zip.file(`${rootPath}chat-contents/${meta.id}.json`);
+        const contentFile = zip.file({ name: `${rootPath}chat-contents/${meta.id}.json` });
         if (contentFile) {
           try {
-            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
+            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
             yield { type: 'chat' as const, data: { ...meta, ...content, experimental: meta.experimental, messages: undefined } };
           } catch (e) { /* Ignore */ }
         }
       }
 
       // Yield binary objects found in shards
-      for (const filename of Object.keys(zip.files)) {
+      for (const filename of zip.fileNames) {
         if (filename.startsWith(binPrefix) && filename.endsWith('.bin') && !filename.includes('/.')) {
           const parts = filename.substring(binPrefix.length).split('/');
           if (parts.length === 2) {
             const bId = parts[1]!.replace('.bin', '');
             const meta = unifiedBinIndex.get(bId);
             if (meta) {
-              const blob = await zip.file(filename)!.async('blob');
+              const blob = await zip.file({ name: filename })!.readBlob();
               yield {
                 type: 'binary_object' as const,
                 id: bId,
@@ -861,17 +974,17 @@ export class ImportExportService {
     };
   }
 
-  private async createAppendSnapshot({ zip, rootPath, config }: { zip: JSZip; rootPath: string; config: ImportConfig }): Promise<StorageSnapshot> {
+  private async createAppendSnapshot({ zip, rootPath, config }: { zip: IndexedZipArchive; rootPath: string; config: ImportConfig }): Promise<StorageSnapshot> {
     const groupIdMap = new Map<string, string>();
     const chatIdMap = new Map<string, string>();
 
     // 1. Groups
     const groupsPrefix = rootPath + 'chat-groups/';
     const importedGroupsDto: ChatGroupDto[] = [];
-    for (const filename of Object.keys(zip.files)) {
+    for (const filename of zip.fileNames) {
       if (filename.startsWith(groupsPrefix) && !filename.endsWith('/') && filename !== groupsPrefix) {
         try {
-          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file(filename)!.async('string')));
+          const result = ChatGroupSchemaDto.safeParse(JSON.parse(await zip.file({ name: filename })!.readText()));
           if (result.success) {
             const dto = result.data;
             const newId = idToRaw({ id: generateId<ChatGroupId>() });
@@ -885,11 +998,11 @@ export class ImportExportService {
     }
 
     // 2. Metas
-    const metasFile = zip.file(rootPath + 'chat-metas.json');
+    const metasFile = zip.file({ name: rootPath + 'chat-metas.json' });
     const importedMetas: { dto: ChatMetaDto, originalId: string }[] = [];
     if (metasFile) {
       try {
-        const json = JSON.parse(await metasFile.async('string'));
+        const json = JSON.parse(await metasFile.readText());
         for (const meta of (json.entries || [])) {
           const res = ChatMetaSchemaDto.safeParse(meta);
           if (res.success) {
@@ -907,11 +1020,11 @@ export class ImportExportService {
 
     // 3. Hierarchy
     const currentHierarchy = await this.storage.loadHierarchy() || { items: [] };
-    const hierarchyFile = zip.file(rootPath + 'hierarchy.json');
+    const hierarchyFile = zip.file({ name: rootPath + 'hierarchy.json' });
     let importedHierarchyItems: HierarchyNode[] = [];
     if (hierarchyFile) {
       try {
-        const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.async('string')));
+        const hDto = HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.readText()));
         importedHierarchyItems = hDto.items.map(node => {
           switch (node.type) {
           case 'chat':
@@ -950,10 +1063,10 @@ export class ImportExportService {
       // 1. Unified metadata lookup for append remapping
       const binPrefix = rootPath + 'binary-objects/';
       const unifiedBinIndex = new Map<string, BinaryObjectDto>();
-      for (const filename of Object.keys(zip.files)) {
+      for (const filename of zip.fileNames) {
         if (filename.startsWith(binPrefix) && filename.endsWith('index.json')) {
           try {
-            const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file(filename)!.async('string')));
+            const shardIndex = BinaryShardIndexSchemaDto.parse(JSON.parse(await zip.file({ name: filename })!.readText()));
             for (const [id, object] of Object.entries(shardIndex.objects)) {
               unifiedBinIndex.set(id, object);
             }
@@ -965,10 +1078,10 @@ export class ImportExportService {
       const binaryRemapMap = new Map<string, string>();
 
       for (const { dto: meta, originalId } of importedMetas) {
-        const contentFile = zip.file(`${rootPath}chat-contents/${originalId}.json`);
+        const contentFile = zip.file({ name: `${rootPath}chat-contents/${originalId}.json` });
         if (contentFile) {
           try {
-            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.async('string')));
+            const content = ChatContentSchemaDto.parse(JSON.parse(await contentFile.readText()));
             const dto: ChatDto = {
               ...meta,
               ...content,
@@ -1034,7 +1147,7 @@ export class ImportExportService {
       }
 
       // Yield binary objects from shards using the remapped IDs
-      for (const filename of Object.keys(zip.files)) {
+      for (const filename of zip.fileNames) {
         if (filename.startsWith(binPrefix) && filename.endsWith('.bin') && !filename.includes('/.')) {
           const parts = filename.substring(binPrefix.length).split('/');
           if (parts.length === 2) {
@@ -1042,7 +1155,7 @@ export class ImportExportService {
             const newBinaryId = binaryRemapMap.get(oldBinaryId);
             const meta = unifiedBinIndex.get(oldBinaryId);
             if (newBinaryId && meta) {
-              const blob = await zip.file(filename)!.async('blob');
+              const blob = await zip.file({ name: filename })!.readBlob();
               yield {
                 type: 'binary_object' as const,
                 id: newBinaryId,

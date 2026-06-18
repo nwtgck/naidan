@@ -1,9 +1,107 @@
-import type { WeshFileHandle } from '@/services/wesh/types';
-import { writeAllBytesToHandle, writeAllStreamToHandle } from '@/services/wesh/utils/fs';
-import {
-  iterateReadableStreamChunks,
-  pipeThroughBufferSourceTransform,
-} from '@/services/wesh/utils/stream';
+/**
+ * Environment-independent streaming ZIP core.
+ *
+ * DEPENDENCY DIRECTION — DO NOT WEAKEN THIS BOUNDARY
+ * ==================================================
+ *
+ * This module must depend only on Web-standard primitives and other modules
+ * inside `src/lib/zip-stream`. It must never import Wesh, worker clients,
+ * application services, or Node.js filesystem APIs.
+ *
+ * The only allowed direction is:
+ *
+ *   ZIP core <- environment adapter <- application feature
+ *
+ * Never reverse it to:
+ *
+ *   ZIP core -> Wesh / worker / Node.js / import-export service
+ *
+ * Reversing this dependency can pull the complete Wesh implementation into
+ * the main application bundle, including standalone builds, and can make ZIP
+ * performance depend on unrelated filesystem abstractions. Add capabilities
+ * through the interfaces below and implement them in an outer adapter instead.
+ */
+
+export interface ZipByteSink {
+  /** Writes the complete chunk or rejects without reporting partial progress. */
+  write({ chunk }: { chunk: Uint8Array }): Promise<void>;
+}
+
+export interface ZipCentralDirectoryStore extends ZipByteSink {
+  finalize(): Promise<void>;
+  openStream(): Promise<ReadableStream<Uint8Array>>;
+  dispose(): Promise<void>;
+}
+
+export interface ZipCompressionCodec {
+  compress({ source }: {
+    source: ReadableStream<Uint8Array>;
+  }): ReadableStream<Uint8Array>;
+  decompress({ source }: {
+    source: ReadableStream<Uint8Array>;
+  }): ReadableStream<Uint8Array>;
+}
+
+export async function* iterateZipStreamChunks({
+  stream,
+}: {
+  stream: ReadableStream<Uint8Array>;
+}): AsyncIterable<Uint8Array> {
+  const reader = stream.getReader();
+  let completed = false;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        completed = true;
+        return;
+      }
+      yield result.value;
+    }
+  } finally {
+    try {
+      if (!completed) {
+        await reader.cancel();
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+}
+
+function pipeThroughBufferSourceTransform({
+  source,
+  transform,
+}: {
+  source: ReadableStream<Uint8Array>;
+  transform: {
+    readable: ReadableStream<Uint8Array>;
+    writable: WritableStream<BufferSource>;
+  };
+}): ReadableStream<Uint8Array> {
+  const byteTransform: ReadableWritablePair<Uint8Array, Uint8Array> = {
+    readable: transform.readable,
+    writable: transform.writable as unknown as WritableStream<Uint8Array>,
+  };
+  return source.pipeThrough(byteTransform);
+}
+
+export function createWebZipCompressionCodec(): ZipCompressionCodec {
+  return {
+    compress({ source }) {
+      return pipeThroughBufferSourceTransform({
+        source,
+        transform: new CompressionStream('deflate-raw'),
+      });
+    },
+    decompress({ source }) {
+      return pipeThroughBufferSourceTransform({
+        source,
+        transform: new DecompressionStream('deflate-raw'),
+      });
+    },
+  };
+}
 
 const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 const ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014b50;
@@ -40,6 +138,11 @@ export interface ZipArchiveEntry {
 
 export interface ZipRandomAccessSource {
   readonly size: number;
+  /**
+   * Returns exactly `length` bytes, or an empty chunk when `length` is zero.
+   * Environment adapters must complete any low-level partial reads internally
+   * so the ZIP core does not add copies or filesystem-specific retry behavior.
+   */
   read({ offset, length }: { offset: number; length: number }): Promise<Uint8Array>;
   close(): Promise<void>;
 }
@@ -91,32 +194,17 @@ class Crc32Accumulator {
   }
 }
 
-class CountingHandleWriter {
-  private readonly handle: WeshFileHandle;
+class CountingZipWriter {
+  private readonly sink: ZipByteSink;
   position = 0;
 
-  constructor({ handle }: { handle: WeshFileHandle }) {
-    this.handle = handle;
+  constructor({ sink }: { sink: ZipByteSink }) {
+    this.sink = sink;
   }
 
   async write({ chunk }: { chunk: Uint8Array }): Promise<void> {
-    let offset = 0;
-    while (offset < chunk.byteLength) {
-      const { bytesWritten } = await this.handle.write({
-        buffer: chunk,
-        offset,
-        length: chunk.byteLength - offset,
-      });
-      if (bytesWritten <= 0) {
-        throw new Error('ZIP output stopped accepting data');
-      }
-      offset += bytesWritten;
-      this.position += bytesWritten;
-    }
-  }
-
-  async close(): Promise<void> {
-    await this.handle.close();
+    await this.sink.write({ chunk });
+    this.position += chunk.byteLength;
   }
 }
 
@@ -132,6 +220,46 @@ function assertUint32({ value, field }: { value: number; field: string }): numbe
     throw new Error(`ZIP ${field} exceeds the non-ZIP64 limit`);
   }
   return value;
+}
+
+function assertReadRange({
+  size,
+  offset,
+  length,
+}: {
+  size: number;
+  offset: number;
+  length: number;
+}): void {
+  if (
+    !Number.isSafeInteger(size)
+    || size < 0
+    || !Number.isSafeInteger(offset)
+    || offset < 0
+    || !Number.isSafeInteger(length)
+    || length < 0
+    || offset > size
+    || length > size - offset
+  ) {
+    throw new Error('ZIP read range is outside the archive');
+  }
+}
+
+async function readZipSourceRange({
+  source,
+  offset,
+  length,
+}: {
+  source: ZipRandomAccessSource;
+  offset: number;
+  length: number;
+}): Promise<Uint8Array> {
+  assertReadRange({ size: source.size, offset, length });
+  const chunk = await source.read({ offset, length });
+  if (chunk.byteLength !== length) {
+    throw new Error(`ZIP source returned ${chunk.byteLength} bytes for a ${length}-byte range`);
+  }
+  return chunk;
 }
 
 function createBytes({ size, write }: {
@@ -350,6 +478,9 @@ function createValidationStream({
     transform(chunk, controller) {
       accumulator.update({ chunk });
       size += chunk.byteLength;
+      if (size > entry.uncompressedSize) {
+        throw new Error(`ZIP entry size mismatch: ${entry.name}`);
+      }
       controller.enqueue(chunk);
     },
     flush() {
@@ -364,20 +495,26 @@ function createValidationStream({
 }
 
 export class StreamingZipWriter {
-  private readonly output: CountingHandleWriter;
-  private readonly centralDirectory: CountingHandleWriter;
+  private readonly output: CountingZipWriter;
+  private readonly centralDirectory: CountingZipWriter;
+  private readonly centralDirectoryStore: ZipCentralDirectoryStore;
+  private readonly compressionCodec: ZipCompressionCodec;
   private entryCount = 0;
   private finalized = false;
 
   constructor({
-    outputHandle,
-    centralDirectoryHandle,
+    output,
+    centralDirectoryStore,
+    compressionCodec,
   }: {
-    outputHandle: WeshFileHandle;
-    centralDirectoryHandle: WeshFileHandle;
+    output: ZipByteSink;
+    centralDirectoryStore: ZipCentralDirectoryStore;
+    compressionCodec: ZipCompressionCodec;
   }) {
-    this.output = new CountingHandleWriter({ handle: outputHandle });
-    this.centralDirectory = new CountingHandleWriter({ handle: centralDirectoryHandle });
+    this.output = new CountingZipWriter({ sink: output });
+    this.centralDirectory = new CountingZipWriter({ sink: centralDirectoryStore });
+    this.centralDirectoryStore = centralDirectoryStore;
+    this.compressionCodec = compressionCodec;
   }
 
   async addDirectory({
@@ -457,10 +594,7 @@ export class StreamingZipWriter {
       case 'store':
         return trackedStream;
       case 'deflate':
-        return pipeThroughBufferSourceTransform({
-          source: trackedStream,
-          transform: new CompressionStream('deflate-raw'),
-        });
+        return this.compressionCodec.compress({ source: trackedStream });
       default: {
         const _exhaustiveCheck: never = compression;
         throw new Error(`Unhandled ZIP compression: ${String(_exhaustiveCheck)}`);
@@ -469,7 +603,7 @@ export class StreamingZipWriter {
     })();
 
     const dataStartOffset = this.output.position;
-    for await (const chunk of iterateReadableStreamChunks({ stream: dataStream })) {
+    for await (const chunk of iterateZipStreamChunks({ stream: dataStream })) {
       await this.output.write({ chunk });
     }
     const result: ZipEntryWriteResult = {
@@ -494,18 +628,14 @@ export class StreamingZipWriter {
     this.incrementEntryCount();
   }
 
-  async finalize({
-    openCentralDirectoryStream,
-  }: {
-    openCentralDirectoryStream: () => Promise<ReadableStream<Uint8Array>>;
-  }): Promise<void> {
+  async finalize(): Promise<void> {
     this.assertWritable();
     this.finalized = true;
     const centralDirectorySize = this.centralDirectory.position;
     const centralDirectoryOffset = this.output.position;
-    await this.centralDirectory.close();
-    const stream = await openCentralDirectoryStream();
-    for await (const chunk of iterateReadableStreamChunks({ stream })) {
+    await this.centralDirectoryStore.finalize();
+    const stream = await this.centralDirectoryStore.openStream();
+    for await (const chunk of iterateZipStreamChunks({ stream })) {
       await this.output.write({ chunk });
     }
     await this.output.write({
@@ -533,46 +663,10 @@ export function createBlobZipSource({ blob }: { blob: Blob }): ZipRandomAccessSo
   return {
     size: blob.size,
     async read({ offset, length }) {
-      if (offset < 0 || length < 0 || offset + length > blob.size) {
-        throw new Error('ZIP read range is outside the archive');
-      }
+      assertReadRange({ size: blob.size, offset, length });
       return new Uint8Array(await blob.slice(offset, offset + length).arrayBuffer());
     },
     async close() {},
-  };
-}
-
-export async function createHandleZipSource({
-  handle,
-}: {
-  handle: WeshFileHandle;
-}): Promise<ZipRandomAccessSource> {
-  const stat = await handle.stat();
-  return {
-    size: stat.size,
-    async read({ offset, length }) {
-      if (offset < 0 || length < 0 || offset + length > stat.size) {
-        throw new Error('ZIP read range is outside the archive');
-      }
-      const output = new Uint8Array(length);
-      let totalRead = 0;
-      while (totalRead < length) {
-        const { bytesRead } = await handle.read({
-          buffer: output,
-          offset: totalRead,
-          length: length - totalRead,
-          position: offset + totalRead,
-        });
-        if (bytesRead <= 0) {
-          throw new Error('Unexpected end of ZIP archive');
-        }
-        totalRead += bytesRead;
-      }
-      return output;
-    },
-    async close() {
-      await handle.close();
-    },
   };
 }
 
@@ -586,6 +680,7 @@ class BufferedZipSource {
   }
 
   async read({ offset, length }: { offset: number; length: number }): Promise<Uint8Array> {
+    assertReadRange({ size: this.source.size, offset, length });
     if (length === 0) {
       return new Uint8Array(0);
     }
@@ -597,11 +692,12 @@ class BufferedZipSource {
       this.source.size - offset,
       Math.max(length, ZIP_IO_CHUNK_SIZE),
     );
-    this.buffer = await this.source.read({ offset, length: readLength });
+    this.buffer = await readZipSourceRange({
+      source: this.source,
+      offset,
+      length: readLength,
+    });
     this.bufferOffset = offset;
-    if (length > this.buffer.byteLength) {
-      throw new Error('Unexpected end of ZIP archive');
-    }
     return this.buffer.subarray(0, length);
   }
 }
@@ -616,7 +712,7 @@ async function findCentralDirectory({
   }
   const tailLength = Math.min(source.size, ZIP_END_RECORD_MIN_SIZE + ZIP_MAX_COMMENT_SIZE);
   const tailOffset = source.size - tailLength;
-  const tail = await source.read({ offset: tailOffset, length: tailLength });
+  const tail = await readZipSourceRange({ source, offset: tailOffset, length: tailLength });
   const view = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
   for (let offset = tail.byteLength - ZIP_END_RECORD_MIN_SIZE; offset >= 0; offset -= 1) {
     if (view.getUint32(offset, true) !== ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
@@ -638,7 +734,8 @@ async function findCentralDirectory({
     if (entryCount === ZIP_UINT16_MAX || size === ZIP_UINT32_MAX || centralOffset === ZIP_UINT32_MAX) {
       throw new Error('ZIP64 archives are not supported');
     }
-    if (centralOffset + size > source.size) {
+    const endRecordOffset = tailOffset + offset;
+    if (centralOffset + size > endRecordOffset) {
       throw new Error('Invalid ZIP central directory range');
     }
     return {
@@ -659,6 +756,7 @@ function createRangeStream({
   offset: number;
   length: number;
 }): ReadableStream<Uint8Array> {
+  assertReadRange({ size: source.size, offset, length });
   let currentOffset = offset;
   let remaining = length;
   return new ReadableStream({
@@ -668,15 +766,13 @@ function createRangeStream({
         return;
       }
       const chunkLength = Math.min(remaining, ZIP_IO_CHUNK_SIZE);
-      const chunk = await source.read({ offset: currentOffset, length: chunkLength });
-      if (chunk.byteLength === 0) {
-        throw new Error('ZIP source returned an empty range before the requested data was complete');
-      }
-      if (chunk.byteLength > chunkLength) {
-        throw new Error('ZIP source returned more data than requested');
-      }
-      currentOffset += chunk.byteLength;
-      remaining -= chunk.byteLength;
+      const chunk = await readZipSourceRange({
+        source,
+        offset: currentOffset,
+        length: chunkLength,
+      });
+      currentOffset += chunkLength;
+      remaining -= chunkLength;
       controller.enqueue(chunk);
     },
   });
@@ -686,10 +782,18 @@ export class StreamingZipReader {
   private readonly bufferedSource: BufferedZipSource;
   private centralDirectoryPromise: Promise<ZipCentralDirectoryInfo> | undefined;
   private readonly source: ZipRandomAccessSource;
+  private readonly compressionCodec: ZipCompressionCodec;
 
-  constructor({ source }: { source: ZipRandomAccessSource }) {
+  constructor({
+    source,
+    compressionCodec,
+  }: {
+    source: ZipRandomAccessSource;
+    compressionCodec: ZipCompressionCodec;
+  }) {
     this.source = source;
     this.bufferedSource = new BufferedZipSource({ source });
+    this.compressionCodec = compressionCodec;
   }
 
   async *entries(): AsyncIterable<ZipArchiveEntry> {
@@ -697,6 +801,9 @@ export class StreamingZipReader {
     let offset = central.offset;
     const endOffset = central.offset + central.size;
     for (let index = 0; index < central.entryCount; index += 1) {
+      if (offset + 46 > endOffset) {
+        throw new Error('ZIP central directory entry exceeds directory bounds');
+      }
       const fixed = await this.bufferedSource.read({ offset, length: 46 });
       const view = new DataView(fixed.buffer, fixed.byteOffset, fixed.byteLength);
       if (view.getUint32(0, true) !== ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE) {
@@ -718,6 +825,10 @@ export class StreamingZipReader {
       const diskStart = view.getUint16(34, true);
       const externalAttributes = view.getUint32(38, true);
       const localHeaderOffset = view.getUint32(42, true);
+      const nextOffset = offset + 46 + nameLength + extraLength + commentLength;
+      if (nextOffset > endOffset) {
+        throw new Error('ZIP central directory entry exceeds directory bounds');
+      }
       const nameBytes = await this.bufferedSource.read({ offset: offset + 46, length: nameLength });
       const name = textDecoder.decode(nameBytes);
       if (diskStart !== 0) {
@@ -742,10 +853,7 @@ export class StreamingZipReader {
         modifiedAt: fromDosDateTime({ date: modifiedDate, time: modifiedTime }),
         flags,
       };
-      offset += 46 + nameLength + extraLength + commentLength;
-      if (offset > endOffset) {
-        throw new Error('ZIP central directory entry exceeds directory bounds');
-      }
+      offset = nextOffset;
     }
     if (offset !== endOffset) {
       throw new Error('ZIP central directory size mismatch');
@@ -775,6 +883,11 @@ export class StreamingZipReader {
     }
     const nameLength = view.getUint16(26, true);
     const extraLength = view.getUint16(28, true);
+    const central = await this.getCentralDirectory();
+    const localHeaderEnd = entry.localHeaderOffset + 30 + nameLength + extraLength;
+    if (entry.localHeaderOffset >= central.offset || localHeaderEnd > central.offset) {
+      throw new Error(`ZIP local entry header exceeds file-data bounds: ${entry.name}`);
+    }
     const localNameBytes = await this.bufferedSource.read({
       offset: entry.localHeaderOffset + 30,
       length: nameLength,
@@ -783,8 +896,20 @@ export class StreamingZipReader {
     if (localName !== entry.name) {
       throw new Error(`ZIP local entry name mismatch: ${entry.name}`);
     }
-    const dataOffset = entry.localHeaderOffset + 30 + nameLength + extraLength;
-    if (dataOffset + entry.compressedSize > this.source.size) {
+    if ((localFlags & ZIP_GENERAL_PURPOSE_DATA_DESCRIPTOR_FLAG) === 0) {
+      const localCrc32 = view.getUint32(14, true);
+      const localCompressedSize = view.getUint32(18, true);
+      const localUncompressedSize = view.getUint32(22, true);
+      if (
+        localCrc32 !== entry.crc32
+        || localCompressedSize !== entry.compressedSize
+        || localUncompressedSize !== entry.uncompressedSize
+      ) {
+        throw new Error(`ZIP local entry metadata mismatch: ${entry.name}`);
+      }
+    }
+    const dataOffset = localHeaderEnd;
+    if (dataOffset + entry.compressedSize > central.offset) {
       throw new Error(`ZIP entry data exceeds archive bounds: ${entry.name}`);
     }
     const compressedStream = createRangeStream({
@@ -797,10 +922,7 @@ export class StreamingZipReader {
       case 'store':
         return compressedStream;
       case 'deflate':
-        return pipeThroughBufferSourceTransform({
-          source: compressedStream,
-          transform: new DecompressionStream('deflate-raw'),
-        });
+        return this.compressionCodec.decompress({ source: compressedStream });
       default: {
         const _exhaustiveCheck: never = entry.compression;
         throw new Error(`Unhandled ZIP compression: ${String(_exhaustiveCheck)}`);
@@ -820,22 +942,3 @@ export class StreamingZipReader {
   }
 }
 
-export async function copyStreamToHandle({
-  stream,
-  handle,
-}: {
-  stream: ReadableStream<Uint8Array>;
-  handle: WeshFileHandle;
-}): Promise<void> {
-  await writeAllStreamToHandle({ stream, handle, closeHandle: false });
-}
-
-export async function writeBytesToHandle({
-  bytes,
-  handle,
-}: {
-  bytes: Uint8Array;
-  handle: WeshFileHandle;
-}): Promise<void> {
-  await writeAllBytesToHandle({ handle, data: bytes });
-}

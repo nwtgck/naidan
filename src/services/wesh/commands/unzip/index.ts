@@ -2,10 +2,11 @@ import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import {
   createBlobZipSource,
-  createHandleZipSource,
+  createWebZipCompressionCodec,
   StreamingZipReader,
   type ZipArchiveEntry,
-} from '@/services/wesh/commands/_shared/zip-stream';
+} from '@/lib/zip-stream';
+import { createWeshZipRandomAccessSource } from '@/services/wesh/zip-stream';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -158,7 +159,10 @@ async function openPathZipArchive({
   const blobResult = await context.files.tryReadBlobEfficiently({ path });
   switch (blobResult.kind) {
   case 'blob': {
-    const reader = new StreamingZipReader({ source: createBlobZipSource({ blob: blobResult.blob }) });
+    const reader = new StreamingZipReader({
+      source: createBlobZipSource({ blob: blobResult.blob }),
+      compressionCodec: createWebZipCompressionCodec(),
+    });
     return {
       reader,
       close: () => reader.close(),
@@ -174,8 +178,11 @@ async function openPathZipArchive({
         append: 'preserve',
       },
     });
-    const source = await createHandleZipSource({ handle });
-    const reader = new StreamingZipReader({ source });
+    const source = await createWeshZipRandomAccessSource({ handle });
+    const reader = new StreamingZipReader({
+      source,
+      compressionCodec: createWebZipCompressionCodec(),
+    });
     return {
       reader,
       close: () => reader.close(),

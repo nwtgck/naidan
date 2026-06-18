@@ -6,11 +6,101 @@ import {
   createBlobZipSource,
   type ZipArchiveEntry,
   type ZipRandomAccessSource,
-} from './zip-stream';
-import { createTestWriteCaptureHandle } from '@/services/wesh/utils/test-stream';
+  createWebZipCompressionCodec,
+  type ZipByteSink,
+  type ZipCentralDirectoryStore,
+} from './index';
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+
+const compressionCodec = createWebZipCompressionCodec();
+
+interface TestZipCapture {
+  readonly handle: ZipCentralDirectoryStore & {
+    close(): Promise<void>;
+  };
+  readonly buffer: Uint8Array;
+  readonly chunkCount: number;
+}
+
+function concatenateChunks({ chunks }: { chunks: readonly Uint8Array[] }): Uint8Array {
+  const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+  const output = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
+}
+
+function createTestWriteCaptureHandle(): TestZipCapture {
+  let chunks: Uint8Array[] = [];
+  let finalized = false;
+  const handle: TestZipCapture['handle'] = {
+    async write({ chunk }) {
+      if (finalized) {
+        throw new Error('Test ZIP capture is finalized');
+      }
+      chunks.push(chunk);
+    },
+    async finalize() {
+      finalized = true;
+    },
+    async openStream() {
+      const captured = chunks;
+      let index = 0;
+      return new ReadableStream<Uint8Array>({
+        pull(controller) {
+          const chunk = captured[index];
+          if (chunk === undefined) {
+            controller.close();
+            return;
+          }
+          index += 1;
+          controller.enqueue(chunk);
+        },
+      });
+    },
+    async dispose() {
+      finalized = true;
+      chunks = [];
+    },
+    async close() {
+      finalized = true;
+    },
+  };
+  return {
+    handle,
+    get buffer() {
+      return concatenateChunks({ chunks });
+    },
+    get chunkCount() {
+      return chunks.length;
+    },
+  };
+}
+
+function createTestStreamingZipWriter({
+  outputHandle,
+  centralDirectoryHandle,
+}: {
+  outputHandle: ZipByteSink;
+  centralDirectoryHandle: ZipCentralDirectoryStore;
+}): StreamingZipWriter {
+  return new StreamingZipWriter({
+    output: outputHandle,
+    centralDirectoryStore: centralDirectoryHandle,
+    compressionCodec,
+  });
+}
+
+class TestStreamingZipReader extends StreamingZipReader {
+  constructor({ source }: { source: ZipRandomAccessSource }) {
+    super({ source, compressionCodec });
+  }
+}
 
 function createByteStream({
   chunks,
@@ -150,7 +240,7 @@ describe('streaming ZIP codec', () => {
   it('writes store and deflate entries that JSZip can read', async () => {
     const output = createTestWriteCaptureHandle();
     const centralDirectory = createTestWriteCaptureHandle();
-    const writer = new StreamingZipWriter({
+    const writer = createTestStreamingZipWriter({
       outputHandle: output.handle,
       centralDirectoryHandle: centralDirectory.handle,
     });
@@ -193,11 +283,7 @@ describe('streaming ZIP codec', () => {
       compression: 'store',
       stream: createByteStream({ chunks: [binary] }),
     });
-    await writer.finalize({
-      openCentralDirectoryStream: async () => createByteStream({
-        chunks: [centralDirectory.buffer],
-      }),
-    });
+    await writer.finalize();
     await output.handle.close();
 
     const archive = await JSZip.loadAsync(output.buffer);
@@ -224,7 +310,7 @@ describe('streaming ZIP codec', () => {
       compression: 'DEFLATE',
       comment: 'archive-comment-🛰️-PK\u0005\u0006-∞',
     });
-    const reader = new StreamingZipReader({
+    const reader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
@@ -255,7 +341,7 @@ describe('streaming ZIP codec', () => {
   it('round-trips exact Unicode names and byte-split multibyte payloads through JSZip', async () => {
     const output = createTestWriteCaptureHandle();
     const centralDirectory = createTestWriteCaptureHandle();
-    const writer = new StreamingZipWriter({
+    const writer = createTestStreamingZipWriter({
       outputHandle: output.handle,
       centralDirectoryHandle: centralDirectory.handle,
     });
@@ -279,11 +365,7 @@ describe('streaming ZIP codec', () => {
         stream: createByteStream({ chunks: byteChunks }),
       });
     }
-    await writer.finalize({
-      openCentralDirectoryStream: async () => createByteStream({
-        chunks: [centralDirectory.buffer],
-      }),
-    });
+    await writer.finalize();
     await output.handle.close();
 
     const archive = await JSZip.loadAsync(output.buffer);
@@ -306,7 +388,7 @@ describe('streaming ZIP codec', () => {
       type: 'uint8array',
       compression: 'DEFLATE',
     });
-    const reader = new StreamingZipReader({
+    const reader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
@@ -330,7 +412,7 @@ describe('streaming ZIP codec', () => {
   it('sets UTF-8 and data-descriptor flags in local and central headers', async () => {
     const output = createTestWriteCaptureHandle();
     const centralDirectory = createTestWriteCaptureHandle();
-    const writer = new StreamingZipWriter({
+    const writer = createTestStreamingZipWriter({
       outputHandle: output.handle,
       centralDirectoryHandle: centralDirectory.handle,
     });
@@ -340,11 +422,7 @@ describe('streaming ZIP codec', () => {
       compression: 'deflate',
       stream: createByteStream({ chunks: [textEncoder.encode('payload 🚀')] }),
     });
-    await writer.finalize({
-      openCentralDirectoryStream: async () => createByteStream({
-        chunks: [centralDirectory.buffer],
-      }),
-    });
+    await writer.finalize();
     await output.handle.close();
 
     const localView = new DataView(output.buffer.buffer, output.buffer.byteOffset, output.buffer.byteLength);
@@ -383,7 +461,7 @@ describe('streaming ZIP codec', () => {
       bytes: Uint8Array;
       message: string;
     }): Promise<void> => {
-      const reader = new StreamingZipReader({
+      const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
       try {
@@ -433,7 +511,7 @@ describe('streaming ZIP codec', () => {
     const invalidRange = original.slice();
     const endOffset = findSignature({ bytes: invalidRange, signature: 0x06054b50 });
     new DataView(invalidRange.buffer).setUint32(endOffset + 16, invalidRange.byteLength, true);
-    const invalidRangeReader = new StreamingZipReader({
+    const invalidRangeReader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: invalidRange }) }),
     });
     try {
@@ -446,7 +524,7 @@ describe('streaming ZIP codec', () => {
 
     const invalidLocal = original.slice();
     new DataView(invalidLocal.buffer).setUint32(0, 0, true);
-    const invalidLocalReader = new StreamingZipReader({
+    const invalidLocalReader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: invalidLocal }) }),
     });
     try {
@@ -468,7 +546,7 @@ describe('streaming ZIP codec', () => {
       bytes: Uint8Array;
       message: string;
     }): Promise<void> => {
-      const reader = new StreamingZipReader({
+      const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
       try {
@@ -495,6 +573,14 @@ describe('streaming ZIP codec', () => {
       message: 'ZIP local compression method mismatch: payload.txt',
     });
 
+    const localMetadataMismatch = (await createStoredJsZipArchive()).slice();
+    const localMetadataView = new DataView(localMetadataMismatch.buffer);
+    localMetadataView.setUint32(14, localMetadataView.getUint32(14, true) ^ 0xffffffff, true);
+    await expectOpenFailure({
+      bytes: localMetadataMismatch,
+      message: 'ZIP local entry metadata mismatch: payload.txt',
+    });
+
     const localEncryption = (await createStoredJsZipArchive()).slice();
     new DataView(localEncryption.buffer).setUint16(6, 0x0001, true);
     await expectOpenFailure({
@@ -504,7 +590,9 @@ describe('streaming ZIP codec', () => {
 
     const outOfBounds = (await createStoredJsZipArchive()).slice();
     const centralOffset = findZipSignature({ bytes: outOfBounds, signature: 0x02014b50 });
-    new DataView(outOfBounds.buffer).setUint32(centralOffset + 20, outOfBounds.byteLength, true);
+    const outOfBoundsView = new DataView(outOfBounds.buffer);
+    outOfBoundsView.setUint32(centralOffset + 20, outOfBounds.byteLength, true);
+    outOfBoundsView.setUint32(18, outOfBounds.byteLength, true);
     await expectOpenFailure({
       bytes: outOfBounds,
       message: 'ZIP entry data exceeds archive bounds: payload.txt',
@@ -519,7 +607,7 @@ describe('streaming ZIP codec', () => {
       bytes: Uint8Array;
       message: string;
     }): Promise<void> => {
-      const reader = new StreamingZipReader({
+      const reader = new TestStreamingZipReader({
         source: createBlobZipSource({ blob: createBlobFromBytes({ bytes }) }),
       });
       try {
@@ -532,14 +620,32 @@ describe('streaming ZIP codec', () => {
     const sizeMismatch = (await createStoredJsZipArchive()).slice();
     const sizeMismatchView = new DataView(sizeMismatch.buffer);
     const sizeMismatchEndOffset = findZipSignature({ bytes: sizeMismatch, signature: 0x06054b50 });
-    sizeMismatchView.setUint32(
-      sizeMismatchEndOffset + 12,
-      sizeMismatchView.getUint32(sizeMismatchEndOffset + 12, true) + 1,
-      true,
-    );
+    sizeMismatchView.setUint16(sizeMismatchEndOffset + 8, 0, true);
+    sizeMismatchView.setUint16(sizeMismatchEndOffset + 10, 0, true);
     await expectEntriesFailure({
       bytes: sizeMismatch,
       message: 'ZIP central directory size mismatch',
+    });
+
+    const variableLengthOverflow = (await createStoredJsZipArchive()).slice();
+    const variableLengthEndOffset = findZipSignature({
+      bytes: variableLengthOverflow,
+      signature: 0x06054b50,
+    });
+    new DataView(variableLengthOverflow.buffer).setUint32(variableLengthEndOffset + 12, 46, true);
+    await expectEntriesFailure({
+      bytes: variableLengthOverflow,
+      message: 'ZIP central directory entry exceeds directory bounds',
+    });
+
+    const overlapsEndRecord = (await createStoredJsZipArchive()).slice();
+    const overlapsEndOffset = findZipSignature({ bytes: overlapsEndRecord, signature: 0x06054b50 });
+    const overlapsView = new DataView(overlapsEndRecord.buffer);
+    overlapsView.setUint32(overlapsEndOffset + 12, 8, true);
+    overlapsView.setUint32(overlapsEndOffset + 16, overlapsEndOffset - 4, true);
+    await expectEntriesFailure({
+      bytes: overlapsEndRecord,
+      message: 'Invalid ZIP central directory range',
     });
 
     const zip64Entry = (await createStoredJsZipArchive()).slice();
@@ -562,7 +668,7 @@ describe('streaming ZIP codec', () => {
   it('rejects local and central flag mismatches', async () => {
     const archiveBytes = (await createStoredJsZipArchive()).slice();
     new DataView(archiveBytes.buffer).setUint16(6, 0x0008, true);
-    const reader = new StreamingZipReader({
+    const reader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
     try {
@@ -579,8 +685,10 @@ describe('streaming ZIP codec', () => {
     const archiveBytes = (await createStoredJsZipArchive()).slice();
     const centralOffset = findZipSignature({ bytes: archiveBytes, signature: 0x02014b50 });
     const view = new DataView(archiveBytes.buffer);
-    view.setUint32(centralOffset + 24, view.getUint32(centralOffset + 24, true) + 1, true);
-    const reader = new StreamingZipReader({
+    const declaredSize = view.getUint32(centralOffset + 24, true) + 1;
+    view.setUint32(centralOffset + 24, declaredSize, true);
+    view.setUint32(22, declaredSize, true);
+    const reader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
     });
 
@@ -594,30 +702,49 @@ describe('streaming ZIP codec', () => {
     }
   });
 
+  it('rejects oversized uncompressed output before exposing the invalid chunk', async () => {
+    const archiveBytes = (await createStoredJsZipArchive()).slice();
+    const centralOffset = findZipSignature({ bytes: archiveBytes, signature: 0x02014b50 });
+    const view = new DataView(archiveBytes.buffer);
+    const declaredSize = view.getUint32(centralOffset + 24, true) - 1;
+    view.setUint32(centralOffset + 24, declaredSize, true);
+    view.setUint32(22, declaredSize, true);
+    const reader = new TestStreamingZipReader({
+      source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: archiveBytes }) }),
+    });
+
+    try {
+      const entries = await collectEntries({ reader });
+      const stream = await reader.openEntry({ entry: findEntry({ entries, name: 'payload.txt' }) });
+      const streamReader = stream.getReader();
+      try {
+        await expect(streamReader.read()).rejects.toThrow('ZIP entry size mismatch: payload.txt');
+      } finally {
+        streamReader.releaseLock();
+      }
+    } finally {
+      await reader.close();
+    }
+  });
+
   it('rejects writer operations after finalization and overlong entry names', async () => {
     const output = createTestWriteCaptureHandle();
     const centralDirectory = createTestWriteCaptureHandle();
-    const writer = new StreamingZipWriter({
+    const writer = createTestStreamingZipWriter({
       outputHandle: output.handle,
       centralDirectoryHandle: centralDirectory.handle,
     });
-    await writer.finalize({
-      openCentralDirectoryStream: async () => createByteStream({
-        chunks: [centralDirectory.buffer],
-      }),
-    });
+    await writer.finalize();
     await expect(writer.addDirectory({
       name: 'after-finalize',
       modifiedAt: new Date(2025, 0, 1),
     })).rejects.toThrow('ZIP writer is already finalized');
-    await expect(writer.finalize({
-      openCentralDirectoryStream: async () => createByteStream({ chunks: [] }),
-    })).rejects.toThrow('ZIP writer is already finalized');
+    await expect(writer.finalize()).rejects.toThrow('ZIP writer is already finalized');
     await output.handle.close();
 
     const longOutput = createTestWriteCaptureHandle();
     const longCentralDirectory = createTestWriteCaptureHandle();
-    const longNameWriter = new StreamingZipWriter({
+    const longNameWriter = createTestStreamingZipWriter({
       outputHandle: longOutput.handle,
       centralDirectoryHandle: longCentralDirectory.handle,
     });
@@ -652,7 +779,7 @@ describe('streaming ZIP codec', () => {
         await blobSource.close();
       },
     };
-    const reader = new StreamingZipReader({ source: trackedSource });
+    const reader = new TestStreamingZipReader({ source: trackedSource });
 
     try {
       const entries = await collectEntries({ reader });
@@ -691,7 +818,7 @@ describe('streaming ZIP codec', () => {
         await blobSource.close();
       },
     };
-    const reader = new StreamingZipReader({ source: trackedSource });
+    const reader = new TestStreamingZipReader({ source: trackedSource });
 
     const entries = await collectEntries({ reader });
     const extracted = await readStreamBytes({
@@ -730,14 +857,14 @@ describe('streaming ZIP codec', () => {
         await blobSource.close();
       },
     };
-    const reader = new StreamingZipReader({ source });
+    const reader = new TestStreamingZipReader({ source });
 
     try {
       const entries = await collectEntries({ reader });
       stallEntryData = true;
       await expect(readStreamBytes({
         stream: await reader.openEntry({ entry: findEntry({ entries, name: 'stalled.bin' }) }),
-      })).rejects.toThrow('ZIP source returned an empty range before the requested data was complete');
+      })).rejects.toThrow('ZIP source returned 0 bytes for a 65536-byte range');
     } finally {
       await reader.close();
     }
@@ -751,7 +878,7 @@ describe('streaming ZIP codec', () => {
       compression: 'STORE',
     });
     const corrupted = corruptFirstStoredEntryData({ archive: archiveBytes });
-    const reader = new StreamingZipReader({
+    const reader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: corrupted }) }),
     });
 
@@ -766,7 +893,7 @@ describe('streaming ZIP codec', () => {
   });
 
   it('rejects truncated archives without a central directory', async () => {
-    const reader = new StreamingZipReader({
+    const reader = new TestStreamingZipReader({
       source: createBlobZipSource({ blob: createBlobFromBytes({ bytes: new Uint8Array([1, 2, 3]) }) }),
     });
 

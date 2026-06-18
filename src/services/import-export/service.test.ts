@@ -3,7 +3,7 @@ import { ImportExportService, type IImportExportStorage } from './service';
 import JSZip from 'jszip';
 import { ChatSchemaDto } from '@/models/dto';
 import type { SettingsDto, ChatMetaDto, ChatGroupDto, MigrationChunkDto } from '@/models/dto';
-import type { ImportConfig } from './types';
+import type { ExportOptions, ImportConfig } from './types';
 import type { Mocked } from 'vitest';
 import type { Settings, ChatMeta } from '@/models/types';
 import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
@@ -129,6 +129,15 @@ describe('ImportExportService', () => {
   });
 
   describe('exportData', () => {
+    it('rejects conflicting exclusions before starting the export producer', async () => {
+      const invalidExclude = ['chat', 'chat_history'] as unknown as ExportOptions['exclude'];
+
+      await expect(service.exportData({ exclude: invalidExclude }))
+        .rejects.toThrow('Chat and chat history exclusions cannot be used together.');
+
+      expect(mockStorage.dumpWithoutLock).not.toHaveBeenCalled();
+    });
+
     it('handles empty storage gracefully and uses dumpWithoutLock', async () => {
       mockStorage.dumpWithoutLock.mockResolvedValue({
         structure: {

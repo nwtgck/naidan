@@ -1,9 +1,15 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import {
+  createWebZipCompressionCodec,
   StreamingZipWriter,
+  type ZipCentralDirectoryStore,
   type ZipCompression,
-} from '@/services/wesh/commands/_shared/zip-stream';
+} from '@/lib/zip-stream';
+import {
+  createWeshZipByteSink,
+  createWeshZipCentralDirectoryStore,
+} from '@/services/wesh/zip-stream';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
@@ -364,6 +370,21 @@ async function closeHandleSafely({ handle }: { handle: WeshFileHandle | undefine
   }
 }
 
+async function disposeCentralDirectoryStoreSafely({
+  store,
+}: {
+  store: ZipCentralDirectoryStore | undefined;
+}): Promise<void> {
+  if (store === undefined) {
+    return;
+  }
+  try {
+    await store.dispose();
+  } catch {
+    // Continue closing handles and removing temporary paths after any store failure.
+  }
+}
+
 export const zipCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'zip',
@@ -414,6 +435,7 @@ export const zipCommandDefinition: WeshCommandDefinition = {
     await context.files.mkdir({ path: temporaryDirectory, recursive: true });
     let outputHandle: WeshFileHandle | undefined;
     let centralDirectoryHandle: WeshFileHandle | undefined;
+    let centralDirectoryStore: ZipCentralDirectoryStore | undefined;
     let matchedInput = false;
     let hadError = false;
     let archiveInstalled = false;
@@ -427,9 +449,15 @@ export const zipCommandDefinition: WeshCommandDefinition = {
         path: centralDirectoryPath,
         flags: createWriteFlags(),
       });
+      centralDirectoryStore = createWeshZipCentralDirectoryStore({
+        files: context.files,
+        path: centralDirectoryPath,
+        handle: centralDirectoryHandle,
+      });
       const writer = new StreamingZipWriter({
-        outputHandle,
-        centralDirectoryHandle,
+        output: createWeshZipByteSink({ handle: outputHandle }),
+        centralDirectoryStore,
+        compressionCodec: createWebZipCompressionCodec(),
       });
 
       for (const operand of inputOperands) {
@@ -493,12 +521,9 @@ export const zipCommandDefinition: WeshCommandDefinition = {
         return { exitCode: 12 };
       }
 
-      await writer.finalize({
-        openCentralDirectoryStream: () => openFileReadStream({
-          files: context.files,
-          path: centralDirectoryPath,
-        }),
-      });
+      await writer.finalize();
+      await centralDirectoryStore.dispose();
+      centralDirectoryStore = undefined;
       await outputHandle.close();
       outputHandle = undefined;
       centralDirectoryHandle = undefined;
@@ -539,6 +564,7 @@ export const zipCommandDefinition: WeshCommandDefinition = {
       }
       return { exitCode: hadError ? 1 : 0 };
     } finally {
+      await disposeCentralDirectoryStoreSafely({ store: centralDirectoryStore });
       await closeHandleSafely({ handle: centralDirectoryHandle });
       await closeHandleSafely({ handle: outputHandle });
       await removePathIfPresent({ context, path: centralDirectoryPath });
