@@ -24,13 +24,13 @@ export function formatFileClassification({
     return 'SVG Scalable Vector Graphics image';
   case 'html':
     return 'HTML document text';
-  case 'shell-script':
+  case 'shell_script':
     return 'POSIX shell script text executable';
-  case 'ascii-text':
+  case 'ascii_text':
     return 'ASCII text';
-  case 'utf8-text':
+  case 'utf8_text':
     return 'Unicode text, UTF-8 text';
-  case 'utf16-text':
+  case 'utf16_text':
     return 'Unicode text, UTF-16 text';
   case 'data':
     return 'data';
@@ -65,11 +65,11 @@ export function formatFileMime({
     return 'image/svg+xml';
   case 'html':
     return 'text/html';
-  case 'shell-script':
+  case 'shell_script':
     return 'text/x-shellscript';
-  case 'ascii-text':
-  case 'utf8-text':
-  case 'utf16-text':
+  case 'ascii_text':
+  case 'utf8_text':
+  case 'utf16_text':
     return 'text/plain';
   case 'data':
     return 'application/octet-stream';

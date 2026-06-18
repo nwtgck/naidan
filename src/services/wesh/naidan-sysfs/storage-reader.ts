@@ -20,6 +20,7 @@ import {
   naidanSysfsRemoteChatContentPayloadSchema,
   naidanSysfsRemoteChatGroupPayloadSchema,
   naidanSysfsRemoteChatMetaPayloadSchema,
+  naidanSysfsRemoteChatPayloadSchema,
   naidanSysfsRemoteChatSummarySchema,
   naidanSysfsRemoteSidebarItemSchema,
 } from './remote-reader-schema'
@@ -27,6 +28,7 @@ import { createNaidanSysfsBinaryObject } from './binary-object-metadata'
 import type {
   NaidanSysfsBinaryObject,
   NaidanSysfsRemoteChatGroupPayload,
+  NaidanSysfsRemoteChatPayload,
   NaidanSysfsRemoteChatSidebarItem,
   NaidanSysfsRemoteReader,
   NaidanSysfsRemoteSidebarItem,
@@ -165,6 +167,22 @@ export function createNaidanSysfsRemoteReader({
         return undefined
       }
       return naidanSysfsRemoteChatContentPayloadSchema.parse(chatContentToDto({ domain: content }))
+    },
+    async loadChat({ chatId }: { chatId: string }) {
+      assertStorageTypeMatches({ expectedStorageType: storageType })
+      const chat = await storageService.loadChat({ id: toChatId({ raw: chatId }) })
+      if (chat === null) {
+        return undefined
+      }
+      return naidanSysfsRemoteChatPayloadSchema.parse({
+        metadata: {
+          dto: chatMetaToDto({ domain: chat }),
+          groupId: chat.groupId === undefined || chat.groupId === null
+            ? chat.groupId
+            : idToRaw({ id: chat.groupId }),
+        },
+        content: chatContentToDto({ domain: chat }),
+      })
     },
     async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
       assertStorageTypeMatches({ expectedStorageType: storageType })
@@ -354,6 +372,26 @@ async function loadRemoteChatContent({
   })
 }
 
+function remoteChatPayloadToDomain({
+  payload,
+}: {
+  payload: NaidanSysfsRemoteChatPayload;
+}) {
+  const parsed = naidanSysfsRemoteChatPayloadSchema.parse(payload)
+  const metadata = chatMetaToDomain({ dto: parsed.metadata.dto })
+  metadata.groupId = parsed.metadata.groupId === undefined || parsed.metadata.groupId === null
+    ? parsed.metadata.groupId
+    : toChatGroupId({ raw: parsed.metadata.groupId })
+  const content = chatContentToDomain({
+    dto: parsed.content as ChatContentDto,
+  })
+  return {
+    ...metadata,
+    root: content.root,
+    currentLeafId: content.currentLeafId ?? metadata.currentLeafId,
+  }
+}
+
 export function createRemoteNaidanSysfsStorageReader({
   remoteReader,
 }: {
@@ -429,18 +467,11 @@ export function createRemoteNaidanSysfsStorageReader({
       return loadRemoteChatContent({ remoteReader, chatId: idToRaw({ id: chatId }) })
     },
     async loadChat({ chatId }: { chatId: ChatId }) {
-      const [metadata, content] = await Promise.all([
-        loadRemoteChatMeta({ remoteReader, chatId: idToRaw({ id: chatId }) }),
-        loadRemoteChatContent({ remoteReader, chatId: idToRaw({ id: chatId }) }),
-      ])
-      if (metadata === undefined || content === undefined) {
+      const payload = await remoteReader.loadChat({ chatId: idToRaw({ id: chatId }) })
+      if (payload === undefined) {
         return undefined
       }
-      return {
-        ...metadata,
-        root: content.root,
-        currentLeafId: content.currentLeafId ?? metadata.currentLeafId,
-      }
+      return remoteChatPayloadToDomain({ payload })
     },
     async loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }) {
       const chatGroup = await remoteReader.loadChatGroup({ chatGroupId: idToRaw({ id: chatGroupId }) })

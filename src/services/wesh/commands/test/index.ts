@@ -16,11 +16,11 @@ type TestTruthValue = 'true' | 'false';
 
 type TestEvaluationResult =
   | { kind: 'success'; value: TestTruthValue }
-  | { kind: 'syntax-error'; message: string };
+  | { kind: 'syntax_error'; message: string };
 
 type TestTokenResult =
   | { kind: 'tokens'; tokens: string[] }
-  | { kind: 'syntax-error'; message: string };
+  | { kind: 'syntax_error'; message: string };
 
 type UnaryTestOperator =
   | '-b'
@@ -46,8 +46,8 @@ type BinaryTestOperator = BinaryStringOperator | BinaryIntegerOperator | BinaryF
 
 type ParsedIntegerOperand =
   | { kind: 'success'; value: number; nextIndex: number }
-  | { kind: 'not-integer' }
-  | { kind: 'syntax-error'; message: string };
+  | { kind: 'not_integer' }
+  | { kind: 'syntax_error'; message: string };
 
 const UNARY_TEST_OPERATORS = new Set<UnaryTestOperator>([
   '-b',
@@ -278,13 +278,13 @@ function parseIntegerOperand({
 }): ParsedIntegerOperand {
   const token = tokens[startIndex];
   if (token === undefined) {
-    return { kind: 'syntax-error', message: 'missing argument after integer operator' };
+    return { kind: 'syntax_error', message: 'missing argument after integer operator' };
   }
 
   if (token === '-l') {
     const stringOperand = tokens[startIndex + 1];
     if (stringOperand === undefined) {
-      return { kind: 'syntax-error', message: 'missing argument after -l' };
+      return { kind: 'syntax_error', message: 'missing argument after -l' };
     }
     return {
       kind: 'success',
@@ -294,7 +294,7 @@ function parseIntegerOperand({
   }
 
   if (!/^-?\d+$/.test(token)) {
-    return { kind: 'not-integer' };
+    return { kind: 'not_integer' };
   }
 
   return {
@@ -414,7 +414,7 @@ class TestExpressionParser {
     switch (value.kind) {
     case 'success':
       break;
-    case 'syntax-error':
+    case 'syntax_error':
       return value;
     default: {
       const _ex: never = value;
@@ -424,7 +424,7 @@ class TestExpressionParser {
 
     if (this.currentToken() !== undefined) {
       return {
-        kind: 'syntax-error',
+        kind: 'syntax_error',
         message: `unexpected argument '${this.currentToken()}'`,
       };
     }
@@ -449,7 +449,7 @@ class TestExpressionParser {
     switch (left.kind) {
     case 'success':
       break;
-    case 'syntax-error':
+    case 'syntax_error':
       return left;
     default: {
       const _ex: never = left;
@@ -463,7 +463,7 @@ class TestExpressionParser {
       switch (right.kind) {
       case 'success':
         break;
-      case 'syntax-error':
+      case 'syntax_error':
         return right;
       default: {
         const _ex: never = right;
@@ -484,7 +484,7 @@ class TestExpressionParser {
     switch (left.kind) {
     case 'success':
       break;
-    case 'syntax-error':
+    case 'syntax_error':
       return left;
     default: {
       const _ex: never = left;
@@ -498,7 +498,7 @@ class TestExpressionParser {
       switch (right.kind) {
       case 'success':
         break;
-      case 'syntax-error':
+      case 'syntax_error':
         return right;
       default: {
         const _ex: never = right;
@@ -521,7 +521,7 @@ class TestExpressionParser {
       switch (nested.kind) {
       case 'success':
         break;
-      case 'syntax-error':
+      case 'syntax_error':
         return nested;
       default: {
         const _ex: never = nested;
@@ -542,7 +542,7 @@ class TestExpressionParser {
     const token = this.currentToken();
     if (token === undefined) {
       return {
-        kind: 'syntax-error',
+        kind: 'syntax_error',
         message: 'missing argument',
       };
     }
@@ -553,7 +553,7 @@ class TestExpressionParser {
       switch (nested.kind) {
       case 'success':
         break;
-      case 'syntax-error':
+      case 'syntax_error':
         return nested;
       default: {
         const _ex: never = nested;
@@ -562,7 +562,7 @@ class TestExpressionParser {
       }
       if (this.currentToken() !== ')') {
         return {
-          kind: 'syntax-error',
+          kind: 'syntax_error',
           message: "missing ')'",
         };
       }
@@ -575,7 +575,7 @@ class TestExpressionParser {
       const operand = this.consumeToken();
       if (operand === undefined) {
         return {
-          kind: 'syntax-error',
+          kind: 'syntax_error',
           message: `missing argument after '${token}'`,
         };
       }
@@ -595,16 +595,16 @@ class TestExpressionParser {
       startIndex: this.index,
     });
     switch (integerLeft.kind) {
-    case 'syntax-error':
+    case 'syntax_error':
       return integerLeft;
-    case 'not-integer':
+    case 'not_integer':
       break;
     case 'success': {
       const integerOperator = this.tokens[integerLeft.nextIndex];
       if (integerOperator !== undefined && BINARY_INTEGER_OPERATORS.has(integerOperator as BinaryIntegerOperator)) {
         if (this.tokens[integerLeft.nextIndex + 1] === undefined) {
           return {
-            kind: 'syntax-error',
+            kind: 'syntax_error',
             message: `expected integer after '${integerOperator}'`,
           };
         }
@@ -615,10 +615,10 @@ class TestExpressionParser {
         switch (integerRight.kind) {
         case 'success':
           break;
-        case 'syntax-error':
+        case 'syntax_error':
           return integerRight;
-        case 'not-integer':
-          return { kind: 'syntax-error', message: `expected integer after '${integerOperator}'` };
+        case 'not_integer':
+          return { kind: 'syntax_error', message: `expected integer after '${integerOperator}'` };
         default: {
           const _ex: never = integerRight;
           throw new Error(`Unhandled integer operand result: ${JSON.stringify(_ex)}`);
@@ -648,7 +648,7 @@ class TestExpressionParser {
     const leftOperand = this.consumeToken();
     if (leftOperand === undefined) {
       return {
-        kind: 'syntax-error',
+        kind: 'syntax_error',
         message: 'missing argument',
       };
     }
@@ -666,14 +666,14 @@ class TestExpressionParser {
     const rightOperand = this.consumeToken();
     if (rightOperand === undefined) {
       return {
-        kind: 'syntax-error',
+        kind: 'syntax_error',
         message: `missing argument after '${binaryOperator}'`,
       };
     }
 
     if (BINARY_INTEGER_OPERATORS.has(binaryOperator as BinaryIntegerOperator)) {
       return {
-        kind: 'syntax-error',
+        kind: 'syntax_error',
         message: `expected integer expression before '${binaryOperator}'`,
       };
     }
@@ -701,7 +701,7 @@ function getExpressionTokens({
   case '[':
     if (args.length === 0 || args[args.length - 1] !== ']') {
       return {
-        kind: 'syntax-error',
+        kind: 'syntax_error',
         message: "missing ']'",
       };
     }
@@ -786,7 +786,7 @@ function createTestCommandDefinition({
       switch (tokenResult.kind) {
       case 'tokens':
         break;
-      case 'syntax-error':
+      case 'syntax_error':
         await writeCommandUsageError({
           context,
           command: commandName,
@@ -808,7 +808,7 @@ function createTestCommandDefinition({
       switch (evaluation.kind) {
       case 'success':
         break;
-      case 'syntax-error':
+      case 'syntax_error':
         await writeCommandUsageError({
           context,
           command: commandName,

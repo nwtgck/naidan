@@ -16,6 +16,7 @@ import type {
   WeshShellStateSnapshot,
   WeshCommandListEntry,
   WeshDirEntry,
+  WeshEntryRef,
 } from './types';
 import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
@@ -24,6 +25,7 @@ import { parseCommandLine } from './parser';
 import { createTextIoHelpers } from './utils/io';
 import { normalizePath, resolvePath } from './path';
 import { createWriteHandleFromStream } from './utils/stream';
+import { WeshOverlayMap } from './utils/overlay-map';
 
 import { builtinCommands } from './commands';
 import { helpCommandDefinition } from './commands/help';
@@ -511,14 +513,17 @@ usage: ${name} [-c command] [file [argument...]]
           childEnvironment.positionalArgs = context.args.slice(1);
           childEnvironment.env.set('0', scriptPath);
           this.syncSpecialParameters({ environment: childEnvironment });
-          return this.executeShellInState({
-            script: stripShebangLine({
-              script: new TextDecoder().decode(bytes),
-            }),
+          return this.runChildExecutionEnvironment({
             environment: childEnvironment,
-            stdin: context.stdin,
-            stdout: context.stdout,
-            stderr: context.stderr,
+            execute: () => this.executeShellInState({
+              script: stripShebangLine({
+                script: new TextDecoder().decode(bytes),
+              }),
+              environment: childEnvironment,
+              stdin: context.stdin,
+              stdout: context.stdout,
+              stderr: context.stderr,
+            }),
           });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -1554,19 +1559,24 @@ usage: ${name} [-c command] [file [argument...]]
     if (stdin === undefined || stderr === undefined) {
       throw new Error('Missing standard file descriptors for command substitution');
     }
-    const rawResult = await this.executeShellInState({
-      script: parsed.content,
+    const result = await this.runChildExecutionEnvironment({
       environment: childEnvironment,
-      stdin,
-      stdout: captureHandle,
-      stderr,
-    });
-    const result = await this.runExitTrapIfNeeded({
-      result: rawResult,
-      environment: childEnvironment,
-      stdin,
-      stdout: captureHandle,
-      stderr,
+      execute: async () => {
+        const rawResult = await this.executeShellInState({
+          script: parsed.content,
+          environment: childEnvironment,
+          stdin,
+          stdout: captureHandle,
+          stderr,
+        });
+        return this.runExitTrapIfNeeded({
+          result: rawResult,
+          environment: childEnvironment,
+          stdin,
+          stdout: captureHandle,
+          stderr,
+        });
+      },
     });
     if (result.exitCode !== 0) {
       environment.env.set('?', result.exitCode.toString());
@@ -3218,7 +3228,7 @@ usage: ${name} [-c command] [file [argument...]]
       return read;
     }
 
-    if (redirection.type === 'dup-output' || redirection.type === 'dup-input') {
+    if (redirection.type === 'dup_output' || redirection.type === 'dup_input') {
       if (redirection.closeTarget) {
         return undefined;
       }
@@ -3236,6 +3246,7 @@ usage: ${name} [-c command] [file [argument...]]
     }
 
     if (redirection.target !== undefined && typeof redirection.target !== 'string') {
+      const processSubstitution = redirection.target;
       const redirectedStdin = environment.fds.get(0);
       const redirectedStdout = environment.fds.get(1);
       const redirectedStderr = environment.fds.get(2);
@@ -3252,23 +3263,29 @@ usage: ${name} [-c command] [file [argument...]]
       switch (redirection.target.type) {
       case 'input':
         trackBackgroundTask({
-          task: this.executeNode({
-            node: redirection.target.list,
+          task: this.runChildExecutionEnvironment({
             environment: subEnvironment,
-            stdin: redirectedStdin,
-            stdout: write,
-            stderr: redirectedStderr,
+            execute: () => this.executeNode({
+              node: processSubstitution.list,
+              environment: subEnvironment,
+              stdin: redirectedStdin,
+              stdout: write,
+              stderr: redirectedStderr,
+            }),
           }).finally(() => write.close()),
         });
         return this.createPrimaryFileHandleReference({ handle: read });
       case 'output':
         trackBackgroundTask({
-          task: this.executeNode({
-            node: redirection.target.list,
+          task: this.runChildExecutionEnvironment({
             environment: subEnvironment,
-            stdin: read,
-            stdout: redirectedStdout,
-            stderr: redirectedStderr,
+            execute: () => this.executeNode({
+              node: processSubstitution.list,
+              environment: subEnvironment,
+              stdin: read,
+              stdout: redirectedStdout,
+              stderr: redirectedStderr,
+            }),
           }).finally(() => read.close()),
         });
         return this.createPrimaryFileHandleReference({ handle: write });
@@ -3313,7 +3330,7 @@ usage: ${name} [-c command] [file [argument...]]
         flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
         mode: 0o644,
       }) });
-    case 'read-write':
+    case 'read_write':
       return this.createSharedFileHandle({ handle: await this.kernel.open({
         path: fullTarget,
         flags: { access: 'read-write', creation: 'if-needed', truncate: 'preserve', append: 'preserve' },
@@ -3359,8 +3376,8 @@ usage: ${name} [-c command] [file [argument...]]
       }
 
       if (
-        redirection.type !== 'dup-output' &&
-        redirection.type !== 'dup-input'
+        redirection.type !== 'dup_output' &&
+        redirection.type !== 'dup_input'
       ) {
         trackOpenedHandle({ handle });
       }
@@ -3484,12 +3501,17 @@ usage: ${name} [-c command] [file [argument...]]
             pgid: undefined,
           });
 
-          this.executeNode({
-            node: part.node,
+          void this.runChildExecutionEnvironment({
             environment: jobEnvironment,
-            stdin, stdout, stderr,
-            loopDepth,
-            functionDepth,
+            execute: () => this.executeNode({
+              node: part.node,
+              environment: jobEnvironment,
+              stdin,
+              stdout,
+              stderr,
+              loopDepth,
+              functionDepth,
+            }),
           }).then(res => {
             const job = this.jobs.get(jobId);
             if (job) job.status = 'done';
@@ -3567,19 +3589,26 @@ usage: ${name} [-c command] [file [argument...]]
         parentEnvironment: environment,
         pgid: undefined,
       });
-      result = await this.executeNode({
-        node: node.list,
+      result = await this.runChildExecutionEnvironment({
         environment: subshellEnvironment,
-        stdin, stdout, stderr,
-        loopDepth,
-        functionDepth,
-      });
-      result = await this.runExitTrapIfNeeded({
-        result,
-        environment: subshellEnvironment,
-        stdin,
-        stdout,
-        stderr,
+        execute: async () => {
+          const subshellResult = await this.executeNode({
+            node: node.list,
+            environment: subshellEnvironment,
+            stdin,
+            stdout,
+            stderr,
+            loopDepth,
+            functionDepth,
+          });
+          return this.runExitTrapIfNeeded({
+            result: subshellResult,
+            environment: subshellEnvironment,
+            stdin,
+            stdout,
+            stderr,
+          });
+        },
       });
       break;
     }
@@ -3921,14 +3950,17 @@ usage: ${name} [-c command] [file [argument...]]
       pipelinePgid = pipelineEnvironment.pgid;
 
       promises.push(
-        this.executeNode({
-          node: cmd,
+        this.runChildExecutionEnvironment({
           environment: pipelineEnvironment,
-          stdin: myStdin,
-          stdout: myStdout,
-          stderr: stderr,
-          loopDepth,
-          functionDepth,
+          execute: () => this.executeNode({
+            node: cmd,
+            environment: pipelineEnvironment,
+            stdin: myStdin,
+            stdout: myStdout,
+            stderr: stderr,
+            loopDepth,
+            functionDepth,
+          }),
         }).then(async res => {
           if (i < commands.length - 1) {
             await myStdout.close();
@@ -3962,6 +3994,7 @@ usage: ${name} [-c command] [file [argument...]]
     stdout,
     stderr,
     ignoreAliases,
+    directInvocation,
     loopDepth = 0,
     functionDepth = 0,
   }: {
@@ -3971,10 +4004,15 @@ usage: ${name} [-c command] [file [argument...]]
     stdout: WeshFileHandle,
     stderr: WeshFileHandle;
     ignoreAliases?: boolean;
+    directInvocation?: {
+      command: string;
+      args: string[];
+      argumentEntryRefs: readonly (WeshEntryRef | undefined)[] | undefined;
+    };
     loopDepth?: number;
     functionDepth?: number;
   }): Promise<WeshCommandResult> {
-    const aliasExpandedNode = ignoreAliases === true
+    const aliasExpandedNode = directInvocation !== undefined || ignoreAliases === true
       ? node
       : this.expandAliasCommandNode({
         node,
@@ -3982,88 +4020,102 @@ usage: ${name} [-c command] [file [argument...]]
         expandedAliases: new Set(),
       });
 
-    const expandedArgs: string[] = [];
+    const expandedArgs: string[] = directInvocation === undefined
+      ? []
+      : [...directInvocation.args];
     const procSubPreTaskCleanups: Array<() => void> = [];
     const procSubPostTaskCleanups: Array<() => void> = [];
     const procSubTasks: Promise<unknown>[] = [];
     const openHandles: WeshFileHandle[] = [];
     const cmdFds = new Map(environment.fds);
 
-    for (const arg of aliasExpandedNode.args) {
-      if (typeof arg === 'string') {
-        const fields = await this.expandWord({
-          raw: arg,
-          env: environment.env,
-          cwd: environment.cwd,
-          mode: 'argv',
-          shellOptions: environment.shellOptions,
-          environment,
-        });
-        expandedArgs.push(...fields);
-      } else if (arg.kind === 'processSubstitution') {
-        const { read, write } = await this.kernel.pipe();
-        const id = Math.floor(Math.random() * 1000000);
-        const path = `/dev/fd/${id}`;
+    if (directInvocation === undefined) {
+      for (const arg of aliasExpandedNode.args) {
+        if (typeof arg === 'string') {
+          const fields = await this.expandWord({
+            raw: arg,
+            env: environment.env,
+            cwd: environment.cwd,
+            mode: 'argv',
+            shellOptions: environment.shellOptions,
+            environment,
+          });
+          expandedArgs.push(...fields);
+        } else if (arg.kind === 'processSubstitution') {
+          const { read, write } = await this.kernel.pipe();
+          const id = Math.floor(Math.random() * 1000000);
+          const path = `/dev/fd/${id}`;
 
-        switch (arg.type) {
-        case 'input': {
-          const subEnvironment = await this.spawnChildExecutionEnvironment({
-            parentEnvironment: environment,
-            pgid: environment.pgid,
-          });
-          this.executeNode({
-            node: arg.list,
-            environment: subEnvironment,
-            stdin, stdout: write, stderr
-          }).finally(() => write.close());
+          switch (arg.type) {
+          case 'input': {
+            const subEnvironment = await this.spawnChildExecutionEnvironment({
+              parentEnvironment: environment,
+              pgid: environment.pgid,
+            });
+            procSubTasks.push(this.runChildExecutionEnvironment({
+              environment: subEnvironment,
+              execute: () => this.executeNode({
+                node: arg.list,
+                environment: subEnvironment,
+                stdin,
+                stdout: write,
+                stderr,
+              }),
+            }).finally(() => write.close()));
 
-          this.vfs.registerSpecialFile({
-            path,
-            type: 'fifo',
-            handler: () => this.cloneFileHandleReference({ handle: read }),
-          });
+            this.vfs.registerSpecialFile({
+              path,
+              type: 'fifo',
+              handler: () => this.cloneFileHandleReference({ handle: read }),
+            });
 
-          procSubPostTaskCleanups.push(() => {
-            this.vfs.unregisterSpecialFile({ path });
-            read.close();
-          });
-          break;
-        }
-        case 'output': {
-          const subEnvironment = await this.spawnChildExecutionEnvironment({
-            parentEnvironment: environment,
-            pgid: environment.pgid,
-          });
-          this.executeNode({
-            node: arg.list,
-            environment: subEnvironment,
-            stdin: read, stdout, stderr
-          }).finally(() => read.close());
+            procSubPostTaskCleanups.push(() => {
+              this.vfs.unregisterSpecialFile({ path });
+              read.close();
+            });
+            break;
+          }
+          case 'output': {
+            const subEnvironment = await this.spawnChildExecutionEnvironment({
+              parentEnvironment: environment,
+              pgid: environment.pgid,
+            });
+            procSubTasks.push(this.runChildExecutionEnvironment({
+              environment: subEnvironment,
+              execute: () => this.executeNode({
+                node: arg.list,
+                environment: subEnvironment,
+                stdin: read,
+                stdout,
+                stderr,
+              }),
+            }).finally(() => read.close()));
 
-          this.vfs.registerSpecialFile({
-            path,
-            type: 'fifo',
-            handler: () => this.cloneFileHandleReference({ handle: write }),
-          });
-          procSubPreTaskCleanups.push(() => {
-            write.close();
-          });
-          procSubPostTaskCleanups.push(() => {
-            this.vfs.unregisterSpecialFile({ path });
-            read.close();
-          });
-          break;
+            this.vfs.registerSpecialFile({
+              path,
+              type: 'fifo',
+              handler: () => this.cloneFileHandleReference({ handle: write }),
+            });
+            procSubPreTaskCleanups.push(() => {
+              write.close();
+            });
+            procSubPostTaskCleanups.push(() => {
+              this.vfs.unregisterSpecialFile({ path });
+              read.close();
+            });
+            break;
+          }
+          default: {
+            const _ex: never = arg.type;
+            throw new Error(`Unhandled process substitution type: ${_ex}`);
+          }
+          }
+          expandedArgs.push(path);
         }
-        default: {
-          const _ex: never = arg.type;
-          throw new Error(`Unhandled process substitution type: ${_ex}`);
-        }
-        }
-        expandedArgs.push(path);
       }
     }
 
-    const cmdName = await this.expandSingleWord({
+    const cmdName = directInvocation?.command ?? await this.expandSingleWord({
       raw: aliasExpandedNode.name,
       env: environment.env,
       cwd: environment.cwd,
@@ -4090,7 +4142,7 @@ usage: ${name} [-c command] [file [argument...]]
       });
     }
 
-    const currentEnv = new Map(environment.env);
+    const currentEnv = new WeshOverlayMap({ source: environment.env });
     for (const assign of aliasExpandedNode.assignments) {
       currentEnv.set(assign.key, await this.expandSingleWord({
         raw: assign.value,
@@ -4141,6 +4193,14 @@ usage: ${name} [-c command] [file [argument...]]
           stdin,
           stdout,
           stderr,
+          argumentEntryRefs: directInvocation === undefined
+            ? undefined
+            : [
+              ...new Array<WeshEntryRef | undefined>(
+                shebangScript.interpreterArgs.length + 1,
+              ).fill(undefined),
+              ...(directInvocation.argumentEntryRefs ?? []),
+            ],
         });
       }
       throw new Error(`Command not found: ${cmdName}`);
@@ -4222,6 +4282,7 @@ usage: ${name} [-c command] [file [argument...]]
         environment.env.delete(key);
       },
       getHistory: () => [...this.history],
+      getArgumentEntryRef: ({ index }) => directInvocation?.argumentEntryRefs?.[index],
       getAliases: () => Array.from(environment.aliases.entries())
         .sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
         .map(([name, value]) => ({ name, value })),
@@ -4244,7 +4305,7 @@ usage: ${name} [-c command] [file [argument...]]
         }
 
         return {
-          kind: 'not-found',
+          kind: 'not_found',
           name,
         };
       },
@@ -4265,9 +4326,10 @@ usage: ${name} [-c command] [file [argument...]]
       },
       getShellOptions: () => Array.from(environment.shellOptions.entries())
         .sort(([leftName], [rightName]) => leftName.localeCompare(rightName)),
-      executeCommand: ({ command, args, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr, ignoreAliases: nextIgnoreAliases }) => this.executeArgv({
+      executeCommand: ({ command, args, argumentEntryRefs, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr, ignoreAliases: nextIgnoreAliases }) => this.executeArgv({
         command,
         args,
+        argumentEntryRefs,
         environment,
         stdin: nextStdin ?? boundStdin,
         stdout: nextStdout ?? boundStdout,
@@ -4299,6 +4361,21 @@ usage: ${name} [-c command] [file [argument...]]
         readDir: ({ path }) => this.kernel.readDir({ path }),
         readlink: ({ path }) => this.kernel.readlink({ path }),
         resolve: ({ path }) => this.kernel.resolve({ path }),
+        resolveEntry: ({ path, finalSymlinkTreatment }) => this.kernel.resolveEntry({
+          path,
+          finalSymlinkTreatment,
+        }),
+        readDirEntry: ({ entry }) => this.kernel.readDirEntry({ entry }),
+        statEntry: ({ entry }) => this.kernel.statEntry({ entry }),
+        openEntry: async ({ entry, flags, mode }) => {
+          const handle = await this.kernel.openEntry({ entry, flags, mode });
+          return this.kernel.bindFileHandle({
+            pid,
+            handle,
+            trackOwnership: true,
+          });
+        },
+        readlinkEntry: ({ entry }) => this.kernel.readlinkEntry({ entry }),
         tryReadBlobEfficiently: ({ path }) => this.kernel.tryReadBlobEfficiently({ path }),
         tryCreateFileWriterEfficiently: ({ path, mode }) => this.kernel.tryCreateFileWriterEfficiently({ path, mode }),
         mkdir: ({ path, mode, recursive }) => this.kernel.mkdir({ path, mode, recursive }),
@@ -4419,9 +4496,16 @@ usage: ${name} [-c command] [file [argument...]]
       if (signalResult !== undefined) {
         return signalResult;
       }
+      proc.state = 'terminated';
+      proc.waitStatus = {
+        kind: 'exited',
+        exitCode: 1,
+      };
+      proc.exitCode = 1;
       throw error;
     } finally {
       await this.kernel.closeProcessResources({ pid });
+      this.kernel.reapProcess({ pid });
       for (const h of openHandles) {
         await h.close();
       }
@@ -4863,18 +4947,25 @@ usage: ${name} [-c command] [file [argument...]]
     };
   }
 
-  private async executeArgv({ command, args, environment, stdin, stdout, stderr, ignoreAliases }: {
+  private async executeArgv({ command, args, argumentEntryRefs, environment, stdin, stdout, stderr, ignoreAliases }: {
     command: string;
     args: string[];
+    argumentEntryRefs?: readonly (WeshEntryRef | undefined)[];
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
     ignoreAliases?: boolean;
   }): Promise<WeshCommandResult> {
-    const isolatedEnvironment = await this.spawnChildExecutionEnvironment({
-      parentEnvironment: environment,
+    // argv is already separated, so an intermediate shell process would only
+    // duplicate state and leave another process to reap. Keep command-local
+    // mutations isolated with a cloned environment while parenting the actual
+    // command process directly to the current shell.
+    const isolatedEnvironment = this.cloneExecutionEnvironment({
+      environment,
+      shellPid: environment.shellPid,
       pgid: environment.pgid,
+      mapStrategy: 'synchronous_overlay',
     });
 
     return this.executeCommand({
@@ -4890,6 +4981,11 @@ usage: ${name} [-c command] [file [argument...]]
       stdout: stdout,
       stderr: stderr,
       ignoreAliases: ignoreAliases,
+      directInvocation: {
+        command,
+        args,
+        argumentEntryRefs,
+      },
     });
   }
 
@@ -4941,24 +5037,96 @@ usage: ${name} [-c command] [file [argument...]]
     environment,
     shellPid,
     pgid,
+    mapStrategy,
   }: {
     environment: WeshExecutionEnvironment;
     shellPid: number | undefined;
     pgid: number | undefined;
+    mapStrategy: 'snapshot_copy' | 'synchronous_overlay';
   }): WeshExecutionEnvironment {
-    return this.createExecutionEnvironment({
+    const cloneMap = <K, V>({ source }: { source: ReadonlyMap<K, V> }): Map<K, V> => {
+      switch (mapStrategy) {
+      case 'snapshot_copy':
+        return new Map(source);
+      case 'synchronous_overlay':
+        return new WeshOverlayMap({ source });
+      default: {
+        const _ex: never = mapStrategy;
+        throw new Error(`Unhandled environment map strategy: ${_ex}`);
+      }
+      }
+    };
+
+    return {
       shellPid: shellPid ?? environment.shellPid,
       pgid: pgid ?? environment.pgid,
-      env: new Map(environment.env),
-      aliases: new Map(environment.aliases),
-      functions: new Map(environment.functions),
+      env: cloneMap({ source: environment.env }),
+      aliases: cloneMap({ source: environment.aliases }),
+      functions: cloneMap({ source: environment.functions }),
       cwd: environment.cwd,
       fds: new Map(environment.fds),
-      traps: new Map(environment.traps),
-      shellOptions: new Map(environment.shellOptions),
+      traps: cloneMap({ source: environment.traps }),
+      shellOptions: cloneMap({ source: environment.shellOptions }),
       positionalArgs: [...environment.positionalArgs],
       lastBackgroundPid: environment.lastBackgroundPid,
-    });
+    };
+  }
+
+  private async runChildExecutionEnvironment({
+    environment,
+    execute,
+  }: {
+    environment: WeshExecutionEnvironment;
+    execute: () => Promise<WeshCommandResult>;
+  }): Promise<WeshCommandResult> {
+    let result: WeshCommandResult | undefined;
+    try {
+      result = await execute();
+      return result;
+    } finally {
+      await this.finishChildExecutionEnvironment({
+        environment,
+        result,
+      });
+    }
+  }
+
+  private async finishChildExecutionEnvironment({
+    environment,
+    result,
+  }: {
+    environment: WeshExecutionEnvironment;
+    result: WeshCommandResult | undefined;
+  }): Promise<void> {
+    const process = this.kernel.getProcess({ pid: environment.shellPid });
+    if (process === undefined) {
+      return;
+    }
+
+    const waitStatus = process.waitStatus ?? result?.waitStatus ?? {
+      kind: 'exited',
+      exitCode: result?.exitCode ?? 1,
+    } satisfies WeshWaitStatus;
+
+    switch (waitStatus.kind) {
+    case 'stopped':
+      process.state = 'stopped';
+      process.waitStatus = waitStatus;
+      process.exitCode = weshWaitStatusToExitCode({ waitStatus });
+      return;
+    case 'exited':
+    case 'signaled':
+      process.state = 'terminated';
+      process.waitStatus = waitStatus;
+      process.exitCode = weshWaitStatusToExitCode({ waitStatus });
+      await this.kernel.closeProcessResources({ pid: process.pid });
+      this.kernel.reapProcess({ pid: process.pid });
+      return;
+    default: {
+      const _ex: never = waitStatus;
+      throw new Error(`Unhandled child shell wait status: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
 
   private async spawnChildExecutionEnvironment({
@@ -4972,6 +5140,7 @@ usage: ${name} [-c command] [file [argument...]]
       environment: parentEnvironment,
       shellPid: undefined,
       pgid,
+      mapStrategy: 'snapshot_copy',
     });
 
     const { pid } = await this.kernel.spawn({
@@ -4991,6 +5160,7 @@ usage: ${name} [-c command] [file [argument...]]
 
     childEnvironment.shellPid = pid;
     childEnvironment.pgid = pgid ?? pid;
+    this.syncSpecialParameters({ environment: childEnvironment });
     return childEnvironment;
   }
 

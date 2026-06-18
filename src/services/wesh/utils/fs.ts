@@ -1,3 +1,4 @@
+import { createWeshOwnedBytes } from '@/services/wesh/types';
 import type {
   WeshOpenFlags,
   WeshFileHandle,
@@ -24,7 +25,7 @@ export async function readAllFileBytes({ files, path }: { files: WeshFileCapabil
     switch (blobResult.kind) {
     case 'blob':
       return new Uint8Array(await blobResult.blob.arrayBuffer());
-    case 'fallback-required':
+    case 'fallback_required':
       break;
     default: {
       const _ex: never = blobResult;
@@ -68,7 +69,7 @@ export async function readAllFileText({ files, path }: { files: WeshFileCapabili
     switch (blobResult.kind) {
     case 'blob':
       return blobResult.blob.text();
-    case 'fallback-required':
+    case 'fallback_required':
       break;
     default: {
       const _ex: never = blobResult;
@@ -94,7 +95,7 @@ export async function openFileReadStream({
     switch (blobResult.kind) {
     case 'blob':
       return blobResult.blob.stream() as ReadableStream<Uint8Array>;
-    case 'fallback-required':
+    case 'fallback_required':
       break;
     default: {
       const _ex: never = blobResult;
@@ -111,6 +112,27 @@ export async function openFileReadStream({
   };
   const handle = await files.open({ path, flags });
   return openHandleReadStream({ handle });
+}
+
+export async function writeAllBytesToHandle({
+  handle,
+  data,
+}: {
+  handle: WeshFileHandle;
+  data: Uint8Array;
+}): Promise<void> {
+  let totalWritten = 0;
+  while (totalWritten < data.byteLength) {
+    const { bytesWritten } = await handle.write({
+      buffer: data,
+      offset: totalWritten,
+      length: data.byteLength - totalWritten,
+    });
+    if (bytesWritten === 0) {
+      return;
+    }
+    totalWritten += bytesWritten;
+  }
 }
 
 /**
@@ -200,15 +222,24 @@ export function openHandleReadStream({
 export async function writeAllStreamToHandle({
   stream,
   handle,
+  closeHandle,
 }: {
   stream: ReadableStream<Uint8Array>;
   handle: WeshFileHandle;
+  closeHandle: boolean;
 }): Promise<void> {
   const reader = stream.getReader();
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+
+      if (handle.writeOwned !== undefined) {
+        await handle.writeOwned({
+          chunk: createWeshOwnedBytes({ bytes: value }),
+        });
+        continue;
+      }
 
       let written = 0;
       while (written < value.length) {
@@ -225,7 +256,9 @@ export async function writeAllStreamToHandle({
     }
   } finally {
     reader.releaseLock();
-    await handle.close();
+    if (closeHandle) {
+      await handle.close();
+    }
   }
 }
 
@@ -272,7 +305,7 @@ export async function writeAllStreamToFile({
       reader.releaseLock();
     }
   }
-  case 'fallback-required':
+  case 'fallback_required':
   case undefined:
     break;
   default: {
@@ -311,5 +344,6 @@ export async function writeAllStreamToFile({
   await writeAllStreamToHandle({
     stream,
     handle,
+    closeHandle: true,
   });
 }

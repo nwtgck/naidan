@@ -1,8 +1,8 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { openTextLineIterator } from '@/services/wesh/commands/_shared/text';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { readTextFromFile, readTextFromHandle, splitTextLines } from '@/services/wesh/commands/_shared/text';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { resolvePath } from '@/services/wesh/path';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 function compareLines({
   left,
@@ -37,25 +37,6 @@ function columnPrefix({
     !suppress3,
   ].slice(0, column - 1).filter(Boolean).length;
   return '\t'.repeat(visibleBefore);
-}
-
-async function readSourceLines({
-  context,
-  path,
-  stdinText,
-}: {
-  context: WeshCommandContext;
-  path: string;
-  stdinText: string | undefined;
-}): Promise<string[]> {
-  if (path === '-') {
-    const text = stdinText ?? await readTextFromHandle({ handle: context.stdin });
-    return splitTextLines({ text });
-  }
-
-  const fullPath = resolvePath({ cwd: context.cwd, path });
-  const text = await readTextFromFile({ files: context.files, path: fullPath });
-  return splitTextLines({ text });
 }
 
 const commArgvSpec: StandardArgvParserSpec = {
@@ -123,7 +104,9 @@ export const commCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    if (parsed.positionals[0] === '-' && parsed.positionals[1] === '-') {
+    const leftPath = parsed.positionals[0]!;
+    const rightPath = parsed.positionals[1]!;
+    if (leftPath === '-' && rightPath === '-') {
       await context.text().error({ text: 'comm: -: Bad file descriptor\n' });
       return { exitCode: 1 };
     }
@@ -131,84 +114,80 @@ export const commCommandDefinition: WeshCommandDefinition = {
     const suppress1 = parsed.optionValues.suppress1 === true;
     const suppress2 = parsed.optionValues.suppress2 === true;
     const suppress3 = parsed.optionValues.suppress3 === true;
-    const [leftPath, rightPath] = parsed.positionals;
-    let stdinText: string | undefined;
+    let leftIterator: AsyncIterator<string> | undefined;
+    let rightIterator: AsyncIterator<string> | undefined;
+    const writer = createBufferedTextWriter({
+      handle: context.stdout,
+      maxBufferLength: 16 * 1024,
+    });
 
     try {
-      const leftLines = await readSourceLines({
-        context,
-        path: leftPath!,
-        stdinText,
-      });
-      if (leftPath === '-') {
-        stdinText ??= leftLines.join('\n');
-      }
+      leftIterator = await openTextLineIterator({ context, path: leftPath });
+      rightIterator = await openTextLineIterator({ context, path: rightPath });
+      let left = await leftIterator.next();
+      let right = await rightIterator.next();
 
-      const rightLines = await readSourceLines({
-        context,
-        path: rightPath!,
-        stdinText,
-      });
-
-      const output: string[] = [];
-      let leftIndex = 0;
-      let rightIndex = 0;
-
-      while (leftIndex < leftLines.length || rightIndex < rightLines.length) {
-        const left = leftLines[leftIndex];
-        const right = rightLines[rightIndex];
-
-        if (left !== undefined && right !== undefined) {
-          const compared = compareLines({ left, right });
+      while (!left.done || !right.done) {
+        if (!left.done && !right.done) {
+          const compared = compareLines({ left: left.value, right: right.value });
           if (compared === 0) {
             if (!suppress3) {
-              output.push(`${columnPrefix({ column: 3, suppress1, suppress2, suppress3 })}${left}`);
+              await writer.write({
+                text: `${columnPrefix({ column: 3, suppress1, suppress2, suppress3 })}${left.value}\n`,
+              });
             }
-            leftIndex += 1;
-            rightIndex += 1;
+            left = await leftIterator.next();
+            right = await rightIterator.next();
             continue;
           }
 
           if (compared < 0) {
             if (!suppress1) {
-              output.push(`${columnPrefix({ column: 1, suppress1, suppress2, suppress3 })}${left}`);
+              await writer.write({
+                text: `${columnPrefix({ column: 1, suppress1, suppress2, suppress3 })}${left.value}\n`,
+              });
             }
-            leftIndex += 1;
+            left = await leftIterator.next();
             continue;
           }
 
           if (!suppress2) {
-            output.push(`${columnPrefix({ column: 2, suppress1, suppress2, suppress3 })}${right}`);
+            await writer.write({
+              text: `${columnPrefix({ column: 2, suppress1, suppress2, suppress3 })}${right.value}\n`,
+            });
           }
-          rightIndex += 1;
+          right = await rightIterator.next();
           continue;
         }
 
-        if (left !== undefined) {
+        if (!left.done) {
           if (!suppress1) {
-            output.push(`${columnPrefix({ column: 1, suppress1, suppress2, suppress3 })}${left}`);
+            await writer.write({
+              text: `${columnPrefix({ column: 1, suppress1, suppress2, suppress3 })}${left.value}\n`,
+            });
           }
-          leftIndex += 1;
+          left = await leftIterator.next();
           continue;
         }
 
-        if (right !== undefined) {
+        if (!right.done) {
           if (!suppress2) {
-            output.push(`${columnPrefix({ column: 2, suppress1, suppress2, suppress3 })}${right}`);
+            await writer.write({
+              text: `${columnPrefix({ column: 2, suppress1, suppress2, suppress3 })}${right.value}\n`,
+            });
           }
-          rightIndex += 1;
+          right = await rightIterator.next();
         }
       }
-
-      await context.text().print({
-        text: output.map((line) => `${line}\n`).join(''),
-      });
       return { exitCode: 0 };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      const failingPath = parsed.positionals[0] ?? parsed.positionals[1] ?? '';
-      await context.text().error({ text: `comm: ${failingPath}: ${message}\n` });
+      await context.text().error({ text: `comm: ${leftPath}: ${message}\n` });
       return { exitCode: 1 };
+    } finally {
+      await writer.flush();
+      await leftIterator?.return?.();
+      await rightIterator?.return?.();
     }
   },
 };

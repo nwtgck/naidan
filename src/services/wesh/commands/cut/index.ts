@@ -3,6 +3,8 @@ import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
 import { openFileReadStream } from '@/services/wesh/utils/fs';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
+import { iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 
 type CutMode = 'bytes' | 'characters' | 'fields';
 
@@ -460,47 +462,13 @@ async function *readTextLines({
 }: {
   stream: ReadableStream<Uint8Array>;
 }): AsyncGenerator<CutTextLine> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        buffer += decoder.decode();
-        break;
-      }
-      if (value === undefined) {
-        continue;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      while (true) {
-        const newlineIndex = buffer.indexOf('\n');
-        if (newlineIndex === -1) {
-          break;
-        }
-
-        const lineEnd = newlineIndex > 0 && buffer[newlineIndex - 1] === '\r'
-          ? newlineIndex - 1
-          : newlineIndex;
-        yield {
-          text: buffer.slice(0, lineEnd),
-          hadNewline: true,
-        };
-        buffer = buffer.slice(newlineIndex + 1);
-      }
-    }
-
-    if (buffer.length > 0) {
-      yield {
-        text: buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer,
-        hadNewline: false,
-      };
-    }
-  } finally {
-    reader.releaseLock();
+  for await (const record of iterateUtf8LineRecords({
+    chunks: iterateReadableStreamChunks({ stream }),
+  })) {
+    yield {
+      text: record.text,
+      hadNewline: record.termination === 'delimiter',
+    };
   }
 }
 

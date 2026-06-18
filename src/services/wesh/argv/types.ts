@@ -33,7 +33,7 @@ export interface ArgvValueOptionSpec {
 export type ArgvOptionSpec = ArgvFlagOptionSpec | ArgvValueOptionSpec;
 
 export interface ArgvDiagnostic {
-  kind: 'unknown-short-option' | 'unknown-long-option' | 'missing-option-value' | 'invalid-option-value';
+  kind: 'unknown_short_option' | 'unknown_long_option' | 'missing_option_value' | 'invalid_option_value';
   option: string;
   message: string;
 }

@@ -19,8 +19,8 @@ export type FileCommandClassification =
   | { kind: 'xml' }
   | { kind: 'svg' }
   | { kind: 'html' }
-  | { kind: 'shell-script' }
-  | { kind: 'ascii-text' }
-  | { kind: 'utf8-text' }
-  | { kind: 'utf16-text' }
+  | { kind: 'shell_script' }
+  | { kind: 'ascii_text' }
+  | { kind: 'utf8_text' }
+  | { kind: 'utf16_text' }
   | { kind: 'data' };

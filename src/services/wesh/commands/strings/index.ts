@@ -1,7 +1,9 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { openCommandInputStream } from '@/services/wesh/commands/_shared/binary-input';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { readCommandInputAsBytes } from '@/services/wesh/commands/_shared/binary-input';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
 
 type StringsRadix = 'octal' | 'decimal' | 'hex';
 
@@ -65,41 +67,18 @@ function formatOffset({
   }
 }
 
-function collectStrings({
-  bytes,
-  minimumLength,
-  includeAllWhitespace,
+function printableFragmentsToString({
+  fragments,
 }: {
-  bytes: Uint8Array;
-  minimumLength: number;
-  includeAllWhitespace: boolean;
-}): Array<{ offset: number; value: string }> {
-  const collected: Array<{ offset: number; value: string }> = [];
-  let start = -1;
-  let current = '';
-
-  for (let index = 0; index < bytes.length; index++) {
-    const byte = bytes[index]!;
-    if (isPrintableByte({ byte, includeAllWhitespace })) {
-      if (start === -1) {
-        start = index;
-      }
-      current += String.fromCharCode(byte);
-      continue;
+  fragments: readonly Uint8Array[];
+}): string {
+  const parts: string[] = [];
+  for (const fragment of fragments) {
+    for (let offset = 0; offset < fragment.byteLength; offset += 0x8000) {
+      parts.push(String.fromCharCode(...fragment.subarray(offset, offset + 0x8000)));
     }
-
-    if (current.length >= minimumLength) {
-      collected.push({ offset: start, value: current });
-    }
-    start = -1;
-    current = '';
   }
-
-  if (current.length >= minimumLength) {
-    collected.push({ offset: start, value: current });
-  }
-
-  return collected;
+  return parts.join('');
 }
 
 const stringsArgvSpec: StandardArgvParserSpec = {
@@ -193,48 +172,96 @@ export const stringsCommandDefinition: WeshCommandDefinition = {
 
     const inputs = parsed.positionals.length === 0 ? ['-'] : parsed.positionals;
     const separator = (parsed.optionValues.separator as string | undefined) ?? '\n';
+    const writer = createBufferedTextWriter({
+      handle: context.stdout,
+      maxBufferLength: 16 * 1024,
+    });
     let exitCode = 0;
 
-    for (const input of inputs) {
-      try {
-        const bytes = await readCommandInputAsBytes({
-          context,
-          input,
-        });
-        const strings = collectStrings({
-          bytes,
-          minimumLength: minimumLengthParsed.value,
-          includeAllWhitespace: parsed.optionValues.includeAllWhitespace === true,
-        });
+    try {
+      for (const input of inputs) {
+        try {
+          let absoluteOffset = 0;
+          let runOffset = 0;
+          let runLength = 0;
+          let fragments: Uint8Array[] = [];
 
-        for (const entry of strings) {
-          let output = '';
-          if (parsed.optionValues.printFileName === true) {
-            output += `${input === '-' ? '(standard input)' : input}:`;
+          const flushRun = async (): Promise<void> => {
+            if (runLength < minimumLengthParsed.value) {
+              fragments = [];
+              runLength = 0;
+              return;
+            }
+
+            let output = '';
+            if (parsed.optionValues.printFileName === true) {
+              output += `${input === '-' ? '(standard input)' : input}:`;
+            }
+            switch (radix.kind) {
+            case 'set':
+              output += `${output.length > 0 ? ' ' : ''}${formatOffset({ offset: runOffset, radix: radix.value })}`;
+              break;
+            case 'unset':
+              break;
+            default: {
+              const _ex: never = radix;
+              throw new Error(`Unhandled strings radix state during output: ${_ex}`);
+            }
+            }
+            if (output.length > 0) {
+              output += ' ';
+            }
+            output += printableFragmentsToString({ fragments });
+            output += separator;
+            await writer.write({ text: output });
+            fragments = [];
+            runLength = 0;
+          };
+
+          for await (const chunk of iterateReadableStreamChunks({
+            stream: await openCommandInputStream({ context, input }),
+          })) {
+            let printableStart = -1;
+            for (let index = 0; index < chunk.byteLength; index += 1) {
+              const byte = chunk[index]!;
+              if (isPrintableByte({
+                byte,
+                includeAllWhitespace: parsed.optionValues.includeAllWhitespace === true,
+              })) {
+                if (printableStart === -1) {
+                  printableStart = index;
+                  if (runLength === 0) {
+                    runOffset = absoluteOffset + index;
+                  }
+                }
+                continue;
+              }
+
+              if (printableStart !== -1) {
+                const fragment = chunk.subarray(printableStart, index);
+                fragments.push(new Uint8Array(fragment));
+                runLength += fragment.byteLength;
+                printableStart = -1;
+              }
+              await flushRun();
+            }
+
+            if (printableStart !== -1) {
+              const fragment = chunk.subarray(printableStart);
+              fragments.push(new Uint8Array(fragment));
+              runLength += fragment.byteLength;
+            }
+            absoluteOffset += chunk.byteLength;
           }
-          switch (radix.kind) {
-          case 'set':
-            output += `${output.length > 0 ? ' ' : ''}${formatOffset({ offset: entry.offset, radix: radix.value })}`;
-            break;
-          case 'unset':
-            break;
-          default: {
-            const _ex: never = radix;
-            throw new Error(`Unhandled strings radix state during output: ${_ex}`);
-          }
-          }
-          if (output.length > 0) {
-            output += ' ';
-          }
-          output += entry.value;
-          output += separator;
-          await context.text().print({ text: output });
+          await flushRun();
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          await context.text().error({ text: `strings: ${input}: ${message}\n` });
+          exitCode = 1;
         }
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        await context.text().error({ text: `strings: ${input}: ${message}\n` });
-        exitCode = 1;
       }
+    } finally {
+      await writer.flush();
     }
 
     return { exitCode };

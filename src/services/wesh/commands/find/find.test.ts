@@ -172,6 +172,29 @@ src/readme.md
     expect(result.exitCode).toBe(0);
   });
 
+  it('passes resolved entry references to -exec grep without path re-resolution', async () => {
+    await writeFile({ path: 'work/a.txt', data: 'needle\n' });
+    await writeFile({ path: 'work/b.txt', data: 'other\n' });
+    const resolveEntry = vi.spyOn(wesh.vfs, 'resolveEntry');
+    resolveEntry.mockClear();
+
+    const { result, stdout, stderr } = await execute({
+      script: 'find work -type f -exec grep needle {} +',
+    });
+
+    expect(stdout.text).toBe('work/a.txt:needle\n');
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(resolveEntry).not.toHaveBeenCalledWith({
+      path: 'work/a.txt',
+      finalSymlinkTreatment: 'follow',
+    });
+    expect(resolveEntry).not.toHaveBeenCalledWith({
+      path: 'work/b.txt',
+      finalSymlinkTreatment: 'follow',
+    });
+  });
+
   it('supports -exec ... {} + batching matching paths into one invocation', async () => {
     await writeFile({ path: 'src/app.ts', data: 'console.log(1);\n' });
     await writeFile({ path: 'src/main.ts', data: 'console.log(2);\n' });

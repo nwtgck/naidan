@@ -3,6 +3,7 @@ import type {
   WeshFileHandleCloseSemantics,
   WeshIOResult,
   WeshWriteResult,
+  WeshOwnedBytes,
   WeshStat,
 } from '@/services/wesh/types';
 import { WeshHandleCloseSignal } from './closeSignal';
@@ -186,6 +187,16 @@ class StreamWriteHandle implements WeshFileHandle {
     return { bytesWritten: actualLength };
   }
 
+  async writeOwned({ chunk }: { chunk: WeshOwnedBytes }): Promise<void> {
+    if (this.closeSignal.closed) {
+      return;
+    }
+    await this.closeSignal.raceWithClose({
+      operation: this.state.writer.write(chunk.bytes),
+      buildClosedResult: () => undefined,
+    });
+  }
+
   async close(): Promise<void> {
     if (this.closeSignal.closed) {
       return;
@@ -267,4 +278,47 @@ export function createWriteHandleFromStream({
       closed: false,
     },
   });
+}
+
+
+export async function* iterateReadableStreamChunks({
+  stream,
+}: {
+  stream: ReadableStream<Uint8Array>;
+}): AsyncIterable<Uint8Array> {
+  const reader = stream.getReader();
+  let completed = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        completed = true;
+        return;
+      }
+      yield value;
+    }
+  } finally {
+    if (!completed) {
+      await reader.cancel();
+    }
+    reader.releaseLock();
+  }
+}
+
+
+export function pipeThroughBufferSourceTransform({
+  source,
+  transform,
+}: {
+  source: ReadableStream<Uint8Array>;
+  transform: {
+    readable: ReadableStream<Uint8Array>;
+    writable: WritableStream<BufferSource>;
+  };
+}): ReadableStream<Uint8Array> {
+  const byteTransform: ReadableWritablePair<Uint8Array, Uint8Array> = {
+    readable: transform.readable,
+    writable: transform.writable as unknown as WritableStream<Uint8Array>,
+  };
+  return source.pipeThrough(byteTransform);
 }

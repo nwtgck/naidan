@@ -1,7 +1,8 @@
 import { fileTypeFromBuffer } from 'file-type';
-import type { WeshCommandContext } from '@/services/wesh/types';
-import { readAllFileBytes } from '@/services/wesh/utils/fs';
+import type { WeshCommandContext, WeshOpenFlags } from '@/services/wesh/types';
 import type { FileCommandClassification, FileCommandTargetInfo } from './types';
+
+const FILE_SAMPLE_BYTES = 64 * 1024;
 
 function resolvePath({
   cwd,
@@ -45,11 +46,15 @@ function isLikelyBinary({
 
 function decodeUtf8({
   bytes,
+  complete,
 }: {
   bytes: Uint8Array;
+  complete: boolean;
 }): string | undefined {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const decoder = new TextDecoder('utf-8', { fatal: true });
+    const text = decoder.decode(bytes, { stream: !complete });
+    return complete ? text : text;
   } catch {
     return undefined;
   }
@@ -87,14 +92,16 @@ function decodeUtf16({
 
 function classifyText({
   bytes,
+  complete,
 }: {
   bytes: Uint8Array;
+  complete: boolean;
 }): FileCommandClassification {
-  const text = decodeUtf8({ bytes });
+  const text = decodeUtf8({ bytes, complete });
   if (text === undefined) {
     const utf16 = decodeUtf16({ bytes });
     if (utf16 !== undefined) {
-      return { kind: 'utf16-text' };
+      return { kind: 'utf16_text' };
     }
     return { kind: 'data' };
   }
@@ -103,14 +110,16 @@ function classifyText({
   const trimmed = normalizedText.trimStart();
 
   if (trimmed.startsWith('#!') && /(?:^|\W)(?:sh|bash|dash|ksh|zsh)(?:\W|$)/.test(trimmed)) {
-    return { kind: 'shell-script' };
+    return { kind: 'shell_script' };
   }
 
-  try {
-    JSON.parse(normalizedText);
-    return { kind: 'json' };
-  } catch {
-    // ignore
+  if (complete) {
+    try {
+      JSON.parse(normalizedText);
+      return { kind: 'json' };
+    } catch {
+      // Continue with prefix-based text classification.
+    }
   }
 
   if (trimmed.startsWith('<svg') || trimmed.startsWith('<?xml') && trimmed.toLowerCase().includes('<svg')) {
@@ -123,9 +132,63 @@ function classifyText({
     return { kind: 'html' };
   }
   if (isAsciiText({ bytes })) {
-    return { kind: 'ascii-text' };
+    return { kind: 'ascii_text' };
   }
-  return { kind: 'utf8-text' };
+  return { kind: 'utf8_text' };
+}
+
+
+async function readFileSample({
+  context,
+  path,
+  size,
+}: {
+  context: WeshCommandContext;
+  path: string;
+  size: number;
+}): Promise<Uint8Array> {
+  const sampleLength = Math.min(size, FILE_SAMPLE_BYTES);
+  if (context.files.tryReadBlobEfficiently !== undefined) {
+    const blobResult = await context.files.tryReadBlobEfficiently({ path });
+    switch (blobResult.kind) {
+    case 'blob':
+      return new Uint8Array(
+        await blobResult.blob.slice(0, sampleLength).arrayBuffer(),
+      );
+    case 'fallback_required':
+      break;
+    default: {
+      const _ex: never = blobResult;
+      throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
+    }
+    }
+  }
+
+  const flags: WeshOpenFlags = {
+    access: 'read',
+    creation: 'never',
+    truncate: 'preserve',
+    append: 'preserve',
+  };
+  const handle = await context.files.open({ path, flags });
+  try {
+    const bytes = new Uint8Array(sampleLength);
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const result = await handle.read({
+        buffer: bytes,
+        offset,
+        length: bytes.byteLength - offset,
+      });
+      if (result.bytesRead === 0) {
+        break;
+      }
+      offset += result.bytesRead;
+    }
+    return bytes.subarray(0, offset);
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function statFileTarget({
@@ -197,13 +260,15 @@ export async function detectFileClassification({
     return { kind: 'empty' };
   }
 
-  const bytes = await readAllFileBytes({
-    files: context.files,
+  const bytes = await readFileSample({
+    context,
     path: target.resolvedPath,
+    size: target.size,
   });
+  const complete = bytes.byteLength === target.size;
 
   if (decodeUtf16({ bytes }) !== undefined) {
-    return { kind: 'utf16-text' };
+    return { kind: 'utf16_text' };
   }
 
   const detected = await fileTypeFromBuffer(bytes);
@@ -215,5 +280,5 @@ export async function detectFileClassification({
     return { kind: 'data' };
   }
 
-  return classifyText({ bytes });
+  return classifyText({ bytes, complete });
 }

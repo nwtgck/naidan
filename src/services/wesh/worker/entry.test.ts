@@ -311,6 +311,39 @@ describe('wesh.worker', () => {
     expect(response.exitCode).toBe(130)
   })
 
+  it('preserves output callback failures and still attempts an error event', async () => {
+    const comlink = await import('comlink')
+    const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
+    await import('./entry')
+
+    const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
+    await workerApi.init({
+      request: {
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
+        mounts: [],
+        user: 'user',
+        initialEnv: {},
+      },
+    })
+
+    const events: Array<import('./types').WeshWorkerRemoteExecutionEvent> = []
+    const { executionId } = await workerApi.startExecution(
+      { script: 'echo forwarded-output' },
+      async (event: import('./types').WeshWorkerRemoteExecutionEvent) => {
+        events.push(event)
+        if (event.type === 'stdout') {
+          throw new Error('stdout callback failed')
+        }
+      },
+    )
+
+    await expect(workerApi.awaitExecution({
+      request: { executionId },
+    })).rejects.toThrow('Wesh execution failed while forwarding worker events')
+    expect(events.some(event => event.type === 'error')).toBe(true)
+    await workerApi.disposeExecution({ request: { executionId } })
+  })
+
   it('streams stdout and stderr events before awaitExecution resolves', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')

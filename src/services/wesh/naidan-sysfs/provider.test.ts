@@ -67,8 +67,31 @@ function createReaderStub({
       return content
     },
     async loadChat({ chatId }: { chatId: ChatId }) {
-      void chatId
-      return undefined
+      if (chatId !== metadata?.id || metadata === undefined || content === undefined) {
+        return undefined
+      }
+      return {
+        id: metadata.id,
+        title: metadata.title,
+        groupId: metadata.groupId,
+        root: content.root,
+        currentLeafId: content.currentLeafId ?? metadata.currentLeafId,
+        createdAt: metadata.createdAt,
+        updatedAt: metadata.updatedAt,
+        debugEnabled: metadata.debugEnabled,
+        endpointType: metadata.endpoint?.type,
+        endpointUrl: metadata.endpoint?.url,
+        endpointHttpHeaders: metadata.endpoint?.httpHeaders,
+        modelId: metadata.modelId,
+        autoTitleEnabled: metadata.autoTitleEnabled,
+        titleModelId: metadata.titleModelId,
+        originChatId: metadata.originChatId,
+        originMessageId: metadata.originMessageId,
+        systemPrompt: metadata.systemPrompt,
+        lmParameters: metadata.lmParameters,
+        mounts: metadata.mounts,
+        toolConfigs: metadata.toolConfigs,
+      }
     },
     async loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }) {
       if (chatGroupId !== chatGroup?.id) {
@@ -666,6 +689,48 @@ describe('NaidanSysfsProvider', () => {
       '2-assistant-Za2lF6G7h8J9k0L1m2N3.json',
       '3-tool-Wt3lL1M2n3P4q5R6s7T8.json',
     ])
+  })
+
+  it('loads a chat once while iterating and opening direct content entries', async () => {
+    const reader = createReaderStub({ metadata: sampleMetadata, content: sampleContent })
+    const loadChat = vi.spyOn(reader, 'loadChat')
+    const provider = new NaidanSysfsProvider({
+      reader,
+      visibility: 'current_chat_only',
+      binaryObjectAccess: 'data',
+      currentChatId: 'chat-1',
+      currentChatGroupId: 'chat-group-1',
+    })
+
+    const directory = await provider.resolveEntryRef({
+      path: `${NAIDAN_SYSFS_ROOT_PATH}/chats/chat-1/content-md`,
+      finalSymlinkTreatment: 'follow',
+    })
+    expect(directory.type).toBe('directory')
+    if (directory.type !== 'directory') {
+      throw new Error('Expected content-md to resolve as a directory')
+    }
+
+    const children = []
+    for await (const child of directory.readDir()) {
+      children.push(child)
+    }
+    expect(children).toHaveLength(3)
+    expect(loadChat).toHaveBeenCalledTimes(1)
+
+    const first = children[0]
+    expect(first?.type).toBe('file')
+    if (first?.type !== 'file') {
+      throw new Error('Expected the first content entry to be a file')
+    }
+    const handle = await first.open({
+      flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
+      mode: undefined,
+    })
+    const buffer = new Uint8Array(4096)
+    const result = await handle.read({ buffer })
+    expect(new TextDecoder().decode(buffer.subarray(0, result.bytesRead))).toContain('Hello from the user')
+    expect(loadChat).toHaveBeenCalledTimes(1)
   })
 
   it('renders content-md with hidden attachments and visible tool results', async () => {

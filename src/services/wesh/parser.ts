@@ -1357,7 +1357,7 @@ class Parser {
           tokenType: this.currentToken.type as 'PROC_SUB_IN' | 'PROC_SUB_OUT',
         })
         : this.expectWord();
-      return { fd, type: 'read-write', target };
+      return { fd, type: 'read_write', target };
     }
     case 'DUP_OUT':
     case 'DUP_IN': {
@@ -1365,9 +1365,9 @@ class Parser {
       const redirectionType = (() => {
         switch (tokenType) {
         case 'DUP_OUT':
-          return 'dup-output' as const;
+          return 'dup_output' as const;
         case 'DUP_IN':
-          return 'dup-input' as const;
+          return 'dup_input' as const;
         default: {
           const _ex: never = tokenType;
           throw new Error(`Unhandled redirection token: ${_ex}`);

@@ -9,9 +9,10 @@ import type {
   WeshCommandContext,
   WeshCommandDefinition,
   WeshCommandResult,
+  WeshEntryRef,
   WeshFileType,
-  WeshStat,
 } from '@/services/wesh/types';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 type FindExpression =
   | { kind: 'and'; left: FindExpression; right: FindExpression }
@@ -35,13 +36,13 @@ type FindExpression =
   | { kind: 'exec'; id: number; mode: 'single' | 'batch'; command: string; args: string[] };
 
 interface FindEntry {
+  entryRef: WeshEntryRef;
   fullPath: string;
   displayPath: string;
   type: WeshFileType;
   name: string;
   size: number;
   mtime: number;
-  readPath: string;
 }
 
 interface FindEvaluationResult {
@@ -55,12 +56,29 @@ interface FindEvaluationResult {
 const EVAL_MATCHED: FindEvaluationResult = { matched: true, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
 const EVAL_NOT_MATCHED: FindEvaluationResult = { matched: false, actionInvoked: false, shouldPrune: false, shouldQuit: false, exitCode: 0 };
 
+interface PendingExecBatchEntry {
+  path: string;
+  entryRef: WeshEntryRef;
+}
+
 interface PendingExecBatch {
   id: number;
   command: string;
   argsTemplate: string[];
-  paths: string[];
+  entries: PendingExecBatchEntry[];
+  argumentBytes: number;
 }
+
+interface ExecInvocation {
+  args: string[];
+  argumentEntryRefs: Array<WeshEntryRef | undefined>;
+}
+
+type FindOutputWriter = ReturnType<typeof createBufferedTextWriter>;
+
+const MAX_EXEC_BATCH_PATH_COUNT = 512;
+const MAX_EXEC_BATCH_ARGUMENT_BYTES = 128 * 1024;
+const utf8Encoder = new TextEncoder();
 
 interface FindTraversalOptions {
   maxDepth: number | undefined;
@@ -705,17 +723,19 @@ async function evaluateExpression({
   entry,
   context,
   pendingExecBatches,
+  stdout,
 }: {
   expr: FindExpression;
   entry: FindEntry;
   context: WeshCommandContext;
   pendingExecBatches: Map<number, PendingExecBatch>;
+  stdout: FindOutputWriter;
 }): Promise<FindEvaluationResult> {
   switch (expr.kind) {
   case 'and': {
-    const left = await evaluateExpression({ expr: expr.left, entry, context, pendingExecBatches });
+    const left = await evaluateExpression({ expr: expr.left, entry, context, pendingExecBatches, stdout });
     if (!left.matched) return left;
-    const right = await evaluateExpression({ expr: expr.right, entry, context, pendingExecBatches });
+    const right = await evaluateExpression({ expr: expr.right, entry, context, pendingExecBatches, stdout });
     return {
       matched: left.matched && right.matched,
       actionInvoked: left.actionInvoked || right.actionInvoked,
@@ -725,9 +745,9 @@ async function evaluateExpression({
     };
   }
   case 'or': {
-    const left = await evaluateExpression({ expr: expr.left, entry, context, pendingExecBatches });
+    const left = await evaluateExpression({ expr: expr.left, entry, context, pendingExecBatches, stdout });
     if (left.matched) return left;
-    const right = await evaluateExpression({ expr: expr.right, entry, context, pendingExecBatches });
+    const right = await evaluateExpression({ expr: expr.right, entry, context, pendingExecBatches, stdout });
     return {
       matched: right.matched,
       actionInvoked: left.actionInvoked || right.actionInvoked,
@@ -737,7 +757,7 @@ async function evaluateExpression({
     };
   }
   case 'not': {
-    const inner = await evaluateExpression({ expr: expr.expr, entry, context, pendingExecBatches });
+    const inner = await evaluateExpression({ expr: expr.expr, entry, context, pendingExecBatches, stdout });
     return {
       matched: !inner.matched,
       actionInvoked: inner.actionInvoked,
@@ -757,7 +777,7 @@ async function evaluateExpression({
   case 'empty':
     switch (entry.type) {
     case 'directory': {
-      for await (const _ of context.files.readDir({ path: entry.fullPath })) {
+      for await (const _ of context.files.readDirEntry({ entry: asDirectoryEntryRef({ entry: entry.entryRef }) })) {
         return EVAL_NOT_MATCHED;
       }
       return EVAL_MATCHED;
@@ -813,10 +833,10 @@ async function evaluateExpression({
   case 'newer':
     return entry.mtime > expr.referenceMtime ? EVAL_MATCHED : EVAL_NOT_MATCHED;
   case 'print':
-    await context.text().print({ text: `${entry.displayPath}\n` });
+    await stdout.write({ text: `${entry.displayPath}\n` });
     return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
   case 'print0':
-    await context.text().print({ text: `${entry.displayPath}\0` });
+    await stdout.write({ text: `${entry.displayPath}\0` });
     return { matched: true, actionInvoked: true, shouldPrune: false, shouldQuit: false, exitCode: 0 };
   case 'prune':
     return { matched: true, actionInvoked: true, shouldPrune: true, shouldQuit: false, exitCode: 0 };
@@ -847,16 +867,55 @@ async function evaluateExpression({
     const execMode: 'single' | 'batch' = expr.mode;
     switch (execMode) {
     case 'batch': {
-      const existing = pendingExecBatches.get(expr.id);
-      if (existing === undefined) {
-        pendingExecBatches.set(expr.id, {
+      let pending = pendingExecBatches.get(expr.id);
+      if (pending === undefined) {
+        pending = {
           id: expr.id,
           command: expr.command,
           argsTemplate: expr.args,
-          paths: [entry.displayPath],
+          entries: [],
+          argumentBytes: getStaticBatchExecArgumentBytes({
+            command: expr.command,
+            argsTemplate: expr.args,
+          }),
+        };
+        pendingExecBatches.set(expr.id, pending);
+      }
+
+      const pathArgumentBytes = getPathBatchExecArgumentBytes({
+        argsTemplate: pending.argsTemplate,
+        path: entry.displayPath,
+      });
+      let batchExitCode = 0;
+      if (
+        pending.entries.length > 0
+        && (
+          pending.entries.length + 1 > MAX_EXEC_BATCH_PATH_COUNT
+          || pending.argumentBytes + pathArgumentBytes > MAX_EXEC_BATCH_ARGUMENT_BYTES
+        )
+      ) {
+        batchExitCode = await flushPendingExecBatch({
+          pending,
+          context,
         });
-      } else {
-        existing.paths.push(entry.displayPath);
+      }
+
+      pending.entries.push({
+        path: entry.displayPath,
+        entryRef: entry.entryRef,
+      });
+      pending.argumentBytes += pathArgumentBytes;
+      if (
+        pending.entries.length >= MAX_EXEC_BATCH_PATH_COUNT
+        || pending.argumentBytes >= MAX_EXEC_BATCH_ARGUMENT_BYTES
+      ) {
+        const nextExitCode = await flushPendingExecBatch({
+          pending,
+          context,
+        });
+        if (nextExitCode !== 0) {
+          batchExitCode = nextExitCode;
+        }
       }
 
       return {
@@ -864,13 +923,21 @@ async function evaluateExpression({
         actionInvoked: true,
         shouldPrune: false,
         shouldQuit: false,
-        exitCode: 0,
+        exitCode: batchExitCode,
       };
     }
     case 'single': {
+      const invocation = buildSingleExecInvocation({
+        argsTemplate: expr.args,
+        entry: {
+          path: entry.displayPath,
+          entryRef: entry.entryRef,
+        },
+      });
       const result = await context.executeCommand({
         command: expr.command,
-        args: expr.args.map((arg) => arg.replace(/\{\}/g, entry.displayPath)),
+        args: invocation.args,
+        argumentEntryRefs: invocation.argumentEntryRefs,
       });
       return {
         matched: result.exitCode === 0,
@@ -893,27 +960,145 @@ async function evaluateExpression({
   }
 }
 
-function buildBatchExecArgs({
+function getStaticBatchExecArgumentBytes({
+  command,
   argsTemplate,
-  paths,
 }: {
-  argsTemplate: string[];
-  paths: string[];
-}): string[] {
-  const args: string[] = [];
-
+  command: string;
+  argsTemplate: readonly string[];
+}): number {
+  let bytes = utf8Encoder.encode(command).byteLength + 1;
   for (const arg of argsTemplate) {
     if (!arg.includes('{}')) {
-      args.push(arg);
+      bytes += utf8Encoder.encode(arg).byteLength + 1;
+    }
+  }
+  return bytes;
+}
+
+function getPathBatchExecArgumentBytes({
+  argsTemplate,
+  path,
+}: {
+  argsTemplate: readonly string[];
+  path: string;
+}): number {
+  let bytes = 0;
+  for (const arg of argsTemplate) {
+    if (arg.includes('{}')) {
+      bytes += utf8Encoder.encode(arg.replace(/\{\}/g, path)).byteLength + 1;
+    }
+  }
+  return bytes;
+}
+
+function buildExecArgument({
+  template,
+  entry,
+}: {
+  template: string;
+  entry: PendingExecBatchEntry;
+}): {
+  value: string;
+  entryRef: WeshEntryRef | undefined;
+} {
+  return {
+    value: template.replace(/\{\}/g, entry.path),
+    entryRef: template === '{}' ? entry.entryRef : undefined,
+  };
+}
+
+function buildSingleExecInvocation({
+  argsTemplate,
+  entry,
+}: {
+  argsTemplate: string[];
+  entry: PendingExecBatchEntry;
+}): ExecInvocation {
+  const args: string[] = [];
+  const argumentEntryRefs: Array<WeshEntryRef | undefined> = [];
+
+  for (const template of argsTemplate) {
+    const argument = buildExecArgument({ template, entry });
+    args.push(argument.value);
+    argumentEntryRefs.push(argument.entryRef);
+  }
+
+  return { args, argumentEntryRefs };
+}
+
+function buildBatchExecInvocation({
+  argsTemplate,
+  entries,
+}: {
+  argsTemplate: string[];
+  entries: PendingExecBatchEntry[];
+}): ExecInvocation {
+  const args: string[] = [];
+  const argumentEntryRefs: Array<WeshEntryRef | undefined> = [];
+
+  for (const template of argsTemplate) {
+    if (!template.includes('{}')) {
+      args.push(template);
+      argumentEntryRefs.push(undefined);
       continue;
     }
 
-    for (const path of paths) {
-      args.push(arg.replace(/\{\}/g, path));
+    for (const entry of entries) {
+      const argument = buildExecArgument({ template, entry });
+      args.push(argument.value);
+      argumentEntryRefs.push(argument.entryRef);
     }
   }
 
-  return args;
+  return { args, argumentEntryRefs };
+}
+
+function asDirectoryEntryRef({
+  entry,
+}: {
+  entry: WeshEntryRef;
+}): WeshEntryRef<'directory'> {
+  switch (entry.type) {
+  case 'directory':
+    return entry as WeshEntryRef<'directory'>;
+  case 'file':
+  case 'fifo':
+  case 'chardev':
+  case 'symlink':
+    throw new Error(`Not a directory: ${entry.fullPath}`);
+  default: {
+    const _ex: never = entry;
+    throw new Error(`Unhandled entry type: ${String(_ex)}`);
+  }
+  }
+}
+
+async function flushPendingExecBatch({
+  pending,
+  context,
+}: {
+  pending: PendingExecBatch;
+  context: WeshCommandContext;
+}): Promise<number> {
+  if (pending.entries.length === 0) return 0;
+
+  const entries = pending.entries;
+  pending.entries = [];
+  pending.argumentBytes = getStaticBatchExecArgumentBytes({
+    command: pending.command,
+    argsTemplate: pending.argsTemplate,
+  });
+  const invocation = buildBatchExecInvocation({
+    argsTemplate: pending.argsTemplate,
+    entries,
+  });
+  const result = await context.executeCommand({
+    command: pending.command,
+    args: invocation.args,
+    argumentEntryRefs: invocation.argumentEntryRefs,
+  });
+  return result.exitCode;
 }
 
 function hasDeleteAction({
@@ -996,67 +1181,24 @@ export const findCommandDefinition: WeshCommandDefinition = {
 
     let exitCode = 0;
     const pendingExecBatches = new Map<number, PendingExecBatch>();
+    const stdout = createBufferedTextWriter({
+      handle: context.stdout,
+      maxBufferLength: 16 * 1024,
+    });
     let shouldQuit = false;
-    const pathStatCache = new Map<string, Promise<WeshStat>>();
-    const resolvedPathCache = new Map<string, Promise<string>>();
     const traversal: FindTraversalOptions = {
       ...expression.traversal,
       depthFirst: expression.traversal.depthFirst || hasDeleteAction({ expr: expression.expr }),
     };
     let resolvedExpression: FindExpression;
 
-    const getPathStat = async ({
-      path,
-      isCommandLineArgument,
-    }: {
-      path: string;
-      isCommandLineArgument: boolean;
-    }) => {
-      const key = (() => {
-        switch (traversal.symlinkMode) {
-        case 'logical':
-          return `stat:${path}`;
-        case 'command-line':
-          return `${isCommandLineArgument ? 'stat' : 'lstat'}:${path}`;
-        case 'physical':
-          return `lstat:${path}`;
-        default: {
-          const _ex: never = traversal.symlinkMode;
-          throw new Error(`Unhandled symlink mode: ${_ex}`);
-        }
-        }
-      })();
-
-      const cached = pathStatCache.get(key);
-      if (cached !== undefined) {
-        return cached;
-      }
-
-      const pending = (() => {
-        switch (traversal.symlinkMode) {
-        case 'logical':
-          return context.files.stat({ path });
-        case 'command-line':
-          return isCommandLineArgument ? context.files.stat({ path }) : context.files.lstat({ path });
-        case 'physical':
-          return context.files.lstat({ path });
-        default: {
-          const _ex: never = traversal.symlinkMode;
-          throw new Error(`Unhandled symlink mode: ${_ex}`);
-        }
-        }
-      })();
-      pathStatCache.set(key, pending);
-      return pending;
-    };
-
     try {
       resolvedExpression = await resolveFindExpressionReferences({
         expr: expression.expr,
         context,
       });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       await writeCommandUsageError({
         context,
         command: 'find',
@@ -1065,82 +1207,95 @@ export const findCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const getReadPath = async ({
+    const canSkipFullStat = canEvaluateWithoutFullStat({
+      expr: resolvedExpression,
+    });
+
+    const resolveTraversalEntry = async ({
       path,
-      type,
+      isCommandLineArgument,
     }: {
       path: string;
-      type: WeshFileType;
-    }) => {
-      switch (type) {
-      case 'directory':
-      {
-        const cached = resolvedPathCache.get(path);
-        if (cached !== undefined) {
-          return cached;
+      isCommandLineArgument: boolean;
+    }): Promise<WeshEntryRef> => {
+      const finalSymlinkTreatment = (() => {
+        switch (traversal.symlinkMode) {
+        case 'logical':
+          return 'follow' as const;
+        case 'command-line':
+          return isCommandLineArgument ? 'follow' as const : 'no-follow' as const;
+        case 'physical':
+          return 'no-follow' as const;
+        default: {
+          const _ex: never = traversal.symlinkMode;
+          throw new Error(`Unhandled symlink mode: ${_ex}`);
         }
-        const pending = context.files.resolve({ path }).then(({ fullPath }) => fullPath);
-        resolvedPathCache.set(path, pending);
-        return pending;
+        }
+      })();
+
+      return context.files.resolveEntry({
+        path,
+        finalSymlinkTreatment,
+      });
+    };
+
+    const createFindEntry = async ({
+      entryRef,
+      operationPath,
+      displayPath,
+      name,
+    }: {
+      entryRef: WeshEntryRef;
+      operationPath: string;
+      displayPath: string;
+      name: string;
+    }): Promise<FindEntry> => {
+      if (canSkipFullStat) {
+        return {
+          entryRef,
+          fullPath: operationPath,
+          displayPath,
+          type: entryRef.type,
+          name,
+          size: 0,
+          mtime: 0,
+        };
       }
-      case 'file':
-      case 'fifo':
-      case 'chardev':
-      case 'symlink':
-        return path;
-      default: {
-        const _ex: never = type;
-        throw new Error(`Unhandled file type: ${_ex}`);
-      }
-      }
+
+      const stat = await context.files.statEntry({ entry: entryRef });
+      return {
+        entryRef,
+        fullPath: operationPath,
+        displayPath,
+        type: stat.type,
+        name,
+        size: stat.size,
+        mtime: stat.mtime,
+      };
     };
 
     const walk = async ({
-      fullPath,
+      entryRef,
+      operationPath,
       displayPath,
       name,
       depth,
-      isCommandLineArgument,
-      knownType,
     }: {
-      fullPath: string;
+      entryRef: WeshEntryRef;
+      operationPath: string;
       displayPath: string;
       name: string;
       depth: number;
-      isCommandLineArgument: boolean;
-      knownType: WeshFileType | undefined;
-    }) => {
+    }): Promise<void> => {
       if (shouldQuit) return;
 
       try {
-        const cheapType = knownType;
-        const canSkipFullStat = cheapType !== undefined
-          && !isCommandLineArgument
-          && traversal.symlinkMode === 'physical'
-          && canEvaluateWithoutFullStat({ expr: resolvedExpression });
-        const finalizedEntry = canSkipFullStat
-          ? {
-            fullPath,
-            displayPath,
-            type: cheapType,
-            name,
-            size: 0,
-            mtime: 0,
-            readPath: fullPath,
-          }
-          : await (async (): Promise<FindEntry> => {
-            const stat = await getPathStat({ path: fullPath, isCommandLineArgument });
-            return {
-              fullPath,
-              displayPath,
-              type: stat.type,
-              name,
-              size: stat.size,
-              mtime: stat.mtime,
-              readPath: await getReadPath({ path: fullPath, type: stat.type }),
-            };
-          })();
-
+        const finalizedEntry = await createFindEntry({
+          entryRef,
+          operationPath,
+          displayPath,
+          name,
+        });
         let shouldPruneChildren = false;
         let evaluation: FindEvaluationResult | undefined;
         const shouldEvaluate = depth >= traversal.minDepth;
@@ -1151,6 +1306,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
             entry: finalizedEntry,
             context,
             pendingExecBatches,
+            stdout,
           });
 
           if (evaluation.exitCode !== 0) {
@@ -1160,7 +1316,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
             shouldQuit = true;
           }
           if (evaluation.matched && !expression.hasAction) {
-            await context.text().print({ text: `${displayPath}\n` });
+            await stdout.write({ text: `${displayPath}\n` });
           }
           shouldPruneChildren = evaluation.shouldPrune;
         }
@@ -1172,15 +1328,24 @@ export const findCommandDefinition: WeshCommandDefinition = {
 
         if (canDescend) {
           const displayPathPrefix = displayPath === '/' ? '' : displayPath;
-          for await (const child of context.files.readDir({ path: finalizedEntry.readPath })) {
+          const directoryEntry = asDirectoryEntryRef({
+            entry: finalizedEntry.entryRef,
+          });
+          for await (const child of context.files.readDirEntry({ entry: directoryEntry })) {
             const childDisplayPath = `${displayPathPrefix}/${child.name}`;
+            const childOperationPath = child.fullPath;
+            const childEntry = traversal.symlinkMode === 'logical' && child.type === 'symlink'
+              ? await resolveTraversalEntry({
+                path: child.fullPath,
+                isCommandLineArgument: false,
+              })
+              : child;
             await walk({
-              fullPath: child.fullPath,
+              entryRef: childEntry,
+              operationPath: childOperationPath,
               displayPath: childDisplayPath,
               name: child.name,
               depth: depth + 1,
-              isCommandLineArgument: false,
-              knownType: child.type,
             });
             if (shouldQuit) break;
           }
@@ -1192,6 +1357,7 @@ export const findCommandDefinition: WeshCommandDefinition = {
             entry: finalizedEntry,
             context,
             pendingExecBatches,
+            stdout,
           });
 
           if (evaluation.exitCode !== 0) {
@@ -1201,11 +1367,11 @@ export const findCommandDefinition: WeshCommandDefinition = {
             shouldQuit = true;
           }
           if (evaluation.matched && !expression.hasAction) {
-            await context.text().print({ text: `${displayPath}\n` });
+            await stdout.write({ text: `${displayPath}\n` });
           }
         }
-      } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : String(e);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
         await context.text().error({ text: `find: ${displayPath}: ${message}\n` });
         exitCode = 1;
       }
@@ -1213,33 +1379,36 @@ export const findCommandDefinition: WeshCommandDefinition = {
 
     for (const path of parsed.paths) {
       const fullPath = resolvePath({ cwd: context.cwd, path });
-      await walk({
-        fullPath,
-        displayPath: path,
-        name: basename({ path }),
-        depth: 0,
-        isCommandLineArgument: true,
-        knownType: undefined,
-      });
+      try {
+        await walk({
+          entryRef: await resolveTraversalEntry({
+            path: fullPath,
+            isCommandLineArgument: true,
+          }),
+          operationPath: fullPath,
+          displayPath: path,
+          name: basename({ path }),
+          depth: 0,
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await context.text().error({ text: `find: ${path}: ${message}\n` });
+        exitCode = 1;
+      }
       if (shouldQuit) break;
     }
 
     for (const pendingExecBatch of pendingExecBatches.values()) {
-      if (pendingExecBatch.paths.length === 0) continue;
-
-      const result = await context.executeCommand({
-        command: pendingExecBatch.command,
-        args: buildBatchExecArgs({
-          argsTemplate: pendingExecBatch.argsTemplate,
-          paths: pendingExecBatch.paths,
-        }),
+      const batchExitCode = await flushPendingExecBatch({
+        pending: pendingExecBatch,
+        context,
       });
-
-      if (result.exitCode !== 0) {
-        exitCode = result.exitCode;
+      if (batchExitCode !== 0) {
+        exitCode = batchExitCode;
       }
     }
 
+    await stdout.flush();
     return { exitCode };
   },
 };

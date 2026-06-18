@@ -2,8 +2,10 @@ import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
-import { readAllFileBytes, writeAllStreamToFile, writeAllFileBytes } from '@/services/wesh/utils/fs';
+import { openFileReadStream, openHandleReadStream, readAllFileBytes } from '@/services/wesh/utils/fs';
 import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
+import { iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 
 type SedAddress =
   | { kind: 'line'; lineNumber: number }
@@ -537,24 +539,6 @@ function commandApplies({
   return true;
 }
 
-function createInputStream({
-  handle,
-}: {
-  handle: WeshFileHandle;
-}): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    async pull(controller) {
-      const buf = new Uint8Array(4096);
-      const { bytesRead } = await handle.read({ buffer: buf });
-      if (bytesRead === 0) {
-        controller.close();
-        return;
-      }
-      controller.enqueue(buf.subarray(0, bytesRead));
-    }
-  });
-}
-
 async function openSedInputStream({
   context,
   file,
@@ -563,76 +547,107 @@ async function openSedInputStream({
   file: string;
 }): Promise<ReadableStream<Uint8Array>> {
   if (file === '-') {
-    return createInputStream({
-      handle: context.stdin,
-    });
+    return openHandleReadStream({ handle: context.stdin });
   }
 
   const path = file.startsWith('/') ? file : `${context.cwd}/${file}`;
-  if (context.files.tryReadBlobEfficiently !== undefined) {
-    const blobResult = await context.files.tryReadBlobEfficiently({ path });
-    switch (blobResult.kind) {
-    case 'blob':
-      return blobResult.blob.stream() as ReadableStream<Uint8Array>;
-    case 'fallback-required':
-      break;
-    default: {
-      const _ex: never = blobResult;
-      throw new Error(`Unhandled blob read result: ${JSON.stringify(_ex)}`);
-    }
-    }
-  }
-
-  const handle = await context.files.open({
+  return openFileReadStream({
+    files: context.files,
     path,
-    flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' },
   });
-  return createInputStream({ handle });
 }
 
-async function *readTextLines({
+async function* readTextLines({
   stream,
 }: {
   stream: ReadableStream<Uint8Array>;
 }): AsyncGenerator<SedTextLine> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        buffer += decoder.decode();
-        break;
-      }
-      if (value === undefined) continue;
-
-      buffer += decoder.decode(value, { stream: true });
-      while (true) {
-        const newlineIndex = buffer.indexOf('\n');
-        if (newlineIndex === -1) break;
-
-        const lineEnd = newlineIndex > 0 && buffer[newlineIndex - 1] === '\r'
-          ? newlineIndex - 1
-          : newlineIndex;
-        yield {
-          line: buffer.slice(0, lineEnd),
-          hadNewline: true,
-        };
-        buffer = buffer.slice(newlineIndex + 1);
-      }
-    }
-
-    if (buffer.length > 0) {
-      yield {
-        line: buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer,
-        hadNewline: false,
-      };
-    }
-  } finally {
-    reader.releaseLock();
+  for await (const record of iterateUtf8LineRecords({
+    chunks: iterateReadableStreamChunks({ stream }),
+  })) {
+    yield {
+      line: record.text,
+      hadNewline: record.termination === 'delimiter',
+    };
   }
+}
+
+interface SedOutputWriter {
+  write({ text }: { text: string }): Promise<void>;
+  flush(): Promise<void>;
+}
+
+async function processSedStream({
+  stream,
+  commands,
+  quiet,
+  writer,
+}: {
+  stream: ReadableStream<Uint8Array>;
+  commands: SedCommand[];
+  quiet: boolean;
+  writer: SedOutputWriter;
+}): Promise<void> {
+  const runtimeCommands = createSedRuntimeCommands({ commands });
+  let lineNumber = 0;
+  for await (const current of readTextLines({ stream })) {
+    lineNumber += 1;
+    const result = executeSedLine({
+      runtimeCommands,
+      lineNumber,
+      current,
+      quiet,
+    });
+    for (const output of result.outputs) {
+      await writer.write({ text: output });
+    }
+    if (result.shouldQuit) {
+      break;
+    }
+  }
+  await writer.flush();
+}
+
+async function createSedTemporaryFile({
+  context,
+  targetPath,
+  mode,
+}: {
+  context: WeshCommandContext;
+  targetPath: string;
+  mode: number;
+}): Promise<{
+  path: string;
+  handle: WeshFileHandle;
+}> {
+  const separatorIndex = targetPath.lastIndexOf('/');
+  const parentPath = separatorIndex <= 0 ? '/' : targetPath.slice(0, separatorIndex);
+  const basename = targetPath.slice(separatorIndex + 1);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const name = `.${basename}.sed-${context.pid}-${attempt}`;
+    const temporaryPath = parentPath === '/' ? `/${name}` : `${parentPath}/${name}`;
+    try {
+      const handle = await context.files.open({
+        path: temporaryPath,
+        flags: {
+          access: 'write',
+          creation: 'always',
+          truncate: 'truncate',
+          append: 'preserve',
+        },
+        mode,
+      });
+      return {
+        path: temporaryPath,
+        handle,
+      };
+    } catch (error: unknown) {
+      if (attempt === 99) {
+        throw error;
+      }
+    }
+  }
+  throw new Error(`Unable to create temporary file for ${targetPath}`);
 }
 
 function createSedRuntimeCommands({
@@ -946,41 +961,11 @@ export const sedCommandDefinition: WeshCommandDefinition = {
     const quiet = parsed.optionValues.quiet === true;
     const inPlace = parsed.optionValues.inPlaceSuffix !== undefined;
     const inPlaceSuffix = typeof parsed.optionValues.inPlaceSuffix === 'string' ? parsed.optionValues.inPlaceSuffix : '';
-    const encoder = new TextEncoder();
     const bufferedStdout = createBufferedTextWriter({
       handle: context.stdout,
       maxBufferLength: 16384,
     });
-    const processText = ({
-      input,
-    }: {
-      input: string;
-    }): string => {
-      const runtimeCommands = createSedRuntimeCommands({
-        commands: allCommands,
-      });
-      const outputParts: string[] = [];
-      let lineNumber = 0;
-      const parts = input.length === 0 ? [] : input.split('\n');
-      for (let index = 0; index < parts.length; index++) {
-        lineNumber += 1;
-        const current: SedTextLine = {
-          line: parts[index] ?? '',
-          hadNewline: index < parts.length - 1,
-        };
-        const result = executeSedLine({
-          runtimeCommands,
-          lineNumber,
-          current,
-          quiet,
-        });
-        outputParts.push(...result.outputs);
-        if (result.shouldQuit) {
-          break;
-        }
-      }
-      return outputParts.join('');
-    };
+
 
     if (files.length === 0) {
       if (inPlace) {
@@ -993,29 +978,12 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         return { exitCode: 1 };
       }
 
-      const runtimeCommands = createSedRuntimeCommands({
+      await processSedStream({
+        stream: openHandleReadStream({ handle: context.stdin }),
         commands: allCommands,
+        quiet,
+        writer: bufferedStdout,
       });
-      let lineNumber = 0;
-      const stream = createInputStream({
-        handle: context.stdin,
-      });
-      for await (const current of readTextLines({ stream })) {
-        lineNumber += 1;
-        const result = executeSedLine({
-          runtimeCommands,
-          lineNumber,
-          current,
-          quiet,
-        });
-        for (const output of result.outputs) {
-          await bufferedStdout.write({ text: output });
-        }
-        if (result.shouldQuit) {
-          break;
-        }
-      }
-      await bufferedStdout.flush();
       return { exitCode: 0 };
     }
 
@@ -1027,51 +995,92 @@ export const sedCommandDefinition: WeshCommandDefinition = {
         const fullPath = file.startsWith('/') ? file : `${context.cwd}/${file}`;
 
         if (inPlace) {
-          const inputBytes = await readAllFileBytes({ files: context.files, path: fullPath });
-          const input = new TextDecoder().decode(inputBytes);
-          const output = processText({ input });
-          if (inPlaceSuffix.length > 0) {
-            await writeAllFileBytes({
-              files: context.files,
-              path: `${fullPath}${inPlaceSuffix}`,
-              data: inputBytes,
-            });
-          }
-          await writeAllStreamToFile({
-            files: context.files,
-            path: fullPath,
-            mode: 'truncate',
-            stream: new ReadableStream<Uint8Array>({
-              start(controller) {
-                controller.enqueue(encoder.encode(output));
-                controller.close();
-              },
-            }),
-          });
-        } else {
-          const runtimeCommands = createSedRuntimeCommands({
-            commands: allCommands,
-          });
-          let lineNumber = 0;
-          const stream = await openSedInputStream({
+          const originalStat = await context.files.stat({ path: fullPath });
+          const temporary = await createSedTemporaryFile({
             context,
-            file,
+            targetPath: fullPath,
+            mode: originalStat.mode,
           });
-          for await (const current of readTextLines({ stream })) {
-            lineNumber += 1;
-            const result = executeSedLine({
-              runtimeCommands,
-              lineNumber,
-              current,
-              quiet,
+          let temporaryExists = true;
+          try {
+            const temporaryWriter = createBufferedTextWriter({
+              handle: temporary.handle,
+              maxBufferLength: 16 * 1024,
             });
-            for (const output of result.outputs) {
-              await bufferedStdout.write({ text: output });
+            await processSedStream({
+              stream: await openSedInputStream({ context, file }),
+              commands: allCommands,
+              quiet,
+              writer: temporaryWriter,
+            });
+            await temporary.handle.close();
+
+            const recoveryPath = inPlaceSuffix.length > 0
+              ? `${fullPath}${inPlaceSuffix}`
+              : `${temporary.path}.original`;
+            let originalMoved = false;
+            try {
+              await context.files.rename({
+                oldPath: fullPath,
+                newPath: recoveryPath,
+              });
+              originalMoved = true;
+              try {
+                await context.files.rename({
+                  oldPath: temporary.path,
+                  newPath: fullPath,
+                });
+                temporaryExists = false;
+              } catch (replaceError: unknown) {
+                try {
+                  await context.files.rename({
+                    oldPath: recoveryPath,
+                    newPath: fullPath,
+                  });
+                  originalMoved = false;
+                } catch (restoreError: unknown) {
+                  throw new AggregateError(
+                    [replaceError, restoreError],
+                    `sed: failed to replace and restore ${fullPath}`,
+                  );
+                }
+                throw replaceError;
+              }
+
+              if (inPlaceSuffix.length === 0) {
+                await context.files.unlink({ path: recoveryPath });
+                originalMoved = false;
+              }
+            } catch (error: unknown) {
+              if (originalMoved && inPlaceSuffix.length === 0) {
+                try {
+                  await context.files.rename({
+                    oldPath: recoveryPath,
+                    newPath: fullPath,
+                  });
+                } catch {
+                  // Preserve the original replacement error.
+                }
+              }
+              throw error;
             }
-            if (result.shouldQuit) {
-              break;
+          } finally {
+            await temporary.handle.close();
+            if (temporaryExists) {
+              try {
+                await context.files.unlink({ path: temporary.path });
+              } catch {
+                // Preserve the original sed error when temporary cleanup fails.
+              }
             }
           }
+        } else {
+          await processSedStream({
+            stream: await openSedInputStream({ context, file }),
+            commands: allCommands,
+            quiet,
+            writer: bufferedStdout,
+          });
         }
       } catch (error: unknown) {
         exitCode = 1;

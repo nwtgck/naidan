@@ -28,7 +28,7 @@ function createMissingValueDiagnostic({
   valueName: string;
 }): ArgvDiagnostic {
   return {
-    kind: 'missing-option-value',
+    kind: 'missing_option_value',
     option,
     message: `${option} requires a value for ${valueName}`,
   };
@@ -53,7 +53,7 @@ function parseValueOption({
   return {
     ok: false,
     diagnostic: {
-      kind: 'invalid-option-value',
+      kind: 'invalid_option_value',
       option: option.long !== undefined ? `--${option.long}` : `-${option.short}`,
       message: parsed.message,
     },
@@ -126,7 +126,7 @@ export function parseStandardArgv({
 
       if (option === undefined) {
         diagnostics.push({
-          kind: 'unknown-long-option',
+          kind: 'unknown_long_option',
           option: `--${key}`,
           message: `unrecognized option '--${key}'`,
         });
@@ -193,7 +193,7 @@ export function parseStandardArgv({
         const option = shortOptions.get(short);
         if (option === undefined) {
           diagnostics.push({
-            kind: 'unknown-short-option',
+            kind: 'unknown_short_option',
             option: `-${short}`,
             message: `invalid option -- '${short}'`,
           });

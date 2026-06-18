@@ -3,6 +3,7 @@ import type {
   WeshFileHandle,
   WeshIVirtualFileSystem,
   WeshWriteResult,
+  WeshOwnedBytes,
   WeshIOResult,
   WeshStat,
   WeshFileType,
@@ -12,6 +13,8 @@ import type {
   WeshEfficientBlobReadResult,
   WeshEfficientFileWriteResult,
   WeshFileHandleCloseSemantics,
+  WeshEntryRef,
+  WeshFinalSymlinkTreatment,
 } from './types';
 import { WeshBrokenPipeError, weshWaitStatusToExitCode } from './types';
 import { WeshHandleCloseSignal } from './utils/closeSignal';
@@ -63,6 +66,40 @@ abstract class WeshKernelProcessFileHandle implements WeshFileHandle {
         return { bytesWritten: 0 };
       }
       throw error;
+    }
+  }
+
+  protected async writeOwnedWithBrokenPipeHandling({ operation }: {
+    operation: Promise<void>;
+  }): Promise<void> {
+    try {
+      await operation;
+    } catch (error: unknown) {
+      if (error instanceof WeshBrokenPipeError) {
+        await this.kernel.kill({
+          pid: this.pid,
+          signal: 13,
+        });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  protected async writeOwnedUsingBorrowedWrites({ chunk }: {
+    chunk: WeshOwnedBytes;
+  }): Promise<void> {
+    let offset = 0;
+    while (offset < chunk.bytes.byteLength) {
+      const result = await this.write({
+        buffer: chunk.bytes,
+        offset,
+        length: chunk.bytes.byteLength - offset,
+      });
+      if (result.bytesWritten === 0) {
+        return;
+      }
+      offset += result.bytesWritten;
     }
   }
 
@@ -140,6 +177,16 @@ class WeshKernelHardProcessFileHandle extends WeshKernelProcessFileHandle {
     });
   }
 
+  async writeOwned({ chunk }: { chunk: WeshOwnedBytes }): Promise<void> {
+    if (this.state.handle.writeOwned === undefined) {
+      await this.writeOwnedUsingBorrowedWrites({ chunk });
+      return;
+    }
+    await this.writeOwnedWithBrokenPipeHandling({
+      operation: this.state.handle.writeOwned({ chunk }),
+    });
+  }
+
   cloneReference(): WeshKernelProcessFileHandle {
     return new WeshKernelHardProcessFileHandle({
       handle: this,
@@ -180,6 +227,19 @@ class WeshKernelSoftProcessFileHandle extends WeshKernelProcessFileHandle {
       operation: this.closeSignal.raceWithClose({
         operation: this.state.handle.write(options),
         buildClosedResult: () => ({ bytesWritten: 0 }),
+      }),
+    });
+  }
+
+  async writeOwned({ chunk }: { chunk: WeshOwnedBytes }): Promise<void> {
+    if (this.state.handle.writeOwned === undefined) {
+      await this.writeOwnedUsingBorrowedWrites({ chunk });
+      return;
+    }
+    await this.writeOwnedWithBrokenPipeHandling({
+      operation: this.closeSignal.raceWithClose({
+        operation: this.state.handle.writeOwned({ chunk }),
+        buildClosedResult: () => undefined,
       }),
     });
   }
@@ -315,6 +375,58 @@ class PipeHandle implements WeshFileHandle {
     return { bytesRead: copyLen };
   }
 
+  private async writeBuffer({
+    buffer,
+    offset,
+    length,
+    ownership,
+  }: {
+    buffer: Uint8Array;
+    offset: number;
+    length: number;
+    ownership: 'borrowed' | 'owned';
+  }): Promise<number> {
+    let bytesWritten = 0;
+    while (bytesWritten < length) {
+      if (this.closed) {
+        return bytesWritten;
+      }
+      if (this.state.readRefCount <= 0) {
+        if (bytesWritten > 0) {
+          return bytesWritten;
+        }
+        throw new WeshBrokenPipeError();
+      }
+
+      const availableCapacity = PIPE_BUFFER_LIMIT_BYTES - this.state.bufferSize;
+      if (availableCapacity <= 0) {
+        await new Promise<void>(resolve => this.state.writeWaiters.push(resolve));
+        continue;
+      }
+
+      const chunkLength = Math.min(length - bytesWritten, availableCapacity);
+      const start = offset + bytesWritten;
+      const view = buffer.subarray(start, start + chunkLength);
+      const data = (() => {
+        switch (ownership) {
+        case 'borrowed':
+          return new Uint8Array(view);
+        case 'owned':
+          return view;
+        default: {
+          const _exhaustiveCheck: never = ownership;
+          throw new Error(`Unhandled byte ownership: ${String(_exhaustiveCheck)}`);
+        }
+        }
+      })();
+      this.state.buffer.push(data);
+      this.state.bufferSize += chunkLength;
+      bytesWritten += chunkLength;
+      this.wakeReadWaiters();
+    }
+    return bytesWritten;
+  }
+
   async write({ buffer, offset, length: requestedLength }: { buffer: Uint8Array; offset?: number; length?: number }): Promise<WeshWriteResult> {
     switch (this.mode) {
     case 'w':
@@ -328,35 +440,36 @@ class PipeHandle implements WeshFileHandle {
     }
     const bufferOffset = offset ?? 0;
     const length = requestedLength ?? (buffer.length - bufferOffset);
-    let bytesWritten = 0;
+    return {
+      bytesWritten: await this.writeBuffer({
+        buffer,
+        offset: bufferOffset,
+        length,
+        ownership: 'borrowed',
+      }),
+    };
+  }
 
-    while (bytesWritten < length) {
-      if (this.closed) {
-        return { bytesWritten };
-      }
-      if (this.state.readRefCount <= 0) {
-        if (bytesWritten > 0) {
-          return { bytesWritten };
-        }
-        throw new WeshBrokenPipeError();
-      }
-
-      const availableCapacity = PIPE_BUFFER_LIMIT_BYTES - this.state.bufferSize;
-      if (availableCapacity <= 0) {
-        await new Promise<void>(resolve => this.state.writeWaiters.push(resolve));
-        continue;
-      }
-
-      const chunkLength = Math.min(length - bytesWritten, availableCapacity);
-      const start = bufferOffset + bytesWritten;
-      const data = new Uint8Array(buffer.subarray(start, start + chunkLength));
-      this.state.buffer.push(data);
-      this.state.bufferSize += chunkLength;
-      bytesWritten += chunkLength;
-      this.wakeReadWaiters();
+  async writeOwned({ chunk }: { chunk: WeshOwnedBytes }): Promise<void> {
+    switch (this.mode) {
+    case 'w':
+      break;
+    case 'r':
+      throw new Error('File not open for writing');
+    default: {
+      const _ex: never = this.mode;
+      throw new Error(`Unhandled mode: ${_ex}`);
     }
-
-    return { bytesWritten };
+    }
+    const bytesWritten = await this.writeBuffer({
+      buffer: chunk.bytes,
+      offset: 0,
+      length: chunk.bytes.byteLength,
+      ownership: 'owned',
+    });
+    if (bytesWritten !== chunk.bytes.byteLength) {
+      throw new WeshBrokenPipeError();
+    }
   }
 
   async close(): Promise<void> {
@@ -680,6 +793,48 @@ export class WeshKernel {
     return this.vfs.readDir({ path: path });
   }
 
+  async resolveEntry({
+    path,
+    finalSymlinkTreatment,
+  }: {
+    path: string;
+    finalSymlinkTreatment: WeshFinalSymlinkTreatment;
+  }): Promise<WeshEntryRef> {
+    return this.vfs.resolveEntry({ path, finalSymlinkTreatment });
+  }
+
+  readDirEntry({
+    entry,
+  }: {
+    entry: WeshEntryRef<'directory'>;
+  }): AsyncIterable<WeshEntryRef> {
+    return this.vfs.readDirEntry({ entry });
+  }
+
+  async statEntry({ entry }: { entry: WeshEntryRef }): Promise<WeshStat> {
+    return this.vfs.statEntry({ entry });
+  }
+
+  async openEntry({
+    entry,
+    flags,
+    mode,
+  }: {
+    entry: WeshEntryRef;
+    flags: WeshOpenFlags;
+    mode?: number;
+  }): Promise<WeshFileHandle> {
+    return this.vfs.openEntry({ entry, flags, mode });
+  }
+
+  async readlinkEntry({
+    entry,
+  }: {
+    entry: WeshEntryRef<'symlink'>;
+  }): Promise<string> {
+    return this.vfs.readlinkEntry({ entry });
+  }
+
   async mkdir({ path, mode, recursive }: { path: string; mode?: number; recursive?: boolean }): Promise<void> {
     const options = { path, mode, recursive };
     return this.vfs.mkdir(options);
@@ -708,6 +863,26 @@ export class WeshKernel {
   async rename({ oldPath, newPath }: { oldPath: string; newPath: string }): Promise<void> {
     const options = { oldPath, newPath };
     return this.vfs.rename(options);
+  }
+
+  reapProcess({ pid }: { pid: number }): void {
+    const process = this.processes.get(pid);
+    if (process === undefined) {
+      return;
+    }
+    switch (process.state) {
+    case 'terminated':
+    case 'zombie':
+      this.processes.delete(pid);
+      return;
+    case 'running':
+    case 'stopped':
+      throw new Error(`Cannot reap live process: ${pid}`);
+    default: {
+      const _ex: never = process.state;
+      throw new Error(`Unhandled process state: ${_ex}`);
+    }
+    }
   }
 
   getProcess({ pid }: { pid: number }): WeshProcess | undefined {

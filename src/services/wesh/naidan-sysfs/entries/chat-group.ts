@@ -72,7 +72,7 @@ function createChatGroupMetadataFileEntry({
 
 function createRestrictedChatsDirectoryEntry(): NaidanSysfsRestrictedDirectoryEntry {
   return {
-    kind: 'restricted-directory',
+    kind: 'restricted_directory',
     async stat({ path }: { path: string }) {
       void path
       return createRestrictedDirectoryStat()

@@ -51,8 +51,17 @@ function createReaderStub({
       return contentById[idToRaw({ id: chatId })]
     },
     async loadChat({ chatId }: { chatId: ChatId }) {
-      void chatId
-      return undefined
+      const rawChatId = idToRaw({ id: chatId })
+      const metadata = metadataById[rawChatId]
+      const content = contentById[rawChatId]
+      if (metadata === undefined || content === undefined) {
+        return undefined
+      }
+      return {
+        ...metadata,
+        root: content.root,
+        currentLeafId: content.currentLeafId ?? metadata.currentLeafId,
+      }
     },
     async loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }) {
       return chatGroups.find(({ id }) => id === chatGroupId)

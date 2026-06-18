@@ -1,6 +1,9 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
+import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
+import { openHandleReadStream } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
 
 interface TrOptions {
   deleteMode: boolean;
@@ -314,23 +317,70 @@ function buildTranslationMap({
   return map;
 }
 
-async function readHandleText({
-  handle,
+async function transformInput({
+  context,
+  set1,
+  set2,
+  options,
 }: {
-  handle: WeshFileHandle;
-}): Promise<string> {
+  context: WeshCommandContext;
+  set1: string[];
+  set2: string[];
+  options: TrOptions;
+}): Promise<void> {
+  const effectiveSet1 = options.complement ? complementAsciiSet({ source: set1 }) : set1;
+  const deleteSet = new Set(effectiveSet1);
+  const translationMap = options.deleteMode ? new Map<string, string>() : buildTranslationMap({
+    set1: effectiveSet1,
+    set2,
+    truncateSet1: options.truncateSet1,
+  });
+  const squeezeSet = options.squeezeRepeats
+    ? new Set<string>(options.deleteMode || set2.length === 0 ? effectiveSet1 : set2)
+    : undefined;
   const decoder = new TextDecoder();
-  const buffer = new Uint8Array(4096);
-  let text = '';
+  const writer = createBufferedTextWriter({
+    handle: context.stdout,
+    maxBufferLength: 16 * 1024,
+  });
+  let lastOutputChar: string | undefined;
 
-  while (true) {
-    const { bytesRead } = await handle.read({ buffer });
-    if (bytesRead === 0) break;
-    text += decoder.decode(buffer.subarray(0, bytesRead), { stream: true });
+  const transformTextChunk = async ({
+    text,
+  }: {
+    text: string;
+  }): Promise<void> => {
+    const output: string[] = [];
+    for (const char of text) {
+      if (options.deleteMode && deleteSet.has(char)) {
+        continue;
+      }
+
+      const translated = options.deleteMode ? char : translationMap.get(char) ?? char;
+      if (squeezeSet !== undefined && squeezeSet.has(translated) && translated === lastOutputChar) {
+        continue;
+      }
+
+      output.push(translated);
+      lastOutputChar = translated;
+    }
+    if (output.length > 0) {
+      await writer.write({ text: output.join('') });
+    }
+  };
+
+  try {
+    for await (const chunk of iterateReadableStreamChunks({
+      stream: openHandleReadStream({ handle: context.stdin }),
+    })) {
+      await transformTextChunk({
+        text: decoder.decode(chunk, { stream: true }),
+      });
+    }
+    await transformTextChunk({ text: decoder.decode() });
+  } finally {
+    await writer.flush();
   }
-
-  text += decoder.decode();
-  return text;
 }
 
 function resolveTrOptions({
@@ -344,48 +394,6 @@ function resolveTrOptions({
     complement: parsed.optionValues.complement === true,
     truncateSet1: parsed.optionValues.truncateSet1 === true,
   };
-}
-
-function transformText({
-  text,
-  set1,
-  set2,
-  options,
-}: {
-  text: string;
-  set1: string[];
-  set2: string[];
-  options: TrOptions;
-}): string {
-  const effectiveSet1 = options.complement ? complementAsciiSet({ source: set1 }) : set1;
-  const deleteSet = new Set(effectiveSet1);
-  const translationMap = options.deleteMode ? new Map<string, string>() : buildTranslationMap({
-    set1: effectiveSet1,
-    set2,
-    truncateSet1: options.truncateSet1,
-  });
-  const squeezeSet = options.squeezeRepeats
-    ? new Set<string>(options.deleteMode || set2.length === 0 ? effectiveSet1 : set2)
-    : undefined;
-
-  let output = '';
-  let lastOutputChar: string | undefined;
-
-  for (const char of text) {
-    if (options.deleteMode && deleteSet.has(char)) {
-      continue;
-    }
-
-    const translated = options.deleteMode ? char : translationMap.get(char) ?? char;
-    if (squeezeSet !== undefined && squeezeSet.has(translated) && translated === lastOutputChar) {
-      continue;
-    }
-
-    output += translated;
-    lastOutputChar = translated;
-  }
-
-  return output;
 }
 
 export const trCommandDefinition: WeshCommandDefinition = {
@@ -454,15 +462,12 @@ export const trCommandDefinition: WeshCommandDefinition = {
     }
 
     const set2 = set2Raw === undefined ? [] : expandTrSet({ source: set2Raw });
-    const inputText = await readHandleText({ handle: context.stdin });
-    const outputText = transformText({
-      text: inputText,
+    await transformInput({
+      context,
       set1,
       set2,
       options,
     });
-
-    await context.text().print({ text: outputText });
     return { exitCode: 0 };
   },
 };

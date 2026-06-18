@@ -482,6 +482,17 @@ describe('file-explorer.worker.impl', () => {
             async loadChatContent({ chatId }: { chatId: string }) {
               return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined
             },
+            async loadChat({ chatId }: { chatId: string }) {
+              return chatId === 'chat-1'
+                ? {
+                  metadata: {
+                    dto: chatMetaToDto({ domain: chatMeta }),
+                    groupId: 'chat-group-1',
+                  },
+                  content: chatContentToDto({ domain: chatContent }),
+                }
+                : undefined
+            },
             async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
               return chatGroupId === 'chat-group-1'
                 ? {

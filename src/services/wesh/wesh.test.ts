@@ -1493,8 +1493,69 @@ echo "$PIPE_VALUE"`,
     expect(seenProcesses[0]!.pid).not.toBe(seenProcesses[1]!.pid);
     expect(seenProcesses[0]!.pgid).toBe(seenProcesses[1]!.pgid);
     const processGroup = wesh.kernel.getProcessesByGroup({ pgid: seenProcesses[0]!.pgid });
-    expect(processGroup.some(proc => proc.pid === seenProcesses[0]!.pid)).toBe(true);
-    expect(processGroup.some(proc => proc.pid === seenProcesses[1]!.pid)).toBe(true);
+    expect(processGroup.some(proc => proc.pid === seenProcesses[0]!.pid)).toBe(false);
+    expect(processGroup.some(proc => proc.pid === seenProcesses[1]!.pid)).toBe(false);
+  });
+
+  it('reaps completed command processes across repeated executions', async () => {
+    const initialProcessCount = wesh.kernel.getProcesses().length;
+
+    for (let index = 0; index < 100; index += 1) {
+      const result = await wesh.execute({
+        script: 'true',
+        stdin: createTestReadHandleFromText({ text: '' }),
+        stdout: createTestWriteCaptureHandle().handle,
+        stderr: createTestWriteCaptureHandle().handle,
+      });
+      expect(result.exitCode).toBe(0);
+    }
+
+    expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
+  });
+
+  it('reaps transient child shell processes after compound execution', async () => {
+    const initialProcessCount = wesh.kernel.getProcesses().length;
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+echo "$(printf command-substitution)"
+(printf subshell)
+printf pipeline | cat
+cat <(printf process-substitution)`,
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain('command-substitution');
+    expect(stdout.text).toContain('subshell');
+    expect(stdout.text).toContain('pipeline');
+    expect(stdout.text).toContain('process-substitution');
+    expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
+  });
+
+  it('does not retain intermediate processes for direct argv execution', async () => {
+    const work = await rootHandle.getDirectoryHandle('work', { create: true });
+    await work.getFileHandle('a.txt', { create: true });
+    await work.getFileHandle('b.txt', { create: true });
+    const initialProcessCount = wesh.kernel.getProcesses().length;
+
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const result = await wesh.execute({
+      script: 'find work -type f -exec true {} \\;',
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
   });
 
   it('stores traps in the current shell and lists them', async () => {

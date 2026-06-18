@@ -54,7 +54,7 @@ export function formatResolvedCommand({
       throw new Error(`Unhandled command format mode: ${_ex}`);
     }
     }
-  case 'not-found':
+  case 'not_found':
     return undefined;
   default: {
     const _ex: never = resolved;

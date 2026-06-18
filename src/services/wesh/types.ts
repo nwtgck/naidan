@@ -23,6 +23,20 @@ export interface WeshWriteResult {
   bytesWritten: number;
 }
 
+const weshOwnedBytesBrand: unique symbol = Symbol('wesh-owned-bytes');
+
+export interface WeshOwnedBytes {
+  readonly bytes: Uint8Array;
+  readonly [weshOwnedBytesBrand]: true;
+}
+
+export function createWeshOwnedBytes({ bytes }: { bytes: Uint8Array }): WeshOwnedBytes {
+  return {
+    bytes,
+    [weshOwnedBytesBrand]: true,
+  };
+}
+
 export type WeshFileHandleCloseSemantics = 'hard' | 'soft';
 
 export class WeshBrokenPipeError extends Error {
@@ -55,6 +69,12 @@ export interface WeshFileHandle {
     length?: number; // Number of bytes to write
     position?: number; // File position (seek). If undefined, use current cursor.
   }): Promise<WeshWriteResult>;
+
+  /**
+   * Transfer ownership of a complete byte chunk to the handle. Callers must not
+   * mutate the underlying bytes after invoking this method.
+   */
+  writeOwned?({ chunk }: { chunk: WeshOwnedBytes }): Promise<void>;
 
   close(): Promise<void>;
 
@@ -172,6 +192,28 @@ export interface WeshDirEntry {
   fullPath: string;
 }
 
+declare const weshEntryRefBrand: unique symbol;
+
+/**
+ * Opaque reference to an entry already resolved by one Wesh VFS instance.
+ *
+ * The reference is execution-local and must not be persisted or transferred
+ * across Worker/API boundaries. Commands may inspect its stable presentation
+ * fields, but only the owning VFS can use the backend-specific reference.
+ */
+export type WeshEntryRef<
+  TType extends WeshFileType = WeshFileType,
+> = TType extends WeshFileType
+  ? {
+      readonly name: string;
+      readonly type: TType;
+      readonly fullPath: string;
+      readonly [weshEntryRefBrand]: TType;
+    }
+  : never;
+
+export type WeshFinalSymlinkTreatment = 'follow' | 'no-follow';
+
 export interface WeshIVirtualFileSystem {
   mount({ path, handle, readOnly }: { path: string; handle: FileSystemDirectoryHandle; readOnly?: boolean }): Promise<void>;
   mountVirtual({
@@ -204,6 +246,30 @@ export interface WeshIVirtualFileSystem {
   }): Promise<WeshEfficientFileWriteResult>;
 
   readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry>;
+
+  resolveEntry({
+    path,
+    finalSymlinkTreatment,
+  }: {
+    path: string;
+    finalSymlinkTreatment: WeshFinalSymlinkTreatment;
+  }): Promise<WeshEntryRef>;
+  readDirEntry({
+    entry,
+  }: {
+    entry: WeshEntryRef<'directory'>;
+  }): AsyncIterable<WeshEntryRef>;
+  statEntry({ entry }: { entry: WeshEntryRef }): Promise<WeshStat>;
+  openEntry({
+    entry,
+    flags,
+    mode,
+  }: {
+    entry: WeshEntryRef;
+    flags: WeshOpenFlags;
+    mode?: number;
+  }): Promise<WeshFileHandle>;
+  readlinkEntry({ entry }: { entry: WeshEntryRef<'symlink'> }): Promise<string>;
 
   mkdir({ path, mode, recursive }: { path: string; mode?: number; recursive?: boolean }): Promise<void>;
 
@@ -283,7 +349,37 @@ export interface WeshNaidanSysfsMount {
 
 export type WeshMount = WeshDirectoryMount | WeshNaidanSysfsMount;
 
+export type WeshVirtualEntryRef =
+  | {
+      readonly type: 'file' | 'fifo' | 'chardev';
+      readonly name: string;
+      readonly fullPath: string;
+      stat(): Promise<WeshStat>;
+      open({ flags, mode }: { flags: WeshOpenFlags; mode?: number }): Promise<WeshFileHandle>;
+    }
+  | {
+      readonly type: 'directory';
+      readonly name: string;
+      readonly fullPath: string;
+      stat(): Promise<WeshStat>;
+      readDir(): AsyncIterable<WeshVirtualEntryRef>;
+    }
+  | {
+      readonly type: 'symlink';
+      readonly name: string;
+      readonly fullPath: string;
+      stat(): Promise<WeshStat>;
+      readlink(): Promise<string>;
+    };
+
 export interface WeshVirtualMountProvider {
+  resolveEntryRef?({
+    path,
+    finalSymlinkTreatment,
+  }: {
+    path: string;
+    finalSymlinkTreatment: WeshFinalSymlinkTreatment;
+  }): Promise<WeshVirtualEntryRef>;
   open({
     path,
     flags,
@@ -304,11 +400,11 @@ export const WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED = Symbol('WESH_EFFICIEN
 
 export type WeshEfficientBlobReadResult =
   | { kind: 'blob'; blob: Blob }
-  | { kind: 'fallback-required'; reason: typeof WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED };
+  | { kind: 'fallback_required'; reason: typeof WESH_EFFICIENT_BLOB_READ_FALLBACK_REQUIRED };
 
 export type WeshEfficientFileWriteResult =
   | { kind: 'writer'; writer: WeshEfficientFileWriter }
-  | { kind: 'fallback-required'; reason: typeof WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED };
+  | { kind: 'fallback_required'; reason: typeof WESH_EFFICIENT_FILE_WRITE_FALLBACK_REQUIRED };
 
 // --- Shell / Command Execution Context ---
 
@@ -350,7 +446,7 @@ export type WeshResolvedCommand =
       invocationPath: string | undefined;
       resolution: 'builtin-name' | 'path-lookup' | 'explicit-path';
     }
-  | { kind: 'not-found'; name: string };
+  | { kind: 'not_found'; name: string };
 
 export interface WeshCommandContext {
   pid: number;
@@ -378,6 +474,7 @@ export interface WeshCommandContext {
   setEnv({ key, value }: { key: string; value: string }): void;
   unsetEnv({ key }: { key: string }): void;
   getHistory(): string[];
+  getArgumentEntryRef({ index }: { index: number }): WeshEntryRef | undefined;
   getAliases(): Array<{ name: string; value: string }>;
   setAlias({ name, value }: { name: string; value: string }): void;
   unsetAlias({ name }: { name: string }): void;
@@ -389,9 +486,10 @@ export interface WeshCommandContext {
   getShellOption({ name }: { name: WeshShellOption }): boolean;
   setShellOption({ name, enabled }: { name: WeshShellOption; enabled: boolean }): void;
   getShellOptions(): Array<[WeshShellOption, boolean]>;
-  executeCommand({ command, args, stdin, stdout, stderr, ignoreAliases }: {
+  executeCommand({ command, args, argumentEntryRefs, stdin, stdout, stderr, ignoreAliases }: {
     command: string;
     args: string[];
+    argumentEntryRefs?: readonly (WeshEntryRef | undefined)[];
     stdin?: WeshFileHandle;
     stdout?: WeshFileHandle;
     stderr?: WeshFileHandle;
@@ -414,6 +512,29 @@ export interface WeshCommandContext {
     readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry>;
     readlink({ path }: { path: string }): Promise<string>;
     resolve({ path }: { path: string }): Promise<{ fullPath: string; stat: WeshStat }>;
+    resolveEntry({
+      path,
+      finalSymlinkTreatment,
+    }: {
+      path: string;
+      finalSymlinkTreatment: WeshFinalSymlinkTreatment;
+    }): Promise<WeshEntryRef>;
+    readDirEntry({
+      entry,
+    }: {
+      entry: WeshEntryRef<'directory'>;
+    }): AsyncIterable<WeshEntryRef>;
+    statEntry({ entry }: { entry: WeshEntryRef }): Promise<WeshStat>;
+    openEntry({
+      entry,
+      flags,
+      mode,
+    }: {
+      entry: WeshEntryRef;
+      flags: WeshOpenFlags;
+      mode?: number;
+    }): Promise<WeshFileHandle>;
+    readlinkEntry({ entry }: { entry: WeshEntryRef<'symlink'> }): Promise<string>;
     tryReadBlobEfficiently({ path }: { path: string }): Promise<WeshEfficientBlobReadResult>;
     tryCreateFileWriterEfficiently({ path, mode }: {
       path: string;
@@ -463,7 +584,7 @@ export interface WeshCommandDefinition {
 
 export interface WeshRedirection {
   fd: number;
-  type: 'write' | 'append' | 'read' | 'read-write' | 'dup-output' | 'dup-input' | 'heredoc' | 'herestring';
+  type: 'write' | 'append' | 'read' | 'read_write' | 'dup_output' | 'dup_input' | 'heredoc' | 'herestring';
   target: string | WeshProcessSubstitutionNode | undefined;
   targetFd?: number;
   closeTarget?: boolean;

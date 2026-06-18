@@ -1,7 +1,10 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { openCommandInputStream } from '@/services/wesh/commands/_shared/binary-input';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { openHandleReadStream, readAllFileBytes, writeAllFileBytes } from '@/services/wesh/utils/fs';
+import { resolvePath } from '@/services/wesh/path';
+import { writeAllStreamToFile, writeAllStreamToHandle } from '@/services/wesh/utils/fs';
+import { pipeThroughBufferSourceTransform } from '@/services/wesh/utils/stream';
 
 const gzipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -14,49 +17,6 @@ const gzipArgvSpec: StandardArgvParserSpec = {
   treatSingleDashAsPositional: true,
   specialTokenParsers: [],
 };
-
-async function readStreamBytes({
-  stream,
-}: {
-  stream: ReadableStream<Uint8Array>;
-}): Promise<Uint8Array> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-  }
-  const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return result;
-}
-
-async function writeBytes({
-  handle,
-  data,
-}: {
-  handle: WeshCommandContext['stdout'];
-  data: Uint8Array;
-}): Promise<void> {
-  let offset = 0;
-  while (offset < data.length) {
-    const { bytesWritten } = await handle.write({
-      buffer: data,
-      offset,
-      length: data.length - offset,
-    });
-    if (bytesWritten === 0) {
-      break;
-    }
-    offset += bytesWritten;
-  }
-}
 
 export const gzipCommandDefinition: WeshCommandDefinition = {
   meta: {
@@ -93,48 +53,48 @@ export const gzipCommandDefinition: WeshCommandDefinition = {
 
     const writeToStdout = parsed.optionValues.stdout === true;
     const keepInput = parsed.optionValues.keep === true || writeToStdout;
-
     const inputs = parsed.positionals.length > 0 ? parsed.positionals : ['-'];
+    let exitCode = 0;
 
-    for (const f of inputs) {
-      if (f === undefined) continue;
+    for (const input of inputs) {
       try {
-        const input = f === '-'
-          ? await readStreamBytes({ stream: openHandleReadStream({ handle: context.stdin }) })
-          : await readAllFileBytes({
-            files: context.files,
-            path: f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`),
-          });
-        const compressor = new CompressionStream('gzip');
-        const inputProvider = new ReadableStream({
-          start(controller) {
-            controller.enqueue(input);
-            controller.close();
-          }
+        const compressedStream = pipeThroughBufferSourceTransform({
+          source: await openCommandInputStream({
+            context,
+            input,
+          }),
+          transform: new CompressionStream('gzip'),
         });
-        const compressedStream = inputProvider.pipeThrough(compressor);
-        const result = await readStreamBytes({ stream: compressedStream });
 
-        if (writeToStdout || f === '-') {
-          await writeBytes({
+        if (writeToStdout || input === '-') {
+          await writeAllStreamToHandle({
+            stream: compressedStream,
             handle: context.stdout,
-            data: result,
+            closeHandle: false,
           });
           continue;
         }
 
-        const fullPath = f.startsWith('/') ? f : (context.cwd === '/' ? `/${f}` : `${context.cwd}/${f}`);
-        const gzPath = `${fullPath}.gz`;
-        await writeAllFileBytes({ files: context.files, path: gzPath, data: result });
+        const fullPath = resolvePath({
+          cwd: context.cwd,
+          path: input,
+        });
+        await writeAllStreamToFile({
+          files: context.files,
+          path: `${fullPath}.gz`,
+          stream: compressedStream,
+          mode: 'truncate',
+        });
         if (!keepInput) {
           await context.files.unlink({ path: fullPath });
         }
-      } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : String(e);
-        await text.error({ text: `gzip: ${f}: ${message}\n` });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await text.error({ text: `gzip: ${input}: ${message}\n` });
+        exitCode = 1;
       }
     }
 
-    return { exitCode: 0 };
+    return { exitCode };
   },
 };

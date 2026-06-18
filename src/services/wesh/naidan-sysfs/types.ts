@@ -30,6 +30,11 @@ export interface NaidanSysfsRemoteChatMetaPayload {
   groupId: string | null | undefined;
 }
 
+export interface NaidanSysfsRemoteChatPayload {
+  metadata: NaidanSysfsRemoteChatMetaPayload;
+  content: ChatContentDto;
+}
+
 export interface NaidanSysfsRemoteChatSidebarItem {
   id: string;
   type: 'chat';
@@ -56,6 +61,7 @@ export interface NaidanSysfsRemoteReader {
   listChatGroups(): Promise<NaidanSysfsRemoteChatGroupPayload[]>;
   loadChatMeta({ chatId }: { chatId: string }): Promise<NaidanSysfsRemoteChatMetaPayload | undefined>;
   loadChatContent({ chatId }: { chatId: string }): Promise<ChatContentDto | undefined>;
+  loadChat({ chatId }: { chatId: string }): Promise<NaidanSysfsRemoteChatPayload | undefined>;
   loadChatGroup({ chatGroupId }: { chatGroupId: string }): Promise<NaidanSysfsRemoteChatGroupPayload | undefined>;
   listBinaryObjects(): Promise<NaidanSysfsBinaryObject[]>;
   getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<NaidanSysfsBinaryObject | undefined>;
@@ -70,10 +76,19 @@ export interface NaidanSysfsContext {
   currentChatGroupId: ChatGroupId | undefined;
 }
 
+export interface NaidanSysfsChildEntry {
+  readonly name: string;
+  readonly entry: NaidanSysfsEntry;
+}
+
 export interface NaidanSysfsDirectoryEntry {
   kind: 'directory';
   stat({ path }: { path: string }): Promise<WeshStat>;
   readDir({ path, context }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry>;
+  readChildren?({ path, context }: {
+    path: string;
+    context: NaidanSysfsContext;
+  }): AsyncIterable<NaidanSysfsChildEntry>;
   getChild({ name, parentPath, context }: {
     name: string;
     parentPath: string;
@@ -94,7 +109,7 @@ export interface NaidanSysfsSymlinkEntry {
 }
 
 export interface NaidanSysfsRestrictedDirectoryEntry {
-  kind: 'restricted-directory';
+  kind: 'restricted_directory';
   stat({ path }: { path: string }): Promise<WeshStat>;
   readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry>;
 }

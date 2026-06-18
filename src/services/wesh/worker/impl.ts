@@ -27,6 +27,9 @@ import {
   type WeshWorkerExecutionSummary,
 } from './types'
 
+const FORWARDING_BUFFER_LIMIT_BYTES = 32 * 1024
+const FORWARDING_BUFFER_DELAY_MS = 10
+
 function createForwardingHandle({
   stream,
   onEvent,
@@ -34,36 +37,115 @@ function createForwardingHandle({
   stream: 'stdout' | 'stderr'
   onEvent: ({ event }: { event: WeshWorkerRemoteExecutionEvent }) => Promise<void>
 }) {
-  const toTransferableBuffer = ({ chunk }: {
-    chunk: Uint8Array
-  }): ArrayBuffer => {
-    if (
-      chunk.byteOffset === 0
-      && chunk.byteLength === chunk.buffer.byteLength
-      && chunk.buffer instanceof ArrayBuffer
-    ) {
-      return chunk.buffer
+  let chunks: Uint8Array[] = []
+  let bufferedBytes = 0
+  let flushTimer: ReturnType<typeof setTimeout> | undefined
+  let sendChain: Promise<void> = Promise.resolve()
+  let flushFailure: { error: unknown } | undefined
+
+  const clearFlushTimer = (): void => {
+    if (flushTimer === undefined) {
+      return
     }
-    return chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer
+    clearTimeout(flushTimer)
+    flushTimer = undefined
   }
 
-  const handle = createWriteHandleFromStream({
-    target: new WritableStream({
-      async write(chunk) {
-        const buffer = toTransferableBuffer({ chunk })
+  const combineBufferedChunks = (): ArrayBuffer | undefined => {
+    if (bufferedBytes === 0) {
+      return undefined
+    }
 
+    if (chunks.length === 1) {
+      const [chunk] = chunks
+      if (
+        chunk !== undefined
+        && chunk.byteOffset === 0
+        && chunk.byteLength === chunk.buffer.byteLength
+        && chunk.buffer instanceof ArrayBuffer
+      ) {
+        chunks = []
+        bufferedBytes = 0
+        return chunk.buffer
+      }
+    }
+
+    const combined = new Uint8Array(bufferedBytes)
+    let offset = 0
+    for (const chunk of chunks) {
+      combined.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    chunks = []
+    bufferedBytes = 0
+    return combined.buffer
+  }
+
+  const throwStoredFlushFailure = (): void => {
+    if (flushFailure !== undefined) {
+      throw flushFailure.error
+    }
+  }
+
+  const flush = async (): Promise<void> => {
+    clearFlushTimer()
+    throwStoredFlushFailure()
+    const buffer = combineBufferedChunks()
+    if (buffer !== undefined) {
+      sendChain = sendChain.then(async () => {
         await onEvent({
           event: Comlink.transfer({
             type: stream,
             buffer,
           }, [buffer]),
         })
+      })
+    }
+
+    try {
+      await sendChain
+    } catch (error: unknown) {
+      flushFailure = { error }
+      throw error
+    }
+  }
+
+  const scheduleFlush = (): void => {
+    if (flushTimer !== undefined) {
+      return
+    }
+    flushTimer = setTimeout(() => {
+      flushTimer = undefined
+      void flush().catch((error: unknown) => {
+        flushFailure = { error }
+      })
+    }, FORWARDING_BUFFER_DELAY_MS)
+  }
+
+  const handle = createWriteHandleFromStream({
+    target: new WritableStream({
+      async write(chunk) {
+        throwStoredFlushFailure()
+        chunks.push(chunk)
+        bufferedBytes += chunk.byteLength
+        if (bufferedBytes >= FORWARDING_BUFFER_LIMIT_BYTES) {
+          await flush()
+          return
+        }
+        scheduleFlush()
+      },
+      async close() {
+        await flush()
+      },
+      async abort() {
+        await flush()
       },
     }),
   })
 
   return {
     handle,
+    flush,
   }
 }
 
@@ -178,21 +260,53 @@ export function createWeshWorker(): IWeshWorker {
             stdout: stdoutCapture.handle,
             stderr: stderrCapture.handle,
           })
+          await Promise.all([
+            stdoutCapture.flush(),
+            stderrCapture.flush(),
+          ])
           await emit({ event: { type: 'exit', exitCode: result.exitCode } })
 
           return weshWorkerExecutionSummarySchema.parse({
             exitCode: result.exitCode,
           })
-        } catch (error) {
-          await emit({
-            event: {
-              type: 'error',
-              message: error instanceof Error ? error.message : String(error),
-            },
-          })
+        } catch (error: unknown) {
+          const forwardingErrors: unknown[] = []
+          const flushResults = await Promise.allSettled([
+            stdoutCapture.flush(),
+            stderrCapture.flush(),
+          ])
+          for (const result of flushResults) {
+            switch (result.status) {
+            case 'fulfilled':
+              break
+            case 'rejected':
+              forwardingErrors.push(result.reason)
+              break
+            default: {
+              const _exhaustive: never = result
+              throw new Error(`Unhandled promise result: ${String(_exhaustive)}`)
+            }
+            }
+          }
+          try {
+            await emit({
+              event: {
+                type: 'error',
+                message: error instanceof Error ? error.message : String(error),
+              },
+            })
+          } catch (eventError: unknown) {
+            forwardingErrors.push(eventError)
+          }
+          if (forwardingErrors.length > 0) {
+            throw new AggregateError(
+              [error, ...forwardingErrors],
+              'Wesh execution failed while forwarding worker events',
+            )
+          }
           throw error
         } finally {
-          await Promise.all([
+          await Promise.allSettled([
             stdoutCapture.handle.close(),
             stderrCapture.handle.close(),
             stdin.close(),

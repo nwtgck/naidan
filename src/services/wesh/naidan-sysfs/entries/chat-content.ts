@@ -45,16 +45,9 @@ async function* loadBranchNodes({
   chatId: ChatId;
   path: string;
 }): AsyncGenerator<MessageNode> {
-  const metadata = await context.reader.loadChatMeta({ chatId })
-  const content = await context.reader.loadChatContent({ chatId })
-  if (metadata === undefined || content === undefined) {
+  const chat = await context.reader.loadChat({ chatId })
+  if (chat === undefined) {
     throw new Error(`Path not found: ${path}`)
-  }
-
-  const chat = {
-    ...metadata,
-    root: content.root,
-    currentLeafId: content.currentLeafId ?? metadata.currentLeafId,
   }
 
   yield* getChatBranchIterator({ chat })
@@ -135,6 +128,22 @@ export function createChatContentDirectoryEntry({
       for await (const node of loadBranchNodes({ context, chatId, path })) {
         const name = createMessageFileName({ index, node, format })
         yield { name, type: 'file', fullPath: `${path}/${name}` }
+        index += 1
+      }
+    },
+    async *readChildren({
+      path,
+    }: {
+      path: string;
+      context: NaidanSysfsContext;
+    }) {
+      let index = 0
+      for await (const node of loadBranchNodes({ context, chatId, path })) {
+        const name = createMessageFileName({ index, node, format })
+        yield {
+          name,
+          entry: createMessageFileEntry({ node, format }),
+        }
         index += 1
       }
     },

@@ -1,7 +1,10 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { readAllFileBytes, writeAllStreamToFile } from '@/services/wesh/utils/fs';
+import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
+import { openFileReadStream, openHandleReadStream } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
+import { iterateUtf8Records } from '@/services/wesh/utils/text-records';
 
 type SortMode = 'lexical' | 'numeric' | 'general-numeric' | 'human-numeric' | 'month' | 'version';
 type SortOrder = 'forward' | 'reverse';
@@ -10,10 +13,6 @@ type SortCheckMode = 'none' | 'strict' | 'silent';
 interface SortEntry {
   value: string;
   index: number;
-}
-
-interface SortInputGroup {
-  entries: SortEntry[];
 }
 
 interface SortKeySpec {
@@ -353,21 +352,6 @@ function compareValues({
     throw new Error(`Unhandled sort mode: ${_ex}`);
   }
   }
-}
-
-function splitDelimitedText({
-  text,
-  delimiter,
-}: {
-  text: string;
-  delimiter: string;
-}): string[] {
-  if (text.length === 0) return [];
-  const parts = text.split(delimiter);
-  if (text.endsWith(delimiter)) {
-    parts.pop();
-  }
-  return parts;
 }
 
 function splitFields({
@@ -851,149 +835,814 @@ function compareEntries({
   return applySortOrder({ value: fallback, order: options.order });
 }
 
-function dedupeSortedEntries({
-  entries,
-  options,
-}: {
-  entries: SortEntry[];
-  options: SortResolvedOptions;
-}): SortEntry[] {
-  if (entries.length === 0) return [];
 
-  const deduped: SortEntry[] = [entries[0]!];
-  for (let index = 1; index < entries.length; index++) {
-    const previous = deduped[deduped.length - 1]!;
-    const current = entries[index]!;
-    if (compareEntries({ left: previous, right: current, options }) !== 0) {
-      deduped.push(current);
-    }
-  }
+const SORT_MEMORY_LIMIT_BYTES = 4 * 1024 * 1024;
+const SORT_MERGE_FAN_IN = 32;
 
-  return deduped;
+function createEmptyAsyncIterator(): AsyncIterator<string> {
+  return {
+    next: async () => ({ done: true, value: undefined }),
+  };
 }
 
-function isSorted({
-  entries,
-  options,
-}: {
-  entries: SortEntry[];
-  options: SortResolvedOptions;
-}): { ok: true } | { ok: false; index: number } {
-  for (let index = 1; index < entries.length; index++) {
-    const previous = entries[index - 1]!;
-    const current = entries[index]!;
-    if (compareEntries({ left: previous, right: current, options }) > 0) {
-      return { ok: false, index };
-    }
-  }
-  return { ok: true };
-}
-
-function renderEntries({
-  entries,
-  zeroTerminated,
-}: {
-  entries: SortEntry[];
-  zeroTerminated: boolean;
-}): string {
-  if (entries.length === 0) return '';
-  const delimiter = zeroTerminated ? '\0' : '\n';
-  return `${entries.map((entry) => entry.value).join(delimiter)}${delimiter}`;
-}
-
-function mergeSortedGroups({
-  groups,
-  options,
-}: {
-  groups: SortInputGroup[];
-  options: SortResolvedOptions;
-}): SortEntry[] {
-  const positions = new Array<number>(groups.length).fill(0);
-  const merged: SortEntry[] = [];
-
-  while (true) {
-    let selectedGroupIndex: number | undefined;
-    let selectedEntry: SortEntry | undefined;
-
-    for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-      const candidate = groups[groupIndex]?.entries[positions[groupIndex] ?? 0];
-      if (candidate === undefined) continue;
-
-      if (selectedEntry === undefined) {
-        selectedEntry = candidate;
-        selectedGroupIndex = groupIndex;
-        continue;
-      }
-
-      const compared = compareEntries({
-        left: candidate,
-        right: selectedEntry,
-        options,
-      });
-      if (compared < 0 || (compared === 0 && groupIndex < (selectedGroupIndex ?? Number.MAX_SAFE_INTEGER))) {
-        selectedEntry = candidate;
-        selectedGroupIndex = groupIndex;
-      }
-    }
-
-    if (selectedEntry === undefined || selectedGroupIndex === undefined) {
-      return merged;
-    }
-
-    merged.push(selectedEntry);
-    positions[selectedGroupIndex] = (positions[selectedGroupIndex] ?? 0) + 1;
-  }
-}
-
-async function readTextFromStdin({
-  context,
-}: {
-  context: WeshCommandContext;
-}): Promise<string> {
-  const chunks: string[] = [];
-  for await (const chunk of context.text().input) {
-    chunks.push(chunk);
-  }
-  return chunks.join('\n');
-}
-
-async function readInputItems({
+async function openSortRecordIterator({
   context,
   file,
   zeroTerminated,
-  stdinText,
+  stdinAvailable,
 }: {
   context: WeshCommandContext;
   file: string | undefined;
   zeroTerminated: boolean;
-  stdinText: string | undefined;
-}): Promise<{ ok: true; items: string[] } | { ok: false; message: string }> {
-  if (file === undefined || file === '-') {
-    const text = stdinText ?? await readTextFromStdin({ context });
+  stdinAvailable: { value: boolean };
+}): Promise<AsyncIterator<string>> {
+  const usesStdin = file === undefined || file === '-';
+  if (usesStdin && !stdinAvailable.value) {
+    return createEmptyAsyncIterator();
+  }
+  if (usesStdin) {
+    stdinAvailable.value = false;
+  }
+
+  const stream = usesStdin
+    ? openHandleReadStream({ handle: context.stdin })
+    : await openFileReadStream({
+      files: context.files,
+      path: resolveInputPath({ cwd: context.cwd, path: file }),
+    });
+  return iterateUtf8Records({
+    chunks: iterateReadableStreamChunks({ stream }),
+    delimiterByte: zeroTerminated ? 0 : 0x0a,
+    stripTrailingCarriageReturn: !zeroTerminated,
+  })[Symbol.asyncIterator]();
+}
+
+async function closeIterator({
+  iterator,
+}: {
+  iterator: AsyncIterator<string> | undefined;
+}): Promise<void> {
+  await iterator?.return?.();
+}
+
+function estimateSortEntryBytes({
+  value,
+}: {
+  value: string;
+}): number {
+  return 64 + value.length * 2;
+}
+
+function createTemporaryName({
+  prefix,
+  pid,
+}: {
+  prefix: string;
+  pid: number;
+}): string {
+  const random = Math.random().toString(36).slice(2, 14);
+  return `${prefix}-${pid}-${random}`;
+}
+
+async function writeRun({
+  context,
+  path,
+  entries,
+  zeroTerminated,
+}: {
+  context: WeshCommandContext;
+  path: string;
+  entries: readonly SortEntry[];
+  zeroTerminated: boolean;
+}): Promise<void> {
+  const handle = await context.files.open({
+    path,
+    flags: {
+      access: 'write',
+      creation: 'always',
+      truncate: 'truncate',
+      append: 'preserve',
+    },
+  });
+  const writer = createBufferedTextWriter({
+    handle,
+    maxBufferLength: 32 * 1024,
+  });
+  const delimiter = zeroTerminated ? '\0' : '\n';
+  try {
+    for (const entry of entries) {
+      await writer.write({ text: entry.value });
+      await writer.write({ text: delimiter });
+    }
+    await writer.flush();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function openRunIterator({
+  context,
+  path,
+  zeroTerminated,
+}: {
+  context: WeshCommandContext;
+  path: string;
+  zeroTerminated: boolean;
+}): Promise<AsyncIterator<string>> {
+  const stream = await openFileReadStream({
+    files: context.files,
+    path,
+  });
+  return iterateUtf8Records({
+    chunks: iterateReadableStreamChunks({ stream }),
+    delimiterByte: zeroTerminated ? 0 : 0x0a,
+    stripTrailingCarriageReturn: false,
+  })[Symbol.asyncIterator]();
+}
+
+interface SortOutput {
+  readonly handle: WeshFileHandle;
+  readonly writer: ReturnType<typeof createBufferedTextWriter>;
+  readonly temporaryPath: string | undefined;
+  readonly outputPath: string | undefined;
+  readonly recoveryPath: string | undefined;
+}
+
+async function createSortOutput({
+  context,
+  outputPath,
+}: {
+  context: WeshCommandContext;
+  outputPath: string | undefined;
+}): Promise<SortOutput> {
+  if (outputPath === undefined) {
     return {
-      ok: true,
-      items: splitDelimitedText({
-        text,
-        delimiter: zeroTerminated ? '\0' : '\n',
+      handle: context.stdout,
+      writer: createBufferedTextWriter({
+        handle: context.stdout,
+        maxBufferLength: 32 * 1024,
       }),
+      temporaryPath: undefined,
+      outputPath: undefined,
+      recoveryPath: undefined,
     };
   }
 
+  const resolvedOutputPath = resolveInputPath({
+    cwd: context.cwd,
+    path: outputPath,
+  });
+  let outputMode: number | undefined;
   try {
-    const fullPath = resolveInputPath({ cwd: context.cwd, path: file });
-    const bytes = await readAllFileBytes({ files: context.files, path: fullPath });
-    const text = new TextDecoder().decode(bytes);
-    return {
-      ok: true,
-      items: splitDelimitedText({
-        text: zeroTerminated ? text : text.replace(/\r\n/g, '\n'),
-        delimiter: zeroTerminated ? '\0' : '\n',
-      }),
-    };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { ok: false, message: `sort: ${file}: ${message}` };
+    outputMode = (await context.files.stat({ path: resolvedOutputPath })).mode;
+  } catch {
+    outputMode = undefined;
   }
+
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const temporaryPath = `${resolvedOutputPath}.${createTemporaryName({
+      prefix: 'wesh-sort',
+      pid: context.pid,
+    })}`;
+    try {
+      const handle = await context.files.open({
+        path: temporaryPath,
+        flags: {
+          access: 'write',
+          creation: 'always',
+          truncate: 'truncate',
+          append: 'preserve',
+        },
+        mode: outputMode,
+      });
+      return {
+        handle,
+        writer: createBufferedTextWriter({
+          handle,
+          maxBufferLength: 32 * 1024,
+        }),
+        temporaryPath,
+        outputPath: resolvedOutputPath,
+        recoveryPath: `${temporaryPath}.original`,
+      };
+    } catch (error: unknown) {
+      if (attempt === 99) {
+        throw error;
+      }
+    }
+  }
+  throw new Error(`Unable to create sort output for ${resolvedOutputPath}`);
+}
+
+async function finalizeSortOutput({
+  context,
+  output,
+  status,
+}: {
+  context: WeshCommandContext;
+  output: SortOutput;
+  status: 'commit' | 'abort';
+}): Promise<void> {
+  if (
+    output.temporaryPath === undefined
+    || output.outputPath === undefined
+    || output.recoveryPath === undefined
+  ) {
+    await output.writer.flush();
+    return;
+  }
+
+  let ioError: { readonly value: unknown } | undefined;
+  try {
+    await output.writer.flush();
+  } catch (error: unknown) {
+    ioError = { value: error };
+  }
+  try {
+    await output.handle.close();
+  } catch (error: unknown) {
+    ioError ??= { value: error };
+  }
+  if (ioError !== undefined) {
+    try {
+      await context.files.unlink({ path: output.temporaryPath });
+    } catch {
+      // Preserve the write or close error.
+    }
+    throw ioError.value;
+  }
+  switch (status) {
+  case 'abort':
+    try {
+      await context.files.unlink({ path: output.temporaryPath });
+    } catch {
+      // Best-effort cleanup.
+    }
+    return;
+  case 'commit':
+    break;
+  default: {
+    const _ex: never = status;
+    throw new Error(`Unhandled sort output status: ${_ex}`);
+  }
+  }
+
+  let destinationMoved = false;
+  try {
+    let destinationExists = false;
+    try {
+      await context.files.stat({ path: output.outputPath });
+      destinationExists = true;
+    } catch {
+      destinationExists = false;
+    }
+
+    if (destinationExists) {
+      await context.files.rename({
+        oldPath: output.outputPath,
+        newPath: output.recoveryPath,
+      });
+      destinationMoved = true;
+    }
+
+    try {
+      await context.files.rename({
+        oldPath: output.temporaryPath,
+        newPath: output.outputPath,
+      });
+    } catch (error: unknown) {
+      if (destinationMoved) {
+        await context.files.rename({
+          oldPath: output.recoveryPath,
+          newPath: output.outputPath,
+        });
+        destinationMoved = false;
+      }
+      throw error;
+    }
+
+    if (destinationMoved) {
+      await context.files.unlink({ path: output.recoveryPath });
+    }
+  } catch (error: unknown) {
+    try {
+      await context.files.unlink({ path: output.temporaryPath });
+    } catch {
+      // Preserve the commit error.
+    }
+    throw error;
+  }
+}
+
+interface SortWriter {
+  readonly writer: ReturnType<typeof createBufferedTextWriter>;
+}
+
+async function emitMergedIterators({
+  iterators,
+  options,
+  output,
+}: {
+  iterators: readonly AsyncIterator<string>[];
+  options: SortResolvedOptions;
+  output: SortWriter;
+}): Promise<void> {
+  const current = await Promise.all(iterators.map(async (iterator) => iterator.next()));
+  const delimiter = options.zeroTerminated ? '\0' : '\n';
+  let previous: SortEntry | undefined;
+
+  while (true) {
+    let selectedIndex: number | undefined;
+    let selected: SortEntry | undefined;
+    for (let index = 0; index < current.length; index += 1) {
+      const candidateResult = current[index];
+      if (candidateResult === undefined || candidateResult.done) {
+        continue;
+      }
+      const candidate: SortEntry = {
+        value: candidateResult.value,
+        index: 0,
+      };
+      if (selected === undefined) {
+        selected = candidate;
+        selectedIndex = index;
+        continue;
+      }
+      const compared = compareEntries({ left: candidate, right: selected, options });
+      if (compared < 0 || (compared === 0 && index < (selectedIndex ?? Number.MAX_SAFE_INTEGER))) {
+        selected = candidate;
+        selectedIndex = index;
+      }
+    }
+
+    if (selected === undefined || selectedIndex === undefined) {
+      return;
+    }
+
+    const shouldWrite = options.uniqueness === 'all'
+      || previous === undefined
+      || compareEntries({ left: previous, right: selected, options }) !== 0;
+    if (shouldWrite) {
+      await output.writer.write({ text: selected.value });
+      await output.writer.write({ text: delimiter });
+      previous = selected;
+    }
+    current[selectedIndex] = await iterators[selectedIndex]!.next();
+  }
+}
+
+
+async function mergeRunPaths({
+  context,
+  paths,
+  outputPath,
+  options,
+}: {
+  context: WeshCommandContext;
+  paths: readonly string[];
+  outputPath: string;
+  options: SortResolvedOptions;
+}): Promise<void> {
+  const handle = await context.files.open({
+    path: outputPath,
+    flags: {
+      access: 'write',
+      creation: 'always',
+      truncate: 'truncate',
+      append: 'preserve',
+    },
+  });
+  const output: SortWriter = {
+    writer: createBufferedTextWriter({
+      handle,
+      maxBufferLength: 32 * 1024,
+    }),
+  };
+  const iterators: AsyncIterator<string>[] = [];
+  let completed = false;
+  try {
+    for (const path of paths) {
+      iterators.push(await openRunIterator({
+        context,
+        path,
+        zeroTerminated: options.zeroTerminated,
+      }));
+    }
+    await emitMergedIterators({ iterators, options, output });
+    await output.writer.flush();
+    completed = true;
+  } finally {
+    for (const iterator of iterators) {
+      await closeIterator({ iterator });
+    }
+    await handle.close();
+    if (!completed) {
+      try {
+        await context.files.unlink({ path: outputPath });
+      } catch {
+        // Best-effort cleanup.
+      }
+    }
+  }
+}
+
+
+interface SortRunStore {
+  readonly directory: string;
+  readonly livePaths: Set<string>;
+  readonly levels: string[][];
+  readonly inputOrderByPath: Map<string, number>;
+  nextRunIndex: number;
+  nextInputOrder: number;
+}
+
+async function createSortRunStore({
+  context,
+}: {
+  context: WeshCommandContext;
+}): Promise<SortRunStore> {
+  const baseDirectory = (context.env.get('TMPDIR') || '/tmp').replace(/\/$/u, '');
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const directory = `${baseDirectory}/${createTemporaryName({
+      prefix: '.wesh-sort',
+      pid: context.pid,
+    })}`;
+    try {
+      await context.files.mkdir({
+        path: directory,
+        mode: 0o700,
+        recursive: false,
+      });
+      return {
+        directory,
+        livePaths: new Set<string>(),
+        levels: [],
+        inputOrderByPath: new Map<string, number>(),
+        nextRunIndex: 0,
+        nextInputOrder: 0,
+      };
+    } catch (error: unknown) {
+      if (attempt === 99) {
+        throw error;
+      }
+    }
+  }
+  throw new Error('Unable to create sort temporary directory');
+}
+
+function allocateSortRunPath({
+  store,
+}: {
+  store: SortRunStore;
+}): string {
+  const path = `${store.directory}/run-${store.nextRunIndex}`;
+  store.nextRunIndex += 1;
+  return path;
+}
+
+function registerInitialSortRun({
+  store,
+  path,
+}: {
+  store: SortRunStore;
+  path: string;
+}): void {
+  store.livePaths.add(path);
+  store.inputOrderByPath.set(path, store.nextInputOrder);
+  store.nextInputOrder += 1;
+}
+
+function registerMergedSortRun({
+  store,
+  path,
+  inputPaths,
+}: {
+  store: SortRunStore;
+  path: string;
+  inputPaths: readonly string[];
+}): void {
+  const inputOrders = inputPaths.map((inputPath) => {
+    const order = store.inputOrderByPath.get(inputPath);
+    if (order === undefined) {
+      throw new Error(`Missing sort run order for ${inputPath}`);
+    }
+    return order;
+  });
+  store.livePaths.add(path);
+  store.inputOrderByPath.set(path, Math.min(...inputOrders));
+}
+
+async function deleteSortRun({
+  context,
+  store,
+  path,
+}: {
+  context: WeshCommandContext;
+  store: SortRunStore;
+  path: string;
+}): Promise<void> {
+  if (!store.livePaths.has(path)) {
+    return;
+  }
+  await context.files.unlink({ path });
+  store.livePaths.delete(path);
+  store.inputOrderByPath.delete(path);
+}
+
+async function tryDeleteSortRun({
+  context,
+  store,
+  path,
+}: {
+  context: WeshCommandContext;
+  store: SortRunStore;
+  path: string;
+}): Promise<void> {
+  try {
+    await deleteSortRun({ context, store, path });
+  } catch {
+    // Keep the path live so final cleanup can retry it.
+  }
+}
+
+async function addSortRunAtLevel({
+  context,
+  store,
+  path,
+  level,
+  options,
+}: {
+  context: WeshCommandContext;
+  store: SortRunStore;
+  path: string;
+  level: number;
+  options: SortResolvedOptions;
+}): Promise<void> {
+  const levelPaths = store.levels[level] ?? [];
+  if (store.levels[level] === undefined) {
+    store.levels[level] = levelPaths;
+  }
+  levelPaths.push(path);
+  if (levelPaths.length < SORT_MERGE_FAN_IN) {
+    return;
+  }
+
+  const inputPaths = levelPaths.splice(0, SORT_MERGE_FAN_IN);
+  const outputPath = allocateSortRunPath({ store });
+  await mergeRunPaths({
+    context,
+    paths: inputPaths,
+    outputPath,
+    options,
+  });
+  registerMergedSortRun({ store, path: outputPath, inputPaths });
+  for (const inputPath of inputPaths) {
+    await tryDeleteSortRun({ context, store, path: inputPath });
+  }
+  await addSortRunAtLevel({
+    context,
+    store,
+    path: outputPath,
+    level: level + 1,
+    options,
+  });
+}
+
+export function orderSortRunPaths({
+  paths,
+  inputOrderByPath,
+}: {
+  paths: readonly string[];
+  inputOrderByPath: ReadonlyMap<string, number>;
+}): string[] {
+  return paths
+    .map((path) => {
+      const inputOrder = inputOrderByPath.get(path);
+      if (inputOrder === undefined) {
+        throw new Error('Missing sort run input order');
+      }
+      return { path, inputOrder };
+    })
+    .sort((left, right) => left.inputOrder - right.inputOrder)
+    .map(({ path }) => path);
+}
+
+function collectSortRunPaths({
+  store,
+}: {
+  store: SortRunStore;
+}): string[] {
+  return orderSortRunPaths({
+    paths: store.levels.flatMap((paths) => paths),
+    inputOrderByPath: store.inputOrderByPath,
+  });
+}
+
+async function reduceSortRunsToFanIn({
+  context,
+  store,
+  paths,
+  options,
+}: {
+  context: WeshCommandContext;
+  store: SortRunStore;
+  paths: readonly string[];
+  options: SortResolvedOptions;
+}): Promise<string[]> {
+  let currentPaths = [...paths];
+  while (currentPaths.length > SORT_MERGE_FAN_IN) {
+    const nextPaths: string[] = [];
+    for (let offset = 0; offset < currentPaths.length; offset += SORT_MERGE_FAN_IN) {
+      const inputPaths = currentPaths.slice(offset, offset + SORT_MERGE_FAN_IN);
+      if (inputPaths.length === 1) {
+        nextPaths.push(inputPaths[0]!);
+        continue;
+      }
+      const outputPath = allocateSortRunPath({ store });
+      await mergeRunPaths({
+        context,
+        paths: inputPaths,
+        outputPath,
+        options,
+      });
+      registerMergedSortRun({ store, path: outputPath, inputPaths });
+      for (const inputPath of inputPaths) {
+        await deleteSortRun({ context, store, path: inputPath });
+      }
+      nextPaths.push(outputPath);
+    }
+    currentPaths = nextPaths;
+  }
+  return currentPaths;
+}
+
+async function emitRunPaths({
+  context,
+  paths,
+  options,
+  output,
+}: {
+  context: WeshCommandContext;
+  paths: readonly string[];
+  options: SortResolvedOptions;
+  output: SortWriter;
+}): Promise<void> {
+  const iterators: AsyncIterator<string>[] = [];
+  try {
+    for (const path of paths) {
+      iterators.push(await openRunIterator({
+        context,
+        path,
+        zeroTerminated: options.zeroTerminated,
+      }));
+    }
+    await emitMergedIterators({ iterators, options, output });
+  } finally {
+    for (const iterator of iterators) {
+      await closeIterator({ iterator });
+    }
+  }
+}
+
+async function mergeInputFilesToRun({
+  context,
+  files,
+  stdinAvailable,
+  outputPath,
+  options,
+}: {
+  context: WeshCommandContext;
+  files: readonly (string | undefined)[];
+  stdinAvailable: { value: boolean };
+  outputPath: string;
+  options: SortResolvedOptions;
+}): Promise<void> {
+  const handle = await context.files.open({
+    path: outputPath,
+    flags: {
+      access: 'write',
+      creation: 'always',
+      truncate: 'truncate',
+      append: 'preserve',
+    },
+  });
+  const output: SortWriter = {
+    writer: createBufferedTextWriter({
+      handle,
+      maxBufferLength: 32 * 1024,
+    }),
+  };
+  const iterators: AsyncIterator<string>[] = [];
+  let completed = false;
+  try {
+    for (const file of files) {
+      iterators.push(await openSortRecordIterator({
+        context,
+        file,
+        zeroTerminated: options.zeroTerminated,
+        stdinAvailable,
+      }));
+    }
+    await emitMergedIterators({ iterators, options, output });
+    await output.writer.flush();
+    completed = true;
+  } finally {
+    for (const iterator of iterators) {
+      await closeIterator({ iterator });
+    }
+    await handle.close();
+    if (!completed) {
+      try {
+        await context.files.unlink({ path: outputPath });
+      } catch {
+        // Best-effort cleanup.
+      }
+    }
+  }
+}
+
+async function cleanupSortRunStore({
+  context,
+  store,
+}: {
+  context: WeshCommandContext;
+  store: SortRunStore | undefined;
+}): Promise<void> {
+  if (store === undefined) {
+    return;
+  }
+  for (const path of [...store.livePaths]) {
+    try {
+      await deleteSortRun({ context, store, path });
+    } catch {
+      // Best-effort cleanup.
+    }
+  }
+  try {
+    await context.files.rmdir({ path: store.directory });
+  } catch {
+    // Best-effort cleanup.
+  }
+}
+
+async function checkSortedInputs({
+  context,
+  files,
+  options,
+  checkMode,
+}: {
+  context: WeshCommandContext;
+  files: readonly (string | undefined)[];
+  options: SortResolvedOptions;
+  checkMode: 'strict' | 'silent';
+}): Promise<WeshCommandResult> {
+  const stdinAvailable = { value: true };
+  let previous: SortEntry | undefined;
+  let lineNumber = 0;
+
+  for (const file of files) {
+    let iterator: AsyncIterator<string> | undefined;
+    try {
+      iterator = await openSortRecordIterator({
+        context,
+        file,
+        zeroTerminated: options.zeroTerminated,
+        stdinAvailable,
+      });
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) {
+          break;
+        }
+        lineNumber += 1;
+        const current: SortEntry = { value: next.value, index: lineNumber - 1 };
+        if (previous !== undefined && compareEntries({ left: previous, right: current, options }) > 0) {
+          switch (checkMode) {
+          case 'strict':
+            await context.text().error({
+              text: `sort: disorder at line ${lineNumber}: ${current.value}\n`,
+            });
+            break;
+          case 'silent':
+            break;
+          default: {
+            const _ex: never = checkMode;
+            throw new Error(`Unhandled sort check mode: ${_ex}`);
+          }
+          }
+          return { exitCode: 1 };
+        }
+        previous = current;
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      await context.text().error({ text: `sort: ${file ?? '-'}: ${message}\n` });
+      return { exitCode: 2 };
+    } finally {
+      await closeIterator({ iterator });
+    }
+  }
+  return { exitCode: 0 };
 }
 
 const sortArgvSpec: StandardArgvParserSpec = {
@@ -1082,67 +1731,19 @@ export const sortCommandDefinition: WeshCommandDefinition = {
     }
 
     const options = resolved.value;
-    const text = context.text();
-    const errors: string[] = [];
-    const items: string[] = [];
-    const inputGroups: SortInputGroup[] = [];
-    let stdinText: string | undefined;
-
-    const readStdinText = async (): Promise<string> => {
-      if (stdinText !== undefined) return stdinText;
-      stdinText = await readTextFromStdin({ context });
-      return stdinText;
-    };
-
-    if (parsed.positionals.length === 0) {
-      const stdinItems = splitDelimitedText({
-        text: await readStdinText(),
-        delimiter: options.zeroTerminated ? '\0' : '\n',
-      });
-      items.push(...stdinItems);
-      inputGroups.push({
-        entries: stdinItems.map((value, index) => ({ value, index })),
-      });
-    } else {
-      for (const file of parsed.positionals) {
-        const result = await readInputItems({
-          context,
-          file,
-          zeroTerminated: options.zeroTerminated,
-          stdinText: file === '-' ? await readStdinText() : undefined,
-        });
-        if (!result.ok) {
-          errors.push(result.message);
-          continue;
-        }
-        items.push(...result.items);
-        inputGroups.push({
-          entries: result.items.map((value, index) => ({ value, index })),
-        });
-      }
-    }
-
-    if (errors.length > 0) {
-      for (const error of errors) {
-        await text.error({ text: `${error}\n` });
-      }
-      return { exitCode: 2 };
-    }
-
-    const entries = items.map((value, index) => ({ value, index }));
+    const files: Array<string | undefined> = parsed.positionals.length === 0
+      ? [undefined]
+      : parsed.positionals;
 
     switch (options.checkMode) {
     case 'strict':
-    case 'silent': {
-      const result = isSorted({ entries, options });
-      if (!result.ok && options.checkMode === 'strict') {
-        const current = entries[result.index];
-        await text.error({
-          text: `sort: disorder at line ${result.index + 1}: ${current?.value ?? ''}\n`,
-        });
-      }
-      return { exitCode: result.ok ? 0 : 1 };
-    }
+    case 'silent':
+      return checkSortedInputs({
+        context,
+        files,
+        options,
+        checkMode: options.checkMode,
+      });
     case 'none':
       break;
     default: {
@@ -1151,57 +1752,175 @@ export const sortCommandDefinition: WeshCommandDefinition = {
     }
     }
 
-    let sortedEntries = options.merge
-      ? mergeSortedGroups({
-        groups: inputGroups,
-        options,
-      })
-      : [...entries].sort((left, right) => compareEntries({
-        left,
-        right,
-        options,
-      }));
-
-    switch (options.uniqueness) {
-    case 'all':
-      break;
-    case 'unique':
-      sortedEntries = dedupeSortedEntries({ entries: sortedEntries, options });
-      break;
-    default: {
-      const _ex: never = options.uniqueness;
-      throw new Error(`Unhandled sort uniqueness: ${_ex}`);
-    }
-    }
-
-    const outputText = renderEntries({
-      entries: sortedEntries,
-      zeroTerminated: options.zeroTerminated,
+    const output = await createSortOutput({
+      context,
+      outputPath: options.outputPath,
     });
+    let outputStatus: 'commit' | 'abort' = 'abort';
+    let runStore: SortRunStore | undefined;
 
-    switch (options.outputPath) {
-    case undefined:
-      if (outputText.length > 0) {
-        await text.print({ text: outputText });
+    try {
+      if (options.merge) {
+        const stdinAvailable = { value: true };
+        if (files.length <= SORT_MERGE_FAN_IN) {
+          const iterators: AsyncIterator<string>[] = [];
+          try {
+            for (const file of files) {
+              iterators.push(await openSortRecordIterator({
+                context,
+                file,
+                zeroTerminated: options.zeroTerminated,
+                stdinAvailable,
+              }));
+            }
+            await emitMergedIterators({ iterators, options, output });
+          } finally {
+            for (const iterator of iterators) {
+              await closeIterator({ iterator });
+            }
+          }
+        } else {
+          runStore = await createSortRunStore({ context });
+          for (let offset = 0; offset < files.length; offset += SORT_MERGE_FAN_IN) {
+            const outputPath = allocateSortRunPath({ store: runStore });
+            await mergeInputFilesToRun({
+              context,
+              files: files.slice(offset, offset + SORT_MERGE_FAN_IN),
+              stdinAvailable,
+              outputPath,
+              options,
+            });
+            registerInitialSortRun({ store: runStore, path: outputPath });
+            await addSortRunAtLevel({
+              context,
+              store: runStore,
+              path: outputPath,
+              level: 0,
+              options,
+            });
+          }
+          const finalPaths = await reduceSortRunsToFanIn({
+            context,
+            store: runStore,
+            paths: collectSortRunPaths({ store: runStore }),
+            options,
+          });
+          await emitRunPaths({
+            context,
+            paths: finalPaths,
+            options,
+            output,
+          });
+        }
+        outputStatus = 'commit';
+        return { exitCode: 0 };
       }
-      break;
-    default: {
-      const fullPath = resolveInputPath({ cwd: context.cwd, path: options.outputPath });
-      await writeAllStreamToFile({
-        files: context.files,
-        path: fullPath,
-        mode: 'truncate',
-        stream: new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode(outputText));
-            controller.close();
-          },
-        }),
-      });
-      break;
-    }
-    }
 
+      const entries: SortEntry[] = [];
+      let entriesBytes = 0;
+      let globalIndex = 0;
+      const stdinAvailable = { value: true };
+
+      const flushRun = async (): Promise<void> => {
+        if (entries.length === 0) {
+          return;
+        }
+        entries.sort((left, right) => compareEntries({ left, right, options }));
+        runStore ??= await createSortRunStore({ context });
+        const path = allocateSortRunPath({ store: runStore });
+        await writeRun({
+          context,
+          path,
+          entries,
+          zeroTerminated: options.zeroTerminated,
+        });
+        registerInitialSortRun({ store: runStore, path });
+        await addSortRunAtLevel({
+          context,
+          store: runStore,
+          path,
+          level: 0,
+          options,
+        });
+        entries.length = 0;
+        entriesBytes = 0;
+      };
+
+      for (const file of files) {
+        let iterator: AsyncIterator<string> | undefined;
+        try {
+          iterator = await openSortRecordIterator({
+            context,
+            file,
+            zeroTerminated: options.zeroTerminated,
+            stdinAvailable,
+          });
+          while (true) {
+            const next = await iterator.next();
+            if (next.done) {
+              break;
+            }
+            const entry: SortEntry = {
+              value: next.value,
+              index: globalIndex,
+            };
+            globalIndex += 1;
+            entries.push(entry);
+            entriesBytes += estimateSortEntryBytes({ value: entry.value });
+            if (entriesBytes >= SORT_MEMORY_LIMIT_BYTES) {
+              await flushRun();
+            }
+          }
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          await context.text().error({ text: `sort: ${file ?? '-'}: ${message}\n` });
+          return { exitCode: 2 };
+        } finally {
+          await closeIterator({ iterator });
+        }
+      }
+
+      if (runStore === undefined) {
+        entries.sort((left, right) => compareEntries({ left, right, options }));
+        const delimiter = options.zeroTerminated ? '\0' : '\n';
+        let previous: SortEntry | undefined;
+        for (const entry of entries) {
+          if (
+            options.uniqueness === 'unique'
+            && previous !== undefined
+            && compareEntries({ left: previous, right: entry, options }) === 0
+          ) {
+            continue;
+          }
+          await output.writer.write({ text: entry.value });
+          await output.writer.write({ text: delimiter });
+          previous = entry;
+        }
+      } else {
+        await flushRun();
+        const finalPaths = await reduceSortRunsToFanIn({
+          context,
+          store: runStore,
+          paths: collectSortRunPaths({ store: runStore }),
+          options,
+        });
+        await emitRunPaths({
+          context,
+          paths: finalPaths,
+          options,
+          output,
+        });
+      }
+
+      outputStatus = 'commit';
+      return { exitCode: 0 };
+    } finally {
+      try {
+        await finalizeSortOutput({ context, output, status: outputStatus });
+      } finally {
+        await cleanupSortRunStore({ context, store: runStore });
+      }
+    }
     return { exitCode: 0 };
   },
 };

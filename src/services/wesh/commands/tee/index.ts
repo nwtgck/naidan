@@ -152,7 +152,7 @@ export const teeCommandDefinition: WeshCommandDefinition = {
           case 'writer':
             outputs.push({ kind: 'writer', path: file, writer: writerResult.writer });
             break;
-          case 'fallback-required': {
+          case 'fallback_required': {
             const handle = await context.files.open({
               path: fullPath,
               flags: {

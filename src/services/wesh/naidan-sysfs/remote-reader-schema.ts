@@ -57,6 +57,11 @@ export const naidanSysfsRemoteChatMetaPayloadSchema = z.object({
 
 export const naidanSysfsRemoteChatContentPayloadSchema = ChatContentSchemaDto
 
+export const naidanSysfsRemoteChatPayloadSchema = z.object({
+  metadata: naidanSysfsRemoteChatMetaPayloadSchema,
+  content: naidanSysfsRemoteChatContentPayloadSchema,
+})
+
 export const naidanSysfsRemoteBinaryObjectSchema = resolveMissingAsUndefined(z.object({
   ...BinaryObjectSchemaDto.shape,
   name: z.union([z.string(), z.null()]),

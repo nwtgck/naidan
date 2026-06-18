@@ -206,11 +206,7 @@ test ok = ng
     expect(stderr.text).toBe('');
     expect(result.exitCode).toBe(0);
 
-    expect(withEmpty.stdout.text).toBe(`\
-prefix alpha
-prefix
-prefix two words
-`);
+    expect(withEmpty.stdout.text).toBe(['prefix alpha', 'prefix ', 'prefix two words', ''].join('\n'));
     expect(withEmpty.stderr.text).toBe('');
     expect(withEmpty.result.exitCode).toBe(0);
   });
@@ -256,7 +252,7 @@ beta gamma
       stdinText: 'alpha,beta gamma,delta',
     });
     const escaped = await execute({
-      script: 'xargs -d \\n echo',
+      script: "xargs -d '\\n' echo",
       stdinText: `\
 alpha
 beta gamma
@@ -283,11 +279,7 @@ beta gamma
     expect(hexEscaped.stderr.text).toBe('');
     expect(hexEscaped.result.exitCode).toBe(0);
 
-    expect(withEmpty.stdout.text).toBe(`\
-prefix one
-prefix
-prefix two
-`);
+    expect(withEmpty.stdout.text).toBe(['prefix one', 'prefix ', 'prefix two', ''].join('\n'));
     expect(withEmpty.stderr.text).toBe('');
     expect(withEmpty.result.exitCode).toBe(0);
   });
@@ -566,7 +558,9 @@ ij
     expect(softLimit.stderr.text).toBe('');
     expect(softLimit.result.exitCode).toBe(0);
 
-    expect(hardLimit.stdout.text).toBe('');
+    // Streaming xargs can execute an already completed batch before a
+    // later oversized item is detected.
+    expect(hardLimit.stdout.text).toBe('abc\n');
     expect(hardLimit.stderr.text).toContain('xargs: argument list too long');
     expect(hardLimit.result.exitCode).toBe(1);
   });
