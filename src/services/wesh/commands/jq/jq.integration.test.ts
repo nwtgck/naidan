@@ -61,7 +61,7 @@ describe('wesh jq integration', () => {
   it('supports select and map', async () => {
     const select = await execute({
       script: `\
-jq '.items[] | select(.active == true) | .name'`,
+jq -c '.items[] | select(.active == true) | .name'`,
       stdinText: `\
 {"items":[{"name":"a","active":true},{"name":"b","active":false}]}`,
     });
@@ -74,7 +74,7 @@ jq '.items[] | select(.active == true) | .name'`,
 
     const map = await execute({
       script: `\
-jq 'map(.id)'`,
+jq -c 'map(.id)'`,
       stdinText: `\
 [{"id":1},{"id":2}]`,
     });
@@ -87,7 +87,7 @@ jq 'map(.id)'`,
   it('supports array and object construction', async () => {
     const { result, stdout, stderr } = await execute({
       script: `\
-jq '{user: .name, tags: [.tags[]]}'`,
+jq -c '{user: .name, tags: [.tags[]]}'`,
       stdinText: `\
 {"name":"alice","tags":["x","y"]}`,
     });
@@ -98,7 +98,7 @@ jq '{user: .name, tags: [.tags[]]}'`,
 
     const shorthand = await execute({
       script: `\
-jq '{name, count}'`,
+jq -c '{name, count}'`,
       stdinText: `\
 {"name":"alice","count":2,"ignored":true}`,
     });
@@ -111,7 +111,7 @@ jq '{name, count}'`,
   it('supports assignment and update assignment', async () => {
     const assign = await execute({
       script: `\
-jq '.user.name = "bob"'`,
+jq -c '.user.name = "bob"'`,
       stdinText: `\
 {"user":{"name":"alice"}}`,
     });
@@ -121,7 +121,7 @@ jq '.user.name = "bob"'`,
 
     const update = await execute({
       script: `\
-jq '.count |= . + 1'`,
+jq -c '.count |= . + 1'`,
       stdinText: `\
 {"count":1}`,
     });
@@ -131,7 +131,7 @@ jq '.count |= . + 1'`,
 
     const negativeIndex = await execute({
       script: `\
-jq '.[-1].name |= . + "!"'`,
+jq -c '.[-1].name |= . + "!"'`,
       stdinText: `\
 [{"name":"alice"},{"name":"bob"}]`,
     });
@@ -143,7 +143,7 @@ jq '.[-1].name |= . + "!"'`,
   it('supports del on object and array paths', async () => {
     const objectDelete = await execute({
       script: `\
-jq 'del(.user.name)'`,
+jq -c 'del(.user.name)'`,
       stdinText: `\
 {"user":{"name":"alice","role":"admin"},"other":1}`,
     });
@@ -153,7 +153,7 @@ jq 'del(.user.name)'`,
 
     const arrayDelete = await execute({
       script: `\
-jq 'del(.[-1])'`,
+jq -c 'del(.[-1])'`,
       stdinText: `\
 [1,2,3]`,
     });
@@ -165,7 +165,7 @@ jq 'del(.[-1])'`,
   it('supports conditional filters', async () => {
     const conditional = await execute({
       script: `\
-jq '.items[] | if .active then .name else empty end'`,
+jq -c '.items[] | if .active then .name else empty end'`,
       stdinText: `\
 {"items":[{"name":"a","active":true},{"name":"b","active":false},{"name":"c","active":true}]}`,
     });
@@ -179,7 +179,7 @@ jq '.items[] | if .active then .name else empty end'`,
 
     const elifConditional = await execute({
       script: `\
-jq '.items[] | if .kind == "a" then .name elif .kind == "b" then .name + "-b" else empty end'`,
+jq -c '.items[] | if .kind == "a" then .name elif .kind == "b" then .name + "-b" else empty end'`,
       stdinText: `\
 {"items":[{"kind":"a","name":"one"},{"kind":"b","name":"two"},{"kind":"c","name":"three"}]}`,
     });
@@ -195,7 +195,7 @@ jq '.items[] | if .kind == "a" then .name elif .kind == "b" then .name + "-b" el
   it('supports try and catch', async () => {
     const fallback = await execute({
       script: `\
-jq '.items[] | try .name catch "missing"'`,
+jq -c '.items[] | try .name catch "missing"'`,
       stdinText: `\
 {"items":[{"name":"alice"},1,{"name":"bob"}]}`,
     });
@@ -210,7 +210,7 @@ jq '.items[] | try .name catch "missing"'`,
 
     const errorMessage = await execute({
       script: `\
-jq '.items[] | try .name catch .'`,
+jq -c '.items[] | try .name catch .'`,
       stdinText: `\
 {"items":[1]}`,
     });
@@ -223,7 +223,7 @@ jq '.items[] | try .name catch .'`,
   it('supports any and all', async () => {
     const any = await execute({
       script: `\
-jq '.groups | any(.active)'`,
+jq -c '.groups | any(.active)'`,
       stdinText: `\
 {"groups":[{"active":false},{"active":true}]}`,
     });
@@ -234,7 +234,7 @@ jq '.groups | any(.active)'`,
 
     const all = await execute({
       script: `\
-jq '.groups | all(.active)'`,
+jq -c '.groups | all(.active)'`,
       stdinText: `\
 {"groups":[{"active":true},{"active":true}]}`,
     });
@@ -247,7 +247,7 @@ jq '.groups | all(.active)'`,
   it('supports reverse and sort', async () => {
     const reverse = await execute({
       script: `\
-jq '.items | reverse'`,
+jq -c '.items | reverse'`,
       stdinText: `\
 {"items":[3,1,2]}`,
     });
@@ -258,7 +258,7 @@ jq '.items | reverse'`,
 
     const sort = await execute({
       script: `\
-jq '.items | sort'`,
+jq -c '.items | sort'`,
       stdinText: `\
 {"items":[3,1,2]}`,
     });
@@ -271,7 +271,7 @@ jq '.items | sort'`,
   it('supports contains, startswith, and endswith', async () => {
     const contains = await execute({
       script: `\
-jq '.items[] | select(.name | contains("ali")) | .name'`,
+jq -c '.items[] | select(.name | contains("ali")) | .name'`,
       stdinText: `\
 {"items":[{"name":"alice"},{"name":"bob"},{"name":"alicia"}]}`,
     });
@@ -285,7 +285,7 @@ jq '.items[] | select(.name | contains("ali")) | .name'`,
 
     const startswith = await execute({
       script: `\
-jq '.items[] | select(.name | startswith("al")) | .name'`,
+jq -c '.items[] | select(.name | startswith("al")) | .name'`,
       stdinText: `\
 {"items":[{"name":"alice"},{"name":"bob"}]}`,
     });
@@ -296,7 +296,7 @@ jq '.items[] | select(.name | startswith("al")) | .name'`,
 
     const endswith = await execute({
       script: `\
-jq '.items[] | select(.name | endswith("ce")) | .name'`,
+jq -c '.items[] | select(.name | endswith("ce")) | .name'`,
       stdinText: `\
 {"items":[{"name":"alice"},{"name":"alicia"}]}`,
     });
@@ -309,7 +309,7 @@ jq '.items[] | select(.name | endswith("ce")) | .name'`,
   it('supports flatten, join, min, max, and add', async () => {
     const flatten = await execute({
       script: `\
-jq '.items | flatten'`,
+jq -c '.items | flatten'`,
       stdinText: `\
 {"items":[1,[2,[3]],4]}`,
     });
@@ -320,7 +320,7 @@ jq '.items | flatten'`,
 
     const join = await execute({
       script: `\
-jq '.items | join("-")'`,
+jq -c '.items | join("-")'`,
       stdinText: `\
 {"items":["a","b","c"]}`,
     });
@@ -331,7 +331,7 @@ jq '.items | join("-")'`,
 
     const min = await execute({
       script: `\
-jq '.items | min'`,
+jq -c '.items | min'`,
       stdinText: `\
 {"items":[3,1,2]}`,
     });
@@ -342,7 +342,7 @@ jq '.items | min'`,
 
     const max = await execute({
       script: `\
-jq '.items | max'`,
+jq -c '.items | max'`,
       stdinText: `\
 {"items":[3,1,2]}`,
     });
@@ -353,7 +353,7 @@ jq '.items | max'`,
 
     const add = await execute({
       script: `\
-jq '.items | add'`,
+jq -c '.items | add'`,
       stdinText: `\
 {"items":[1,2,3]}`,
     });
@@ -366,7 +366,7 @@ jq '.items | add'`,
   it('supports split, explode, implode, inside, ltrimstr, and rtrimstr', async () => {
     const split = await execute({
       script: `\
-jq '.text | split(",")'`,
+jq -c '.text | split(",")'`,
       stdinText: `\
 {"text":"a,b,c"}`,
     });
@@ -377,7 +377,7 @@ jq '.text | split(",")'`,
 
     const explode = await execute({
       script: `\
-jq '.text | explode'`,
+jq -c '.text | explode'`,
       stdinText: `\
 {"text":"A😀"}`,
     });
@@ -388,7 +388,7 @@ jq '.text | explode'`,
 
     const implode = await execute({
       script: `\
-jq '.codes | implode'`,
+jq -c '.codes | implode'`,
       stdinText: `\
 {"codes":[65,128512]}`,
     });
@@ -399,7 +399,7 @@ jq '.codes | implode'`,
 
     const inside = await execute({
       script: `\
-jq '.item | inside({"name":"alice","role":"admin"})'`,
+jq -c '.item | inside({"name":"alice","role":"admin"})'`,
       stdinText: `\
 {"item":{"name":"alice"},"container":{"name":"alice","role":"admin"}}`,
     });
@@ -410,7 +410,7 @@ jq '.item | inside({"name":"alice","role":"admin"})'`,
 
     const ltrimstr = await execute({
       script: `\
-jq '.text | ltrimstr("pre-")'`,
+jq -c '.text | ltrimstr("pre-")'`,
       stdinText: `\
 {"text":"pre-value"}`,
     });
@@ -421,7 +421,7 @@ jq '.text | ltrimstr("pre-")'`,
 
     const rtrimstr = await execute({
       script: `\
-jq '.text | rtrimstr(".tmp")'`,
+jq -c '.text | rtrimstr(".tmp")'`,
       stdinText: `\
 {"text":"report.tmp"}`,
     });
@@ -434,7 +434,7 @@ jq '.text | rtrimstr(".tmp")'`,
   it('supports first and last', async () => {
     const first = await execute({
       script: `\
-jq 'first(.items[])'`,
+jq -c 'first(.items[])'`,
       stdinText: `\
 {"items":[3,1,2]}`,
     });
@@ -445,7 +445,7 @@ jq 'first(.items[])'`,
 
     const last = await execute({
       script: `\
-jq 'last(.items[] | .name)'`,
+jq -c 'last(.items[] | .name)'`,
       stdinText: `\
 {"items":[{"name":"alice"},{"name":"bob"}]}`,
     });
@@ -458,7 +458,7 @@ jq 'last(.items[] | .name)'`,
   it('supports ascii case conversion builtins', async () => {
     const downcase = await execute({
       script: `\
-jq '.text | ascii_downcase'`,
+jq -c '.text | ascii_downcase'`,
       stdinText: `\
 {"text":"AbC-123"}`,
     });
@@ -469,7 +469,7 @@ jq '.text | ascii_downcase'`,
 
     const upcase = await execute({
       script: `\
-jq '.text | ascii_upcase'`,
+jq -c '.text | ascii_upcase'`,
       stdinText: `\
 {"text":"AbC-123"}`,
     });
@@ -482,7 +482,7 @@ jq '.text | ascii_upcase'`,
   it('supports range and tonumber', async () => {
     const range = await execute({
       script: `\
-jq 'range(1, 6, 2)'`,
+jq -c 'range(1; 6; 2)'`,
       stdinText: 'null',
     });
 
@@ -496,7 +496,7 @@ jq 'range(1, 6, 2)'`,
 
     const tonumber = await execute({
       script: `\
-jq '.items[] | tonumber'`,
+jq -c '.items[] | tonumber'`,
       stdinText: `\
 {"items":["10","-2.5",3]}`,
     });
@@ -513,7 +513,7 @@ jq '.items[] | tonumber'`,
   it('supports floor, ceil, and round', async () => {
     const numeric = await execute({
       script: `\
-jq '.items[] | [floor, ceil, round]'`,
+jq -c '.items[] | [floor, ceil, round]'`,
       stdinText: `\
 {"items":[1.2,1.5,-1.2]}`,
     });
@@ -530,7 +530,7 @@ jq '.items[] | [floor, ceil, round]'`,
   it('supports as variable bindings', async () => {
     const objectBinding = await execute({
       script: `\
-jq '.user.name as $name | {name: $name, age: .user.age}'`,
+jq -c '.user.name as $name | {name: $name, age: .user.age}'`,
       stdinText: `\
 {"user":{"name":"alice","age":20}}`,
     });
@@ -541,7 +541,7 @@ jq '.user.name as $name | {name: $name, age: .user.age}'`,
 
     const iterateBinding = await execute({
       script: `\
-jq '.items[] as $item | $item.name'`,
+jq -c '.items[] as $item | $item.name'`,
       stdinText: `\
 {"items":[{"name":"alice"},{"name":"bob"}]}`,
     });
@@ -557,7 +557,7 @@ jq '.items[] as $item | $item.name'`,
   it('supports sort_by, unique, unique_by, group_by, and map_values', async () => {
     const sortBy = await execute({
       script: `\
-jq '.items | sort_by(.id)'`,
+jq -c '.items | sort_by(.id)'`,
       stdinText: `\
 {"items":[{"id":2},{"id":1},{"id":3}]}`,
     });
@@ -568,7 +568,7 @@ jq '.items | sort_by(.id)'`,
 
     const unique = await execute({
       script: `\
-jq '.items | unique'`,
+jq -c '.items | unique'`,
       stdinText: `\
 {"items":[3,1,2,1,3]}`,
     });
@@ -579,7 +579,7 @@ jq '.items | unique'`,
 
     const uniqueBy = await execute({
       script: `\
-jq '.items | unique_by(.id)'`,
+jq -c '.items | unique_by(.id)'`,
       stdinText: `\
 {"items":[{"id":2,"name":"b"},{"id":1,"name":"a"},{"id":2,"name":"bb"}]}`,
     });
@@ -590,7 +590,7 @@ jq '.items | unique_by(.id)'`,
 
     const groupBy = await execute({
       script: `\
-jq '.items | group_by(.kind)'`,
+jq -c '.items | group_by(.kind)'`,
       stdinText: `\
 {"items":[{"kind":"a","id":1},{"kind":"b","id":2},{"kind":"a","id":3}]}`,
     });
@@ -601,7 +601,7 @@ jq '.items | group_by(.kind)'`,
 
     const mapValues = await execute({
       script: `\
-jq '.metrics | map_values(. + 1)'`,
+jq -c '.metrics | map_values(. + 1)'`,
       stdinText: `\
 {"metrics":{"a":1,"b":2}}`,
     });
@@ -614,7 +614,7 @@ jq '.metrics | map_values(. + 1)'`,
   it('supports paths and pick', async () => {
     const paths = await execute({
       script: `\
-jq 'paths'`,
+jq -c 'paths'`,
       stdinText: `\
 {"user":{"name":"alice"},"items":[1,2]}`,
     });
@@ -631,7 +631,7 @@ jq 'paths'`,
 
     const pick = await execute({
       script: `\
-jq 'pick(.user.name, .items[1])'`,
+jq -c 'pick(.user.name, .items[1])'`,
       stdinText: `\
 {"user":{"name":"alice","role":"admin"},"items":[1,2,3],"other":true}`,
     });
@@ -644,7 +644,7 @@ jq 'pick(.user.name, .items[1])'`,
   it('supports type filter builtins', async () => {
     const filtered = await execute({
       script: `\
-jq '.items[] | (arrays, booleans, nulls, numbers, objects, scalars, strings)'`,
+jq -c '.items[] | (arrays, booleans, nulls, numbers, objects, scalars, strings)'`,
       stdinText: `\
 {"items":[[1],true,null,2,{"a":1},"x"]}`,
     });
@@ -668,7 +668,7 @@ null
   it('supports walk', async () => {
     const walked = await execute({
       script: `\
-jq 'walk(if type == "number" then . + 1 else . end)'`,
+jq -c 'walk(if type == "number" then . + 1 else . end)'`,
       stdinText: `\
 {"a":1,"items":[2,{"b":3}],"name":"x"}`,
     });
@@ -681,7 +681,7 @@ jq 'walk(if type == "number" then . + 1 else . end)'`,
   it('supports recurse', async () => {
     const recurseTree = await execute({
       script: `\
-jq '.tree | recurse(.children[]?) | .name'`,
+jq -c '.tree | recurse(.children[]?) | .name'`,
       stdinText: `\
 {"tree":{"name":"root","children":[{"name":"a","children":[]},{"name":"b","children":[{"name":"c","children":[]}]}]}}`,
     });
@@ -697,7 +697,7 @@ jq '.tree | recurse(.children[]?) | .name'`,
 
     const recurseBare = await execute({
       script: `\
-jq '.data | recurse | numbers'`,
+jq -c '.data | recurse | numbers'`,
       stdinText: `\
 {"data":[1,[2,3],{"x":4}]}`,
     });
@@ -715,7 +715,7 @@ jq '.data | recurse | numbers'`,
   it('supports index, rindex, and indices', async () => {
     const stringSearch = await execute({
       script: `\
-jq '.text | (index("ana"), rindex("ana"), indices("ana"))'`,
+jq -c '.text | (index("ana"), rindex("ana"), indices("ana"))'`,
       stdinText: `\
 {"text":"bananas"}`,
     });
@@ -730,7 +730,7 @@ jq '.text | (index("ana"), rindex("ana"), indices("ana"))'`,
 
     const arraySearch = await execute({
       script: `\
-jq '.items | (index(2), rindex(2), indices(2))'`,
+jq -c '.items | (index(2), rindex(2), indices(2))'`,
       stdinText: `\
 {"items":[1,2,3,2]}`,
     });
@@ -755,7 +755,7 @@ jq '.items | (index(2), rindex(2), indices(2))'`,
 
     const { result, stdout, stderr } = await execute({
       script: `\
-jq '.id' input.json`,
+jq -c '.id' input.json`,
     });
 
     expect(stdout.text).toBe(`\
@@ -766,15 +766,27 @@ jq '.id' input.json`,
     expect(result.exitCode).toBe(0);
   });
 
-  it('reports update cardinality errors', async () => {
-    const runtime = await execute({
+  it('uses the first update value and deletes the path for empty', async () => {
+    const multiple = await execute({
       script: `\
-jq '.foo |= (., 2)'`,
+jq -c '.foo |= (., 2)'`,
       stdinText: `\
 {"foo":1,"bar":2}`,
     });
 
-    expect(runtime.stderr.text).toContain('|= right-hand side must yield exactly one value');
-    expect(runtime.result.exitCode).toBe(4);
+    expect(multiple.stdout.text).toBe('{"foo":1,"bar":2}\n');
+    expect(multiple.stderr.text).toBe('');
+    expect(multiple.result.exitCode).toBe(0);
+
+    const empty = await execute({
+      script: `\
+jq -c '.foo |= empty'`,
+      stdinText: `\
+{"foo":1,"bar":2}`,
+    });
+
+    expect(empty.stdout.text).toBe('{"bar":2}\n');
+    expect(empty.stderr.text).toBe('');
+    expect(empty.result.exitCode).toBe(0);
   });
 });

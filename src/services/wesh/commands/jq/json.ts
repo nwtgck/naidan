@@ -1,4 +1,5 @@
 import type { JsonValue } from './ast';
+import { normalizeJsonValue, stringifyJson } from './value';
 
 function isWhitespace({
   char,
@@ -115,12 +116,15 @@ function scanPrimitiveEnd({
   return index;
 }
 
-export function parseJsonSequence({
+export type JsonSequenceEntry =
+  | { ok: true; value: JsonValue }
+  | { ok: false; message: string };
+
+export function* iterateJsonSequence({
   text,
 }: {
   text: string;
-}): { ok: true; values: JsonValue[] } | { ok: false; message: string } {
-  const values: JsonValue[] = [];
+}): Generator<JsonSequenceEntry, void, undefined> {
   let index = 0;
 
   while (index < text.length) {
@@ -129,10 +133,10 @@ export function parseJsonSequence({
       if (char === undefined || !isWhitespace({ char })) break;
       index += 1;
     }
-    if (index >= text.length) break;
+    if (index >= text.length) return;
 
     const char = text[index];
-    if (char === undefined) break;
+    if (char === undefined) return;
 
     let end: number | undefined;
     switch (char) {
@@ -149,27 +153,67 @@ export function parseJsonSequence({
     }
 
     if (end === undefined || end <= index) {
-      return { ok: false, message: `invalid JSON input near byte ${index}` };
+      yield { ok: false, message: `invalid JSON input near byte ${index}` };
+      return;
     }
 
     const slice = text.slice(index, end);
     try {
-      values.push(JSON.parse(slice) as JsonValue);
+      yield {
+        ok: true,
+        value: normalizeJsonValue({ value: JSON.parse(slice) as JsonValue }),
+      };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      return { ok: false, message: `invalid JSON input near byte ${index}: ${message}` };
+      yield { ok: false, message: `invalid JSON input near byte ${index}: ${message}` };
+      return;
     }
 
     index = end;
   }
+}
 
+export function parseJsonSequence({
+  text,
+}: {
+  text: string;
+}): { ok: true; values: JsonValue[] } | { ok: false; message: string } {
+  const values: JsonValue[] = [];
+  for (const entry of iterateJsonSequence({ text })) {
+    if (!entry.ok) return entry;
+    values.push(entry.value);
+  }
   return { ok: true, values };
 }
 
 export function formatJsonOutput({
   value,
+  compact,
+  raw,
+  join,
+  asciiOnly,
+  sortKeys,
+  indentation,
+  nullSeparator,
 }: {
   value: JsonValue;
+  compact: boolean;
+  raw: boolean;
+  join: boolean;
+  asciiOnly: boolean;
+  sortKeys: boolean;
+  indentation: number | '\t';
+  nullSeparator: boolean;
 }): string {
-  return `${JSON.stringify(value)}\n`;
+  const separator = nullSeparator ? '\0' : join ? '' : '\n';
+  if (raw && typeof value === 'string') {
+    return `${value}${separator}`;
+  }
+
+  return `${stringifyJson({
+    value,
+    indentation: compact ? undefined : indentation,
+    sortKeys,
+    asciiOnly,
+  })}${separator}`;
 }
