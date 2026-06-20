@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat, ChatGroup, Settings } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { MigrationChunkDto } from '@/models/dto';
 import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
@@ -102,7 +101,7 @@ const mockChat: Chat = {
   endpointType: undefined,
   endpointUrl: undefined,
   endpointHttpHeaders: undefined,
-  lmParameters: EMPTY_LM_PARAMETERS,
+  lmParameters: undefined,
   modelId: undefined,
   originChatId: undefined,
   originMessageId: undefined,
@@ -126,7 +125,7 @@ const mockSettings: Settings = {
   storageType: 'local',
   mounts: [],
   providerProfiles: [],
-  lmParameters: EMPTY_LM_PARAMETERS,
+  lmParameters: undefined,
   experimental: {
     sidebarSendMessageReorder: 'disabled',
   },

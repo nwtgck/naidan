@@ -1,3 +1,4 @@
+import type { ScopedSettingChange } from '@/models/scoped-setting-change';
 import type { ChatGroup } from '@/models/types';
 import { storageService } from '@/services/storage';
 import {
@@ -6,6 +7,92 @@ import {
   loadData,
 } from '@/composables/chat/global/chat-core-singletons';
 import type { ChatGroupId, ChatId } from '@/models/ids';
+import {
+  applyScopedSettingChangesToChatGroup,
+  cloneScopedSettingChanges,
+  createLmParameterSettingChanges,
+  createSystemPromptSettingChange,
+} from '@/utils/scoped-setting-changes';
+
+type ChatGroupMetadataUpdate = Partial<Pick<
+  ChatGroup,
+  | 'name'
+  | 'endpoint'
+  | 'modelId'
+  | 'autoTitleEnabled'
+  | 'titleModelId'
+  | 'systemPrompt'
+  | 'lmParameters'
+>>;
+
+const chatGroupMetadataUpdateKeyRecord: Readonly<Record<keyof ChatGroupMetadataUpdate, true>> = {
+  name: true,
+  endpoint: true,
+  modelId: true,
+  autoTitleEnabled: true,
+  titleModelId: true,
+  systemPrompt: true,
+  lmParameters: true,
+};
+
+const CHAT_GROUP_METADATA_UPDATE_KEYS = Object.keys(
+  chatGroupMetadataUpdateKeyRecord,
+) as (keyof ChatGroupMetadataUpdate)[];
+
+const updateQueues = new Map<ChatGroupId, Promise<void>>();
+
+function legacyUpdatesToChanges({
+  updates,
+}: {
+  updates: ChatGroupMetadataUpdate;
+}): ScopedSettingChange[] {
+  const changes: ScopedSettingChange[] = [];
+
+  // Keep this adapter exhaustive so extending ChatGroupMetadataUpdate cannot
+  // silently bypass the explicit scoped-setting command model. `name` remains
+  // a non-inheritable metadata update and is handled by updateChatGroup().
+  for (const key of CHAT_GROUP_METADATA_UPDATE_KEYS) {
+    if (!Object.hasOwn(updates, key)) continue;
+
+    switch (key) {
+    case 'name':
+      break;
+    case 'endpoint':
+      changes.push(updates.endpoint === undefined
+        ? { field: 'endpoint', behavior: 'inherit' }
+        : { field: 'endpoint', behavior: 'override', value: updates.endpoint });
+      break;
+    case 'modelId':
+      changes.push(updates.modelId === undefined
+        ? { field: 'model_id', behavior: 'inherit' }
+        : { field: 'model_id', behavior: 'override', value: updates.modelId });
+      break;
+    case 'autoTitleEnabled':
+      changes.push(updates.autoTitleEnabled === undefined
+        ? { field: 'auto_title_enabled', behavior: 'inherit' }
+        : { field: 'auto_title_enabled', behavior: 'override', value: updates.autoTitleEnabled });
+      break;
+    case 'titleModelId':
+      changes.push(updates.titleModelId === undefined
+        ? { field: 'title_model_id', behavior: 'inherit' }
+        : { field: 'title_model_id', behavior: 'override', value: updates.titleModelId });
+      break;
+    case 'systemPrompt':
+      changes.push(createSystemPromptSettingChange({ systemPrompt: updates.systemPrompt }));
+      break;
+    case 'lmParameters':
+      changes.push(...createLmParameterSettingChanges({ lmParameters: updates.lmParameters }));
+      break;
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled chat group metadata update key: ${_ex}`);
+    }
+    }
+  }
+
+  return changes;
+}
+
 
 export type ChatGroupsAdapter = {
   updateChatGroupMetadata({
@@ -13,7 +100,15 @@ export type ChatGroupsAdapter = {
     updates,
   }: {
     chatGroupId: ChatGroupId;
-    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
+    updates: ChatGroupMetadataUpdate;
+  }): Promise<void>;
+
+  updateScopedSettings({
+    chatGroupId,
+    changes,
+  }: {
+    chatGroupId: ChatGroupId;
+    changes: readonly ScopedSettingChange[];
   }): Promise<void>;
 
   moveChatToGroup({
@@ -28,30 +123,102 @@ export type ChatGroupsAdapter = {
 };
 
 export function useChatGroups(): ChatGroupsAdapter {
+  async function updateChatGroup({
+    chatGroupId,
+    changes,
+    name,
+    updateName,
+  }: {
+    chatGroupId: ChatGroupId;
+    changes: readonly ScopedSettingChange[];
+    name: string | undefined;
+    updateName: boolean;
+  }): Promise<void> {
+    if (changes.length === 0 && !updateName) return;
+
+    const queuedChanges = cloneScopedSettingChanges({ changes });
+    const previous = updateQueues.get(chatGroupId) ?? Promise.resolve();
+    const operation = previous
+      .catch(() => undefined)
+      .then(async () => {
+        let savedChatGroup: ChatGroup | undefined;
+        await storageService.updateChatGroup({
+          id: chatGroupId,
+          updater: ({ current }) => {
+            if (current === null) {
+              throw new Error('Chat group not found');
+            }
+
+            // Use the latest persisted timestamp while holding the storage
+            // lock so queued updates and clock skew cannot move it backwards.
+            const updatedAt = Math.max(Date.now(), current.updatedAt + 1);
+            const updated = applyScopedSettingChangesToChatGroup({
+              current,
+              changes: queuedChanges,
+              updatedAt,
+            });
+            savedChatGroup = updateName && name !== undefined
+              ? { ...updated, name, updatedAt }
+              : updated;
+            return savedChatGroup;
+          },
+        });
+        await loadData();
+
+        // loadData refreshes sidebar state, while the settings panel reads this
+        // dedicated ref. Keep both views on the same successfully persisted value.
+        if (
+          savedChatGroup !== undefined
+          && currentChatGroupRef.value?.id === chatGroupId
+          && currentChatGroupRef.value.updatedAt <= savedChatGroup.updatedAt
+        ) {
+          currentChatGroupRef.value = savedChatGroup;
+        }
+      });
+
+    const queueTail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    updateQueues.set(chatGroupId, queueTail);
+
+    try {
+      await operation;
+    } finally {
+      if (updateQueues.get(chatGroupId) === queueTail) {
+        updateQueues.delete(chatGroupId);
+      }
+    }
+  }
+
+  async function updateScopedSettings({
+    chatGroupId,
+    changes,
+  }: {
+    chatGroupId: ChatGroupId;
+    changes: readonly ScopedSettingChange[];
+  }): Promise<void> {
+    await updateChatGroup({
+      chatGroupId,
+      changes,
+      name: undefined,
+      updateName: false,
+    });
+  }
+
   async function updateChatGroupMetadata({
     chatGroupId,
     updates,
   }: {
     chatGroupId: ChatGroupId;
-    updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
+    updates: ChatGroupMetadataUpdate;
   }): Promise<void> {
-    if (currentChatGroupRef.value?.id === chatGroupId) {
-      Object.assign(currentChatGroupRef.value, updates);
-      currentChatGroupRef.value.updatedAt = Date.now();
-    }
-
-    await storageService.updateChatGroup({ id: chatGroupId, updater: ({ current }) => {
-      if (current === null) {
-        throw new Error('Chat group not found');
-      }
-
-      return {
-        ...current,
-        ...updates,
-        updatedAt: Date.now(),
-      };
-    } });
-    await loadData();
+    await updateChatGroup({
+      chatGroupId,
+      changes: legacyUpdatesToChanges({ updates }),
+      name: updates.name,
+      updateName: Object.hasOwn(updates, 'name'),
+    });
   }
 
   async function moveChatToGroup({
@@ -113,9 +280,8 @@ export function useChatGroups(): ChatGroupsAdapter {
 
   return {
     updateChatGroupMetadata,
+    updateScopedSettings,
     moveChatToGroup,
-    TEST_ONLY: {
-      // Export internal state and logic used only for testing here. Do not reference these in production logic.
-    },
+    TEST_ONLY: {},
   };
 }

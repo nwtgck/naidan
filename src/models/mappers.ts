@@ -49,6 +49,7 @@ import type {
   Volume,
   ToolConfigPersistence,
 } from './types';
+import { EMPTY_LM_PARAMETERS } from './types';
 import {
   idToRaw,
   toAttachmentId,
@@ -60,6 +61,11 @@ import {
   toToolCallId,
   toVolumeId,
 } from '@/models/ids';
+import {
+  LM_PARAMETER_KEYS,
+  normalizeLmParameters,
+  REASONING_PARAMETER_KEYS,
+} from '@/utils/lm-parameters';
 
 
 const toolConfigPersistenceToExperimentalDto = ({
@@ -307,46 +313,121 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
 
 export const lmParametersToDomain = (
   { dto }: { dto: LmParametersDto | undefined }
-): LmParameters => {
-  if (!dto) {
-    return {
-      temperature: undefined,
-      topP: undefined,
-      maxCompletionTokens: undefined,
-      presencePenalty: undefined,
-      frequencyPenalty: undefined,
-      stop: undefined,
-      reasoning: { effort: undefined },
-    };
-  }
-  return {
-    temperature: dto.temperature,
-    topP: dto.topP,
-    maxCompletionTokens: dto.maxCompletionTokens,
-    presencePenalty: dto.presencePenalty,
-    frequencyPenalty: dto.frequencyPenalty,
-    stop: dto.stop,
-    reasoning: {
-      effort: dto.reasoning?.effort,
-    },
+): LmParameters | undefined => {
+  if (!dto) return undefined;
+
+  const lmParameters: LmParameters = {
+    ...EMPTY_LM_PARAMETERS,
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
   };
+
+  // Map from the canonical domain key set rather than a hand-maintained object.
+  // Adding an LM or reasoning parameter must fail typechecking here until its
+  // DTO conversion is reviewed, preventing persistence omissions in refactors.
+  for (const key of LM_PARAMETER_KEYS) {
+    switch (key) {
+    case 'temperature':
+      lmParameters.temperature = dto.temperature;
+      break;
+    case 'topP':
+      lmParameters.topP = dto.topP;
+      break;
+    case 'maxCompletionTokens':
+      lmParameters.maxCompletionTokens = dto.maxCompletionTokens;
+      break;
+    case 'presencePenalty':
+      lmParameters.presencePenalty = dto.presencePenalty;
+      break;
+    case 'frequencyPenalty':
+      lmParameters.frequencyPenalty = dto.frequencyPenalty;
+      break;
+    case 'stop':
+      lmParameters.stop = dto.stop;
+      break;
+    case 'reasoning':
+      for (const reasoningKey of REASONING_PARAMETER_KEYS) {
+        switch (reasoningKey) {
+        case 'effort':
+          lmParameters.reasoning.effort = dto.reasoning?.effort;
+          break;
+        default: {
+          const _ex: never = reasoningKey;
+          throw new Error(`Unhandled reasoning parameter key: ${_ex}`);
+        }
+        }
+      }
+      break;
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled LM parameter key: ${_ex}`);
+    }
+    }
+  }
+
+  return normalizeLmParameters({ lmParameters });
 };
 
 export const lmParametersToDto = (
   { domain }: { domain: LmParameters | undefined }
 ): LmParametersDto | undefined => {
-  if (!domain) return undefined;
-  return {
-    temperature: domain.temperature,
-    topP: domain.topP,
-    maxCompletionTokens: domain.maxCompletionTokens,
-    presencePenalty: domain.presencePenalty,
-    frequencyPenalty: domain.frequencyPenalty,
-    stop: domain.stop,
-    reasoning: domain.reasoning ? {
-      effort: domain.reasoning.effort,
-    } : undefined,
+  const normalized = normalizeLmParameters({ lmParameters: domain });
+  if (normalized === undefined) return undefined;
+
+  const reasoningDto: NonNullable<LmParametersDto['reasoning']> = { effort: undefined };
+  const dto: LmParametersDto = {
+    temperature: undefined,
+    topP: undefined,
+    maxCompletionTokens: undefined,
+    presencePenalty: undefined,
+    frequencyPenalty: undefined,
+    stop: undefined,
+    reasoning: reasoningDto,
   };
+
+  // DTO fields are optional, so an object literal alone would not reveal a new
+  // domain parameter that was forgotten here. Keep this exhaustive traversal as
+  // a compile-time review gate for every persisted LM and reasoning parameter.
+  for (const key of LM_PARAMETER_KEYS) {
+    switch (key) {
+    case 'temperature':
+      dto.temperature = normalized.temperature;
+      break;
+    case 'topP':
+      dto.topP = normalized.topP;
+      break;
+    case 'maxCompletionTokens':
+      dto.maxCompletionTokens = normalized.maxCompletionTokens;
+      break;
+    case 'presencePenalty':
+      dto.presencePenalty = normalized.presencePenalty;
+      break;
+    case 'frequencyPenalty':
+      dto.frequencyPenalty = normalized.frequencyPenalty;
+      break;
+    case 'stop':
+      dto.stop = normalized.stop;
+      break;
+    case 'reasoning':
+      for (const reasoningKey of REASONING_PARAMETER_KEYS) {
+        switch (reasoningKey) {
+        case 'effort':
+          reasoningDto.effort = normalized.reasoning.effort;
+          break;
+        default: {
+          const _ex: never = reasoningKey;
+          throw new Error(`Unhandled reasoning parameter key: ${_ex}`);
+        }
+        }
+      }
+      break;
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled LM parameter key: ${_ex}`);
+    }
+    }
+  }
+
+  return dto;
 };
 
 export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {

@@ -64,6 +64,7 @@ import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
 import type { ChatId, MessageId } from '@/models/ids';
 import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
 import type { ImageRequestParams } from '@/utils/image-generation';
+import { storageService } from '@/services/storage';
 
 export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 
@@ -308,9 +309,55 @@ export function useChat() {
     id: string;
     updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }) {
+    const chatId = toChatId({ raw: id });
+    const hasEndpointSubfieldUpdate = Object.hasOwn(updates, 'endpointUrl')
+      || Object.hasOwn(updates, 'endpointHttpHeaders');
+    let normalizedUpdates = updates;
+
+    if (hasEndpointSubfieldUpdate && !Object.hasOwn(updates, 'endpointType')) {
+      const liveTarget = liveChatRegistry.get(chatId);
+      const storedTarget = liveTarget === undefined
+        ? await storageService.loadChatMeta({ id: chatId })
+        : undefined;
+      const containingGroupId = chatGroups.value.find(group =>
+        group.items.some(item => item.chat.id === chatId),
+      )?.id;
+      const target = liveTarget ?? (storedTarget === null || storedTarget === undefined
+        ? undefined
+        : {
+          ...storedTarget,
+          // Chat/group membership is persisted in the hierarchy rather than
+          // ChatMeta. Recover it here so a partial endpoint update to a non-live
+          // chat resolves the same Group > Global inheritance as a live chat.
+          groupId: storedTarget.groupId ?? containingGroupId,
+          endpointType: storedTarget.endpoint?.type,
+          endpointUrl: storedTarget.endpoint?.url,
+          endpointHttpHeaders: storedTarget.endpoint?.httpHeaders,
+          root: { items: [] },
+        });
+      if (target === undefined) {
+        throw new Error('Chat not found');
+      }
+      const resolved = resolveChatSettings({
+        chat: target,
+        groups: chatGroups.value,
+        globalSettings: settings.value,
+      });
+      normalizedUpdates = {
+        ...updates,
+        endpointType: resolved.endpointType,
+        endpointUrl: Object.hasOwn(updates, 'endpointUrl')
+          ? updates.endpointUrl
+          : resolved.endpointUrl,
+        endpointHttpHeaders: Object.hasOwn(updates, 'endpointHttpHeaders')
+          ? updates.endpointHttpHeaders
+          : resolved.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+      };
+    }
+
     await chatMetadata.updateSettings({
-      chatId: toChatId({ raw: id }),
-      updates,
+      chatId,
+      updates: normalizedUpdates,
     });
   }
 

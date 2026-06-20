@@ -6,6 +6,8 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
+import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
+import type { Chat } from '@/models/types';
 
 // --- Mocks ---
 const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
@@ -81,6 +83,11 @@ describe('ChatSettingsPanel.vue', () => {
       template: '<div data-testid="model-selector-mock" :model-value="modelValue">{{ modelValue }}<button v-if="!loading" data-testid="refresh-mock" @click="$emit(\'refresh\')">Refresh</button><span v-if="loading" class="loading-mock">Loading</span></div>',
       props: ['modelValue', 'loading', 'placeholder', 'models'],
     },
+    LmParametersEditor: {
+      name: 'LmParametersEditor',
+      template: '<div data-testid="lm-parameters-editor-mock"></div>',
+      props: ['modelValue'],
+    },
   };
 
   beforeEach(() => {
@@ -149,6 +156,56 @@ describe('ChatSettingsPanel.vue', () => {
       toggleDebug: vi.fn(),
       updateModel: vi.fn(),
       updateGroupOverride: vi.fn(),
+      updateScopedSettings: async ({ chatId, changes }) => {
+        const current = mockCurrentChat.value?.id === chatId
+          ? mockCurrentChat.value
+          : {
+            ...mockCurrentChat.value,
+            id: chatId,
+            root: { items: [] },
+          } as Chat;
+        const updated = applyScopedSettingChangesToChat({
+          current,
+          changes,
+          updatedAt: Date.now(),
+        });
+        const updates: Record<string, unknown> = {};
+        for (const change of changes) {
+          switch (change.field) {
+          case 'endpoint':
+            updates.endpointType = updated.endpointType;
+            updates.endpointUrl = updated.endpointUrl;
+            updates.endpointHttpHeaders = updated.endpointHttpHeaders;
+            break;
+          case 'model_id':
+            updates.modelId = updated.modelId;
+            break;
+          case 'auto_title_enabled':
+            updates.autoTitleEnabled = updated.autoTitleEnabled;
+            break;
+          case 'title_model_id':
+            updates.titleModelId = updated.titleModelId;
+            break;
+          case 'system_prompt':
+            updates.systemPrompt = updated.systemPrompt;
+            break;
+          case 'lm_param_temperature':
+          case 'lm_param_top_p':
+          case 'lm_param_max_completion_tokens':
+          case 'lm_param_presence_penalty':
+          case 'lm_param_frequency_penalty':
+          case 'lm_param_stop':
+          case 'lm_param_reasoning_effort':
+            updates.lmParameters = updated.lmParameters;
+            break;
+          default: {
+            const _ex: never = change;
+            throw new Error(`Unhandled test change: ${String(_ex)}`);
+          }
+          }
+        }
+        await mockUpdateChatSettings({ id: chatId, updates });
+      },
       updateSettings: async ({ chatId, updates }) => {
         await mockUpdateChatSettings({ id: chatId, updates });
       },
@@ -169,6 +226,32 @@ describe('ChatSettingsPanel.vue', () => {
 
     (useSettings as unknown as Mock).mockReturnValue({
       settings: toRef(mockSettings, 'value'),
+    });
+  });
+
+  it('removes_HTTP_fields_when_switching_to_transformers_js', async () => {
+    Object.assign(mockCurrentChat.value, {
+      endpointType: 'openai',
+      endpointUrl: 'http://example.test/v1',
+      endpointHttpHeaders: [['Authorization', 'Bearer token']],
+    });
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: { stubs: globalStubs },
+    });
+    await nextTick();
+
+    await wrapper.get('[data-testid="chat-setting-endpoint-type-select"]').setValue('transformers_js');
+    await flushPromises();
+
+    expect(mockUpdateChatSettings).toHaveBeenLastCalledWith({
+      id: 'chat-1',
+      updates: expect.objectContaining({
+        endpointType: 'transformers_js',
+        endpointUrl: undefined,
+        endpointHttpHeaders: undefined,
+      }),
     });
   });
 
@@ -317,6 +400,7 @@ describe('ChatSettingsPanel.vue', () => {
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
 
       await selector.vm.$emit('update:modelValue', 'model-1');
+      await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         modelId: 'model-1'
@@ -378,6 +462,41 @@ describe('ChatSettingsPanel.vue', () => {
       expect(vm.selectedProviderProfileId).toBe('');
     });
 
+    it('removes_HTTP_fields_when_applying_a_transformers_js_profile', async () => {
+      mockSettings.value.providerProfiles.push({
+        id: 'p-transformers',
+        name: 'Transformers.js Profile',
+        endpointType: 'transformers_js',
+        endpointUrl: 'http://stale.test/v1',
+        defaultModelId: 'transformers-model',
+      });
+      Object.assign(mockCurrentChat.value, {
+        endpointType: 'openai',
+        endpointUrl: 'http://old.test/v1',
+        endpointHttpHeaders: [['X-Old', 'value']],
+      });
+
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs },
+      });
+      await nextTick();
+
+      const select = wrapper.find('select');
+      await select.setValue('p-transformers');
+      await select.trigger('change');
+      await flushPromises();
+
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpointType: 'transformers_js',
+          endpointUrl: undefined,
+          endpointHttpHeaders: undefined,
+        }),
+      });
+    });
+
     it('applies headers from a selected profile', async () => {
       const mockProfileWithHeaders = {
         id: 'p-h',
@@ -431,6 +550,7 @@ describe('ChatSettingsPanel.vue', () => {
       // Remove
       const removeBtn = wrapper.findAll('button').find(b => b.html().includes('lucide-trash2') || b.findComponent({ name: 'Trash2' }).exists());
       await removeBtn?.trigger('click');
+      await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointHttpHeaders: []
@@ -563,6 +683,69 @@ describe('ChatSettingsPanel.vue', () => {
       }) });
     });
 
+    it('uses the previous chat inherited endpoint type when saving during a chat switch', async () => {
+      mockSettings.value.endpointType = 'ollama';
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs }
+      });
+      await nextTick();
+      mockUpdateChatSettings.mockClear();
+
+      const urlInput = wrapper.get('input[data-testid="chat-setting-url-input"]');
+      await urlInput.setValue('http://ollama-for-A');
+
+      mockCurrentChat.value = reactive({
+        id: 'chat-B',
+        endpointType: 'openai',
+        endpointUrl: 'http://openai-for-B',
+        endpointHttpHeaders: undefined,
+        modelId: undefined,
+        autoTitleEnabled: undefined,
+        titleModelId: undefined,
+        systemPrompt: undefined,
+        lmParameters: undefined,
+      });
+      await nextTick();
+      await flushPromises();
+
+      expect(mockUpdateChatSettings).toHaveBeenCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpointType: 'ollama',
+          endpointUrl: 'http://ollama-for-A',
+        }),
+      });
+    });
+
+    it('does not write a stale model override when the hidden panel observes an external model change', async () => {
+      mount(ChatSettingsPanel, {
+        props: { show: false },
+        global: { stubs: globalStubs }
+      });
+      await nextTick();
+      mockUpdateChatSettings.mockClear();
+
+      mockCurrentChat.value.modelId = 'model-2';
+      await nextTick();
+
+      mockCurrentChat.value = reactive({
+        id: 'chat-B',
+        endpointType: undefined,
+        endpointUrl: undefined,
+        endpointHttpHeaders: undefined,
+        modelId: undefined,
+        autoTitleEnabled: undefined,
+        titleModelId: undefined,
+        systemPrompt: undefined,
+        lmParameters: undefined,
+      });
+      await nextTick();
+      await flushPromises();
+
+      expect(mockUpdateChatSettings).not.toHaveBeenCalled();
+    });
+
     it('saves settings when the modal is closed via props even if blur hasn\'t fired yet', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
@@ -580,6 +763,39 @@ describe('ChatSettingsPanel.vue', () => {
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointUrl: 'http://closing-save'
       }) });
+    });
+
+    it('preserves a dirty LM parameter while synchronizing another parameter externally', async () => {
+      let resolveSave: (() => void) | undefined;
+      mockUpdateChatSettings.mockImplementationOnce(() => new Promise<void>((resolve) => {
+        resolveSave = resolve;
+      }));
+
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs }
+      });
+      await nextTick();
+
+      const editor = wrapper.getComponent({ name: 'LmParametersEditor' });
+      editor.vm.$emit('update:modelValue', {
+        temperature: 0.8,
+        reasoning: { effort: undefined },
+      });
+      await nextTick();
+
+      mockCurrentChat.value.lmParameters = {
+        reasoning: { effort: 'high' },
+      };
+      await nextTick();
+
+      expect(editor.props('modelValue')).toEqual(expect.objectContaining({
+        temperature: 0.8,
+        reasoning: { effort: 'high' },
+      }));
+
+      resolveSave?.();
+      await flushPromises();
     });
 
     it('synchronizes settings from the current chat when the modal is reopened', async () => {
@@ -633,6 +849,32 @@ describe('ChatSettingsPanel.vue', () => {
         endpointType: undefined,
         endpointUrl: undefined
       }) });
+    });
+
+    it('clears_a_legacy_URL_only_endpoint_when_restoring_defaults', async () => {
+      Object.assign(mockCurrentChat.value, {
+        endpointType: undefined,
+        endpointUrl: 'http://legacy-only.example/v1',
+        endpointHttpHeaders: [['X-Legacy', '1']],
+      });
+
+      const wrapper = mount(ChatSettingsPanel, {
+        props: { show: true },
+        global: { stubs: globalStubs },
+      });
+      await nextTick();
+
+      await wrapper.get('[data-testid="chat-setting-restore-defaults"]').trigger('click');
+      await flushPromises();
+
+      expect(mockUpdateChatSettings).toHaveBeenLastCalledWith({
+        id: 'chat-1',
+        updates: expect.objectContaining({
+          endpointType: undefined,
+          endpointUrl: undefined,
+          endpointHttpHeaders: undefined,
+        }),
+      });
     });
 
     it('triggers updateChatSettings when restoring to global settings', async () => {
@@ -801,6 +1043,7 @@ describe('ChatSettingsPanel.vue', () => {
       const closeBtn = wrapper.find('[data-testid="close-button"]');
 
       await closeBtn.trigger('click');
+      await flushPromises();
       expect(wrapper.emitted()).toHaveProperty('close');
     });
 

@@ -1,9 +1,15 @@
 import { isProxy, reactive, ref, toRaw, triggerRef, watch, type Ref } from 'vue';
 import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
+import type { ScopedSettingChange } from '@/models/scoped-setting-change';
 import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { findDeepestLeaf, findNodeInBranch } from '@/utils/chat-tree';
 import { idToRaw, toChatId } from '@/models/ids';
+import {
+  applyScopedSettingChangesToChat,
+  applyScopedSettingChangesToChatMeta,
+  cloneScopedSettingChanges,
+} from '@/utils/scoped-setting-changes';
 
 export type ChatDataStore = {
   rootItems: Ref<SidebarItem[]>;
@@ -87,6 +93,14 @@ export type ChatDataStore = {
 
     updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
   }): Promise<void>;
+
+  updateChatScopedSettings({
+    chatId,
+    changes,
+  }: {
+    chatId: ChatId;
+    changes: readonly ScopedSettingChange[];
+  }): Promise<void>;
 };
 
 export function createChatDataStore({
@@ -110,6 +124,7 @@ export function createChatDataStore({
   const currentChatRef = ref<Chat | null>(null);
   const currentChatGroupRef = ref<ChatGroup | null>(null);
   const liveChatRegistry = reactive(new Map<ChatId, Chat>());
+  const scopedSettingUpdateQueues = new Map<ChatId, Promise<void>>();
 
   function registerLiveInstance({
     chat,
@@ -323,6 +338,74 @@ export function createChatDataStore({
     } });
   }
 
+  async function updateChatScopedSettings({
+    chatId,
+    changes,
+  }: {
+    chatId: ChatId;
+    changes: readonly ScopedSettingChange[];
+  }): Promise<void> {
+    if (changes.length === 0) return;
+
+    const queuedChanges = cloneScopedSettingChanges({ changes });
+    const previous = scopedSettingUpdateQueues.get(chatId) ?? Promise.resolve();
+    const operation = previous
+      .catch(() => undefined)
+      .then(async () => {
+        let persistedUpdatedAt: number | undefined;
+        await storageService.updateChatMeta({
+          id: chatId,
+          updater: ({ current }) => {
+            if (current === null) {
+              throw new Error('Chat not found');
+            }
+
+            // Derive the timestamp from the latest persisted value inside the
+            // storage lock. This prevents a queued or clock-skewed update from
+            // moving updatedAt backwards.
+            persistedUpdatedAt = Math.max(Date.now(), current.updatedAt + 1);
+            return applyScopedSettingChangesToChatMeta({
+              current,
+              changes: queuedChanges,
+              updatedAt: persistedUpdatedAt,
+            });
+          },
+        });
+
+        const existing = liveChatRegistry.get(chatId);
+        if (existing === undefined) return;
+        const current = toRaw(existing);
+        const updated = applyScopedSettingChangesToChat({
+          current,
+          changes: queuedChanges,
+          // Keep live state monotonic even if a custom storage adapter
+          // short-circuits without invoking the updater.
+          updatedAt: Math.max(
+            persistedUpdatedAt ?? Date.now(),
+            current.updatedAt + 1,
+          ),
+        });
+        Object.assign(existing, updated);
+        if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
+          triggerRef(currentChatRef);
+        }
+      });
+
+    const queueTail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    scopedSettingUpdateQueues.set(chatId, queueTail);
+
+    try {
+      await operation;
+    } finally {
+      if (scopedSettingUpdateQueues.get(chatId) === queueTail) {
+        scopedSettingUpdateQueues.delete(chatId);
+      }
+    }
+  }
+
   async function openChat({
     id,
     leafId,
@@ -512,5 +595,6 @@ export function createChatDataStore({
     openChatGroup,
     updateChatContent,
     updateChatMeta,
+    updateChatScopedSettings,
   };
 }

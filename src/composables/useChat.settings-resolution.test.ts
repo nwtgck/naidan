@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive, nextTick } from 'vue';
-import { idToRaw, toChatGroupId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 import { storageService } from '@/services/storage';
+import type { ChatMeta } from '@/models/types';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -179,6 +180,60 @@ describe('useChat Settings Resolution Policy', () => {
     await sendMessage({ content: 'C' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({ model: expect.any(String), onChunk: expect.any(Function) }));
+  });
+
+  it('preserves_group_endpoint_inheritance_for_a_partial_update_to_a_non_live_chat', async () => {
+    const chatId = toChatId({ raw: 'non-live-group-chat' });
+    const groupId = toChatGroupId({ raw: 'group-endpoint' });
+    const storedMeta: ChatMeta = {
+      id: chatId,
+      title: 'Grouped chat',
+      createdAt: 1,
+      updatedAt: 2,
+      debugEnabled: false,
+    };
+    chatStore.rootItems.value = [{
+      id: 'chat_group:group-endpoint',
+      type: 'chat_group',
+      chatGroup: reactive({
+        id: groupId,
+        name: 'Endpoint group',
+        isCollapsed: false,
+        updatedAt: 3,
+        endpoint: {
+          type: 'ollama' as const,
+          url: 'http://group-ollama:11434',
+          httpHeaders: [['X-Group', '1']] as [string, string][],
+        },
+        items: [{
+          id: 'chat:non-live-group-chat',
+          type: 'chat',
+          chat: {
+            id: chatId,
+            title: 'Grouped chat',
+            updatedAt: 2,
+            groupId,
+          },
+        }],
+      }),
+    }];
+
+    vi.mocked(storageService.loadChatMeta).mockResolvedValue(storedMeta);
+    let persisted: ChatMeta = storedMeta;
+    vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ updater }) => {
+      persisted = await updater({ current: persisted });
+    });
+
+    await updateChatSettings({
+      id: idToRaw({ id: chatId }),
+      updates: { endpointUrl: 'http://chat-ollama:11434' },
+    });
+
+    expect(persisted.endpoint).toEqual({
+      type: 'ollama',
+      url: 'http://chat-ollama:11434',
+      httpHeaders: [['X-Group', '1']],
+    });
   });
 
   it('Policy: Hierarchy Resolution (Chat > Group > Global) in resolvedSettings metadata', async () => {

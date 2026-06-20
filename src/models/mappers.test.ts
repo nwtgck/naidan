@@ -115,9 +115,27 @@ describe('LmParameters Mapping', () => {
       stop: undefined,
       reasoning: undefined
     } });
+    expect(domain).toBeDefined();
+    if (domain === undefined) throw new Error('Expected LM parameters');
     expect(domain.temperature).toBe(0.5);
     expect(domain.reasoning).toBeDefined();
     expect(domain.reasoning.effort).toBeUndefined();
+  });
+
+  it('preserves_all_LM_parameters_through_bidirectional_mapping', () => {
+    const domain = {
+      temperature: 0.4,
+      topP: 0.8,
+      maxCompletionTokens: 321,
+      presencePenalty: 0.2,
+      frequencyPenalty: 0.3,
+      stop: ['DONE'],
+      reasoning: { effort: 'high' as const },
+    };
+
+    const dto = lmParametersToDto({ domain });
+    expect(dto).toEqual(domain);
+    expect(lmParametersToDomain({ dto })).toEqual(domain);
   });
 
   it('should preserve reasoning effort through bidirectional mapping', () => {
@@ -134,6 +152,8 @@ describe('LmParameters Mapping', () => {
     expect(dto?.reasoning?.effort).toBe('medium');
 
     const backToDomain = lmParametersToDomain({ dto });
+    expect(backToDomain).toBeDefined();
+    if (backToDomain === undefined) throw new Error('Expected LM parameters');
     expect(backToDomain.reasoning.effort).toBe('medium');
   });
 });

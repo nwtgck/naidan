@@ -87,6 +87,7 @@ export const getReadonlyChat = chatDataStore.getReadonlyChat;
 export const loadData = chatDataStore.loadData;
 export const updateChatContent = chatDataStore.updateChatContent;
 export const updateChatMeta = chatDataStore.updateChatMeta;
+export const updateChatScopedSettings = chatDataStore.updateChatScopedSettings;
 
 export function getChatTargetByOptionalId({
   chatId,

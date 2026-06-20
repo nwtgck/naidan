@@ -729,14 +729,24 @@ async function updateActiveTitleModel({
 }) {
   switch (source) {
   case 'chat':
-    await chatMetadata.updateSettings({ chatId, updates: { titleModelId: modelId } });
+    await chatMetadata.updateScopedSettings({
+      chatId,
+      changes: [modelId === undefined
+        ? { field: 'title_model_id', behavior: 'inherit' }
+        : { field: 'title_model_id', behavior: 'override', value: modelId }],
+    });
     return;
   case 'chat_group':
     if (chatGroupId === undefined) {
       await saveSettings({ patch: { titleModelId: modelId } });
       return;
     }
-    await chatGroups.updateChatGroupMetadata({ chatGroupId, updates: { titleModelId: modelId } });
+    await chatGroups.updateScopedSettings({
+      chatGroupId,
+      changes: [modelId === undefined
+        ? { field: 'title_model_id', behavior: 'inherit' }
+        : { field: 'title_model_id', behavior: 'override', value: modelId }],
+    });
     return;
   case 'global':
     await saveSettings({ patch: { titleModelId: modelId } });
@@ -1003,12 +1013,16 @@ async function handleEnableFakeLmForChat() {
 
   await setFakeLmDebugModeStatus({ status: 'enabled' });
 
-  await chatMetadata.updateSettings({
+  await chatMetadata.updateScopedSettings({
     chatId: chatValue.id,
-    updates: {
-      endpointType: 'ollama',
-      endpointUrl: FAKE_LM_ENDPOINT_URL,
-    },
+    changes: [{
+      field: 'endpoint',
+      behavior: 'override',
+      value: {
+        type: 'ollama',
+        url: FAKE_LM_ENDPOINT_URL,
+      },
+    }],
   });
 
   addToast({

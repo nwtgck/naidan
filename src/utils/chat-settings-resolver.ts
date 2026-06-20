@@ -1,15 +1,17 @@
 import type { Chat, ChatGroup, EndpointType, LmParameters, Reasoning, SystemPrompt } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import {
+  hasLmParameterOverrides,
+  LM_PARAMETER_KEYS,
+  REASONING_PARAMETER_KEYS,
+} from '@/utils/lm-parameters';
 
-export interface ResolvableLmParameters {
-  temperature?: number;
-  topP?: number;
-  maxCompletionTokens?: number;
-  presencePenalty?: number;
-  frequencyPenalty?: number;
+export type ResolvableLmParameters = Readonly<
+  Partial<Omit<LmParameters, 'reasoning' | 'stop'>>
+> & Readonly<{
   stop?: readonly string[];
   reasoning: Reasoning;
-}
+}>;
 
 export interface ResolvableSettings {
   endpointType: EndpointType;
@@ -20,6 +22,64 @@ export interface ResolvableSettings {
   autoTitleEnabled?: boolean;
   systemPrompt?: string;
   lmParameters?: ResolvableLmParameters;
+}
+
+
+function applyLmParameterOverrides({
+  target,
+  source,
+}: {
+  target: LmParameters;
+  source: ResolvableLmParameters | LmParameters | undefined;
+}): void {
+  if (source === undefined) return;
+
+  // Keep resolution keyed by the canonical domain shape. New top-level or
+  // reasoning parameters must fail typechecking until their inheritance rules
+  // are implemented instead of being silently dropped during resolution.
+  for (const key of LM_PARAMETER_KEYS) {
+    switch (key) {
+    case 'temperature':
+      if (source.temperature !== undefined) target.temperature = source.temperature;
+      break;
+    case 'topP':
+      if (source.topP !== undefined) target.topP = source.topP;
+      break;
+    case 'maxCompletionTokens':
+      if (source.maxCompletionTokens !== undefined) {
+        target.maxCompletionTokens = source.maxCompletionTokens;
+      }
+      break;
+    case 'presencePenalty':
+      if (source.presencePenalty !== undefined) target.presencePenalty = source.presencePenalty;
+      break;
+    case 'frequencyPenalty':
+      if (source.frequencyPenalty !== undefined) target.frequencyPenalty = source.frequencyPenalty;
+      break;
+    case 'stop':
+      if (source.stop !== undefined) target.stop = [...source.stop];
+      break;
+    case 'reasoning':
+      for (const reasoningKey of REASONING_PARAMETER_KEYS) {
+        switch (reasoningKey) {
+        case 'effort':
+          if (source.reasoning?.effort !== undefined) {
+            target.reasoning.effort = source.reasoning.effort;
+          }
+          break;
+        default: {
+          const _ex: never = reasoningKey;
+          throw new Error(`Unhandled reasoning parameter key: ${_ex}`);
+        }
+        }
+      }
+      break;
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled LM parameter key: ${_ex}`);
+    }
+    }
+  }
 }
 
 export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Chat, groups: ChatGroup[], globalSettings: ResolvableSettings }) {
@@ -41,6 +101,8 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
 
   const groupSystemPrompt = group?.systemPrompt;
   if (groupSystemPrompt) {
+    // Keep the union exhaustive so a new composition behavior cannot be
+    // silently ignored while resolving inherited prompts.
     switch (groupSystemPrompt.behavior) {
     case 'override':
       systemPrompts = groupSystemPrompt.content ? [groupSystemPrompt.content] : [];
@@ -49,14 +111,16 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
       if (groupSystemPrompt.content) systemPrompts.push(groupSystemPrompt.content);
       break;
     default: {
-      const _ex: never = groupSystemPrompt as never;
-      throw new Error(`Unhandled system prompt behavior: ${(_ex as { behavior: string }).behavior}`);
+      const _ex: never = groupSystemPrompt;
+      throw new Error(`Unhandled group system prompt: ${String(_ex)}`);
     }
     }
   }
 
   const chatSystemPrompt = chat.systemPrompt;
   if (chatSystemPrompt) {
+    // Mirror the group-level exhaustive check. Both scope layers must be
+    // reviewed when the SystemPrompt union gains a new behavior.
     switch (chatSystemPrompt.behavior) {
     case 'override':
       systemPrompts = chatSystemPrompt.content ? [chatSystemPrompt.content] : [];
@@ -65,8 +129,8 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
       if (chatSystemPrompt.content) systemPrompts.push(chatSystemPrompt.content);
       break;
     default: {
-      const _ex: never = chatSystemPrompt as never;
-      throw new Error(`Unhandled system prompt behavior: ${(_ex as { behavior: string }).behavior}`);
+      const _ex: never = chatSystemPrompt;
+      throw new Error(`Unhandled chat system prompt: ${String(_ex)}`);
     }
     }
   }
@@ -76,12 +140,9 @@ export function resolveChatSettings({ chat, groups, globalSettings }: { chat: Ch
     reasoning: { ...EMPTY_LM_PARAMETERS.reasoning }
   };
 
-  [globalSettings.lmParameters, group?.lmParameters, chat.lmParameters].forEach(src => {
-    if (!src) return;
-    const { reasoning, ...rest } = src;
-    Object.assign(lmParameters, Object.fromEntries(Object.entries(rest).filter(([_, v]) => v !== undefined)));
-    if (reasoning?.effort !== undefined) lmParameters.reasoning.effort = reasoning.effort;
-  });
+  for (const source of [globalSettings.lmParameters, group?.lmParameters, chat.lmParameters]) {
+    applyLmParameterOverrides({ target: lmParameters, source });
+  }
 
   return {
     endpointType, endpointUrl, endpointHttpHeaders, modelId, autoTitleEnabled, titleModelId, systemPromptMessages: systemPrompts, lmParameters,
@@ -118,23 +179,7 @@ export function hasChatOverrides({ chat }: {
     chat.autoTitleEnabled !== undefined ||
     chat.titleModelId ||
     chat.systemPrompt ||
-    (chat.lmParameters && (Object.keys(chat.lmParameters) as (keyof ResolvableLmParameters)[]).some(key => {
-      switch (key) {
-      case 'reasoning':
-        return chat.lmParameters!.reasoning.effort !== undefined;
-      case 'temperature':
-      case 'topP':
-      case 'maxCompletionTokens':
-      case 'presencePenalty':
-      case 'frequencyPenalty':
-      case 'stop':
-        return chat.lmParameters![key] !== undefined;
-      default: {
-        const _ex: never = key;
-        throw new Error(`Unhandled parameter key: ${_ex}`);
-      }
-      }
-    }))
+    hasLmParameterOverrides({ lmParameters: chat.lmParameters })
   );
 }
 
@@ -163,22 +208,6 @@ export function hasGroupOverrides({ group }: {
     group.titleModelId ||
     group.systemPrompt ||
     (group.mounts && group.mounts.length > 0) ||
-    (group.lmParameters && (Object.keys(group.lmParameters) as (keyof ResolvableLmParameters)[]).some(key => {
-      switch (key) {
-      case 'reasoning':
-        return group.lmParameters!.reasoning.effort !== undefined;
-      case 'temperature':
-      case 'topP':
-      case 'maxCompletionTokens':
-      case 'presencePenalty':
-      case 'frequencyPenalty':
-      case 'stop':
-        return group.lmParameters![key] !== undefined;
-      default: {
-        const _ex: never = key;
-        throw new Error(`Unhandled parameter key: ${_ex}`);
-      }
-      }
-    }))
+    hasLmParameterOverrides({ lmParameters: group.lmParameters })
   );
 }

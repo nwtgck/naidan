@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import type { LmParameters } from '@/models/types';
 import { RotateCcwIcon, XIcon } from 'lucide-vue-next';
+import { hasLmParameterOverrides } from '@/utils/lm-parameters';
 
 const props = defineProps<{
   modelValue?: LmParameters;
@@ -36,6 +37,9 @@ watch(() => params.value.stop, (newVal) => {
   }
 }, { immediate: true });
 
+// Keep the key switches below exhaustive. Adding an LM parameter must stop
+// typechecking until its clear and assignment semantics are implemented; this
+// deliberately prevents a future refactor from silently ignoring the field.
 function updateParam<K extends keyof LmParameters>({ key, value }: { key: K; value: LmParameters[K] }) {
   const newParams: LmParameters = { ...params.value };
   if (value === undefined || value === null || (value as unknown) === '' || (typeof value === 'number' && isNaN(value))) {
@@ -114,6 +118,8 @@ function reset() {
   stopJsonError.value = null;
 }
 
+// This exhaustive switch is also a compile-time review gate for new parameters.
+// Do not replace it with a partial list of property checks.
 const isOverridden = ({ key }: { key: keyof LmParameters }) => {
   switch (key) {
   case 'reasoning':
@@ -151,7 +157,7 @@ defineExpose({
         </span>
       </div>
       <button
-        v-if="Object.values(params).some(v => v !== undefined)"
+        v-if="hasLmParameterOverrides({ lmParameters: params })"
         @click="reset"
         class="text-[10px] font-bold text-gray-400 hover:text-blue-500 flex items-center gap-1 transition-colors"
       >

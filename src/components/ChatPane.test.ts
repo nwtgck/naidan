@@ -19,6 +19,8 @@ const router = createRouter({
 import type { MessageNode, Chat } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
+import type { ScopedSettingChange } from '@/models/scoped-setting-change';
+import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
 
 const {
   mockEnsureChatTmpDirectory,
@@ -87,6 +89,22 @@ const mockUpdateChatSettings = vi.fn().mockImplementation(({ id, updates }) => {
 const mockUpdateChatGroupMetadata = vi.fn().mockImplementation(({ id, updates }) => {
   if (mockCurrentChatGroup.value && mockCurrentChatGroup.value.id === id) {
     Object.assign(mockCurrentChatGroup.value, updates);
+  }
+});
+const mockUpdateChatGroupScopedSettings = vi.fn();
+const mockUpdateChatScopedSettings = vi.fn().mockImplementation(async ({
+  chatId,
+  changes,
+}: {
+  chatId: ChatId;
+  changes: readonly ScopedSettingChange[];
+}) => {
+  if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
+    mockCurrentChat.value = applyScopedSettingChangesToChat({
+      current: mockCurrentChat.value,
+      changes,
+      updatedAt: mockCurrentChat.value.updatedAt + 1,
+    });
   }
 });
 
@@ -372,6 +390,10 @@ vi.mock('../composables/chat/useChatGroups', () => ({
         id: chatGroupId,
         updates,
       }),
+    updateScopedSettings: ({ chatGroupId, changes }: {
+      chatGroupId: string;
+      changes: readonly unknown[];
+    }) => mockUpdateChatGroupScopedSettings({ chatGroupId, changes }),
   }),
 }));
 
@@ -444,6 +466,10 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
         id: chatId,
         updates,
       }),
+    updateScopedSettings: ({ chatId, changes }: {
+      chatId: ChatId;
+      changes: readonly ScopedSettingChange[];
+    }) => mockUpdateChatScopedSettings({ chatId, changes }),
     reasoningEffort: ({ chatId }: { chatId: { value: string } }) =>
       computed(() => mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId.value ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined),
     updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
@@ -1134,12 +1160,16 @@ Question`,
     await flushPromises();
 
     expect(mockSetFakeLmDebugModeStatus).toHaveBeenCalledWith({ status: 'enabled' });
-    expect(mockUpdateChatSettings).toHaveBeenCalledWith({
-      id: '1',
-      updates: {
-        endpointType: 'ollama',
-        endpointUrl: 'https://fake-lm.invalid',
-      },
+    expect(mockUpdateChatScopedSettings).toHaveBeenCalledWith({
+      chatId: toChatId({ raw: '1' }),
+      changes: [{
+        field: 'endpoint',
+        behavior: 'override',
+        value: {
+          type: 'ollama',
+          url: 'https://fake-lm.invalid',
+        },
+      }],
     });
     expect(mockCurrentChat.value?.endpointType).toBe('ollama');
     expect(mockCurrentChat.value?.endpointUrl).toBe('https://fake-lm.invalid');
@@ -1168,13 +1198,7 @@ Question`,
     await flushPromises();
 
     expect(mockSetFakeLmDebugModeStatus).not.toHaveBeenCalled();
-    expect(mockUpdateChatSettings).not.toHaveBeenCalledWith({
-      id: '1',
-      updates: {
-        endpointType: 'ollama',
-        endpointUrl: 'https://fake-lm.invalid',
-      },
-    });
+    expect(mockUpdateChatScopedSettings).not.toHaveBeenCalled();
     expect(mockCurrentChat.value?.endpointType).toBe('openai');
     expect(mockCurrentChat.value?.endpointUrl).toBe('https://example.com');
   });
@@ -1340,7 +1364,14 @@ Question`,
     await flushPromises();
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: toChatId({ raw: '1' }), updates: { titleModelId: 'model-2' } });
+    expect(mockUpdateChatScopedSettings).toHaveBeenCalledWith({
+      chatId: toChatId({ raw: '1' }),
+      changes: [{
+        field: 'title_model_id',
+        behavior: 'override',
+        value: 'model-2',
+      }],
+    });
     expect(mockSaveSettings).not.toHaveBeenCalled();
     expect(mockUpdateChatGroupMetadata).not.toHaveBeenCalled();
   });
@@ -1369,9 +1400,16 @@ Question`,
     await flushPromises();
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'group-1', updates: { titleModelId: 'model-2' } });
+    expect(mockUpdateChatGroupScopedSettings).toHaveBeenCalledWith({
+      chatGroupId: 'group-1',
+      changes: [{
+        field: 'title_model_id',
+        behavior: 'override',
+        value: 'model-2',
+      }],
+    });
     expect(mockSaveSettings).not.toHaveBeenCalled();
-    expect(mockUpdateChatSettings).not.toHaveBeenCalled();
+    expect(mockUpdateChatScopedSettings).not.toHaveBeenCalled();
   });
 
   it('should abort title generation from the title dialog', async () => {
@@ -3592,10 +3630,14 @@ describe('ChatPane Model Selection', () => {
     // 3. Open Settings Panel
     const settingsBtn = wrapper.find('button[data-testid="model-trigger"]');
     await settingsBtn.trigger('click');
+    await vi.dynamicImportSettled();
+    await flushPromises();
     await nextTick();
 
-    const settingsPanel = wrapper.findComponent({ name: 'ChatSettingsPanel' });
-    expect(settingsPanel.exists()).toBe(true);
+    await vi.waitFor(() => {
+      expect(wrapper!.findComponent({ name: 'ChatSettingsPanel' }).exists()).toBe(true);
+    });
+    const settingsPanel = wrapper!.findComponent({ name: 'ChatSettingsPanel' });
 
     // Verify Settings Panel UI is synced
     const reasoningSettings = settingsPanel.findComponent({ name: 'ReasoningSettings' });
@@ -3604,6 +3646,7 @@ describe('ChatPane Model Selection', () => {
 
     // 4. Change reasoning effort in Settings Panel
     await reasoningSettings.vm.$emit('update:effort', 'low');
+    await flushPromises();
     await nextTick();
 
     // Verify currentChat was updated via the panel's save mechanism
@@ -3611,5 +3654,5 @@ describe('ChatPane Model Selection', () => {
 
     // 5. Verify Tools Menu UI is also synced
     expect(toolsMenu.props('selectedReasoningEffort')).toBe('low');
-  });
+  }, 20_000);
 });
