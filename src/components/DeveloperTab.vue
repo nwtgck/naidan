@@ -3,9 +3,14 @@ import { useSampleChat } from '@/composables/useSampleChat';
 import { useConfirm } from '@/composables/useConfirm';
 import { usePWAUpdate } from '@/composables/usePWAUpdate';
 import { storageService } from '@/services/storage';
+import { defineAsyncComponent } from 'vue';
 import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon, ScrollTextIcon } from 'lucide-vue-next';
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
+
+const StandaloneVerificationPanel = __BUILD_MODE_IS_STANDALONE__
+  ? defineAsyncComponent(() => import('./StandaloneVerificationPanel.vue'))
+  : undefined;
 
 defineProps<{
   storageType: string;
@@ -102,6 +107,8 @@ defineExpose({
         </div>
 
         <DeveloperOpenStateLinks />
+
+        <StandaloneVerificationPanel v-if="StandaloneVerificationPanel" />
 
         <div class="space-y-2">
           <button

@@ -1,84 +1,109 @@
 /**
- * ESLint configuration chunk to enforce proper Vue app initialization for file:/// protocol compatibility.
- * This is specialized for 'src/main.ts'.
+ * Enforce the startup boundary required by the file-protocol build.
+ *
+ * The standalone entry is evaluated asynchronously through SystemJS. On a
+ * sufficiently large module graph, DOMContentLoaded may have fired before
+ * main.ts executes, so requiring app.mount() inside a future-only event listener
+ * recreates the exact white-screen failure this rule is intended to prevent.
+ * main.ts must delegate to the ready-state-aware scheduleAppStartup helper and
+ * the scheduled bootstrap function must own the Vue mount.
  */
-const rule = {
+export const rule = {
   meta: {
     type: 'problem',
     docs: {
-      description: "Enforce proper Vue app initialization for file:/// protocol compatibility.",
+      description: 'Enforce ready-state-aware Vue initialization for file-protocol compatibility.',
     },
   },
   create(context) {
-    let hasErrorHandler = false;
-    let hasDOMContentLoaded = false;
-    let hasMountInsideListener = false;
+    let hasErrorHandler = false
+    let bootstrapFunctionName
+    const functionStack = []
+    const functionsContainingMount = new Set()
 
     return {
       AssignmentExpression(node) {
-        const left = node.left;
+        const left = node.left
         if (
-          left.type === 'MemberExpression' &&
-          left.object.type === 'MemberExpression' &&
-          left.object.object.name === 'app' &&
-          left.object.property.name === 'config' &&
-          left.property.name === 'errorHandler'
+          left.type === 'MemberExpression'
+          && left.object.type === 'MemberExpression'
+          && left.object.object.name === 'app'
+          && left.object.property.name === 'config'
+          && left.property.name === 'errorHandler'
         ) {
-          hasErrorHandler = true;
+          hasErrorHandler = true
         }
       },
+      FunctionDeclaration(node) {
+        functionStack.push(node.id?.name)
+      },
+      'FunctionDeclaration:exit'() {
+        functionStack.pop()
+      },
       CallExpression(node) {
-        const callee = node.callee;
         if (
-          callee.type === 'MemberExpression' &&
-          callee.object.name === 'window' &&
-          callee.property.name === 'addEventListener' &&
-          node.arguments[0]?.type === 'Literal' &&
-          node.arguments[0].value === 'DOMContentLoaded'
+          node.callee.type === 'MemberExpression'
+          && !node.callee.computed
+          && node.callee.object.type === 'Identifier'
+          && node.callee.object.name === 'app'
+          && node.callee.property.type === 'Identifier'
+          && node.callee.property.name === 'mount'
         ) {
-          hasDOMContentLoaded = true;
-          const callback = node.arguments[1];
-          if (callback && (callback.type === 'ArrowFunctionExpression' || callback.type === 'FunctionExpression')) {
-            const bodyText = context.sourceCode.getText(callback.body);
-            if (bodyText.includes('app.mount')) {
-              hasMountInsideListener = true;
-            }
+          const currentFunctionName = functionStack.at(-1)
+          if (currentFunctionName !== undefined) {
+            functionsContainingMount.add(currentFunctionName)
           }
+        }
+
+        if (node.callee.type !== 'Identifier' || node.callee.name !== 'scheduleAppStartup') return
+        const argument = node.arguments[0]
+        if (argument?.type !== 'ObjectExpression') return
+        const bootstrapProperty = argument.properties.find((property) => (
+          property.type === 'Property'
+          && !property.computed
+          && ((property.key.type === 'Identifier' && property.key.name === 'bootstrap')
+            || (property.key.type === 'Literal' && property.key.value === 'bootstrap'))
+        ))
+        if (bootstrapProperty?.type !== 'Property') return
+        if (bootstrapProperty.value.type === 'Identifier') {
+          bootstrapFunctionName = bootstrapProperty.value.name
         }
       },
       'Program:exit'(node) {
         if (!hasErrorHandler) {
           context.report({
             node,
-            message: "The 'file:///' protocol requires a global error handler: 'app.config.errorHandler = ...' must be defined in main.ts."
-          });
+            message: "The 'file:///' protocol requires a global error handler: 'app.config.errorHandler = ...' must be defined in main.ts.",
+          })
         }
-        if (!hasDOMContentLoaded) {
+        if (bootstrapFunctionName === undefined) {
           context.report({
             node,
-            message: "To support 'file:///' protocol, Vue app must be mounted inside a 'DOMContentLoaded' event listener."
-          });
-        } else if (!hasMountInsideListener) {
+            message: 'To support asynchronous file-protocol entry loading, main.ts must call scheduleAppStartup() with a bootstrap function.',
+          })
+          return
+        }
+        if (!functionsContainingMount.has(bootstrapFunctionName)) {
           context.report({
             node,
-            message: "Vue app must be mounted using 'app.mount()' inside the 'DOMContentLoaded' listener."
-          });
+            message: 'The bootstrap function passed to scheduleAppStartup() must contain app.mount().',
+          })
         }
-      }
-    };
-  }
-};
+      },
+    }
+  },
+}
 
 export default {
   files: ['src/main.ts'],
   plugins: {
     'local-rules': {
       rules: {
-        'ensure-file-protocol-init': rule
-      }
-    }
+        'ensure-file-protocol-init': rule,
+      },
+    },
   },
   rules: {
-    'local-rules/ensure-file-protocol-init': 'error'
-  }
-};
+    'local-rules/ensure-file-protocol-init': 'error',
+  },
+}
