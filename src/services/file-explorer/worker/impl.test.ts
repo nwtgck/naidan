@@ -5,16 +5,17 @@ import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFil
 import { OPFSStorageProvider } from '@/services/storage/opfs-storage'
 import type { ChatContent, ChatGroup, ChatMeta } from '@/models/types'
 import { renderChatMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/metadata-markdown'
+import { idToRaw, toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 describe('file-explorer.worker.impl', () => {
   let worker: ReturnType<typeof createFileExplorerWorker>
 
   beforeEach(() => {
-    worker = createFileExplorerWorker({})
+    worker = createFileExplorerWorker()
   })
 
   it('lists native directory entries with metadata', async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
     const fileHandle = await rootHandle.getFileHandle('readme.txt', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('hello')
@@ -44,7 +45,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('reads text previews and formats JSON', async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
     const fileHandle = await rootHandle.getFileHandle('data.json', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('{"a":1}')
@@ -77,7 +78,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('creates, copies, moves, and deletes entries inside a session', async () => {
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
     await rootHandle.getDirectoryHandle('target', { create: true })
 
     const { sessionId } = await worker.prepareSession({
@@ -148,7 +149,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('exposes virtual directories for wesh mounts roots', async () => {
-    const mountHandle = new MockFileSystemDirectoryHandle('project')
+    const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' })
     const fileHandle = await mountHandle.getFileHandle('index.ts', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('export {}')
@@ -187,7 +188,7 @@ describe('file-explorer.worker.impl', () => {
   })
 
   it('lists and navigates naidan sysfs entries from wesh mounts', async () => {
-    const opfsRoot = new MockFileSystemDirectoryHandle('opfs-root')
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs-root' })
     const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true })
     await storageRoot.getDirectoryHandle('uploaded-files', { create: true })
     Object.defineProperty(globalThis, 'navigator', {
@@ -202,10 +203,10 @@ describe('file-explorer.worker.impl', () => {
     const provider = new OPFSStorageProvider()
     await provider.init()
     const chatMeta: ChatMeta = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Main Chat',
-      groupId: 'chat-group-1',
-      currentLeafId: 'assistant-1',
+      groupId: toChatGroupId({ raw: 'chat-group-1' }),
+      currentLeafId: toMessageId({ raw: 'assistant-1' }),
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: false,
@@ -224,16 +225,16 @@ describe('file-explorer.worker.impl', () => {
       mounts: [],
     }
     const chatContent: ChatContent = {
-      currentLeafId: 'assistant-1',
+      currentLeafId: toMessageId({ raw: 'assistant-1' }),
       root: {
         items: [{
-          id: 'user-1',
+          id: toMessageId({ raw: 'user-1' }),
           role: 'user',
           content: 'Hello',
           timestamp: 1000,
           replies: {
             items: [{
-              id: 'assistant-1',
+              id: toMessageId({ raw: 'assistant-1' }),
               role: 'assistant',
               content: 'Hi',
               timestamp: 1001,
@@ -245,7 +246,7 @@ describe('file-explorer.worker.impl', () => {
       },
     }
     const chatGroup: ChatGroup = {
-      id: 'chat-group-1',
+      id: toChatGroupId({ raw: 'chat-group-1' }),
       name: 'Research',
       isCollapsed: false,
       updatedAt: 200,
@@ -265,25 +266,25 @@ describe('file-explorer.worker.impl', () => {
           id: 'chat:chat-1',
           type: 'chat',
           chat: {
-            id: 'chat-1',
+            id: toChatId({ raw: 'chat-1' }),
             title: 'Main Chat',
             updatedAt: 200,
-            groupId: 'chat-group-1',
+            groupId: toChatGroupId({ raw: 'chat-group-1' }),
           },
         },
       ],
     }
-    await provider.saveChatMeta(chatMeta)
-    await provider.saveChatContent(chatMeta.id, chatContent)
-    await provider.saveChatGroup(chatGroup)
-    await provider.saveHierarchy({
+    await provider.saveChatMeta({ meta: chatMeta })
+    await provider.saveChatContent({ id: chatMeta.id, content: chatContent })
+    await provider.saveChatGroup({ chatGroup })
+    await provider.saveHierarchy({ hierarchy: {
       items: [{
         type: 'chat_group',
         id: 'chat-group-1',
         chat_ids: ['chat-1'],
       }],
-    })
-    const storedChatMeta = await provider.loadChatMeta({ id: 'chat-1' })
+    } })
+    const storedChatMeta = await provider.loadChatMeta({ id: toChatId({ raw: 'chat-1' }) })
 
     const { sessionId } = await worker.prepareSession({
       request: {
@@ -370,10 +371,10 @@ describe('file-explorer.worker.impl', () => {
 
   it('reads naidan sysfs metadata through a local remote reader', async () => {
     const chatMeta: ChatMeta = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Local Chat',
-      groupId: 'chat-group-1',
-      currentLeafId: 'a1chatMetadataAbCdEf',
+      groupId: toChatGroupId({ raw: 'chat-group-1' }),
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: false,
@@ -392,11 +393,11 @@ describe('file-explorer.worker.impl', () => {
       mounts: [],
     }
     const chatContent: ChatContent = {
-      currentLeafId: 'a1chatMetadataAbCdEf',
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
       root: { items: [] },
     }
     const chatGroup: ChatGroup = {
-      id: 'chat-group-1',
+      id: toChatGroupId({ raw: 'chat-group-1' }),
       name: 'Local Group',
       isCollapsed: false,
       updatedAt: 200,
@@ -411,15 +412,15 @@ describe('file-explorer.worker.impl', () => {
         id: 'chat:chat-1',
         type: 'chat',
         chat: {
-          id: 'chat-1',
+          id: toChatId({ raw: 'chat-1' }),
           title: 'Local Chat',
           updatedAt: 200,
-          groupId: 'chat-group-1',
+          groupId: toChatGroupId({ raw: 'chat-group-1' }),
         },
       }],
     }
     const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) })
-    expectedMetadata.groupId = 'chat-group-1'
+    expectedMetadata.groupId = toChatGroupId({ raw: 'chat-group-1' })
 
     const { sessionId } = await worker.prepareSession({
       request: {
@@ -447,7 +448,7 @@ describe('file-explorer.worker.impl', () => {
                   items: chatGroup.items.map(item => ({
                     id: item.id,
                     type: 'chat',
-                    chat: item.chat,
+                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
                   })),
                 },
               }]
@@ -466,7 +467,7 @@ describe('file-explorer.worker.impl', () => {
                 items: chatGroup.items.map(item => ({
                   id: item.id,
                   type: 'chat',
-                  chat: item.chat,
+                  chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
                 })),
               }]
             },
@@ -481,6 +482,17 @@ describe('file-explorer.worker.impl', () => {
             async loadChatContent({ chatId }: { chatId: string }) {
               return chatId === 'chat-1' ? chatContentToDto({ domain: chatContent }) : undefined
             },
+            async loadChat({ chatId }: { chatId: string }) {
+              return chatId === 'chat-1'
+                ? {
+                  metadata: {
+                    dto: chatMetaToDto({ domain: chatMeta }),
+                    groupId: 'chat-group-1',
+                  },
+                  content: chatContentToDto({ domain: chatContent }),
+                }
+                : undefined
+            },
             async loadChatGroup({ chatGroupId }: { chatGroupId: string }) {
               return chatGroupId === 'chat-group-1'
                 ? {
@@ -488,7 +500,7 @@ describe('file-explorer.worker.impl', () => {
                   items: chatGroup.items.map(item => ({
                     id: item.id,
                     type: 'chat',
-                    chat: item.chat,
+                    chat: { ...item.chat, id: idToRaw({ id: item.chat.id }), groupId: item.chat.groupId === undefined ? undefined : item.chat.groupId === null ? null : idToRaw({ id: item.chat.groupId as NonNullable<typeof item.chat.groupId> }) },
                   })),
                 }
                 : undefined

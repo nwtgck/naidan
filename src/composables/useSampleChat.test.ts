@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { useSampleChat } from './useSampleChat';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
 import { storageService } from '@/services/storage';
+import { idToRaw } from '@/models/ids';
 
 // Mock dependencies
 vi.mock('@/composables/chat/ui/useChatBootstrap', () => ({
@@ -30,8 +31,8 @@ describe('useSampleChat', () => {
       TEST_ONLY: {},
     });
     // Mock updateHierarchy to just call the callback
-    vi.mocked(storageService.updateHierarchy).mockImplementation(async (updater) => {
-      await updater({ items: [] });
+    vi.mocked(storageService.updateHierarchy).mockImplementation(async ({ updater }) => {
+      await updater({ current: { items: [] } });
     });
   });
 
@@ -42,12 +43,12 @@ describe('useSampleChat', () => {
     // Verify storage calls
     const contentCall = vi.mocked(storageService.updateChatContent).mock.calls[0];
     expect(contentCall).toBeDefined();
-    const content = await contentCall![1](null);
+    const content = await contentCall![0].updater({ current: null });
 
     const metaCall = vi.mocked(storageService.updateChatMeta).mock.calls[0];
     expect(metaCall).toBeDefined();
-    const meta = await metaCall![1](null);
-    const chatId = metaCall![0];
+    const meta = await metaCall![0].updater({ current: null });
+    const chatId = metaCall![0].id;
 
     expect(chatId).toBeDefined();
     expect(meta.title).toBe('🚀 Sample: Tree Showcase');
@@ -93,12 +94,12 @@ describe('useSampleChat', () => {
 
     const contentCall = vi.mocked(storageService.updateChatContent).mock.calls[0];
     expect(contentCall).toBeDefined();
-    const content = await contentCall![1](null);
+    const content = await contentCall![0].updater({ current: null });
 
     const metaCall = vi.mocked(storageService.updateChatMeta).mock.calls[0];
     expect(metaCall).toBeDefined();
-    const meta = await metaCall![1](null);
-    const chatId = metaCall![0];
+    const meta = await metaCall![0].updater({ current: null });
+    const chatId = metaCall![0].id;
 
     expect(meta.title).toBe('Long Sample: Outline Stress Test');
     expect(meta.debugEnabled).toBe(false);
@@ -106,7 +107,7 @@ describe('useSampleChat', () => {
     const messages: Array<{ id: string; role: string; content: string | undefined }> = [];
     let current = content.root.items[0];
     while (current) {
-      messages.push({ id: current.id, role: current.role, content: current.content });
+      messages.push({ id: idToRaw({ id: current.id }), role: current.role, content: current.content });
       current = current.replies.items[0];
     }
 

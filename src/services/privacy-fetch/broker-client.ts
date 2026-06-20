@@ -1,4 +1,4 @@
-import { generateId } from '@/utils/id'
+import { generateOpaqueId } from '@/utils/id'
 import { createPrivacyFetchError } from './errors'
 import { PRIVACY_FETCH_PROTOCOL } from './protocol'
 import { privacyFetchBrokerToParentMessageSchema } from './schemas'
@@ -8,25 +8,24 @@ import type {
   PrivacyFetchResponse,
 } from './types'
 
-type PendingRequest = {
-  reject: (reason: Error) => void;
-  resolve: (value: PrivacyFetchResponse) => void;
+type PromiseCallbacks<T> = Pick<
+  ReturnType<typeof Promise.withResolvers<T>>,
+  'reject' | 'resolve'
+>
+
+type PendingRequest = PromiseCallbacks<PrivacyFetchResponse> & {
   cleanup: () => void;
 }
 
-type Deferred<T> = {
-  promise: Promise<T>;
-  reject: (reason: Error) => void;
-  resolve: (value: T) => void;
-}
+type Deferred<T> = ReturnType<typeof Promise.withResolvers<T>>
 
 const PRIVACY_FETCH_BROKER_PATH = '/privacy-fetch-broker.html'
 
 let sharedPrivacyFetchBrokerClient: PrivacyFetchBrokerClient | undefined
 
 function createDeferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  let reject!: (reason: Error) => void
+  let resolve!: Deferred<T>['resolve']
+  let reject!: Deferred<T>['reject']
   const promise = new Promise<T>((promiseResolve, promiseReject) => {
     resolve = promiseResolve
     reject = promiseReject
@@ -100,7 +99,7 @@ export function createPrivacyFetchBrokerClient({
     callback,
   }: {
     requestId: string;
-    callback: (pendingRequest: PendingRequest) => void;
+    callback: ({ pendingRequest }: { pendingRequest: PendingRequest }) => void;
   }): void => {
     const pendingRequest = pendingRequests.get(requestId)
     if (pendingRequest === undefined) {
@@ -109,10 +108,10 @@ export function createPrivacyFetchBrokerClient({
 
     pendingRequest.cleanup()
     pendingRequests.delete(requestId)
-    callback(pendingRequest)
+    callback({ pendingRequest })
   }
 
-  const handleMessage = (event: MessageEvent) => {
+  const handleMessage: NonNullable<Window['onmessage']> = (event) => {
     if (event.source !== iframe?.contentWindow) {
       return
     }
@@ -133,7 +132,7 @@ export function createPrivacyFetchBrokerClient({
     case 'response':
       resolvePendingRequest({
         requestId: message.requestId,
-        callback: (pendingRequest) => {
+        callback: ({ pendingRequest }) => {
           pendingRequest.resolve({
             url: message.url,
             status: message.status,
@@ -152,7 +151,7 @@ export function createPrivacyFetchBrokerClient({
     case 'rejected':
       resolvePendingRequest({
         requestId: message.requestId,
-        callback: (pendingRequest) => {
+        callback: ({ pendingRequest }) => {
           pendingRequest.reject(createPrivacyFetchError({
             code: 'rejected',
             message: `Privacy fetch rejected [${message.validationResult.code}]: ${message.validationResult.message}`,
@@ -163,7 +162,7 @@ export function createPrivacyFetchBrokerClient({
     case 'error':
       resolvePendingRequest({
         requestId: message.requestId,
-        callback: (pendingRequest) => {
+        callback: ({ pendingRequest }) => {
           pendingRequest.reject(createPrivacyFetchError({
             code: message.code,
             message: `Privacy fetch failed [${message.code}]: ${message.message}`,
@@ -252,7 +251,7 @@ export function createPrivacyFetchBrokerClient({
   }
 
   return {
-    async fetch(request: PrivacyFetchRequest): Promise<PrivacyFetchResponse> {
+    async fetch({ request }: { request: PrivacyFetchRequest }): Promise<PrivacyFetchResponse> {
       if (disposed) {
         throw createPrivacyFetchError({
           code: 'broker_disposed',
@@ -278,7 +277,7 @@ export function createPrivacyFetchBrokerClient({
         })
       }
 
-      const requestId = generateId<string>()
+      const requestId = generateOpaqueId()
 
       return new Promise<PrivacyFetchResponse>((resolve, reject) => {
         let settled = false
@@ -322,9 +321,11 @@ export function createPrivacyFetchBrokerClient({
           request.signal?.removeEventListener('abort', onAbort)
         }
 
+        const resolvePending: PendingRequest['resolve'] = (response) => settle({ callback: () => resolve(response) })
+        const rejectPending: PendingRequest['reject'] = (error) => settle({ callback: () => reject(error) })
         pendingRequests.set(requestId, {
-          resolve: (response) => settle({ callback: () => resolve(response) }),
-          reject: (error) => settle({ callback: () => reject(error) }),
+          resolve: resolvePending,
+          reject: rejectPending,
           cleanup,
         })
 

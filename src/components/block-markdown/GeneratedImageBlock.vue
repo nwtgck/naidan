@@ -8,6 +8,7 @@ import ImageInfoDisplay from '@/components/ImageInfoDisplay.vue';
 import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
 import { useImagePreview, MESSAGE_CONTEXTUAL_PREVIEW_KEY } from '@/composables/useImagePreview';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
+import { toBinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
   json: string;
@@ -52,11 +53,11 @@ async function loadImage() {
   error.value = undefined;
 
   try {
-    const blob = await storageService.getFile({ binaryObjectId: parsed.value.binaryObjectId });
+    const blob = await storageService.getFile({ binaryObjectId: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
     if (blob) {
       if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
       imageUrl.value = URL.createObjectURL(blob);
-      isSupported.value = await ImageDownloadHydrator.detectSupport(blob);
+      isSupported.value = await ImageDownloadHydrator.detectSupport({ blob });
     } else {
       error.value = 'Image not found in storage';
     }
@@ -79,15 +80,15 @@ async function handlePreview() {
   if (!parsed.value) return;
 
   if (handleContextualPreview) {
-    await handleContextualPreview({ id: parsed.value.binaryObjectId });
+    await handleContextualPreview({ id: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
     return;
   }
 
-  const obj = await storageService.getBinaryObject({ binaryObjectId: parsed.value.binaryObjectId });
+  const obj = await storageService.getBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: parsed.value.binaryObjectId }) });
   if (obj) {
     openPreview({
       objects: [obj],
-      initialId: parsed.value.binaryObjectId
+      initialId: toBinaryObjectId({ raw: parsed.value.binaryObjectId })
     });
   }
 }
@@ -96,17 +97,17 @@ async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
   if (!parsed.value) return;
 
   await ImageDownloadHydrator.download({
-    id: parsed.value.binaryObjectId,
+    id: toBinaryObjectId({ raw: parsed.value.binaryObjectId }),
     prompt: parsed.value.prompt || '',
     steps: parsed.value.steps,
     seed: parsed.value.seed,
     model: undefined, // Model info not directly available in the block JSON currently
     withMetadata,
     storageService,
-    onError: (err) => addErrorEvent({
+    onError: ({ error }) => addErrorEvent({
       source: 'GeneratedImageBlock:Download',
       message: 'Failed to embed metadata in image.',
-      details: err instanceof Error ? err.message : String(err),
+      details: error instanceof Error ? error.message : String(error),
     })
   });
 }

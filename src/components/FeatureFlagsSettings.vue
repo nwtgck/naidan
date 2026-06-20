@@ -1,15 +1,51 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { FlaskConicalIcon, FolderIcon, TerminalIcon, AlertTriangleIcon, ListRestartIcon } from 'lucide-vue-next';
+import { AlertTriangleIcon, FlaskConicalIcon, FolderIcon, ListRestartIcon, TerminalIcon } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
+import {
+  FAKE_LM_ENDPOINT_URL,
+  preloadFakeLmLanguagePacks,
+  useFakeLmDebugMode,
+  type FakeLmDebugModeStatus,
+} from '@/services/fake-lm';
+import ExperimentalFeatureRow from './ExperimentalFeatureRow.vue';
 
 const { isFeatureEnabled, setFeatureEnabled } = useFeatureFlags();
 const { showConfirm } = useConfirm();
-const { settings, save } = useSettings();
+const { settings, save, setFakeLmDebugModeStatus } = useSettings();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 
 const sidebarSendMessageReorder = computed(() => settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled');
+const toolConfigPersistence = computed(() => settings.value.experimental?.toolConfigPersistence ?? 'disabled');
+const fakeLmDebugModeStatus = computed<FakeLmDebugModeStatus>(() => settings.value.experimental?.fakeLm ?? 'disabled');
+const fakeLmToggleAvailability = computed(() => {
+  switch (fakeLmDebugModeAvailability.value) {
+  case 'available':
+    return 'available';
+  case 'unavailable_in_standalone':
+    return 'unavailable';
+  default: {
+    const _ex: never = fakeLmDebugModeAvailability.value;
+    throw new Error(`Unhandled fake LM debug mode availability: ${_ex}`);
+  }
+  }
+});
+const fakeLmDebugModeDetails = computed(() => {
+  switch (fakeLmDebugModeAvailability.value) {
+  case 'available':
+    return `Use ${FAKE_LM_ENDPOINT_URL} as an OpenAI-compatible or Ollama endpoint.`;
+  case 'unavailable_in_standalone':
+    return 'Hosted build only. Standalone builds do not bundle fake LM.';
+  default: {
+    const _ex: never = fakeLmDebugModeAvailability.value;
+    throw new Error(`Unhandled fake LM debug mode availability: ${_ex}`);
+  }
+  }
+});
+
+preloadFakeLmLanguagePacks();
 
 async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool' }) {
   if (isFeatureEnabled({ feature })) {
@@ -37,6 +73,27 @@ async function handleFeatureToggle({ feature }: { feature: 'volume' | 'wesh_tool
   });
 }
 
+async function handleToolConfigPersistenceToggle() {
+  const next = (() => {
+    switch (toolConfigPersistence.value) {
+    case 'disabled':
+      return 'enabled';
+    case 'enabled':
+      return 'disabled';
+    default: {
+      const _ex: never = toolConfigPersistence.value;
+      throw new Error(`Unhandled tool config persistence setting: ${_ex}`);
+    }
+    }
+  })();
+  await save({ patch: {
+    experimental: {
+      ...settings.value.experimental,
+      toolConfigPersistence: next,
+    },
+  } });
+}
+
 async function handleSidebarSendMessageReorderToggle() {
   const next = (() => {
     switch (sidebarSendMessageReorder.value) {
@@ -58,137 +115,147 @@ async function handleSidebarSendMessageReorderToggle() {
   } });
 }
 
+async function handleFakeLmDebugModeToggle() {
+  switch (fakeLmToggleAvailability.value) {
+  case 'available':
+    break;
+  case 'unavailable':
+    return;
+  default: {
+    const _ex: never = fakeLmToggleAvailability.value;
+    throw new Error(`Unhandled fake LM toggle availability: ${_ex}`);
+  }
+  }
+
+  const next = (() => {
+    switch (fakeLmDebugModeStatus.value) {
+    case 'disabled':
+      return 'enabled';
+    case 'enabled':
+      return 'disabled';
+    default: {
+      const _ex: never = fakeLmDebugModeStatus.value;
+      throw new Error(`Unhandled fake LM debug mode status: ${_ex}`);
+    }
+    }
+  })();
+
+  await setFakeLmDebugModeStatus({ status: next });
+}
+
 defineExpose({
   TEST_ONLY: {
     handleFeatureToggle,
+    handleToolConfigPersistenceToggle,
     handleSidebarSendMessageReorderToggle,
+    handleFakeLmDebugModeToggle,
   }
 });
 </script>
 
 <template>
-  <div class="space-y-4" data-testid="feature-flags-settings">
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <div
-        class="rounded-3xl border p-5 shadow-sm transition-all"
-        :class="isFeatureEnabled({ feature: 'volume' }) ? 'border-red-200/80 dark:border-red-900/30 bg-red-50/60 dark:bg-red-950/10' : 'border-gray-200/80 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/40'"
+  <div class="space-y-3" data-testid="feature-flags-settings">
+    <div
+      class="overflow-hidden rounded-2xl border border-gray-200/80 bg-white/60 shadow-sm divide-y divide-gray-200/80 dark:border-gray-800 dark:bg-gray-900/30 dark:divide-gray-800"
+      data-testid="experimental-feature-list"
+    >
+      <ExperimentalFeatureRow
+        id="feature-volume"
+        title="Folders"
+        summary="Shows the Folders tab in Settings."
+        :details="isFeatureEnabled({ feature: 'volume' })
+          ? 'Enabled by default for this browser profile. Disable it to hide the Folders tab without changing stored folder data.'
+          : 'Disabled for this browser profile. Enable it to restore the Folders tab and access stored folders again.'"
+        :status="isFeatureEnabled({ feature: 'volume' }) ? 'enabled' : 'disabled'"
+        toggle-availability="available"
+        :toggle-label="isFeatureEnabled({ feature: 'volume' }) ? 'Disable Folders' : 'Enable Folders'"
+        toggle-test-id="feature-flag-volume-toggle"
+        @toggle="handleFeatureToggle({ feature: 'volume' })"
       >
-        <div class="flex items-start justify-between gap-4">
-          <div class="flex items-center gap-3 min-w-0">
-            <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-              <FolderIcon class="w-4 h-4" :class="isFeatureEnabled({ feature: 'volume' }) ? 'text-red-500' : 'text-gray-400'" />
-            </div>
-            <div class="flex flex-col min-w-0">
-              <span class="text-sm font-bold text-gray-900 dark:text-gray-100">Folders</span>
-              <span class="text-[10px] font-medium text-gray-500">Shows the Folders tab in Settings.</span>
-            </div>
-          </div>
-          <div
-            class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-            :class="isFeatureEnabled({ feature: 'volume' }) ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300'"
-          >
-            <AlertTriangleIcon v-if="isFeatureEnabled({ feature: 'volume' })" class="w-3 h-3" />
-            {{ isFeatureEnabled({ feature: 'volume' }) ? 'Enabled' : 'Disabled' }}
-          </div>
-        </div>
+        <template #icon>
+          <FolderIcon class="h-4 w-4" />
+        </template>
+      </ExperimentalFeatureRow>
 
-        <div class="mt-4 flex items-center justify-between gap-4">
-          <p class="text-[11px] font-medium leading-relaxed" :class="isFeatureEnabled({ feature: 'volume' }) ? 'text-red-800/80 dark:text-red-200/80' : 'text-gray-600 dark:text-gray-300'">
-            {{ isFeatureEnabled({ feature: 'volume' }) ? 'Enabled by default for this browser profile. Disable it here if you need to hide the experimental feature.' : 'Disabled for this browser profile. Re-enable it here if you want to restore the experimental feature.' }}
-          </p>
-          <button
-            @click="handleFeatureToggle({ feature: 'volume' })"
-            class="shrink-0 rounded-2xl px-4 py-2 text-xs font-bold transition-all active:scale-95"
-            :class="isFeatureEnabled({ feature: 'volume' }) ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 ring-2 ring-red-500/20' : 'bg-gray-900 hover:bg-black text-white dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white'"
-            data-testid="feature-flag-volume-toggle"
-          >
-            {{ isFeatureEnabled({ feature: 'volume' }) ? 'Disable experimental feature' : 'Enable' }}
-          </button>
-        </div>
-      </div>
-
-      <div
-        class="rounded-3xl border p-5 shadow-sm transition-all"
-        :class="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'border-red-200/80 dark:border-red-900/30 bg-red-50/60 dark:bg-red-950/10' : 'border-gray-200/80 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/40'"
+      <ExperimentalFeatureRow
+        id="feature-wesh-tool"
+        title="Shell in browser"
+        summary="Shows Shell in browser in the chat tools menu."
+        :details="isFeatureEnabled({ feature: 'wesh_tool' })
+          ? 'Enabled by default for this browser profile. Disable it to hide Shell in browser from the chat tools menu.'
+          : 'Disabled for this browser profile. Enable it to restore Shell in browser to the chat tools menu.'"
+        :status="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'enabled' : 'disabled'"
+        toggle-availability="available"
+        :toggle-label="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'Disable Shell in browser' : 'Enable Shell in browser'"
+        toggle-test-id="feature-flag-wesh-tool-toggle"
+        @toggle="handleFeatureToggle({ feature: 'wesh_tool' })"
       >
-        <div class="flex items-start justify-between gap-4">
-          <div class="flex items-center gap-3 min-w-0">
-            <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-              <TerminalIcon class="w-4 h-4" :class="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'text-red-500' : 'text-gray-400'" />
-            </div>
-            <div class="flex flex-col min-w-0">
-              <span class="text-sm font-bold text-gray-900 dark:text-gray-100">Shell in browser</span>
-              <span class="text-[10px] font-medium text-gray-500">Shows Shell in browser in the chat tools menu.</span>
-            </div>
-          </div>
-          <div
-            class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-            :class="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300'"
-          >
-            <AlertTriangleIcon v-if="isFeatureEnabled({ feature: 'wesh_tool' })" class="w-3 h-3" />
-            {{ isFeatureEnabled({ feature: 'wesh_tool' }) ? 'Enabled' : 'Disabled' }}
-          </div>
-        </div>
+        <template #icon>
+          <TerminalIcon class="h-4 w-4" />
+        </template>
+      </ExperimentalFeatureRow>
 
-        <div class="mt-4 flex items-center justify-between gap-4">
-          <p class="text-[11px] font-medium leading-relaxed" :class="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'text-red-800/80 dark:text-red-200/80' : 'text-gray-600 dark:text-gray-300'">
-            {{ isFeatureEnabled({ feature: 'wesh_tool' }) ? 'Enabled by default for this browser profile. Disable it here if you need to hide the experimental feature.' : 'Disabled for this browser profile. Re-enable it here if you want to restore the experimental feature.' }}
-          </p>
-          <button
-            @click="handleFeatureToggle({ feature: 'wesh_tool' })"
-            class="shrink-0 rounded-2xl px-4 py-2 text-xs font-bold transition-all active:scale-95"
-            :class="isFeatureEnabled({ feature: 'wesh_tool' }) ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 ring-2 ring-red-500/20' : 'bg-gray-900 hover:bg-black text-white dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white'"
-            data-testid="feature-flag-wesh-tool-toggle"
-          >
-            {{ isFeatureEnabled({ feature: 'wesh_tool' }) ? 'Disable experimental feature' : 'Enable' }}
-          </button>
-        </div>
-      </div>
-
-      <div
-        class="rounded-3xl border p-5 shadow-sm transition-all"
-        :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'border-red-200/80 dark:border-red-900/30 bg-red-50/60 dark:bg-red-950/10' : 'border-gray-200/80 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/40'"
+      <ExperimentalFeatureRow
+        id="feature-sidebar-send-reorder"
+        title="Move chat on send"
+        summary="Moves the active chat after you send a message."
+        :details="sidebarSendMessageReorder === 'move_sent_chat'
+          ? 'When a message is sent, the chat moves to the top of its group. Top-level chats move just below chat groups.'
+          : 'Disabled by default. Enable it if long chat lists make active conversations difficult to find.'"
+        :status="sidebarSendMessageReorder === 'move_sent_chat' ? 'enabled' : 'disabled'"
+        toggle-availability="available"
+        :toggle-label="sidebarSendMessageReorder === 'move_sent_chat' ? 'Disable Move chat on send' : 'Enable Move chat on send'"
+        toggle-test-id="feature-sidebar-send-reorder-toggle"
+        @toggle="handleSidebarSendMessageReorderToggle"
       >
-        <div class="flex items-start justify-between gap-4">
-          <div class="flex items-center gap-3 min-w-0">
-            <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-              <ListRestartIcon class="w-4 h-4" :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'text-red-500' : 'text-gray-400'" />
-            </div>
-            <div class="flex flex-col min-w-0">
-              <span class="text-sm font-bold text-gray-900 dark:text-gray-100">Move chat on send</span>
-              <span class="text-[10px] font-medium text-gray-500">Moves the chat after you send a message.</span>
-            </div>
-          </div>
-          <div
-            class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
-            :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300'"
-          >
-            <AlertTriangleIcon v-if="sidebarSendMessageReorder === 'move_sent_chat'" class="w-3 h-3" />
-            {{ sidebarSendMessageReorder === 'move_sent_chat' ? 'Enabled' : 'Disabled' }}
-          </div>
-        </div>
+        <template #icon>
+          <ListRestartIcon class="h-4 w-4" />
+        </template>
+      </ExperimentalFeatureRow>
 
-        <div class="mt-4 flex items-center justify-between gap-4">
-          <p class="text-[11px] font-medium leading-relaxed" :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'text-red-800/80 dark:text-red-200/80' : 'text-gray-600 dark:text-gray-300'">
-            {{ sidebarSendMessageReorder === 'move_sent_chat' ? 'When a message is sent, chats move to the top of their group. Top-level chats move just below chat groups.' : 'Disabled by default. Enable it if long chat lists make active conversations hard to find.' }}
-          </p>
-          <button
-            @click="handleSidebarSendMessageReorderToggle"
-            class="shrink-0 rounded-2xl px-4 py-2 text-xs font-bold transition-all active:scale-95"
-            :class="sidebarSendMessageReorder === 'move_sent_chat' ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 ring-2 ring-red-500/20' : 'bg-gray-900 hover:bg-black text-white dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white'"
-            data-testid="feature-sidebar-send-reorder-toggle"
-          >
-            {{ sidebarSendMessageReorder === 'move_sent_chat' ? 'Disable experimental feature' : 'Enable' }}
-          </button>
-        </div>
-      </div>
+      <ExperimentalFeatureRow
+        id="feature-tool-config-persistence"
+        title="Tool config persistence"
+        summary="Saves chat tool settings into chat metadata."
+        :details="toolConfigPersistence === 'enabled'
+          ? 'Tool configuration changes are persisted to chat metadata. Disable it to keep tool settings limited to the current runtime session.'
+          : 'Disabled by default. Tool configuration changes affect the current runtime session but are not saved to chat metadata.'"
+        :status="toolConfigPersistence === 'enabled' ? 'enabled' : 'disabled'"
+        toggle-availability="available"
+        :toggle-label="toolConfigPersistence === 'enabled' ? 'Disable Tool config persistence' : 'Enable Tool config persistence'"
+        toggle-test-id="feature-tool-config-persistence-toggle"
+        @toggle="handleToolConfigPersistenceToggle"
+      >
+        <template #icon>
+          <FlaskConicalIcon class="h-4 w-4" />
+        </template>
+      </ExperimentalFeatureRow>
+
+      <ExperimentalFeatureRow
+        id="feature-fake-lm"
+        title="Fake LM Debug Mode"
+        summary="Uses the bundled fake LM for endpoint testing."
+        :details="fakeLmDebugModeDetails"
+        :status="fakeLmDebugModeStatus"
+        :toggle-availability="fakeLmToggleAvailability"
+        :toggle-label="fakeLmDebugModeStatus === 'enabled' ? 'Disable Fake LM Debug Mode' : 'Enable Fake LM Debug Mode'"
+        toggle-test-id="feature-fake-lm-toggle"
+        @toggle="handleFakeLmDebugModeToggle"
+      >
+        <template #icon>
+          <FlaskConicalIcon class="h-4 w-4" />
+        </template>
+      </ExperimentalFeatureRow>
     </div>
 
-    <div class="rounded-2xl border border-amber-200/70 dark:border-amber-900/30 bg-amber-50/60 dark:bg-amber-950/10 px-4 py-3">
-      <div class="flex items-start gap-3">
-        <FlaskConicalIcon class="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-        <p class="text-[11px] font-medium text-amber-800/80 dark:text-amber-200/80 leading-relaxed">
-          Experimental features stay behind explicit feature flags so new flags can follow the same structure, even when current ones are enabled by default.
+    <div
+      class="rounded-xl border border-gray-200/80 bg-gray-50/70 px-4 py-2.5 dark:border-gray-800 dark:bg-gray-900/30"
+      data-testid="experimental-feature-warning"
+    >
+      <div class="flex items-start gap-2.5">
+        <AlertTriangleIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <p class="text-[11px] font-medium leading-relaxed text-gray-600 dark:text-gray-300">
+          Experimental features may change or be removed in future versions. Review the details before enabling them.
         </p>
       </div>
     </div>

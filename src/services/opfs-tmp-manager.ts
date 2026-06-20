@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { OPFS_TMP_CLEANUP_LOCK_KEY, OPFS_TMP_DIR, OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY } from '@/models/constants';
 import { StorageSynchronizer } from '@/services/storage/synchronizer';
 
@@ -22,7 +22,7 @@ function hasLocalStorage(): boolean {
 }
 
 export class OPFSTmpManager {
-  private readonly ownerScopeId = generateId();
+  private readonly ownerScopeId = generateOpaqueId();
   private readonly synchronizer = new StorageSynchronizer();
   private pendingCleanupQueued = false;
   private activeFlush: Promise<void> | null = null;
@@ -32,7 +32,7 @@ export class OPFSTmpManager {
   private readonly pageHideHandler = () => {
     this.scheduleOwnScopeCleanup();
   };
-  private readonly storageHandler = (event: StorageEvent) => {
+  private readonly storageHandler: NonNullable<Window['onstorage']> = (event) => {
     if (event.key !== OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY) {
       return;
     }
@@ -52,7 +52,7 @@ export class OPFSTmpManager {
     const opfsRoot = await navigator.storage.getDirectory();
     const tmpRoot = await opfsRoot.getDirectoryHandle(OPFS_TMP_DIR, { create: true });
     const ownerRoot = await tmpRoot.getDirectoryHandle(this.ownerScopeId, { create: true });
-    const tmpDirName = `${prefix}-${generateId()}`;
+    const tmpDirName = `${prefix}-${generateOpaqueId()}`;
     const handle = await ownerRoot.getDirectoryHandle(tmpDirName, { create: true });
     void this.flushPendingScopeCleanups();
     return handle;
@@ -63,7 +63,7 @@ export class OPFSTmpManager {
       return this.activeFlush;
     }
 
-    this.activeFlush = this.synchronizer.withLock(async () => {
+    this.activeFlush = this.synchronizer.withLock({ fn: async () => {
       const pending = this.readPendingOwnerCleanups();
       if (pending.ownerScopeIds.length === 0) {
         return;
@@ -80,7 +80,7 @@ export class OPFSTmpManager {
       this.writePendingOwnerCleanups({
         ownerScopeIds: remainingOwnerScopeIds,
       });
-    }, { lockKey: OPFS_TMP_CLEANUP_LOCK_KEY }).finally(() => {
+    }, lockKey: OPFS_TMP_CLEANUP_LOCK_KEY }).finally(() => {
       this.activeFlush = null;
     });
 

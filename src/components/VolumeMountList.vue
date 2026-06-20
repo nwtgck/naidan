@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import type { ObjectDirective } from 'vue';
 import type { Volume, Mount } from '@/models/types';
+import { idToRaw } from '@/models/ids';
+import type { VolumeId } from '@/models/ids';
 import { useToast } from '@/composables/useToast';
 import {
   FolderSymlinkIcon,
@@ -19,7 +22,7 @@ import {
 
 const { addToast } = useToast();
 
-const vFocus = { mounted: (el: HTMLElement) => el.focus() };
+const vFocus: ObjectDirective<HTMLElement> = { mounted: (el) => el.focus() };
 
 const props = defineProps<{
   volumes: Volume[];
@@ -34,11 +37,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  add: [{ volumeId: string; mountPath: string; readOnly: boolean }];
-  remove: [{ volumeId: string }];
-  'update-mount': [{ volumeId: string; mountPath: string; readOnly: boolean }];
-  'rename-volume': [{ volumeId: string; name: string }];
-  'delete-volume': [{ volumeId: string }];
+  add: [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
+  remove: [{ volumeId: VolumeId }];
+  'update-mount': [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
+  'rename-volume': [{ volumeId: VolumeId; name: string }];
+  'delete-volume': [{ volumeId: VolumeId }];
 }>();
 
 const mountedVolumes = computed(() =>
@@ -49,7 +52,7 @@ const unmountedVolumes = computed(() =>
   props.volumes.filter(vol => !props.mounts.some(m => m.type === 'volume' && m.volumeId === vol.id))
 );
 
-function getMount({ volId }: { volId: string }): Mount | undefined {
+function getMount({ volId }: { volId: VolumeId }): Mount | undefined {
   return props.mounts.find(m => m.type === 'volume' && m.volumeId === volId);
 }
 
@@ -76,7 +79,7 @@ function formatDate({ timestamp }: { timestamp: number }) {
 }
 
 // --- Inline mount edit form ---
-const editingMountId = ref<string | null>(null);
+const editingMountId = ref<VolumeId | null>(null);
 const editForm = ref({ mountPath: '', readOnly: true });
 
 function startEditing({ volume }: { volume: Volume }) {
@@ -86,7 +89,7 @@ function startEditing({ volume }: { volume: Volume }) {
   editForm.value = { mountPath: mount.mountPath, readOnly: mount.readOnly };
 }
 
-function saveMountSettings({ volId }: { volId: string }) {
+function saveMountSettings({ volId }: { volId: VolumeId }) {
   let path = editForm.value.mountPath;
   if (!path.startsWith('/')) path = '/' + path;
   emit('update-mount', { volumeId: volId, mountPath: path, readOnly: editForm.value.readOnly });
@@ -94,7 +97,7 @@ function saveMountSettings({ volId }: { volId: string }) {
 }
 
 // --- Inline name edit ---
-const editingNameId = ref<string | null>(null);
+const editingNameId = ref<VolumeId | null>(null);
 const editingNameValue = ref('');
 
 function startEditingName({ volume }: { volume: Volume }) {
@@ -107,7 +110,7 @@ function cancelEditingName() {
   editingNameValue.value = '';
 }
 
-function saveVolumeName({ volId }: { volId: string }) {
+function saveVolumeName({ volId }: { volId: VolumeId }) {
   const trimmed = editingNameValue.value.trim();
   if (!trimmed) {
     addToast({ message: 'Name cannot be empty' });
@@ -118,7 +121,7 @@ function saveVolumeName({ volId }: { volId: string }) {
 }
 
 // --- More menu ---
-const menuOpenVolumeId = ref<string | null>(null);
+const menuOpenVolumeId = ref<VolumeId | null>(null);
 
 
 defineExpose({
@@ -146,7 +149,7 @@ defineExpose({
       <div class="grid grid-cols-1 gap-4">
         <div
           v-for="volume in mountedVolumes"
-          :key="volume.id"
+          :key="idToRaw({ id: volume.id })"
           class="group bg-white dark:bg-gray-800 border border-blue-100 dark:border-blue-900/30 rounded-2xl shadow-sm hover:shadow-md transition-all"
         >
           <div class="p-4 flex items-center justify-between gap-4">
@@ -294,7 +297,7 @@ defineExpose({
       <div class="grid grid-cols-1 gap-3">
         <div
           v-for="volume in unmountedVolumes"
-          :key="volume.id"
+          :key="idToRaw({ id: volume.id })"
           class="group flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl hover:border-gray-200 dark:hover:border-gray-600 transition-all"
         >
           <div class="flex items-center gap-4">
@@ -338,7 +341,7 @@ defineExpose({
 
           <div class="flex items-center gap-1 shrink-0">
             <button
-              :data-testid="`volume-add-btn-${volume.id}`"
+              :data-testid="`volume-add-btn-${idToRaw({ id: volume.id })}`"
               @click="emit('add', { volumeId: volume.id, mountPath: generateDefaultPath({ baseName: volume.name }), readOnly: true })"
               class="flex items-center gap-2 px-3 py-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all font-bold text-[10px]"
             >

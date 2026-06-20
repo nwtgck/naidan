@@ -57,7 +57,7 @@ export class BlobFileHandle implements WeshFileHandle {
     return { bytesRead: safeChunk.length }
   }
 
-  async write(_args: Record<never, never>): Promise<WeshWriteResult> {
+  async write(): Promise<WeshWriteResult> {
     throw new Error('File is read-only')
   }
 
@@ -75,7 +75,7 @@ export class BlobFileHandle implements WeshFileHandle {
     }
   }
 
-  async truncate(_args: { size: number }): Promise<void> {
+  async truncate({ size: _size }: { size: number }): Promise<void> {
     throw new Error('File is read-only')
   }
 

@@ -1,5 +1,6 @@
+import { z } from 'zod'
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
 import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
@@ -8,8 +9,12 @@ import {
   mapWeshMountsToWorkerMounts,
   weshWorkerStartExecutionResponseSchema,
   weshWorkerInitRequestSchema,
+  weshWorkerShellStateSchema,
+  weshWorkerCommandEntrySchema,
+  weshWorkerListDirectoryRequestSchema,
+  weshWorkerDirectoryEntrySchema,
   type WeshWorkerClient,
-  type WeshWorkerExecutionEvent,
+  type WeshWorkerExecutionEventCallback,
   type WeshWorkerExecuteRequest,
   type WeshWorkerRemoteExecutionEvent,
 } from './types'
@@ -39,7 +44,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   })
 
   const createRuntime = async () => {
-    const worker = await createFileProtocolCompatibleStandaloneWorkerHub({})
+    const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
     const remote = Comlink.wrap<IWorkerHub>(worker)
     const wesh = await remote.wesh
     // Keep the proxied reader as a separate top-level argument.
@@ -69,12 +74,12 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   return {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest
-      onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
+      onEvent?: WeshWorkerExecutionEventCallback
     }) {
       const response = await runtime.wesh.startExecution(
         request,
         onEvent ? Comlink.proxy(async (event: WeshWorkerRemoteExecutionEvent) => {
-          await onEvent(mapRemoteWeshWorkerExecutionEventToClientEvent({ event }))
+          await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) })
         }) : undefined,
       )
       return weshWorkerStartExecutionResponseSchema.parse(response)
@@ -115,13 +120,26 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       const response = await runtime.wesh.execute({ request })
       return weshWorkerExecutionSummarySchema.parse(response)
     },
-    async interrupt(_args: EmptyArgs) {
-      return runtime.wesh.interrupt({})
+    async getShellState() {
+      const response = await runtime.wesh.getShellState()
+      return weshWorkerShellStateSchema.parse(response)
     },
-    async dispose(_args: EmptyArgs) {
+    async listCommands() {
+      const response = await runtime.wesh.listCommands()
+      return z.array(weshWorkerCommandEntrySchema).parse(response)
+    },
+    async listDirectory({ request }) {
+      const validated = weshWorkerListDirectoryRequestSchema.parse(request)
+      const response = await runtime.wesh.listDirectory({ request: validated })
+      return z.array(weshWorkerDirectoryEntrySchema).parse(response)
+    },
+    async interrupt() {
+      return runtime.wesh.interrupt()
+    },
+    async dispose() {
       const activeRuntime = runtime
       try {
-        await activeRuntime.wesh.dispose({})
+        await activeRuntime.wesh.dispose()
       } finally {
         await destroyRuntime(activeRuntime)
       }

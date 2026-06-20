@@ -41,7 +41,7 @@ async function handleResetData() {
 async function handleClearAllCacheStorage() {
   const confirmed = await showConfirm({
     title: 'Clear All Cache Storage',
-    message: 'Are you sure you want to delete all entries in the browser\'s Cache Storage API? This will force the application to redownload all assets on the next reload.',
+    message: "Are you sure you want to delete all entries in the browser's Cache Storage API? This will force the application to redownload all assets on the next reload.",
     confirmButtonText: 'Clear All',
     confirmButtonVariant: 'danger',
   });
@@ -56,7 +56,6 @@ async function handleClearAllCacheStorage() {
 function handleReload() {
   window.location.reload();
 }
-
 
 defineExpose({
   TEST_ONLY: {
@@ -81,21 +80,21 @@ defineExpose({
 
         <div class="space-y-4">
           <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Debug & Testing</h3>
-          <div class="flex flex-col sm:flex-row gap-4">
+          <div class="flex flex-col gap-2 sm:flex-row">
             <button
               @click="createSampleChat"
-              class="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95"
+              class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
               data-testid="setting-create-sample-button"
             >
-              <FlaskConicalIcon class="w-5 h-5" />
+              <FlaskConicalIcon class="h-4 w-4" />
               Create Sample Chat
             </button>
             <button
               @click="createLongSampleChat"
-              class="flex-1 flex items-center justify-center gap-3 px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95"
+              class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-100 active:scale-95 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
               data-testid="setting-create-long-sample-button"
             >
-              <ScrollTextIcon class="w-5 h-5" />
+              <ScrollTextIcon class="h-4 w-4" />
               Create Long Sample Chat
             </button>
           </div>
@@ -104,15 +103,15 @@ defineExpose({
 
         <DeveloperOpenStateLinks />
 
-        <div class="space-y-4">
+        <div class="space-y-2">
           <button
             @click="togglePWAUpdate"
-            class="w-full flex items-center justify-between px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+            class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
             :class="{ 'ring-2 ring-emerald-500/20 border-emerald-500/50 bg-emerald-50/30 dark:bg-emerald-900/10': needRefresh }"
             data-testid="toggle-pwa-update-button"
           >
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+            <div class="flex items-center gap-2">
+              <div class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
                 <RefreshCwIcon class="w-4 h-4" :class="needRefresh ? 'text-emerald-500 animate-spin-slow' : 'text-gray-400'" />
               </div>
               <div class="flex flex-col">
@@ -125,16 +124,14 @@ defineExpose({
               <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </div>
           </button>
-        </div>
 
-        <div class="space-y-4">
           <button
             @click="handleClearAllCacheStorage"
-            class="w-full flex items-center justify-between px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+            class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
             data-testid="clear-all-cache-storage-button"
           >
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+            <div class="flex items-center gap-2">
+              <div class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
                 <Trash2Icon class="w-4 h-4 text-gray-400" />
               </div>
               <div class="flex flex-col">
@@ -143,16 +140,14 @@ defineExpose({
               </div>
             </div>
           </button>
-        </div>
 
-        <div class="space-y-4">
           <button
             @click="handleReload"
-            class="w-full flex items-center justify-between px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
+            class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold hover:bg-gray-100 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95 text-left"
             data-testid="reload-app-button"
           >
-            <div class="flex items-center gap-3">
-              <div class="p-2 bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
+            <div class="flex items-center gap-2">
+              <div class="p-1.5 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800">
                 <RefreshCwIcon class="w-4 h-4 text-gray-400" />
               </div>
               <div class="flex flex-col">
@@ -165,8 +160,8 @@ defineExpose({
 
         <div class="pt-8 border-t border-gray-100 dark:border-gray-800 space-y-5">
           <h3 class="text-sm font-bold text-red-500 uppercase tracking-widest ml-1">Danger Zone</h3>
-          <div class="p-6 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-6">
-            <div class="flex items-start gap-4">
+          <div class="p-5 border border-red-100 dark:border-red-900/20 bg-red-50/30 dark:bg-red-900/5 rounded-3xl space-y-4">
+            <div class="flex items-start gap-3">
               <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-100 dark:border-red-900/20">
                 <AlertTriangleIcon class="w-6 h-6 text-red-500 shrink-0" />
               </div>
@@ -179,7 +174,7 @@ defineExpose({
             </div>
             <button
               @click="handleResetData"
-              class="w-full flex items-center justify-center gap-2 px-6 py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
+              class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
               data-testid="setting-reset-data-button"
             >
               <Trash2Icon class="w-4 h-4" />

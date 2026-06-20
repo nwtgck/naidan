@@ -12,7 +12,7 @@ describe('wesh zip and unzip', () => {
   let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });
@@ -24,6 +24,30 @@ describe('wesh zip and unzip', () => {
     path: string;
     data: string;
   }) {
+    const segments = path.split('/').filter(Boolean);
+    const fileName = segments.pop();
+    if (fileName === undefined) {
+      throw new Error('path must include a file name');
+    }
+
+    let dir = rootHandle;
+    for (const segment of segments) {
+      dir = await dir.getDirectoryHandle(segment, { create: true });
+    }
+
+    const handle = await dir.getFileHandle(fileName, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(data);
+    await writable.close();
+  }
+
+  async function writeFileBytes({
+    path,
+    data,
+  }: {
+    path: string;
+    data: Uint8Array;
+  }): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
     if (fileName === undefined) {
@@ -309,4 +333,169 @@ describe('wesh zip and unzip', () => {
     expect(missingArchive.stderr.text).toContain('cannot find or open missing.zip, missing.zip.zip or missing.zip.ZIP.');
     expect(missingArchive.result.exitCode).toBe(9);
   });
+
+
+  it('extracts JSZip archives with store, deflate, UTF-8 names, and empty files', async () => {
+    const archive = new JSZip();
+    archive.folder('symbols-∞-∑-𝄞-🧪');
+    archive.file('symbols-∞-∑-𝄞-🧪/stored.txt', 'stored payload', { compression: 'STORE' });
+    archive.file('symbols-∞-∑-𝄞-🧪/deflated.txt', 'deflated payload '.repeat(128), { compression: 'DEFLATE' });
+    archive.file('symbols-∞-∑-𝄞-🧪/empty.txt', new Uint8Array(0), { compression: 'STORE' });
+    const bytes = await archive.generateAsync({
+      type: 'uint8array',
+      compression: 'DEFLATE',
+      comment: 'comment-🛰️-∞-PK\u0005\u0006',
+    });
+    await writeFileBytes({ path: 'jszip.zip', data: bytes });
+
+    const result = await execute({
+      script: 'unzip jszip.zip -d imported',
+      stdinText: '',
+    });
+
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    expect(await readFile({ path: 'imported/symbols-∞-∑-𝄞-🧪/stored.txt' })).toBe('stored payload');
+    expect(await readFile({ path: 'imported/symbols-∞-∑-𝄞-🧪/deflated.txt' })).toBe('deflated payload '.repeat(128));
+    expect(await readFile({ path: 'imported/symbols-∞-∑-𝄞-🧪/empty.txt' })).toBe('');
+  });
+
+
+  it('round-trips emoji, symbols, combining marks, and distinct normalized names', async () => {
+    const directory = 'symbols-∞-∑-𝄞-🧪';
+    const emojiName = `${directory}/emoji-🚀-👩🏽‍💻-🏳️‍🌈.txt`;
+    const nfcName = `${directory}/precomposed-é-🧬.txt`;
+    const nfdName = `${directory}/combining-e\u0301-🧬.txt`;
+    const payload = '🧪🚀👩🏽‍💻🏳️‍🌈 ∞ ∑ 𝄞 e\u0301 é ✈️\n';
+    await writeFile({ path: emojiName, data: payload });
+    await writeFile({ path: nfcName, data: 'NFC 🛰️\n' });
+    await writeFile({ path: nfdName, data: 'NFD 🜁\n' });
+
+    const zipped = await execute({
+      script: `zip -r unicode.zip '${directory}'`,
+      stdinText: '',
+    });
+    expect(zipped.result.exitCode).toBe(0);
+    expect(zipped.stderr.text).toBe('');
+
+    const archiveHandle = await rootHandle.getFileHandle('unicode.zip');
+    const archive = await JSZip.loadAsync(await (await archiveHandle.getFile()).arrayBuffer());
+    expect(Object.keys(archive.files).sort()).toEqual([
+      `${directory}/`,
+      emojiName,
+      nfdName,
+      nfcName,
+    ].sort());
+    expect(await archive.file(emojiName)?.async('string')).toBe(payload);
+    expect(await archive.file(nfcName)?.async('string')).toBe('NFC 🛰️\n');
+    expect(await archive.file(nfdName)?.async('string')).toBe('NFD 🜁\n');
+
+    const extracted = await execute({
+      script: 'unzip unicode.zip -d restored',
+      stdinText: '',
+    });
+    expect(extracted.result.exitCode).toBe(0);
+    expect(extracted.stderr.text).toBe('');
+    expect(await readFile({ path: `restored/${emojiName}` })).toBe(payload);
+    expect(await readFile({ path: `restored/${nfcName}` })).toBe('NFC 🛰️\n');
+    expect(await readFile({ path: `restored/${nfdName}` })).toBe('NFD 🜁\n');
+  });
+
+  it('extracts JSZip archives with exact symbol and emoji names', async () => {
+    const archive = new JSZip();
+    const names = [
+      'symbols-∞-∑-𝄞-🧪/emoji-🚀-👩🏽‍💻.txt',
+      'symbols-∞-∑-𝄞-🧪/combining-e\u0301-✈️.txt',
+      'symbols-∞-∑-𝄞-🧪/precomposed-é-🜁.txt',
+    ] as const;
+    archive.file(names[0], 'emoji payload 🏳️‍🌈', { compression: 'DEFLATE' });
+    archive.file(names[1], 'combining payload e\u0301', { compression: 'STORE' });
+    archive.file(names[2], 'precomposed payload é', { compression: 'DEFLATE' });
+    const bytes = await archive.generateAsync({
+      type: 'uint8array',
+      compression: 'DEFLATE',
+    });
+    await writeFileBytes({ path: 'symbols.zip', data: bytes });
+
+    const result = await execute({
+      script: 'unzip symbols.zip -d imported-symbols',
+      stdinText: '',
+    });
+
+    expect(result.result.exitCode).toBe(0);
+    expect(result.stderr.text).toBe('');
+    expect(await readFile({ path: `imported-symbols/${names[0]}` })).toBe('emoji payload 🏳️‍🌈');
+    expect(await readFile({ path: `imported-symbols/${names[1]}` })).toBe('combining payload e\u0301');
+    expect(await readFile({ path: `imported-symbols/${names[2]}` })).toBe('precomposed payload é');
+  });
+
+  it('reports CRC corruption from a stored JSZip entry', async () => {
+    const archive = new JSZip();
+    archive.file('payload.txt', 'correct payload', { compression: 'STORE' });
+    const bytes = await archive.generateAsync({
+      type: 'uint8array',
+      compression: 'STORE',
+      comment: 'prefix PK\x05\x06 suffix',
+    });
+    const corrupted = bytes.slice();
+    const view = new DataView(corrupted.buffer, corrupted.byteOffset, corrupted.byteLength);
+    const nameLength = view.getUint16(26, true);
+    const extraLength = view.getUint16(28, true);
+    const dataOffset = 30 + nameLength + extraLength;
+    const original = corrupted[dataOffset];
+    if (original === undefined) {
+      throw new Error('stored JSZip entry unexpectedly has no data');
+    }
+    corrupted[dataOffset] = original ^ 0xff;
+    await writeFileBytes({ path: 'corrupted.zip', data: corrupted });
+
+    const result = await execute({
+      script: 'unzip -p corrupted.zip payload.txt',
+      stdinText: '',
+    });
+
+    expect(result.result.exitCode).toBe(1);
+    expect(result.stderr.text).toContain('ZIP entry CRC mismatch: payload.txt');
+  });
+
+  it('rejects parent-directory traversal in archive entry names', async () => {
+    const archive = new JSZip();
+    archive.file('aa/evil.txt', 'evil', { compression: 'STORE' });
+    const bytes = await archive.generateAsync({
+      type: 'uint8array',
+      compression: 'STORE',
+    });
+    const safeName = new TextEncoder().encode('aa/evil.txt');
+    const unsafeName = new TextEncoder().encode('../evil.txt');
+    const patched = bytes.slice();
+    let replacementCount = 0;
+    for (let offset = 0; offset <= patched.byteLength - safeName.byteLength; offset += 1) {
+      let matches = true;
+      for (let index = 0; index < safeName.byteLength; index += 1) {
+        if (patched[offset + index] !== safeName[index]) {
+          matches = false;
+          break;
+        }
+      }
+      if (!matches) {
+        continue;
+      }
+      patched.set(unsafeName, offset);
+      replacementCount += 1;
+      offset += safeName.byteLength - 1;
+    }
+    expect(replacementCount).toBe(2);
+    await writeFileBytes({ path: 'unsafe.zip', data: patched });
+
+    const result = await execute({
+      script: 'unzip unsafe.zip -d safe',
+      stdinText: '',
+    });
+
+    expect(result.result.exitCode).toBe(1);
+    expect(result.stderr.text).toContain('unsafe parent path in ZIP entry: ../evil.txt');
+    await expect(readFile({ path: 'evil.txt' })).rejects.toThrow();
+    await expect(readFile({ path: 'safe/evil.txt' })).rejects.toThrow();
+  });
+
 });

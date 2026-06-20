@@ -1,3 +1,4 @@
+import type { ChatId, MessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -8,6 +9,7 @@ import { useChatDraft } from '@/composables/useChatDraft';
 
 
 import { setupScrollToMock } from '@/utils/test-utils';
+import { toChatId } from '@/models/ids';
 
 
 // Mock router
@@ -21,12 +23,12 @@ import type { MessageNode, Chat } from '@/models/types';
 // Mock dependencies
 const mockSendMessage = vi.fn().mockResolvedValue(true);
 const mockCurrentChat = ref<Chat | null>({
-  id: '1',
+  id: toChatId({ raw: '1' }),
   title: 'Test Chat',
   root: { items: [] } as { items: MessageNode[] },
-  currentLeafId: undefined as string | undefined,
+  currentLeafId: undefined,
   debugEnabled: false,
-  originChatId: undefined as string | undefined,
+  originChatId: undefined,
   modelId: undefined as string | undefined,
   createdAt: Date.now(),
   updatedAt: Date.now(),
@@ -121,16 +123,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -266,7 +268,7 @@ describe('ChatPane Draft Maintenance', () => {
     const { clearAllDrafts } = useChatDraft();
     clearAllDrafts();
     mockCurrentChat.value = {
-      id: '1',
+      id: toChatId({ raw: '1' }),
       title: 'Chat 1',
       root: { items: [] },
       currentLeafId: undefined,
@@ -303,7 +305,7 @@ describe('ChatPane Draft Maintenance', () => {
 
     // 2. Switch to Chat 2
     mockCurrentChat.value = {
-      id: '2',
+      id: toChatId({ raw: '2' }),
       title: 'Chat 2',
       root: { items: [] },
       currentLeafId: undefined,
@@ -325,7 +327,7 @@ describe('ChatPane Draft Maintenance', () => {
 
     // 5. Switch back to Chat 1
     mockCurrentChat.value = {
-      id: '1',
+      id: toChatId({ raw: '1' }),
       title: 'Chat 1',
       root: { items: [] },
       currentLeafId: undefined,
@@ -356,7 +358,7 @@ describe('ChatPane Draft Maintenance', () => {
     expect((chatInput.vm as any).isMaximized).toBe(true);
 
     // Switch chat
-    mockCurrentChat.value = { ...mockCurrentChat.value!, id: 'chat-new' };
+    mockCurrentChat.value = { ...mockCurrentChat.value!, id: toChatId({ raw: 'chat-new' }) };
     await nextTick();
 
     // Verify input is empty for new chat and maximized is reset
@@ -385,7 +387,7 @@ describe('ChatPane Draft Maintenance', () => {
 
     // 2. Switch to Chat 2
     mockCurrentChat.value = {
-      id: '2',
+      id: toChatId({ raw: '2' }),
       title: 'Chat 2',
       root: { items: [] },
       currentLeafId: undefined,
@@ -402,7 +404,7 @@ describe('ChatPane Draft Maintenance', () => {
 
     // 4. Switch back to Chat 1
     mockCurrentChat.value = {
-      id: '1',
+      id: toChatId({ raw: '1' }),
       title: 'Chat 1',
       root: { items: [] },
       currentLeafId: undefined,
@@ -438,7 +440,7 @@ describe('ChatPane Draft Maintenance', () => {
 
     // 2. Switch to Chat 2 while sending is in progress
     mockCurrentChat.value = {
-      id: '2',
+      id: toChatId({ raw: '2' }),
       title: 'Chat 2',
       root: { items: [] },
       currentLeafId: undefined,
@@ -463,7 +465,7 @@ describe('ChatPane Draft Maintenance', () => {
     expect(textarea.element.value).toBe('Writing something for Chat 2');
 
     // 6. Verification: Chat 1's draft should be cleared (switch back to check)
-    mockCurrentChat.value = { ...mockCurrentChat.value!, id: '1' };
+    mockCurrentChat.value = { ...mockCurrentChat.value!, id: toChatId({ raw: '1' }) };
     await nextTick();
     expect(textarea.element.value).toBe('');
   });

@@ -12,6 +12,7 @@ import {
   PencilIcon,
   InfoIcon,
 } from 'lucide-vue-next';
+import type { VolumeId } from '@/models/ids';
 
 const props = defineProps<{
   /** Existing mount paths used to avoid conflicts when suggesting a default path. */
@@ -27,7 +28,7 @@ const emit = defineEmits<{
    * Fired after a volume is created. The parent is responsible for mounting it
    * (globally via storageService or as a chat group mount).
    */
-  created: [{ volumeId: string; mountPath: string; readOnly: boolean }];
+  created: [{ volumeId: VolumeId; mountPath: string; readOnly: boolean }];
 }>();
 
 const { addToast } = useToast();
@@ -132,8 +133,8 @@ async function startCopyAndEmit({ name, entries, label, readOnly }: {
       name,
       entries,
       signal: controller.signal,
-      onProgress: (p) => {
-        progress.value = p;
+      onProgress: ({ processed, total }) => {
+        progress.value = { processed, total };
       },
     });
     emit('created', { volumeId: vol.id, mountPath: generateSuggestedPath({ baseName: name }), readOnly });
@@ -245,7 +246,7 @@ async function pickHostVolume({ mode }: { mode: 'read' | 'readwrite' }) {
   toggleAddFolderMode(false);
   try {
     // @ts-expect-error: File System Access API
-    const handle = await window.showDirectoryPicker({ mode });
+    const handle = await window.showDirectoryPicker({ mode }) as FileSystemDirectoryHandle;
     isCreating.value = true;
     const name = handle.name;
     const vol = await storageService.createVolume({ name, type: 'host', sourceHandle: handle });
@@ -282,7 +283,7 @@ async function createVolume({ type }: { type: 'opfs' | 'host' }) {
     if (window.showDirectoryPicker) {
       try {
         // @ts-expect-error: File System Access API
-        const handle = await window.showDirectoryPicker({ mode: 'read' });
+        const handle = await window.showDirectoryPicker({ mode: 'read' }) as FileSystemDirectoryHandle;
         isCreating.value = true;
         const name = handle.name;
         const vol = await storageService.createVolume({ name, type: 'opfs', sourceHandle: handle });
@@ -321,13 +322,13 @@ function onDocDrop({ event }: { event: DragEvent }) {
   handleDrop({ event });
 }
 
-function handleDocumentDragOver(event: DragEvent) {
-  onDocDragOver({ event });
-}
+const handleDocumentDragOver: EventListener = (event) => {
+  onDocDragOver({ event: event as DragEvent });
+};
 
-function handleDocumentDrop(event: DragEvent) {
-  onDocDrop({ event });
-}
+const handleDocumentDrop: EventListener = (event) => {
+  onDocDrop({ event: event as DragEvent });
+};
 
 onMounted(async () => {
   hasFileSystemAccess.value = checkFileSystemAccessSupport();

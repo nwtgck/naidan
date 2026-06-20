@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { generateChatShareURL } from './chat-url-share';
 import { storageService } from '@/services/storage';
@@ -49,7 +50,7 @@ describe('generateChatShareURL', () => {
     (storageService.loadChat as any).mockResolvedValue(mockChat);
     (storageService.loadSettings as any).mockResolvedValue(validSettings);
 
-    const url = await generateChatShareURL({ chatId: 'chat-1' });
+    const url = await generateChatShareURL({ chatId: toChatId({ raw: 'chat-1' }) });
 
     expect(storageService.loadChat).toHaveBeenCalledWith({ id: 'chat-1' });
     expect(url).toContain('data-zip=');
@@ -99,7 +100,7 @@ describe('generateChatShareURL', () => {
     });
     (storageService.loadSettings as any).mockResolvedValue(validSettings);
 
-    const url = await generateChatShareURL({ chatId: 'chat-1' });
+    const url = await generateChatShareURL({ chatId: toChatId({ raw: 'chat-1' }) });
 
     expect(storageService.getFile).toHaveBeenCalledWith({ binaryObjectId: 'bin-1' });
     expect(url).toContain('data-zip=');

@@ -6,7 +6,7 @@ export class WeshHandleCloseSignal {
   private resolveClosePromise: (() => void) | undefined;
   private isClosed = false;
 
-  constructor(_options: Record<string, never>) {
+  constructor() {
     this.closePromise = new Promise<void>(resolve => {
       this.resolveClosePromise = resolve;
     });
@@ -26,20 +26,20 @@ export class WeshHandleCloseSignal {
     this.resolveClosePromise = undefined;
   }
 
-  async raceWithClose<T>(options: {
+  async raceWithClose<T>({ operation, buildClosedResult }: {
     operation: Promise<T>;
     buildClosedResult: () => T;
   }): Promise<T> {
     if (this.isClosed) {
-      return options.buildClosedResult();
+      return buildClosedResult();
     }
 
     const result = await Promise.race([
-      options.operation as Promise<T | typeof closedRaceResult>,
+      operation as Promise<T | typeof closedRaceResult>,
       this.closeRacePromise as Promise<T | typeof closedRaceResult>,
     ]);
     if (result === closedRaceResult) {
-      return options.buildClosedResult();
+      return buildClosedResult();
     }
     return result;
   }

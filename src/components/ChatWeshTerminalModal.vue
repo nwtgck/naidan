@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import { watch, nextTick, ref } from 'vue';
 import { TerminalIcon, XIcon } from 'lucide-vue-next';
-import WeshTerminalPane from './WeshTerminalPane.vue';
+import WeshTerminalPane from '@/features/wesh-terminal/components/WeshTerminalPane.vue';
 import { useChatWeshTerminalSessions } from '@/composables/useChatWeshTerminalSessions';
 import { useConfirm } from '@/composables/useConfirm';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 import type { Mount } from '@/models/types';
-import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
+import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 
 const props = defineProps<{
   isOpen: boolean;
   chatMounts: readonly Mount[] | undefined;
   chatGroupMounts: readonly Mount[] | undefined;
-  chatId: string | undefined;
-  chatGroupId: string | undefined;
-  naidanSysfsVisibility: NaidanSysfsMountSelection;
+  chatId: ChatId | undefined;
+  chatGroupId: ChatGroupId | undefined;
+  naidanSysfsAccessScope: NaidanSysfsAccessScope;
 }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 
@@ -21,6 +22,7 @@ const {
   sessions,
   activeSessionId,
   runCommand,
+  completeInput,
   cancelRunningCommand,
   closeSession,
   createChatWorkerSession,
@@ -37,7 +39,7 @@ watch(() => props.isOpen, async (open) => {
     chatGroupMounts: props.chatGroupMounts,
     chatId: props.chatId,
     chatGroupId: props.chatGroupId,
-    naidanSysfsVisibility: props.naidanSysfsVisibility,
+    naidanSysfsAccessScope: props.naidanSysfsAccessScope,
   });
   await nextTick();
   paneRef.value?.focusInput();
@@ -93,9 +95,10 @@ defineExpose({
           class="flex-1 min-h-0 flex flex-col"
           :sessions="sessions"
           :active-session-id="activeSessionId"
+          :complete-input="completeInput"
           @update:active-session-id="(id) => (activeSessionId = id)"
           @run="({ script }) => runCommand({ script })"
-          @create-session="createChatWorkerSession({ chatMounts: chatMounts ?? [], chatGroupMounts, chatId, chatGroupId, naidanSysfsVisibility })"
+          @create-session="createChatWorkerSession({ chatMounts: chatMounts ?? [], chatGroupMounts, chatId, chatGroupId, naidanSysfsAccessScope })"
           @close-session="handleCloseSession"
           @cancel="({ sessionId }) => cancelRunningCommand({ sessionId })"
         />

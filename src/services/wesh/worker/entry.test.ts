@@ -3,6 +3,7 @@ import { chatMetaToDomain } from '@/models/mappers'
 import type { ChatContent, ChatGroup, ChatMeta } from '@/models/types'
 import { chatContentToDto, chatGroupToDto, chatMetaToDto } from '@/models/mappers'
 import { renderChatMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/metadata-markdown'
+import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 vi.mock('comlink', () => ({
   expose: vi.fn(),
@@ -21,7 +22,7 @@ describe('wesh.worker', () => {
     await import('./entry')
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
-    const rootHandle = new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle
 
     await workerApi.init({
       request: {
@@ -49,8 +50,8 @@ describe('wesh.worker', () => {
     await import('./entry')
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
-    const mountedRoot = new MockFileSystemDirectoryHandle('mounted')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'mounted' })
     const fileHandle = await mountedRoot.getFileHandle('hello.txt', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('from mount')
@@ -82,7 +83,7 @@ describe('wesh.worker', () => {
   it('can read the naidan sysfs version file', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
-    const opfsRoot = new MockFileSystemDirectoryHandle('opfs-root')
+    const opfsRoot = new MockFileSystemDirectoryHandle({ name: 'opfs-root' })
     const storageRoot = await opfsRoot.getDirectoryHandle('naidan-storage', { create: true })
     await storageRoot.getDirectoryHandle('uploaded-files', { create: true })
     vi.stubGlobal('navigator', {
@@ -95,7 +96,7 @@ describe('wesh.worker', () => {
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
       request: {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [{
           type: 'naidan_sysfs',
           path: '/sys/fs/naidan',
@@ -128,7 +129,7 @@ describe('wesh.worker', () => {
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
       request: {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [],
         user: 'user',
         initialEnv: {},
@@ -151,10 +152,10 @@ describe('wesh.worker', () => {
 
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     const chatMeta: ChatMeta = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Local Chat',
-      groupId: 'chat-group-1',
-      currentLeafId: 'a1chatMetadataAbCdEf',
+      groupId: toChatGroupId({ raw: 'chat-group-1' }),
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: false,
@@ -173,11 +174,11 @@ describe('wesh.worker', () => {
       mounts: [],
     }
     const chatContent: ChatContent = {
-      currentLeafId: 'a1chatMetadataAbCdEf',
+      currentLeafId: toMessageId({ raw: 'a1chatMetadataAbCdEf' }),
       root: { items: [] },
     }
     const chatGroup: ChatGroup = {
-      id: 'chat-group-1',
+      id: toChatGroupId({ raw: 'chat-group-1' }),
       name: 'Local Group',
       isCollapsed: false,
       updatedAt: 200,
@@ -192,19 +193,19 @@ describe('wesh.worker', () => {
         id: 'chat:chat-1',
         type: 'chat',
         chat: {
-          id: 'chat-1',
+          id: toChatId({ raw: 'chat-1' }),
           title: 'Local Chat',
           updatedAt: 200,
-          groupId: 'chat-group-1',
+          groupId: toChatGroupId({ raw: 'chat-group-1' }),
         },
       }],
     }
     const expectedMetadata = chatMetaToDomain({ dto: chatMetaToDto({ domain: chatMeta }) })
-    expectedMetadata.groupId = 'chat-group-1'
+    expectedMetadata.groupId = toChatGroupId({ raw: 'chat-group-1' })
 
     await workerApi.init(
       {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [{
           type: 'naidan_sysfs',
           path: '/sys/fs/naidan',
@@ -289,7 +290,7 @@ describe('wesh.worker', () => {
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
       request: {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [],
         user: 'user',
         initialEnv: {},
@@ -310,6 +311,39 @@ describe('wesh.worker', () => {
     expect(response.exitCode).toBe(130)
   })
 
+  it('preserves output callback failures and still attempts an error event', async () => {
+    const comlink = await import('comlink')
+    const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
+    await import('./entry')
+
+    const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
+    await workerApi.init({
+      request: {
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
+        mounts: [],
+        user: 'user',
+        initialEnv: {},
+      },
+    })
+
+    const events: Array<import('./types').WeshWorkerRemoteExecutionEvent> = []
+    const { executionId } = await workerApi.startExecution(
+      { script: 'echo forwarded-output' },
+      async (event: import('./types').WeshWorkerRemoteExecutionEvent) => {
+        events.push(event)
+        if (event.type === 'stdout') {
+          throw new Error('stdout callback failed')
+        }
+      },
+    )
+
+    await expect(workerApi.awaitExecution({
+      request: { executionId },
+    })).rejects.toThrow('Wesh execution failed while forwarding worker events')
+    expect(events.some(event => event.type === 'error')).toBe(true)
+    await workerApi.disposeExecution({ request: { executionId } })
+  })
+
   it('streams stdout and stderr events before awaitExecution resolves', async () => {
     const comlink = await import('comlink')
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
@@ -318,7 +352,7 @@ describe('wesh.worker', () => {
     const workerApi = vi.mocked(comlink.expose).mock.calls[0]?.[0]
     await workerApi.init({
       request: {
-        rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+        rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
         mounts: [],
         user: 'user',
         initialEnv: {},

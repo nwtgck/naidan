@@ -1,4 +1,6 @@
 import type { ChatGroup } from '@/models/types'
+import { idToRaw } from '@/models/ids'
+import type { ChatId } from '@/models/ids'
 import {
   NAIDAN_SYSFS_CHATS_DIRECTORY_NAME,
   NAIDAN_SYSFS_METADATA_JSON_FILE_NAME,
@@ -11,7 +13,7 @@ import { renderChatGroupMetadataJson } from '@/services/wesh/naidan-sysfs/render
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsRestrictedDirectoryEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -19,7 +21,7 @@ function createFileStat({ size }: { size: number }): WeshStat {
   return { size, mode: 0o444, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-function createRestrictedDirectoryStat(_args: Record<never, never>): WeshStat {
+function createRestrictedDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -68,12 +70,12 @@ function createChatGroupMetadataFileEntry({
   }
 }
 
-function createRestrictedChatsDirectoryEntry(_args: Record<never, never>): NaidanSysfsRestrictedDirectoryEntry {
+function createRestrictedChatsDirectoryEntry(): NaidanSysfsRestrictedDirectoryEntry {
   return {
-    kind: 'restricted-directory',
+    kind: 'restricted_directory',
     async stat({ path }: { path: string }) {
       void path
-      return createRestrictedDirectoryStat({})
+      return createRestrictedDirectoryStat()
     },
     async *readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry> {
       yield* []
@@ -82,16 +84,16 @@ function createRestrictedChatsDirectoryEntry(_args: Record<never, never>): Naida
   }
 }
 
-function createChatGroupChatSymlinkEntry({ chatId }: { chatId: string }): NaidanSysfsSymlinkEntry {
+function createChatGroupChatSymlinkEntry({ chatId }: { chatId: ChatId }): NaidanSysfsSymlinkEntry {
   return {
     kind: 'symlink',
     async stat({ path }: { path: string }) {
       void path
-      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
+      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
     },
     async readlink({ path }: { path: string }) {
       void path
-      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}`
+      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`
     },
   }
 }
@@ -101,9 +103,9 @@ function createChatGroupChatSymlinkName({
   chatId,
 }: {
   index: number;
-  chatId: string;
+  chatId: ChatId;
 }): string {
-  return `${index}-chat-${chatId}`
+  return `${index}-chat-${idToRaw({ id: chatId })}`
 }
 
 function createChatGroupChatsDirectoryEntry({
@@ -115,14 +117,14 @@ function createChatGroupChatsDirectoryEntry({
 }): NaidanSysfsDirectoryEntry | NaidanSysfsRestrictedDirectoryEntry {
   switch (context.visibility) {
   case 'current_chat_only':
-    return createRestrictedChatsDirectoryEntry({})
+    return createRestrictedChatsDirectoryEntry()
   case 'current_chat_with_chat_group':
-  case 'all_chats':
+  case 'main_chats':
     return {
       kind: 'directory',
       async stat({ path }: { path: string }) {
         void path
-        return createDirectoryStat({})
+        return createDirectoryStat()
       },
       async *readDir({
         path,
@@ -181,7 +183,7 @@ export function createChatGroupDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       yield { name: NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME}` }

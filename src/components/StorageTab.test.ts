@@ -9,6 +9,17 @@ import type { ProviderProfile } from '@/models/types';
 import { useRouter, useRoute } from 'vue-router';
 
 // --- Mocks ---
+
+const exportUrlMocks = vi.hoisted(() => ({
+  getExportURL: vi.fn(),
+}));
+
+vi.mock('@/services/import-export/url-logic', () => ({
+  urlImportExportLogic: {
+    getExportURL: exportUrlMocks.getExportURL,
+  },
+}));
+
 const mockListModels = vi.fn().mockResolvedValue(['model-1']);
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
@@ -131,6 +142,8 @@ describe('StorageTab.vue Tests', () => {
   });
 
   beforeEach(() => {
+    exportUrlMocks.getExportURL.mockReset();
+    exportUrlMocks.getExportURL.mockResolvedValue('https://example.com/#/?data-zip=abc');
     vi.clearAllMocks();
     vi.stubGlobal('isSecureContext', true);
 
@@ -374,6 +387,35 @@ describe('StorageTab.vue Tests', () => {
       expect(wrapper.emitted('update:storageType')?.[0]).toEqual(['opfs']);
     });
 
+    it('passes chat history exclusion for Share via URL and disables it after excluding chats', async () => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: vi.fn() },
+      });
+      const wrapper = mount(StorageTab, {
+        props: { storageType: 'local' },
+        global: globalMocks,
+      });
+      await flushPromises();
+      await vi.dynamicImportSettled();
+
+      const history = wrapper.find('[data-testid="setting-exclude-chat-history-checkbox"]');
+      await history.setValue(true);
+      await wrapper.find('[data-testid="setting-copy-export-url-button"]').trigger('click');
+      await flushPromises();
+
+      expect(exportUrlMocks.getExportURL).toHaveBeenCalledWith({
+        exclude: ['chat_history'],
+        baseUrl: window.location.href,
+      });
+
+      const chats = wrapper.find('[data-testid="setting-exclude-chats-checkbox"]');
+      await chats.setValue(true);
+      await nextTick();
+      expect((history.element as HTMLInputElement).checked).toBe(false);
+      expect(history.attributes('disabled')).toBeDefined();
+    });
+
     it('triggers clear all history and emits close', async () => {
       mockShowConfirm.mockResolvedValue(true);
       const wrapper = mount(StorageTab, {
@@ -508,6 +550,7 @@ describe('StorageTab.vue Tests', () => {
         setIsOnboardingDismissed: vi.fn(),
         setOnboardingDraft: vi.fn(),
         setHeavyContentAlertDismissed: vi.fn(),
+        setFakeLmDebugModeStatus: vi.fn(),
         setSearchPreviewMode: vi.fn(),
         setSearchContextSize: vi.fn(),
         TEST_ONLY: {

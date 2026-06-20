@@ -1,5 +1,6 @@
 import { toRaw } from 'vue';
 import { generateId } from '@/utils/id';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 import type { ChatGroup, HierarchyChatGroupNode, HierarchyNode } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useSettings } from '@/composables/useSettings';
@@ -18,25 +19,25 @@ export type ChatOrganizationAdapter = {
   }: {
     name: string;
     options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>;
-  }): Promise<string>;
+  }): Promise<ChatGroupId>;
 
   deleteChatGroup({
     id,
   }: {
-    id: string;
+    id: ChatGroupId;
   }): Promise<void>;
 
   duplicateChatGroup({
     groupId,
   }: {
-    groupId: string;
-  }): Promise<string | undefined>;
+    groupId: ChatGroupId;
+  }): Promise<ChatGroupId | undefined>;
 
   renameChatGroup({
     groupId,
     newName,
   }: {
-    groupId: string;
+    groupId: ChatGroupId;
     newName: string;
   }): Promise<void>;
 
@@ -44,7 +45,7 @@ export type ChatOrganizationAdapter = {
     id,
     updates,
   }: {
-    id: string;
+    id: ChatGroupId;
     updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }): Promise<void>;
 
@@ -52,14 +53,14 @@ export type ChatOrganizationAdapter = {
     chatId,
     targetGroupId,
   }: {
-    chatId: string;
-    targetGroupId: string | null;
+    chatId: ChatId;
+    targetGroupId: ChatGroupId | null;
   }): Promise<void>;
 
   reorderSidebarChatAfterSend({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<void>;
 
   TEST_ONLY: Record<never, never>;
@@ -76,8 +77,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
   }: {
     name: string;
     options?: Partial<Pick<ChatGroup, 'modelId' | 'systemPrompt' | 'lmParameters'>>;
-  }): Promise<string> {
-    const id = generateId();
+  }): Promise<ChatGroupId> {
+    const id = generateId<ChatGroupId>();
     const newGroup: ChatGroup = {
       id,
       name,
@@ -87,19 +88,19 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       ...(options ?? {}),
     };
 
-    await storageService.updateChatGroup(id, () => newGroup);
-    await storageService.updateHierarchy((current) => {
+    await storageService.updateChatGroup({ id: id, updater: () => newGroup });
+    await storageService.updateHierarchy({ updater: ({ current }) => {
       current.items.unshift({ type: 'chat_group', id, chat_ids: [] });
       return current;
-    });
-    await loadData({});
+    } });
+    await loadData();
     return id;
   }
 
   async function deleteChatGroup({
     id,
   }: {
-    id: string;
+    id: ChatGroupId;
   }): Promise<void> {
     const group = chatGroups.value.find((item) => item.id === id);
     if (group === undefined) {
@@ -118,7 +119,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     }
 
     await storageService.deleteChatGroup({ id });
-    await storageService.updateHierarchy((current) => {
+    await storageService.updateHierarchy({ updater: ({ current }) => {
       current.items = current.items.filter((item) => {
         switch (item.type) {
         case 'chat_group':
@@ -132,21 +133,21 @@ export function useChatOrganization(): ChatOrganizationAdapter {
         }
       });
       return current;
-    });
-    await loadData({});
+    } });
+    await loadData();
   }
 
   async function duplicateChatGroup({
     groupId,
   }: {
-    groupId: string;
-  }): Promise<string | undefined> {
+    groupId: ChatGroupId;
+  }): Promise<ChatGroupId | undefined> {
     const originalGroup = chatGroups.value.find((group) => group.id === groupId);
     if (originalGroup === undefined) {
       return undefined;
     }
 
-    const newId = generateId();
+    const newId = generateId<ChatGroupId>();
     const newGroup: ChatGroup = {
       ...toRaw(originalGroup),
       id: newId,
@@ -156,8 +157,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       isCollapsed: false,
     };
 
-    await storageService.updateChatGroup(newId, () => newGroup);
-    await storageService.updateHierarchy((current) => {
+    await storageService.updateChatGroup({ id: newId, updater: () => newGroup });
+    await storageService.updateHierarchy({ updater: ({ current }) => {
       const originalIndex = current.items.findIndex((item) => item.type === 'chat_group' && item.id === groupId);
       const newNode: HierarchyNode = { type: 'chat_group', id: newId, chat_ids: [] };
       if (originalIndex !== -1) {
@@ -166,8 +167,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
         current.items.unshift(newNode);
       }
       return current;
-    });
-    await loadData({});
+    } });
+    await loadData();
     return newId;
   }
 
@@ -175,7 +176,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     groupId,
     newName,
   }: {
-    groupId: string;
+    groupId: ChatGroupId;
     newName: string;
   }): Promise<void> {
     if (currentChatGroupRef.value?.id === groupId) {
@@ -183,22 +184,22 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatGroupRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateChatGroup(groupId, (current) => {
+    await storageService.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (current === null) {
         throw new Error('Chat group not found');
       }
       current.name = newName;
       current.updatedAt = Date.now();
       return current;
-    });
-    await loadData({});
+    } });
+    await loadData();
   }
 
   async function updateChatGroupMetadata({
     id,
     updates,
   }: {
-    id: string;
+    id: ChatGroupId;
     updates: Partial<Pick<ChatGroup, 'name' | 'endpoint' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }): Promise<void> {
     if (currentChatGroupRef.value?.id === id) {
@@ -206,29 +207,29 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       currentChatGroupRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateChatGroup(id, (current) => {
+    await storageService.updateChatGroup({ id: id, updater: ({ current }) => {
       if (current === null) {
         throw new Error('Chat group not found');
       }
       return { ...current, ...updates, updatedAt: Date.now() };
-    });
-    await loadData({});
+    } });
+    await loadData();
   }
 
   async function moveChatToGroup({
     chatId,
     targetGroupId,
   }: {
-    chatId: string;
-    targetGroupId: string | null;
+    chatId: ChatId;
+    targetGroupId: ChatGroupId | null;
   }): Promise<void> {
     if (currentChatRef.value?.id === chatId) {
       currentChatRef.value.groupId = targetGroupId;
       currentChatRef.value.updatedAt = Date.now();
     }
 
-    await storageService.updateHierarchy((current) => {
-      let detachedChatId: string | undefined;
+    await storageService.updateHierarchy({ updater: ({ current }) => {
+      let detachedChatId: ChatId | undefined;
 
       current.items = current.items.filter((item) => {
         switch (item.type) {
@@ -275,14 +276,14 @@ export function useChatOrganization(): ChatOrganizationAdapter {
         });
       }
       return current;
-    });
-    await loadData({});
+    } });
+    await loadData();
   }
 
   async function reorderSidebarChatAfterSend({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<void> {
     const reorderSetting = settings.value.experimental?.sidebarSendMessageReorder ?? 'disabled';
     switch (reorderSetting) {
@@ -296,7 +297,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
     }
     }
 
-    await storageService.updateHierarchy((current) => {
+    await storageService.updateHierarchy({ updater: ({ current }) => {
       let chatNode: HierarchyNode | undefined;
       let sourceGroup: HierarchyChatGroupNode | undefined;
 
@@ -334,8 +335,8 @@ export function useChatOrganization(): ChatOrganizationAdapter {
         node,
       });
       return current;
-    });
-    await loadData({});
+    } });
+    await loadData();
   }
 
   return {

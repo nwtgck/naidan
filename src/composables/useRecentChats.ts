@@ -1,11 +1,29 @@
-import { ref, computed } from 'vue';
+import { ref, computed, type ComputedRef, type Ref } from 'vue';
 import { useChatListData } from '@/composables/chat/ui/useChatListData';
+import type { ChatId } from '@/models/ids';
 import { useOverlay } from './useOverlay';
 import type { ChatSummary } from '@/models/types';
 
-interface RecentChatEntry {
-  id: string;
+export interface RecentChatEntry {
+  id: ChatId;
   accessedAt: number;
+}
+
+export interface RecentChatWithAccess extends ChatSummary {
+  accessedAt: number;
+}
+
+export interface UseRecentChatsResult {
+  isRecentOpen: ComputedRef<boolean>;
+  recentChats: ComputedRef<RecentChatWithAccess[]>;
+  openRecent: () => void;
+  closeRecent: () => void;
+  toggleRecent: () => void;
+  addRecentChat: ({ id }: { id: ChatId }) => void;
+  TEST_ONLY: {
+    recentChatEntries: Ref<RecentChatEntry[]>;
+    allRecentChats: ComputedRef<RecentChatWithAccess[]>;
+  };
 }
 
 const activeOverlay = useOverlay().activeOverlay;
@@ -17,7 +35,7 @@ const isRecentOpen = computed(() => activeOverlay.value === 'recent');
 const recentChatEntries = ref<RecentChatEntry[]>([]);
 const MAX_RECENT_CHATS = 32;
 
-export function useRecentChats() {
+export function useRecentChats(): UseRecentChatsResult {
   const { chats } = useChatListData();
 
   const openRecent = () => {
@@ -44,7 +62,7 @@ export function useRecentChats() {
     _toggleOverlay({ type: 'recent' });
   };
 
-  const addRecentChat = ({ id }: { id: string }) => {
+  const addRecentChat = ({ id }: { id: ChatId }) => {
     const now = Date.now();
     const index = recentChatEntries.value.findIndex(e => e.id === id);
     if (index !== -1) {
@@ -60,10 +78,10 @@ export function useRecentChats() {
     // Filter to ensure only existing chats are returned and include accessedAt
     return recentChatEntries.value
       .map(entry => {
-        const chat = chats.value.find(c => c.id === entry.id);
+        const chat = chats.value.find(chat => chat.id === entry.id);
         return chat ? { ...chat, accessedAt: entry.accessedAt } : undefined;
       })
-      .filter((c): c is ChatSummary & { accessedAt: number } => c !== undefined);
+      .filter((chat): chat is RecentChatWithAccess => chat !== undefined);
   });
 
   const switcherRecentChats = computed(() => {

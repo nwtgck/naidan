@@ -2,7 +2,9 @@
 import { computed } from 'vue';
 import type { Component } from 'vue';
 import type { Token, Tokens } from 'marked';
-import { marked, sanitizeHtml } from './useMarkdown'; // Added sanitizeHtml
+import { marked } from './useMarkdown';
+import { sanitizeMarkdownHtml } from '@/lib/security/allowedHtml';
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
 import CodeBlockWrapper from './CodeBlockWrapper.vue';
 import MarkdownInline from './MarkdownInline.vue';
 import BlockMarkdownItem from './BlockMarkdownItem.vue';
@@ -35,6 +37,23 @@ function lastRenderableIdx({ tokens }: { tokens: Array<{ type: string }> | undef
 
 // For tables: find the last cell index in a row that has non-empty text content.
 // During streaming, trailing cells may be empty placeholders not yet filled.
+
+function renderMarkedBlockHtml({
+  raw,
+}: {
+  raw: string;
+}) {
+  return sanitizeMarkdownHtml({ html: marked.parse(raw) as string });
+}
+
+function renderMarkedInlineHtml({
+  raw,
+}: {
+  raw: string;
+}) {
+  return sanitizeMarkdownHtml({ html: marked.parseInline(raw) as string });
+}
+
 function lastNonEmptyCellIdx({ row }: { row: Tokens.TableCell[] }): number {
   for (let i = row.length - 1; i >= 0; i--) {
     if (row[i]!.text.trim() !== '') return i;
@@ -233,8 +252,17 @@ defineExpose({
   </template>
 
   <!-- KaTeX -->
-  <div v-else-if="token.type === 'blockKatex'" v-html="sanitizeHtml({ html: marked.parse(token.raw) as string })" class="my-4 overflow-x-auto"></div>
-  <span v-else-if="token.type === 'katex' || token.type === 'inlineKatex'" v-html="sanitizeHtml({ html: marked.parseInline(token.raw) as string })"></span>
+  <AllowedHtmlView
+    v-else-if="token.type === 'blockKatex'"
+    as="div"
+    :html="renderMarkedBlockHtml({ raw: token.raw })"
+    class="my-4 overflow-x-auto"
+  />
+  <AllowedHtmlView
+    v-else-if="token.type === 'katex' || token.type === 'inlineKatex'"
+    as="span"
+    :html="renderMarkedInlineHtml({ raw: token.raw })"
+  />
 
   <!-- Text / Inline elements (for tight lists or other inline contexts handled as blocks) -->
   <!-- Use template (no wrapper element) so MarkdownInline's own <span> is not double-wrapped -->

@@ -3,34 +3,66 @@ import { ref } from 'vue';
 import { CopyIcon, ExternalLinkIcon, Loader2Icon } from 'lucide-vue-next';
 import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { useToast } from '@/composables/useToast';
+import { useExportExclusions } from '@/composables/useExportExclusions';
 
-const DEPLOYMENT_TARGETS = [
-  { host: 'naidan.pages.dev', baseUrl: 'https://naidan.pages.dev' },
-  { host: 'naidan-only-local.pages.dev', baseUrl: 'https://naidan-only-local.pages.dev' },
-  { host: 'develop.naidan.pages.dev', baseUrl: 'https://develop.naidan.pages.dev' },
-  { host: 'develop.naidan-only-local.pages.dev', baseUrl: 'https://develop.naidan-only-local.pages.dev' },
-] as const;
+type DeploymentTarget = {
+  readonly kind: 'Standard' | 'Local only' | 'Curated';
+  readonly host: string;
+  readonly baseUrl: string;
+};
+
+type DeploymentGroup = {
+  readonly id: 'production' | 'develop';
+  readonly label: 'Production' | 'develop branch';
+  readonly dotClass: string;
+  readonly targets: readonly DeploymentTarget[];
+};
+
+const DEPLOYMENT_GROUPS = [
+  {
+    id: 'production',
+    label: 'Production',
+    dotClass: 'bg-emerald-600/60 dark:bg-emerald-400/60',
+    targets: [
+      { kind: 'Standard', host: 'naidan.pages.dev', baseUrl: 'https://naidan.pages.dev' },
+      { kind: 'Local only', host: 'naidan-only-local.pages.dev', baseUrl: 'https://naidan-only-local.pages.dev' },
+      { kind: 'Curated', host: 'naidan-curated.pages.dev', baseUrl: 'https://naidan-curated.pages.dev' },
+    ],
+  },
+  {
+    id: 'develop',
+    label: 'develop branch',
+    dotClass: 'bg-violet-500/50 dark:bg-violet-300/60',
+    targets: [
+      { kind: 'Standard', host: 'develop.naidan.pages.dev', baseUrl: 'https://develop.naidan.pages.dev' },
+      { kind: 'Local only', host: 'develop.naidan-only-local.pages.dev', baseUrl: 'https://develop.naidan-only-local.pages.dev' },
+      { kind: 'Curated', host: 'develop.naidan-curated.pages.dev', baseUrl: 'https://develop.naidan-curated.pages.dev' },
+    ],
+  },
+] as const satisfies readonly DeploymentGroup[];
+
+const DEPLOYMENT_TARGETS: readonly DeploymentTarget[] = DEPLOYMENT_GROUPS.flatMap(
+  group => [...group.targets],
+);
 
 const { addToast } = useToast();
 const activeAction = ref<{ type: 'copy' | 'open'; host: string } | null>(null);
-const excludeChats = ref(false);
-const excludeAttachments = ref(false);
+const {
+  excludeChats,
+  excludeChatHistory,
+  excludeAttachments,
+  excludeChatHistoryDisabled,
+  buildExcludeList,
+} = useExportExclusions();
 
-function buildExcludeList() {
-  const exclude: Array<'chat' | 'binary_object'> = [];
-  if (excludeChats.value) exclude.push('chat');
-  if (excludeAttachments.value) exclude.push('binary_object');
-  return exclude;
-}
-
-async function createCurrentStateURL({ target }: { target: typeof DEPLOYMENT_TARGETS[number] }) {
+async function createCurrentStateURL({ target }: { target: DeploymentTarget }) {
   return await urlImportExportLogic.getExportURL({
     exclude: buildExcludeList(),
     baseUrl: target.baseUrl,
   });
 }
 
-async function copyCurrentStateURL({ target }: { target: typeof DEPLOYMENT_TARGETS[number] }) {
+async function copyCurrentStateURL({ target }: { target: DeploymentTarget }) {
   if (activeAction.value) return;
 
   activeAction.value = { type: 'copy', host: target.host };
@@ -49,7 +81,7 @@ async function copyCurrentStateURL({ target }: { target: typeof DEPLOYMENT_TARGE
   }
 }
 
-async function openCurrentState({ target }: { target: typeof DEPLOYMENT_TARGETS[number] }) {
+async function openCurrentState({ target }: { target: DeploymentTarget }) {
   if (activeAction.value) return;
 
   activeAction.value = { type: 'open', host: target.host };
@@ -69,6 +101,7 @@ async function openCurrentState({ target }: { target: typeof DEPLOYMENT_TARGETS[
 
 defineExpose({
   TEST_ONLY: {
+    DEPLOYMENT_GROUPS,
     DEPLOYMENT_TARGETS,
     buildExcludeList,
     copyCurrentStateURL,
@@ -80,65 +113,112 @@ defineExpose({
 <template>
   <div class="space-y-4" data-testid="developer-open-state-links">
     <div>
-      <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest ml-1">Open Current State</h3>
-      <p class="mt-2 text-[11px] font-medium text-gray-400 ml-1 leading-relaxed">
+      <h3 class="ml-1 text-sm font-bold uppercase tracking-widest text-gray-500">Open Current State</h3>
+      <p class="ml-1 mt-2 text-[11px] font-medium leading-relaxed text-gray-400">
         Open this storage state in another deployment using the same URL import format as Share via URL.
       </p>
     </div>
 
-    <div class="flex flex-wrap gap-4">
-      <label class="flex items-center gap-2 cursor-pointer group">
-        <input
-          v-model="excludeChats"
-          type="checkbox"
-          class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
-          data-testid="open-current-state-exclude-chats"
-        />
-        <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chats</span>
-      </label>
-      <label class="flex items-center gap-2 cursor-pointer group">
-        <input
-          v-model="excludeAttachments"
-          type="checkbox"
-          class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
-          data-testid="open-current-state-exclude-attachments"
-        />
-        <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Attachments</span>
-      </label>
-    </div>
-
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <div
-        v-for="target in DEPLOYMENT_TARGETS"
-        :key="target.host"
-        class="min-w-0 flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-2xl text-sm font-bold shadow-sm"
-        :data-testid="`open-current-state-row-${target.host}`"
-      >
-        <span class="truncate">{{ target.host }}</span>
-        <div class="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            :disabled="activeAction !== null"
-            class="p-2 rounded-xl hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            :title="`Copy URL for ${target.host}`"
-            :data-testid="`copy-current-state-${target.host}`"
-            @click="copyCurrentStateURL({ target })"
-          >
-            <Loader2Icon v-if="activeAction?.type === 'copy' && activeAction.host === target.host" class="w-4 h-4 animate-spin" />
-            <CopyIcon v-else class="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            :disabled="activeAction !== null"
-            class="p-2 rounded-xl hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            :title="`Open ${target.host}`"
-            :data-testid="`open-current-state-${target.host}`"
-            @click="openCurrentState({ target })"
-          >
-            <Loader2Icon v-if="activeAction?.type === 'open' && activeAction.host === target.host" class="w-4 h-4 animate-spin" />
-            <ExternalLinkIcon v-else class="w-4 h-4" />
-          </button>
+    <div class="overflow-hidden rounded-2xl border border-gray-200/80 bg-white/60 shadow-sm dark:border-gray-800 dark:bg-gray-900/30">
+      <div class="flex flex-col gap-3 border-b border-gray-200/80 bg-gray-50/70 px-4 py-3 dark:border-gray-800 dark:bg-gray-900/30 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <h4 class="text-xs font-bold text-gray-800 dark:text-gray-200">State contents</h4>
+          <p class="mt-0.5 text-[10px] font-medium leading-relaxed text-gray-500 dark:text-gray-400">
+            Choose which data should be omitted from the generated URL.
+          </p>
         </div>
+
+        <fieldset class="flex shrink-0 flex-wrap gap-1.5">
+          <legend class="sr-only">Excluded data</legend>
+          <label class="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200">
+            <input
+              v-model="excludeChats"
+              type="checkbox"
+              class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+              data-testid="open-current-state-exclude-chats"
+            />
+            Exclude Chats
+          </label>
+          <label
+            class="flex h-7 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400"
+            :class="excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-gray-300 hover:text-gray-800 dark:hover:border-gray-600 dark:hover:text-gray-200'"
+          >
+            <input
+              v-model="excludeChatHistory"
+              :disabled="excludeChatHistoryDisabled"
+              type="checkbox"
+              class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed dark:border-gray-600 dark:bg-gray-700"
+              data-testid="open-current-state-exclude-chat-history"
+            />
+            Exclude Chat History
+          </label>
+          <label class="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 text-[10px] font-bold text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200">
+            <input
+              v-model="excludeAttachments"
+              type="checkbox"
+              class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+              data-testid="open-current-state-exclude-attachments"
+            />
+            Exclude Attachments
+          </label>
+        </fieldset>
+      </div>
+
+      <div class="grid grid-cols-1 divide-y divide-gray-200/80 dark:divide-gray-800 sm:grid-cols-2 sm:divide-x sm:divide-y-0" data-testid="open-current-state-groups">
+        <section
+          v-for="group in DEPLOYMENT_GROUPS"
+          :key="group.id"
+          class="min-w-0 p-3.5"
+          :data-testid="`open-current-state-group-${group.id}`"
+        >
+          <h4 class="mb-2 flex items-center gap-1.5 text-xs font-bold text-gray-800 dark:text-gray-200">
+            <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="group.dotClass" aria-hidden="true"></span>
+            {{ group.label }}
+          </h4>
+
+          <div class="space-y-1.5">
+            <div
+              v-for="target in group.targets"
+              :key="target.host"
+              class="flex min-h-12 min-w-0 items-center justify-between gap-2 rounded-xl border border-gray-200/80 bg-gray-50/70 py-1.5 pl-2.5 pr-1.5 transition-colors hover:border-gray-300 hover:bg-gray-100/70 dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-gray-700 dark:hover:bg-gray-800/70"
+              :data-testid="`open-current-state-row-${target.host}`"
+            >
+              <div class="min-w-0">
+                <span class="block text-[8px] font-extrabold uppercase leading-tight tracking-wider text-gray-400 dark:text-gray-500">
+                  {{ target.kind }}
+                </span>
+                <span class="mt-0.5 block truncate font-mono text-[10px] font-semibold leading-snug text-gray-700 dark:text-gray-300">
+                  {{ target.host }}
+                </span>
+              </div>
+
+              <div class="flex shrink-0 items-center gap-0.5">
+                <button
+                  type="button"
+                  :disabled="activeAction !== null"
+                  class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                  :title="`Copy URL for ${target.host}`"
+                  :data-testid="`copy-current-state-${target.host}`"
+                  @click="copyCurrentStateURL({ target })"
+                >
+                  <Loader2Icon v-if="activeAction?.type === 'copy' && activeAction.host === target.host" class="h-3.5 w-3.5 animate-spin" />
+                  <CopyIcon v-else class="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  :disabled="activeAction !== null"
+                  class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-white hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                  :title="`Open ${target.host}`"
+                  :data-testid="`open-current-state-${target.host}`"
+                  @click="openCurrentState({ target })"
+                >
+                  <Loader2Icon v-if="activeAction?.type === 'open' && activeAction.host === target.host" class="h-3.5 w-3.5 animate-spin" />
+                  <ExternalLinkIcon v-else class="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>

@@ -131,7 +131,7 @@ describe('StandardCodeBlock worker integration', () => {
   })
 
   it('does not materialize hostile html during plain render or worker render', async () => {
-    const worker = createHighlightWorker({})
+    const worker = createHighlightWorker()
     const probe = vi.fn()
     vi.stubGlobal('__xssProbe', probe)
     const hostileCode = '<img src=x onerror="globalThis.__xssProbe?.(\'img-error\')"><svg onload="globalThis.__xssProbe?.(\'svg-load\')"></svg><a href="javascript:globalThis.__xssProbe?.(\'link-click\')">click</a><script>globalThis.__xssProbe?.(\'script-run\')</script>'

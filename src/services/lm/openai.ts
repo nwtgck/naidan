@@ -9,12 +9,14 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import { zodToJsonSchema } from '@/utils/llm-tools';
+import { toToolCallId, type ToolCallId } from '@/models/ids';
+import { zodToJsonSchema } from '@/utils/lm-tools';
 import type { LmParameters, ChatMessage } from '@/models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
-import { type LLMProvider } from './types';
+import { getDefaultLmFetch, type LmFetch } from '@/services/lm/fetch';
+import { type LmProvider } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
 
@@ -64,34 +66,34 @@ interface OpenAICompletionRequest {
   }[];
 }
 
-export class OpenAIProvider implements LLMProvider {
+export class OpenAIProvider implements LmProvider {
   private config: {
     endpoint: string;
     headers?: [string, string][];
+    fetcher: LmFetch;
   };
 
-  constructor(config: { endpoint: string; headers?: [string, string][] }) {
-    this.config = config;
+  constructor({ endpoint, headers, fetcher }: { endpoint: string; headers?: [string, string][]; fetcher?: LmFetch }) {
+    this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
-  async chat(params: {
+  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;
-    onChunk: (chunk: string) => void;
+    onChunk: ({ chunk }: { chunk: string }) => void;
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
-    onToolResult?: (params: {
-      id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: ToolCallId; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
+    onToolResult?: ({ id, result }: {
+      id: ToolCallId;
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
-    const { endpoint, headers } = this.config;
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/chat/completions`;
 
     // Local copy to manage the conversation loop (tool calls/results)
@@ -131,7 +133,7 @@ export class OpenAIProvider implements LLMProvider {
 
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await fetcher(url, {
           method: 'POST',
           headers: [
             ['Content-Type', 'application/json'],
@@ -174,7 +176,7 @@ export class OpenAIProvider implements LLMProvider {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      const accumulatedToolCalls: Map<string, import('../../models/types').ToolCall> = new Map();
+      const accumulatedToolCalls: Map<string, import('@/models/types').ToolCall> = new Map();
       // Track the current active ID for each index to detect sequential calls on the same index
       const indexToCurrentIdMap: Map<number, string> = new Map();
       let fullContent = '';
@@ -184,7 +186,7 @@ export class OpenAIProvider implements LLMProvider {
         const { done, value } = await reader.read();
         if (done) {
           if (isThinking) {
-            onChunk('</think>');
+            onChunk({ chunk: '</think>' });
             fullContent += '</think>';
             isThinking = false;
           }
@@ -209,22 +211,22 @@ export class OpenAIProvider implements LLMProvider {
             const reasoning = delta.reasoning || delta.reasoning_content;
             if (reasoning) {
               if (!isThinking) {
-                onChunk('<think>');
+                onChunk({ chunk: '<think>' });
                 fullContent += '<think>';
                 isThinking = true;
               }
               fullContent += reasoning;
-              onChunk(reasoning);
+              onChunk({ chunk: reasoning });
             }
 
             if (delta.content) {
               if (isThinking) {
-                onChunk('</think>');
+                onChunk({ chunk: '</think>' });
                 fullContent += '</think>';
                 isThinking = false;
               }
               fullContent += delta.content;
-              onChunk(delta.content);
+              onChunk({ chunk: delta.content });
             }
 
             if (delta.tool_calls) {
@@ -238,7 +240,7 @@ export class OpenAIProvider implements LLMProvider {
 
                 if (!accumulatedToolCalls.has(key)) {
                   accumulatedToolCalls.set(key, {
-                    id: tc.id || currentId,
+                    id: toToolCallId({ raw: tc.id || currentId }),
                     type: 'function',
                     function: { name: '', arguments: '' }
                   });
@@ -254,7 +256,7 @@ export class OpenAIProvider implements LLMProvider {
                     record.function.arguments += tc.function.arguments;
                   }
                 }
-                if (tc.id) record.id = tc.id;
+                if (tc.id) record.id = toToolCallId({ raw: tc.id });
               }
             }
           } catch (e) {
@@ -305,7 +307,7 @@ export class OpenAIProvider implements LLMProvider {
               const executionResult = await tool.execute({
                 args: validatedArgs,
                 signal,
-                onEvent: async (event) => {
+                onEvent: async ({ event }) => {
                   onToolEvent?.({ id: tc.id, event });
                 },
                 approvalContext: toolApprovalContext,
@@ -329,7 +331,7 @@ export class OpenAIProvider implements LLMProvider {
             } catch (e) {
               if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-              const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
+              const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
@@ -338,7 +340,7 @@ export class OpenAIProvider implements LLMProvider {
             }
 
           } else if (!tool) {
-            const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
             result = errorResult.message;
           } else {
@@ -352,20 +354,19 @@ export class OpenAIProvider implements LLMProvider {
             content: result
           });
         }
-        continue; // Loop for next response from LLM
+        continue; // Loop for next response from LM
       }
 
       break; // No more tool calls or we already sent content
     }
   }
 
-  async listModels(params: { signal?: AbortSignal }): Promise<string[]> {
-    const { signal } = params;
-    const { endpoint, headers } = this.config;
+  async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/models`;
     let response: Response;
     try {
-      response = await fetch(url, { signal, headers });
+      response = await fetcher(url, { signal, headers });
     } catch (e) {
       const isAbort = e instanceof Error && e.name === 'AbortError';
       if (!isAbort) {

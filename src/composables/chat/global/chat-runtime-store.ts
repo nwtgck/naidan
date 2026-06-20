@@ -1,11 +1,12 @@
 import { reactive } from 'vue';
 import type { Chat } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 
 export type ChatRuntimeTaskKind = 'title' | 'fetch' | 'process';
 
 export type ChatRuntimeTaskKey = {
   kind: ChatRuntimeTaskKind;
-  chatId: string | undefined;
+  chatId: ChatId | undefined;
 };
 
 export type ActiveGenerationEntry = {
@@ -14,9 +15,9 @@ export type ActiveGenerationEntry = {
 };
 
 export type ChatRuntimeStore = {
-  activeGenerations: Map<string, ActiveGenerationEntry>;
-  activeTitleGenerations: Map<string, AbortController>;
-  externalGenerations: Set<string>;
+  activeGenerations: Map<ChatId, ActiveGenerationEntry>;
+  activeTitleGenerations: Map<ChatId, AbortController>;
+  externalGenerations: Set<ChatId>;
 
   startTask({
     key,
@@ -45,87 +46,87 @@ export type ChatRuntimeStore = {
   clearTasksForChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   isTaskRunning({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): boolean;
 
   isProcessing({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): boolean;
 
   isGeneratingTitle({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): boolean;
 
   setActiveGeneration({
     chatId,
     generation,
   }: {
-    chatId: string;
+    chatId: ChatId;
     generation: ActiveGenerationEntry;
   }): void;
 
   getActiveGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): ActiveGenerationEntry | undefined;
 
   deleteActiveGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   setExternalGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   deleteExternalGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   hasExternalGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): boolean;
 
   setActiveTitleGeneration({
     chatId,
     controller,
   }: {
-    chatId: string;
+    chatId: ChatId;
     controller: AbortController;
   }): void;
 
   getActiveTitleGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): AbortController | undefined;
 
   deleteActiveTitleGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
-  clearActiveGenerations(_args: Record<never, never>): void;
-  clearActiveTaskCounts(_args: Record<never, never>): void;
+  clearActiveGenerations(): void;
+  clearActiveTaskCounts(): void;
 
   TEST_ONLY: {
     activeTaskCounts: Map<string, number>;
@@ -137,7 +138,7 @@ function serializeTaskKey({
 }: {
   key: ChatRuntimeTaskKey;
 }): string {
-  return `${key.kind}:${key.chatId ?? 'global'}`;
+  return `${key.kind}:${key.chatId === undefined ? 'global' : idToRaw({ id: key.chatId })}`;
 }
 
 function isChatScopedTaskKey({
@@ -145,15 +146,15 @@ function isChatScopedTaskKey({
   chatId,
 }: {
   serializedKey: string;
-  chatId: string;
+  chatId: ChatId;
 }) {
-  return serializedKey.endsWith(`:${chatId}`);
+  return serializedKey.endsWith(`:${idToRaw({ id: chatId })}`);
 }
 
-export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntimeStore {
-  const activeGenerations = reactive(new Map<string, ActiveGenerationEntry>());
-  const activeTitleGenerations = reactive(new Map<string, AbortController>());
-  const externalGenerations = reactive(new Set<string>());
+export function createChatRuntimeStore(): ChatRuntimeStore {
+  const activeGenerations = reactive(new Map<ChatId, ActiveGenerationEntry>());
+  const activeTitleGenerations = reactive(new Map<ChatId, AbortController>());
+  const externalGenerations = reactive(new Set<ChatId>());
   const activeTaskCounts = reactive(new Map<string, number>());
 
   function startTask({
@@ -198,7 +199,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function clearTasksForChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     for (const serializedKey of Array.from(activeTaskCounts.keys())) {
       if (isChatScopedTaskKey({ serializedKey, chatId })) {
@@ -210,7 +211,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function isTaskRunning({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     if (activeGenerations.has(chatId) || externalGenerations.has(chatId)) {
       return true;
@@ -227,7 +228,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function isProcessing({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     if (activeGenerations.has(chatId) || externalGenerations.has(chatId)) {
       return true;
@@ -244,7 +245,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function isGeneratingTitle({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return getTaskCount({
       key: {
@@ -258,7 +259,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
     chatId,
     generation,
   }: {
-    chatId: string;
+    chatId: ChatId;
     generation: ActiveGenerationEntry;
   }) {
     activeGenerations.set(chatId, generation);
@@ -267,7 +268,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function getActiveGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return activeGenerations.get(chatId);
   }
@@ -275,7 +276,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function deleteActiveGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     activeGenerations.delete(chatId);
   }
@@ -283,7 +284,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function setExternalGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     externalGenerations.add(chatId);
   }
@@ -291,7 +292,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function deleteExternalGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     externalGenerations.delete(chatId);
   }
@@ -299,7 +300,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function hasExternalGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return externalGenerations.has(chatId);
   }
@@ -308,7 +309,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
     chatId,
     controller,
   }: {
-    chatId: string;
+    chatId: ChatId;
     controller: AbortController;
   }) {
     activeTitleGenerations.set(chatId, controller);
@@ -317,7 +318,7 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function getActiveTitleGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return activeTitleGenerations.get(chatId);
   }
@@ -325,16 +326,16 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
   function deleteActiveTitleGeneration({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     activeTitleGenerations.delete(chatId);
   }
 
-  function clearActiveGenerations(_args: Record<never, never>) {
+  function clearActiveGenerations() {
     activeGenerations.clear();
   }
 
-  function clearActiveTaskCounts(_args: Record<never, never>) {
+  function clearActiveTaskCounts() {
     activeTaskCounts.clear();
   }
 
@@ -366,3 +367,4 @@ export function createChatRuntimeStore(_args: Record<never, never>): ChatRuntime
     },
   };
 }
+import { idToRaw } from '@/models/ids'

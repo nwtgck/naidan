@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { z } from 'zod';
 import type { ToolCall } from '@/models/types';
+import { toToolCallId } from '@/models/ids';
 
 // Mock the service
 const mockService = {
@@ -22,14 +23,14 @@ vi.mock('./index', () => ({
 function setupGenerateTextMock(toolCallsOnFirstCall: ToolCall[] = []) {
   let callCount = 0;
   mockService.generateText.mockImplementation(
-    async (
-      _messages: unknown,
-      _onChunk: (chunk: string) => void,
-      onToolCalls: (toolCalls: ToolCall[]) => void
-    ) => {
+    async ({ onToolCalls }: {
+      messages: unknown;
+      onChunk: (params: { chunk: string }) => void;
+      onToolCalls: (params: { toolCalls: ToolCall[] }) => void;
+    }) => {
       callCount++;
       if (callCount === 1 && toolCallsOnFirstCall.length > 0) {
-        onToolCalls(toolCallsOnFirstCall);
+        onToolCalls({ toolCalls: toolCallsOnFirstCall });
       }
     }
   );
@@ -56,7 +57,7 @@ describe('TransformersJsProvider', () => {
 
     expect(mockService.loadModel).toHaveBeenCalledWith({ modelId: 'some-model' });
     expect(mockService.generateText).toHaveBeenCalledOnce();
-    expect(mockService.generateText.mock.calls[0]![0]).toEqual([{ role: 'user', content: 'hello' }]);
+    expect(mockService.generateText.mock.calls[0]![0].messages).toEqual([{ role: 'user', content: 'hello' }]);
   });
 
   it('should not auto-load if model is already ready', async () => {
@@ -114,7 +115,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_1',
+        id: toToolCallId({ raw: 'call_1' }),
         type: 'function',
         function: { name: 'my_tool', arguments: '{"input":"hello"}' },
       };
@@ -145,7 +146,7 @@ describe('TransformersJsProvider', () => {
       expect(onToolResult).toHaveBeenCalledWith({ id: 'call_1', result: { status: 'success', content: 'result of my_tool' } });
 
       // Second call includes tool result message
-      const secondCallMessages = mockService.generateText.mock.calls[1]![0];
+      const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
         expect.objectContaining({ role: 'tool', tool_call_id: 'call_1', content: 'result of my_tool' })
       );
@@ -155,7 +156,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_unknown',
+        id: toToolCallId({ raw: 'call_unknown' }),
         type: 'function',
         function: { name: 'nonexistent_tool', arguments: '{}' },
       };
@@ -179,7 +180,7 @@ describe('TransformersJsProvider', () => {
         result: { status: 'error', code: 'other', message: 'Tool "nonexistent_tool" not found.' },
       });
       // Error is sent back to the model
-      const secondCallMessages = mockService.generateText.mock.calls[1]![0];
+      const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
         expect.objectContaining({ role: 'tool', tool_call_id: 'call_unknown' })
       );
@@ -189,7 +190,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_bad_json',
+        id: toToolCallId({ raw: 'call_bad_json' }),
         type: 'function',
         function: { name: 'my_tool', arguments: 'not valid json' },
       };
@@ -225,7 +226,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_err',
+        id: toToolCallId({ raw: 'call_err' }),
         type: 'function',
         function: { name: 'failing_tool', arguments: '{"input":"x"}' },
       };
@@ -250,7 +251,7 @@ describe('TransformersJsProvider', () => {
         id: 'call_err',
         result: { status: 'error', code: 'execution_failed', message: 'something broke' },
       });
-      const secondCallMessages = mockService.generateText.mock.calls[1]![0];
+      const secondCallMessages = mockService.generateText.mock.calls[1]![0].messages;
       expect(secondCallMessages).toContainEqual(
         expect.objectContaining({ role: 'tool', content: 'Error [execution_failed]: something broke' })
       );
@@ -260,7 +261,7 @@ describe('TransformersJsProvider', () => {
       mockService.getState.mockReturnValue({ status: 'ready', activeModelId: 'model' });
 
       const toolCall: ToolCall = {
-        id: 'call_abort',
+        id: toToolCallId({ raw: 'call_abort' }),
         type: 'function',
         function: { name: 'my_tool', arguments: '{"input":"x"}' },
       };
@@ -268,14 +269,14 @@ describe('TransformersJsProvider', () => {
       const controller = new AbortController();
       let callCount = 0;
       mockService.generateText.mockImplementation(
-        async (
-          _messages: unknown,
-          _onChunk: (chunk: string) => void,
-          onToolCalls: (toolCalls: ToolCall[]) => void
-        ) => {
+        async ({ onToolCalls }: {
+          messages: unknown;
+          onChunk: (params: { chunk: string }) => void;
+          onToolCalls: (params: { toolCalls: ToolCall[] }) => void;
+        }) => {
           callCount++;
           if (callCount === 1) {
-            onToolCalls([toolCall]);
+            onToolCalls({ toolCalls: [toolCall] });
             controller.abort(); // abort during tool execution phase
           }
         }

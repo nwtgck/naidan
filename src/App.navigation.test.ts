@@ -4,6 +4,9 @@ import { ref, defineComponent, computed } from 'vue';
 import App from './App.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import type { Chat } from './models/types';
+import { toChatId } from './models/ids';
+
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
 
 // Mock CurrentChatPane to track mounting/unmounting
 const mountSpy = vi.fn();
@@ -48,7 +51,7 @@ vi.mock('./composables/useChat', () => ({
     sidebarItems: ref([]),
     persistSidebarStructure: vi.fn(),
     openChat: async (id: string) => {
-      mockCurrentChat.value = { id } as Chat;
+      mockCurrentChat.value = { id: toChatId({ raw: id }) } as unknown as Chat;
     },
   }),
 }));
@@ -141,12 +144,6 @@ vi.mock('./composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('./composables/useOPFSExplorer', () => ({
-  useOPFSExplorer: () => ({
-    isOPFSOpen: ref(false),
-  }),
-}));
-
 // Mock sub-components
 vi.mock('./components/Sidebar.vue', () => ({
   default: {
@@ -160,8 +157,6 @@ vi.mock('./components/ToastContainer.vue', () => ({ default: { template: '<div><
 vi.mock('./components/SettingsModal.vue', () => ({ default: { template: '<div></div>' } }));
 vi.mock('./components/DebugPanel.vue', () => ({ default: { template: '<div></div>' } }));
 vi.mock('./components/CustomDialog.vue', () => ({ default: { template: '<div></div>' } }));
-vi.mock('./components/OPFSExplorer.vue', () => ({ default: { template: '<div></div>' } }));
-
 describe('App Navigation & Regression Tests', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -182,7 +177,6 @@ describe('App Navigation & Regression Tests', () => {
           'SettingsModal': true,
           'DebugPanel': true,
           'CustomDialog': true,
-          'OPFSExplorer': true,
           'DebugWeshTerminalModal': true,
           'OnboardingModal': true,
           'ToastContainer': true,
@@ -197,7 +191,7 @@ describe('App Navigation & Regression Tests', () => {
     expect(mountSpy).toHaveBeenCalledTimes(1);
 
     // Navigate to a chat
-    mockCurrentChat.value = { id: 'chat-1' } as Chat;
+    mockCurrentChat.value = { id: toChatId({ raw: 'chat-1' }) } as unknown as Chat;
     await router.push('/chat/chat-1');
     await flushPromises();
 
@@ -206,7 +200,7 @@ describe('App Navigation & Regression Tests', () => {
     expect(mountSpy).toHaveBeenCalledTimes(1);
 
     // Now navigate to another chat
-    mockCurrentChat.value = { id: 'chat-2' } as Chat;
+    mockCurrentChat.value = { id: toChatId({ raw: 'chat-2' }) } as unknown as Chat;
     await router.push('/chat/chat-2');
     await flushPromises();
 

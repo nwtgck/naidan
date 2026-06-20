@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import GlobalSearchModal from './GlobalSearchModal.vue';
@@ -201,15 +202,15 @@ describe('GlobalSearchModal Component', () => {
 
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
       searchQuery: 'stale query',
-      options: expect.objectContaining({ chatId: 'c1' })
+      options: expect.objectContaining({ chatId: toChatId({ raw: 'c1' }) })
     }));
   });
 
   it('should navigate and select results with keyboard', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
-      { type: 'chat', item: { chatId: 'chat2', title: 'Chat 2', updatedAt: 2, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat2' }), title: 'Chat 2', updatedAt: 2, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -232,7 +233,7 @@ describe('GlobalSearchModal Component', () => {
   it('should ignore Enter during IME composition', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -250,7 +251,7 @@ describe('GlobalSearchModal Component', () => {
   it('should select a result when clicked', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -298,10 +299,10 @@ describe('GlobalSearchModal Component', () => {
     mockResults.value = [
       {
         type: 'message',
-        parentChat: { type: 'chat', chatId: 'chat1', title: 'Chat 1', updatedAt: 1, matchType: 'content', contentMatches: [] },
+        parentChat: { type: 'chat', chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, matchType: 'content', contentMatches: [] },
         item: {
-          chatId: 'chat1',
-          messageId: 'message-1',
+          chatId: toChatId({ raw: 'chat1' }),
+          messageId: toMessageId({ raw: 'message-1' }),
           excerpt: 'target excerpt',
           fullContent: 'target excerpt',
           role: 'assistant',
@@ -317,7 +318,7 @@ describe('GlobalSearchModal Component', () => {
 
     await wrapper.get('[data-testid="search-result-item-0"]').trigger('click');
 
-    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: 'chat1', messageId: 'message-1' });
+    expect(mockOpenChatAtMessage).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat1' }), messageId: toMessageId({ raw: 'message-1' }) });
     expect(mockOpenChat).not.toHaveBeenCalledWith({ id: 'chat1', leafId: 'leaf-1' });
     expect(mockPush).toHaveBeenCalledWith({
       path: '/chat/chat1',
@@ -329,7 +330,7 @@ describe('GlobalSearchModal Component', () => {
   it('should hide SearchPreview while scanning content', async () => {
     mockQuery.value = 'test'; // Ensure query is present to enter the results block
     mockIsScanningContent.value = true;
-    mockResults.value = [{ type: 'chat', item: { chatId: 'c1', title: 'C1', updatedAt: 1, contentMatches: [], matchType: 'title' } }] as any;
+    mockResults.value = [{ type: 'chat', item: { chatId: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 1, contentMatches: [], matchType: 'title' } }] as any;
 
     const wrapper = mount(GlobalSearchModal);
     await nextTick();
@@ -395,7 +396,7 @@ describe('GlobalSearchModal Component', () => {
     mockQuery.value = '';
     mockIsSearching.value = false;
     mockResults.value = [
-      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -410,7 +411,7 @@ describe('GlobalSearchModal Component', () => {
     mockQuery.value = 'test';
     mockIsScanningContent.value = false; // Ensure it's not hidden by scanning state
     mockResults.value = [
-      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -443,7 +444,7 @@ describe('GlobalSearchModal Component', () => {
     vi.useFakeTimers();
     mockQuery.value = 'test';
     mockResults.value = [
-      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -471,7 +472,7 @@ describe('GlobalSearchModal Component', () => {
   it('should expand preview with ArrowRight for chat results', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);
@@ -487,7 +488,7 @@ describe('GlobalSearchModal Component', () => {
   it('should focus search input when switching back from preview with ArrowLeft', async () => {
     mockQuery.value = 'test';
     mockResults.value = [
-      { type: 'chat', item: { chatId: 'chat1', title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
+      { type: 'chat', item: { chatId: toChatId({ raw: 'chat1' }), title: 'Chat 1', updatedAt: 1, contentMatches: [], matchType: 'title' } },
     ] as any;
 
     const wrapper = mount(GlobalSearchModal);

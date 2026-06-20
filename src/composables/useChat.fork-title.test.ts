@@ -3,14 +3,15 @@ import { useChat } from './useChat';
 import { reactive } from 'vue';
 import type { Chat, MessageNode } from '@/models/types';
 import { storageService } from '@/services/storage';
+import { idToRaw, toChatId, toMessageId } from '@/models/ids';
 
 vi.mock('../services/storage', () => ({
   storageService: {
     updateChatContent: vi.fn(),
     updateChatMeta: vi.fn(),
-    updateHierarchy: vi.fn(async (cb) => {
+    updateHierarchy: vi.fn(async ({ updater }) => {
       const mockHierarchy = { items: [] };
-      return cb(mockHierarchy);
+      return updater({ current: mockHierarchy });
     }),
     loadChat: vi.fn(),
     listChats: vi.fn().mockResolvedValue([]),
@@ -47,9 +48,9 @@ describe('useChat fork title fix', () => {
   });
 
   it('should use "Fork of New Chat" when the original chat title is null', async () => {
-    const m1: MessageNode = { id: 'm1', role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
     const untitledChat: Chat = {
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: null,
       root: { items: [m1] },
       createdAt: 0,
@@ -59,24 +60,24 @@ describe('useChat fork title fix', () => {
 
     __testOnlySetCurrentChat({ chat: reactive(untitledChat) as any });
 
-    const newId = await forkChat({ messageId: 'm1' });
+    const newId = await forkChat({ messageId: idToRaw({ id: toMessageId({ raw: 'm1' }) }) });
 
     expect(newId).toBeDefined();
 
     // Find the updateChatMeta call for the new chat
-    const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call: any[]) => call[0] === newId);
+    const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call) => idToRaw({ id: call[0].id }) === newId);
     expect(updaterCall).toBeDefined();
 
-    const metaUpdater = updaterCall![1];
-    const resultMeta = await (metaUpdater as any)({});
+    const metaUpdater = updaterCall![0].updater;
+    const resultMeta = await (metaUpdater as any)({ current: {} });
 
     expect(resultMeta.title).toBe('Fork of New Chat');
   });
 
   it('should still use the original title when it is present', async () => {
-    const m1: MessageNode = { id: 'm1', role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
+    const m1: MessageNode = { id: toMessageId({ raw: 'm1' }), role: 'user', content: 'hi', replies: { items: [] }, timestamp: 0 };
     const titledChat: Chat = {
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Original Title',
       root: { items: [m1] },
       createdAt: 0,
@@ -86,11 +87,11 @@ describe('useChat fork title fix', () => {
 
     __testOnlySetCurrentChat({ chat: reactive(titledChat) as any });
 
-    const newId = await forkChat({ messageId: 'm1' });
+    const newId = await forkChat({ messageId: idToRaw({ id: toMessageId({ raw: 'm1' }) }) });
 
-    const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call: any[]) => call[0] === newId);
-    const metaUpdater = updaterCall![1];
-    const resultMeta = await (metaUpdater as any)({});
+    const updaterCall = vi.mocked(storageService.updateChatMeta).mock.calls.find((call) => idToRaw({ id: call[0].id }) === newId);
+    const metaUpdater = updaterCall![0].updater;
+    const resultMeta = await (metaUpdater as any)({ current: {} });
 
     expect(resultMeta.title).toBe('Fork of Original Title');
   });

@@ -1,15 +1,18 @@
 import { parseStandardArgv, type ArgvOptionOccurrence, type ArgvSpecialParseResult, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { parseXargsDelimiter } from '@/services/wesh/commands/xargs/parse-input';
 import {
-  parseXargsDelimitedInput,
-  parseXargsDelimiter,
-  parseXargsInsertInput,
-  parseXargsLineInput,
-  parseXargsNullDelimitedInput,
-  parseXargsStandardInput,
-} from '@/services/wesh/commands/xargs/parse-input';
+  iterateReadableStreamChunks,
+  iterateUtf8TextChunks,
+  iterateXargsDelimitedItems,
+  iterateXargsInsertItems,
+  iterateXargsLogicalLines,
+  iterateXargsStandardItems,
+  XargsInputError,
+} from '@/services/wesh/commands/xargs/stream-input';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult, WeshFileHandle } from '@/services/wesh/types';
-import { readAllFileBytes } from '@/services/wesh/utils/fs';
+import { openFileReadStream, openHandleReadStream } from '@/services/wesh/utils/fs';
+import { iterateUtf8Lines } from '@/services/wesh/utils/text-records';
 
 const DEFAULT_MAX_CHARS = 131072;
 const XARGS_VERSION = 'xargs (wesh) 0.25.1-dev';
@@ -325,25 +328,6 @@ function describeConflictMode({
   }
 }
 
-async function readAllInput({
-  handle,
-}: {
-  handle: WeshFileHandle;
-}): Promise<string> {
-  const decoder = new TextDecoder();
-  const chunks: string[] = [];
-
-  while (true) {
-    const buffer = new Uint8Array(4096);
-    const { bytesRead } = await handle.read({ buffer });
-    if (bytesRead === 0) break;
-    chunks.push(decoder.decode(buffer.subarray(0, bytesRead), { stream: true }));
-  }
-
-  chunks.push(decoder.decode());
-  return chunks.join('');
-}
-
 function isValueOccurrence(
   occurrence: ArgvOptionOccurrence,
   key: string,
@@ -446,78 +430,88 @@ async function resolveExecutionLimits({
   };
 }
 
-function buildBatches({
+interface XargsInvocation {
+  readonly args: string[];
+}
+
+const MAX_AUTOMATIC_PARALLELISM = 32;
+const argumentEncoder = new TextEncoder();
+
+function getArgumentBytes({ value }: { value: string }): number {
+  return argumentEncoder.encode(value).byteLength;
+}
+
+function getCommandBytes({
+  command,
+  args,
+}: {
+  command: string;
+  args: readonly string[];
+}): number {
+  let bytes = getArgumentBytes({ value: command });
+  for (const arg of args) {
+    bytes += 1 + getArgumentBytes({ value: arg });
+  }
+  return bytes;
+}
+
+class XargsArgumentListTooLongError extends Error {}
+
+async function* createBatchedInvocations({
   command,
   items,
   initialArgs,
   maxArgs,
   maxChars,
   exitIfTooLong,
+  noRunIfEmpty,
 }: {
   command: string;
-  items: string[];
-  initialArgs: string[];
+  items: AsyncIterable<string>;
+  initialArgs: readonly string[];
   maxArgs: number | undefined;
   maxChars: number;
   exitIfTooLong: boolean;
-}): { ok: true; batches: string[][] } | { ok: false; message: string } {
-  const batches: string[][] = [];
-  let currentBatch: string[] = [];
-  const baseChars = [command, ...initialArgs].join(' ').length;
-  let currentChars = baseChars;
+  noRunIfEmpty: boolean;
+}): AsyncIterable<XargsInvocation> {
+  let batch: string[] = [];
+  let batchBytes = getCommandBytes({ command, args: initialArgs });
+  let sawItem = false;
 
-  for (const item of items) {
-    const wouldExceedLimits = ({
-      batch,
-      chars,
-    }: {
-      batch: string[];
-      chars: number;
-    }): boolean => {
-      const nextCount = batch.length + 1;
-      const nextChars = chars + (batch.length > 0 ? 1 : 0) + item.length;
-      const exceedsMaxArgs = maxArgs !== undefined && nextCount > maxArgs;
-      const exceedsMaxChars = nextChars > maxChars;
-      return exceedsMaxArgs || exceedsMaxChars;
-    };
+  for await (const item of items) {
+    sawItem = true;
+    const itemBytes = 1 + getArgumentBytes({ value: item });
+    const exceedsMaxArgs = maxArgs !== undefined && batch.length + 1 > maxArgs;
+    const exceedsMaxChars = batchBytes + itemBytes > maxChars;
 
-    if (currentBatch.length > 0 && wouldExceedLimits({ batch: currentBatch, chars: currentChars })) {
-      batches.push(currentBatch);
-      currentBatch = [];
-      currentChars = baseChars;
+    if (batch.length > 0 && (exceedsMaxArgs || exceedsMaxChars)) {
+      yield { args: [...initialArgs, ...batch] };
+      batch = [];
+      batchBytes = getCommandBytes({ command, args: initialArgs });
     }
 
-    if (currentBatch.length === 0 && wouldExceedLimits({ batch: currentBatch, chars: currentChars })) {
+    const exceedsEmptyBatch = (maxArgs !== undefined && 1 > maxArgs)
+      || batchBytes + itemBytes > maxChars;
+    if (batch.length === 0 && exceedsEmptyBatch) {
       if (exitIfTooLong) {
-        return { ok: false, message: 'xargs: argument list too long' };
+        throw new XargsArgumentListTooLongError('xargs: argument list too long');
       }
-      batches.push([item]);
-      currentBatch = [];
-      currentChars = baseChars;
+      yield { args: [...initialArgs, item] };
       continue;
     }
 
-    currentBatch.push(item);
-    currentChars += (currentBatch.length > 1 ? 1 : 0) + item.length;
+    batch.push(item);
+    batchBytes += itemBytes;
   }
 
-  if (currentBatch.length > 0) {
-    batches.push(currentBatch);
+  if (batch.length > 0) {
+    yield { args: [...initialArgs, ...batch] };
+    return;
   }
 
-  return { ok: true, batches };
-}
-
-function normalizeXargsExitCode({
-  exitCode,
-}: {
-  exitCode: number;
-}): number {
-  if (exitCode === 0) return 0;
-  if (exitCode === 255) return 124;
-  if (exitCode === 126 || exitCode === 127) return exitCode;
-  if (exitCode >= 1 && exitCode <= 125) return 123;
-  return exitCode;
+  if (!sawItem && !noRunIfEmpty) {
+    yield { args: [...initialArgs] };
+  }
 }
 
 function replaceTemplateArgs({
@@ -537,6 +531,100 @@ function replaceTemplateArgs({
   });
 
   return replaced ? nextArgs : [...args, value];
+}
+
+async function* createReplaceInvocations({
+  items,
+  initialArgs,
+  placeholder,
+  noRunIfEmpty,
+}: {
+  items: AsyncIterable<string>;
+  initialArgs: readonly string[];
+  placeholder: string;
+  noRunIfEmpty: boolean;
+}): AsyncIterable<XargsInvocation> {
+  let sawItem = false;
+  for await (const item of items) {
+    sawItem = true;
+    yield {
+      args: replaceTemplateArgs({
+        args: [...initialArgs],
+        placeholder,
+        value: item,
+      }),
+    };
+  }
+
+  if (!sawItem && !noRunIfEmpty) {
+    yield {
+      args: replaceTemplateArgs({
+        args: [...initialArgs],
+        placeholder,
+        value: '',
+      }),
+    };
+  }
+}
+
+async function* createLineInvocations({
+  command,
+  lines,
+  initialArgs,
+  maxLines,
+  maxChars,
+  exitIfTooLong,
+}: {
+  command: string;
+  lines: AsyncIterable<string[]>;
+  initialArgs: readonly string[];
+  maxLines: number;
+  maxChars: number;
+  exitIfTooLong: boolean;
+}): AsyncIterable<XargsInvocation> {
+  let groupedItems: string[] = [];
+  let lineCount = 0;
+
+  const buildInvocation = (): XargsInvocation | undefined => {
+    if (groupedItems.length === 0) {
+      return undefined;
+    }
+    const args = [...initialArgs, ...groupedItems];
+    if (getCommandBytes({ command, args }) > maxChars && exitIfTooLong) {
+      throw new XargsArgumentListTooLongError('xargs: argument list too long');
+    }
+    groupedItems = [];
+    lineCount = 0;
+    return { args };
+  };
+
+  for await (const lineItems of lines) {
+    if (lineCount >= maxLines) {
+      const invocation = buildInvocation();
+      if (invocation !== undefined) {
+        yield invocation;
+      }
+    }
+    groupedItems.push(...lineItems);
+    lineCount += 1;
+  }
+
+  const invocation = buildInvocation();
+  if (invocation !== undefined) {
+    yield invocation;
+  }
+}
+
+function normalizeXargsExitCode({
+  exitCode,
+}: {
+  exitCode: number;
+}): number {
+  if (exitCode === 0) return 0;
+  if (exitCode === 255) return 124;
+  if (exitCode === 126 || exitCode === 127) return exitCode;
+  if (exitCode >= 1 && exitCode <= 125) return 123;
+  return exitCode;
 }
 
 async function runCommand({
@@ -587,11 +675,7 @@ async function handleCommandResult({
   };
 }
 
-interface XargsInvocation {
-  args: string[];
-}
-
-async function executeInvocations({
+async function executeInvocationStream({
   context,
   command,
   invocations,
@@ -601,67 +685,79 @@ async function executeInvocations({
 }: {
   context: WeshCommandContext;
   command: string;
-  invocations: XargsInvocation[];
+  invocations: AsyncIterable<XargsInvocation>;
   trace: boolean;
   stdin: WeshFileHandle;
   maxProcs: number;
 }): Promise<WeshCommandResult> {
-  let nextIndex = 0;
+  const concurrency = maxProcs === 0
+    ? MAX_AUTOMATIC_PARALLELISM
+    : Math.max(1, maxProcs);
+  const active = new Set<Promise<void>>();
   let lastExitCode = 0;
   let stopExitCode: number | undefined;
-  const workerCount = (() => {
-    if (invocations.length === 0) return 1;
-    if (maxProcs === 0) return invocations.length;
-    return Math.max(1, Math.min(maxProcs, invocations.length));
-  })();
+  let executionError: unknown;
 
-  const worker = async (): Promise<void> => {
-    while (true) {
-      if (stopExitCode !== undefined) {
-        return;
-      }
-
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      const invocation = invocations[currentIndex];
-      if (invocation === undefined) {
-        return;
-      }
-
-      const result = await runCommand({
-        context,
-        command,
-        args: invocation.args,
-        trace,
-        stdin,
-      });
-      const handled = await handleCommandResult({
-        context,
-        result,
-      });
-      switch (handled.kind) {
-      case 'continue':
-        if (handled.normalizedExitCode !== 0) {
-          lastExitCode = handled.normalizedExitCode;
+  const startInvocation = ({ invocation }: { invocation: XargsInvocation }): void => {
+    const task = (async () => {
+      try {
+        const result = await runCommand({
+          context,
+          command,
+          args: invocation.args,
+          trace,
+          stdin,
+        });
+        const handled = await handleCommandResult({ context, result });
+        switch (handled.kind) {
+        case 'continue':
+          if (handled.normalizedExitCode !== 0) {
+            lastExitCode = handled.normalizedExitCode;
+          }
+          break;
+        case 'stop':
+          stopExitCode = handled.exitCode;
+          break;
+        default: {
+          const _exhaustive: never = handled;
+          throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
         }
-        break;
-      case 'stop':
-        stopExitCode = handled.exitCode;
-        return;
-      default: {
-        const _exhaustive: never = handled;
-        throw new Error(`Unhandled xargs command result handling: ${_exhaustive}`);
+        }
+      } catch (error: unknown) {
+        executionError = error;
       }
-      }
-    }
+    })();
+    active.add(task);
+    void task.then(
+      () => active.delete(task),
+      () => active.delete(task),
+    );
   };
 
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  try {
+    for await (const invocation of invocations) {
+      while (active.size >= concurrency) {
+        await Promise.race(active);
+        if (executionError !== undefined || stopExitCode !== undefined) {
+          break;
+        }
+      }
+      if (stopExitCode !== undefined || executionError !== undefined) {
+        break;
+      }
+      startInvocation({ invocation });
+    }
+  } catch (error: unknown) {
+    executionError = error;
+  }
 
+  await Promise.all(active);
+  if (executionError !== undefined) {
+    throw executionError;
+  }
   if (stopExitCode !== undefined) {
     return { exitCode: stopExitCode };
   }
-
   return { exitCode: lastExitCode };
 }
 
@@ -712,7 +808,7 @@ POSIX upper limit on argument length (this system): ${DEFAULT_MAX_CHARS}
 POSIX smallest allowable upper limit on argument length (all systems): 4096
 Maximum length of command we could actually use: ${DEFAULT_MAX_CHARS}
 Size of command buffer we are actually using: ${DEFAULT_MAX_CHARS}
-Maximum parallelism (--max-procs must be no greater): unlimited
+Maximum parallelism (--max-procs must be no greater): ${MAX_AUTOMATIC_PARALLELISM}
 `,
       });
       return { exitCode: 0 };
@@ -737,27 +833,6 @@ Maximum parallelism (--max-procs must be no greater): unlimited
       key: 'argFile',
     });
     const argFile = typeof argFileOccurrence?.value === 'string' ? argFileOccurrence.value : undefined;
-    const rawInput = (() => {
-      if (argFile === undefined) {
-        return readAllInput({ handle: context.stdin });
-      }
-
-      const path = argFile.startsWith('/') ? argFile : `${context.cwd}/${argFile}`;
-      return readAllFileBytes({
-        files: context.files,
-        path,
-      }).then((bytes) => new TextDecoder().decode(bytes));
-    })();
-    let inputText = '';
-    try {
-      inputText = await rawInput;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      await context.text().error({
-        text: `xargs: ${argFile ?? '-'}: ${message}\n`,
-      });
-      return { exitCode: 1 };
-    }
     const executionLimits = await resolveExecutionLimits({
       context,
       occurrences: parsed.occurrences,
@@ -796,131 +871,75 @@ Maximum parallelism (--max-procs must be no greater): unlimited
       return { exitCode: 1 };
     }
 
-    const items = (() => {
-      if (typeof replaceValue === 'string') {
-        return parseXargsInsertInput({ text: inputText });
-      }
-
-      if (parsed.optionValues.nullDelimited === true) {
-        return parseXargsNullDelimitedInput({ text: inputText });
-      }
-
-      if (delimiter !== undefined) {
-        return parseXargsDelimitedInput({
-          text: inputText,
-          delimiter,
-        });
-      }
-
-      return parseXargsStandardInput({ text: inputText });
-    })();
-
-    if (!items.ok) {
-      await context.text().error({ text: `${items.message}\n` });
-      return { exitCode: 1 };
-    }
-
-    const filteredItems = (() => {
-      if (eofString === undefined || parsed.optionValues.nullDelimited === true || delimiter !== undefined) {
-        return items.items;
-      }
-
-      const eofIndex = items.items.findIndex((item) => item === eofString);
-      return eofIndex === -1 ? items.items : items.items.slice(0, eofIndex);
-    })();
-
     const [command = 'echo', ...initialArgs] = parsed.positionals;
     const childStdin = argFile === undefined
       ? createDevNullLikeHandle()
       : context.stdin;
 
-    if (parsed.optionValues.noRunIfEmpty === true && filteredItems.length === 0) {
-      return { exitCode: 0 };
-    }
+    try {
+      const inputStream = argFile === undefined
+        ? openHandleReadStream({ handle: context.stdin })
+        : await openFileReadStream({
+          files: context.files,
+          path: argFile.startsWith('/') ? argFile : `${context.cwd}/${argFile}`,
+        });
+      const byteChunks = iterateReadableStreamChunks({ stream: inputStream });
+      let invocations: AsyncIterable<XargsInvocation>;
 
-    if (typeof replaceValue === 'string') {
-      const values = filteredItems.length === 0 ? [''] : filteredItems;
-      return executeInvocations({
-        context,
-        command,
-        invocations: values.map((value) => ({
-          args: replaceTemplateArgs({
-            args: initialArgs,
-            placeholder: replaceValue,
-            value,
+      if (typeof replaceValue === 'string') {
+        invocations = createReplaceInvocations({
+          items: iterateXargsInsertItems({
+            lines: iterateUtf8Lines({ chunks: byteChunks }),
+            eofString,
           }),
-        })),
-        trace: parsed.optionValues.trace === true,
-        stdin: childStdin,
-        maxProcs,
-      });
-    }
-
-    if (maxLines !== undefined) {
-      const parsedLines = parseXargsLineInput({ text: inputText });
-      if (!parsedLines.ok) {
-        await context.text().error({ text: `${parsedLines.message}\n` });
-        return { exitCode: 1 };
+          initialArgs,
+          placeholder: replaceValue,
+          noRunIfEmpty: parsed.optionValues.noRunIfEmpty === true,
+        });
+      } else if (maxLines !== undefined) {
+        invocations = createLineInvocations({
+          command,
+          lines: iterateXargsLogicalLines({
+            lines: iterateUtf8Lines({ chunks: byteChunks }),
+          }),
+          initialArgs,
+          maxLines,
+          maxChars,
+          exitIfTooLong: parsed.optionValues.exitIfTooLong === true,
+        });
+      } else {
+        const textChunks = iterateUtf8TextChunks({ chunks: byteChunks });
+        const items = parsed.optionValues.nullDelimited === true
+          ? iterateXargsDelimitedItems({ textChunks, delimiter: '\0' })
+          : delimiter !== undefined
+            ? iterateXargsDelimitedItems({ textChunks, delimiter })
+            : iterateXargsStandardItems({ textChunks, eofString });
+        invocations = createBatchedInvocations({
+          command,
+          items,
+          initialArgs,
+          maxArgs,
+          maxChars,
+          exitIfTooLong: parsed.optionValues.exitIfTooLong === true,
+          noRunIfEmpty: parsed.optionValues.noRunIfEmpty === true,
+        });
       }
 
-      const groupedLines: string[][] = [];
-      let currentGroup: string[] = [];
-      let currentLineCount = 0;
-      for (const lineItems of parsedLines.lines) {
-        if (currentLineCount >= maxLines) {
-          groupedLines.push(currentGroup);
-          currentGroup = [];
-          currentLineCount = 0;
-        }
-        currentGroup.push(...lineItems);
-        currentLineCount += 1;
-      }
-      if (currentGroup.length > 0) {
-        groupedLines.push(currentGroup);
-      }
-
-      for (const batch of groupedLines) {
-        const commandLength = [command, ...initialArgs, ...batch].join(' ').length;
-        if (commandLength > maxChars && parsed.optionValues.exitIfTooLong === true) {
-          await context.text().error({ text: 'xargs: argument list too long\n' });
-          return { exitCode: 1 };
-        }
-      }
-
-      return executeInvocations({
+      return await executeInvocationStream({
         context,
         command,
-        invocations: groupedLines.map((batch) => ({
-          args: [...initialArgs, ...batch],
-        })),
+        invocations,
         trace: parsed.optionValues.trace === true,
         stdin: childStdin,
         maxProcs,
       });
-    }
-
-    const batches = buildBatches({
-      command,
-      items: filteredItems,
-      initialArgs,
-      maxArgs,
-      maxChars: typeof replaceValue === 'string' ? DEFAULT_MAX_CHARS : maxChars,
-      exitIfTooLong: parsed.optionValues.exitIfTooLong === true || typeof replaceValue === 'string' || maxLines !== undefined,
-    });
-    if (!batches.ok) {
-      await context.text().error({ text: `${batches.message}\n` });
+    } catch (error: unknown) {
+      const message = error instanceof XargsInputError
+        || error instanceof XargsArgumentListTooLongError
+        ? error.message
+        : `xargs: ${argFile ?? '-'}: ${error instanceof Error ? error.message : String(error)}`;
+      await context.text().error({ text: `${message}\n` });
       return { exitCode: 1 };
     }
-    const effectiveBatches = batches.batches.length === 0 ? [[]] : batches.batches;
-    return executeInvocations({
-      context,
-      command,
-      invocations: effectiveBatches.map((batch) => ({
-        args: [...initialArgs, ...batch],
-      })),
-      trace: parsed.optionValues.trace === true,
-      stdin: childStdin,
-      maxProcs,
-    });
   },
 };

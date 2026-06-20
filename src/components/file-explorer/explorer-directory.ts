@@ -68,8 +68,7 @@ export class FsExplorerDirectory implements ExplorerDirectory {
         };
         break;
       default: {
-        const _ex: never = handle.kind;
-        throw new Error(`Unhandled kind: ${_ex}`);
+        throw new Error(`Unhandled kind: ${((handle satisfies never) as { readonly kind: string }).kind}`);
       }
       }
     }
@@ -192,19 +191,24 @@ export class VfsExplorerDirectory implements ExplorerDirectory {
     return new VfsExplorerDirectory({ name, path: childPath, vfs: this._vfs });
   }
 
-  subdirCreate(_: { name: string }): Promise<ExplorerDirectory> {
+  subdirCreate({ name }: { name: string }): Promise<ExplorerDirectory> {
+    void name;
     return Promise.reject(new DOMException('Read-only file system', 'NotAllowedError'));
   }
 
-  file(_: { name: string }): Promise<FileSystemFileHandle | null> {
+  file({ name }: { name: string }): Promise<FileSystemFileHandle | null> {
+    void name;
     return Promise.resolve(null);
   }
 
-  fileCreate(_: { name: string }): Promise<FileSystemFileHandle> {
+  fileCreate({ name }: { name: string }): Promise<FileSystemFileHandle> {
+    void name;
     return Promise.reject(new DOMException('Read-only file system', 'NotAllowedError'));
   }
 
-  remove(_: { name: string; recursive: boolean }): Promise<void> {
+  remove({ name, recursive }: { name: string; recursive: boolean }): Promise<void> {
+    void name;
+    void recursive;
     return Promise.reject(new DOMException('Read-only file system', 'NotAllowedError'));
   }
 

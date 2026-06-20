@@ -24,7 +24,7 @@ export function defineAsyncComponentAndLoadOnMounted<T extends Component = {
     };
 
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(runLoader);
+      (window as Window & Pick<Window, 'requestIdleCallback'>).requestIdleCallback(runLoader);
     } else {
       // Fallback: slight delay to avoid interfering with initial render
       setTimeout(runLoader, 200);

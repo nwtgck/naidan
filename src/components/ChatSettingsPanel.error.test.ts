@@ -1,14 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref, nextTick } from 'vue';
 import ChatSettingsPanel from './ChatSettingsPanel.vue';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatModels } from '@/composables/chat/useChatModels';
 
 // --- Mocks ---
-const { mockAvailableModelsRef, mockFetchingModelsRef } = vi.hoisted(() => ({
+const {
+  mockAvailableModelsRef,
+  mockFetchingModelsRef,
+  mockUpdateScopedSettings,
+} = vi.hoisted(() => ({
   mockAvailableModelsRef: { value: [] as string[] },
   mockFetchingModelsRef: { value: false },
+  mockUpdateScopedSettings: vi.fn(),
 }));
 
 const mockCurrentChat = ref<any>(null);
@@ -27,6 +32,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
     rename: vi.fn(),
     toggleDebug: vi.fn(),
     updateModel: vi.fn(),
+    updateScopedSettings: mockUpdateScopedSettings,
     updateSettings: vi.fn(),
     reasoningEffort: vi.fn(),
     updateReasoningEffort: vi.fn(),
@@ -78,6 +84,30 @@ describe('ChatSettingsPanel Error Handling', () => {
     });
   });
 
+  it('keeps the panel open and preserves a visible error when saving fails', async () => {
+    mockUpdateScopedSettings.mockRejectedValue(new Error('storage failed'));
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: {
+        stubs: {
+          ModelSelector: true,
+          LmParametersEditor: true,
+          'router-link': true,
+        },
+      },
+    });
+
+    const input = wrapper.get('input[data-testid="chat-setting-url-input"]');
+    await input.setValue('http://failed-save.example');
+    await input.trigger('blur');
+    await wrapper.get('[data-testid="close-button"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.emitted('close')).toBeUndefined();
+    expect(wrapper.get('[data-testid="chat-settings-save-error"]').text()).toContain('storage failed');
+  });
+
   it('should reset error state when endpoint URL changes', async () => {
     // Mock a failed fetch to set an error
     mockFetchAvailableModels.mockResolvedValue([]); // No models found triggers error in component logic
@@ -110,4 +140,31 @@ describe('ChatSettingsPanel Error Handling', () => {
     // Error should be cleared immediately on @input or via watch
     expect(wrapper.text()).not.toContain('No models found');
   });
+
+  it('preserves_the_draft_when_a_prop_driven_close_save_fails_and_the_panel_reopens', async () => {
+    mockUpdateScopedSettings.mockRejectedValue(new Error('storage failed'));
+
+    const wrapper = mount(ChatSettingsPanel, {
+      props: { show: true },
+      global: {
+        stubs: {
+          ModelSelector: true,
+          LmParametersEditor: true,
+          'router-link': true,
+        },
+      },
+    });
+
+    const input = wrapper.get('input[data-testid="chat-setting-url-input"]');
+    await input.setValue('http://failed-background-save.example');
+    await wrapper.setProps({ show: false });
+    await flushPromises();
+    await wrapper.setProps({ show: true });
+    await nextTick();
+
+    expect((wrapper.get('input[data-testid="chat-setting-url-input"]').element as HTMLInputElement).value)
+      .toBe('http://failed-background-save.example');
+    expect(wrapper.get('[data-testid="chat-settings-save-error"]').text()).toContain('storage failed');
+  });
+
 });

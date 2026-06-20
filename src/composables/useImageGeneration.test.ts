@@ -1,3 +1,4 @@
+import { toChatId, toMessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useImageGeneration } from './useImageGeneration';
 
@@ -11,8 +12,20 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: {
+      value: {
+        experimental: {
+          fakeLm: 'disabled',
+        },
+      },
+    },
+  }),
+}));
+
 // Mock image processing
-const mockReencodeImage = vi.fn().mockImplementation(({ format }) => {
+const mockReencodeImage = vi.fn().mockImplementation(({ format }: { format: string }) => {
   return Promise.resolve(new Blob([`reencoded-${format}`], { type: `image/${format}` }));
 });
 vi.mock('../utils/image-processing', () => ({
@@ -33,9 +46,9 @@ if (!global.crypto) {
   };
 }
 
-// Mock LLM provider
+// Mock LM provider
 vi.mock('../services/lm/ollama', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../services/lm/ollama')>();
+  const actual = await importOriginal<typeof import('@/services/lm/ollama')>();
   return {
     ...actual,
     OllamaProvider: class {
@@ -50,7 +63,7 @@ vi.mock('../services/lm/ollama', async (importOriginal) => {
 });
 
 describe('useImageGeneration', () => {
-  const chatId = 'test-chat-123';
+  const chatId = toChatId({ raw: 'test-chat-123' });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -65,6 +78,28 @@ describe('useImageGeneration', () => {
 
     toggleImageMode({ chatId });
     expect(isImageMode({ chatId })).toBe(false);
+  });
+
+  it('treats prototype property names as ordinary chat IDs', () => {
+    const { isImageMode, toggleImageMode, getSeed, updateSeed } = useImageGeneration();
+    const prototypeId = toChatId({ raw: '__proto__' });
+    const constructorId = toChatId({ raw: 'constructor' });
+    const toStringId = toChatId({ raw: 'toString' });
+
+    expect(isImageMode({ chatId: prototypeId })).toBe(false);
+    expect(isImageMode({ chatId: constructorId })).toBe(false);
+    expect(isImageMode({ chatId: toStringId })).toBe(false);
+    expect(getSeed({ chatId: prototypeId })).toBe('browser_random');
+
+    toggleImageMode({ chatId: prototypeId });
+    toggleImageMode({ chatId: toStringId });
+    updateSeed({ chatId: prototypeId, seed: 42 });
+
+    expect(isImageMode({ chatId: prototypeId })).toBe(true);
+    expect(isImageMode({ chatId: constructorId })).toBe(false);
+    expect(isImageMode({ chatId: toStringId })).toBe(true);
+    expect(getSeed({ chatId: prototypeId })).toBe(42);
+    expect(getSeed({ chatId: constructorId })).toBe('browser_random');
   });
 
   it('manages resolution', () => {
@@ -175,7 +210,7 @@ describe('useImageGeneration', () => {
   });
 
   describe('handleImageGeneration', () => {
-    const assistantId = 'msg-assistant-1';
+    const assistantId = toMessageId({ raw: 'msg-assistant-1' });
     const mockChat = {
       id: chatId,
       root: {
@@ -270,7 +305,7 @@ describe('useImageGeneration', () => {
 
     it('converts image to requested format when persistAs is specified', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { storageService } = await import('../services/storage');
+      const { storageService } = await import('@/services/storage');
 
       await handleImageGeneration({
         ...commonParams,
@@ -285,16 +320,16 @@ describe('useImageGeneration', () => {
       });
 
       // Should have saved with .webp extension
-      expect(storageService.saveFile).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'image/webp' }),
-        expect.any(String),
-        expect.stringMatching(/\.webp$/)
-      );
+      expect(storageService.saveFile).toHaveBeenCalledWith(expect.objectContaining({
+        blob: expect.objectContaining({ type: 'image/webp' }),
+        binaryObjectId: expect.any(String),
+        name: expect.stringMatching(/\.webp$/)
+      }));
     });
 
     it('falls back to original format if re-encoding fails', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { storageService } = await import('../services/storage');
+      const { storageService } = await import('@/services/storage');
 
       // Force failure
       mockReencodeImage.mockRejectedValueOnce(new Error('Canvas failure'));
@@ -306,11 +341,11 @@ describe('useImageGeneration', () => {
       });
 
       // Should have saved original blob with .png extension (default)
-      expect(storageService.saveFile).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'image/png' }),
-        expect.any(String),
-        expect.stringMatching(/\.png$/)
-      );
+      expect(storageService.saveFile).toHaveBeenCalledWith(expect.objectContaining({
+        blob: expect.objectContaining({ type: 'image/png' }),
+        binaryObjectId: expect.any(String),
+        name: expect.stringMatching(/\.png$/)
+      }));
     });
 
     it('generates a random numeric seed when "browser_random" is specified and includes it in blocks and prompt', async () => {
@@ -360,8 +395,8 @@ describe('useImageGeneration', () => {
 
     it('uses undefined for steps in the final output blocks if provider returns UNKNOWN_STEPS', async () => {
       const { handleImageGeneration } = useImageGeneration();
-      const { OllamaProvider } = await import('../services/lm/ollama');
-      const { UNKNOWN_STEPS } = await import('../services/lm/types');
+      const { OllamaProvider } = await import('@/services/lm/ollama');
+      const { UNKNOWN_STEPS } = await import('@/services/lm/types');
 
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockResolvedValueOnce({
@@ -392,26 +427,26 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
-        chatId: 'progress-test-chat',
+        chatId: toChatId({ raw: 'progress-test-chat' }),
         storageType: 'opfs'
       });
 
       // After generation, it should be cleared
-      expect(imageProgressMap.value['progress-test-chat']).toBeUndefined();
+      expect(imageProgressMap.value.get(toChatId({ raw: 'progress-test-chat' }))).toBeUndefined();
     });
 
     it('clears imageProgressMap at the start of each image in a batch', async () => {
       const { handleImageGeneration, imageProgressMap } = useImageGeneration();
-      const { OllamaProvider } = await import('../services/lm/ollama');
+      const { OllamaProvider } = await import('@/services/lm/ollama');
 
       // Set stale progress
-      imageProgressMap.value[chatId] = { currentStep: 50, totalSteps: 50 };
+      imageProgressMap.value.set(toChatId({ raw: 'progress-test-chat' }), { currentStep: 50, totalSteps: 50 });
 
       // Spy on generateImage and check progress map state when it's called
       const generateImageSpy = vi.spyOn(OllamaProvider.prototype, 'generateImage')
         .mockImplementation(async (params: any) => {
           // When this is called, the progress map should have been cleared by the loop
-          expect(imageProgressMap.value[chatId]).toBeUndefined();
+          expect(imageProgressMap.value.get(toChatId({ raw: 'progress-test-chat' }))).toBeUndefined();
 
           // Simulate some progress
           if (params.onProgress) params.onProgress({ currentStep: 1, totalSteps: 10 });
@@ -423,6 +458,7 @@ describe('useImageGeneration', () => {
 
       await handleImageGeneration({
         ...commonParams,
+        chatId: toChatId({ raw: 'progress-test-chat' }),
         count: 2,
         storageType: 'opfs'
       });

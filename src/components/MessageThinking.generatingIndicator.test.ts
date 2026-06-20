@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { h, defineComponent, markRaw } from 'vue';
 import MessageThinking from './MessageThinking.vue';
 import type { MessageNode } from '@/models/types';
+import { toMessageId } from '@/models/ids';
 
 // A stub component used as trailingInline so we can assert its presence.
 const TrailingStub = markRaw(defineComponent({
@@ -15,7 +16,7 @@ const TrailingStub = markRaw(defineComponent({
 const withInSequence = { global: { provide: { inSequence: true } } };
 
 const createMessage = (content: string, thinking?: string): MessageNode => ({
-  id: 'test-id',
+  id: toMessageId({ raw: 'test-id' }),
   role: 'assistant',
   content,
   thinking,

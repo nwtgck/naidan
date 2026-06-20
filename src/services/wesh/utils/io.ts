@@ -1,4 +1,7 @@
 import type { WeshFileHandle } from '@/services/wesh/types';
+import { openHandleReadStream } from '@/services/wesh/utils/fs';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
+import { iterateUtf8Lines } from '@/services/wesh/utils/text-records';
 
 async function writeAllTextToHandle({
   handle,
@@ -33,7 +36,23 @@ export function createBufferedTextWriter({
   maxBufferLength: number;
 }) {
   const encoder = new TextEncoder();
-  let buffer = '';
+  let chunks: string[] = [];
+  let bufferedLength = 0;
+
+  const flush = async (): Promise<void> => {
+    if (bufferedLength === 0) {
+      return;
+    }
+
+    const text = chunks.join('');
+    chunks = [];
+    bufferedLength = 0;
+    await writeAllTextToHandle({
+      handle,
+      text,
+      encoder,
+    });
+  };
 
   return {
     async write({
@@ -41,30 +60,15 @@ export function createBufferedTextWriter({
     }: {
       text: string;
     }): Promise<void> {
-      buffer += text;
-      if (buffer.length < maxBufferLength) {
+      chunks.push(text);
+      bufferedLength += text.length;
+      if (bufferedLength < maxBufferLength) {
         return;
       }
 
-      await writeAllTextToHandle({
-        handle,
-        text: buffer,
-        encoder,
-      });
-      buffer = '';
+      await flush();
     },
-    async flush(): Promise<void> {
-      if (buffer.length === 0) {
-        return;
-      }
-
-      await writeAllTextToHandle({
-        handle,
-        text: buffer,
-        encoder,
-      });
-      buffer = '';
-    },
+    flush,
   };
 }
 
@@ -79,36 +83,16 @@ export function createTextIoHelpers({
 }) {
   const encoder = new TextEncoder();
 
-  // Async Iterable for reading lines from stdin
-  const inputIterable: AsyncIterable<string> = {
-    async *[Symbol.asyncIterator]() {
-      const decoder = new TextDecoder();
-      let buffer = '';
-      const readBuf = new Uint8Array(4096); // 4KB buffer
-
-      while (true) {
-        const { bytesRead } = await stdin.read({ buffer: readBuf });
-        if (bytesRead === 0) break; // EOF
-
-        const chunk = readBuf.subarray(0, bytesRead);
-        buffer += decoder.decode(chunk, { stream: true });
-
-        if (buffer.includes('\n')) {
-          const lines = buffer.split(/\r?\n/);
-          buffer = lines.pop() ?? ''; // Keep the last partial line
-
-          for (const line of lines) {
-            yield line;
-          }
-        }
-      }
-
-      // Final flush
-      if (buffer !== '') {
-        yield buffer;
-      }
-    }
-  };
+  const inputIterable = (async function* (): AsyncIterable<string> {
+    yield* iterateUtf8Lines({
+      chunks: iterateReadableStreamChunks({
+        stream: openHandleReadStream({
+          handle: stdin,
+          chunkSize: 4096,
+        }),
+      }),
+    });
+  })();
 
   return {
     input: inputIterable,

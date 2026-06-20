@@ -3,6 +3,8 @@ import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
 import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
+import type { ChatId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -24,7 +26,7 @@ vi.mock('../services/storage', () => ({
       const chat = mockChatStorage.get(id);
       if (!chat) return null;
       const cloned = JSON.parse(JSON.stringify(chat));
-      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(toChatId({ raw: id })));
       cloned.groupId = group?.id || null;
       return cloned;
     }),
@@ -36,13 +38,13 @@ vi.mock('../services/storage', () => ({
       const chat = mockChatStorage.get(id);
       if (!chat) return null;
       const cloned = JSON.parse(JSON.stringify(chat));
-      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
+      const group = mockHierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(toChatId({ raw: id })));
       cloned.groupId = group?.id || null;
       return cloned;
     }),
-    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mockChatStorage.get(id) || null;
-      const updatedMeta = await updater(current ? JSON.parse(JSON.stringify(current)) : null);
+      const updatedMeta = await updater({ current: current ? JSON.parse(JSON.stringify(current)) : null });
       if (current) {
         const full = { ...current, ...updatedMeta };
         mockChatStorage.set(id, JSON.parse(JSON.stringify(full)));
@@ -51,10 +53,10 @@ vi.mock('../services/storage', () => ({
       }
       return Promise.resolve();
     }),
-    updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(async ({ id, updater }) => {
       const chat = mockChatStorage.get(id);
       const existingContent = chat ? { root: chat.root, currentLeafId: chat.currentLeafId } : { root: { items: [] } };
-      const updatedContent = await updater(existingContent);
+      const updatedContent = await updater({ current: existingContent });
       if (mockChatStorage.has(id)) {
         const full = { ...mockChatStorage.get(id), ...updatedContent };
         mockChatStorage.set(id, JSON.parse(JSON.stringify(full)));
@@ -62,8 +64,8 @@ vi.mock('../services/storage', () => ({
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(mockHierarchy)),
-    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
-      mockHierarchy = await updater(mockHierarchy);
+    updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
+      mockHierarchy = await updater({ current: mockHierarchy });
       return Promise.resolve();
     }),
     deleteChat: vi.fn().mockImplementation(({ id }: { id: string }) => {
@@ -111,13 +113,13 @@ vi.mock('./useToast', () => ({
   }),
 }));
 
-const mockLlmChat = vi.fn();
+const mockLmChat = vi.fn();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
-      chat: (...args: any[]) => mockLlmChat(...args),
+      chat: (...args: any[]) => mockLmChat(...args),
       listModels: (...args: any[]) => mockListModels(...args),
     };
   },
@@ -126,7 +128,7 @@ vi.mock('../services/lm/openai', () => ({
 vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
-      chat: (...args: any[]) => mockLlmChat(...args),
+      chat: (...args: any[]) => mockLmChat(...args),
       listModels: (...args: any[]) => mockListModels(...args),
     };
   },
@@ -142,11 +144,11 @@ describe('useChat Concurrency & Stale State Protection', () => {
   const { errorCount, clearEvents } = useGlobalEvents();
 
   // Helper to wait for a chat to appear in activeGenerations
-  const waitForRegistry = async (id: string) => {
+  const waitForRegistry = async (id: ChatId) => {
     try {
       await vi.waitUntil(() => activeGenerations.has(id), { timeout: 2000, interval: 50 });
     } catch (e) {
-      console.error(`Timed out waiting for chat ${id} in activeGenerations. Current keys:`, Array.from(activeGenerations.keys()));
+      console.error('Timed out waiting for chat ' + idToRaw({ id }) + ' in activeGenerations. Current keys:', Array.from(activeGenerations.keys()));
       throw e;
     }
   };
@@ -178,11 +180,11 @@ describe('useChat Concurrency & Stale State Protection', () => {
       resolveChatA = resolve;
     });
 
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('A-Start');
+      onChunk({ chunk: 'A-Start' });
       await chatAPromise;
-      onChunk('A-End');
+      onChunk({ chunk: 'A-End' });
     });
 
     const sendPromiseA = sendMessage({ content: 'Start A' });
@@ -192,10 +194,10 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatBId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatB = currentChat.value!;
 
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
       await new Promise(r => setTimeout(r, 100));
-      onChunk('B-Response');
+      onChunk({ chunk: 'B-Response' });
     });
 
     const sendPromiseB = sendMessage({ content: 'Start B' });
@@ -227,11 +229,11 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('Thinking...');
+      onChunk({ chunk: 'Thinking...' });
       await p;
-      onChunk('Done');
+      onChunk({ chunk: 'Done' });
     });
 
     // 2. Start generation
@@ -239,10 +241,10 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // 3. Simulate Tab B moving Chat A into a group
-    await storageService.updateHierarchy((curr) => {
-      curr.items = [{ type: 'chat_group', id: 'group-g', chat_ids: [chatAId] }];
+    await storageService.updateHierarchy({ updater: ({ current: curr }) => {
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'group-g' }), chat_ids: [chatAId] }];
       return curr;
-    });
+    } });
 
     // 4. Finish background generation
     resolveA!();
@@ -259,13 +261,13 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = await storageService.loadChat({ id: chatAId }) as Chat;
     chatA.title = 'Original Title';
-    await storageService.updateChatMeta(chatAId, () => chatA);
+    await storageService.updateChatMeta({ id: chatAId, updater: () => chatA });
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('Thinking...');
+      onChunk({ chunk: 'Thinking...' });
       await p;
     });
 
@@ -273,7 +275,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // Manual rename happens while streaming
-    await renameChat({ id: chatAId, newTitle: 'Manual New Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'Manual New Title' });
 
     resolveA!();
     await sendPromise;
@@ -292,9 +294,9 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('Thinking...');
+      onChunk({ chunk: 'Thinking...' });
       await p;
     });
 
@@ -302,14 +304,14 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // Delete chat while it's still generating in background
-    await deleteChat({ id: chatAId });
-    expect(mockChatStorage.has(chatAId)).toBe(false);
+    await deleteChat({ id: idToRaw({ id: chatAId }) });
+    expect(mockChatStorage.has(idToRaw({ id: chatAId }))).toBe(false);
 
     resolveA!();
     await sendPromise;
 
     // Verify chat was not recreated in storage
-    expect(mockChatStorage.has(chatAId)).toBe(false);
+    expect(mockChatStorage.has(idToRaw({ id: chatAId }))).toBe(false);
   });
 
   it('should not resurrect chats after deleteAllChats', async () => {
@@ -320,9 +322,9 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatAId = currentChat.value!.id;
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('A...');
+      onChunk({ chunk: 'A...' });
       await pA;
     });
     const sendA = sendMessage({ content: 'A' });
@@ -332,16 +334,16 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatBId = currentChat.value!.id;
     let resolveB: () => void;
     const pB = new Promise<void>(r => resolveB = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('B...');
+      onChunk({ chunk: 'B...' });
       await pB;
     });
     const sendB = sendMessage({ content: 'B' });
     await waitForRegistry(chatBId);
 
     // 2. Perform global delete
-    await deleteAllChats({});
+    await deleteAllChats();
     expect(mockChatStorage.size).toBe(0);
 
     // 3. Finish generations
@@ -360,13 +362,13 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatAId = (await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined }))!.id;
     const chatA = await storageService.loadChat({ id: chatAId }) as Chat;
     chatA.title = 'Original';
-    await storageService.updateChatMeta(chatAId, () => chatA);
+    await storageService.updateChatMeta({ id: chatAId, updater: () => chatA });
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('A...');
+      onChunk({ chunk: 'A...' });
       await pA;
     });
     const sendA = sendMessage({ content: 'A' });
@@ -377,7 +379,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     expect(currentChat.value?.id).not.toBe(chatAId);
 
     // 3. Rename A in background (simulating sidebar edit)
-    await renameChat({ id: chatAId, newTitle: 'New Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'New Title' });
 
     // 4. Finish A
     resolveA!();
@@ -401,23 +403,23 @@ describe('useChat Concurrency & Stale State Protection', () => {
     let resolveTitle: () => void;
     const titleP = new Promise<void>(r => resolveTitle = r);
 
-    mockLlmChat
-      .mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
-        params.onChunk('Response');
+    mockLmChat
+      .mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+        params.onChunk({ chunk: 'Response' });
       })
-      .mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+      .mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
         await titleP;
-        params.onChunk('Auto Title');
+        params.onChunk({ chunk: 'Auto Title' });
       });
 
     // 2. Start generation (response finishes, title gen starts and waits)
     const sendPromise = sendMessage({ content: 'Topic' });
     await new Promise(r => setTimeout(r, 50));
     await waitForRegistry(chatAId);
-    await vi.waitUntil(() => mockLlmChat.mock.calls.length >= 2); // Wait for title gen to start
+    await vi.waitUntil(() => mockLmChat.mock.calls.length >= 2); // Wait for title gen to start
 
     // 3. User manually renames while title gen is "calculating"
-    await renameChat({ id: chatAId, newTitle: 'User Manual Title' });
+    await renameChat({ id: idToRaw({ id: chatAId }), newTitle: 'User Manual Title' });
     expect(chatA.title).toBe('User Manual Title');
 
     // 4. Let auto-title finish
@@ -440,9 +442,9 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     let resolveA: () => void;
     const p = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('Thinking...');
+      onChunk({ chunk: 'Thinking...' });
       await p;
     });
 
@@ -450,16 +452,16 @@ describe('useChat Concurrency & Stale State Protection', () => {
     await waitForRegistry(chatAId);
 
     // 2. Move to Group B
-    await storageService.updateHierarchy((curr) => {
-      curr.items = [{ type: 'chat_group', id: 'g-b', chat_ids: [chatAId] }];
+    await storageService.updateHierarchy({ updater: ({ current: curr }) => {
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-b' }), chat_ids: [chatAId] }];
       return curr;
-    });
+    } });
 
     // 3. Move to Group C
-    await storageService.updateHierarchy((curr) => {
-      curr.items = [{ type: 'chat_group', id: 'g-c', chat_ids: [chatAId] }];
+    await storageService.updateHierarchy({ updater: ({ current: curr }) => {
+      curr.items = [{ type: 'chat_group', id: toChatGroupId({ raw: 'g-c' }), chat_ids: [chatAId] }];
       return curr;
-    });
+    } });
 
     // 4. Finish generation
     resolveA!();
@@ -478,7 +480,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatAId = chatA!.id;
     const chatA_initial = await storageService.loadChat({ id: chatAId }) as Chat;
 
-    mockLlmChat.mockImplementationOnce(async () => {
+    mockLmChat.mockImplementationOnce(async () => {
       throw new Error('Background Explosion');
     });
 
@@ -510,7 +512,7 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (params: { signal: AbortSignal }) => {
+    mockLmChat.mockImplementationOnce(async (params: { signal: AbortSignal }) => {
       const { signal } = params;
       await pA;
       if (signal?.aborted) throw new Error('Aborted');
@@ -524,9 +526,9 @@ describe('useChat Concurrency & Stale State Protection', () => {
     const chatB = currentChat.value!;
     const chatBId = chatB.id;
 
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;
-      onChunk('B-Response');
+      onChunk({ chunk: 'B-Response' });
       // Wait for signal abort
       await new Promise<void>((_, reject) => {
         const abortErr = new Error('Aborted');
@@ -597,11 +599,11 @@ describe('useChat Concurrency & Stale State Protection', () => {
 
     let resolveA: () => void;
     const pA = new Promise<void>(r => resolveA = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('A-Start');
+      onChunk({ chunk: 'A-Start' });
       await pA;
-      onChunk('A-End');
+      onChunk({ chunk: 'A-End' });
     });
 
     const sendA = sendMessage({ content: 'Message A' });
@@ -616,9 +618,9 @@ describe('useChat Concurrency & Stale State Protection', () => {
     // 3. Start Chat B (Concurrent Generation)
     let resolveBStarted: () => void;
     const pBStarted = new Promise<void>(r => resolveBStarted = r);
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       const { onChunk } = params;
-      onChunk('B-Response');
+      onChunk({ chunk: 'B-Response' });
       resolveBStarted();
     });
 

@@ -3,7 +3,7 @@ import { Semaphore } from './concurrency';
 
 describe('Semaphore', () => {
   it('allows tasks up to maxConcurrency to run immediately', async () => {
-    const semaphore = new Semaphore(2);
+    const semaphore = new Semaphore({ maxConcurrency: 2 });
     let running = 0;
 
     const task = async () => {
@@ -24,7 +24,7 @@ describe('Semaphore', () => {
   });
 
   it('queues tasks when maxConcurrency is reached', async () => {
-    const semaphore = new Semaphore(1);
+    const semaphore = new Semaphore({ maxConcurrency: 1 });
     let activeCount = 0;
     let maxObservedActive = 0;
     const completedTasks: number[] = [];
@@ -48,7 +48,7 @@ describe('Semaphore', () => {
   });
 
   it('releases and executes the next task when one completes', async () => {
-    const semaphore = new Semaphore(2);
+    const semaphore = new Semaphore({ maxConcurrency: 2 });
     let activeCount = 0;
 
     const task = async () => {
@@ -75,7 +75,7 @@ describe('Semaphore', () => {
   });
 
   it('handles rejections and still releases the semaphore', async () => {
-    const semaphore = new Semaphore(1);
+    const semaphore = new Semaphore({ maxConcurrency: 1 });
 
     const failingTask = async () => {
       throw new Error('Task failed');
@@ -93,7 +93,7 @@ describe('Semaphore', () => {
   });
 
   it('works correctly with acquire and release called manually', async () => {
-    const semaphore = new Semaphore(1);
+    const semaphore = new Semaphore({ maxConcurrency: 1 });
     let step = 0;
 
     const manualTask = async () => {
@@ -121,7 +121,7 @@ describe('Semaphore', () => {
   it('handles high volume of concurrent requests', async () => {
     const concurrencyLimit = 5;
     const totalTasks = 50;
-    const semaphore = new Semaphore(concurrencyLimit);
+    const semaphore = new Semaphore({ maxConcurrency: concurrencyLimit });
     let activeCount = 0;
     let maxActive = 0;
     let totalCompleted = 0;
@@ -146,7 +146,7 @@ describe('Semaphore', () => {
   });
 
   it('maintains FIFO order for queued tasks', async () => {
-    const semaphore = new Semaphore(1);
+    const semaphore = new Semaphore({ maxConcurrency: 1 });
     const order: number[] = [];
 
     const task = (id: number) => semaphore.run({ task: async () => {

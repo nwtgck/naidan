@@ -23,6 +23,10 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
     timestamp: z.number(),
   }),
   z.object({
+    type: z.literal('binary_objects'),
+    timestamp: z.number(),
+  }),
+  z.object({
     type: z.literal('migration'),
     timestamp: z.number(),
   }),
@@ -31,7 +35,7 @@ export const StorageChangeEventSchema = z.discriminatedUnion('type', [
 export type StorageChangeEvent = z.infer<typeof StorageChangeEventSchema>;
 export type ChangeType = StorageChangeEvent['type'];
 
-export type ChangeListener = (event: StorageChangeEvent) => void;
+export type ChangeListener = ({ event }: { event: StorageChangeEvent }) => void | Promise<void>;
 
 export class StorageSynchronizer {
   private listeners: Set<ChangeListener> = new Set();
@@ -63,7 +67,7 @@ export class StorageSynchronizer {
             const raw = JSON.parse(e.newValue);
             const result = StorageChangeEventSchema.safeParse(raw);
             if (result.success) {
-              this.emit(result.data);
+              this.emit({ event: result.data });
             } else {
               console.warn('Failed to validate storage signal:', result.error);
             }
@@ -97,7 +101,7 @@ export class StorageSynchronizer {
           this.broadcastChannel.onmessage = (ev) => {
             const result = StorageChangeEventSchema.safeParse(ev.data);
             if (result.success) {
-              this.emit(result.data);
+              this.emit({ event: result.data });
             } else {
               console.warn('Failed to validate broadcast message:', result.error);
             }
@@ -116,24 +120,23 @@ export class StorageSynchronizer {
    * This version does not force a failure but monitors the time taken.
    * It provides callbacks to notify if lock acquisition or task execution is taking too long.
    */
-  async withLock<T>(
-    fn: () => Promise<T>,
-    {
-      lockKey,
-      notifyLockWaitAfterMs = 3000,
-      notifyTaskSlowAfterMs = 5000,
-      onLockWait,
-      onTaskSlow,
-      onFinalize
-    }: {
-      lockKey: string;
-      notifyLockWaitAfterMs?: number;
-      notifyTaskSlowAfterMs?: number;
-      onLockWait?: () => void;
-      onTaskSlow?: () => void;
-      onFinalize?: () => void;
-    }
-  ): Promise<T> {
+  async withLock<T>({
+    fn,
+    lockKey,
+    notifyLockWaitAfterMs = 3000,
+    notifyTaskSlowAfterMs = 5000,
+    onLockWait,
+    onTaskSlow,
+    onFinalize
+  }: {
+    fn: () => Promise<T>;
+    lockKey: string;
+    notifyLockWaitAfterMs?: number;
+    notifyTaskSlowAfterMs?: number;
+    onLockWait?: () => void;
+    onTaskSlow?: () => void;
+    onFinalize?: () => void;
+  }): Promise<T> {
     let wasSlow = false;
 
     if (typeof navigator !== 'undefined' && navigator.locks?.request) {
@@ -174,38 +177,7 @@ export class StorageSynchronizer {
   /**
    * Notifies other tabs of a change.
    */
-  notify(event: StorageChangeEvent): void;
-  /**
-   * @deprecated Use notify(event: StorageChangeEvent) instead.
-   */
-  notify(type: string, id?: string): void;
-  notify(eventOrType: StorageChangeEvent | string, id?: string): void {
-    let event: StorageChangeEvent;
-    const t = typeof eventOrType;
-    switch (t) {
-    case 'string':
-      event = {
-        type: eventOrType as string,
-        id,
-        timestamp: Date.now(),
-      } as unknown as StorageChangeEvent;
-      break;
-    case 'object':
-      event = eventOrType as StorageChangeEvent;
-      break;
-    case 'undefined':
-    case 'boolean':
-    case 'number':
-    case 'function':
-    case 'symbol':
-    case 'bigint':
-      throw new Error(`Unexpected event type: ${t}`);
-    default: {
-      const _ex: never = t;
-      throw new Error(`Unhandled event type: ${_ex}`);
-    }
-    }
-
+  notify({ event }: { event: StorageChangeEvent }): void {
     // 1. LocalStorage Signal
     try {
       localStorage.setItem(SYNC_SIGNAL_KEY, JSON.stringify(event));
@@ -223,12 +195,12 @@ export class StorageSynchronizer {
     }
   }
 
-  subscribe(listener: ChangeListener) {
+  subscribe({ listener }: { listener: ChangeListener }) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  private emit(event: StorageChangeEvent) {
-    this.listeners.forEach(l => l(event));
+  private emit({ event }: { event: StorageChangeEvent }) {
+    this.listeners.forEach(l => l({ event }));
   }
 }

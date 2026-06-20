@@ -1,8 +1,10 @@
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
-import type { WeshFileHandle } from '@/services/wesh/types';
+import { openHandleReadStream, openFileReadStream, writeAllBytesToHandle } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
+import { getWeshTextRecordTerminator, iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   if (path.startsWith('/')) {
@@ -23,27 +25,6 @@ function parseCount({
   }
   const parsed = parseInt(value, 10);
   return { ok: true, value: parsed };
-}
-
-async function writeAll({
-  handle,
-  buffer,
-}: {
-  handle: WeshFileHandle;
-  buffer: Uint8Array;
-}): Promise<void> {
-  let written = 0;
-  while (written < buffer.length) {
-    const { bytesWritten } = await handle.write({
-      buffer,
-      offset: written,
-      length: buffer.length - written,
-    });
-    if (bytesWritten === 0) {
-      return;
-    }
-    written += bytesWritten;
-  }
 }
 
 const headArgvSpec: StandardArgvParserSpec = {
@@ -162,62 +143,59 @@ export const headCommandDefinition: WeshCommandDefinition = {
     let hadError = false;
 
     const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
-      const reader = stream.getReader();
-      let shouldCancel = false;
-
-      try {
-        if (bytes !== undefined) {
-          let bytesReadCount = 0;
+      if (bytes !== undefined) {
+        const reader = stream.getReader();
+        let bytesReadCount = 0;
+        let shouldCancel = false;
+        try {
           while (bytesReadCount < bytes) {
             const { done, value } = await reader.read();
-            if (done) break;
-
-            const toRead = Math.min(value.length, bytes - bytesReadCount);
-            await writeAll({
+            if (done) {
+              break;
+            }
+            const length = Math.min(value.byteLength, bytes - bytesReadCount);
+            await writeAllBytesToHandle({
               handle: context.stdout,
-              buffer: value.subarray(0, toRead),
+              data: value.subarray(0, length),
             });
-            bytesReadCount += toRead;
-            if (bytesReadCount >= bytes) {
+            bytesReadCount += length;
+            if (length < value.byteLength || bytesReadCount >= bytes) {
               shouldCancel = true;
               break;
             }
           }
-        } else {
-          const decoder = new TextDecoder();
-          let linesProcessed = 0;
-          let buffer = '';
-
-          while (linesProcessed < lines) {
-            const { done, value } = await reader.read();
-            if (done) {
-              if (buffer) await textOutput.print({ text: buffer });
-              break;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split('\n');
-            // If the last part isn't complete, keep it in buffer
-            buffer = parts.pop() || '';
-
-            for (const line of parts) {
-              await textOutput.print({ text: line + '\n' });
-              linesProcessed++;
-              if (linesProcessed >= lines) {
-                shouldCancel = true;
-                break;
-              }
-            }
+          if (shouldCancel) {
+            await reader.cancel();
           }
+        } finally {
+          reader.releaseLock();
         }
-
-        if (shouldCancel) {
-          await reader.cancel();
-          return;
-        }
-      } finally {
-        reader.releaseLock();
+        return;
       }
+
+      if (lines <= 0) {
+        await stream.cancel();
+        return;
+      }
+      const writer = createBufferedTextWriter({
+        handle: context.stdout,
+        maxBufferLength: 16 * 1024,
+      });
+      let linesProcessed = 0;
+      for await (const record of iterateUtf8LineRecords({
+        chunks: iterateReadableStreamChunks({ stream }),
+      })) {
+        await writer.write({
+          text: record.text + getWeshTextRecordTerminator({
+            termination: record.termination,
+          }),
+        });
+        linesProcessed += 1;
+        if (linesProcessed >= lines) {
+          break;
+        }
+      }
+      await writer.flush();
     };
 
     if (positional.length === 0) {

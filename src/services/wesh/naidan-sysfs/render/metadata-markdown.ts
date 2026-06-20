@@ -1,3 +1,4 @@
+import { idToRaw } from '@/models/ids'
 import type { ChatMeta } from '@/models/types'
 
 function formatValue({ value }: { value: unknown }): string {
@@ -18,18 +19,18 @@ export function renderChatMetadataMarkdown({ metadata }: { metadata: ChatMeta })
   return `\
 # Chat Metadata
 
-id: ${metadata.id}
+id: ${idToRaw({ id: metadata.id })}
 title: ${formatValue({ value: metadata.title })}
-groupId: ${formatValue({ value: metadata.groupId })}
-currentLeafId: ${formatValue({ value: metadata.currentLeafId })}
+groupId: ${formatValue({ value: metadata.groupId === undefined || metadata.groupId === null ? metadata.groupId : idToRaw({ id: metadata.groupId }) })}
+currentLeafId: ${formatValue({ value: metadata.currentLeafId === undefined ? undefined : idToRaw({ id: metadata.currentLeafId }) })}
 createdAt: ${metadata.createdAt}
 updatedAt: ${metadata.updatedAt}
 debugEnabled: ${metadata.debugEnabled}
 modelId: ${formatValue({ value: metadata.modelId })}
 autoTitleEnabled: ${formatValue({ value: metadata.autoTitleEnabled })}
 titleModelId: ${formatValue({ value: metadata.titleModelId })}
-originChatId: ${formatValue({ value: metadata.originChatId })}
-originMessageId: ${formatValue({ value: metadata.originMessageId })}
+originChatId: ${formatValue({ value: metadata.originChatId === undefined ? undefined : idToRaw({ id: metadata.originChatId }) })}
+originMessageId: ${formatValue({ value: metadata.originMessageId === undefined ? undefined : idToRaw({ id: metadata.originMessageId }) })}
 systemPrompt: ${formatValue({ value: metadata.systemPrompt })}
 lmParameters: ${formatValue({ value: metadata.lmParameters })}
 endpoint: ${formatValue({ value: metadata.endpoint ? {

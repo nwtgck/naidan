@@ -15,6 +15,7 @@ import { useConfirm } from '@/composables/useConfirm';
 import { useToast } from '@/composables/useToast';
 import { urlImportExportLogic } from '@/services/import-export/url-logic';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+import { useExportExclusions } from '@/composables/useExportExclusions';
 
 // Lazily load the import/export modal as it is a heavy secondary action, but prefetch it when idle.
 const ImportExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImportExportModal.vue') });
@@ -41,8 +42,13 @@ const isOPFSSupported = computedAsync(async () => {
 const showImportExportModal = ref(false);
 const isExportingURL = ref(false);
 
-const excludeChats = ref(false);
-const excludeAttachments = ref(false);
+const {
+  excludeChats,
+  excludeChatHistory,
+  excludeAttachments,
+  excludeChatHistoryDisabled,
+  buildExcludeList,
+} = useExportExclusions();
 
 // Persistence State
 type PersistenceStatus = 'unknown' | 'persisted' | 'not-persisted';
@@ -153,7 +159,7 @@ async function handleDeleteAllHistory() {
   });
 
   if (confirmed) {
-    await chatLifecycle.deleteAllChats({});
+    await chatLifecycle.deleteAllChats();
     emit('close');
     router.push('/');
   }
@@ -164,11 +170,10 @@ async function handleCopyExportURL() {
 
   isExportingURL.value = true;
   try {
-    const exclude: Array<'chat' | 'binary_object'> = [];
-    if (excludeChats.value) exclude.push('chat');
-    if (excludeAttachments.value) exclude.push('binary_object');
-
-    const url = await urlImportExportLogic.getExportURL({ exclude, baseUrl: window.location.href });
+    const url = await urlImportExportLogic.getExportURL({
+      exclude: buildExcludeList(),
+      baseUrl: window.location.href,
+    });
     await navigator.clipboard.writeText(url);
     addToast({ message: 'Export URL copied to clipboard!', duration: 3000 });
   } catch (err) {
@@ -181,7 +186,6 @@ async function handleCopyExportURL() {
     isExportingURL.value = false;
   }
 }
-
 
 defineExpose({
   TEST_ONLY: {
@@ -267,14 +271,29 @@ defineExpose({
               <input
                 type="checkbox"
                 v-model="excludeChats"
+                data-testid="setting-exclude-chats-checkbox"
                 class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
               />
               <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chats</span>
+            </label>
+            <label
+              class="flex items-center gap-2 group"
+              :class="excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
+            >
+              <input
+                type="checkbox"
+                v-model="excludeChatHistory"
+                :disabled="excludeChatHistoryDisabled"
+                data-testid="setting-exclude-chat-history-checkbox"
+                class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 disabled:cursor-not-allowed"
+              />
+              <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chat History</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer group">
               <input
                 type="checkbox"
                 v-model="excludeAttachments"
+                data-testid="setting-exclude-attachments-checkbox"
                 class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
               />
               <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Attachments</span>

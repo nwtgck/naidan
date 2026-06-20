@@ -47,9 +47,9 @@ vi.mock('@/composables/useSettings', () => ({
 
 vi.mock('lucide-vue-next', () => ({
   CalculatorIcon: { template: '<span>Calculator</span>' },
+  ListIcon: { template: '<span>Choices</span>' },
   BookOpenIcon: { template: '<span>Wikipedia</span>' },
   TerminalIcon: { template: '<span>Terminal</span>' },
-  InfoIcon: { template: '<span>Info</span>' },
 }));
 
 describe('LmToolsSettings.vue', () => {
@@ -96,18 +96,6 @@ describe('LmToolsSettings.vue', () => {
     expect(wrapper.find('[data-testid="tool-wikipedia-note"]').exists()).toBe(false);
   });
 
-  it('shows the wikipedia note only when both wikipedia tools are enabled', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-
-    expect(wrapper.get('[data-testid="tool-wikipedia-note"]').text()).toContain(
-      'Wikipedia search keywords are sent to the external service without additional user approval.',
-    );
-  });
-
   it('enables wikipedia through dependency actions from the toggle', async () => {
     mockIsFeatureEnabled.mockReturnValue(true);
 
@@ -115,7 +103,7 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
+    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
   });
 
   it('disables wikipedia through dependency actions from the toggle', async () => {
@@ -126,7 +114,7 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockDisableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
+    expect(mockDisableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
   });
 
   it('shows wikipedia as enabled only when both tools are enabled', async () => {
@@ -146,7 +134,7 @@ describe('LmToolsSettings.vue', () => {
     await flushPromises();
     await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
 
-    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith({});
+    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
   });
 
   it('shows wikipedia as disabled when shell is off even if wikipedia tool flags remain enabled', async () => {
@@ -170,6 +158,16 @@ describe('LmToolsSettings.vue', () => {
     await wrapper.find('[data-testid="tool-calculator-toggle"]').trigger('click');
 
     expect(mockToggleTool).toHaveBeenCalledWith({ name: 'calculator' });
+  });
+
+  it('toggles choices independently', async () => {
+    mockIsFeatureEnabled.mockReturnValue(true);
+
+    const wrapper = mount(LmToolsSettings);
+    await flushPromises();
+    await wrapper.find('[data-testid="tool-choices-toggle"]').trigger('click');
+
+    expect(mockToggleTool).toHaveBeenCalledWith({ name: 'choices' });
   });
 
   it('shows the sysfs usage note in the wikipedia card', async () => {

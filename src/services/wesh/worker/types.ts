@@ -1,5 +1,7 @@
 import { z } from 'zod'
-import type { EmptyArgs } from '@/models/types'
+
+import { missingAsUndefined, resolveMissingAsUndefined } from '@/lib/zod/missingAsUndefined'
+import { idToRaw } from '@/models/ids'
 import type { NaidanSysfsRemoteReader } from '@/services/wesh/naidan-sysfs/types'
 import {
   NAIDAN_SYSFS_MOUNT_PATH,
@@ -21,7 +23,7 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
   visibility: z.enum([
     'current_chat_only',
     'current_chat_with_chat_group',
-    'all_chats',
+    'main_chats',
   ]),
   binaryObjectAccess: z.enum([
     'none',
@@ -29,21 +31,21 @@ export const weshWorkerNaidanSysfsMountSchema = z.object({
     'data',
   ]),
   currentChatId: z.string().min(1),
-  currentChatGroupId: z.union([z.string().min(1), z.undefined()]),
+  currentChatGroupId: missingAsUndefined(z.string().min(1)),
 })
 
-export const weshWorkerMountSchema = z.discriminatedUnion('type', [
+export const weshWorkerMountSchema = resolveMissingAsUndefined(z.discriminatedUnion('type', [
   weshWorkerDirectoryMountSchema,
   weshWorkerNaidanSysfsMountSchema,
-])
+]))
 
-export const weshWorkerInitRequestSchema = z.object({
+export const weshWorkerInitRequestSchema = resolveMissingAsUndefined(z.object({
   rootHandle: z.custom<FileSystemDirectoryHandle | 'readonly'>(),
   mounts: z.array(weshWorkerMountSchema),
   user: z.string().min(1),
   initialEnv: z.record(z.string(), z.string()),
-  initialCwd: z.union([z.string().min(1), z.undefined()]),
-})
+  initialCwd: missingAsUndefined(z.string().min(1)),
+}))
 
 export const weshWorkerExecuteRequestSchema = z.object({
   script: z.string(),
@@ -69,6 +71,28 @@ export const weshWorkerExecutionSummarySchema = z.object({
   exitCode: z.number().int(),
 })
 
+export const weshWorkerShellStateSchema = z.object({
+  cwd: z.string().min(1),
+  env: z.record(z.string(), z.string()),
+})
+
+export const weshWorkerCommandEntrySchema = z.object({
+  name: z.string().min(1),
+  kind: z.enum(['builtin', 'alias']),
+  description: z.string(),
+  usage: z.string(),
+})
+
+export const weshWorkerListDirectoryRequestSchema = z.object({
+  path: z.string().min(1),
+})
+
+export const weshWorkerDirectoryEntrySchema = z.object({
+  name: z.string(),
+  type: z.enum(['file', 'directory', 'fifo', 'chardev', 'symlink']),
+  fullPath: z.string().min(1),
+})
+
 export type WeshWorkerInitRequest = z.infer<typeof weshWorkerInitRequestSchema>
 export type WeshWorkerExecuteRequest = z.infer<typeof weshWorkerExecuteRequestSchema>
 export type WeshWorkerStartExecutionResponse = z.infer<typeof weshWorkerStartExecutionResponseSchema>
@@ -77,6 +101,10 @@ export type WeshWorkerInterruptExecutionRequest = z.infer<typeof weshWorkerInter
 export type WeshWorkerDisposeExecutionRequest = z.infer<typeof weshWorkerDisposeExecutionRequestSchema>
 export type WeshWorkerExecutionSummary = z.infer<typeof weshWorkerExecutionSummarySchema>
 export type WeshWorkerMount = z.infer<typeof weshWorkerMountSchema>
+export type WeshWorkerShellState = z.infer<typeof weshWorkerShellStateSchema>
+export type WeshWorkerCommandEntry = z.infer<typeof weshWorkerCommandEntrySchema>
+export type WeshWorkerListDirectoryRequest = z.infer<typeof weshWorkerListDirectoryRequestSchema>
+export type WeshWorkerDirectoryEntry = z.infer<typeof weshWorkerDirectoryEntrySchema>
 
 export type WeshWorkerRemoteExecutionEvent =
   | { type: 'started' }
@@ -92,40 +120,51 @@ export type WeshWorkerExecutionEvent =
   | { type: 'exit'; exitCode: number }
   | { type: 'error'; message: string }
 
+export type WeshWorkerExecutionEventCallback = ({ event }: { event: WeshWorkerExecutionEvent }) => void | Promise<void>
+
 export interface IWeshWorker {
   /**
    * Comlink proxy values must stay as top-level arguments here.
    * Nesting a proxied object inside a named-args object can trigger
    * "Function object could not be cloned." in real browsers.
    */
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   init(
     request: WeshWorkerInitRequest,
     naidanSysfsRemoteReader?: NaidanSysfsRemoteReader,
   ): Promise<void>
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   startExecution(
     request: WeshWorkerExecuteRequest,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onEvent?: (event: WeshWorkerRemoteExecutionEvent) => void | Promise<void>
   ): Promise<WeshWorkerStartExecutionResponse>
   awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
   disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
-  interrupt(_args: EmptyArgs): Promise<boolean>
-  dispose(_args: EmptyArgs): Promise<void>
+  getShellState(): Promise<WeshWorkerShellState>
+  listCommands(): Promise<WeshWorkerCommandEntry[]>
+  listDirectory({ request }: { request: WeshWorkerListDirectoryRequest }): Promise<WeshWorkerDirectoryEntry[]>
+  interrupt(): Promise<boolean>
+  dispose(): Promise<void>
 }
 
 export interface WeshWorkerClient {
   startExecution({ request, onEvent }: {
     request: WeshWorkerExecuteRequest
-    onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
+    onEvent?: WeshWorkerExecutionEventCallback
   }): Promise<WeshWorkerStartExecutionResponse>
   awaitExecution({ request }: { request: WeshWorkerAwaitExecutionRequest }): Promise<WeshWorkerExecutionSummary>
   interruptExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
   cancelExecution({ request }: { request: WeshWorkerInterruptExecutionRequest }): Promise<boolean>
   disposeExecution({ request }: { request: WeshWorkerDisposeExecutionRequest }): Promise<void>
   execute({ request }: { request: WeshWorkerExecuteRequest }): Promise<WeshWorkerExecutionSummary>
-  interrupt(_args: EmptyArgs): Promise<boolean>
-  dispose(_args: EmptyArgs): Promise<void>
+  getShellState(): Promise<WeshWorkerShellState>
+  listCommands(): Promise<WeshWorkerCommandEntry[]>
+  listDirectory({ request }: { request: WeshWorkerListDirectoryRequest }): Promise<WeshWorkerDirectoryEntry[]>
+  interrupt(): Promise<boolean>
+  dispose(): Promise<void>
 }
 
 export function mapWeshMountsToWorkerMounts({ mounts }: {
@@ -148,8 +187,8 @@ export function mapWeshMountsToWorkerMounts({ mounts }: {
         storageType: mount.storageType,
         visibility: mount.visibility,
         binaryObjectAccess: mount.binaryObjectAccess,
-        currentChatId: mount.currentChatId,
-        currentChatGroupId: mount.currentChatGroupId,
+        currentChatId: idToRaw({ id: mount.currentChatId }),
+        currentChatGroupId: mount.currentChatGroupId === undefined ? undefined : idToRaw({ id: mount.currentChatGroupId }),
       }
     default: {
       const _ex: never = mount

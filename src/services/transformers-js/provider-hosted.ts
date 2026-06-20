@@ -1,30 +1,30 @@
 import { z } from 'zod';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
+import type { ToolCallId } from '@/models/ids';
 import { transformersJsService } from './index';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
 import type { WorkerToolDefinition } from './types';
-import { zodToJsonSchema } from '@/utils/llm-tools';
+import { zodToJsonSchema } from '@/utils/lm-tools';
 
-export class TransformersJsProvider implements LLMProvider {
-  async chat(params: {
+export class TransformersJsProvider implements LmProvider {
+  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;
-    onChunk: (chunk: string) => void;
+    onChunk: ({ chunk }: { chunk: string }) => void;
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
-    onToolResult?: (params: {
-      id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: ToolCallId; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
+    onToolResult?: ({ id, result }: {
+      id: ToolCallId;
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
 
     // Auto-load if needed
     const state = transformersJsService.getState();
@@ -70,18 +70,18 @@ export class TransformersJsProvider implements LLMProvider {
       let receivedToolCalls: ToolCall[] = [];
       let fullContent = '';
 
-      await transformersJsService.generateText(
-        currentMessages,
-        (chunk) => {
-          fullContent += chunk; onChunk(chunk);
+      await transformersJsService.generateText({
+        messages: currentMessages,
+        onChunk: ({ chunk }) => {
+          fullContent += chunk; onChunk({ chunk });
         },
-        (toolCalls) => {
+        onToolCalls: ({ toolCalls }) => {
           receivedToolCalls = toolCalls;
         },
-        parameters,
-        workerTools,
-        signal
-      );
+        params: parameters,
+        tools: workerTools,
+        signal,
+      });
 
       if (receivedToolCalls.length === 0) break;
 
@@ -101,7 +101,7 @@ export class TransformersJsProvider implements LLMProvider {
         try {
           parsedArgs = JSON.parse(tc.function.arguments);
         } catch (e) {
-          const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = {
+          const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = {
             status: 'error',
             code: 'invalid_arguments',
             message: `Error: Failed to parse tool arguments: ${e instanceof Error ? e.message : String(e)}`,
@@ -112,7 +112,7 @@ export class TransformersJsProvider implements LLMProvider {
         }
 
         if (!tool) {
-          const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = {
+          const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = {
             status: 'error',
             code: 'other',
             message: `Tool "${tc.function.name}" not found.`,
@@ -126,7 +126,7 @@ export class TransformersJsProvider implements LLMProvider {
             const executionResult = await tool.execute({
               args: validatedArgs,
               signal,
-              onEvent: async (event) => {
+              onEvent: async ({ event }) => {
                 onToolEvent?.({ id: tc.id, event });
               },
               approvalContext: toolApprovalContext,
@@ -149,7 +149,7 @@ export class TransformersJsProvider implements LLMProvider {
           } catch (e) {
             if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-            const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
+            const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
               ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
               : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
@@ -163,7 +163,7 @@ export class TransformersJsProvider implements LLMProvider {
     }
   }
 
-  async listModels(_params: { signal?: AbortSignal }): Promise<string[]> {
+  async listModels({ signal: _signal }: { signal?: AbortSignal }): Promise<string[]> {
     try {
       const models = await transformersJsService.listCachedModels();
       // Only return complete models to the general selector to ensure they are ready for use

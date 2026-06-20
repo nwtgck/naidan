@@ -33,8 +33,10 @@ describe('privacyFetch standalone client', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await privacyFetch({
-      url: VALID_SEARCH_URL,
-      signal: undefined,
+      request: {
+        url: VALID_SEARCH_URL,
+        signal: undefined,
+      },
     })
 
     expect(fetchMock).toHaveBeenCalledWith(VALID_SEARCH_URL, {
@@ -64,8 +66,10 @@ describe('privacyFetch standalone client', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(privacyFetch({
-      url: 'https://example.com/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://example.com/w/api.php?origin=*',
+        signal: undefined,
+      },
     })).rejects.toMatchObject({
       code: 'rejected',
       name: 'PrivacyFetchError',
@@ -80,8 +84,10 @@ describe('privacyFetch standalone client', () => {
     controller.abort()
 
     await expect(privacyFetch({
-      url: VALID_SEARCH_URL,
-      signal: controller.signal,
+      request: {
+        url: VALID_SEARCH_URL,
+        signal: controller.signal,
+      },
     })).rejects.toMatchObject({
       code: 'aborted',
       name: 'AbortError',
@@ -95,8 +101,10 @@ describe('privacyFetch standalone client', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(privacyFetch({
-      url: VALID_SEARCH_URL,
-      signal: undefined,
+      request: {
+        url: VALID_SEARCH_URL,
+        signal: undefined,
+      },
     })).rejects.toSatisfy((error: unknown) => (
       isPrivacyFetchError(error)
       && error.code === 'fetch_failed'

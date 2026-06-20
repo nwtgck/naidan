@@ -11,18 +11,20 @@ const containerRef = ref<HTMLElement | null>(null);
 const renderRef = ref<HTMLElement | null>(null);
 const mode = ref<'preview' | 'code' | 'both'>('preview');
 const copied = ref(false);
+const renderError = ref(false);
 
 mermaid.initialize({
   startOnLoad: false,
   theme: 'dark',
-  securityLevel: 'loose',
+  securityLevel: 'strict',
 });
 
 async function render() {
   if (!containerRef.value || !renderRef.value) return;
 
-  // Clear previous render
-  renderRef.value.innerHTML = props.code;
+  // Clear previous render without treating the Mermaid DSL as HTML.
+  renderError.value = false;
+  renderRef.value.textContent = props.code;
   renderRef.value.removeAttribute('data-processed');
 
   try {
@@ -31,9 +33,7 @@ async function render() {
     });
   } catch (e) {
     console.error('Mermaid render error:', e);
-    if (renderRef.value) {
-      renderRef.value.innerHTML = `<div class="text-red-500 text-xs p-2">Failed to render mermaid diagram</div>`;
-    }
+    renderError.value = true;
   }
 }
 
@@ -148,7 +148,8 @@ defineExpose({
         class="p-4 overflow-auto flex justify-center bg-white dark:bg-[#0d1117]"
         :class="{ 'border-b border-gray-100 dark:border-gray-800': mode === 'both' }"
       >
-        <div ref="renderRef" class="mermaid"></div>
+        <div v-if="renderError" class="text-red-500 text-xs p-2">Failed to render mermaid diagram</div>
+        <div ref="renderRef" class="mermaid" :class="{ hidden: renderError }"></div>
       </div>
 
       <!-- Code Area -->

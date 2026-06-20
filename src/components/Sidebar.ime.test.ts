@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -26,8 +27,8 @@ vi.mock('../composables/useChat', () => ({
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${idToRaw({ id: g.id })}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${idToRaw({ id: c.id })}`, type: 'chat', chat: c }));
       return items;
     }),
     createChatGroup: mockCreateChatGroup,
@@ -54,8 +55,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     chatGroups: computed(() => mockChatGroups.value),
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${idToRaw({ id: g.id })}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${idToRaw({ id: c.id })}`, type: 'chat', chat: c }));
       return items;
     }),
     TEST_ONLY: {},
@@ -147,7 +148,7 @@ describe('Sidebar IME handling', () => {
   });
 
   it('should NOT rename chat group on enter if IME is composing', async () => {
-    const group: ChatGroup = { id: 'g1', name: 'Old Group', isCollapsed: false, updatedAt: 0, items: [] };
+    const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'Old Group', isCollapsed: false, updatedAt: 0, items: [] };
     mockChatGroups.value = [group];
 
     const wrapper = mount(Sidebar, {
@@ -177,7 +178,7 @@ describe('Sidebar IME handling', () => {
   });
 
   it('should NOT rename chat on enter if IME is composing', async () => {
-    const chat: ChatSummary = { id: 'c1', title: 'Old Chat', updatedAt: 0 };
+    const chat: ChatSummary = { id: toChatId({ raw: 'c1' }), title: 'Old Chat', updatedAt: 0 };
     mockChats.value = [chat];
 
     const wrapper = mount(Sidebar, {

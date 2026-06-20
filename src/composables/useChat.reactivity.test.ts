@@ -12,7 +12,7 @@ vi.mock('../services/storage', () => ({
     saveChat: vi.fn(),
     loadChatMeta: vi.fn(),
     loadChatContent: vi.fn().mockResolvedValue(null),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn(),
     getSidebarStructure: vi.fn().mockResolvedValue([]),
@@ -32,11 +32,11 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM
-let onChunkCallback: (chunk: string) => void;
+// Mock LM
+let onChunkCallback: (params: { chunk: string }) => void;
 vi.mock('../services/lm/openai', () => {
   class MockOpenAI {
-    chat = vi.fn().mockImplementation(async (params: { onChunk: (c: string) => void }) => {
+    chat = vi.fn().mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
       onChunkCallback = params.onChunk;
       return new Promise<void>(() => {});
     });
@@ -56,7 +56,7 @@ describe('useChat Reactivity', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry({});
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('should reflect streamed chunks in activeMessages immediately', async () => {
@@ -73,11 +73,11 @@ describe('useChat Reactivity', () => {
     expect(chatStore.activeMessages.value[1]?.content).toBe('');
 
     // Simulate chunk
-    onChunkCallback('A');
+    onChunkCallback({ chunk: 'A' });
     await nextTick();
     expect(chatStore.activeMessages.value[1]?.content).toBe('A');
 
-    onChunkCallback('B');
+    onChunkCallback({ chunk: 'B' });
     await nextTick();
     expect(chatStore.activeMessages.value[1]?.content).toBe('AB');
   });

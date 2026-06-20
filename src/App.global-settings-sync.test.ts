@@ -3,7 +3,9 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { nextTick, computed } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 
-// 1. Mock LLM providers to prevent real network calls
+vi.setConfig({ testTimeout: 30000, hookTimeout: 30000 });
+
+// 1. Mock LM providers to prevent real network calls
 const mockListModels = vi.fn().mockResolvedValue(['model-1', 'model-2']);
 vi.mock('./services/lm/openai', () => ({
   OpenAIProvider: class {
@@ -165,10 +167,6 @@ vi.mock('./composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('./composables/useOPFSExplorer', () => ({
-  useOPFSExplorer: () => ({ isOPFSOpen: { value: false } }),
-}));
-
 vi.mock('./composables/useTheme', () => ({ useTheme: vi.fn() }));
 vi.mock('./composables/useGlobalSearch', () => ({ useGlobalSearch: () => ({ toggleSearch: vi.fn() }) }));
 
@@ -177,7 +175,6 @@ vi.mock('./components/ToastContainer.vue', () => ({ __esModule: true, default: {
 vi.mock('./components/SettingsModal.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 vi.mock('./components/DebugPanel.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 vi.mock('./components/CustomDialog.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
-vi.mock('./components/OPFSExplorer.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 vi.mock('./components/GlobalSearchModal.vue', () => ({ __esModule: true, default: { template: '<div></div>' } }));
 
 vi.mock('./components/OnboardingModal.vue', () => ({

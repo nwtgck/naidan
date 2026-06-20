@@ -17,11 +17,11 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM providers
-const mockLlmChat = vi.fn();
+// Mock LM providers
+const mockLmChat = vi.fn();
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
-    chat = mockLlmChat;
+    chat = mockLmChat;
     listModels = vi.fn().mockResolvedValue(['gpt-4']);
   },
 }));
@@ -56,7 +56,7 @@ describe('useChat Thinking Abort', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry({});
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
   });
 
   it('should close thinking tag and process thinking when aborted during thinking', async () => {
@@ -72,9 +72,9 @@ describe('useChat Thinking Abort', () => {
     }) as any;
     __testOnlySetCurrentChat({ chat });
 
-    mockLlmChat.mockImplementationOnce(async (params: { onChunk: (c: string) => void, signal: AbortSignal }) => {
+    mockLmChat.mockImplementationOnce(async (params: { onChunk: (params: { chunk: string }) => void, signal: AbortSignal }) => {
       const { onChunk, signal } = params;
-      onChunk('<think>I am thinking...');
+      onChunk({ chunk: '<think>I am thinking...' });
 
       // Wait for abort
       return new Promise((_resolve, reject) => {

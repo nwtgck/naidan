@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import { findNodeInBranch } from '@/utils/chat-tree';
+import type { ChatId, MessageId, ToolCallId } from '@/models/ids';
 import type { Chat } from '@/models/types';
 
 export type ChatVolatileState = {
@@ -8,8 +9,8 @@ export type ChatVolatileState = {
     messageId,
     error,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
     error: string;
   }): void;
 
@@ -17,8 +18,8 @@ export type ChatVolatileState = {
     chatId,
     messageId,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
   }): void;
 
   applyVolatileAssistantErrorsToChat({
@@ -31,7 +32,7 @@ export type ChatVolatileState = {
     toolCallId,
     output,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
     output: string;
   }): void;
 
@@ -39,38 +40,38 @@ export type ChatVolatileState = {
     toolCallId,
     text,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
     text: string;
   }): void;
 
   deleteVolatileToolOutput({
     toolCallId,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
   }): void;
 
   getVolatileToolOutput({
     toolCallId,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
   }): string | undefined;
 
   TEST_ONLY: {
-    volatileToolOutputs: Map<string, string>;
+    volatileToolOutputs: Map<ToolCallId, string>;
   };
 };
 
-export function createChatVolatileState(_args: Record<never, never>): ChatVolatileState {
-  const volatileAssistantErrors = reactive(new Map<string, Map<string, string>>());
-  const volatileToolOutputs = reactive(new Map<string, string>());
+export function createChatVolatileState(): ChatVolatileState {
+  const volatileAssistantErrors = reactive(new Map<ChatId, Map<MessageId, string>>());
+  const volatileToolOutputs = reactive(new Map<ToolCallId, string>());
 
   function setVolatileAssistantError({
     chatId,
     messageId,
     error,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
     error: string;
   }) {
     const existing = volatileAssistantErrors.get(chatId);
@@ -85,8 +86,8 @@ export function createChatVolatileState(_args: Record<never, never>): ChatVolati
     chatId,
     messageId,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
   }) {
     const existing = volatileAssistantErrors.get(chatId);
     if (!existing) return;
@@ -116,7 +117,7 @@ export function createChatVolatileState(_args: Record<never, never>): ChatVolati
     toolCallId,
     output,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
     output: string;
   }) {
     volatileToolOutputs.set(toolCallId, output);
@@ -126,7 +127,7 @@ export function createChatVolatileState(_args: Record<never, never>): ChatVolati
     toolCallId,
     text,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
     text: string;
   }) {
     const previous = volatileToolOutputs.get(toolCallId) || '';
@@ -136,7 +137,7 @@ export function createChatVolatileState(_args: Record<never, never>): ChatVolati
   function deleteVolatileToolOutput({
     toolCallId,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
   }) {
     volatileToolOutputs.delete(toolCallId);
   }
@@ -144,7 +145,7 @@ export function createChatVolatileState(_args: Record<never, never>): ChatVolati
   function getVolatileToolOutput({
     toolCallId,
   }: {
-    toolCallId: string;
+    toolCallId: ToolCallId;
   }) {
     return volatileToolOutputs.get(toolCallId);
   }

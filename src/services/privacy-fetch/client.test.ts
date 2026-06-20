@@ -3,12 +3,12 @@ import { isPrivacyFetchError } from './errors'
 import { PRIVACY_FETCH_PROTOCOL } from './protocol'
 import { createPrivacyFetchBrokerClient } from './broker-client'
 
-const { mockGenerateId } = vi.hoisted(() => ({
-  mockGenerateId: vi.fn(),
+const { mockGenerateOpaqueId } = vi.hoisted(() => ({
+  mockGenerateOpaqueId: vi.fn(),
 }))
 
 vi.mock('@/utils/id', () => ({
-  generateId: mockGenerateId,
+  generateOpaqueId: mockGenerateOpaqueId,
 }))
 
 type FakeWindowHarness = {
@@ -25,7 +25,7 @@ type FakeWindowHarness = {
 describe('createPrivacyFetchBrokerClient', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
-    mockGenerateId.mockReset()
+    mockGenerateOpaqueId.mockReset()
   })
 
   afterEach(() => {
@@ -134,7 +134,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness()
-    mockGenerateId.mockReturnValue('req-success')
+    mockGenerateOpaqueId.mockReturnValue('req-success')
 
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -150,8 +150,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -221,7 +223,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness()
-    mockGenerateId.mockReturnValue('req-http-false')
+    mockGenerateOpaqueId.mockReturnValue('req-http-false')
 
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -237,8 +239,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -285,11 +289,13 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness()
-    mockGenerateId.mockReturnValue('req-2')
+    mockGenerateOpaqueId.mockReturnValue('req-2')
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -351,12 +357,14 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness()
-    mockGenerateId.mockReturnValue('req-3')
+    mockGenerateOpaqueId.mockReturnValue('req-3')
 
     const controller = new AbortController()
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: controller.signal,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: controller.signal,
+      },
     })
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -395,7 +403,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness()
-    mockGenerateId.mockReturnValue('req-rejected')
+    mockGenerateOpaqueId.mockReturnValue('req-rejected')
 
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -411,8 +419,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -448,7 +458,7 @@ describe('createPrivacyFetchBrokerClient', () => {
       client,
       dispatchBrokerMessage,
     } = createClientHarness()
-    mockGenerateId.mockReturnValue('req-error')
+    mockGenerateOpaqueId.mockReturnValue('req-error')
 
     dispatchBrokerMessage({
       source: brokerWindow,
@@ -464,8 +474,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     })
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: undefined,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: undefined,
+      },
     })
     await Promise.resolve()
     await Promise.resolve()
@@ -498,8 +510,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     controller.abort()
 
     await expect(client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: controller.signal,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: controller.signal,
+      },
     })).rejects.toMatchObject({
       name: 'AbortError',
       code: 'aborted',
@@ -513,8 +527,10 @@ describe('createPrivacyFetchBrokerClient', () => {
     const controller = new AbortController()
 
     const responsePromise = client.fetch({
-      url: 'https://en.wikipedia.org/w/api.php?origin=*',
-      signal: controller.signal,
+      request: {
+        url: 'https://en.wikipedia.org/w/api.php?origin=*',
+        signal: controller.signal,
+      },
     })
 
     controller.abort()

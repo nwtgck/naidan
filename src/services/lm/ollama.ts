@@ -9,12 +9,14 @@
  * and that we handle unexpected API behavior gracefully.
  */
 import { z } from 'zod';
-import { zodToJsonSchema } from '@/utils/llm-tools';
+import { idToRaw, toToolCallId, type ToolCallId } from '@/models/ids';
+import { zodToJsonSchema } from '@/utils/lm-tools';
 import type { LmParameters, ChatMessage, MultimodalContent } from '@/models/types';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { Tool } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
-import { type LLMProvider, UNKNOWN_STEPS } from './types';
+import { getDefaultLmFetch, type LmFetch } from '@/services/lm/fetch';
+import { type LmProvider, UNKNOWN_STEPS } from './types';
 
 const { addErrorEvent } = useGlobalEvents();
 
@@ -39,6 +41,51 @@ const OllamaTagsSchema = z.object({
     name: z.string(),
   })),
 });
+
+const OllamaRunningModelSchema = z.object({
+  name: z.string(),
+  model: z.string().optional(),
+  size: z.number().nonnegative().optional(),
+  digest: z.string().optional(),
+  details: z.object({
+    parent_model: z.string().optional(),
+    format: z.string().optional(),
+    family: z.string().optional(),
+    families: z.array(z.string()).nullable().optional(),
+    parameter_size: z.string().optional(),
+    quantization_level: z.string().optional(),
+  }).optional(),
+  expires_at: z.string().optional(),
+  size_vram: z.number().nonnegative().optional(),
+  context_length: z.number().int().nonnegative().optional(),
+});
+
+const OllamaPsSchema = z.object({
+  models: z.array(OllamaRunningModelSchema),
+});
+
+const OllamaUnloadResponseSchema = z.object({
+  done: z.literal(true),
+  done_reason: z.literal('unload'),
+});
+
+export interface OllamaRunningModel {
+  readonly name: string;
+  readonly model: string | undefined;
+  readonly size: number | undefined;
+  readonly digest: string | undefined;
+  readonly expiresAt: string | undefined;
+  readonly sizeVram: number | undefined;
+  readonly contextLength: number | undefined;
+  readonly details: {
+    readonly parentModel: string | undefined;
+    readonly format: string | undefined;
+    readonly family: string | undefined;
+    readonly families: readonly string[] | undefined;
+    readonly parameterSize: string | undefined;
+    readonly quantizationLevel: string | undefined;
+  };
+}
 
 const OllamaImageStreamChunkSchema = z.discriminatedUnion('done', [
   z.object({
@@ -79,6 +126,33 @@ interface OllamaChatRequest {
   }[];
 }
 
+function createOllamaNetworkErrorMessage({ error }: {
+  error: unknown;
+}): string {
+  let message = `Network error or CORS issue: ${error instanceof Error ? error.message : String(error)}`;
+  if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
+    message += ". Since you are running from a file URL, ensure Ollama is started with OLLAMA_ORIGINS='*' (e.g., OLLAMA_ORIGINS='*' ollama serve).";
+  }
+  return message;
+}
+
+async function readOllamaErrorDetails({ response }: {
+  response: Response;
+}): Promise<string> {
+  try {
+    const rawError: unknown = await response.json();
+    const parsed = z.object({ error: z.unknown().optional() }).safeParse(rawError);
+    if (parsed.success && parsed.data.error !== undefined) {
+      return typeof parsed.data.error === 'string'
+        ? parsed.data.error
+        : JSON.stringify(parsed.data.error);
+    }
+    return JSON.stringify(rawError);
+  } catch {
+    return response.statusText;
+  }
+}
+
 async function blobToBase64({ blob }: { blob: Blob }): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -92,34 +166,34 @@ async function blobToBase64({ blob }: { blob: Blob }): Promise<string> {
   });
 }
 
-export class OllamaProvider implements LLMProvider {
+export class OllamaProvider implements LmProvider {
   private config: {
     endpoint: string;
     headers?: [string, string][];
+    fetcher: LmFetch;
   };
 
-  constructor(config: { endpoint: string; headers?: [string, string][] }) {
-    this.config = config;
+  constructor({ endpoint, headers, fetcher }: { endpoint: string; headers?: [string, string][]; fetcher?: LmFetch }) {
+    this.config = { endpoint, headers, fetcher: fetcher ?? getDefaultLmFetch() };
   }
 
-  async chat(params: {
+  async chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;
-    onChunk: (chunk: string) => void;
+    onChunk: ({ chunk }: { chunk: string }) => void;
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: (params: { id: string; event: import('../tools/types').ToolExecutionEvent }) => void;
-    onToolResult?: (params: {
-      id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: ToolCallId; event: import('@/services/tools/types').ToolExecutionEvent }) => void;
+    onToolResult?: ({ id, result }: {
+      id: ToolCallId;
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void> {
-    const { messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal } = params;
-    const { endpoint, headers } = this.config;
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/chat`;
 
     const currentMessages = [...messages];
@@ -134,7 +208,7 @@ export class OllamaProvider implements LLMProvider {
         const contentType = typeof m.content;
 
         const tool_calls = m.tool_calls?.map(tc => ({
-          id: tc.id,
+          id: idToRaw({ id: tc.id }),
           type: tc.type,
           function: {
             name: tc.function.name,
@@ -153,7 +227,7 @@ export class OllamaProvider implements LLMProvider {
 
         switch (contentType) {
         case 'string':
-          return { role: m.role, content: m.content as string, tool_calls, tool_call_id: m.tool_call_id };
+          return { role: m.role, content: m.content as string, tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
         case 'object': {
           // Multimodal
           let content = '';
@@ -177,11 +251,11 @@ export class OllamaProvider implements LLMProvider {
               }
             }
           }
-          return { role: m.role, content, images, tool_calls, tool_call_id: m.tool_call_id };
+          return { role: m.role, content, images, tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
         }
         case 'undefined': {
           if (m.role === 'assistant' && tool_calls) {
-            return { role: m.role, content: '', tool_calls, tool_call_id: m.tool_call_id };
+            return { role: m.role, content: '', tool_calls, tool_call_id: m.tool_call_id === undefined ? undefined : idToRaw({ id: m.tool_call_id }) };
           }
           throw new Error(`Unexpected content type for role ${m.role}: ${contentType}`);
         }
@@ -248,7 +322,7 @@ export class OllamaProvider implements LLMProvider {
 
       let response: Response;
       try {
-        response = await fetch(url, {
+        response = await fetcher(url, {
           method: 'POST',
           headers: [
             ['Content-Type', 'application/json'],
@@ -287,7 +361,7 @@ export class OllamaProvider implements LLMProvider {
 
         if (isRetryable) {
           body.think = true; // Fallback to basic thinking
-          response = await fetch(url, {
+          response = await fetcher(url, {
             method: 'POST',
             headers: [
               ['Content-Type', 'application/json'],
@@ -320,7 +394,7 @@ export class OllamaProvider implements LLMProvider {
       let buffer = '';
 
       let isThinking = false;
-      const accumulatedToolCalls: import('../../models/types').ToolCall[] = [];
+      const accumulatedToolCalls: import('@/models/types').ToolCall[] = [];
       let fullContent = '';
 
       while (true) {
@@ -341,29 +415,29 @@ export class OllamaProvider implements LLMProvider {
             const thinking = validated.message?.thinking || '';
             if (thinking) {
               if (!isThinking) {
-                onChunk('<think>');
+                onChunk({ chunk: '<think>' });
                 fullContent += '<think>';
                 isThinking = true;
               }
               fullContent += thinking;
-              onChunk(thinking);
+              onChunk({ chunk: thinking });
             }
 
             const content = validated.message?.content || '';
             if (content) {
               if (isThinking) {
-                onChunk('</think>');
+                onChunk({ chunk: '</think>' });
                 fullContent += '</think>';
                 isThinking = false;
               }
               fullContent += content;
-              onChunk(content);
+              onChunk({ chunk: content });
             }
 
             if (validated.message?.tool_calls) {
               for (const tc of validated.message.tool_calls) {
                 accumulatedToolCalls.push({
-                  id: tc.id || '',
+                  id: toToolCallId({ raw: tc.id || '' }),
                   type: 'function',
                   function: {
                     name: tc.function.name,
@@ -375,7 +449,7 @@ export class OllamaProvider implements LLMProvider {
 
             if (validated.done) {
               if (isThinking) {
-                onChunk('</think>');
+                onChunk({ chunk: '</think>' });
                 fullContent += '</think>';
                 isThinking = false;
               }
@@ -434,7 +508,7 @@ export class OllamaProvider implements LLMProvider {
               const executionResult = await tool.execute({
                 args: validatedArgs,
                 signal,
-                onEvent: async (event) => {
+                onEvent: async ({ event }) => {
                   onToolEvent?.({ id: tc.id, event });
                 },
                 approvalContext: toolApprovalContext,
@@ -458,7 +532,7 @@ export class OllamaProvider implements LLMProvider {
             } catch (e) {
               if (e instanceof Error && e.message === 'Generation aborted') throw e;
 
-              const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
+              const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = e instanceof z.ZodError
                 ? { status: 'error', code: 'invalid_arguments', message: `Invalid arguments: ${e.message}` }
                 : { status: 'error', code: 'other', message: e instanceof Error ? e.message : String(e) };
 
@@ -467,7 +541,7 @@ export class OllamaProvider implements LLMProvider {
             }
           } else if (!tool) {
 
-            const errorResult: { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
+            const errorResult: { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string } = { status: 'error', code: 'other', message: `Tool "${tc.function.name}" not found.` };
             onToolResult?.({ id: tc.id, result: errorResult });
             result = errorResult.message;
           } else {
@@ -485,13 +559,12 @@ export class OllamaProvider implements LLMProvider {
     }
   }
 
-  async listModels(params: { signal?: AbortSignal }): Promise<string[]> {
-    const { signal } = params;
-    const { endpoint, headers } = this.config;
+  async listModels({ signal }: { signal?: AbortSignal }): Promise<string[]> {
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/tags`;
     let response: Response;
     try {
-      response = await fetch(url, { signal, headers });
+      response = await fetcher(url, { signal, headers });
     } catch (e) {
       const isAbort = e instanceof Error && e.name === 'AbortError';
       if (!isAbort) {
@@ -529,6 +602,110 @@ export class OllamaProvider implements LLMProvider {
     return validated.models.map((m) => m.name);
   }
 
+  async listRunningModels({ signal }: {
+    signal?: AbortSignal;
+  }): Promise<readonly OllamaRunningModel[]> {
+    const { endpoint, headers, fetcher } = this.config;
+    const url = `${endpoint.replace(/\/$/, '')}/api/ps`;
+    let response: Response;
+
+    try {
+      response = await fetcher(url, { signal, headers });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+
+      const message = createOllamaNetworkErrorMessage({ error });
+      addErrorEvent({
+        source: 'OllamaProvider:listRunningModels',
+        message,
+        details: { error, url, method: 'GET' },
+      });
+      throw new Error(message);
+    }
+
+    if (!response.ok) {
+      const details = await readOllamaErrorDetails({ response });
+      const message = `Failed to fetch running models (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OllamaProvider:listRunningModels',
+        message,
+        details: { status: response.status, statusText: response.statusText, url },
+      });
+      throw new Error(message);
+    }
+
+    const validated = OllamaPsSchema.parse(await response.json());
+    return validated.models.map((model) => ({
+      name: model.name,
+      model: model.model,
+      size: model.size,
+      digest: model.digest,
+      expiresAt: model.expires_at,
+      sizeVram: model.size_vram,
+      contextLength: model.context_length,
+      details: {
+        parentModel: model.details?.parent_model,
+        format: model.details?.format,
+        family: model.details?.family,
+        families: model.details?.families ?? undefined,
+        parameterSize: model.details?.parameter_size,
+        quantizationLevel: model.details?.quantization_level,
+      },
+    }));
+  }
+
+  async unloadModel({ model, signal }: {
+    model: string;
+    signal?: AbortSignal;
+  }): Promise<void> {
+    const { endpoint, headers, fetcher } = this.config;
+    const url = `${endpoint.replace(/\/$/, '')}/api/generate`;
+    let response: Response;
+
+    try {
+      response = await fetcher(url, {
+        method: 'POST',
+        headers: [
+          ['Content-Type', 'application/json'],
+          ...(headers ?? []),
+        ],
+        body: JSON.stringify({
+          model,
+          stream: false,
+          keep_alive: 0,
+        }),
+        signal,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+
+      const message = createOllamaNetworkErrorMessage({ error });
+      addErrorEvent({
+        source: 'OllamaProvider:unloadModel',
+        message,
+        details: { error, url, method: 'POST', model },
+      });
+      throw new Error(message);
+    }
+
+    if (!response.ok) {
+      const details = await readOllamaErrorDetails({ response });
+      const message = `Failed to unload model (${response.status}): ${details}`;
+      addErrorEvent({
+        source: 'OllamaProvider:unloadModel',
+        message,
+        details: { status: response.status, statusText: response.statusText, url, model },
+      });
+      throw new Error(message);
+    }
+
+    OllamaUnloadResponseSchema.parse(await response.json());
+  }
+
   async generateImage({ prompt, model, width, height, steps, seed, images, onProgress, signal }: {
     prompt: string;
     model: string;
@@ -537,10 +714,10 @@ export class OllamaProvider implements LLMProvider {
     steps: number | undefined;
     seed: number | undefined;
     images: { blob: Blob }[];
-    onProgress: (params: { currentStep: number; totalSteps: number }) => void;
+    onProgress: ({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) => void;
     signal: AbortSignal | undefined;
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> {
-    const { endpoint, headers } = this.config;
+    const { endpoint, headers, fetcher } = this.config;
     const url = `${endpoint.replace(/\/$/, '')}/api/generate`;
 
     const b64Images = images.length > 0
@@ -560,7 +737,7 @@ export class OllamaProvider implements LLMProvider {
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await fetcher(url, {
         method: 'POST',
         headers: [
           ['Content-Type', 'application/json'],

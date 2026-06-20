@@ -1,4 +1,6 @@
 import type { MessageNode } from '@/models/types'
+import { idToRaw } from '@/models/ids'
+import type { ChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import { getChatBranchIterator } from '@/utils/chat-tree'
 import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
@@ -6,7 +8,7 @@ import { renderMessageJson } from '@/services/wesh/naidan-sysfs/render/message-j
 import { renderMessageMarkdown } from '@/services/wesh/naidan-sysfs/render/message-markdown'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry } from '@/services/wesh/naidan-sysfs/types'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -31,7 +33,7 @@ function createMessageFileName({ index, node, format }: {
     }
     }
   })()
-  return `${index + 1}-${node.role}-${node.id}.${extension}`
+  return `${index + 1}-${node.role}-${idToRaw({ id: node.id })}.${extension}`
 }
 
 async function* loadBranchNodes({
@@ -40,19 +42,12 @@ async function* loadBranchNodes({
   path,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   path: string;
 }): AsyncGenerator<MessageNode> {
-  const metadata = await context.reader.loadChatMeta({ chatId })
-  const content = await context.reader.loadChatContent({ chatId })
-  if (metadata === undefined || content === undefined) {
+  const chat = await context.reader.loadChat({ chatId })
+  if (chat === undefined) {
     throw new Error(`Path not found: ${path}`)
-  }
-
-  const chat = {
-    ...metadata,
-    root: content.root,
-    currentLeafId: content.currentLeafId ?? metadata.currentLeafId,
   }
 
   yield* getChatBranchIterator({ chat })
@@ -114,14 +109,14 @@ export function createChatContentDirectoryEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: 'markdown' | 'json';
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,
@@ -133,6 +128,22 @@ export function createChatContentDirectoryEntry({
       for await (const node of loadBranchNodes({ context, chatId, path })) {
         const name = createMessageFileName({ index, node, format })
         yield { name, type: 'file', fullPath: `${path}/${name}` }
+        index += 1
+      }
+    },
+    async *readChildren({
+      path,
+    }: {
+      path: string;
+      context: NaidanSysfsContext;
+    }) {
+      let index = 0
+      for await (const node of loadBranchNodes({ context, chatId, path })) {
+        const name = createMessageFileName({ index, node, format })
+        yield {
+          name,
+          entry: createMessageFileEntry({ node, format }),
+        }
         index += 1
       }
     },

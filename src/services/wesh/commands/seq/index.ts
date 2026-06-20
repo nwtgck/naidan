@@ -1,6 +1,7 @@
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 interface SeqParsedArgs {
   help: boolean;
@@ -384,6 +385,32 @@ function padEqualWidth({
   return value.padStart(width, '0');
 }
 
+function* iterateSeqValues({
+  first,
+  increment,
+  last,
+}: {
+  first: number;
+  increment: number;
+  last: number;
+}): Iterable<number> {
+  const epsilon = 1e-12;
+  const maximumValues = 1_000_001;
+  let count = 0;
+  if (increment > 0) {
+    for (let current = first; current <= last + epsilon && count < maximumValues; current += increment) {
+      yield current;
+      count += 1;
+    }
+    return;
+  }
+
+  for (let current = first; current >= last - epsilon && count < maximumValues; current += increment) {
+    yield current;
+    count += 1;
+  }
+}
+
 export const seqCommandDefinition: WeshCommandDefinition = {
   meta: {
     name: 'seq',
@@ -492,42 +519,46 @@ export const seqCommandDefinition: WeshCommandDefinition = {
       formatSpec = parsedFormat.spec;
     }
 
-    const values: number[] = [];
-    const epsilon = 1e-12;
-    if (increment > 0) {
-      for (let current = first; current <= last + epsilon; current += increment) {
-        values.push(current);
-        if (values.length > 1000000) {
-          break;
-        }
-      }
-    } else {
-      for (let current = first; current >= last - epsilon; current += increment) {
-        values.push(current);
-        if (values.length > 1000000) {
-          break;
-        }
-      }
-    }
-
     const defaultPrecision = parsed.format === undefined ? computeDefaultPrecision({ operands }) : undefined;
-    let rendered = values.map((value) => {
+    const renderValue = ({ value }: { value: number }): string => {
       if (parsed.format !== undefined) {
         return formatSeqValue({ value, spec: formatSpec });
       }
-
       return formatDefaultNumber({ value, precision: defaultPrecision });
-    });
+    };
 
+    let equalWidth: number | undefined;
     if (parsed.equalWidth) {
-      const width = rendered.reduce((max, value) => Math.max(max, value.length), 0);
-      rendered = rendered.map((value) => padEqualWidth({ value, width }));
+      equalWidth = 0;
+      for (const value of iterateSeqValues({ first, increment, last })) {
+        equalWidth = Math.max(equalWidth, renderValue({ value }).length);
+      }
     }
 
-    const separator = parsed.separator;
-    const output = rendered.join(separator);
-    const suffix = separator === '\n' && rendered.length > 0 ? '\n' : '';
-    await context.text().print({ text: output + suffix });
+    const writer = createBufferedTextWriter({
+      handle: context.stdout,
+      maxBufferLength: 16 * 1024,
+    });
+    let wroteValue = false;
+    try {
+      for (const value of iterateSeqValues({ first, increment, last })) {
+        if (wroteValue) {
+          await writer.write({ text: parsed.separator });
+        }
+        const rendered = renderValue({ value });
+        await writer.write({
+          text: equalWidth === undefined
+            ? rendered
+            : padEqualWidth({ value: rendered, width: equalWidth }),
+        });
+        wroteValue = true;
+      }
+      if (wroteValue && parsed.separator === '\n') {
+        await writer.write({ text: '\n' });
+      }
+    } finally {
+      await writer.flush();
+    }
 
     return { exitCode: 0 };
   },

@@ -1,4 +1,4 @@
-import type { EmptyArgs } from '@/models/types'
+
 import { highlightCodeInWorker } from './core'
 import {
   highlightRequestSchema,
@@ -6,7 +6,7 @@ import {
   type IHighlightWorker,
 } from './types'
 
-export function createHighlightWorker(_args: EmptyArgs): IHighlightWorker {
+export function createHighlightWorker(): IHighlightWorker {
   return {
     async highlight({ request }) {
       const validated = highlightRequestSchema.parse(request)

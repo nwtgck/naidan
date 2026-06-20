@@ -1,4 +1,6 @@
 import { reactive } from 'vue';
+import { idToRaw } from '@/models/ids';
+import type { ChatId } from '@/models/ids';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 
 export type ChatTmpDirectoryEntry = {
@@ -6,19 +8,19 @@ export type ChatTmpDirectoryEntry = {
   mountPath: '/tmp';
 };
 
-export const chatTmpDirectories = reactive(new Map<string, ChatTmpDirectoryEntry>());
+export const chatTmpDirectories = reactive(new Map<ChatId, ChatTmpDirectoryEntry>());
 
 export async function ensureChatTmpDirectory({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): Promise<ChatTmpDirectoryEntry> {
   const existing = chatTmpDirectories.get(chatId);
   if (existing !== undefined) {
     return existing;
   }
 
-  const handle = await getOPFSTmpManager().createTmpDirectory({ prefix: chatId });
+  const handle = await getOPFSTmpManager().createTmpDirectory({ prefix: idToRaw({ id: chatId }) });
   const created: ChatTmpDirectoryEntry = {
     handle,
     mountPath: '/tmp',
@@ -30,7 +32,7 @@ export async function ensureChatTmpDirectory({
 export function getChatTmpDirectory({
   chatId,
 }: {
-  chatId: string | undefined;
+  chatId: ChatId | undefined;
 }): ChatTmpDirectoryEntry | undefined {
   if (chatId === undefined) {
     return undefined;
@@ -39,14 +41,14 @@ export function getChatTmpDirectory({
   return chatTmpDirectories.get(chatId);
 }
 
-export function clearChatTmpDirectories(_args: Record<never, never>): void {
+export function clearChatTmpDirectories(): void {
   chatTmpDirectories.clear();
 }
 
 export function deleteChatTmpDirectory({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): void {
   chatTmpDirectories.delete(chatId);
 }

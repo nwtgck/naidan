@@ -7,6 +7,9 @@ import {
 import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 import { HarmonyStreamParser as GptOssHarmonyStreamParser } from '@/utils/gpt-oss-harmony';
 import type { WorkerToolDefinition } from '@/services/transformers-js/types';
+import type { ToolCallId } from '@/models/ids';
+import { idToRaw } from '@/models/ids';
+import { generateId } from '@/utils/id';
 
 interface GenerationResult {
   past_key_values: unknown;
@@ -27,8 +30,8 @@ export async function generateGptOss({
   model: PreTrainedModel;
   tokenizer: PreTrainedTokenizer;
   messages: ChatMessage[];
-  onChunk: (chunk: string) => void;
-  onToolCalls: (toolCalls: ToolCall[]) => void;
+  onChunk: ({ chunk }: { chunk: string }) => void;
+  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void;
   params: LmParameters | undefined;
   tools: WorkerToolDefinition[] | undefined;
   pastKeyValues: unknown;
@@ -36,7 +39,7 @@ export async function generateGptOss({
     reset(): void;
     interrupt(): void;
   };
-  generateWithModel: (args: {
+  generateWithModel: ({ model, inputs, pastKeyValues, params, streamer, stoppingCriteria }: {
     model: PreTrainedModel;
     inputs: Record<string, unknown>;
     pastKeyValues: unknown;
@@ -84,20 +87,20 @@ export async function generateGptOss({
 
         if (pendingAnalysisClose) {
           if (visibleChannel !== 'analysis') {
-            onChunk('</think>');
+            onChunk({ chunk: '</think>' });
             currentChannel = '';
           }
           pendingAnalysisClose = false;
         }
 
         if (visibleChannel !== currentChannel) {
-          if (currentChannel === 'analysis') onChunk('</think>');
-          if (visibleChannel === 'analysis') onChunk('<think>');
+          if (currentChannel === 'analysis') onChunk({ chunk: '</think>' });
+          if (visibleChannel === 'analysis') onChunk({ chunk: '<think>' });
           currentChannel = visibleChannel;
         }
 
         if (!isFunctionCallMessage && visibleChannel !== 'commentary') {
-          onChunk(delta.textDelta);
+          onChunk({ chunk: delta.textDelta });
         }
         break;
       }
@@ -111,14 +114,14 @@ export async function generateGptOss({
         case 'call':
         case 'return':
           if (pendingAnalysisClose || currentChannel === 'analysis') {
-            onChunk('</think>');
+            onChunk({ chunk: '</think>' });
             pendingAnalysisClose = false;
           }
           currentChannel = '';
           break;
         case 'end':
           if (isFunctionCallMessage && currentChannel === 'analysis') {
-            onChunk('</think>');
+            onChunk({ chunk: '</think>' });
             pendingAnalysisClose = false;
             currentChannel = '';
           }
@@ -138,7 +141,7 @@ export async function generateGptOss({
               break;
             }
             pendingToolCalls.push({
-              id: `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+              id: generateId<ToolCallId>(),
               type: 'function',
               function: {
                 name: functionName,
@@ -175,7 +178,7 @@ export async function generateGptOss({
     streamer,
     stoppingCriteria,
   });
-  if (pendingToolCalls.length > 0) onToolCalls(pendingToolCalls);
+  if (pendingToolCalls.length > 0) onToolCalls({ toolCalls: pendingToolCalls });
   return result.past_key_values;
 }
 
@@ -216,7 +219,7 @@ function buildGptOssToolResultTokens({
   messages: ChatMessage[];
   tokenizer: PreTrainedTokenizer;
 }): Record<string, unknown> {
-  const idToName = new Map<string, string>();
+  const idToName = new Map<ToolCallId, string>();
   for (const message of messages) {
     if (!message.tool_calls) continue;
     for (const toolCall of message.tool_calls) {
@@ -279,7 +282,7 @@ function buildGptOssPromptMessages({
     role: message.role,
     content: typeof message.content === 'string' ? message.content : '',
     tool_calls: message.tool_calls,
-    tool_call_id: message.tool_call_id,
+    tool_call_id: message.tool_call_id === undefined ? undefined : idToRaw({ id: message.tool_call_id }),
   }));
 
   // Keep gpt-oss close to the last known-good naidan path: pass the user's

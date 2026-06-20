@@ -1,25 +1,27 @@
 // naidan/src/services/wesh/mocks/InMemoryFileSystem.ts
 
-export class MockFileSystemHandle {
-  public kind: 'file' | 'directory';
+export class MockFileSystemHandle<TKind extends FileSystemHandleKind = FileSystemHandleKind> implements FileSystemHandle {
+  public kind: TKind;
   public name: string;
 
-  constructor(kind: 'file' | 'directory', name: string) {
+  constructor({ kind, name }: { kind: TKind; name: string }) {
     this.kind = kind;
     this.name = name;
   }
 
-  isSameEntry(other: MockFileSystemHandle): boolean {
-    return this === other;
+  isSameEntry(other: FileSystemHandle): Promise<boolean> {
+    return Promise.resolve(this === other);
   }
 }
 
-export class MockFile {
+export class MockFile implements File {
   private content: Uint8Array;
   public name: string;
   public lastModified: number;
+  public readonly type = '';
+  public readonly webkitRelativePath = '';
 
-  constructor(content: Uint8Array, name: string, lastModified: number) {
+  constructor({ content, name, lastModified }: { content: Uint8Array; name: string; lastModified: number }) {
     this.content = content;
     this.name = name;
     this.lastModified = lastModified;
@@ -29,13 +31,13 @@ export class MockFile {
     return this.content.length;
   }
 
-  slice(start?: number, end?: number): MockFile {
+  slice(start?: number, end?: number, _contentType?: string): MockFile {
     const s = start ?? 0;
     const e = end ?? this.content.length;
-    return new MockFile(this.content.slice(s, e), this.name, this.lastModified);
+    return new MockFile({ content: this.content.slice(s, e), name: this.name, lastModified: this.lastModified });
   }
 
-  stream(): ReadableStream<Uint8Array> {
+  stream(): ReadableStream<Uint8Array<ArrayBuffer>> {
     const content = new Uint8Array(this.content);
     return new ReadableStream({
       start(controller) {
@@ -52,13 +54,17 @@ export class MockFile {
   arrayBuffer(): Promise<ArrayBuffer> {
     return Promise.resolve(this.content.buffer.slice(this.content.byteOffset, this.content.byteOffset + this.content.byteLength) as ArrayBuffer);
   }
+
+  bytes(): Promise<Uint8Array<ArrayBuffer>> {
+    return Promise.resolve(new Uint8Array(this.content) as Uint8Array<ArrayBuffer>);
+  }
 }
 
-export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array | string | { type: 'write'; data: Uint8Array | string | ArrayBuffer | Blob }> {
+export class MockFileSystemWritableFileStream extends WritableStream<FileSystemWriteChunkType> implements FileSystemWritableFileStream {
   public fileHandle: MockFileSystemFileHandle;
   private cursor: number = 0;
 
-  constructor(fileHandle: MockFileSystemFileHandle, options?: { keepExistingData?: boolean }) {
+  constructor({ fileHandle, options }: { fileHandle: MockFileSystemFileHandle; options?: FileSystemCreateWritableOptions }) {
     super({
       write: async (chunk) => {
         await this.write(chunk);
@@ -137,34 +143,36 @@ export class MockFileSystemWritableFileStream extends WritableStream<Uint8Array 
   }
 }
 
-export class MockFileSystemFileHandle extends MockFileSystemHandle {
+export class MockFileSystemFileHandle extends MockFileSystemHandle<'file'> implements FileSystemFileHandle {
   public content: Uint8Array;
   public lastModified: number;
 
-  constructor(name: string, content: Uint8Array = new Uint8Array(0)) {
-    super('file', name);
+  constructor({ name, content = new Uint8Array(0) }: { name: string; content?: Uint8Array }) {
+    super({ kind: 'file', name });
     this.content = content;
     this.lastModified = Date.now();
   }
 
   getFile(): Promise<MockFile> {
-    return Promise.resolve(new MockFile(this.content, this.name, this.lastModified));
+    return Promise.resolve(new MockFile({ content: this.content, name: this.name, lastModified: this.lastModified }));
   }
 
-  async createWritable(options?: { keepExistingData?: boolean }): Promise<MockFileSystemWritableFileStream> {
-    return new MockFileSystemWritableFileStream(this, options);
+  async createWritable(options?: FileSystemCreateWritableOptions): Promise<MockFileSystemWritableFileStream> {
+    return new MockFileSystemWritableFileStream({ fileHandle: this, options });
   }
 }
 
-export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
-  private children: Map<string, MockFileSystemHandle>;
+type MockFileSystemDirectoryChild = MockFileSystemFileHandle | MockFileSystemDirectoryHandle;
 
-  constructor(name: string) {
-    super('directory', name);
+export class MockFileSystemDirectoryHandle extends MockFileSystemHandle<'directory'> implements FileSystemDirectoryHandle {
+  private children: Map<string, MockFileSystemDirectoryChild>;
+
+  constructor({ name }: { name: string }) {
+    super({ kind: 'directory', name });
     this.children = new Map();
   }
 
-  async getFileHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemFileHandle> {
+  async getFileHandle(name: string, options?: FileSystemGetFileOptions): Promise<MockFileSystemFileHandle> {
     const child = this.children.get(name);
     if (child) {
       switch (child.kind) {
@@ -173,20 +181,20 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
       case 'directory':
         throw new Error(`TypeMismatchError: Entry '${name}' is not a file.`);
       default: {
-        const _ex: never = child.kind;
-        throw new Error(`Unhandled case: ${_ex}`);
+        const _ex: never = child;
+        throw new Error(`Unhandled case: ${(_ex as { readonly kind: string }).kind}`);
       }
       }
     }
     if (options?.create) {
-      const newFile = new MockFileSystemFileHandle(name);
+      const newFile = new MockFileSystemFileHandle({ name });
       this.children.set(name, newFile);
       return newFile;
     }
     throw new Error(`NotFoundError: File '${name}' not found.`);
   }
 
-  async getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MockFileSystemDirectoryHandle> {
+  async getDirectoryHandle(name: string, options?: FileSystemGetDirectoryOptions): Promise<MockFileSystemDirectoryHandle> {
     const child = this.children.get(name);
     if (child) {
       switch (child.kind) {
@@ -195,20 +203,20 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
       case 'file':
         throw new Error(`TypeMismatchError: Entry '${name}' is not a directory.`);
       default: {
-        const _ex: never = child.kind;
-        throw new Error(`Unhandled case: ${_ex}`);
+        const _ex: never = child;
+        throw new Error(`Unhandled case: ${(_ex as { readonly kind: string }).kind}`);
       }
       }
     }
     if (options?.create) {
-      const newDir = new MockFileSystemDirectoryHandle(name);
+      const newDir = new MockFileSystemDirectoryHandle({ name });
       this.children.set(name, newDir);
       return newDir;
     }
     throw new Error(`NotFoundError: Directory '${name}' not found.`);
   }
 
-  async removeEntry(name: string, options?: { recursive?: boolean }): Promise<void> {
+  async removeEntry(name: string, options?: FileSystemRemoveOptions): Promise<void> {
     const child = this.children.get(name);
     if (!child) throw new Error(`NotFoundError: Entry '${name}' not found.`);
 
@@ -223,14 +231,14 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
     case 'file':
       break;
     default: {
-      const _ex: never = child.kind;
-      throw new Error(`Unhandled file kind: ${_ex}`);
+      const _ex: never = child;
+      throw new Error(`Unhandled file kind: ${(_ex as { readonly kind: string }).kind}`);
     }
     }
     this.children.delete(name);
   }
 
-  async resolve(possibleDescendant: MockFileSystemHandle): Promise<string[] | null> {
+  async resolve(possibleDescendant: FileSystemHandle): Promise<string[] | null> {
     if (possibleDescendant === this) return [];
 
     for (const [name, child] of this.children) {
@@ -244,29 +252,42 @@ export class MockFileSystemDirectoryHandle extends MockFileSystemHandle {
       case 'file':
         break;
       default: {
-        const _ex: never = child.kind;
-        throw new Error(`Unhandled case: ${_ex}`);
+        const _ex: never = child;
+        throw new Error(`Unhandled case: ${(_ex as { readonly kind: string }).kind}`);
       }
       }
     }
     return null;
   }
 
-  async *entries() {
-    for (const [name, handle] of this.children) {
-      yield [name, handle];
-    }
+  entries(): FileSystemDirectoryHandleAsyncIterator<[string, MockFileSystemDirectoryChild]> {
+    const children = this.children;
+    return (async function* (): AsyncGenerator<[string, MockFileSystemDirectoryChild]> {
+      for (const [name, handle] of children) {
+        yield [name, handle];
+      }
+    })() as FileSystemDirectoryHandleAsyncIterator<[string, MockFileSystemDirectoryChild]>;
   }
 
-  async *keys() {
-    for (const name of this.children.keys()) {
-      yield name;
-    }
+  keys(): FileSystemDirectoryHandleAsyncIterator<string> {
+    const children = this.children;
+    return (async function* (): AsyncGenerator<string> {
+      for (const name of children.keys()) {
+        yield name;
+      }
+    })() as FileSystemDirectoryHandleAsyncIterator<string>;
   }
 
-  async *values() {
-    for (const handle of this.children.values()) {
-      yield handle;
-    }
+  values(): FileSystemDirectoryHandleAsyncIterator<MockFileSystemDirectoryChild> {
+    const children = this.children;
+    return (async function* (): AsyncGenerator<MockFileSystemDirectoryChild> {
+      for (const handle of children.values()) {
+        yield handle;
+      }
+    })() as FileSystemDirectoryHandleAsyncIterator<MockFileSystemDirectoryChild>;
+  }
+
+  [Symbol.asyncIterator](): FileSystemDirectoryHandleAsyncIterator<[string, MockFileSystemDirectoryChild]> {
+    return this.entries();
   }
 }

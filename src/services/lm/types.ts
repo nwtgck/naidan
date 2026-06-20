@@ -1,26 +1,27 @@
 import type { ChatMessage, LmParameters } from '@/models/types';
+import type { ToolCallId } from '@/models/ids';
 import type { Tool, ToolExecutionEvent } from '@/services/tools/types';
 import type { ToolApprovalContext } from '@/services/approval';
 
 export const UNKNOWN_STEPS: unique symbol = Symbol('unknown');
 
-export interface LLMProvider {
-  chat(params: {
+export interface LmProvider {
+  chat({ messages, model, onChunk, parameters, tools, toolApprovalContext, onToolCall, onToolEvent, onToolResult, onAssistantMessageStart, signal }: {
     messages: ChatMessage[];
     model: string;
-    onChunk: (chunk: string) => void;
+    onChunk: ({ chunk }: { chunk: string }) => void;
     parameters?: LmParameters;
     tools?: Tool[];
     toolApprovalContext?: ToolApprovalContext;
-    onToolCall?: (params: { id: string; toolName: string; args: unknown }) => void;
-    onToolEvent?: (params: { id: string; event: ToolExecutionEvent }) => void;
-    onToolResult?: (params: {
-      id: string;
-      result: | { status: 'success'; content: string } | { status: 'error'; code: import('../tools/types').ToolExecutionErrorCode; message: string };
+    onToolCall?: ({ id, toolName, args }: { id: ToolCallId; toolName: string; args: unknown }) => void;
+    onToolEvent?: ({ id, event }: { id: ToolCallId; event: ToolExecutionEvent }) => void;
+    onToolResult?: ({ id, result }: {
+      id: ToolCallId;
+      result: | { status: 'success'; content: string } | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string };
     }) => void;
     onAssistantMessageStart?: () => void;
     signal?: AbortSignal;
   }): Promise<void>;
 
-  listModels(params: { signal?: AbortSignal }): Promise<string[]>;
+  listModels({ signal }: { signal?: AbortSignal }): Promise<string[]>;
 }

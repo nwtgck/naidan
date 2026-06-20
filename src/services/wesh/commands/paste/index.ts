@@ -1,8 +1,8 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { openTextLineIterator } from '@/services/wesh/commands/_shared/text';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { readTextFromFile, readTextFromHandle, splitTextLines } from '@/services/wesh/commands/_shared/text';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { resolvePath } from '@/services/wesh/path';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 function delimiterForIndex({
   delimiters,
@@ -29,25 +29,13 @@ function formatRow({
   }
 
   let output = values[0] ?? '';
-  for (let index = 1; index < values.length; index++) {
+  for (let index = 1; index < values.length; index += 1) {
     output += delimiterForIndex({
       delimiters,
       index: index - 1,
     }) + (values[index] ?? '');
   }
   return output;
-}
-
-async function readFileLines({
-  context,
-  path,
-}: {
-  context: WeshCommandContext;
-  path: string;
-}): Promise<string[]> {
-  const fullPath = resolvePath({ cwd: context.cwd, path });
-  const text = await readTextFromFile({ files: context.files, path: fullPath });
-  return splitTextLines({ text });
 }
 
 const pasteArgvSpec: StandardArgvParserSpec = {
@@ -105,88 +93,80 @@ export const pasteCommandDefinition: WeshCommandDefinition = {
 
     const delimiters = typeof parsed.optionValues.delimiters === 'string' ? parsed.optionValues.delimiters : '\t';
     const serial = parsed.optionValues.serial === true;
-    const files = parsed.positionals.length > 0 ? parsed.positionals : [undefined];
+    const files = parsed.positionals.length > 0 ? parsed.positionals : ['-'];
+    const writer = createBufferedTextWriter({
+      handle: context.stdout,
+      maxBufferLength: 16 * 1024,
+    });
+    const iterators = new Set<AsyncIterator<string>>();
 
     try {
-      const fileLinesByPath = new Map<string, string[]>();
-      for (const file of files) {
-        if (file === undefined || file === '-') {
-          continue;
-        }
-
-        if (fileLinesByPath.has(file)) {
-          continue;
-        }
-
-        fileLinesByPath.set(file, await readFileLines({
-          context,
-          path: file,
-        }));
-      }
-
-      const stdinInputs = files.filter((file) => file === undefined || file === '-').length;
-      const stdinLines = stdinInputs > 0
-        ? splitTextLines({
-          text: await readTextFromHandle({ handle: context.stdin }),
-        })
-        : [];
-      let stdinCursor = 0;
-
-      const sources: string[][] = [];
       if (serial) {
+        let stdinIterator: AsyncIterator<string> | undefined;
         for (const file of files) {
-          if (file === undefined || file === '-') {
-            const lines = stdinLines.slice(stdinCursor);
-            stdinCursor = stdinLines.length;
-            sources.push(lines);
-            continue;
-          }
-
-          sources.push(fileLinesByPath.get(file) ?? []);
-        }
-      } else {
-        const nonStdinMaxLength = Array.from(fileLinesByPath.values()).reduce((max, lines) => Math.max(max, lines.length), 0);
-        const stdinRowCount = stdinInputs > 0 ? Math.ceil(stdinLines.length / stdinInputs) : 0;
-        const rowCount = Math.max(nonStdinMaxLength, stdinRowCount);
-        const outputLines: string[] = [];
-
-        for (let row = 0; row < rowCount; row++) {
-          const values: string[] = [];
-          for (const file of files) {
-            if (file === undefined || file === '-') {
-              values.push(stdinLines[stdinCursor++] ?? '');
-              continue;
+          const iterator = file === '-'
+            ? stdinIterator ??= await openTextLineIterator({ context, path: '-' })
+            : await openTextLineIterator({ context, path: file });
+          iterators.add(iterator);
+          let valueIndex = 0;
+          while (true) {
+            const next = await iterator.next();
+            if (next.done) {
+              break;
             }
-
-            values.push(fileLinesByPath.get(file)?.[row] ?? '');
+            if (valueIndex > 0) {
+              await writer.write({
+                text: delimiterForIndex({ delimiters, index: valueIndex - 1 }),
+              });
+            }
+            await writer.write({ text: next.value });
+            valueIndex += 1;
           }
-
-          outputLines.push(formatRow({
-            values,
-            delimiters,
-          }));
+          await writer.write({ text: '\n' });
         }
-
-        await context.text().print({
-          text: outputLines.map((line) => `${line}\n`).join(''),
-        });
         return { exitCode: 0 };
       }
 
-      const outputLines = sources.map((lines) => formatRow({
-        values: lines,
-        delimiters,
-      }));
+      let stdinIterator: AsyncIterator<string> | undefined;
+      const sources: AsyncIterator<string>[] = [];
+      for (const file of files) {
+        const iterator = file === '-'
+          ? stdinIterator ??= await openTextLineIterator({ context, path: '-' })
+          : await openTextLineIterator({ context, path: file });
+        sources.push(iterator);
+        iterators.add(iterator);
+      }
 
-      await context.text().print({
-        text: outputLines.map((line) => `${line}\n`).join(''),
-      });
+      while (true) {
+        const values: string[] = [];
+        let hasValue = false;
+        for (const iterator of sources) {
+          const next = await iterator.next();
+          if (next.done) {
+            values.push('');
+          } else {
+            values.push(next.value);
+            hasValue = true;
+          }
+        }
+        if (!hasValue) {
+          break;
+        }
+        await writer.write({
+          text: `${formatRow({ values, delimiters })}\n`,
+        });
+      }
       return { exitCode: 0 };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       const failingPath = parsed.positionals.find((path) => path !== '-') ?? '-';
       await context.text().error({ text: `paste: ${failingPath}: ${message}\n` });
       return { exitCode: 1 };
+    } finally {
+      await writer.flush();
+      for (const iterator of iterators) {
+        await iterator.return?.();
+      }
     }
   },
 };

@@ -1,3 +1,4 @@
+import { idToRaw, toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { storageService } from '@/services/storage'
@@ -39,7 +40,7 @@ describe('useChatSearch Composable', () => {
 
     mockCreateGlobalSearchWorkerClient.mockImplementation(async () => {
       const { createGlobalSearchWorker } = await import('@/services/global-search/worker/impl')
-      const worker = createGlobalSearchWorker({})
+      const worker = createGlobalSearchWorker()
 
       return {
         prepareSession({ request }: { request: import('@/services/global-search/worker/types').GlobalSearchWorkerPrepareSessionRequest }) {
@@ -207,10 +208,10 @@ describe('useChatSearch Composable', () => {
 
     await composable.search({
       searchQuery: 'test',
-      options: { scope: 'all', chatId: 'chat2' },
+      options: { scope: 'all', chatId: idToRaw({ id: toChatId({ raw: 'chat2' }) }) },
     })
 
-    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: 'chat2' })
+    expect(storageService.loadChatContent).toHaveBeenCalledWith({ id: idToRaw({ id: toChatId({ raw: 'chat2' }) }) })
     expect(storageService.loadChatContent).not.toHaveBeenCalledWith({ id: 'chat1' })
   })
 
@@ -462,6 +463,6 @@ describe('useChatSearch Composable', () => {
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(dispose).toHaveBeenCalledWith({})
+    expect(dispose).toHaveBeenCalledWith()
   })
 })

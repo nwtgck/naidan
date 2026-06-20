@@ -22,12 +22,14 @@ type EventMapFor<T> =
 // Exception to the named-args rule:
 // this helper intentionally mirrors addEventListener/removeEventListener so
 // call sites stay close to the browser API and inline listener adapters remain concise.
+// eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this helper mirrors the EventTarget listener signature.
 export function useEventTargetListener<
   T extends EventTarget,
   K extends keyof EventMapFor<T> & string,
 >(
   target: T,
   type: K,
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this helper mirrors the EventTarget listener signature.
   listener: (event: EventMapFor<T>[K]) => void,
   options?: AddEventListenerOptions | boolean,
 ) {

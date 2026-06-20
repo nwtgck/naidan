@@ -1,16 +1,18 @@
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
+import { idToRaw } from '@/models/ids';
 import type { MessageNode } from '@/models/types';
+import type { ChatId, MessageId } from '@/models/ids';
 import type { ChatFlowItem } from './useChatDisplayFlow';
 
 type MaybeReadonlyRef<T> = Ref<T> | ComputedRef<T>;
 type ChatPaneContext = {
-  id: string;
-  currentLeafId?: string;
+  id: ChatId;
+  currentLeafId?: MessageId;
 };
 type ChatPaneProcessingStatus = 'idle' | 'processing';
 
 export type ChatPaneScrollTarget =
-  | { kind: 'message'; anchorId: string; messageId: string }
+  | { kind: 'message'; anchorId: string; messageId: MessageId }
   | { kind: 'process_sequence'; anchorId: string; sequenceId: string }
   | { kind: 'tool_group'; anchorId: string; toolGroupId: string };
 
@@ -19,10 +21,10 @@ export type ChatPaneInitialOpenTarget =
   | { kind: 'bottom' };
 
 export interface ChatPaneAutoScrollSnapshot {
-  chatId: string | undefined;
+  chatId: ChatId | undefined;
   navigationKey: string | undefined;
   processingStatus: ChatPaneProcessingStatus;
-  latestUserTurnId: string | undefined;
+  latestUserTurnId: MessageId | undefined;
   initialOpenTarget: ChatPaneInitialOpenTarget;
   firstAssistantVisibleTarget: ChatPaneScrollTarget | undefined;
 }
@@ -31,19 +33,19 @@ type ChatPaneAutoScrollState =
   | { kind: 'uninitialized' }
   | {
       kind: 'tracking';
-      chatId: string;
+      chatId: ChatId;
       navigationKey: string;
       response:
         | { kind: 'awaiting_user_turn' }
-        | { kind: 'ready_for_assistant'; userTurnId: string }
-        | { kind: 'assistant_scrolled'; userTurnId: string };
+        | { kind: 'ready_for_assistant'; userTurnId: MessageId }
+        | { kind: 'assistant_scrolled'; userTurnId: MessageId };
     };
 
 export type ChatPaneAutoScrollAction =
   | { kind: 'initial_open'; target: ChatPaneInitialOpenTarget }
-  | { kind: 'assistant'; target: ChatPaneScrollTarget; userTurnId: string };
+  | { kind: 'assistant'; target: ChatPaneScrollTarget; userTurnId: MessageId };
 
-function getLatestUserTurnId({ activeMessages }: { activeMessages: MessageNode[] }): string | undefined {
+function getLatestUserTurnId({ activeMessages }: { activeMessages: MessageNode[] }): MessageId | undefined {
   for (let index = activeMessages.length - 1; index >= 0; index--) {
     const message = activeMessages[index];
     if (!message) {
@@ -66,13 +68,13 @@ function getLatestUserTurnId({ activeMessages }: { activeMessages: MessageNode[]
   return undefined;
 }
 
-function getInitialOpenTarget({ latestUserTurnId }: { latestUserTurnId: string | undefined }): ChatPaneInitialOpenTarget {
+function getInitialOpenTarget({ latestUserTurnId }: { latestUserTurnId: MessageId | undefined }): ChatPaneInitialOpenTarget {
   if (!latestUserTurnId) {
     return { kind: 'bottom' };
   }
   return {
     kind: 'message',
-    anchorId: `message-${latestUserTurnId}`,
+    anchorId: `message-${idToRaw({ id: latestUserTurnId })}`,
     messageId: latestUserTurnId,
   };
 }
@@ -87,7 +89,7 @@ function getScrollTargetForItem({ item }: { item: ChatFlowItem }): ChatPaneScrol
     case 'tool':
       return {
         kind: 'message',
-        anchorId: `message-${item.node.id}`,
+        anchorId: `message-${idToRaw({ id: item.node.id })}`,
         messageId: item.node.id,
       };
     case 'user':
@@ -122,11 +124,11 @@ function getFirstAssistantVisibleTarget({
   latestUserTurnId,
 }: {
   chatFlow: ChatFlowItem[];
-  latestUserTurnId: string | undefined;
+  latestUserTurnId: MessageId | undefined;
 }): ChatPaneScrollTarget | undefined {
   if (!latestUserTurnId) return undefined;
 
-  let currentUserTurnId: string | undefined;
+  let currentUserTurnId: MessageId | undefined;
   for (const item of chatFlow) {
     if (item.type === 'message' && item.node.role === 'user') {
       currentUserTurnId = item.node.id;
@@ -147,13 +149,13 @@ function getFirstAssistantVisibleTarget({
 }
 
 function getNavigationKey({ chat }: { chat: ChatPaneContext }): string {
-  return `${chat.id}:${chat.currentLeafId ?? ''}`;
+  return `${idToRaw({ id: chat.id })}:${chat.currentLeafId === undefined ? '' : idToRaw({ id: chat.currentLeafId })}`;
 }
 
 function getOpenedResponseState({
   latestUserTurnId,
 }: {
-  latestUserTurnId: string | undefined;
+  latestUserTurnId: MessageId | undefined;
 }): Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'] {
   if (!latestUserTurnId) {
     return { kind: 'awaiting_user_turn' };
@@ -169,7 +171,7 @@ function getResponseStateAfterContentChange({
   latestUserTurnId,
 }: {
   currentResponse: Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'];
-  latestUserTurnId: string | undefined;
+  latestUserTurnId: MessageId | undefined;
 }): Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'] {
   if (!latestUserTurnId) {
     return { kind: 'awaiting_user_turn' };
@@ -207,7 +209,14 @@ export function useChatPaneAutoScroll({
   activeMessages: MaybeReadonlyRef<readonly MessageNode[]>;
   chatFlow: MaybeReadonlyRef<readonly ChatFlowItem[]>;
   processingStatus: MaybeReadonlyRef<ChatPaneProcessingStatus>;
-}) {
+}): {
+  snapshot: Readonly<Ref<ChatPaneAutoScrollSnapshot>>;
+  consumeScrollAction: () => ChatPaneAutoScrollAction | undefined;
+  markAssistantAutoScrolled: ({ chatId, navigationKey, userTurnId }: { chatId: ChatId; navigationKey: string; userTurnId: MessageId }) => void;
+  TEST_ONLY: {
+    state: Ref<ChatPaneAutoScrollState>;
+  };
+} {
   const state = ref<ChatPaneAutoScrollState>({ kind: 'uninitialized' });
 
   const snapshot = computed<ChatPaneAutoScrollSnapshot>(() => {
@@ -296,9 +305,9 @@ export function useChatPaneAutoScroll({
     navigationKey,
     userTurnId,
   }: {
-    chatId: string;
+    chatId: ChatId;
     navigationKey: string;
-    userTurnId: string;
+    userTurnId: MessageId;
   }): void {
     state.value = {
       kind: 'tracking',

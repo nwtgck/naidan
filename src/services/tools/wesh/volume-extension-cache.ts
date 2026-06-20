@@ -1,6 +1,8 @@
-const _extensionsByVolume = new Map<string, Set<string>>();
-const _controllers = new Map<string, AbortController>();
-const _scanPromises = new Map<string, Promise<void>>();
+import type { VolumeId } from '@/models/ids'
+
+const _extensionsByVolume = new Map<VolumeId, Set<string>>();
+const _controllers = new Map<VolumeId, AbortController>();
+const _scanPromises = new Map<VolumeId, Promise<void>>();
 
 function getExtension({ filename }: { filename: string }): string | undefined {
   const dot = filename.lastIndexOf('.');
@@ -15,7 +17,7 @@ async function _doScan({
   maxDepth,
   signal,
 }: {
-  volumeId: string;
+  volumeId: VolumeId;
   handle: FileSystemDirectoryHandle;
   maxFiles: number;
   maxDepth: number;
@@ -48,8 +50,7 @@ async function _doScan({
           break;
         }
         default: {
-          const _ex: never = entry.kind;
-          throw new Error(`Unhandled entry kind: ${_ex}`);
+          throw new Error(`Unhandled entry kind: ${((entry satisfies never) as { readonly kind: string }).kind}`);
         }
         }
       }
@@ -63,7 +64,7 @@ export function startVolumeExtensionScan({
   volumeId,
   handle,
 }: {
-  volumeId: string;
+  volumeId: VolumeId;
   handle: FileSystemDirectoryHandle;
 }): void {
   _controllers.get(volumeId)?.abort();
@@ -81,11 +82,11 @@ export function abortOngoingScans(): void {
   _controllers.clear();
 }
 
-export function getVolumeExtensions({ volumeId }: { volumeId: string }): Set<string> {
+export function getVolumeExtensions({ volumeId }: { volumeId: VolumeId }): Set<string> {
   return _extensionsByVolume.get(volumeId) ?? new Set();
 }
 
-export function isVolumeScanned({ volumeId }: { volumeId: string }): boolean {
+export function isVolumeScanned({ volumeId }: { volumeId: VolumeId }): boolean {
   return _extensionsByVolume.has(volumeId);
 }
 

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { EmptyArgs } from '@/models/types'
+
 import type { NaidanSysfsRemoteReader } from '@/services/wesh/naidan-sysfs/types'
 import { weshWorkerMountSchema } from '@/services/wesh/worker/types'
 
@@ -205,5 +205,5 @@ export interface FileExplorerWorkerClient {
   copyEntries({ sourcePaths, targetDirectoryPath }: { sourcePaths: string[], targetDirectoryPath: string }): Promise<void>
   moveEntries({ sourcePaths, targetDirectoryPath }: { sourcePaths: string[], targetDirectoryPath: string }): Promise<void>
   uploadFiles({ targetDirectoryPath, files }: { targetDirectoryPath: string, files: Array<{ name: string, blob: Blob }> }): Promise<void>
-  dispose(_args: EmptyArgs): Promise<void>
+  dispose(): Promise<void>
 }

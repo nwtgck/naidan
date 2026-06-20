@@ -5,80 +5,143 @@ import {
   WIKIPEDIA_GET_PAGE_TOOL_NAME,
   WIKIPEDIA_SEARCH_TOOL_NAME,
 } from '@/services/tools/wikipedia'
+import {
+  setLmToolEnabledInToolConfigs,
+  setWeshNaidanSysfsAccessScopeInToolConfigs,
+} from '@/services/tools/tool-config'
 
 export function useToolDependencyActions() {
   const { currentChat } = useCurrentChatState()
-  const { isToolEnabled, setToolEnabled } = useChatTools()
-  const {
-    getNaidanSysfsMountSelection,
-    setNaidanSysfsMountSelection,
-  } = useChatWeshPreferences()
+  const { isToolEnabled, updateToolConfigsForCurrentChat } = useChatTools()
+  const { getNaidanSysfsAccessScope } = useChatWeshPreferences()
 
-  function isNaidanSysfsMountedForCurrentChat(_args: Record<never, never>): boolean {
-    const selection = getNaidanSysfsMountSelection({ chatId: currentChat.value?.id })
-    switch (selection) {
+  function isNaidanSysfsMountedForCurrentChat(): boolean {
+    const accessScope = getNaidanSysfsAccessScope({ chatId: currentChat.value?.id })
+    switch (accessScope) {
     case 'none':
       return false
     case 'current_chat_only':
     case 'current_chat_with_chat_group':
-    case 'all_chats':
+    case 'main_chats':
       return true
     default: {
-      const _exhaustive: never = selection
-      throw new Error(`Unhandled naidan sysfs selection: ${String(_exhaustive)}`)
+      const _exhaustive: never = accessScope
+      throw new Error(`Unhandled naidan sysfs access scope: ${String(_exhaustive)}`)
     }
     }
   }
 
-  function isWikipediaEffectivelyEnabledForCurrentChat(_args: Record<never, never>): boolean {
+  function isWikipediaEffectivelyEnabledForCurrentChat(): boolean {
     return isToolEnabled({ name: 'shell_execute' })
-      && isNaidanSysfsMountedForCurrentChat({})
+      && isNaidanSysfsMountedForCurrentChat()
       && isToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME })
       && isToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME })
   }
 
-  function enableWikipediaToolsForCurrentChat(_args: Record<never, never>): void {
-    setToolEnabled({ name: 'shell_execute', enabled: true })
-    setToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: true })
-    setToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: true })
-
+  function enableWikipediaToolsForCurrentChat(): void {
     const chatId = currentChat.value?.id
-    const selection = getNaidanSysfsMountSelection({ chatId })
-    switch (selection) {
-    case 'none':
-      setNaidanSysfsMountSelection({
-        chatId,
-        selection: 'current_chat_only',
-      })
-      break
-    case 'current_chat_only':
-    case 'current_chat_with_chat_group':
-    case 'all_chats':
-      break
-    default: {
-      const _exhaustive: never = selection
-      throw new Error(`Unhandled naidan sysfs selection: ${String(_exhaustive)}`)
-    }
-    }
-  }
+    const accessScope = getNaidanSysfsAccessScope({ chatId })
+    updateToolConfigsForCurrentChat({
+      updater: ({ toolConfigs }) => {
+        let nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs,
+          name: 'shell_execute',
+          enabled: true,
+        })
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs: nextToolConfigs,
+          name: WIKIPEDIA_SEARCH_TOOL_NAME,
+          enabled: true,
+        })
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs: nextToolConfigs,
+          name: WIKIPEDIA_GET_PAGE_TOOL_NAME,
+          enabled: true,
+        })
 
-  function disableWikipediaToolsForCurrentChat(_args: Record<never, never>): void {
-    setToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME, enabled: false })
-    setToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME, enabled: false })
-  }
-
-  function disableShellToolForCurrentChat(_args: Record<never, never>): void {
-    setToolEnabled({ name: 'shell_execute', enabled: false })
-    disableWikipediaToolsForCurrentChat({})
-  }
-
-  function disableNaidanSysfsForCurrentChat(_args: Record<never, never>): void {
-    const chatId = currentChat.value?.id
-    setNaidanSysfsMountSelection({
-      chatId,
-      selection: 'none',
+        switch (accessScope) {
+        case 'none':
+          return setWeshNaidanSysfsAccessScopeInToolConfigs({
+            toolConfigs: nextToolConfigs,
+            accessScope: 'current_chat_only',
+          })
+        case 'current_chat_only':
+        case 'current_chat_with_chat_group':
+        case 'main_chats':
+          return setWeshNaidanSysfsAccessScopeInToolConfigs({
+            toolConfigs: nextToolConfigs,
+            accessScope,
+          })
+        default: {
+          const _exhaustive: never = accessScope
+          throw new Error(`Unhandled naidan sysfs access scope: ${String(_exhaustive)}`)
+        }
+        }
+      },
     })
-    disableWikipediaToolsForCurrentChat({})
+  }
+
+  function disableWikipediaToolsForCurrentChat(): void {
+    updateToolConfigsForCurrentChat({
+      updater: ({ toolConfigs }) => {
+        let nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs,
+          name: WIKIPEDIA_SEARCH_TOOL_NAME,
+          enabled: false,
+        })
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs: nextToolConfigs,
+          name: WIKIPEDIA_GET_PAGE_TOOL_NAME,
+          enabled: false,
+        })
+        return nextToolConfigs
+      },
+    })
+  }
+
+  function disableShellToolForCurrentChat(): void {
+    updateToolConfigsForCurrentChat({
+      updater: ({ toolConfigs }) => {
+        let nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs,
+          name: 'shell_execute',
+          enabled: false,
+        })
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs: nextToolConfigs,
+          name: WIKIPEDIA_SEARCH_TOOL_NAME,
+          enabled: false,
+        })
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs: nextToolConfigs,
+          name: WIKIPEDIA_GET_PAGE_TOOL_NAME,
+          enabled: false,
+        })
+        return nextToolConfigs
+      },
+    })
+  }
+
+  function disableNaidanSysfsForCurrentChat(): void {
+    updateToolConfigsForCurrentChat({
+      updater: ({ toolConfigs }) => {
+        let nextToolConfigs = setWeshNaidanSysfsAccessScopeInToolConfigs({
+          toolConfigs,
+          accessScope: 'none',
+        })
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs: nextToolConfigs,
+          name: WIKIPEDIA_SEARCH_TOOL_NAME,
+          enabled: false,
+        })
+        nextToolConfigs = setLmToolEnabledInToolConfigs({
+          toolConfigs: nextToolConfigs,
+          name: WIKIPEDIA_GET_PAGE_TOOL_NAME,
+          enabled: false,
+        })
+        return nextToolConfigs
+      },
+    })
   }
 
   return {

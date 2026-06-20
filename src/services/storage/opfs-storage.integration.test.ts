@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ImportExportService } from '@/services/import-export/service';
 import { StorageService } from './index';
+import { toBinaryObjectId, toChatId } from '@/models/ids';
 
 // --- Improved Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -91,7 +92,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     storageService = new StorageService();
     // We need to initialize with 'opfs' to use the real OPFSStorageProvider logic
     await storageService.init({ type: 'opfs' });
-    importExportService = new ImportExportService(storageService);
+    importExportService = new ImportExportService({ storage: storageService });
   });
 
   it('should maintain index integrity when multiple files are stored in the same shard', async () => {
@@ -99,8 +100,8 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     const id1 = '00000000-0000-4000-a000-0000000000a1';
     const id2 = 'ffffffff-ffff-4fff-afff-ffffffffffa1';
 
-    await storageService.saveFile(new Blob(['D1'], { type: 'image/png' }), id1, 'img1.png');
-    await storageService.saveFile(new Blob(['D22'], { type: 'image/jpeg' }), id2, 'img2.jpg');
+    await storageService.saveFile({ blob: new Blob(['D1'], { type: 'image/png' }), binaryObjectId: toBinaryObjectId({ raw: id1 }), name: 'img1.png' });
+    await storageService.saveFile({ blob: new Blob(['D22'], { type: 'image/jpeg' }), binaryObjectId: toBinaryObjectId({ raw: id2 }), name: 'img2.jpg' });
 
     const naidanDir = await mockRoot.getDirectoryHandle('naidan-storage');
     const binDir = await naidanDir.getDirectoryHandle('binary-objects');
@@ -169,7 +170,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     } });
 
     // 3. Verify storage is now sharded and hydrated correctly
-    const loadedChat = await storageService.loadChat({ id: chatID });
+    const loadedChat = await storageService.loadChat({ id: toChatId({ raw: chatID }) });
     expect(loadedChat).not.toBeNull();
     const att = loadedChat!.root.items[0]!.attachments![0]!;
 

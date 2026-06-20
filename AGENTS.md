@@ -2,6 +2,7 @@
 
 *   **Zod**: Must be used for all data persistence and API communication to ensure safe serialization. All API responses MUST be validated to protect the application from unreliable external data structures. Persisted data must maintain backward compatibility.
 *   **Strong Typing**: Prefer strict static typing to catch errors at build-time. Avoid `any`.
+*   **LM Terminology**: Use `LM` rather than `LLM` for generative language-model domain terminology, regardless of model size. In identifiers, use `Lm` or `lm` (for example, `LmProvider` and `lmParameters`). User-facing prose may intentionally use `LLM` when it is clearer to a general audience; explain ambiguous cases to the user before changing them.
 *   **Exhaustive Type Checking**: Use `switch` statements with a `default` block assigning to `never` (e.g., `const _ex: never = val;`) when handling union types to ensure all cases are handled.
 *   **Verification**: Run `npm run typecheck`, `npm run lint:fix` and `npm run test:only-failed` before committing to ensure quality and prevent regressions. `npm run test:only-failed` is mandatory and must always be run before commit.
 *   **Targeted Testing**: Test specific files or directories (multiple paths supported) by passing them as arguments: `npm run test:only-failed -- <paths...>`.
@@ -11,6 +12,8 @@
 For **new** or **refactored** functions, use a single mandatory argument object (Swift-style) for clarity and extensibility. **This applies even if the function has only one argument.**
 
 Exception: keep single positional arguments for TypeScript type predicate functions when the predicate form is needed for narrowing (for example `isElementNode(node): node is Element`). Converting these to object arguments breaks the narrowing benefit and forces extra casts at call sites.
+
+Zero-argument Naidan-owned callables may use an empty parameter list. Use `()` when there is no meaningful argument object. An empty object argument may still be appropriate for intentional contracts, protocol shapes, compatibility boundaries, or APIs where an empty object is part of the public shape.
 
 - **Why single-argument objects?**: Function requirements frequently evolve. Starting with an object ensures that adding a second or third parameter is a non-breaking, consistent change. This prevents "parameter creep" where developers might otherwise add positional arguments to avoid refactoring, leading to inconsistent and hard-to-read signatures.
 - **Explicit > Implicit**: Avoid property defaults. They hide intent and create "implicit knowledge". Require explicit values (including `undefined`) so the state is fully visible at the call site.

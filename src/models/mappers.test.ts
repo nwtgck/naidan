@@ -1,8 +1,9 @@
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { describe, it, expect } from 'vitest';
 import { chatToDomain, buildSidebarItemsFromHierarchy, messageNodeToDomain, messageNodeToDto, lmParametersToDomain, lmParametersToDto, settingsToDomain, settingsToDto } from './mappers';
 import type { ChatMeta, ChatGroup, Hierarchy, UserMessageNode, AssistantMessageNode, SystemMessageNode, Settings } from './types';
 import type { MessageNodeDto, SettingsDto } from './dto';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 describe('MessageNode Mapping (Discriminated Union)', () => {
   it('should map user message with lmParameters and thinking: undefined', () => {
@@ -114,9 +115,27 @@ describe('LmParameters Mapping', () => {
       stop: undefined,
       reasoning: undefined
     } });
+    expect(domain).toBeDefined();
+    if (domain === undefined) throw new Error('Expected LM parameters');
     expect(domain.temperature).toBe(0.5);
     expect(domain.reasoning).toBeDefined();
     expect(domain.reasoning.effort).toBeUndefined();
+  });
+
+  it('preserves_all_LM_parameters_through_bidirectional_mapping', () => {
+    const domain = {
+      temperature: 0.4,
+      topP: 0.8,
+      maxCompletionTokens: 321,
+      presencePenalty: 0.2,
+      frequencyPenalty: 0.3,
+      stop: ['DONE'],
+      reasoning: { effort: 'high' as const },
+    };
+
+    const dto = lmParametersToDto({ domain });
+    expect(dto).toEqual(domain);
+    expect(lmParametersToDomain({ dto })).toEqual(domain);
   });
 
   it('should preserve reasoning effort through bidirectional mapping', () => {
@@ -133,6 +152,8 @@ describe('LmParameters Mapping', () => {
     expect(dto?.reasoning?.effort).toBe('medium');
 
     const backToDomain = lmParametersToDomain({ dto });
+    expect(backToDomain).toBeDefined();
+    if (backToDomain === undefined) throw new Error('Expected LM parameters');
     expect(backToDomain.reasoning.effort).toBe('medium');
   });
 });
@@ -141,12 +162,12 @@ describe('Sidebar assembly', () => {
   it('should filter out orphan chat entries from hierarchy', () => {
     const hierarchy: Hierarchy = {
       items: [
-        { type: 'chat', id: 'exists' },
-        { type: 'chat', id: 'orphan' }
+        { type: 'chat', id: toChatId({ raw: 'exists' }) },
+        { type: 'chat', id: toChatId({ raw: 'orphan' }) }
       ]
     };
     const metas: ChatMeta[] = [
-      { id: 'exists', title: 'Exists', updatedAt: 100, createdAt: 100, debugEnabled: false }
+      { id: toChatId({ raw: 'exists' }), title: 'Exists', updatedAt: 100, createdAt: 100, debugEnabled: false }
     ];
     const groups: ChatGroup[] = [];
 
@@ -158,7 +179,7 @@ describe('Sidebar assembly', () => {
   it('should filter out orphan groups from hierarchy', () => {
     const hierarchy: Hierarchy = {
       items: [
-        { type: 'chat_group', id: 'orphan-group', chat_ids: [] }
+        { type: 'chat_group', id: toChatGroupId({ raw: 'orphan-group' }), chat_ids: [] }
       ]
     };
     const items = buildSidebarItemsFromHierarchy({ hierarchy, chatMetas: [], chatGroups: [] });
@@ -167,7 +188,7 @@ describe('Sidebar assembly', () => {
 });
 
 describe('Settings Mapping', () => {
-  it('defaults sidebar send reorder to disabled when experimental settings are missing', () => {
+  it('defaults experimental setting modes to disabled when experimental settings are missing', () => {
     const dto: SettingsDto = {
       endpoint: { type: 'openai', url: 'http://localhost', httpHeaders: undefined },
       defaultModelId: 'gpt-4',
@@ -184,10 +205,34 @@ describe('Settings Mapping', () => {
 
     const domain = settingsToDomain({ dto });
 
+    expect(domain.experimental?.toolConfigPersistence).toBe('disabled');
+    expect(domain.experimental?.fakeLm).toBe('disabled');
     expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
   });
 
-  it('preserves sidebar send reorder through settings mapping', () => {
+  it('omits disabled fake LM mode from the settings DTO', () => {
+    const domain: Settings = {
+      endpointType: 'openai',
+      endpointUrl: 'http://localhost',
+      endpointHttpHeaders: undefined,
+      defaultModelId: 'gpt-4',
+      titleModelId: undefined,
+      autoTitleEnabled: true,
+      storageType: 'local',
+      providerProfiles: [],
+      mounts: [],
+      heavyContentAlertDismissed: false,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+      experimental: {
+        fakeLm: 'disabled',
+      },
+    };
+
+    expect(settingsToDto({ domain }).experimental?.fakeLm).toBeUndefined();
+  });
+
+  it('preserves experimental settings through settings mapping', () => {
     const domain: Settings = {
       endpointType: 'openai',
       endpointUrl: 'http://localhost',
@@ -203,6 +248,8 @@ describe('Settings Mapping', () => {
       lmParameters: undefined,
       experimental: {
         markdownRendering: undefined,
+        toolConfigPersistence: 'enabled',
+        fakeLm: 'enabled',
         sidebarSendMessageReorder: 'move_sent_chat',
       },
     };
@@ -210,17 +257,21 @@ describe('Settings Mapping', () => {
     const dto = settingsToDto({ domain });
     const mapped = settingsToDomain({ dto });
 
+    expect(dto.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(dto.experimental?.fakeLm).toBe('enabled');
     expect(dto.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
+    expect(mapped.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(mapped.experimental?.fakeLm).toBe('enabled');
     expect(mapped.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
   });
 });
 
 describe('Legacy Migration (Flat to Tree)', () => {
   it('should migrate linear messages to a recursive tree structure', () => {
-    const legacyId1 = generateId();
-    const legacyId2 = generateId();
+    const legacyId1 = generateOpaqueId();
+    const legacyId2 = generateOpaqueId();
     const legacyChat: any = {
-      id: generateId(),
+      id: generateOpaqueId(),
       title: 'Legacy',
       messages: [
         { id: legacyId1, role: 'user', content: 'Hi', timestamp: 1 },

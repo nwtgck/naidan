@@ -1,17 +1,42 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Wesh } from '@/services/wesh/index';
+import { orderSortRunPaths } from './index';
 import { MockFileSystemDirectoryHandle } from '@/services/wesh/mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
 } from '@/services/wesh/utils/test-stream';
 
+describe('external sort run ordering', () => {
+  it('preserves source order when active runs occupy different merge levels', () => {
+    expect(orderSortRunPaths({
+      paths: ['late-level-zero', 'early-level-one', 'latest-level-zero'],
+      inputOrderByPath: new Map([
+        ['early-level-one', 0],
+        ['late-level-zero', 32],
+        ['latest-level-zero', 33],
+      ]),
+    })).toEqual([
+      'early-level-one',
+      'late-level-zero',
+      'latest-level-zero',
+    ]);
+  });
+
+  it('rejects active runs without source-order metadata', () => {
+    expect(() => orderSortRunPaths({
+      paths: ['missing'],
+      inputOrderByPath: new Map(),
+    })).toThrow('Missing sort run input order');
+  });
+});
+
 describe('wesh sort', () => {
   let wesh: Wesh;
   let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });

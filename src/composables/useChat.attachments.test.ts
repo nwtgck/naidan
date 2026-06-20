@@ -4,6 +4,7 @@ import { useSettings } from './useSettings';
 import { storageService } from '@/services/storage';
 import { ref, reactive } from 'vue';
 import type { Attachment } from '@/models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId } from '@/models/ids';
 
 // Mock dependencies
 const chats = new Map<string, any>();
@@ -31,23 +32,23 @@ vi.mock('../services/storage', () => ({
       chats.set(chat.id, chat);
       return Promise.resolve();
     }),
-    updateChatMeta: vi.fn().mockImplementation((id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
-      const updated = updater(existing);
+      const updated = updater({ current: existing });
       const merged = { ...existing, ...updated };
       chats.set(id, merged);
       return Promise.resolve();
     }),
     loadChatMeta: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve(chats.get(id))),
-    updateChatContent: vi.fn().mockImplementation((id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
-      const updated = updater({ root: existing.root, currentLeafId: existing.currentLeafId });
+      const updated = updater({ current: { root: existing.root, currentLeafId: existing.currentLeafId } });
       const merged = { ...existing, ...updated };
       chats.set(id, merged);
       return Promise.resolve();
     }),
-    updateHierarchy: vi.fn().mockImplementation((updater) => {
-      hierarchy = updater(hierarchy);
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => {
+      hierarchy = updater({ current: hierarchy });
       return Promise.resolve();
     }),
     loadHierarchy: vi.fn().mockImplementation(() => Promise.resolve(hierarchy)),
@@ -61,7 +62,7 @@ vi.mock('../services/storage', () => ({
       return Promise.resolve(hierarchy.items.filter(i => i.type === 'chat_group').map(i => i.chatGroup));
     }),
     getSidebarStructure: vi.fn().mockImplementation(() => {
-      return Promise.resolve(Array.from(chats.values()).map(c => ({
+      return Promise.resolve((Array.from(chats.values()) as Array<{ id: string; title: string; updatedAt: number; groupId?: string | null }>).map(c => ({
         id: `chat:${c.id}`,
         type: 'chat',
         chat: { id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId }
@@ -78,8 +79,8 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
-    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Response');
+    chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Response' });
       return Promise.resolve();
     });
     listModels = vi.fn().mockResolvedValue(['test-model']);
@@ -88,8 +89,8 @@ vi.mock('../services/lm/openai', () => ({
 
 vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: class {
-    chat = vi.fn().mockImplementation((params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Response');
+    chat = vi.fn().mockImplementation((params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Response' });
       return Promise.resolve();
     });
     listModels = vi.fn().mockResolvedValue(['test-model']);
@@ -135,11 +136,11 @@ describe('useChat - Attachment & Migration Logic', () => {
   it('should keep attachments in memory status when using LocalStorage', async () => {
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    const chatObj = await openChat({ id: newChat!.id });
+    const chatObj = await openChat({ id: idToRaw({ id: newChat!.id }) });
 
     const mockAttachment: Attachment = {
-      id: '550e8400-e29b-41d4-a716-446655440000',
-      binaryObjectId: '550e8400-e29b-41d4-a716-446655440000',
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440000' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440000' }),
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -164,11 +165,11 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     const { sendMessage, createNewChat, openChat } = chatStore;
     const newChat = await createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
-    const chatObj = await openChat({ id: newChat!.id });
+    const chatObj = await openChat({ id: idToRaw({ id: newChat!.id }) });
 
     const mockAttachment: Attachment = {
-      id: '550e8400-e29b-41d4-a716-446655440001',
-      binaryObjectId: '550e8400-e29b-41d4-a716-446655440001',
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440001' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440001' }),
       originalName: 'test.png',
       mimeType: 'image/png',
       size: 100,
@@ -206,8 +207,8 @@ describe('useChat - Attachment & Migration Logic', () => {
 
     const mockBlob = new Blob(['binary data'], { type: 'image/png' });
     const mockAttachment: Attachment = {
-      id: '550e8400-e29b-41d4-a716-446655440002',
-      binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
+      id: toAttachmentId({ raw: '550e8400-e29b-41d4-a716-446655440002' }),
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-446655440002' }),
       originalName: 'to-migrate.png',
       mimeType: 'image/png',
       size: 100,
@@ -235,7 +236,7 @@ describe('useChat - Attachment & Migration Logic', () => {
           const att = msg.attachments[i];
           if (att && att.status === 'memory') {
             const blob = (att as any).blob;
-            await storageService.saveFile(blob, att.binaryObjectId, att.originalName);
+            await storageService.saveFile({ blob, binaryObjectId: att.binaryObjectId, name: att.originalName });
             msg.attachments[i] = {
               id: att.id,
               binaryObjectId: att.binaryObjectId,
@@ -253,13 +254,13 @@ describe('useChat - Attachment & Migration Logic', () => {
     await storageService.switchProvider({ type: 'opfs' });
 
     // 3. Verify rescue occurred
-    expect(storageService.saveFile).toHaveBeenCalledWith(
-      mockBlob,
-      '550e8400-e29b-41d4-a716-446655440002',
-      'to-migrate.png'
-    );
+    expect(storageService.saveFile).toHaveBeenCalledWith({
+      blob: mockBlob,
+      binaryObjectId: '550e8400-e29b-41d4-a716-446655440002',
+      name: 'to-migrate.png',
+    });
 
-    const chat = await storageService.loadChat({ id: 'rescue-chat' });
+    const chat = await storageService.loadChat({ id: toChatId({ raw: 'rescue-chat' }) });
     const finalMsg = chat!.root.items[0];
     expect(finalMsg?.attachments).toBeDefined();
     const finalAtts = finalMsg!.attachments!;

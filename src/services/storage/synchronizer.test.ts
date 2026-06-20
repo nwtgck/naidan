@@ -14,7 +14,7 @@ describe('StorageSynchronizer', () => {
   describe('withLock', () => {
     it('should execute the provided function and return its result', async () => {
       const task = async () => 'result';
-      const result = await synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY });
+      const result = await synchronizer.withLock({ fn: task, lockKey: SYNC_LOCK_KEY });
       expect(result).toBe('result');
     });
 
@@ -22,7 +22,7 @@ describe('StorageSynchronizer', () => {
       const task = async () => {
         throw new Error('Task failed');
       };
-      await expect(synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY })).rejects.toThrow('Task failed');
+      await expect(synchronizer.withLock({ fn: task, lockKey: SYNC_LOCK_KEY })).rejects.toThrow('Task failed');
     });
 
     it('should use navigator.locks if available', async () => {
@@ -39,7 +39,7 @@ describe('StorageSynchronizer', () => {
       });
 
       const task = async () => 'done';
-      await synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY });
+      await synchronizer.withLock({ fn: task, lockKey: SYNC_LOCK_KEY });
 
       expect(mockRequest).toHaveBeenCalledWith(SYNC_LOCK_KEY, expect.any(Function));
 
@@ -60,7 +60,7 @@ describe('StorageSynchronizer', () => {
       });
 
       const task = async () => 'fallback';
-      const result = await synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY });
+      const result = await synchronizer.withLock({ fn: task, lockKey: SYNC_LOCK_KEY });
       expect(result).toBe('fallback');
 
       // Restore
@@ -81,7 +81,7 @@ describe('StorageSynchronizer', () => {
       });
 
       const onLockWait = vi.fn();
-      synchronizer.withLock(async () => {}, { lockKey: SYNC_LOCK_KEY, onLockWait, notifyLockWaitAfterMs: 100 });
+      synchronizer.withLock({ fn: async () => {}, lockKey: SYNC_LOCK_KEY, onLockWait, notifyLockWaitAfterMs: 100 });
 
       await vi.advanceTimersByTimeAsync(150);
       expect(onLockWait).toHaveBeenCalled();
@@ -102,7 +102,7 @@ describe('StorageSynchronizer', () => {
       const onTaskSlow = vi.fn();
       const task = () => new Promise((resolve) => setTimeout(resolve, 1000));
 
-      synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY, onTaskSlow, notifyTaskSlowAfterMs: 500 });
+      synchronizer.withLock({ fn: task, lockKey: SYNC_LOCK_KEY, onTaskSlow, notifyTaskSlowAfterMs: 500 });
 
       await vi.advanceTimersByTimeAsync(600);
       expect(onTaskSlow).toHaveBeenCalled();
@@ -122,7 +122,7 @@ describe('StorageSynchronizer', () => {
       const onFinalize = vi.fn();
       const task = () => new Promise((resolve) => setTimeout(resolve, 1000));
 
-      const promise = synchronizer.withLock(task, { lockKey: SYNC_LOCK_KEY, onFinalize, notifyTaskSlowAfterMs: 500 });
+      const promise = synchronizer.withLock({ fn: task, lockKey: SYNC_LOCK_KEY, onFinalize, notifyTaskSlowAfterMs: 500 });
 
       await vi.advanceTimersByTimeAsync(600);
       await vi.advanceTimersByTimeAsync(500); // Complete task
@@ -137,7 +137,7 @@ describe('StorageSynchronizer', () => {
   describe('Signaling', () => {
     it('should notify via localStorage', () => {
       const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
-      synchronizer.notify('chat_content', '123');
+      synchronizer.notify({ event: { type: 'chat_content', id: '123', timestamp: 123456789 } });
 
       expect(setItemSpy).toHaveBeenCalledWith(
         SYNC_SIGNAL_KEY,
@@ -151,7 +151,7 @@ describe('StorageSynchronizer', () => {
 
     it('should trigger local listeners when a storage event occurs from another tab', () => {
       const listener = vi.fn();
-      synchronizer.subscribe(listener);
+      synchronizer.subscribe({ listener });
 
       const eventData = { type: 'chat_content', id: '456', timestamp: Date.now() };
 
@@ -162,17 +162,17 @@ describe('StorageSynchronizer', () => {
       });
       window.dispatchEvent(storageEvent);
 
-      expect(listener).toHaveBeenCalledWith(expect.objectContaining({
+      expect(listener).toHaveBeenCalledWith({ event: expect.objectContaining({
         type: 'chat_content',
         id: '456'
-      }));
+      }) });
     });
 
     it('should notify multiple subscribers', () => {
       const l1 = vi.fn();
       const l2 = vi.fn();
-      synchronizer.subscribe(l1);
-      synchronizer.subscribe(l2);
+      synchronizer.subscribe({ listener: l1 });
+      synchronizer.subscribe({ listener: l2 });
 
       // Must provide id for chat_content type per schema
       const eventData = { type: 'chat_content', id: 'any', timestamp: Date.now() };
@@ -188,7 +188,7 @@ describe('StorageSynchronizer', () => {
 
     it('should stop notifying after unsubscription', () => {
       const listener = vi.fn();
-      const unsubscribe = synchronizer.subscribe(listener);
+      const unsubscribe = synchronizer.subscribe({ listener });
 
       unsubscribe();
 
@@ -204,7 +204,7 @@ describe('StorageSynchronizer', () => {
     it('should handle malformed JSON in localStorage gracefully', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const listener = vi.fn();
-      synchronizer.subscribe(listener);
+      synchronizer.subscribe({ listener });
 
       const storageEvent = new StorageEvent('storage', {
         key: SYNC_SIGNAL_KEY,
@@ -219,7 +219,7 @@ describe('StorageSynchronizer', () => {
 
     it('should ignore storage events for unrelated keys', () => {
       const listener = vi.fn();
-      synchronizer.subscribe(listener);
+      synchronizer.subscribe({ listener });
 
       const storageEvent = new StorageEvent('storage', {
         key: 'unrelated-key',
@@ -251,13 +251,13 @@ describe('StorageSynchronizer', () => {
       } as any;
 
       const syncWithMock = new StorageSynchronizer();
-      syncWithMock.subscribe(listener);
+      syncWithMock.subscribe({ listener });
 
       if (capturedHandler) {
         capturedHandler({ data: eventData });
       }
 
-      expect(listener).toHaveBeenCalledWith(eventData);
+      expect(listener).toHaveBeenCalledWith({ event: eventData });
 
       global.BroadcastChannel = originalBC;
     });

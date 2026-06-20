@@ -1,3 +1,4 @@
+import { toChatId, toMessageId, toChatGroupId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -60,11 +61,11 @@ describe('useChatNavigation', () => {
     const chatNavigation = useChatNavigation();
 
     await chatNavigation.openChat({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       leafId: undefined,
     });
 
-    expect(mockSetCurrentChatId).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockSetCurrentChatId).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
     expect(mockStoreOpenChat).toHaveBeenCalledWith({
       id: 'chat-1',
       leafId: undefined,
@@ -75,14 +76,14 @@ describe('useChatNavigation', () => {
     const chatNavigation = useChatNavigation();
 
     await chatNavigation.openChatAtMessage({
-      chatId: 'chat-1',
-      messageId: 'message-1',
+      chatId: toChatId({ raw: 'chat-1' }),
+      messageId: toMessageId({ raw: 'message-1' }),
     });
 
-    expect(mockSetCurrentChatId).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockSetCurrentChatId).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
     expect(mockStoreOpenChatAtMessage).toHaveBeenCalledWith({
-      chatId: 'chat-1',
-      messageId: 'message-1',
+      chatId: toChatId({ raw: 'chat-1' }),
+      messageId: toMessageId({ raw: 'message-1' }),
     });
   });
 
@@ -90,7 +91,7 @@ describe('useChatNavigation', () => {
     const chatNavigation = useChatNavigation();
 
     chatNavigation.openChatGroup({
-      groupId: 'group-1',
+      groupId: toChatGroupId({ raw: 'group-1' }),
     });
 
     expect(mockStoreOpenChatGroup).toHaveBeenCalledWith({

@@ -2,6 +2,8 @@ import { generateId } from '@/utils/id';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat } from '@/models/types';
+import { idToRaw } from '@/models/ids';
+import type { ChatId, MessageId } from '@/models/ids';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -93,13 +95,13 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
   });
 
   it('should split chat into meta index and content file on save', async () => {
-    const chatId = generateId();
+    const chatId = generateId<ChatId>();
     const mockChat: Chat = {
       id: chatId,
       title: 'Large Chat',
       root: {
         items: [{
-          id: generateId(),
+          id: generateId<MessageId>(),
           role: 'user',
           content: 'Huge Content'.repeat(100),
           timestamp: Date.now(),
@@ -111,13 +113,13 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChatContent(mockChat.id, mockChat);
-    await provider.saveChatMeta(mockChat);
+    await provider.saveChatContent({ id: mockChat.id, content: mockChat });
+    await provider.saveChatMeta({ meta: mockChat });
 
     // 1. Verify Meta File (Should NOT contain message content)
     const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
     const metaDir = storageDir.entries.get('chat-metas') as MockFileSystemDirectoryHandle;
-    const metaFile = metaDir.entries.get(`${chatId}.json`) as MockFileSystemFileHandle;
+    const metaFile = metaDir.entries.get(idToRaw({ id: chatId }) + '.json') as MockFileSystemFileHandle;
     const metaText = await (await metaFile.getFile()).text();
     const metaJson = JSON.parse(metaText);
 
@@ -126,7 +128,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
 
     // 2. Verify Content File (Should contain message content)
     const contentsDir = storageDir.entries.get('chat-contents') as MockFileSystemDirectoryHandle;
-    const contentFile = contentsDir.entries.get(`${chatId}.json`) as MockFileSystemFileHandle;
+    const contentFile = contentsDir.entries.get(idToRaw({ id: chatId }) + '.json') as MockFileSystemFileHandle;
     const contentText = await (await contentFile.getFile()).text();
     const contentJson = JSON.parse(contentText);
 
@@ -134,18 +136,18 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
   });
 
   it('should reassemble meta and content correctly on load', async () => {
-    const chatId = generateId();
+    const chatId = generateId<ChatId>();
     const mockChat: Chat = {
       id: chatId,
       title: 'Join Test',
-      root: { items: [{ id: generateId(), role: 'user', content: 'Hello', timestamp: 1, replies: { items: [] } }] },
+      root: { items: [{ id: generateId<MessageId>(), role: 'user', content: 'Hello', timestamp: 1, replies: { items: [] } }] },
       createdAt: 100,
       updatedAt: 200,
       debugEnabled: true,
     };
 
-    await provider.saveChatContent(mockChat.id, mockChat);
-    await provider.saveChatMeta(mockChat);
+    await provider.saveChatContent({ id: mockChat.id, content: mockChat });
+    await provider.saveChatMeta({ meta: mockChat });
     const loaded = await provider.loadChat({ id: chatId });
 
     expect(loaded).not.toBeNull();
@@ -155,7 +157,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
   });
 
   it('should delete both meta entry and content file', async () => {
-    const chatId = generateId();
+    const chatId = generateId<ChatId>();
     const mockChat: Chat = {
       id: chatId,
       title: 'Delete Me',
@@ -165,23 +167,23 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
       debugEnabled: false,
     };
 
-    await provider.saveChatContent(mockChat.id, mockChat);
-    await provider.saveChatMeta(mockChat);
+    await provider.saveChatContent({ id: mockChat.id, content: mockChat });
+    await provider.saveChatMeta({ meta: mockChat });
 
     const storageDir = mockOpfsRoot.entries.get('naidan-storage') as MockFileSystemDirectoryHandle;
     const metaDir = storageDir.entries.get('chat-metas') as MockFileSystemDirectoryHandle;
     const contentsDir = storageDir.entries.get('chat-contents') as MockFileSystemDirectoryHandle;
 
-    expect(metaDir.entries.has(`${chatId}.json`)).toBe(true);
-    expect(contentsDir.entries.has(`${chatId}.json`)).toBe(true);
+    expect(metaDir.entries.has(idToRaw({ id: chatId }) + '.json')).toBe(true);
+    expect(contentsDir.entries.has(idToRaw({ id: chatId }) + '.json')).toBe(true);
 
     await provider.deleteChat({ id: chatId });
 
     // Verify metadata removed
-    expect(metaDir.entries.has(`${chatId}.json`)).toBe(false);
+    expect(metaDir.entries.has(idToRaw({ id: chatId }) + '.json')).toBe(false);
 
     // Verify content file removed
-    expect(contentsDir.entries.has(`${chatId}.json`)).toBe(false);
+    expect(contentsDir.entries.has(idToRaw({ id: chatId }) + '.json')).toBe(false);
   });
 
   describe('Hierarchy Persistence', () => {
@@ -193,7 +195,7 @@ describe('OPFSStorageProvider Scalability (Split Storage)', () => {
         ]
       };
 
-      await provider.saveHierarchy(mockHierarchy);
+      await provider.saveHierarchy({ hierarchy: mockHierarchy });
       const loaded = await provider.loadHierarchy();
       expect(loaded).toEqual(mockHierarchy);
 

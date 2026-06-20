@@ -1,0 +1,12 @@
+{
+  "items": [
+    {"weight": 5, "requires": ["inputKeyword"], "parts": ["In the end, ", {"slot": "inputKeyword"}, " settles beside ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 4, "parts": ["Keeping ", {"slot": "inputReference"}, " slightly unfinished is enough."]},
+    {"weight": 8, "parts": ["Therefore, this subject can be left calmly as ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 7, "parts": ["What remains at the end is ", {"slot": "nounPhrase"}, " that is a little lighter than ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 7, "parts": ["Here, it is enough to treat ", {"slot": "nounPhrase"}, " as a small ", {"slot": "nounPhrase"}, "."]},
+    {"weight": 6, "parts": ["In short, the order of ", {"slot": "nounPhrase"}, " should be seen before the answer."]},
+    {"weight": 6, "parts": ["If ", {"slot": "nounPhrase"}, " is left slightly behind, ", {"slot": "nounPhrase"}, " gathers quietly."]},
+    {"weight": 5, "parts": ["The remaining part can wait until tomorrow as ", {"slot": "nounPhrase"}, "."]}
+  ]
+}

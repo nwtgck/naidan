@@ -23,7 +23,9 @@ interface ExtendedTestModule {
 }
 
 interface ExtendedLogger {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
   log: (msg: string) => void
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
   printCustomError?: (error: VitestError) => Promise<void>
 }
 
@@ -127,17 +129,22 @@ export default class FailedOnlyReporter implements Reporter {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async onFinished(files: any = [], errors: any = []) {
-    await this.reportEnd(files, errors)
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this signature follows the Vitest reporter contract.
+  async onFinished(files: readonly VitestTask[] = [], errors: readonly VitestError[] = []) {
+    await this.reportEnd({ files, errors })
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async onTestRunEnd(testModules: any = [], unhandledErrors: any = []) {
-    await this.reportEnd(testModules, unhandledErrors)
+  async onTestRunEnd(testModules: readonly VitestTask[] = [], unhandledErrors: readonly VitestError[] = []) {
+    await this.reportEnd({
+      files: testModules,
+      errors: unhandledErrors,
+    })
   }
 
-  private async reportEnd(files: readonly VitestTask[], errors: readonly VitestError[]) {
+  private async reportEnd({ files, errors }: {
+    files: readonly VitestTask[];
+    errors: readonly VitestError[];
+  }) {
     if (this.endReported) {
       return
     }

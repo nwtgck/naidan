@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, computed, toRaw, onUnmounted } from 'vue';
 import { useLayout } from '@/composables/useLayout';
-import { generateId } from '@/utils/id';
+import { generateId, generateOpaqueId } from '@/utils/id';
 import { naturalSort } from '@/utils/string';
 import ModelSelector from './ModelSelector.vue';
 import ChatToolsMenu from './ChatToolsMenu.vue';
@@ -36,9 +36,11 @@ import {
 } from 'lucide-vue-next';
 import MountBadgeList from './MountBadgeList.vue';
 import type { Attachment, Chat, ChatGroup, LmParameters } from '@/models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId } from '@/models/ids';
+import type { AttachmentId, BinaryObjectId, ChatId, VolumeId } from '@/models/ids';
 
 const { setToolEnabled } = useChatTools();
-const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
+const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
 const { addToast } = useToast();
 const { openFileExplorer } = useFileExplorerModal();
 const { showConfirm } = useConfirm();
@@ -46,7 +48,7 @@ const { showConfirm } = useConfirm();
 const { setActiveFocusArea, activeFocusArea, preferredEditorMode, setPreferredEditorMode } = useLayout();
 
 const props = defineProps<{
-  chatId: string;
+  chatId: ChatId;
   chat: Chat;
   chatGroup: ChatGroup | null;
   resolvedLmParameters: LmParameters | undefined;
@@ -75,14 +77,14 @@ const isHovered = ref(false);
 
 const isChatStreaming = computed(() => props.isStreaming);
 const chatId = computed(() => props.chatId);
-const chatConversation = useChatConversation({});
+const chatConversation = useChatConversation();
 const chatDraft = useChatDraft();
 const chatMedia = useChatImageGeneration({
   chatId,
 });
-const chatModels = useChatModels({});
-const chatMounts = useChatMounts({});
-const chatMetadata = useChatMetadata({});
+const chatModels = useChatModels();
+const chatMounts = useChatMounts();
+const chatMetadata = useChatMetadata();
 const chat = computed(() => props.chat);
 const chatGroup = computed(() => props.chatGroup);
 const fetchingModels = chatModels.fetchingModels;
@@ -99,11 +101,10 @@ function formatLabel({ value, source }: { value: string | undefined; source: Set
   return formatSettingsSourceLabel({ value, source });
 }
 
-
 const isImageMode = computed({
   get: () => chatMedia.isImageMode.value,
   set: () => {
-    chatMedia.toggleImageMode({});
+    chatMedia.toggleImageMode();
   }
 });
 
@@ -214,13 +215,52 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
 }
 
 const attachments = ref<Attachment[]>([]);
-const attachmentUrls = ref<Record<string, string>>({});
+const attachmentUrls = ref(new Map<AttachmentId, string>());
+
+// TODO: Remove this raw mirror once we find a way to expose branded IDs from
+// `defineExpose()` without triggering vue-tsc TS4023 on the generated public
+// surface (`__VLS_base` using `idBrand`). Internally this component should keep
+// branded IDs; only the TEST_ONLY exposed boundary is downgraded to raw strings.
+type TestOnlyAttachment =
+  | (Omit<Extract<Attachment, { status: 'persisted' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string })
+  | (Omit<Extract<Attachment, { status: 'memory' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string })
+  | (Omit<Extract<Attachment, { status: 'missing' }>, 'id' | 'binaryObjectId'> & { id: string; binaryObjectId: string });
 
 // Image Editor integration
-const editingAttachmentId = ref<string | undefined>(undefined);
+const editingAttachmentId = ref<AttachmentId | undefined>(undefined);
 const editingAttachment = computed(() => attachments.value.find(a => a.id === editingAttachmentId.value));
+const testOnlyAttachments = computed({
+  get: (): TestOnlyAttachment[] => attachments.value.map(attachment => ({
+    ...attachment,
+    id: idToRaw({ id: attachment.id }),
+    binaryObjectId: idToRaw({ id: attachment.binaryObjectId }),
+  })),
+  set: (value: TestOnlyAttachment[]) => {
+    attachments.value = value.map(attachment => ({
+      ...attachment,
+      id: toAttachmentId({ raw: attachment.id }),
+      binaryObjectId: toBinaryObjectId({ raw: attachment.binaryObjectId }),
+    }));
+  }
+});
+const testOnlyEditingAttachmentId = computed({
+  get: () => editingAttachmentId.value === undefined ? undefined : idToRaw({ id: editingAttachmentId.value }),
+  set: (value: string | undefined) => {
+    editingAttachmentId.value = value === undefined ? undefined : toAttachmentId({ raw: value });
+  }
+});
+const testOnlyEditingAttachment = computed(() => {
+  if (editingAttachment.value === undefined) {
+    return undefined;
+  }
+  return {
+    ...editingAttachment.value,
+    id: idToRaw({ id: editingAttachment.value.id }),
+    binaryObjectId: idToRaw({ id: editingAttachment.value.binaryObjectId }),
+  } satisfies TestOnlyAttachment;
+});
 
-function openImageEditor({ id }: { id: string }) {
+function openImageEditor({ id }: { id: AttachmentId }) {
   editingAttachmentId.value = id;
 }
 
@@ -236,16 +276,16 @@ function saveEditedImage({ blob }: { blob: Blob }) {
     const original = attachments.value[index]!;
 
     // Explicitly revoke old URL to ensure UI refresh
-    const oldUrl = attachmentUrls.value[original.id];
+    const oldUrl = attachmentUrls.value.get(original.id);
     if (oldUrl) {
       URL.revokeObjectURL(oldUrl);
-      delete attachmentUrls.value[original.id];
+      attachmentUrls.value.delete(original.id);
     }
 
     // Update the attachment with the new blob and a new binary object identity
     attachments.value[index] = {
       ...original,
-      binaryObjectId: generateId(),
+      binaryObjectId: generateId<BinaryObjectId>(),
       status: 'memory',
       blob,
       size: blob.size,
@@ -256,25 +296,22 @@ function saveEditedImage({ blob }: { blob: Blob }) {
 
 watch(attachments, (newAtts) => {
   // Revoke URLs for removed attachments
-  Object.keys(attachmentUrls.value).forEach(id => {
-    if (!newAtts.find(a => a.id === id)) {
-      const url = attachmentUrls.value[id];
-      if (url) {
-        URL.revokeObjectURL(url);
-      }
-      delete attachmentUrls.value[id];
+  for (const [id, url] of attachmentUrls.value) {
+    if (!newAtts.some(attachment => attachment.id === id)) {
+      URL.revokeObjectURL(url);
+      attachmentUrls.value.delete(id);
     }
-  });
+  }
 
   // Create or refresh URLs for new/updated attachments
   newAtts.forEach(att => {
     const status = att.status;
     switch (status) {
     case 'memory': {
-      const existingUrl = attachmentUrls.value[att.id];
+      const existingUrl = attachmentUrls.value.get(att.id);
       // If we don't have a URL (newly added or just revoked in saveEditedImage), create one
       if (!existingUrl) {
-        attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+        attachmentUrls.value.set(att.id, URL.createObjectURL(att.blob));
       }
       break;
     }
@@ -296,10 +333,10 @@ async function processFiles({ files }: { files: File[] }) {
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
 
-    const attachmentId = generateId();
+    const attachmentId = generateId<AttachmentId>();
     const attachment: Attachment = {
       id: attachmentId,
-      binaryObjectId: generateId(),
+      binaryObjectId: generateId<BinaryObjectId>(),
       originalName: file.name,
       mimeType: file.type,
       size: file.size,
@@ -325,7 +362,7 @@ function generateChatMountPath({ baseName }: { baseName: string }): string {
   return path;
 }
 
-async function finishMount({ volumeId, name }: { volumeId: string; name: string }) {
+async function finishMount({ volumeId, name }: { volumeId: VolumeId; name: string }) {
   if (!chat.value) return;
   const mountPath = generateChatMountPath({ baseName: name });
   await chatMounts.addMount({
@@ -343,7 +380,7 @@ async function attachCopyAsVolume({ entries, name }: {
   name: string;
 }) {
   if (!chat.value) return;
-  const copyId = generateId();
+  const copyId = generateOpaqueId();
   const abort = new AbortController();
   const copy: ActiveCopy = { id: copyId, name, progress: null, abort };
   activeCopies.value = [...activeCopies.value, copy];
@@ -514,7 +551,7 @@ async function processDropItems({ items }: { items: DataTransferItem[] }) {
   }
 }
 
-async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Promise<void> {
+async function handleOpenMountExplorer({ volumeId }: { volumeId: VolumeId }): Promise<void> {
   if (!chat.value) return;
   const mounts = chatMountList.value;
   if (mounts.length === 0) return;
@@ -524,7 +561,7 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
     chatGroupMounts: chatGroup.value?.mounts,
     chatId: chat.value.id,
     chatGroupId: chat.value.groupId ?? undefined,
-    naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: chat.value.id }),
+    naidanSysfsAccessScope: getNaidanSysfsAccessScope({ chatId: chat.value.id }),
   });
 
   const clickedMount = mounts.find(m => m.volumeId === volumeId);
@@ -539,7 +576,7 @@ async function handleOpenMountExplorer({ volumeId }: { volumeId: string }): Prom
   } });
 }
 
-async function handleDetachMount({ volumeId }: { volumeId: string }) {
+async function handleDetachMount({ volumeId }: { volumeId: VolumeId }) {
   if (!chat.value) return;
   let volumeType: 'opfs' | 'host' | undefined;
   for await (const vol of storageService.listVolumes()) {
@@ -580,7 +617,7 @@ async function handleDetachMount({ volumeId }: { volumeId: string }) {
   }
 }
 
-async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: string; readOnly: boolean }) {
+async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: VolumeId; readOnly: boolean }) {
   if (!chat.value) return;
 
   let volumeType: 'opfs' | 'host' | undefined;
@@ -597,6 +634,7 @@ async function handleToggleMountReadOnly({ volumeId, readOnly }: { volumeId: str
       // Enabling writes: request write permission from the browser.
       // The handle was obtained with mode:'read', so writes will fail unless explicitly upgraded.
       type FSHandleWithPermission = FileSystemDirectoryHandle & {
+        // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this signature mirrors the File System Access API requestPermission contract.
         requestPermission(descriptor: { mode: 'readwrite' }): Promise<PermissionState>;
       };
       const result = await (handle as FSHandleWithPermission).requestPermission({ mode: 'readwrite' });
@@ -654,7 +692,7 @@ async function handlePaste({ event }: { event: ClipboardEvent }) {
   }
 }
 
-function removeAttachment({ id }: { id: string }) {
+function removeAttachment({ id }: { id: AttachmentId }) {
   attachments.value = attachments.value.filter(a => a.id !== id);
   nextTick(() => adjustTextareaHeight({}));
 }
@@ -707,7 +745,7 @@ function adjustTextareaHeight({ force }: { force?: boolean }) {
   }
 }
 
-const handleWindowResize = (_event: Event) => adjustTextareaHeight({});
+const handleWindowResize = () => adjustTextareaHeight({});
 
 function toggleMaximized() {
   if (textareaRef.value) {
@@ -1024,9 +1062,9 @@ function focusInput() {
 
 defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTextareaHeight, processFiles, processDropItems, formatLabel,
   TEST_ONLY: {
-    attachments,
-    editingAttachmentId,
-    editingAttachment,
+    attachments: testOnlyAttachments,
+    editingAttachmentId: testOnlyEditingAttachmentId,
+    editingAttachment: testOnlyEditingAttachment,
     openAdvancedEditor,
     handleAdvancedEditorModeUpdate,
     selectedReasoningEffort
@@ -1114,10 +1152,10 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
 
       <!-- Attachment Previews -->
       <div v-if="attachments.length > 0" class="flex flex-wrap gap-2 px-4 pt-4" data-testid="attachment-preview">
-        <div v-for="att in attachments" :key="att.id" class="relative group/att">
+        <div v-for="att in attachments" :key="idToRaw({ id: att.id })" class="relative group/att">
           <div class="bg-transparency-grid rounded-lg overflow-hidden" style="--grid-size: 10px;">
             <img
-              :src="attachmentUrls[att.id]"
+              :src="attachmentUrls.get(att.id)"
               class="w-20 h-20 object-cover border border-gray-200 dark:border-gray-700"
             />
           </div>
@@ -1261,7 +1299,7 @@ defineExpose({ focus: focusInput, input, applySuggestion, isMaximized, adjustTex
     <Teleport to="body">
       <ImageEditor
         v-if="editingAttachment"
-        :image-url="attachmentUrls[editingAttachment.id]!"
+        :image-url="attachmentUrls.get(editingAttachment.id)!"
         :file-name="editingAttachment.originalName"
         :original-mime-type="editingAttachment.mimeType"
         @cancel="closeImageEditor"

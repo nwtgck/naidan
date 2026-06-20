@@ -1,32 +1,18 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { BugIcon, XIcon, MessageSquareIcon, NetworkIcon, FileCodeIcon, HighlighterIcon, ZapOffIcon, ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, CornerUpRightIcon } from 'lucide-vue-next';
-import createDOMPurify from 'dompurify';
 import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { storageService } from '@/services/storage';
 import { useRouter } from 'vue-router';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { BinaryObject, MessageNode } from '@/models/types';
-
-const DOMPurify = (() => {
-  const t = typeof window;
-  switch (t) {
-  case 'undefined': return createDOMPurify();
-  case 'object':
-  case 'boolean':
-  case 'string':
-  case 'number':
-  case 'function':
-  case 'symbol':
-  case 'bigint':
-    return createDOMPurify(window);
-  default: {
-    const _ex: never = t;
-    return _ex;
-  }
-  }
-})();
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
+import { allowedHtml, jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
+import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
+import { useSettings } from '@/composables/useSettings';
+import { idToRaw, toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
   show: boolean;
@@ -37,10 +23,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void;
+  (e: 'enable-fake-lm'): void;
 }>();
 
 const router = useRouter();
 const { addErrorEvent } = useGlobalEvents();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
+const { settings } = useSettings();
+const fakeLmDebugModeStatus = computed(() => settings.value.experimental?.fakeLm ?? 'disabled');
 const mode = ref<'active' | 'tree' | 'raw'>('active');
 const isHighlightEnabled = ref(true);
 const isContentCollapsed = ref(false);
@@ -48,15 +38,23 @@ const selectedNode = ref<Readonly<MessageNode> | null>(null);
 const isTreeMapCollapsed = ref(false);
 
 const activeIds = computed(() => new Set(props.activeMessages.map(m => m.id)));
+const canEnableFakeLmForChat = computed(() => fakeLmDebugModeAvailability.value === 'available');
+const fakeLmButtonTitle = computed(() => {
+  if (!canEnableFakeLmForChat.value) {
+    return 'Fake LM is only available in hosted builds. Standalone builds do not bundle fake LM.';
+  }
+
+  return `Set this chat to Ollama at ${FAKE_LM_ENDPOINT_URL} and enable global Fake LM debug mode.`;
+});
 
 function handleSelectNode({ node }: { node: Readonly<MessageNode> }) {
   selectedNode.value = node;
 }
 
-function handleOpenMessage({ messageId }: { messageId: string }) {
+function handleOpenMessage({ messageId }: { messageId: MessageId }) {
   const query = { ...(router.currentRoute.value.query ?? {}) };
   delete query.leaf;
-  router.push({ query: { ...query, 'message-id': messageId } });
+  router.push({ query: { ...query, 'message-id': idToRaw({ id: messageId }) } });
   emit('close');
 }
 
@@ -88,10 +86,10 @@ const selectedPath = computed(() => {
 
 // Attachment Preview Logic
 const previewObjects = ref<BinaryObject[]>([]);
-const previewInitialId = ref<string | null>(null);
+const previewInitialId = ref<BinaryObjectId | null>(null);
 
-async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: string }) {
-  const allImageIds = new Set<string>();
+async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
+  const allImageIds = new Set<BinaryObjectId>();
 
   // Determine which nodes to scan based on the current mode
   const nodesToScan = (() => {
@@ -108,7 +106,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: str
   })();
 
   // Helper to extract IDs from a node
-  const extractIds = (node: MessageNode) => {
+  const extractIds = ({ node }: { node: MessageNode }) => {
     // From attachments
     if (node.attachments) {
       for (const att of node.attachments) {
@@ -127,7 +125,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: str
         try {
           const parsed = JSON.parse(jsonStr);
           if (parsed.binaryObjectId) {
-            allImageIds.add(parsed.binaryObjectId);
+            allImageIds.add(toBinaryObjectId({ raw: parsed.binaryObjectId }));
           }
         } catch (e) {
           console.error('Failed to parse image block in ChatDebugInspector:', e);
@@ -143,7 +141,7 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: str
 
   // Traverse the relevant nodes
   for (const node of nodesToScan) {
-    extractIds(node);
+    extractIds({ node });
   }
 
   // Ensure the clicked one is in the set
@@ -167,54 +165,31 @@ async function handlePreviewAttachment({ binaryObjectId }: { binaryObjectId: str
   }
 }
 
+function handleEnableFakeLm() {
+  if (!canEnableFakeLmForChat.value) {
+    return;
+  }
+
+  emit('enable-fake-lm');
+}
+
 function handleClose() {
   emit('close');
 }
-
-// Simple highlighter for the raw JSON view
-const highlightJson = ({ json }: { json: string }) => {
-  // 1. First, encode everything as plain text by escaping HTML special chars
-  const escaped = json
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  let html = escaped;
-  if (isHighlightEnabled.value) {
-    // 2. Add spans for highlighting. Input is already escaped.
-    html = escaped.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
-      let cls = 'text-blue-500 dark:text-blue-400'; // number
-      if (/^"/.test(match)) {
-        if (/:$/.test(match)) {
-          cls = 'text-red-500 dark:text-red-400 font-bold'; // key
-        } else {
-          cls = 'text-green-600 dark:text-green-400'; // string
-        }
-      } else if (/true|false/.test(match)) {
-        cls = 'text-orange-500';
-      } else if (/null/.test(match)) {
-        cls = 'text-magenta-500';
-      }
-      return `<span class="${cls}">${match}</span>`;
-    });
-  }
-
-  // 3. Sanitize to guarantee no malicious tags or attributes
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['span'],
-    ALLOWED_ATTR: ['class']
-  });
-};
 
 const rawJsonOutput = computed(() => {
   const m = mode.value;
   switch (m) {
   case 'active':
   case 'tree':
-    return '';
+    return allowedHtml``;
   case 'raw': {
     const json = JSON.stringify(props.chat, null, 2);
-    return highlightJson({ json });
+    return jsonToHighlightedHtml({
+      json,
+      highlight: isHighlightEnabled.value,
+      keyStyle: 'raw',
+    });
   }
   default: {
     const _ex: never = m;
@@ -269,6 +244,23 @@ defineExpose({
               </button>
             </div>
 
+            <!-- Fake LM Shortcut -->
+            <button
+              @click="handleEnableFakeLm"
+              class="px-3 py-2 rounded-xl border transition-all flex items-center gap-2 font-black uppercase text-[9px] tracking-wider"
+              :class="canEnableFakeLmForChat ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:scale-105 active:scale-95' : 'bg-gray-100 dark:bg-gray-800 border-transparent text-gray-300 dark:text-gray-600 cursor-not-allowed'"
+              :disabled="!canEnableFakeLmForChat"
+              :title="fakeLmButtonTitle"
+              data-testid="chat-inspector-enable-fake-lm"
+            >
+              <BugIcon class="w-4 h-4" />
+              <span>Fake LM</span>
+              <span
+                v-if="fakeLmDebugModeStatus === 'enabled'"
+                class="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[8px]"
+              >On</span>
+            </button>
+
             <!-- Global Highlighting Toggle -->
             <button
               @click="isHighlightEnabled = !isHighlightEnabled"
@@ -304,7 +296,7 @@ defineExpose({
           <div v-if="mode === 'active'" class="flex-1 overflow-y-auto p-6 space-y-2 max-w-4xl mx-auto thin-scrollbar">
             <ChatDebugTreeNode
               v-for="m in activeMessages"
-              :key="m.id"
+              :key="idToRaw({ id: m.id })"
               :node="{ ...m, replies: { items: [] } }"
               :active-ids="activeIds"
               :highlight="isHighlightEnabled"
@@ -334,7 +326,7 @@ defineExpose({
               <div v-if="!isTreeMapCollapsed && chat?.root?.items" class="relative" :class="chat.root.items.length > 1 ? 'ml-6' : ''">
                 <ChatDebugTreeNode
                   v-for="(node, index) in chat.root.items"
-                  :key="node.id"
+                  :key="idToRaw({ id: node.id })"
                   :node="node"
                   :active-ids="activeIds"
                   :highlight="isHighlightEnabled"
@@ -366,7 +358,7 @@ defineExpose({
                 </div>
                 <ChatDebugTreeNode
                   v-for="m in selectedPath"
-                  :key="m.id"
+                  :key="idToRaw({ id: m.id })"
                   :node="{ ...m, replies: { items: [] } }"
                   :active-ids="activeIds"
                   :highlight="isHighlightEnabled"
@@ -385,10 +377,11 @@ defineExpose({
 
           <!-- Tab 3: Full JSON -->
           <div v-else-if="mode === 'raw'" class="flex-1 p-6 overflow-hidden">
-            <pre
+            <AllowedHtmlView
+              as="pre"
+              :html="rawJsonOutput"
               class="bg-gray-50/50 dark:bg-black/40 p-6 rounded-2xl border border-gray-100 dark:border-white/5 text-[11px] overflow-auto h-full text-gray-700 dark:text-gray-300 leading-relaxed font-mono thin-scrollbar"
-              v-html="rawJsonOutput"
-            ></pre>
+            />
           </div>
 
         </div>

@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WikipediaGetPageTool, WikipediaSearchTool } from './tools';
 import type { ToolApprovalContext } from '@/services/approval';
@@ -25,14 +26,13 @@ vi.mock('./render', () => ({
   renderWikipediaPageMarkdown: mockRenderWikipediaPageMarkdown,
 }));
 
-
 function createApprovalContext({
   calls,
 }: {
   calls: unknown[];
 }): ToolApprovalContext {
   return {
-    chatId: 'chat-approval-test',
+    chatId: toChatId({ raw: 'chat-approval-test' }),
     ensureApproval: vi.fn(async (request) => {
       calls.push(request);
       return { status: 'approved' as const };
@@ -43,7 +43,7 @@ function createApprovalContext({
 describe('WikipediaSearchTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearRememberedWikipediaPageTitles({});
+    clearRememberedWikipediaPageTitles();
   });
 
   it('accepts lang and query in parametersSchema', () => {
@@ -78,7 +78,7 @@ describe('WikipediaSearchTool', () => {
     });
 
     expect(approvalCalls).toEqual([{
-      chatId: 'chat-approval-test',
+      chatId: toChatId({ raw: 'chat-approval-test' }),
       action: {
         id: 'tool.wikipedia.search',
         label: 'Search Wikipedia',
@@ -110,7 +110,7 @@ describe('WikipediaSearchTool', () => {
 describe('WikipediaGetPageTool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    clearRememberedWikipediaPageTitles({});
+    clearRememberedWikipediaPageTitles();
   });
 
   it('accepts lang and pageId in parametersSchema', () => {
@@ -149,7 +149,7 @@ describe('WikipediaGetPageTool', () => {
     });
 
     expect(approvalCalls).toEqual([{
-      chatId: 'chat-approval-test',
+      chatId: toChatId({ raw: 'chat-approval-test' }),
       action: {
         id: 'tool.wikipedia.get_page',
         label: 'Get Wikipedia page',
@@ -207,7 +207,7 @@ describe('WikipediaGetPageTool', () => {
     });
 
     expect(approvalCalls).toEqual([{
-      chatId: 'chat-approval-test',
+      chatId: toChatId({ raw: 'chat-approval-test' }),
       action: {
         id: 'tool.wikipedia.get_page',
         label: 'Get Wikipedia page',

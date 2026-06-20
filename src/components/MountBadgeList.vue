@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { idToRaw } from '@/models/ids';
 import type { Mount } from '@/models/types';
+import type { VolumeId } from '@/models/ids';
 import { FolderIcon, LockIcon, UnlockIcon, XIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -11,9 +13,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'toggle-read-only': [{ volumeId: string; readOnly: boolean }];
-  remove: [{ volumeId: string }];
-  'open-explorer': [{ volumeId: string }];
+  'toggle-read-only': [{ volumeId: VolumeId; readOnly: boolean }];
+  remove: [{ volumeId: VolumeId }];
+  'open-explorer': [{ volumeId: VolumeId }];
 }>();
 
 function displayPath({ mountPath }: { mountPath: string }): string {
@@ -36,7 +38,7 @@ defineExpose({
   <div class="flex flex-wrap gap-2" data-testid="mount-badge-list">
     <div
       v-for="mount in mounts"
-      :key="mount.volumeId"
+      :key="idToRaw({ id: mount.volumeId })"
       class="flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-medium"
       data-testid="mount-badge"
     >

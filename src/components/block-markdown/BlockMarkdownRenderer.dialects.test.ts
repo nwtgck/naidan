@@ -36,6 +36,12 @@ Check https://google.com for info.
       whitespaceSensitiveTags: undefined
     });
     expect(dom).toContain('<a href="https://google.com">https://google.com</a>');
+
+    const link = wrapper.get('a');
+    expect(link.attributes('target')).toBe('_blank');
+    expect(link.attributes('rel')).toBe('noopener noreferrer');
+    expect(link.attributes('referrerpolicy')).toBe('no-referrer');
+    expect(link.attributes('data-naidan-external-link')).toBe('true');
   });
 
   it('renders tables even without a trailing pipe', () => {

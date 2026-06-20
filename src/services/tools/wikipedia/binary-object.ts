@@ -1,6 +1,8 @@
 import { NAIDAN_SYSFS_MOUNT_PATH } from '@/services/wesh/types'
 import { storageService } from '@/services/storage'
 import { generateId } from '@/utils/id'
+import { idToRaw } from '@/models/ids'
+import type { BinaryObjectId } from '@/models/ids'
 
 export const WIKIPEDIA_INLINE_CONTENT_MAX_LINES = 80
 
@@ -54,9 +56,9 @@ export function buildWikipediaBinaryObjectName({
 export function buildSysfsNaidanBinaryObjectDataFilePath({
   binaryObjectId,
 }: {
-  binaryObjectId: string;
+  binaryObjectId: BinaryObjectId;
 }): string {
-  return `${NAIDAN_SYSFS_MOUNT_PATH}/binary-objects/by-id/${binaryObjectId}/data`
+  return `${NAIDAN_SYSFS_MOUNT_PATH}/binary-objects/by-id/${idToRaw({ id: binaryObjectId })}/data`
 }
 
 export async function saveWikipediaPageTextAsBinaryObject({
@@ -72,7 +74,7 @@ export async function saveWikipediaPageTextAsBinaryObject({
   content: string;
   lineCount: number;
 }): Promise<SavedWikipediaPageBinaryObject> {
-  const binaryObjectId = generateId<string>()
+  const binaryObjectId = generateId<BinaryObjectId>()
   const name = buildWikipediaBinaryObjectName({
     title,
     lang,
@@ -83,7 +85,7 @@ export async function saveWikipediaPageTextAsBinaryObject({
   })
   const byteLength = blob.size
 
-  await storageService.saveFile(blob, binaryObjectId, name)
+  await storageService.saveFile({ blob, binaryObjectId, name })
 
   return {
     lineCount,

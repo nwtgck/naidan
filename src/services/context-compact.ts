@@ -1,18 +1,11 @@
 import { generateId } from '@/utils/id';
-import type {
-  AssistantMessageNode,
-  Attachment,
-  ChatMessage,
-  EndpointType,
-  LmParameters,
-  MessageNode,
-  MultimodalContent,
-  ToolCall,
-} from '@/models/types';
+import type { AssistantMessageNode, Attachment, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, ToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import type { ToolExecutionResult } from '@/services/tools/types';
 import { fileToDataUrl } from '@/utils/chat-tree';
+import { idToRaw } from '@/models/ids';
+import type { MessageId } from '@/models/ids';
 
 export type ContextCompactProgress =
   | { phase: 'idle' }
@@ -62,13 +55,13 @@ export type ContextCompactPromptMode =
 export type ContextCompactSplit = {
   prefix: MessageNode[];
   suffix: MessageNode[];
-  boundaryMessageId: string;
+  boundaryMessageId: MessageId;
 };
 
 export type ContextCompactBranchResult = {
   compactNode: AssistantMessageNode;
   copiedSuffixHead: MessageNode | undefined;
-  currentLeafId: string;
+  currentLeafId: MessageId;
 };
 
 export type ChatPaneHeaderMoreAction =
@@ -89,7 +82,7 @@ export function getHeaderCompactBoundary({
 }: {
   path: readonly MessageNode[];
   keepRecentMessages: number;
-}): string | undefined {
+}): MessageId | undefined {
   if (path.length <= keepRecentMessages) {
     return undefined;
   }
@@ -103,7 +96,7 @@ export function splitCompactPath({
   boundaryMessageId,
 }: {
   path: readonly MessageNode[];
-  boundaryMessageId: string;
+  boundaryMessageId: MessageId;
 }): ContextCompactSplit | undefined {
   const boundaryIndex = path.findIndex(({ id }) => id === boundaryMessageId);
   if (boundaryIndex === -1) {
@@ -179,7 +172,7 @@ export function createCompactConversationMessageContent({
   case 'with_message_ids':
     // The messageId prefix may reduce inference-cache reuse, but it makes sysfs-based
     // source lookup much more reliable for compact branches.
-    return `messageId=${node.id}\n\n${content}`;
+    return 'messageId=' + idToRaw({ id: node.id }) + '\n\n' + content;
   case 'without_message_ids':
     return content;
   default: {
@@ -217,7 +210,7 @@ export async function createProviderForCompact({
   endpointType: EndpointType;
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
-}): Promise<LLMProvider> {
+}): Promise<LmProvider> {
   switch (endpointType) {
   case 'openai':
     if (!endpointUrl) {
@@ -524,7 +517,7 @@ function cloneLinearMessageNode({
   timestamp,
 }: {
   node: MessageNode;
-  id: string;
+  id: MessageId;
   timestamp: number;
 }): MessageNode {
   switch (node.role) {
@@ -601,11 +594,11 @@ export function deepCopyCompactSuffix({
   now,
 }: {
   suffix: readonly MessageNode[];
-  createMessageId: () => string;
+  createMessageId: () => MessageId;
   now: () => number;
 }): {
   copiedHead: MessageNode | undefined;
-  copiedLeafId: string | undefined;
+  copiedLeafId: MessageId | undefined;
 } {
   if (suffix.length === 0) {
     return {
@@ -641,7 +634,7 @@ export function createCompactBranchFromResponse({
   compactContent: string;
   suffix: readonly MessageNode[];
   compactModelId: string | undefined;
-  createMessageId: () => string;
+  createMessageId: () => MessageId;
   now: () => number;
 }): ContextCompactBranchResult {
   const compactNode: AssistantMessageNode = {
@@ -768,13 +761,13 @@ export function createCompactToolMessageContent({
   content,
   promptMode,
 }: {
-  messageId: string;
+  messageId: MessageId;
   content: string;
   promptMode: ContextCompactPromptMode;
 }): string {
   switch (promptMode) {
   case 'with_message_ids':
-    return `messageId=${messageId}\n\n${content}`;
+    return 'messageId=' + idToRaw({ id: messageId }) + '\n\n' + content;
   case 'without_message_ids':
     return content;
   default: {
@@ -811,7 +804,7 @@ export function createContextCompactBranch({
     compactContent,
     suffix,
     compactModelId: undefined,
-    createMessageId: () => generateId(),
+    createMessageId: () => generateId<MessageId>(),
     now: () => Date.now(),
   });
 }

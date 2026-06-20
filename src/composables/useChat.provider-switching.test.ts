@@ -3,6 +3,7 @@ import { useChat } from './useChat';
 import { useSettings } from './useSettings';
 import { reactive } from 'vue';
 import type { Chat } from '@/models/types';
+import { idToRaw } from '@/models/ids';
 
 // Mock storage
 vi.mock('../services/storage', () => ({
@@ -11,8 +12,8 @@ vi.mock('../services/storage', () => ({
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn().mockResolvedValue(undefined),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn().mockResolvedValue(undefined),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))).mockResolvedValue(undefined),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))).mockResolvedValue(undefined),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadChat: vi.fn(),
     loadSettings: vi.fn().mockResolvedValue({}),
@@ -72,8 +73,8 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     mockOpenAIModels.mockResolvedValue(['gpt-4', 'gpt-3.5-turbo']);
     mockOllamaModels.mockResolvedValue(['llama3', 'mistral']);
 
-    mockOpenAIChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('OpenAI Response'));
-    mockOllamaChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => params.onChunk('Ollama Response'));
+    mockOpenAIChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'OpenAI Response' }));
+    mockOllamaChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => params.onChunk({ chunk: 'Ollama Response' }));
 
     __testOnlySetCurrentChat({ chat: null });
   });
@@ -101,8 +102,8 @@ describe('Provider and Model Compatibility (Comprehensive Test)', () => {
     expect(mockOllamaChat.mock.calls[0]![0].model).toBe('llama3');
 
     // 3. Custom Override (gpt-3.5-turbo)
-    await updateChatSettings({ id: chatObj.id, updates: { endpointType: 'openai' } });
-    await updateChatModel({ id: chatObj.id, modelId: 'gpt-3.5-turbo' });
+    await updateChatSettings({ id: idToRaw({ id: chatObj.id }), updates: { endpointType: 'openai' } });
+    await updateChatModel({ id: idToRaw({ id: chatObj.id }), modelId: 'gpt-3.5-turbo' });
     await sendMessage({ content: 'M3' });
     await vi.waitUntil(() => !chatStore.streaming.value);
     expect(mockOpenAIChat.mock.calls[1]![0].model).toBe('gpt-3.5-turbo');

@@ -1,22 +1,21 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
+import { openTextLineIterator } from '@/services/wesh/commands/_shared/text';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { readTextFromFile, readTextFromHandle, splitTextLines } from '@/services/wesh/commands/_shared/text';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
-import { resolvePath } from '@/services/wesh/path';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 
 function shuffleInPlace<T>({
   items,
 }: {
   items: T[];
 }): T[] {
-  const shuffled = [...items];
-  for (let index = shuffled.length - 1; index > 0; index--) {
+  for (let index = items.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
-    const value = shuffled[index];
-    shuffled[index] = shuffled[swapIndex]!;
-    shuffled[swapIndex] = value!;
+    const value = items[index];
+    items[index] = items[swapIndex]!;
+    items[swapIndex] = value!;
   }
-  return shuffled;
+  return items;
 }
 
 function parseCount({
@@ -24,32 +23,10 @@ function parseCount({
 }: {
   value: string;
 }): { ok: true; value: number } | { ok: false; message: string } {
-  if (!/^\d+$/.test(value)) {
+  if (!/^\d+$/u.test(value)) {
     return { ok: false, message: `invalid count '${value}'` };
   }
-  return { ok: true, value: parseInt(value, 10) };
-}
-
-async function readInputLines({
-  context,
-  path,
-  stdinText,
-}: {
-  context: WeshCommandContext;
-  path: string | undefined;
-  stdinText: string | undefined;
-}): Promise<string[]> {
-  if (path === undefined || path === '-') {
-    const text = stdinText ?? await readTextFromHandle({ handle: context.stdin });
-    return splitTextLines({
-      text,
-    });
-  }
-
-  const fullPath = resolvePath({ cwd: context.cwd, path });
-  return splitTextLines({
-    text: await readTextFromFile({ files: context.files, path: fullPath }),
-  });
+  return { ok: true, value: Number.parseInt(value, 10) };
 }
 
 const shufArgvSpec: StandardArgvParserSpec = {
@@ -116,33 +93,49 @@ export const shufCommandDefinition: WeshCommandDefinition = {
 
     const countValue = parsed.optionValues.count;
     const count = typeof countValue === 'number' ? countValue : undefined;
-    const inputs = parsed.positionals.length > 0 ? parsed.positionals : [undefined];
-    const lines: string[] = [];
-    let stdinText: string | undefined;
-
-    for (const input of inputs) {
-      try {
-        const inputLines = await readInputLines({
-          context,
-          path: input,
-          stdinText,
-        });
-        if (input === '-') {
-          stdinText ??= inputLines.join('\n');
+    const path = parsed.positionals[0] ?? '-';
+    let iterator: AsyncIterator<string> | undefined;
+    try {
+      iterator = await openTextLineIterator({ context, path });
+      const lines: string[] = [];
+      let seen = 0;
+      while (true) {
+        const next = await iterator.next();
+        if (next.done) {
+          break;
         }
-        lines.push(...inputLines);
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        const failingPath = input ?? '-';
-        await context.text().error({ text: `shuf: ${failingPath}: ${message}\n` });
-        return { exitCode: 1 };
+        if (count === undefined) {
+          lines.push(next.value);
+        } else if (lines.length < count) {
+          lines.push(next.value);
+        } else if (count > 0) {
+          const replacementIndex = Math.floor(Math.random() * (seen + 1));
+          if (replacementIndex < count) {
+            lines[replacementIndex] = next.value;
+          }
+        }
+        seen += 1;
       }
-    }
 
-    const shuffled = shuffleInPlace({ items: lines });
-    const selected = count === undefined ? shuffled : shuffled.slice(0, count);
-    const output = selected.map((line) => `${line}\n`).join('');
-    await context.text().print({ text: output });
-    return { exitCode: 0 };
+      shuffleInPlace({ items: lines });
+      const writer = createBufferedTextWriter({
+        handle: context.stdout,
+        maxBufferLength: 16 * 1024,
+      });
+      try {
+        for (const line of lines) {
+          await writer.write({ text: `${line}\n` });
+        }
+      } finally {
+        await writer.flush();
+      }
+      return { exitCode: 0 };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      await context.text().error({ text: `shuf: ${path}: ${message}\n` });
+      return { exitCode: 1 };
+    } finally {
+      await iterator?.return?.();
+    }
   },
 };

@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
 import type { IWorkerHub } from '@/services/worker-hub.types'
 import {
@@ -11,8 +11,8 @@ import {
   type AdvancedTextEditorV3WorkerClient,
 } from './types'
 
-export async function createAdvancedTextEditorV3WorkerClient(_args: EmptyArgs): Promise<AdvancedTextEditorV3WorkerClient> {
-  const worker = await createFileProtocolCompatibleStandaloneWorkerHub({})
+export async function createAdvancedTextEditorV3WorkerClient(): Promise<AdvancedTextEditorV3WorkerClient> {
+  const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
   const remote = Comlink.wrap<IWorkerHub>(worker)
   const advancedTextEditorV3 = await remote.advancedTextEditorV3
 
@@ -32,7 +32,7 @@ export async function createAdvancedTextEditorV3WorkerClient(_args: EmptyArgs): 
     async applyMultiEdit({ request }) {
       return advancedTextEditorV3ApplyMultiEditResponseSchema.parse(await advancedTextEditorV3.applyMultiEdit({ request }))
     },
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       try {
         await remote[Comlink.releaseProxy]()
       } finally {

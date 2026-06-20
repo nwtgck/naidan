@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { reactive } from 'vue';
 import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
+
+type TestHierarchyNode =
+  | { type: 'chat'; id: string }
+  | { type: 'chat_group'; id: string; chat_ids: string[] };
 
 const mockGetSidebarStructure = vi.fn();
 
@@ -13,8 +18,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
-    updateHierarchy: vi.fn().mockImplementation(async (updater) => {
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateHierarchy: vi.fn().mockImplementation(async ({ updater }) => {
       const chat = useChat();
       const currentH = {
         items: chat.rootItems.value.map(item => {
@@ -22,9 +27,9 @@ vi.mock('../services/storage', () => ({
           return { type: 'chat_group', id: item.chatGroup.id, chat_ids: item.chatGroup.items.map(i => i.id.replace('chat:', '')) };
         })
       };
-      const updated = await updater(currentH as any);
+      const updated = await updater({ current: currentH as any });
       // Map back to sidebar structure for the test to see the changes after loadChats()
-      const newSidebar = updated.items.map((node: any) => {
+      const newSidebar = (updated.items as TestHierarchyNode[]).map((node) => {
         if (node.type === 'chat') return { id: `chat:${node.id}`, type: 'chat', chat: { id: node.id, title: 'Chat', updatedAt: 0 } };
         return {
           id: `chat_group:${node.id}`,
@@ -71,10 +76,10 @@ describe('useChat moveChatToGroup', () => {
 
   it('moves a top-level chat to a group (prepends to start)', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [
-        { id: 'chat:existing', type: 'chat', chat: { id: 'existing', title: 'Existing', updatedAt: 0 } }
+        { id: 'chat:existing', type: 'chat', chat: { id: toChatId({ raw: 'existing' }), title: 'Existing', updatedAt: 0 } }
       ],
       updatedAt: 0,
       isCollapsed: false,
@@ -82,14 +87,14 @@ describe('useChat moveChatToGroup', () => {
 
     const sidebarItems: SidebarItem[] = [
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group },
-      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } }
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } }
     ];
 
     mockGetSidebarStructure.mockResolvedValue(sidebarItems);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
     // Move chat c1 to group g1
-    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g1' });
+    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g1' })});
 
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
@@ -104,19 +109,19 @@ describe('useChat moveChatToGroup', () => {
 
   it('moves a chat from one group to another (prepends to start)', async () => {
     const group1: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [
-        { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } }
+        { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } }
       ],
       updatedAt: 0,
       isCollapsed: false,
     };
     const group2: ChatGroup = {
-      id: 'g2',
+      id: toChatGroupId({ raw: 'g2' }),
       name: 'Group 2',
       items: [
-        { id: 'chat:existing', type: 'chat', chat: { id: 'existing', title: 'Existing', updatedAt: 0 } }
+        { id: 'chat:existing', type: 'chat', chat: { id: toChatId({ raw: 'existing' }), title: 'Existing', updatedAt: 0 } }
       ],
       updatedAt: 0,
       isCollapsed: false,
@@ -126,9 +131,9 @@ describe('useChat moveChatToGroup', () => {
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 },
       { id: 'chat_group:g2', type: 'chat_group', chatGroup: group2 },
     ]);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g2' });
+    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g2' })});
 
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
@@ -141,10 +146,10 @@ describe('useChat moveChatToGroup', () => {
 
   it('moves a chat from a group to top level', async () => {
     const group1: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [
-        { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'Chat 1', updatedAt: 0 } }
+        { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 } }
       ],
       updatedAt: 0,
       isCollapsed: false,
@@ -154,9 +159,9 @@ describe('useChat moveChatToGroup', () => {
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 },
       { id: 'chat:top', type: 'chat', chat: { id: 'top', title: 'Top Chat', updatedAt: 0 } }
     ]);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: null });
+    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: null });
 
     const rootItems = chatStore.rootItems.value;
     const g1Item = rootItems.find(i => i.id === 'chat_group:g1');
@@ -171,13 +176,13 @@ describe('useChat moveChatToGroup', () => {
 
   it('appends to the end of top level if no individual chats exist', async () => {
     const group1: ChatGroup = {
-      id: 'g1', name: 'Group 1', items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }],
+      id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }],
       updatedAt: 0, isCollapsed: false,
     };
     mockGetSidebarStructure.mockResolvedValue([{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group1 }]);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: null });
+    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: null });
 
     const rootItems = chatStore.rootItems.value;
     expect(rootItems).toHaveLength(2);
@@ -194,9 +199,9 @@ describe('useChat moveChatToGroup', () => {
       { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } },
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } }
     ]);
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
 
-    await chatStore.moveChatToGroup({ chatId: 'c1', targetGroupId: 'g1' });
+    await chatStore.moveChatToGroup({ chatId: toChatId({ raw: 'c1' }), targetGroupId: toChatGroupId({ raw: 'g1' })});
 
     expect(chat.groupId).toBe('g1');
     expect(chatStore.currentChat.value?.groupId).toBe('g1');

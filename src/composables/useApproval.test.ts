@@ -1,22 +1,23 @@
+import { toChatId } from '@/models/ids';
 import { afterEach, describe, expect, it } from 'vitest';
 import { useApproval } from './useApproval';
 import { APPROVAL_ACTIONS } from '@/services/approval';
 
-async function flushApprovalQueue(_args: Record<never, never>): Promise<void> {
+async function flushApprovalQueue(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
 }
 
 describe('useApproval', () => {
-  const approval = useApproval({});
+  const approval = useApproval();
 
   afterEach(() => {
-    approval.TEST_ONLY.clearAll({});
+    approval.TEST_ONLY.clearAll();
   });
 
   it('shows an active approval request and resolves an allow_once decision', async () => {
     const resultPromise = approval.ensureApproval({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
@@ -25,11 +26,11 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
-    const activeRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
+    const activeRequest = approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-a' }) }).value;
     expect(activeRequest).toMatchObject({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       preview: {
         type: 'wikipedia_search',
@@ -44,16 +45,16 @@ describe('useApproval', () => {
     });
 
     await expect(resultPromise).resolves.toEqual({ status: 'approved' });
-    expect(approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value).toBeUndefined();
+    expect(approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-a' }) }).value).toBeUndefined();
     expect(approval.TEST_ONLY.getStoredApprovalStatus({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       actionId: 'tool.wikipedia.search',
     })).toBe('missing');
   });
 
   it('stores allow_for_chat only for the current chat', async () => {
     const firstResultPromise = approval.ensureApproval({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
@@ -62,9 +63,9 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
-    const firstRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
+    const firstRequest = approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-a' }) }).value;
     expect(firstRequest).not.toBeUndefined();
     approval.resolveApprovalRequest({
       requestId: firstRequest!.requestId,
@@ -73,7 +74,7 @@ describe('useApproval', () => {
     await expect(firstResultPromise).resolves.toEqual({ status: 'approved' });
 
     await expect(approval.ensureApproval({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
@@ -83,7 +84,7 @@ describe('useApproval', () => {
     })).resolves.toEqual({ status: 'approved' });
 
     const otherChatResultPromise = approval.ensureApproval({
-      chatId: 'chat-b',
+      chatId: toChatId({ raw: 'chat-b' }),
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
@@ -92,9 +93,9 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
-    const otherChatRequest = approval.getActiveApprovalRequest({ chatId: 'chat-b' }).value;
+    const otherChatRequest = approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-b' }) }).value;
     expect(otherChatRequest).not.toBeUndefined();
     approval.resolveApprovalRequest({
       requestId: otherChatRequest!.requestId,
@@ -105,7 +106,7 @@ describe('useApproval', () => {
 
   it('stores allow_globally across chats until the runtime is cleared', async () => {
     const firstResultPromise = approval.ensureApproval({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       action: APPROVAL_ACTIONS.toolWikipediaGetPage,
       signal: undefined,
       preview: {
@@ -115,9 +116,9 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
-    const firstRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
+    const firstRequest = approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-a' }) }).value;
     expect(firstRequest).not.toBeUndefined();
     approval.resolveApprovalRequest({
       requestId: firstRequest!.requestId,
@@ -126,7 +127,7 @@ describe('useApproval', () => {
     await expect(firstResultPromise).resolves.toEqual({ status: 'approved' });
 
     await expect(approval.ensureApproval({
-      chatId: 'chat-b',
+      chatId: toChatId({ raw: 'chat-b' }),
       action: APPROVAL_ACTIONS.toolWikipediaGetPage,
       signal: undefined,
       preview: {
@@ -135,12 +136,12 @@ describe('useApproval', () => {
         pageId: '456',
       },
     })).resolves.toEqual({ status: 'approved' });
-    expect(approval.getActiveApprovalRequest({ chatId: 'chat-b' }).value).toBeUndefined();
+    expect(approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-b' }) }).value).toBeUndefined();
   });
 
   it('serializes approval UI per chat and re-checks stored approvals under the lock', async () => {
     const firstResultPromise = approval.ensureApproval({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
@@ -149,7 +150,7 @@ describe('useApproval', () => {
       },
     });
     const secondResultPromise = approval.ensureApproval({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: undefined,
       preview: {
@@ -158,9 +159,9 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
-    const firstRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
+    const firstRequest = approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-a' }) }).value;
     expect(firstRequest?.preview).toEqual({
       type: 'wikipedia_search',
       keyword: 'first keyword',
@@ -173,13 +174,13 @@ describe('useApproval', () => {
 
     await expect(firstResultPromise).resolves.toEqual({ status: 'approved' });
     await expect(secondResultPromise).resolves.toEqual({ status: 'approved' });
-    expect(approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value).toBeUndefined();
+    expect(approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-a' }) }).value).toBeUndefined();
   });
 
   it('clears the active request when the approval signal aborts', async () => {
     const controller = new AbortController();
     const resultPromise = approval.ensureApproval({
-      chatId: 'chat-a',
+      chatId: toChatId({ raw: 'chat-a' }),
       action: APPROVAL_ACTIONS.toolWikipediaSearch,
       signal: controller.signal,
       preview: {
@@ -188,14 +189,14 @@ describe('useApproval', () => {
       },
     });
 
-    await flushApprovalQueue({});
+    await flushApprovalQueue();
 
-    const activeRequest = approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value;
+    const activeRequest = approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-a' }) }).value;
     expect(activeRequest).not.toBeUndefined();
 
     controller.abort();
 
     await expect(resultPromise).rejects.toThrow('Generation aborted');
-    expect(approval.getActiveApprovalRequest({ chatId: 'chat-a' }).value).toBeUndefined();
+    expect(approval.getActiveApprovalRequest({ chatId: toChatId({ raw: 'chat-a' }) }).value).toBeUndefined();
   });
 });

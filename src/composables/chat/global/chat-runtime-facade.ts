@@ -1,5 +1,6 @@
 import { computed, toRaw, type ComputedRef, type Ref } from 'vue';
 import type { Chat } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 import type { ContextCompactProgress } from '@/services/context-compact';
 import type { ContextCompactRuntime } from './context-compact-runtime';
 import type { ChatRuntimeStore } from './chat-runtime-store';
@@ -13,36 +14,36 @@ export type ChatRuntimeFacade = {
   isGeneratingTitle({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): boolean;
 
   isTaskRunning({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): boolean;
 
   isProcessing({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): boolean;
 
   setContextCompactProgress({
     chatId,
     progress,
   }: {
-    chatId: string;
+    chatId: ChatId;
     progress: ContextCompactProgress;
   }): void;
 
   getContextCompactProgress({
     chatId,
   }: {
-    chatId: string | undefined;
+    chatId: ChatId | undefined;
   }): ContextCompactProgress;
 
-  clearActiveTaskCounts(_args: Record<never, never>): void;
+  clearActiveTaskCounts(): void;
 };
 
 export function createChatRuntimeFacade({
@@ -59,7 +60,7 @@ export function createChatRuntimeFacade({
   function isGeneratingTitle({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return runtimeStore.isGeneratingTitle({ chatId });
   }
@@ -72,7 +73,7 @@ export function createChatRuntimeFacade({
   function getContextCompactProgress({
     chatId,
   }: {
-    chatId: string | undefined;
+    chatId: ChatId | undefined;
   }) {
     return contextCompactRuntime.getProgress({ chatId });
   }
@@ -97,7 +98,7 @@ export function createChatRuntimeFacade({
   function isTaskRunning({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return runtimeStore.isTaskRunning({ chatId });
   }
@@ -105,7 +106,7 @@ export function createChatRuntimeFacade({
   function isProcessing({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return runtimeStore.isProcessing({ chatId });
   }
@@ -114,14 +115,14 @@ export function createChatRuntimeFacade({
     chatId,
     progress,
   }: {
-    chatId: string;
+    chatId: ChatId;
     progress: ContextCompactProgress;
   }) {
     contextCompactRuntime.setProgress({ chatId, progress });
   }
 
-  function clearActiveTaskCounts(_args: Record<never, never>) {
-    runtimeStore.clearActiveTaskCounts({});
+  function clearActiveTaskCounts() {
+    runtimeStore.clearActiveTaskCounts();
   }
 
   return {

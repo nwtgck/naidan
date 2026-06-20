@@ -5,6 +5,7 @@ import ChatDebugTreeNode from './ChatDebugTreeNode.vue';
 import { nextTick } from 'vue';
 import { NetworkIcon } from 'lucide-vue-next';
 import type { MessageNode, Chat, AssistantMessageNode, UserMessageNode, SystemMessageNode, LmParameters } from '@/models/types';
+import { idToRaw, toAttachmentId, toBinaryObjectId, toChatId, toMessageId } from '@/models/ids';
 
 // Mock Lucide icons
 vi.mock('lucide-vue-next', () => ({
@@ -51,6 +52,27 @@ vi.mock('../services/storage', () => ({
   }
 }));
 
+const mockSettings = vi.hoisted(() => ({
+  value: {
+    experimental: {
+      fakeLm: 'disabled',
+    },
+  },
+}));
+
+vi.mock('@/composables/useSettings', () => ({
+  useSettings: () => ({
+    settings: mockSettings,
+  }),
+}));
+
+vi.mock('@/services/fake-lm', () => ({
+  FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
+  useFakeLmDebugMode: () => ({
+    fakeLmDebugModeAvailability: { value: 'available' },
+  }),
+}));
+
 // Mock Clipboard
 Object.assign(navigator, {
   clipboard: {
@@ -72,7 +94,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       lmParameters?: LmParameters
     } = {}
   ): MessageNode => {
-    const common = { id, content, timestamp: Date.now(), replies: { items: replies } };
+    const common = { id: toMessageId({ raw: id }), content, timestamp: Date.now(), replies: { items: replies } };
     switch (role) {
     case 'user':
       return {
@@ -83,7 +105,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         error: undefined,
         modelId: undefined,
         lmParameters: extra.lmParameters || { reasoning: { effort: undefined } }
-      } as UserMessageNode;
+      } as unknown as UserMessageNode;
     case 'assistant':
       return {
         ...common,
@@ -93,7 +115,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         error: extra.error,
         modelId: extra.modelId || 'test-model',
         lmParameters: extra.lmParameters || { reasoning: { effort: undefined } }
-      } as AssistantMessageNode;
+      } as unknown as AssistantMessageNode;
     case 'system':
       return {
         ...common,
@@ -103,7 +125,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
         error: undefined,
         modelId: undefined,
         lmParameters: undefined,
-      } as SystemMessageNode;
+      } as unknown as SystemMessageNode;
     default: {
       const _ex: never = role;
       throw new Error(`Unhandled role: ${_ex}`);
@@ -112,7 +134,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
   };
 
   const createMockChat = (rootItems: MessageNode[] = []): Chat => ({
-    id: 'chat-1',
+    id: toChatId({ raw: 'chat-1' }),
     title: 'Test Chat',
     root: { items: rootItems },
     debugEnabled: true,
@@ -134,6 +156,20 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     vi.clearAllMocks();
   });
 
+  it('emits a fake LM setup event from the header shortcut', async () => {
+    const chat = createMockChat([]);
+    const wrapper = mountInspector(chat, []);
+
+    const button = wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]');
+
+    expect(button.exists()).toBe(true);
+    expect(button.attributes('disabled')).toBeUndefined();
+
+    await button.trigger('click');
+
+    expect(wrapper.emitted('enable-fake-lm')).toHaveLength(1);
+  });
+
   it('Scenario 1: Pure Linear Path (A -> B -> C)', async () => {
     const chat = createMockChat([
       createNode('A', 'user', 'A', [
@@ -151,8 +187,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const linearContainers = wrapper.findAll('.ml-0');
     expect(linearContainers.length).toBeGreaterThanOrEqual(2);
 
-    const nodeB = treeNodes.find(n => n.props().node.id === 'B');
-    const nodeC = treeNodes.find(n => n.props().node.id === 'C');
+    const nodeB = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'B');
+    const nodeC = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'C');
 
     expect(nodeB?.props().hasLinearParent).toBe(true);
     expect(nodeC?.props().hasLinearParent).toBe(true);
@@ -170,8 +206,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     await nextTick();
 
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
-    const nodeA = treeNodes.find(n => n.props().node.id === 'A');
-    const nodeB = treeNodes.find(n => n.props().node.id === 'B');
+    const nodeA = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'A');
+    const nodeB = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'B');
 
     expect(nodeA?.find('.absolute.left-\\[-24px\\]').exists()).toBe(true);
     expect(nodeB?.find('.absolute.left-\\[-24px\\]').exists()).toBe(true);
@@ -193,8 +229,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     await nextTick();
 
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
-    const nodeB = treeNodes.find(n => n.props().node.id === 'B');
-    const nodeD = treeNodes.find(n => n.props().node.id === 'D');
+    const nodeB = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'B');
+    const nodeD = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'D');
 
     expect(nodeB?.find('.h-px').exists()).toBe(true);
     expect(nodeD?.find('.h-px').exists()).toBe(false);
@@ -216,7 +252,7 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
 
     // Select node C
     const treeNodes = wrapper.findAllComponents(ChatDebugTreeNode);
-    const nodeC = treeNodes.find(n => n.props().node.id === 'C');
+    const nodeC = treeNodes.find(n => idToRaw({ id: n.props().node.id }) === 'C');
     await nodeC?.vm.$emit('select-node', nodeC.props().node);
     await nextTick();
 
@@ -224,9 +260,9 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     const detailNodes = detailPanel.findAllComponents(ChatDebugTreeNode);
 
     expect(detailNodes.length).toBe(3);
-    expect(detailNodes[0].props().node.id).toBe('A');
-    expect(detailNodes[1].props().node.id).toBe('B');
-    expect(detailNodes[2].props().node.id).toBe('C');
+    expect(idToRaw({ id: detailNodes[0].props().node.id })).toBe('A');
+    expect(idToRaw({ id: detailNodes[1].props().node.id })).toBe('B');
+    expect(idToRaw({ id: detailNodes[2].props().node.id })).toBe('C');
   });
 
   it('Scenario 5: Tree Map Collapsibility', async () => {
@@ -412,8 +448,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     // Branch A -> B (with image 1)
     // Branch A -> C (with image 2)
     const img1 = {
-      id: 'att-1',
-      binaryObjectId: 'obj-1',
+      id: toAttachmentId({ raw: 'att-1' }),
+      binaryObjectId: toBinaryObjectId({ raw: 'obj-1' }),
       mimeType: 'image/png',
       status: 'persisted' as const,
       originalName: 'img1.png',
@@ -421,8 +457,8 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
       uploadedAt: Date.now()
     };
     const img2 = {
-      id: 'att-2',
-      binaryObjectId: 'obj-2',
+      id: toAttachmentId({ raw: 'att-2' }),
+      binaryObjectId: toBinaryObjectId({ raw: 'obj-2' }),
       mimeType: 'image/png',
       status: 'persisted' as const,
       originalName: 'img2.png',
@@ -441,10 +477,10 @@ describe('ChatDebugInspector - Comprehensive Tree & Feature Tests', () => {
     ]);
 
     // Mock storageService.getBinaryObject to return valid objects
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getBinaryObject).mockImplementation(async ({ binaryObjectId }) => {
-      if (binaryObjectId === 'obj-1') return { id: 'obj-1', mimeType: 'image/png', name: 'img1.png' } as any;
-      if (binaryObjectId === 'obj-2') return { id: 'obj-2', mimeType: 'image/png', name: 'img2.png' } as any;
+      if (idToRaw({ id: binaryObjectId }) === 'obj-1') return { id: toBinaryObjectId({ raw: 'obj-1' }), mimeType: 'image/png', name: 'img1.png' } as any;
+      if (idToRaw({ id: binaryObjectId }) === 'obj-2') return { id: toBinaryObjectId({ raw: 'obj-2' }), mimeType: 'image/png', name: 'img2.png' } as any;
       return null;
     });
 

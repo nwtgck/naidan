@@ -159,7 +159,7 @@ describe('GeneratedImageBlock', () => {
 
   it('calls contextual preview handler when provided', async () => {
     const mockContextualPreview = vi.fn();
-    const { MESSAGE_CONTEXTUAL_PREVIEW_KEY } = await import('../../composables/useImagePreview');
+    const { MESSAGE_CONTEXTUAL_PREVIEW_KEY } = await import('@/composables/useImagePreview');
 
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['data'], { type: 'image/png' }));
 

@@ -1,42 +1,45 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs, ChatMessage, LmParameters, ToolCall } from '@/models/types'
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types'
 import type {
   ITransformersJsWorker,
   TransformersJsWorkerClient,
   WorkerToolDefinition,
   ProgressInfo,
   ModelLoadResult,
+  TransformersJsProgressCallback,
+  TransformersJsChunkCallback,
+  TransformersJsToolCallsCallback,
 } from '@/services/transformers-js/types'
 
 function createUnavailableEnvironmentError(): Error {
   return new Error('Transformers.js worker is not available in this environment')
 }
 
-export function createTransformersJsWorkerClient(_args: EmptyArgs): TransformersJsWorkerClient {
+export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   if (typeof Worker === 'undefined') {
     return {
-      async downloadModel(_args) {
+      async downloadModel({ modelId: _modelId, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError()
       },
-      async prefetchUrls(_args) {
+      async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError()
       },
-      async loadModel(_args) {
+      async loadModel({ modelId: _modelId, progressCallback: _progressCallback }) {
         throw createUnavailableEnvironmentError()
       },
-      async unloadModel(_args) {
+      async unloadModel() {
         throw createUnavailableEnvironmentError()
       },
-      async interrupt(_args) {
+      async interrupt() {
         throw createUnavailableEnvironmentError()
       },
-      async resetCache(_args) {
+      async resetCache() {
         throw createUnavailableEnvironmentError()
       },
-      async generateText(_args) {
+      async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools }) {
         throw createUnavailableEnvironmentError()
       },
-      async dispose(_args) {
+      async dispose() {
       },
     }
   }
@@ -51,47 +54,47 @@ export function createTransformersJsWorkerClient(_args: EmptyArgs): Transformers
   return {
     async downloadModel({ modelId, progressCallback }: {
       modelId: string
-      progressCallback: (x: ProgressInfo) => void
+      progressCallback: TransformersJsProgressCallback
     }): Promise<void> {
-      return remote.downloadModel(modelId, Comlink.proxy(progressCallback))
+      return remote.downloadModel(modelId, Comlink.proxy((info: ProgressInfo) => progressCallback({ info })))
     },
     async prefetchUrls({ urls, progressCallback }: {
       urls: string[]
-      progressCallback: (x: ProgressInfo) => void
+      progressCallback: TransformersJsProgressCallback
     }): Promise<void> {
-      return remote.prefetchUrls(urls, Comlink.proxy(progressCallback))
+      return remote.prefetchUrls(urls, Comlink.proxy((info: ProgressInfo) => progressCallback({ info })))
     },
     async loadModel({ modelId, progressCallback }: {
       modelId: string
-      progressCallback: (x: ProgressInfo) => void
+      progressCallback: TransformersJsProgressCallback
     }): Promise<ModelLoadResult> {
-      return remote.loadModel(modelId, Comlink.proxy(progressCallback))
+      return remote.loadModel(modelId, Comlink.proxy((info: ProgressInfo) => progressCallback({ info })))
     },
-    async unloadModel(_args: EmptyArgs): Promise<void> {
+    async unloadModel(): Promise<void> {
       return remote.unloadModel()
     },
-    async interrupt(_args: EmptyArgs): Promise<void> {
+    async interrupt(): Promise<void> {
       return remote.interrupt()
     },
-    async resetCache(_args: EmptyArgs): Promise<void> {
+    async resetCache(): Promise<void> {
       return remote.resetCache()
     },
     async generateText({ messages, onChunk, onToolCalls, params, tools }: {
       messages: ChatMessage[]
-      onChunk: (chunk: string) => void
-      onToolCalls: (toolCalls: ToolCall[]) => void
+      onChunk: TransformersJsChunkCallback
+      onToolCalls: TransformersJsToolCallsCallback
       params?: LmParameters
       tools?: WorkerToolDefinition[]
     }): Promise<void> {
       return remote.generateText(
         messages,
-        Comlink.proxy(onChunk),
-        Comlink.proxy(onToolCalls),
+        Comlink.proxy((chunk: string) => onChunk({ chunk })),
+        Comlink.proxy((toolCalls: ToolCall[]) => onToolCalls({ toolCalls })),
         params,
         tools
       )
     },
-    async dispose(_args: EmptyArgs): Promise<void> {
+    async dispose(): Promise<void> {
       try {
         await remote[Comlink.releaseProxy]()
       } finally {

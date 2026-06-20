@@ -1,3 +1,5 @@
+import type { ChatId, MessageId } from '@/models/ids';
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -106,16 +108,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -303,7 +305,7 @@ describe('ChatPane Concurrency Button State', () => {
 
     const mockSendMessage = vi.fn();
     // We need to return the mock in the useChat implementation
-    vi.spyOn(await import('../composables/useChat'), 'useChat').mockReturnValue({
+    vi.spyOn(await import('@/composables/useChat'), 'useChat').mockReturnValue({
       currentChat: mockCurrentChat,
       streaming: computed(() => mockActiveGenerations.size > 0),
       activeGenerations: mockActiveGenerations,

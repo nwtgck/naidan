@@ -1,3 +1,4 @@
+import type { ChatId } from '@/models/ids';
 import {
   abortContextCompactForChat,
   runCompactCurrentBranchForChat,
@@ -9,7 +10,7 @@ export type ChatCompactionAdapter = {
     keepRecentMessages,
     instructionOverride,
   }: {
-    chatId: string;
+    chatId: ChatId;
     keepRecentMessages: number;
     instructionOverride: string | undefined;
   }): Promise<boolean>;
@@ -17,19 +18,19 @@ export type ChatCompactionAdapter = {
   abort({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatCompaction(_args: Record<never, never>): ChatCompactionAdapter {
+export function useChatCompaction(): ChatCompactionAdapter {
   async function compactCurrentBranch({
     chatId,
     keepRecentMessages,
     instructionOverride,
   }: {
-    chatId: string;
+    chatId: ChatId;
     keepRecentMessages: number;
     instructionOverride: string | undefined;
   }): Promise<boolean> {
@@ -44,7 +45,7 @@ export function useChatCompaction(_args: Record<never, never>): ChatCompactionAd
   function abort({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     abortContextCompactForChat({
       chatId,

@@ -21,7 +21,7 @@ async function loadLicenses() {
   isLoadingLicenses.value = true;
   try {
     // Dynamic import to keep initial bundle small
-    const data = await import('../assets/licenses.json');
+    const data = await import('@/assets/licenses.json');
     ossLicenses.value = data.default;
   } catch (err) {
     console.error('Failed to load licenses:', err);

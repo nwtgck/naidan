@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { transformersJsService } from '@/services/transformers-js';
+import type { ProgressInfo } from '@/services/transformers-js/types';
 import {
   Loader2Icon, CheckCircle2Icon, AlertCircleIcon, DownloadIcon, FolderOpenIcon, RefreshCcwIcon, Trash2Icon,
   ChevronDownIcon, PlusIcon, HardDriveDownloadIcon, XIcon, BrainCircuitIcon, PowerOffIcon, ExternalLinkIcon, SearchIcon, FileCodeIcon, RotateCcwIcon
@@ -20,7 +21,8 @@ const emit = defineEmits<{
 
 const status = ref(transformersJsService.getState().status);
 const progress = ref(transformersJsService.getState().progress);
-const progressItems = ref(transformersJsService.getState().progressItems);
+const progressItems = ref<ReadonlyMap<string, ProgressInfo>>(transformersJsService.getState().progressItems);
+const progressItemEntries = computed(() => [...progressItems.value.entries()]);
 const totalLoadedAmount = ref(transformersJsService.getState().totalLoadedAmount);
 const totalSizeAmount = ref(transformersJsService.getState().totalSizeAmount);
 const error = ref(transformersJsService.getState().error);
@@ -128,7 +130,7 @@ useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ ev
 onMounted(async () => {
   searchQuery.value = '';
   await refreshLocalModels();
-  unsubscribe = transformersJsService.subscribe((s, p, e, c, l, items) => {
+  unsubscribe = transformersJsService.subscribe({ listener: ({ status: s, progress: p, error: e, isCached: c, isLoadingFromCache: l, progressItems: items }) => {
     status.value = s;
     progress.value = p;
     error.value = e;
@@ -140,10 +142,10 @@ onMounted(async () => {
     device.value = state.device;
     totalLoadedAmount.value = state.totalLoadedAmount;
     totalSizeAmount.value = state.totalSizeAmount;
-  });
-  unsubscribeList = transformersJsService.subscribeModelList(() => {
+  } });
+  unsubscribeList = transformersJsService.subscribeModelList({ listener: () => {
     refreshLocalModels();
-  });
+  } });
 });
 
 onUnmounted(() => {
@@ -264,7 +266,7 @@ const handleImportLocalModel = async ({ event }: { event: Event }) => {
     for (const file of files) {
       const fileName = file.webkitRelativePath.substring(pathSegments[0]!.length + 1);
       if (!fileName) continue;
-      await transformersJsService.importFile(modelName, fileName, file.stream());
+      await transformersJsService.importFile({ modelName, fileName, data: file.stream() });
       completed++;
       importProgress.value = Math.round((completed / files.length) * 100);
     }
@@ -453,7 +455,7 @@ defineExpose({
                 </div>
 
                 <!-- Detailed File Progress -->
-                <div v-if="progressItems && Object.keys(progressItems).length > 0" class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3 animate-in fade-in duration-500">
+                <div v-if="progressItems.size > 0" class="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3 animate-in fade-in duration-500">
                   <button
                     @click="isDetailsExpanded = !isDetailsExpanded"
                     class="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors uppercase tracking-widest mb-3"
@@ -463,7 +465,7 @@ defineExpose({
                   </button>
 
                   <div v-if="isDetailsExpanded" class="space-y-3 ml-1 border-l-2 border-gray-50 dark:border-gray-800/50 pl-3">
-                    <template v-for="(info, fileName) in progressItems" :key="fileName">
+                    <template v-for="[fileName, info] in progressItemEntries" :key="fileName">
                       <div v-if="info.progress !== undefined && info.progress < 100" class="space-y-1.5">
                         <div class="flex justify-between text-[8px] font-medium tracking-tight">
                           <div class="flex flex-col min-w-0">

@@ -16,7 +16,7 @@ const confirmConfirmButtonText = ref('Confirm');
 const confirmCancelButtonText = ref('Cancel');
 const confirmButtonVariant = ref<'default' | 'danger'>('default'); // New ref for variant
 const confirmIcon = shallowRef<Component | undefined>(undefined); // Use shallowRef for components
-let resolvePromise: ((value: boolean) => void) | undefined;
+let resolvePromise: ReturnType<typeof Promise.withResolvers<boolean>>['resolve'] | undefined;
 
 export function useConfirm() {
   const showConfirm = ({ title, message, confirmButtonText, cancelButtonText, confirmButtonVariant: buttonVariant, icon }: ConfirmOptions): Promise<boolean> => {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useGlobalEvents, type GlobalEvent } from '@/composables/useGlobalEvents';
-import { useOPFSExplorer } from '@/composables/useOPFSExplorer';
+import { useFileExplorerModal } from '@/composables/useFileExplorerModal';
 import { useLayout } from '@/composables/useLayout';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {
@@ -10,7 +10,7 @@ import {
 } from 'lucide-vue-next';
 
 const { events, eventCount, errorCount, clearEvents, addErrorEvent, addInfoEvent } = useGlobalEvents();
-const { openOPFS } = useOPFSExplorer();
+const { openFileExplorer } = useFileExplorerModal();
 const { isDebugOpen, toggleDebug } = useLayout();
 const isMenuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
@@ -80,6 +80,11 @@ function handleClickOutside({ event }: { event: MouseEvent }) {
   if (menuRef.value && !menuRef.value.contains(event.target as Node)) {
     isMenuOpen.value = false;
   }
+}
+
+function openOPFSRootExplorer() {
+  openFileExplorer({ options: { kind: 'opfs-root' } });
+  isMenuOpen.value = false;
 }
 
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutside({ event }));
@@ -170,7 +175,7 @@ defineExpose({
           </button>
           <div class="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
           <button
-            @click.stop="openOPFS"
+            @click.stop="openOPFSRootExplorer"
             class="w-full flex items-center gap-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             data-testid="open-opfs-explorer"
           >

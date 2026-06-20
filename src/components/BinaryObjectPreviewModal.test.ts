@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import BinaryObjectPreviewModal from './BinaryObjectPreviewModal.vue';
 import { storageService } from '@/services/storage';
 import type { BinaryObject } from '@/models/types';
+import { toBinaryObjectId } from '@/models/ids';
 
 // --- Mocks ---
 
@@ -22,9 +23,9 @@ vi.stubGlobal('URL', {
 // --- Test Data ---
 
 const mockObjects: BinaryObject[] = [
-  { id: '1', name: 'image1.png', mimeType: 'image/png', size: 1024, createdAt: 1000 },
-  { id: '2', name: 'image2.jpg', mimeType: 'image/jpeg', size: 2048, createdAt: 2000 },
-  { id: '3', name: 'doc.pdf', mimeType: 'application/pdf', size: 512, createdAt: 500 },
+  { id: toBinaryObjectId({ raw: '1' }), name: 'image1.png', mimeType: 'image/png', size: 1024, createdAt: 1000 },
+  { id: toBinaryObjectId({ raw: '2' }), name: 'image2.jpg', mimeType: 'image/jpeg', size: 2048, createdAt: 2000 },
+  { id: toBinaryObjectId({ raw: '3' }), name: 'doc.pdf', mimeType: 'application/pdf', size: 512, createdAt: 500 },
 ];
 
 const globalStubs = {
@@ -41,7 +42,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['mock data'], { type: 'image/png' }));
   });
 
-  const mountModal = (initialId = '1') => {
+  const mountModal = (initialId = toBinaryObjectId({ raw: '1' })) => {
     return mount(BinaryObjectPreviewModal, {
       props: {
         objects: mockObjects,
@@ -54,7 +55,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   };
 
   it('renders initial object correctly', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     expect(wrapper.get('[data-testid="preview-filename"]').text()).toContain('image1.png');
@@ -64,7 +65,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('navigates to next object with button', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     const nextBtn = wrapper.get('[data-testid="preview-next-btn"]');
@@ -79,7 +80,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('navigates to next object with keyboard', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
@@ -92,7 +93,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('navigates to previous object with keyboard', async () => {
-    const wrapper = mountModal('2');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '2' }));
     await flushPromises();
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
@@ -105,13 +106,13 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('closes on Escape key', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(wrapper.emitted()).toHaveProperty('close');
   });
 
   it('zooms in and out with wheel', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     const container = wrapper.find('.w-full.h-full.p-0');
@@ -128,7 +129,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('performs focal-point zooming relative to mouse position', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     const container = wrapper.find('.w-full.h-full.p-0');
@@ -168,7 +169,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('drags image when zoomed', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     const container = wrapper.find('.w-full.h-full.p-0');
@@ -182,7 +183,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('respects zoom limits', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     const container = wrapper.find('.w-full.h-full.p-0');
@@ -201,7 +202,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('resets zoom and position when navigating', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     (wrapper.vm as any).zoom = 2;
@@ -216,7 +217,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('does not navigate past boundaries', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     // Prev at start
@@ -235,7 +236,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('resets zoom with button', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     (wrapper.vm as any).zoom = 2;
@@ -251,7 +252,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
     };
     vi.stubGlobal('navigator', { clipboard: mockClipboard });
 
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     const copyBtn = wrapper.get('[data-testid="preview-copy-name-btn"]');
@@ -268,7 +269,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('emits delete event', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     const deleteBtn = wrapper.get('[data-testid="preview-delete-btn"]');
     await deleteBtn.trigger('click');
 
@@ -277,7 +278,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('emits download event', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     const downloadBtn = wrapper.get('[data-testid="preview-download-btn"]');
     await downloadBtn.trigger('click');
 
@@ -286,7 +287,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
   });
 
   it('hides controls after timeout during zoom', async () => {
-    const wrapper = mountModal('1');
+    const wrapper = mountModal(toBinaryObjectId({ raw: '1' }));
     await flushPromises();
 
     // Zoom in to trigger auto-hide logic
@@ -306,7 +307,7 @@ describe('BinaryObjectPreviewModal.vue', () => {
 
   it('shows non-image placeholder', async () => {
     vi.mocked(storageService.getFile).mockResolvedValue(new Blob(['pdf data'], { type: 'application/pdf' }));
-    const wrapper = mountModal('3'); // doc.pdf
+    const wrapper = mountModal(toBinaryObjectId({ raw: '3' })); // doc.pdf
     await flushPromises();
     await vi.runAllTimersAsync();
     await flushPromises();

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
 import type { Chat, Hierarchy } from '@/models/types';
+import { toChatId, toMessageId } from '@/models/ids';
 
 /**
  * Multi-Tab Stress & Glitch Tests
@@ -21,8 +22,8 @@ const { mocks } = vi.hoisted(() => ({
 vi.mock('../services/storage', () => ({
   storageService: {
     init: vi.fn(),
-    subscribeToChanges: vi.fn().mockImplementation((cb) => {
-      mocks.mockNotify = cb;
+    subscribeToChanges: vi.fn().mockImplementation(({ listener }) => {
+      mocks.mockNotify = (event: any) => listener({ event });
       return () => {};
     }),
     listChats: vi.fn().mockImplementation(() => Promise.resolve([])),
@@ -41,17 +42,17 @@ vi.mock('../services/storage', () => ({
       if (!chat) return null;
       return JSON.parse(JSON.stringify({ root: chat.root, currentLeafId: chat.currentLeafId }));
     }),
-    updateChatMeta: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(async ({ id, updater }) => {
       const current = mocks.mockChatStorage.get(id) || null;
-      const updated = await updater(current);
+      const updated = await updater({ current: current });
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updated)));
       if (mocks.mockNotify) mocks.mockNotify({ type: 'chat_meta_and_chat_group', id });
       return Promise.resolve();
     }),
-    updateChatContent: vi.fn().mockImplementation(async (id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(async ({ id, updater }) => {
       const currentFull = mocks.mockChatStorage.get(id) || null;
       const currentContent = currentFull ? { root: currentFull.root, currentLeafId: currentFull.currentLeafId } : null;
-      const updatedContent = await updater(currentContent);
+      const updatedContent = await updater({ current: currentContent });
 
       const updatedFull = currentFull ? { ...currentFull, ...updatedContent } : { id, ...updatedContent };
       mocks.mockChatStorage.set(id, JSON.parse(JSON.stringify(updatedFull)));
@@ -82,10 +83,10 @@ vi.mock('./useSettings', () => ({
 vi.mock('./useConfirm', () => ({ useConfirm: () => ({ showConfirm: vi.fn().mockResolvedValue(true) }) }));
 vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
-const mockLlmChat = vi.fn();
+const mockLmChat = vi.fn();
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
-    return { chat: (...args: any[]) => mockLlmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
+    return { chat: (...args: any[]) => mockLmChat(...args), listModels: vi.fn().mockResolvedValue(['gpt-4']) };
   },
 }));
 
@@ -111,9 +112,9 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
     const chatStoreB = useChat();
 
     const chat1: Chat = {
-      id: 'c1', title: 'C1',
-      root: { items: [{ id: 'm1', role: 'user', content: 'Hi', replies: { items: [{ id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, timestamp: 0 }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: 'a1'
+      id: toChatId({ raw: 'c1' }), title: 'C1',
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Hi', replies: { items: [{ id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, timestamp: 0 }] },
+      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'a1' })
     };
     mocks.mockChatStorage.set('c1', chat1);
 
@@ -124,7 +125,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
       const now = i * 100;
       vi.setSystemTime(now);
       if (i % 5 === 0 || i === 49) {
-        await storageService.updateChatContent('c1', () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }));
+        await storageService.updateChatContent({ id: toChatId({ raw: 'c1' }), updater: () => ({ root: chat1.root, currentLeafId: chat1.currentLeafId }) });
       }
     }
 
@@ -135,7 +136,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
 
   it('Reliability: Tab B should not lose selection if storage is temporarily busy/null', async () => {
     const chatStoreB = useChat();
-    const chat1: Chat = { id: 'c1', title: 'C1', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const chat1: Chat = { id: toChatId({ raw: 'c1' }), title: 'C1', root: { items: [] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
     mocks.mockChatStorage.set('c1', chat1);
 
     await chatStoreB.openChat({ id: 'c1' });
@@ -160,7 +161,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
       activeSaves--;
     });
 
-    const chat: Chat = { id: 'c1', title: 'T', root: { items: [{ id: 'a1', role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
+    const chat: Chat = { id: toChatId({ raw: 'c1' }), title: 'T', root: { items: [{ id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: 0, replies: { items: [] } }] }, createdAt: 0, updatedAt: 0, debugEnabled: false };
 
     vi.useRealTimers();
 
@@ -177,11 +178,11 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
         if (now - lastSave > 10 && !isSaving) {
           isSaving = true;
           try {
-            await storageService.updateChatContent(chat.id, (current) => ({
+            await storageService.updateChatContent({ id: chat.id, updater: ({ current }) => ({
               ...current,
               root: chat.root,
               currentLeafId: chat.currentLeafId
-            }));
+            }) });
             lastSave = Date.now();
           } finally {
             isSaving = false;
@@ -199,7 +200,7 @@ describe('useChat Multi-Tab Stress Scenarios', () => {
 
   it('Reliability: sidebar should update eventually even during continuous event stream (Starvation Test)', async () => {
     const chatStore = useChat();
-    await chatStore.loadChats({});
+    await chatStore.loadChats();
     expect(chatStore.rootItems.value).toHaveLength(0);
 
     mocks.mockRootItems.push({ id: 'chat:ext', type: 'chat', chat: { id: 'ext', title: 'External', updatedAt: Date.now(), groupId: null } });

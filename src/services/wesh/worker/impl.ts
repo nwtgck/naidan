@@ -1,5 +1,6 @@
+import { z } from 'zod'
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { Wesh } from '@/services/wesh'
 import { NaidanSysfsProvider } from '@/services/wesh/naidan-sysfs/provider'
 import {
@@ -17,50 +18,138 @@ import {
   weshWorkerInitRequestSchema,
   weshWorkerInterruptExecutionRequestSchema,
   weshWorkerStartExecutionResponseSchema,
+  weshWorkerShellStateSchema,
+  weshWorkerCommandEntrySchema,
+  weshWorkerListDirectoryRequestSchema,
+  weshWorkerDirectoryEntrySchema,
   type IWeshWorker,
   type WeshWorkerRemoteExecutionEvent,
   type WeshWorkerExecutionSummary,
 } from './types'
+
+const FORWARDING_BUFFER_LIMIT_BYTES = 32 * 1024
+const FORWARDING_BUFFER_DELAY_MS = 10
 
 function createForwardingHandle({
   stream,
   onEvent,
 }: {
   stream: 'stdout' | 'stderr'
-  onEvent: (event: WeshWorkerRemoteExecutionEvent) => Promise<void>
+  onEvent: ({ event }: { event: WeshWorkerRemoteExecutionEvent }) => Promise<void>
 }) {
-  const toTransferableBuffer = ({ chunk }: {
-    chunk: Uint8Array
-  }): ArrayBuffer => {
-    if (
-      chunk.byteOffset === 0
-      && chunk.byteLength === chunk.buffer.byteLength
-      && chunk.buffer instanceof ArrayBuffer
-    ) {
-      return chunk.buffer
+  let chunks: Uint8Array[] = []
+  let bufferedBytes = 0
+  let flushTimer: ReturnType<typeof setTimeout> | undefined
+  let sendChain: Promise<void> = Promise.resolve()
+  let flushFailure: { error: unknown } | undefined
+
+  const clearFlushTimer = (): void => {
+    if (flushTimer === undefined) {
+      return
     }
-    return chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer
+    clearTimeout(flushTimer)
+    flushTimer = undefined
+  }
+
+  const combineBufferedChunks = (): ArrayBuffer | undefined => {
+    if (bufferedBytes === 0) {
+      return undefined
+    }
+
+    if (chunks.length === 1) {
+      const [chunk] = chunks
+      if (
+        chunk !== undefined
+        && chunk.byteOffset === 0
+        && chunk.byteLength === chunk.buffer.byteLength
+        && chunk.buffer instanceof ArrayBuffer
+      ) {
+        chunks = []
+        bufferedBytes = 0
+        return chunk.buffer
+      }
+    }
+
+    const combined = new Uint8Array(bufferedBytes)
+    let offset = 0
+    for (const chunk of chunks) {
+      combined.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    chunks = []
+    bufferedBytes = 0
+    return combined.buffer
+  }
+
+  const throwStoredFlushFailure = (): void => {
+    if (flushFailure !== undefined) {
+      throw flushFailure.error
+    }
+  }
+
+  const flush = async (): Promise<void> => {
+    clearFlushTimer()
+    throwStoredFlushFailure()
+    const buffer = combineBufferedChunks()
+    if (buffer !== undefined) {
+      sendChain = sendChain.then(async () => {
+        await onEvent({
+          event: Comlink.transfer({
+            type: stream,
+            buffer,
+          }, [buffer]),
+        })
+      })
+    }
+
+    try {
+      await sendChain
+    } catch (error: unknown) {
+      flushFailure = { error }
+      throw error
+    }
+  }
+
+  const scheduleFlush = (): void => {
+    if (flushTimer !== undefined) {
+      return
+    }
+    flushTimer = setTimeout(() => {
+      flushTimer = undefined
+      void flush().catch((error: unknown) => {
+        flushFailure = { error }
+      })
+    }, FORWARDING_BUFFER_DELAY_MS)
   }
 
   const handle = createWriteHandleFromStream({
     target: new WritableStream({
       async write(chunk) {
-        const buffer = toTransferableBuffer({ chunk })
-
-        await onEvent(Comlink.transfer({
-          type: stream,
-          buffer,
-        }, [buffer]))
+        throwStoredFlushFailure()
+        chunks.push(chunk)
+        bufferedBytes += chunk.byteLength
+        if (bufferedBytes >= FORWARDING_BUFFER_LIMIT_BYTES) {
+          await flush()
+          return
+        }
+        scheduleFlush()
+      },
+      async close() {
+        await flush()
+      },
+      async abort() {
+        await flush()
       },
     }),
   })
 
   return {
     handle,
+    flush,
   }
 }
 
-export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
+export function createWeshWorker(): IWeshWorker {
   let wesh: Wesh | undefined
   let nextExecutionId = 1
   const executions = new Map<string, {
@@ -68,6 +157,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
   }>()
 
   return {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     async init(requestOrOptions, naidanSysfsRemoteReader) {
       const normalizedRequest = (() => {
         if (
@@ -104,7 +194,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
           const reader = await (() => {
             switch (mount.storageType) {
             case 'opfs':
-              return createOpfsNaidanSysfsStorageReader({})
+              return createOpfsNaidanSysfsStorageReader()
             case 'local':
             case 'memory':
               if (naidanSysfsRemoteReader === undefined) {
@@ -140,6 +230,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       }
     },
 
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     async startExecution(request, onEvent) {
       if (!wesh) {
         throw new Error('Wesh worker is not initialized')
@@ -148,7 +239,7 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       const validated = weshWorkerExecuteRequestSchema.parse(request)
       const executionId = `wesh-exec-${nextExecutionId}`
       nextExecutionId += 1
-      const emit = async (event: WeshWorkerRemoteExecutionEvent) => {
+      const emit = async ({ event }: { event: WeshWorkerRemoteExecutionEvent }) => {
         await onEvent?.(event)
       }
       const stdoutCapture = createForwardingHandle({
@@ -162,26 +253,60 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       const stdin = createTestReadHandleFromText({ text: '' })
       const completion = (async () => {
         try {
-          await emit({ type: 'started' })
+          await emit({ event: { type: 'started' } })
           const result = await wesh.execute({
             script: validated.script,
             stdin,
             stdout: stdoutCapture.handle,
             stderr: stderrCapture.handle,
           })
-          await emit({ type: 'exit', exitCode: result.exitCode })
+          await Promise.all([
+            stdoutCapture.flush(),
+            stderrCapture.flush(),
+          ])
+          await emit({ event: { type: 'exit', exitCode: result.exitCode } })
 
           return weshWorkerExecutionSummarySchema.parse({
             exitCode: result.exitCode,
           })
-        } catch (error) {
-          await emit({
-            type: 'error',
-            message: error instanceof Error ? error.message : String(error),
-          })
+        } catch (error: unknown) {
+          const forwardingErrors: unknown[] = []
+          const flushResults = await Promise.allSettled([
+            stdoutCapture.flush(),
+            stderrCapture.flush(),
+          ])
+          for (const result of flushResults) {
+            switch (result.status) {
+            case 'fulfilled':
+              break
+            case 'rejected':
+              forwardingErrors.push(result.reason)
+              break
+            default: {
+              const _exhaustive: never = result
+              throw new Error(`Unhandled promise result: ${String(_exhaustive)}`)
+            }
+            }
+          }
+          try {
+            await emit({
+              event: {
+                type: 'error',
+                message: error instanceof Error ? error.message : String(error),
+              },
+            })
+          } catch (eventError: unknown) {
+            forwardingErrors.push(eventError)
+          }
+          if (forwardingErrors.length > 0) {
+            throw new AggregateError(
+              [error, ...forwardingErrors],
+              'Wesh execution failed while forwarding worker events',
+            )
+          }
           throw error
         } finally {
-          await Promise.all([
+          await Promise.allSettled([
             stdoutCapture.handle.close(),
             stderrCapture.handle.close(),
             stdin.close(),
@@ -228,14 +353,37 @@ export function createWeshWorker(_args: EmptyArgs): IWeshWorker {
       }
     },
 
-    async interrupt(_args: EmptyArgs) {
+    async getShellState() {
+      if (!wesh) {
+        throw new Error('Wesh worker is not initialized')
+      }
+      return weshWorkerShellStateSchema.parse(wesh.getShellState())
+    },
+
+    async listCommands() {
+      if (!wesh) {
+        throw new Error('Wesh worker is not initialized')
+      }
+      return z.array(weshWorkerCommandEntrySchema).parse(wesh.listCommands())
+    },
+
+    async listDirectory({ request }) {
+      if (!wesh) {
+        throw new Error('Wesh worker is not initialized')
+      }
+      const validated = weshWorkerListDirectoryRequestSchema.parse(request)
+      const entries = await wesh.listDirectory({ path: validated.path })
+      return z.array(weshWorkerDirectoryEntrySchema).parse(entries)
+    },
+
+    async interrupt() {
       if (!wesh) {
         return false
       }
       return wesh.signalForegroundProcessGroup({ signal: 2 })
     },
 
-    async dispose(_args: EmptyArgs) {
+    async dispose() {
       wesh = undefined
     },
   }

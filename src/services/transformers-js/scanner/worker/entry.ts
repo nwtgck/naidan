@@ -56,7 +56,7 @@ let lastHeavyMockUrl: string | undefined;
 let lastMetadataFetchUrl: string | undefined;
 
 // Intercept fetch to collect URLs and mock heavy files
-const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+const interceptedFetch: typeof self.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
   fetchCount += 1;
   lastFetchUrl = url;

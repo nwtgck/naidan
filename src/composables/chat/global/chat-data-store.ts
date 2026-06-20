@@ -1,15 +1,23 @@
 import { isProxy, reactive, ref, toRaw, triggerRef, watch, type Ref } from 'vue';
+import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
+import type { ScopedSettingChange } from '@/models/scoped-setting-change';
 import type { Chat, ChatContent, ChatGroup, ChatMeta, SidebarItem } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { findDeepestLeaf, findNodeInBranch } from '@/utils/chat-tree';
+import { idToRaw, toChatId } from '@/models/ids';
+import {
+  applyScopedSettingChangesToChat,
+  applyScopedSettingChangesToChatMeta,
+  cloneScopedSettingChanges,
+} from '@/utils/scoped-setting-changes';
 
 export type ChatDataStore = {
   rootItems: Ref<SidebarItem[]>;
   currentChatRef: Ref<Chat | null>;
   currentChatGroupRef: Ref<ChatGroup | null>;
-  liveChatRegistry: Map<string, Chat>;
+  liveChatRegistry: Map<ChatId, Chat>;
 
-  loadData(_args: Record<never, never>): Promise<void>;
+  loadData(): Promise<void>;
   replaceSidebarItems({
     items,
   }: {
@@ -25,7 +33,7 @@ export type ChatDataStore = {
   unregisterLiveInstance({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): void;
 
   getLiveChat({
@@ -37,51 +45,61 @@ export type ChatDataStore = {
   getLiveChatById({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Chat | null;
 
   getReadonlyChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Readonly<Chat> | null;
 
   openChat({
     id,
     leafId,
   }: {
-    id: string;
-    leafId: string | undefined;
+    id: ChatId;
+    leafId: MessageId | undefined;
   }): Promise<Chat | null>;
 
   openChatAtMessage({
     chatId,
     messageId,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
   }): Promise<Chat | null>;
 
   openChatGroup({
     id,
   }: {
-    id: string | null;
+    id: ChatGroupId | null;
   }): void;
 
   updateChatContent({
     id,
     updater,
   }: {
-    id: string;
-    updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>;
+    id: ChatId;
+
+    updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>;
   }): Promise<void>;
 
   updateChatMeta({
     id,
     updater,
   }: {
-    id: string;
-    updater: (current: Chat | null) => Chat | Promise<Chat>;
+    id: ChatId;
+
+    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
+  }): Promise<void>;
+
+  updateChatScopedSettings({
+    chatId,
+    changes,
+  }: {
+    chatId: ChatId;
+    changes: readonly ScopedSettingChange[];
   }): Promise<void>;
 };
 
@@ -95,17 +113,18 @@ export function createChatDataStore({
   onMigration,
 }: {
   applyVolatileAssistantErrorsToChat: ({ chat }: { chat: Chat }) => void;
-  hasActiveGeneration: ({ chatId }: { chatId: string }) => boolean;
-  isTaskRunning: ({ chatId }: { chatId: string }) => boolean;
-  onExternalGenerationStarted: ({ chatId }: { chatId: string }) => void;
-  onExternalGenerationStopped: ({ chatId }: { chatId: string }) => void;
-  onExternalGenerationAbortRequest: ({ chatId }: { chatId: string }) => void;
-  onMigration: (_args: Record<never, never>) => void;
+  hasActiveGeneration: ({ chatId }: { chatId: ChatId }) => boolean;
+  isTaskRunning: ({ chatId }: { chatId: ChatId }) => boolean;
+  onExternalGenerationStarted: ({ chatId }: { chatId: ChatId }) => void;
+  onExternalGenerationStopped: ({ chatId }: { chatId: ChatId }) => void;
+  onExternalGenerationAbortRequest: ({ chatId }: { chatId: ChatId }) => void;
+  onMigration: () => void;
 }): ChatDataStore {
   const rootItems = ref<SidebarItem[]>([]);
   const currentChatRef = ref<Chat | null>(null);
   const currentChatGroupRef = ref<ChatGroup | null>(null);
-  const liveChatRegistry = reactive(new Map<string, Chat>());
+  const liveChatRegistry = reactive(new Map<ChatId, Chat>());
+  const scopedSettingUpdateQueues = new Map<ChatId, Promise<void>>();
 
   function registerLiveInstance({
     chat,
@@ -129,7 +148,7 @@ export function createChatDataStore({
   function unregisterLiveInstance({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) return;
     if (!isTaskRunning({ chatId })) {
@@ -142,13 +161,13 @@ export function createChatDataStore({
     if (newChat) registerLiveInstance({ chat: newChat });
   });
 
-  function syncLiveInstancesWithSidebar(_args: Record<never, never>) {
+  function syncLiveInstancesWithSidebar() {
     const sync = ({
       items,
       parentGroupId,
     }: {
       items: SidebarItem[];
-      parentGroupId: string | null;
+      parentGroupId: ChatGroupId | null;
     }) => {
       for (const item of items) {
         switch (item.type) {
@@ -178,10 +197,10 @@ export function createChatDataStore({
   const THROTTLE_MS = 200;
   let lastSidebarReload = 0;
 
-  function loadData(_args: Record<never, never>) {
+  function loadData() {
     return storageService.getSidebarStructure().then((sidebarStructure) => {
       rootItems.value = sidebarStructure;
-      syncLiveInstancesWithSidebar({});
+      syncLiveInstancesWithSidebar();
     });
   }
 
@@ -191,31 +210,31 @@ export function createChatDataStore({
     items: SidebarItem[];
   }) {
     rootItems.value = items;
-    syncLiveInstancesWithSidebar({});
+    syncLiveInstancesWithSidebar();
   }
 
-  function debouncedSidebarReload(_args: Record<never, never>) {
+  function debouncedSidebarReload() {
     const now = Date.now();
 
-    const performReload = async (_innerArgs: Record<never, never>) => {
+    const performReload = async () => {
       if (sidebarReloadTimeout) {
         clearTimeout(sidebarReloadTimeout);
         sidebarReloadTimeout = null;
       }
 
-      await loadData({});
+      await loadData();
       lastSidebarReload = Date.now();
     };
 
     if (now - lastSidebarReload > THROTTLE_MS) {
-      void performReload({});
+      void performReload();
       return;
     }
 
     if (!sidebarReloadTimeout) {
       const delay = THROTTLE_MS - (now - lastSidebarReload);
       sidebarReloadTimeout = setTimeout(() => {
-        void performReload({});
+        void performReload();
       }, delay);
     }
   }
@@ -245,7 +264,7 @@ export function createChatDataStore({
   function getLiveChatById({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Chat | null {
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
       return currentChatRef.value;
@@ -257,7 +276,7 @@ export function createChatDataStore({
   function getReadonlyChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Readonly<Chat> | null {
     const liveChat = getLiveChatById({ chatId });
     return liveChat;
@@ -267,12 +286,13 @@ export function createChatDataStore({
     id,
     updater,
   }: {
-    id: string;
-    updater: (current: ChatContent | null) => ChatContent | Promise<ChatContent>;
+    id: ChatId;
+
+    updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>;
   }) {
     const existing = liveChatRegistry.get(id);
     if (existing) {
-      const updated = await updater({ root: existing.root, currentLeafId: existing.currentLeafId });
+      const updated = await updater({ current: { root: existing.root, currentLeafId: existing.currentLeafId } });
       existing.root = updated.root;
       existing.currentLeafId = updated.currentLeafId;
       if (currentChatRef.value && toRaw(currentChatRef.value).id === id) {
@@ -280,28 +300,29 @@ export function createChatDataStore({
       }
     }
 
-    await storageService.updateChatContent(id, updater);
+    await storageService.updateChatContent({ id: id, updater: updater });
   }
 
   async function updateChatMeta({
     id,
     updater,
   }: {
-    id: string;
-    updater: (current: Chat | null) => Chat | Promise<Chat>;
+    id: ChatId;
+
+    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
   }) {
     const existing = liveChatRegistry.get(id);
     if (existing) {
-      const updated = await updater(toRaw(existing));
+      const updated = await updater({ current: toRaw(existing) });
       Object.assign(existing, updated);
       if (currentChatRef.value && toRaw(currentChatRef.value).id === id) {
         triggerRef(currentChatRef);
       }
     }
 
-    await storageService.updateChatMeta(id, async (curr) => {
+    await storageService.updateChatMeta({ id: id, updater: async ({ current: curr }) => {
       const fullChat = curr ? await storageService.loadChat({ id }) : null;
-      const updatedFull = await updater(fullChat);
+      const updatedFull = await updater({ current: fullChat });
       if (!updatedFull) return curr!;
       const { root: _r, endpointType, endpointUrl, endpointHttpHeaders, ...meta } = updatedFull;
       return {
@@ -314,15 +335,83 @@ export function createChatDataStore({
           },
         }),
       } as ChatMeta;
-    });
+    } });
+  }
+
+  async function updateChatScopedSettings({
+    chatId,
+    changes,
+  }: {
+    chatId: ChatId;
+    changes: readonly ScopedSettingChange[];
+  }): Promise<void> {
+    if (changes.length === 0) return;
+
+    const queuedChanges = cloneScopedSettingChanges({ changes });
+    const previous = scopedSettingUpdateQueues.get(chatId) ?? Promise.resolve();
+    const operation = previous
+      .catch(() => undefined)
+      .then(async () => {
+        let persistedUpdatedAt: number | undefined;
+        await storageService.updateChatMeta({
+          id: chatId,
+          updater: ({ current }) => {
+            if (current === null) {
+              throw new Error('Chat not found');
+            }
+
+            // Derive the timestamp from the latest persisted value inside the
+            // storage lock. This prevents a queued or clock-skewed update from
+            // moving updatedAt backwards.
+            persistedUpdatedAt = Math.max(Date.now(), current.updatedAt + 1);
+            return applyScopedSettingChangesToChatMeta({
+              current,
+              changes: queuedChanges,
+              updatedAt: persistedUpdatedAt,
+            });
+          },
+        });
+
+        const existing = liveChatRegistry.get(chatId);
+        if (existing === undefined) return;
+        const current = toRaw(existing);
+        const updated = applyScopedSettingChangesToChat({
+          current,
+          changes: queuedChanges,
+          // Keep live state monotonic even if a custom storage adapter
+          // short-circuits without invoking the updater.
+          updatedAt: Math.max(
+            persistedUpdatedAt ?? Date.now(),
+            current.updatedAt + 1,
+          ),
+        });
+        Object.assign(existing, updated);
+        if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
+          triggerRef(currentChatRef);
+        }
+      });
+
+    const queueTail = operation.then(
+      () => undefined,
+      () => undefined,
+    );
+    scopedSettingUpdateQueues.set(chatId, queueTail);
+
+    try {
+      await operation;
+    } finally {
+      if (scopedSettingUpdateQueues.get(chatId) === queueTail) {
+        scopedSettingUpdateQueues.delete(chatId);
+      }
+    }
   }
 
   async function openChat({
     id,
     leafId,
   }: {
-    id: string;
-    leafId: string | undefined;
+    id: ChatId;
+    leafId: MessageId | undefined;
   }) {
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
@@ -330,7 +419,7 @@ export function createChatDataStore({
         const node = findNodeInBranch({ items: chat.root.items, targetId: leafId });
         if (node) {
           chat.currentLeafId = leafId;
-          void storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
+          void storageService.updateChatContent({ id: id, updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
         }
       }
       currentChatGroupRef.value = null;
@@ -344,7 +433,7 @@ export function createChatDataStore({
         const node = findNodeInBranch({ items: loaded.root.items, targetId: leafId });
         if (node) {
           loaded.currentLeafId = leafId;
-          void storageService.updateChatContent(id, (curr) => ({ ...curr!, currentLeafId: leafId }));
+          void storageService.updateChatContent({ id: id, updater: ({ current: curr }) => ({ ...curr!, currentLeafId: leafId }) });
         }
       }
       applyVolatileAssistantErrorsToChat({ chat: loaded });
@@ -364,8 +453,8 @@ export function createChatDataStore({
     chatId,
     messageId,
   }: {
-    chatId: string;
-    messageId: string;
+    chatId: ChatId;
+    messageId: MessageId;
   }) {
     const chat = await openChat({ id: chatId, leafId: undefined });
     if (!chat) return null;
@@ -384,7 +473,7 @@ export function createChatDataStore({
   function openChatGroup({
     id,
   }: {
-    id: string | null;
+    id: ChatGroupId | null;
   }) {
     if (id === null) {
       currentChatGroupRef.value = null;
@@ -411,40 +500,42 @@ export function createChatDataStore({
     }
   }
 
-  storageService.subscribeToChanges(async (event) => {
+  storageService.subscribeToChanges({ listener: async ({ event }) => {
     switch (event.type) {
     case 'chat_meta_and_chat_group': {
-      debouncedSidebarReload({});
+      debouncedSidebarReload();
 
-      if (event.id && currentChatRef.value && toRaw(currentChatRef.value).id === event.id) {
-        const fresh = await storageService.loadChat({ id: event.id });
+      if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
+        const chatId = toChatId({ raw: event.id });
+        const fresh = await storageService.loadChat({ id: chatId });
         if (fresh && currentChatRef.value) {
           applyVolatileAssistantErrorsToChat({ chat: fresh });
           Object.assign(currentChatRef.value, fresh);
           triggerRef(currentChatRef);
-        } else if (!hasActiveGeneration({ chatId: event.id })) {
+        } else if (!hasActiveGeneration({ chatId })) {
           currentChatRef.value = null;
         }
       }
 
-      if (event.id && currentChatGroupRef.value?.id === event.id) {
+      if (event.id && currentChatGroupRef.value && idToRaw({ id: currentChatGroupRef.value.id }) === event.id) {
         const allGroups = await storageService.listChatGroups();
-        currentChatGroupRef.value = allGroups.find((group) => group.id === event.id) || null;
+        currentChatGroupRef.value = allGroups.find((group) => idToRaw({ id: group.id }) === event.id) || null;
       }
       break;
     }
     case 'chat_content_generation': {
+      const chatId = toChatId({ raw: event.id });
       switch (event.status) {
       case 'started':
-        if (!hasActiveGeneration({ chatId: event.id })) {
-          onExternalGenerationStarted({ chatId: event.id });
+        if (!hasActiveGeneration({ chatId })) {
+          onExternalGenerationStarted({ chatId });
         }
         break;
       case 'stopped':
-        onExternalGenerationStopped({ chatId: event.id });
+        onExternalGenerationStopped({ chatId });
         break;
       case 'abort_request':
-        onExternalGenerationAbortRequest({ chatId: event.id });
+        onExternalGenerationAbortRequest({ chatId });
         break;
       default: {
         const _ex: never = event.status;
@@ -454,9 +545,10 @@ export function createChatDataStore({
       break;
     }
     case 'chat_content': {
-      if (event.id && currentChatRef.value && toRaw(currentChatRef.value).id === event.id) {
-        if (!hasActiveGeneration({ chatId: event.id })) {
-          const fresh = await storageService.loadChat({ id: event.id });
+      if (event.id && currentChatRef.value && idToRaw({ id: toRaw(currentChatRef.value).id }) === event.id) {
+        const chatId = toChatId({ raw: event.id });
+        if (!hasActiveGeneration({ chatId })) {
+          const fresh = await storageService.loadChat({ id: chatId });
           if (fresh && currentChatRef.value) {
             applyVolatileAssistantErrorsToChat({ chat: fresh });
             currentChatRef.value.root = fresh.root;
@@ -468,14 +560,15 @@ export function createChatDataStore({
       break;
     }
     case 'migration': {
-      onMigration({});
+      onMigration();
       liveChatRegistry.clear();
       currentChatRef.value = null;
       currentChatGroupRef.value = null;
 
-      await loadData({});
+      await loadData();
       break;
     }
+    case 'binary_objects':
     case 'settings':
       break;
     default: {
@@ -483,7 +576,7 @@ export function createChatDataStore({
       throw new Error(`Unhandled event: ${_ex}`);
     }
     }
-  });
+  } });
 
   return {
     rootItems,
@@ -502,5 +595,6 @@ export function createChatDataStore({
     openChatGroup,
     updateChatContent,
     updateChatMeta,
+    updateChatScopedSettings,
   };
 }

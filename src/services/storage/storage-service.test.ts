@@ -120,7 +120,7 @@ describe('StorageService Migration', () => {
       structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
       contentStream: (async function* () {})()
     });
-    mockOpfsProvider.restore.mockImplementation(async (snapshot, _options) => {
+    mockOpfsProvider.restore.mockImplementation(async ({ snapshot }, _options) => {
       for await (const _chunk of snapshot.contentStream) {
         // consume stream
       }
@@ -135,6 +135,29 @@ describe('StorageService Migration', () => {
     expect(mockLocalProvider.dump).toHaveBeenCalled();
     expect(mockOpfsProvider.restore).toHaveBeenCalled();
     expect(storageService.getCurrentType()).toBe('opfs');
+  });
+
+  it('should not gate tool configs during provider migration', async () => {
+    const snapshot = {
+      structure: {
+        settings: {
+          experimental: {
+            toolConfigPersistence: 'disabled',
+          },
+        },
+        hierarchy: { items: [] },
+        chatMetas: [{ id: 'c1', toolConfigs: [{ key: 'builtin.calculator' }] }],
+        chatGroups: [],
+      },
+      contentStream: (async function* () {})(),
+    } as any;
+    mockLocalProvider.dump.mockResolvedValue(snapshot);
+
+    await storageService.switchProvider({ type: 'opfs' });
+
+    expect(mockOpfsProvider.restore.mock.calls[0]?.[0].snapshot.structure.chatMetas).toEqual([
+      { id: 'c1', toolConfigs: [{ key: 'builtin.calculator' }] },
+    ]);
   });
 
   it('should log error to global events and throw if migration fails', async () => {
@@ -192,7 +215,7 @@ describe('StorageService Migration', () => {
     (mockOpfsProvider as any).canPersistBinary = true;
 
     const receivedChunks: any[] = [];
-    mockOpfsProvider.restore.mockImplementation(async (snapshot, _options) => {
+    mockOpfsProvider.restore.mockImplementation(async ({ snapshot }, _options) => {
       for await (const chunk of snapshot.contentStream) {
         receivedChunks.push(chunk);
       }
@@ -254,7 +277,7 @@ describe('StorageService Migration', () => {
     (mockOpfsProvider as any).canPersistBinary = true;
 
     const receivedChunks: any[] = [];
-    mockOpfsProvider.restore.mockImplementation(async (snapshot, _options) => {
+    mockOpfsProvider.restore.mockImplementation(async ({ snapshot }, _options) => {
       for await (const chunk of snapshot.contentStream) {
         receivedChunks.push(chunk);
       }

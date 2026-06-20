@@ -1,7 +1,11 @@
+import { createWeshOwnedBytes } from '@/services/wesh/types';
 import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
+import { getWeshTextRecordTerminator, iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 
 function parseSignedCount({
   value,
@@ -16,13 +20,23 @@ function parseSignedCount({
   return { ok: true, value };
 }
 
-async function writeBytes({
+async function writeOwnedBytes({
   handle,
   data,
 }: {
   handle: WeshCommandContext['stdout'];
   data: Uint8Array<ArrayBufferLike>;
 }): Promise<void> {
+  if (data.byteLength === 0) {
+    return;
+  }
+  if (handle.writeOwned !== undefined) {
+    await handle.writeOwned({
+      chunk: createWeshOwnedBytes({ bytes: data }),
+    });
+    return;
+  }
+
   let offset = 0;
   while (offset < data.length) {
     const { bytesWritten } = await handle.write({
@@ -31,7 +45,7 @@ async function writeBytes({
       length: data.length - offset,
     });
     if (bytesWritten === 0) {
-      break;
+      return;
     }
     offset += bytesWritten;
   }
@@ -44,47 +58,91 @@ function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
-function appendTailBytes({
-  tailBytes,
+interface TailByteQueue {
+  chunks: Uint8Array<ArrayBufferLike>[];
+  headIndex: number;
+  headOffset: number;
+  byteLength: number;
+}
+
+function appendTailByteChunk({
+  queue,
   chunk,
   maxBytes,
 }: {
-  tailBytes: Uint8Array<ArrayBufferLike>;
+  queue: TailByteQueue;
   chunk: Uint8Array<ArrayBufferLike>;
   maxBytes: number;
-}): Uint8Array<ArrayBufferLike> {
-  if (maxBytes === 0) {
-    return new Uint8Array(0);
+}): void {
+  if (maxBytes === 0 || chunk.byteLength === 0) {
+    return;
   }
 
-  if (chunk.length >= maxBytes) {
-    return Uint8Array.from(chunk.subarray(chunk.length - maxBytes));
+  queue.chunks.push(chunk);
+  queue.byteLength += chunk.byteLength;
+  let excess = queue.byteLength - maxBytes;
+  while (excess > 0 && queue.headIndex < queue.chunks.length) {
+    const head = queue.chunks[queue.headIndex]!;
+    const available = head.byteLength - queue.headOffset;
+    if (excess < available) {
+      queue.headOffset += excess;
+      queue.byteLength -= excess;
+      excess = 0;
+      break;
+    }
+    queue.headIndex += 1;
+    queue.headOffset = 0;
+    queue.byteLength -= available;
+    excess -= available;
   }
 
-  const keepFromExisting = Math.max(maxBytes - chunk.length, 0);
-  const existingStart = Math.max(tailBytes.length - keepFromExisting, 0);
-  const retainedExisting = tailBytes.subarray(existingStart);
-  const next = new Uint8Array(retainedExisting.length + chunk.length);
-  next.set(retainedExisting);
-  next.set(chunk, retainedExisting.length);
-  return next;
+  if (queue.headIndex >= 32 && queue.headIndex * 2 >= queue.chunks.length) {
+    queue.chunks = queue.chunks.slice(queue.headIndex);
+    queue.headIndex = 0;
+  }
 }
 
-function pushTailLine({
-  lines,
+async function writeTailByteQueue({
+  queue,
+  handle,
+}: {
+  queue: TailByteQueue;
+  handle: WeshCommandContext['stdout'];
+}): Promise<void> {
+  for (let index = queue.headIndex; index < queue.chunks.length; index++) {
+    const chunk = queue.chunks[index]!;
+    const data = index === queue.headIndex && queue.headOffset > 0
+      ? chunk.subarray(queue.headOffset)
+      : chunk;
+    await writeOwnedBytes({ handle, data });
+  }
+}
+
+interface TailLineQueue {
+  lines: string[];
+  headIndex: number;
+}
+
+function appendTailLine({
+  queue,
   line,
   maxLines,
 }: {
-  lines: string[];
+  queue: TailLineQueue;
   line: string;
   maxLines: number;
 }): void {
   if (maxLines === 0) {
     return;
   }
-  lines.push(line);
-  if (lines.length > maxLines) {
-    lines.shift();
+
+  queue.lines.push(line);
+  if (queue.lines.length - queue.headIndex > maxLines) {
+    queue.headIndex += 1;
+  }
+  if (queue.headIndex >= 1024 && queue.headIndex * 2 >= queue.lines.length) {
+    queue.lines = queue.lines.slice(queue.headIndex);
+    queue.headIndex = 0;
   }
 }
 
@@ -201,125 +259,85 @@ export const tailCommandDefinition: WeshCommandDefinition = {
     let hadError = false;
 
     const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
-      const reader = stream.getReader();
-      try {
-        if (byteCount !== undefined) {
-          if (byteCountFromStart) {
-            let bytesToSkip = Math.max(byteCount - 1, 0);
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                break;
-              }
-
-              if (bytesToSkip >= value.length) {
-                bytesToSkip -= value.length;
-                continue;
-              }
-
-              const output = bytesToSkip === 0 ? value : value.subarray(bytesToSkip);
-              bytesToSkip = 0;
-              await writeBytes({
-                handle: context.stdout,
-                data: output,
-              });
+      const chunks = iterateReadableStreamChunks({ stream });
+      if (byteCount !== undefined) {
+        if (byteCountFromStart) {
+          let bytesToSkip = Math.max(byteCount - 1, 0);
+          for await (const chunk of chunks) {
+            if (bytesToSkip >= chunk.byteLength) {
+              bytesToSkip -= chunk.byteLength;
+              continue;
             }
-            return;
-          }
 
-          const maxBytes = Math.max(Math.abs(byteCount), 0);
-          let tailBytes: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              break;
-            }
-            tailBytes = appendTailBytes({
-              tailBytes,
-              chunk: value,
-              maxBytes,
+            const output = bytesToSkip === 0 ? chunk : chunk.subarray(bytesToSkip);
+            bytesToSkip = 0;
+            await writeOwnedBytes({
+              handle: context.stdout,
+              data: output,
             });
-          }
-
-          await writeBytes({
-            handle: context.stdout,
-            data: tailBytes,
-          });
-          return;
-        }
-
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        if (countFromStart) {
-          let currentLineNumber = 1;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              break;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-            while (true) {
-              const newlineIndex = buffer.indexOf('\n');
-              if (newlineIndex === -1) {
-                break;
-              }
-              const line = buffer.slice(0, newlineIndex + 1);
-              buffer = buffer.slice(newlineIndex + 1);
-              if (currentLineNumber >= lineCount) {
-                await text.print({ text: line });
-              }
-              currentLineNumber += 1;
-            }
-          }
-
-          buffer += decoder.decode();
-          if (buffer.length > 0 && currentLineNumber >= lineCount) {
-            await text.print({ text: buffer });
           }
           return;
         }
 
-        const maxLines = Math.max(Math.abs(lineCount), 0);
-        const tailLines: string[] = [];
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            break;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          while (true) {
-            const newlineIndex = buffer.indexOf('\n');
-            if (newlineIndex === -1) {
-              break;
-            }
-            const line = buffer.slice(0, newlineIndex + 1);
-            buffer = buffer.slice(newlineIndex + 1);
-            pushTailLine({
-              lines: tailLines,
-              line,
-              maxLines,
-            });
-          }
-        }
-
-        buffer += decoder.decode();
-        if (buffer.length > 0) {
-          pushTailLine({
-            lines: tailLines,
-            line: buffer,
-            maxLines,
+        const maxBytes = Math.max(Math.abs(byteCount), 0);
+        const queue: TailByteQueue = {
+          chunks: [],
+          headIndex: 0,
+          headOffset: 0,
+          byteLength: 0,
+        };
+        for await (const chunk of chunks) {
+          appendTailByteChunk({
+            queue,
+            chunk,
+            maxBytes,
           });
         }
-
-        for (const line of tailLines) {
-          await text.print({ text: line });
-        }
-      } finally {
-        reader.releaseLock();
+        await writeTailByteQueue({
+          queue,
+          handle: context.stdout,
+        });
+        return;
       }
+
+      const writer = createBufferedTextWriter({
+        handle: context.stdout,
+        maxBufferLength: 16 * 1024,
+      });
+      if (countFromStart) {
+        let currentLineNumber = 1;
+        for await (const record of iterateUtf8LineRecords({ chunks })) {
+          if (currentLineNumber >= lineCount) {
+            await writer.write({
+              text: record.text + getWeshTextRecordTerminator({
+                termination: record.termination,
+              }),
+            });
+          }
+          currentLineNumber += 1;
+        }
+        await writer.flush();
+        return;
+      }
+
+      const maxLines = Math.max(Math.abs(lineCount), 0);
+      const queue: TailLineQueue = {
+        lines: [],
+        headIndex: 0,
+      };
+      for await (const record of iterateUtf8LineRecords({ chunks })) {
+        appendTailLine({
+          queue,
+          line: record.text + getWeshTextRecordTerminator({
+            termination: record.termination,
+          }),
+          maxLines,
+        });
+      }
+      for (let index = queue.headIndex; index < queue.lines.length; index++) {
+        await writer.write({ text: queue.lines[index]! });
+      }
+      await writer.flush();
     };
 
     if (parsed.positionals.length === 0) {

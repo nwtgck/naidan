@@ -3,10 +3,12 @@ import { ref, computed, nextTick } from 'vue';
 import { useChatDisplayFlow } from './useChatDisplayFlow';
 import type { MessageNode, Chat } from '@/models/types';
 import { generateId } from '@/utils/id';
+import { toChatId, toMessageId, toToolCallId } from '@/models/ids';
+import type { MessageId } from '@/models/ids';
 
 describe('useChatDisplayFlow', () => {
   const createAssistantMsg = (content: string): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'assistant',
     content,
     timestamp: Date.now(),
@@ -14,7 +16,7 @@ describe('useChatDisplayFlow', () => {
   } as MessageNode);
 
   const createToolNode = (toolCallId: string): MessageNode => ({
-    id: generateId(),
+    id: generateId<MessageId>(),
     role: 'tool',
     content: undefined,
     attachments: undefined,
@@ -24,7 +26,7 @@ describe('useChatDisplayFlow', () => {
     lmParameters: undefined,
     toolCalls: undefined,
     results: [{
-      toolCallId,
+      toolCallId: toToolCallId({ raw: toolCallId }),
       status: 'success',
       content: { type: 'text', text: 'ok' }
     }],
@@ -39,7 +41,7 @@ describe('useChatDisplayFlow', () => {
     }
 
     const chat = computed<Chat>(() => ({
-      id: 'test-chat',
+      id: toChatId({ raw: 'test-chat' }),
       title: 'Test',
       root: { items: messages.length > 0 ? [messages[0]!] : [] },
       currentLeafId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
@@ -56,7 +58,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups internal processes: thought followed by tool', () => {
     const m1 = createAssistantMsg('<think>thinking...</think>');
-    m1.toolCalls = [{ id: 'tc1', type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
+    m1.toolCalls = [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
     const t1 = createToolNode('tc1');
 
     const { chatFlow } = createFlow({ messages: [m1, t1] });
@@ -71,7 +73,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups internal processes: tool followed by thought', () => {
     const m1 = createAssistantMsg('');
-    m1.toolCalls = [{ id: 'tc1', type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
+    m1.toolCalls = [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
     const t1 = createToolNode('tc1');
     const m2 = createAssistantMsg('<think>thinking...</think>');
 
@@ -90,9 +92,9 @@ describe('useChatDisplayFlow', () => {
   });
 
   it('correctly calculates sequence position metadata', () => {
-    const user = { role: 'user', content: 'hi', id: 'u1', timestamp: 0, replies: { items: [] } } as MessageNode;
+    const user = { role: 'user', content: 'hi', id: toMessageId({ raw: 'u1' }), timestamp: 0, replies: { items: [] } } as MessageNode;
     const m1 = createAssistantMsg('<think>thinking...</think>');
-    m1.toolCalls = [{ id: 'tc1', type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
+    m1.toolCalls = [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'test_tool', arguments: '{}' } }];
     const t1 = createToolNode('tc1');
     const m2 = createAssistantMsg('Final answer');
 
@@ -111,7 +113,7 @@ describe('useChatDisplayFlow', () => {
     const isProcessingRef = ref(true);
 
     const chat = computed<Chat>(() => ({
-      id: 'test-chat',
+      id: toChatId({ raw: 'test-chat' }),
       title: 'Test',
       root: { items: messages.value.length > 0 ? [messages.value[0]!] : [] },
       currentLeafId: messages.value.length > 0 ? messages.value[messages.value.length - 1]!.id : null,
@@ -151,7 +153,7 @@ describe('useChatDisplayFlow', () => {
 
   it('groups assistant message with content if it has tool calls (the original bug)', () => {
     const m1 = createAssistantMsg('<think>thinking...</think>Partially done...');
-    m1.toolCalls = [{ id: 'tc1', type: 'function', function: { name: 'calc', arguments: '{}' } }];
+    m1.toolCalls = [{ id: toToolCallId({ raw: 'tc1' }), type: 'function', function: { name: 'calc', arguments: '{}' } }];
     const t1 = createToolNode('tc1');
 
     const { chatFlow } = createFlow({ messages: [m1, t1] });

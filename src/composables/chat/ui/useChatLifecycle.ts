@@ -1,5 +1,6 @@
 import { reactive, toRaw } from 'vue';
 import { generateId } from '@/utils/id';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 import type { Chat, Hierarchy, HierarchyChatGroupNode, SystemPrompt } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useChatTools } from '@/composables/useChatTools';
@@ -23,7 +24,7 @@ export interface AddToastOptions {
   message: string;
   actionLabel?: string;
   onAction?: () => void | Promise<void>;
-  onClose?: (reason: 'timeout' | 'dismiss' | 'action') => void | Promise<void>;
+  onClose?: ({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>;
   duration?: number;
 }
 
@@ -33,7 +34,7 @@ export type ChatLifecycleAdapter = {
     modelId,
     systemPrompt,
   }: {
-    groupId: string | undefined;
+    groupId: ChatGroupId | undefined;
     modelId: string | undefined;
     systemPrompt: SystemPrompt | undefined;
   }): Promise<Chat | null>;
@@ -42,11 +43,11 @@ export type ChatLifecycleAdapter = {
     id,
     injectAddToast,
   }: {
-    id: string;
-    injectAddToast: ((toast: AddToastOptions) => string) | undefined;
+    id: ChatId;
+    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }): Promise<void>;
 
-  deleteAllChats(_args: Record<never, never>): Promise<void>;
+  deleteAllChats(): Promise<void>;
 
   TEST_ONLY: Record<never, never>;
 };
@@ -61,7 +62,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     modelId,
     systemPrompt,
   }: {
-    groupId: string | undefined;
+    groupId: ChatGroupId | undefined;
     modelId: string | undefined;
     systemPrompt: SystemPrompt | undefined;
   }): Promise<Chat | null> {
@@ -71,7 +72,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
     currentChatGroupRef.value = null;
     creatingChat.value = true;
-    const chatId = generateId();
+    const chatId = generateId<ChatId>();
 
     try {
       const chat: Chat = reactive({
@@ -95,7 +96,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         id: chatId,
         updater: () => chat,
       });
-      await storageService.updateHierarchy((current) => {
+      await storageService.updateHierarchy({ updater: ({ current }) => {
         if (groupId !== undefined) {
           const group = current.items.find((item) => item.type === 'chat_group' && item.id === groupId) as HierarchyChatGroupNode | undefined;
           if (group !== undefined) {
@@ -108,11 +109,11 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         const insertIndex = firstChatIndex !== -1 ? firstChatIndex : current.items.length;
         current.items.splice(insertIndex, 0, { type: 'chat', id: chatId });
         return current;
-      });
+      } });
 
       setCurrentChatId({ chatId });
       currentChatRef.value = chat;
-      await loadData({});
+      await loadData();
       return chat;
     } finally {
       creatingChat.value = false;
@@ -123,15 +124,15 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     id,
     injectAddToast,
   }: {
-    id: string;
-    injectAddToast: ((toast: AddToastOptions) => string) | undefined;
+    id: ChatId;
+    injectAddToast: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }): Promise<void> {
     const chat = await storageService.loadChat({ id });
     if (chat === null) {
       return;
     }
 
-    await storageService.updateHierarchy((current) => {
+    await storageService.updateHierarchy({ updater: ({ current }) => {
       current.items = current.items.filter((item) => {
         switch (item.type) {
         case 'chat':
@@ -146,14 +147,14 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
         }
       });
       return current;
-    });
+    } });
 
     if (currentChatRef.value !== null && toRaw(currentChatRef.value).id === id) {
       currentChatRef.value = null;
     }
-    await loadData({});
+    await loadData();
 
-    const cleanup = async (_args: Record<never, never>) => {
+    const cleanup = async () => {
       if (chatRuntimeStore.activeGenerations.has(id)) {
         chatRuntimeStore.getActiveGeneration({ chatId: id })?.controller.abort();
         chatRuntimeStore.deleteActiveGeneration({ chatId: id });
@@ -169,7 +170,7 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
       actionLabel: 'Undo',
       onAction: async () => {
         const originalGroupId = chat.groupId;
-        await storageService.updateHierarchy((current) => {
+        await storageService.updateHierarchy({ updater: ({ current }) => {
           if (originalGroupId !== null) {
             const group = current.items.find((item) => {
               switch (item.type) {
@@ -191,20 +192,20 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
 
           current.items.push({ type: 'chat', id: chat.id });
           return current;
-        });
-        await loadData({});
+        } });
+        await loadData();
         await chatNavigation.openChat({
           chatId: chat.id,
           leafId: undefined,
         });
       },
-      onClose: async (reason) => {
+      onClose: async ({ reason }) => {
         switch (reason) {
         case 'action':
           return;
         case 'timeout':
         case 'dismiss':
-          await cleanup({});
+          await cleanup();
           return;
         default: {
           const _ex: never = reason;
@@ -215,18 +216,18 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     });
 
     if (!toastId) {
-      await cleanup({});
+      await cleanup();
     }
   }
 
-  async function deleteAllChats(_args: Record<never, never>): Promise<void> {
+  async function deleteAllChats(): Promise<void> {
     for (const [, item] of chatRuntimeStore.activeGenerations.entries()) {
       item.controller.abort();
     }
-    chatRuntimeStore.clearActiveGenerations({});
-    chatRuntimeStore.clearActiveTaskCounts({});
+    chatRuntimeStore.clearActiveGenerations();
+    chatRuntimeStore.clearActiveTaskCounts();
     liveChatRegistry.clear();
-    clearChatTmpDirectories({});
+    clearChatTmpDirectories();
 
     const chats = await storageService.listChats();
     const chatGroups = await storageService.listChatGroups();
@@ -237,12 +238,12 @@ export function useChatLifecycle(): ChatLifecycleAdapter {
     await Promise.all(chatGroups.map(async ({ id }) => {
       await storageService.deleteChatGroup({ id });
     }));
-    await storageService.updateHierarchy((_current) => ({ items: [] } as Hierarchy));
+    await storageService.updateHierarchy({ updater: ({ current: _current }) => ({ items: [] } as Hierarchy) });
 
     currentChatRef.value = null;
     currentChatGroupRef.value = null;
     setCurrentChatId({ chatId: null });
-    await loadData({});
+    await loadData();
   }
 
   return {

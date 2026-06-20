@@ -1,4 +1,5 @@
 import type { Chat, Settings, ChatGroup, MessageNode, ChatMeta, ChatContent, SidebarItem, StorageSnapshot, BinaryObject } from '@/models/types';
+import type { AttachmentId, BinaryObjectId, ChatGroupId, ChatId, VolumeId } from '@/models/ids';
 import {
   type ChatMetaDto,
   type ChatGroupDto,
@@ -17,6 +18,7 @@ import {
   chatGroupToDto,
   settingsToDto,
   hierarchyToDomain,
+  hierarchyToDto,
   chatMetaToDto,
   chatMetaToDomain,
   chatContentToDto,
@@ -24,6 +26,7 @@ import {
   buildSidebarItemsFromHierarchy,
 } from '@/models/mappers';
 import { IStorageProvider } from './interface';
+import { idToRaw, toBinaryObjectId, toChatGroupId } from '@/models/ids';
 
 /**
  * Memory Storage Implementation
@@ -35,11 +38,11 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   private hierarchy: HierarchyDto = { items: [] };
   private settings: Settings | null = null;
-  private chatMetas = new Map<string, ChatMetaDto>();
-  private chatGroups = new Map<string, ChatGroupDto>();
-  private chatContents = new Map<string, ChatContentDto>();
-  private binaryObjects = new Map<string, { blob: Blob; meta: BinaryObject }>();
-  private blobCache = new Map<string, Blob>();
+  private chatMetas = new Map<ChatId, ChatMetaDto>();
+  private chatGroups = new Map<ChatGroupId, ChatGroupDto>();
+  private chatContents = new Map<ChatId, ChatContentDto>();
+  private binaryObjects = new Map<BinaryObjectId, { blob: Blob; meta: BinaryObject }>();
+  private blobCache = new Map<AttachmentId, Blob>();
 
   async init(): Promise<void> {
     // No-op for memory storage
@@ -61,20 +64,20 @@ export class MemoryStorageProvider extends IStorageProvider {
     return { ...this.hierarchy };
   }
 
-  async saveHierarchy(hierarchy: HierarchyDto): Promise<void> {
+  async saveHierarchy({ hierarchy }: { hierarchy: HierarchyDto }): Promise<void> {
     this.hierarchy = HierarchySchemaDto.parse(hierarchy);
   }
 
   // --- Persistence Implementation ---
 
-  async saveChatMeta(meta: ChatMeta): Promise<void> {
+  async saveChatMeta({ meta }: { meta: ChatMeta }): Promise<void> {
     const dto = chatMetaToDto({ domain: meta });
     ChatMetaSchemaDto.parse(dto);
     this.chatMetas.set(meta.id, dto);
   }
 
-  async saveChatContent(id: string, content: ChatContent): Promise<void> {
-    const findAndCacheBlobs = (nodes: MessageNode[]) => {
+  async saveChatContent({ id, content }: { id: ChatId; content: ChatContent }): Promise<void> {
+    const findAndCacheBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
       for (const node of nodes) {
         if (node.attachments) {
           for (const att of node.attachments) {
@@ -84,18 +87,18 @@ export class MemoryStorageProvider extends IStorageProvider {
           }
         }
         if (node.replies?.items) {
-          findAndCacheBlobs(node.replies.items);
+          findAndCacheBlobs({ nodes: node.replies.items });
         }
       }
     };
-    findAndCacheBlobs(content.root.items);
+    findAndCacheBlobs({ nodes: content.root.items });
 
     const dto = chatContentToDto({ domain: content });
     ChatContentSchemaDto.parse(dto);
     this.chatContents.set(id, dto);
   }
 
-  async loadChat({ id }: { id: string }): Promise<Chat | null> {
+  async loadChat({ id }: { id: ChatId }): Promise<Chat | null> {
     const rawMeta = this.chatMetas.get(id);
     const rawContent = this.chatContents.get(id);
     if (!rawMeta || !rawContent) return null;
@@ -103,13 +106,13 @@ export class MemoryStorageProvider extends IStorageProvider {
     try {
       const meta = ChatMetaSchemaDto.parse(rawMeta);
       const content = ChatContentSchemaDto.parse(rawContent);
-      const chat = chatToDomain({ dto: { ...meta, ...content, messages: undefined } });
+      const chat = chatToDomain({ dto: { ...meta, ...content, experimental: meta.experimental, messages: undefined } });
 
       // Resolve groupId from hierarchy
-      const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
-      if (group) chat.groupId = group.id;
+      const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
+      if (group) chat.groupId = toChatGroupId({ raw: group.id });
 
-      const restoreBlobs = (nodes: MessageNode[]) => {
+      const restoreBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
@@ -129,10 +132,10 @@ export class MemoryStorageProvider extends IStorageProvider {
               }
             }
           }
-          if (node.replies?.items) restoreBlobs(node.replies.items);
+          if (node.replies?.items) restoreBlobs({ nodes: node.replies.items });
         }
       };
-      restoreBlobs(chat.root.items);
+      restoreBlobs({ nodes: chat.root.items });
 
       return chat;
     } catch {
@@ -140,28 +143,28 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
   }
 
-  async loadChatMeta({ id }: { id: string }): Promise<ChatMeta | null> {
+  async loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null> {
     const rawMeta = this.chatMetas.get(id);
     if (!rawMeta) return null;
     try {
       const meta = chatMetaToDomain({ dto: ChatMetaSchemaDto.parse(rawMeta) });
       // Resolve groupId from hierarchy
-      const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(id));
-      if (group) meta.groupId = group.id;
+      const group = this.hierarchy.items.find(i => i.type === 'chat_group' && i.chat_ids.includes(idToRaw({ id })));
+      if (group) meta.groupId = toChatGroupId({ raw: group.id });
       return meta;
     } catch {
       return null;
     }
   }
 
-  async loadChatContent({ id }: { id: string }): Promise<ChatContent | null> {
+  async loadChatContent({ id }: { id: ChatId }): Promise<ChatContent | null> {
     const rawContent = this.chatContents.get(id);
     if (!rawContent) return null;
     try {
       const dto = ChatContentSchemaDto.parse(rawContent);
       const content = chatContentToDomain({ dto });
 
-      const restoreBlobs = (nodes: MessageNode[]) => {
+      const restoreBlobs = ({ nodes }: { nodes: MessageNode[] }) => {
         for (const node of nodes) {
           if (node.attachments) {
             for (const att of node.attachments) {
@@ -181,10 +184,10 @@ export class MemoryStorageProvider extends IStorageProvider {
               }
             }
           }
-          if (node.replies?.items) restoreBlobs(node.replies.items);
+          if (node.replies?.items) restoreBlobs({ nodes: node.replies.items });
         }
       };
-      restoreBlobs(content.root.items);
+      restoreBlobs({ nodes: content.root.items });
 
       return content;
     } catch {
@@ -192,29 +195,29 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteChat({ id }: { id: string }): Promise<void> {
+  async deleteChat({ id }: { id: ChatId }): Promise<void> {
     this.chatMetas.delete(id);
     this.chatContents.delete(id);
   }
 
-  async saveChatGroup(chatGroup: ChatGroup): Promise<void> {
+  async saveChatGroup({ chatGroup }: { chatGroup: ChatGroup }): Promise<void> {
     const dto = chatGroupToDto({ domain: chatGroup });
     ChatGroupSchemaDto.parse(dto);
     this.chatGroups.set(chatGroup.id, dto);
   }
 
-  async loadChatGroup({ id }: { id: string }): Promise<ChatGroup | null> {
+  async loadChatGroup({ id }: { id: ChatGroupId }): Promise<ChatGroup | null> {
     const raw = this.chatGroups.get(id);
     if (!raw) return null;
     try {
       const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-      return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: this.hierarchy, chatMetas });
+      return chatGroupToDomain({ dto: ChatGroupSchemaDto.parse(raw), hierarchy: hierarchyToDomain({ dto: this.hierarchy }), chatMetas });
     } catch {
       return null;
     }
   }
 
-  async deleteChatGroup({ id }: { id: string }): Promise<void> {
+  async deleteChatGroup({ id }: { id: ChatGroupId }): Promise<void> {
     this.chatGroups.delete(id);
   }
 
@@ -226,7 +229,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     return buildSidebarItemsFromHierarchy({ hierarchy, chatMetas, chatGroups });
   }
 
-  async saveSettings(settings: Settings): Promise<void> {
+  async saveSettings({ settings }: { settings: Settings }): Promise<void> {
     const dto = settingsToDto({ domain: settings });
     SettingsSchemaDto.parse(dto);
     this.settings = settings;
@@ -242,7 +245,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     // MemoryStorage doesn't support volumes
   }
 
-  async createVolume(_params: {
+  async createVolume({ name: _name, type: _type, sourceHandle: _sourceHandle }: {
     name: string;
     type: import('@/models/types').VolumeType;
     sourceHandle: FileSystemDirectoryHandle;
@@ -250,29 +253,29 @@ export class MemoryStorageProvider extends IStorageProvider {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
-  async createVolumeFromFiles(_params: {
+  async createVolumeFromFiles({ name: _name, entries: _entries, onProgress: _onProgress, signal: _signal }: {
     name: string;
     entries: Array<{ file: File; relativePath: string }>;
-    onProgress?: (progress: { processed: number; total: number }) => void;
+    onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
     signal?: AbortSignal;
   }): Promise<import('@/models/types').Volume> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
-  async getVolumeDirectoryHandle(_params: {
-    volumeId: string;
+  async getVolumeDirectoryHandle({ volumeId: _volumeId }: {
+    volumeId: VolumeId;
   }): Promise<FileSystemDirectoryHandle | null> {
     return null;
   }
 
-  async deleteVolume(_params: {
-    volumeId: string;
+  async deleteVolume({ volumeId: _volumeId }: {
+    volumeId: VolumeId;
   }): Promise<void> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
   }
 
-  async renameVolume(_params: {
-    volumeId: string;
+  async renameVolume({ volumeId: _volumeId, name: _name }: {
+    volumeId: VolumeId;
     name: string;
   }): Promise<void> {
     throw new Error('Volume management is not supported in MemoryStorage provider.');
@@ -280,50 +283,28 @@ export class MemoryStorageProvider extends IStorageProvider {
 
   // --- File Storage ---
 
-  /**
-   * @deprecated Use the named arguments version instead.
-   */
-  async saveFile(blob: Blob, binaryObjectId: string, name: string, mimeType?: string, size?: number): Promise<void>;
-  async saveFile(params: {
+  async saveFile({ blob, binaryObjectId, name, mimeType }: {
     blob: Blob;
-    binaryObjectId: string;
+    binaryObjectId: BinaryObjectId;
     name: string;
-    mimeType: string | undefined;
-  }): Promise<void>;
-  async saveFile(blobOrParams: Blob | { blob: Blob; binaryObjectId: string; name: string; mimeType: string | undefined }, binaryObjectId?: string, name?: string, mimeType?: string): Promise<void> {
-    let blob: Blob;
-    let bId: string;
-    let fileName: string;
-    let mType: string | undefined;
-
-    if (blobOrParams instanceof Blob) {
-      blob = blobOrParams;
-      bId = binaryObjectId!;
-      fileName = name!;
-      mType = mimeType;
-    } else {
-      blob = blobOrParams.blob;
-      bId = blobOrParams.binaryObjectId;
-      fileName = blobOrParams.name;
-      mType = blobOrParams.mimeType;
-    }
-
+    mimeType?: string;
+  }): Promise<void> {
     const meta: BinaryObject = {
-      id: bId,
-      mimeType: mType || blob.type || 'application/octet-stream',
+      id: binaryObjectId,
+      mimeType: mimeType || blob.type || 'application/octet-stream',
       size: blob.size,
       createdAt: Date.now(),
-      name: fileName,
+      name,
     };
 
-    this.binaryObjects.set(bId, { blob, meta });
+    this.binaryObjects.set(binaryObjectId, { blob, meta });
   }
 
-  async getFile({ binaryObjectId }: { binaryObjectId: string }): Promise<Blob | null> {
+  async getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null> {
     return this.binaryObjects.get(binaryObjectId)?.blob || null;
   }
 
-  async getBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<BinaryObject | null> {
+  async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null> {
     return this.binaryObjects.get(binaryObjectId)?.meta || null;
   }
 
@@ -337,7 +318,7 @@ export class MemoryStorageProvider extends IStorageProvider {
     }
   }
 
-  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: string }): Promise<void> {
+  async deleteBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<void> {
     this.binaryObjects.delete(binaryObjectId);
   }
 
@@ -356,7 +337,8 @@ export class MemoryStorageProvider extends IStorageProvider {
   async dump(): Promise<StorageSnapshot> {
     const settings = await this.loadSettings();
     const chatMetas = Array.from(this.chatMetas.values()).map(dto => chatMetaToDomain({ dto }));
-    const chatGroups = Array.from(this.chatGroups.values()).map(dto => chatGroupToDomain({ dto, hierarchy: this.hierarchy, chatMetas: [] }));
+    const hierarchy = hierarchyToDomain({ dto: this.hierarchy });
+    const chatGroups = Array.from(this.chatGroups.values()).map(dto => chatGroupToDomain({ dto, hierarchy, chatMetas: [] }));
 
     const contentStream = async function* (this: MemoryStorageProvider) {
       // 1. Stream all chats
@@ -369,7 +351,7 @@ export class MemoryStorageProvider extends IStorageProvider {
       for (const [id, { blob, meta }] of this.binaryObjects.entries()) {
         yield {
           type: 'binary_object' as const,
-          id,
+          id: idToRaw({ id }),
           name: meta.name || 'file',
           mimeType: meta.mimeType,
           size: meta.size,
@@ -389,7 +371,7 @@ export class MemoryStorageProvider extends IStorageProvider {
           endpointType: 'openai',
           endpointUrl: '',
         } as Settings,
-        hierarchy: this.hierarchy,
+        hierarchy,
         chatMetas,
         chatGroups,
       },
@@ -397,16 +379,16 @@ export class MemoryStorageProvider extends IStorageProvider {
     };
   }
 
-  async restore(snapshot: StorageSnapshot): Promise<void> {
+  async restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void> {
     const { structure, contentStream } = snapshot;
 
-    if (structure.settings) await this.saveSettings(structure.settings);
-    if (structure.hierarchy) await this.saveHierarchy(structure.hierarchy);
+    if (structure.settings) await this.saveSettings({ settings: structure.settings });
+    if (structure.hierarchy) await this.saveHierarchy({ hierarchy: hierarchyToDto({ domain: structure.hierarchy }) });
     if (structure.chatMetas) {
-      for (const meta of structure.chatMetas) await this.saveChatMeta(meta);
+      for (const meta of structure.chatMetas) await this.saveChatMeta({ meta });
     }
     if (structure.chatGroups) {
-      for (const group of structure.chatGroups) await this.saveChatGroup(group);
+      for (const group of structure.chatGroups) await this.saveChatGroup({ chatGroup: group });
     }
 
     for await (const chunk of contentStream) {
@@ -414,14 +396,14 @@ export class MemoryStorageProvider extends IStorageProvider {
       switch (type) {
       case 'chat': {
         const domainChat = chatToDomain({ dto: chunk.data });
-        await this.saveChatContent(domainChat.id, domainChat);
-        await this.saveChatMeta(domainChat);
+        await this.saveChatContent({ id: domainChat.id, content: domainChat });
+        await this.saveChatMeta({ meta: domainChat });
         break;
       }
       case 'binary_object':
         await this.saveFile({
           blob: chunk.blob,
-          binaryObjectId: chunk.id,
+          binaryObjectId: toBinaryObjectId({ raw: chunk.id }),
           name: chunk.name,
           mimeType: chunk.mimeType
         });

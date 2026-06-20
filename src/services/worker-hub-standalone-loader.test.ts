@@ -17,7 +17,7 @@ describe('worker-hub-standalone-loader', () => {
     vi.stubGlobal('Worker', WorkerMock)
 
     const { createFileProtocolCompatibleStandaloneWorkerHub } = await import('./worker-hub-standalone-loader')
-    await createFileProtocolCompatibleStandaloneWorkerHub({})
+    await createFileProtocolCompatibleStandaloneWorkerHub()
 
     expect(createObjectURL).toHaveBeenCalledTimes(1)
     expect(WorkerMock).toHaveBeenCalledWith('blob:standalone-worker-hub', {
@@ -62,7 +62,7 @@ describe('worker-hub-standalone-loader', () => {
     vi.stubGlobal('Worker', WorkerMock)
 
     const { createFileProtocolCompatibleStandaloneWorkerHub } = await import('./worker-hub-standalone-loader')
-    await createFileProtocolCompatibleStandaloneWorkerHub({})
+    await createFileProtocolCompatibleStandaloneWorkerHub()
 
     expect(createObjectURL).toHaveBeenCalledWith(cachedFile)
     expect(WorkerMock).toHaveBeenCalledWith('blob:cached-worker', {

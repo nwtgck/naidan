@@ -26,14 +26,14 @@ export interface ArgvValueOptionSpec {
   key: string;
   valueName: string;
   allowAttachedValue: boolean;
-  parseValue: ((options: { value: string }) => { ok: true; value: ArgvValue } | { ok: false; message: string }) | undefined;
+  parseValue: (({ value }: { value: string }) => { ok: true; value: ArgvValue } | { ok: false; message: string }) | undefined;
   help: ArgvOptionHelp;
 }
 
 export type ArgvOptionSpec = ArgvFlagOptionSpec | ArgvValueOptionSpec;
 
 export interface ArgvDiagnostic {
-  kind: 'unknown-short-option' | 'unknown-long-option' | 'missing-option-value' | 'invalid-option-value';
+  kind: 'unknown_short_option' | 'unknown_long_option' | 'missing_option_value' | 'invalid_option_value';
   option: string;
   message: string;
 }
@@ -45,7 +45,7 @@ export interface ArgvSpecialParseResult {
   occurrences?: ArgvOptionOccurrence[];
 }
 
-export type ArgvSpecialTokenParser = (options: {
+export type ArgvSpecialTokenParser = ({ token, nextToken }: {
   token: string;
   nextToken: string | undefined;
 }) => ArgvSpecialParseResult | undefined;

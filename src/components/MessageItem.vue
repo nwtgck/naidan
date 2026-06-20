@@ -20,6 +20,8 @@ import MessageActions from './MessageActions.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 import { transformersJsService } from '@/services/transformers-js';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+import { idToRaw, toBinaryObjectId } from '@/models/ids';
+import type { AttachmentId, BinaryObjectId, ChatId, MessageId } from '@/models/ids';
 const ImageGenerationSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImageGenerationSettings.vue') });
 const ReasoningSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ReasoningSettings.vue') });
 const MessageDiffModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./MessageDiffModal.vue') });
@@ -40,7 +42,7 @@ import {
 } from '@/utils/image-generation';
 
 const props = withDefaults(defineProps<{
-  chatId: string;
+  chatId: ChatId;
   message: MessageNode;
   siblings?: MessageNode[];
   canGenerateImage?: boolean;
@@ -66,10 +68,10 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  (e: 'fork', messageId: string): void;
-  (e: 'edit', messageId: string, newContent: string, lmParameters: LmParameters | undefined): void;
-  (e: 'switch-version', messageId: string): void;
-  (e: 'regenerate', messageId: string): void;
+  (e: 'fork', messageId: MessageId): void;
+  (e: 'edit', messageId: MessageId, newContent: string, lmParameters: LmParameters | undefined): void;
+  (e: 'switch-version', messageId: MessageId): void;
+  (e: 'regenerate', messageId: MessageId): void;
   (e: 'abort'): void;
 }>();
 
@@ -97,11 +99,11 @@ const editImageParams = ref({
   persistAs: 'original' as 'original' | 'webp' | 'jpeg' | 'png'
 });
 
-const attachmentUrls = ref<Record<string, string>>({});
+const attachmentUrls = ref(new Map<AttachmentId, string>());
 const messageChatId = computed(() => props.chatId);
 
 const { openPreview } = useImagePreview();
-const chatMetadata = useChatMetadata({});
+const chatMetadata = useChatMetadata();
 const chatImageProgress = useChatImageProgress({
   chatId: messageChatId,
 });
@@ -131,7 +133,7 @@ function handleAdvancedEditorModeUpdate({ mode }: { mode: 'advanced' | 'textarea
   setPreferredEditorMode({ mode });
 }
 
-async function handlePreviewImage({ id }: { id: string }) {
+async function handlePreviewImage({ id }: { id: BinaryObjectId }) {
   // To support next/prev navigation, we'd ideally pass all images in this chat or message.
   // For now, let's at least try to fetch metadata for the clicked one.
   const obj = await storageService.getBinaryObject({ binaryObjectId: id });
@@ -146,9 +148,9 @@ async function handlePreviewImage({ id }: { id: string }) {
     if (placeholders) {
       for (const el of placeholders) {
         const hid = (el as HTMLElement).dataset.id;
-        if (hid && !allImages.find(i => i.id === hid)) {
+        if (hid && !allImages.find(i => idToRaw({ id: i.id }) === hid)) {
           // Fetch meta if missing
-          const meta = await storageService.getBinaryObject({ binaryObjectId: hid });
+          const meta = await storageService.getBinaryObject({ binaryObjectId: toBinaryObjectId({ raw: hid }) });
           if (meta) allImages.push(meta);
         }
       }
@@ -169,13 +171,13 @@ async function loadAttachments() {
   for (const att of props.message.attachments) {
     switch (att.status) {
     case 'memory':
-      attachmentUrls.value[att.id] = URL.createObjectURL(att.blob);
+      attachmentUrls.value.set(att.id, URL.createObjectURL(att.blob));
       break;
     case 'persisted':
       try {
         const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
         if (blob) {
-          attachmentUrls.value[att.id] = URL.createObjectURL(blob);
+          attachmentUrls.value.set(att.id, URL.createObjectURL(blob));
         }
       } catch (e) {
         console.error('Failed to load persisted attachment:', e);
@@ -309,14 +311,14 @@ function handleClearContent() {
 onMounted(() => {
   loadAttachments();
 
-  transformersUnsubscribe = transformersJsService.subscribe((s) => {
+  transformersUnsubscribe = transformersJsService.subscribe({ listener: ({ status: s }) => {
     transformersStatus.value = s;
-  });
+  } });
 
 });
 
 onUnmounted(() => {
-  Object.values(attachmentUrls.value).forEach(url => URL.revokeObjectURL(url));
+  attachmentUrls.value.forEach(url => URL.revokeObjectURL(url));
 
   if (transformersUnsubscribe) transformersUnsubscribe();
 });
@@ -346,7 +348,6 @@ const displayContent = computed(() => {
 });
 
 const isImageResponse = computed(() => isImageGenerationProcessed({ content: props.message.content || '' }));
-
 
 const speechText = computed(() => {
   const mode = props.mode;
@@ -545,10 +546,10 @@ defineExpose({
     <div :class="isEditing ? 'overflow-visible' : 'overflow-hidden'">
       <!-- Attachments (Only shown in the first part of a node if any) -->
       <div v-if="isFirstInNode && message.attachments && message.attachments.length > 0" class="flex flex-wrap gap-2 mb-3">
-        <div v-for="(att, idx) in message.attachments" :key="att.id" class="relative group/att">
-          <template v-if="att.status !== 'missing' && attachmentUrls[att.id]">
+        <div v-for="(att, idx) in message.attachments" :key="idToRaw({ id: att.id })" class="relative group/att">
+          <template v-if="att.status !== 'missing' && attachmentUrls.get(att.id)">
             <img
-              :src="attachmentUrls[att.id]"
+              :src="attachmentUrls.get(att.id)"
               @click="handlePreviewImage({ id: att.binaryObjectId })"
               class="max-w-[300px] max-h-[300px] object-contain rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm cursor-pointer hover:opacity-95 transition-opacity"
             />
@@ -556,7 +557,7 @@ defineExpose({
               <ImageIndexBadge :index="idx + 1" :total="message.attachments.length" />
             </div>
             <a
-              :href="attachmentUrls[att.id]"
+              :href="attachmentUrls.get(att.id)"
               :download="att.originalName"
               class="absolute top-2 right-2 p-1.5 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-lg text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm opacity-0 touch-visible group-hover/att:opacity-100 transition-all z-10"
               title="Download image"
@@ -709,7 +710,6 @@ defineExpose({
             <span>Retry</span>
           </button>
         </div>
-
 
         <div v-if="isLastInNode" class="flex items-center justify-between min-h-[28px]" :class="isNested ? 'mt-1' : 'mt-3'" data-testid="message-actions-wrapper">
           <!-- Version Paging -->

@@ -1,4 +1,4 @@
-import type { EmptyArgs } from '@/models/types'
+
 import { WeshVFS } from '@/services/wesh/vfs'
 import { NaidanSysfsProvider } from '@/services/wesh/naidan-sysfs/provider'
 import {
@@ -156,7 +156,7 @@ async function createSessionFromRoot({ root }: { root: FileExplorerRootDescripto
         const reader = await (() => {
           switch (mount.storageType) {
           case 'opfs':
-            return createOpfsNaidanSysfsStorageReader({})
+            return createOpfsNaidanSysfsStorageReader()
           case 'local':
           case 'memory':
             if (root.naidanSysfsRemoteReader === undefined) {
@@ -538,8 +538,7 @@ async function listNativeDirectoryEntries({
       break
     }
     default: {
-      const _exhaustiveCheck: never = childHandle.kind
-      throw new Error(`Unhandled directory child kind: ${String(_exhaustiveCheck)}`)
+      throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`)
     }
     }
   }
@@ -726,8 +725,7 @@ async function copyDirectoryHandleToDirectory({
       })
       break
     default: {
-      const _exhaustiveCheck: never = childHandle.kind
-      throw new Error(`Unhandled directory child kind: ${String(_exhaustiveCheck)}`)
+      throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`)
     }
     }
   }
@@ -753,7 +751,7 @@ async function deleteEntryPath({
   await writableParentDirectory.removeEntry(name, { recursive: true })
 }
 
-export function createFileExplorerWorker(_args: EmptyArgs): IFileExplorerWorker {
+export function createFileExplorerWorker(): IFileExplorerWorker {
   return {
     async prepareSession({ request }) {
       const validated = fileExplorerPrepareSessionRequestSchema.parse(request)
@@ -997,8 +995,7 @@ export function createFileExplorerWorker(_args: EmptyArgs): IFileExplorerWorker 
             })
             break
           default: {
-            const _exhaustiveCheck: never = childHandle.kind
-            throw new Error(`Unhandled directory child kind: ${String(_exhaustiveCheck)}`)
+            throw new Error(`Unhandled directory child kind: ${((childHandle satisfies never) as { readonly kind: string }).kind}`)
           }
           }
         }

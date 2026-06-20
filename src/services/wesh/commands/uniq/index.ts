@@ -267,7 +267,7 @@ async function openUniqOutputTarget({
         kind: 'writer',
         writer: writerResult.writer,
       };
-    case 'fallback-required':
+    case 'fallback_required':
       break;
     default: {
       const _ex: never = writerResult;

@@ -11,8 +11,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     deleteChat: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
     loadChatGroup: vi.fn().mockResolvedValue(null),
@@ -50,7 +50,7 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM Provider
+// Mock LM Provider
 const mockListModels = vi.fn();
 vi.mock('../services/lm/openai', () => {
   class MockOpenAI {
@@ -129,7 +129,7 @@ describe('useChat Onboarding Trigger', () => {
     const { deleteAllChats } = useChat();
     mockIsOnboardingDismissed.value = true;
 
-    await deleteAllChats({});
+    await deleteAllChats();
 
     expect(mockIsOnboardingDismissed.value).toBe(true);
   });

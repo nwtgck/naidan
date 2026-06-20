@@ -64,9 +64,9 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
-    transformersJsService.subscribe((_status, progress) => {
+    transformersJsService.subscribe({ listener: ({ progress }) => {
       lastProgress = progress;
-    });
+    } });
 
     await transformersJsService.loadModel({ modelId: 'some-model' });
 
@@ -96,9 +96,9 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
-    transformersJsService.subscribe((_status, progress) => {
+    transformersJsService.subscribe({ listener: ({ progress }) => {
       lastProgress = progress;
-    });
+    } });
 
     await transformersJsService.loadModel({ modelId: 'some-model' });
 
@@ -139,9 +139,9 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
-    transformersJsService.subscribe((_status, progress) => {
+    transformersJsService.subscribe({ listener: ({ progress }) => {
       lastProgress = progress;
-    });
+    } });
 
     await transformersJsService.loadModel({ modelId: 'some-model' });
 
@@ -183,9 +183,9 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     const progressHistory: number[] = [];
-    transformersJsService.subscribe((_status, progress) => {
+    transformersJsService.subscribe({ listener: ({ progress }) => {
       progressHistory.push(progress);
-    });
+    } });
 
     await transformersJsService.loadModel({ modelId: 'some-model' });
 
@@ -215,11 +215,11 @@ describe('transformersJsService progress logic', () => {
     const { transformersJsService } = await import('./index');
 
     let lastProgress = 0;
-    transformersJsService.subscribe((status, progress) => {
+    transformersJsService.subscribe({ listener: ({ status, progress }) => {
       if (status === 'loading') {
         lastProgress = progress;
       }
-    });
+    } });
 
     await transformersJsService.loadModel({ modelId: 'some-model' });
 

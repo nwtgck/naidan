@@ -1,3 +1,4 @@
+import { idToRaw, toChatId } from '@/models/ids';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
@@ -13,8 +14,8 @@ vi.mock('../services/storage', () => ({
     saveChat: vi.fn(),
     updateChatMeta: vi.fn().mockResolvedValue(undefined),
     loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
-    updateHierarchy: vi.fn().mockImplementation((updater) => Promise.resolve(updater({ items: [] }))),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { items: [] } }))),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn().mockResolvedValue(undefined),
     updateChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -46,7 +47,7 @@ describe('useChat Delete Undo Logic', () => {
   const { deleteChat, TEST_ONLY } = chatStore;
   const { activeGenerations } = TEST_ONLY;
 
-  let capturedOnClose: ((reason: any) => void) | undefined;
+  let capturedOnClose: (({ reason }: { reason: 'timeout' | 'dismiss' | 'action' }) => void | Promise<void>) | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -59,7 +60,7 @@ describe('useChat Delete Undo Logic', () => {
   });
 
   it('should delay storage deletion and abort until toast is closed', async () => {
-    const chatId = 'test-chat-id';
+    const chatId = toChatId({ raw: 'test-chat-id' });
     const mockAbort = vi.fn();
 
     // 1. Mock an active generation
@@ -76,7 +77,7 @@ describe('useChat Delete Undo Logic', () => {
     } as any);
 
     // 3. Trigger delete
-    await deleteChat({ id: chatId });
+    await deleteChat({ id: idToRaw({ id: chatId }) });
 
     // VERIFY: Toast was shown and returned truthy ID
     expect(mockAddToast).toHaveBeenCalled();
@@ -88,7 +89,7 @@ describe('useChat Delete Undo Logic', () => {
     expect(capturedOnClose).toBeDefined();
 
     // 4. Simulate toast timeout/dismiss
-    if (capturedOnClose) await capturedOnClose('timeout');
+    if (capturedOnClose) await capturedOnClose({ reason: 'timeout' });
 
     // VERIFY: Now cleanup is executed
     expect(mockAbort).toHaveBeenCalled();
@@ -97,7 +98,7 @@ describe('useChat Delete Undo Logic', () => {
   });
 
   it('should NOT execute cleanup if Undo is clicked', async () => {
-    const chatId = 'test-chat-id';
+    const chatId = toChatId({ raw: 'test-chat-id' });
     const mockAbort = vi.fn();
 
     activeGenerations.set(chatId, {
@@ -111,10 +112,10 @@ describe('useChat Delete Undo Logic', () => {
       root: { items: [] }
     } as any);
 
-    await deleteChat({ id: chatId });
+    await deleteChat({ id: idToRaw({ id: chatId }) });
 
     // 4. Simulate Undo click (reason: action)
-    if (capturedOnClose) await capturedOnClose('action');
+    if (capturedOnClose) await capturedOnClose({ reason: 'action' });
 
     // VERIFY: Cleanup is skipped
     expect(mockAbort).not.toHaveBeenCalled();

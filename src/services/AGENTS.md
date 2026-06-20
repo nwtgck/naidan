@@ -23,7 +23,7 @@ The goal is:
 ## Core Rules
 
 1. App code imports a client facade, not a loader.
-2. Callers use typed clients with `dispose({})`, not raw `Worker`.
+2. Callers use typed clients with `dispose()`, not raw `Worker`.
 3. Hosted/standalone switching happens with Vite alias, not runtime protocol branching.
 
 Examples of public facades:
@@ -70,7 +70,7 @@ Rules:
 
 1. Put reusable worker logic in `foo/worker/impl.ts`.
 2. Keep `foo/worker/entry.ts` as the hosted entrypoint that only exposes the worker.
-3. Add the service to `IWorkerHub` and `createStandaloneWorkerHub({})`.
+3. Add the service to `IWorkerHub` and `createStandaloneWorkerHub()`.
 4. Wrap hub services with `Comlink.proxy(...)`.
 5. Add standalone Vite alias for the public facade path, normally `@/services/foo/worker/client`.
 
@@ -117,6 +117,25 @@ Rules:
 4. Standalone client keeps the same methods but throws a clear unsupported error.
 5. Add standalone Vite alias for the facade path, normally `@/services/foo/worker/client`.
 6. Do not keep a noop loader alias once the facade exists.
+
+
+## Comlink and Named Args
+
+Comlink positional exceptions are only for callable signatures that directly form the Comlink boundary: methods exposed with `Comlink.expose(...)`, methods declared for `Comlink.wrap<RemoteInterface>(...)`, or remote methods that receive `Comlink.proxy(...)` callbacks as top-level arguments.
+
+Do not use the Comlink exception merely because a function internally calls a Comlink remote. Naidan-facing facades that hide the worker boundary should still use named args, and should bridge to the positional Comlink call internally:
+
+```ts
+async function generateText({ messages, onChunk }: {
+  messages: ChatMessage[];
+  onChunk: ({ chunk }: { chunk: string }) => void;
+}) {
+  return remote.generateText(
+    { messages },
+    Comlink.proxy((chunk) => onChunk({ chunk })),
+  );
+}
+```
 
 ## Vite Rules
 

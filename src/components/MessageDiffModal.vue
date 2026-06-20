@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, onUnmounted, watch } from 'vue';
 import { XIcon, HistoryIcon, ClockIcon, CpuIcon, ArrowDownIcon, CopyIcon, CheckIcon, ArrowRightIcon, RotateCcwIcon, EyeIcon, EyeOffIcon } from 'lucide-vue-next';
+import { idToRaw } from '@/models/ids';
+import type { MessageId } from '@/models/ids';
 import type { MessageNode } from '@/models/types';
 import { computeWordDiff, type DiffPart } from '@/utils/diff';
 
 const props = defineProps<{
   isOpen: boolean;
   siblings: MessageNode[];
-  currentMessageId: string;
+  currentMessageId: MessageId;
 }>();
 
 const emit = defineEmits<{
@@ -17,9 +19,9 @@ const emit = defineEmits<{
 type DiffVisibility = 'visible' | 'hidden';
 const diffVisibility = ref<DiffVisibility>('visible');
 
-const baseVersionId = ref<string | undefined>(undefined);
-const targetVersionId = ref<string | undefined>(undefined);
-const skippedMessageIds = ref<Set<string>>(new Set());
+const baseVersionId = ref<MessageId | undefined>(undefined);
+const targetVersionId = ref<MessageId | undefined>(undefined);
+const skippedMessageIds = ref<Set<MessageId>>(new Set());
 const visibleCount = ref(10);
 const loadMoreTrigger = ref<HTMLElement | null>(null);
 
@@ -58,7 +60,7 @@ onUnmounted(() => {
 });
 
 interface VersionItem {
-  id: string;
+  id: MessageId;
   versionNumber: number;
   content: string;
   modelId: string | undefined;
@@ -89,7 +91,7 @@ const customDiff = computed(() => {
 });
 
 interface SequentialDiff {
-  id: string;
+  id: MessageId;
   versionNumber: number;
   timestamp: number;
   modelId: string | undefined;
@@ -99,7 +101,7 @@ interface SequentialDiff {
   isSkipped: boolean;
 }
 
-const copiedId = ref<string | undefined>(undefined);
+const copiedId = ref<MessageId | undefined>(undefined);
 
 const sequentialDiffs = computed(() => {
   const result: SequentialDiff[] = [];
@@ -146,7 +148,7 @@ const sequentialDiffs = computed(() => {
 
   return result;
 });
-function toggleSkip({ id }: { id: string }) {
+function toggleSkip({ id }: { id: MessageId }) {
   const next = new Set(skippedMessageIds.value);
   if (next.has(id)) {
     next.delete(id);
@@ -159,7 +161,7 @@ function toggleSkip({ id }: { id: string }) {
   skippedMessageIds.value = next;
 }
 
-async function handleCopy({ id, content }: { id: string, content: string }) {
+async function handleCopy({ id, content }: { id: MessageId, content: string }) {
   try {
     await navigator.clipboard.writeText(content);
     copiedId.value = id;
@@ -291,7 +293,7 @@ defineExpose({
 
           <!-- Version List -->
           <div class="p-6 space-y-8">
-            <div v-for="(diff, index) in sequentialDiffs.slice(0, visibleCount)" :key="diff.id" class="relative">
+            <div v-for="(diff, index) in sequentialDiffs.slice(0, visibleCount)" :key="idToRaw({ id: diff.id })" class="relative">
               <!-- Version Card -->
               <div
                 class="bg-white dark:bg-gray-900 rounded-2xl border transition-all shadow-sm group/card"

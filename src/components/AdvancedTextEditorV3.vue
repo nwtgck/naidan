@@ -144,7 +144,7 @@ let multiEditRequestVersion = 0;
 
 async function getWorkerClient() {
   if (!workerClient) {
-    workerClient = await createAdvancedTextEditorV3WorkerClient({});
+    workerClient = await createAdvancedTextEditorV3WorkerClient();
   }
   return workerClient;
 }
@@ -809,11 +809,9 @@ function handleKeyDown({ event }: { event: KeyboardEvent }) {
   }
 }
 
-function handleWindowKeyDown(event: KeyboardEvent) {
+useEventTargetListener(window, 'keydown', (event) => {
   handleKeyDown({ event });
-}
-
-useEventTargetListener(window, 'keydown', handleWindowKeyDown);
+});
 useEventTargetListener(window, 'resize', calculateLineHeights);
 
 onMounted(() => {
@@ -832,7 +830,7 @@ onUnmounted(() => {
     ghostElement.parentNode.removeChild(ghostElement);
   }
   if (workerClient) {
-    void workerClient.dispose({});
+    void workerClient.dispose();
   }
 });
 

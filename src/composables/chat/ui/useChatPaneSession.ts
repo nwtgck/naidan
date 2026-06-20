@@ -1,31 +1,49 @@
 import { getCurrentInstance, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import type { MessageId } from '@/models/ids';
 
 type OutlineVisibility = 'hidden' | 'visible';
+
+interface ChatPaneSession {
+  showCompactSettings: Ref<boolean>;
+  showNeuralSyncEffect: Ref<boolean>;
+  outlineVisibility: Ref<OutlineVisibility>;
+  initialOutlineMessageId: Ref<MessageId | undefined>;
+  openCompactSettings: () => void;
+  closeCompactSettings: () => void;
+  toggleOutline: ({ getCurrentViewportMessageId }: { getCurrentViewportMessageId: () => MessageId | undefined }) => void;
+  closeOutline: () => void;
+  playNeuralSyncEffect: () => void;
+  clearNeuralSyncEffect: () => void;
+  TEST_ONLY: {
+    hideNeuralSyncEffectTimer: Ref<number | undefined>;
+    clearNeuralSyncEffectTimer: () => void;
+  };
+}
 
 export function useChatPaneSession({
   chatIdentityKey,
 }: {
   chatIdentityKey: Readonly<Ref<string>>;
-}) {
+}): ChatPaneSession {
   const showCompactSettings = ref(false);
   const showNeuralSyncEffect = ref(false);
   const outlineVisibility = ref<OutlineVisibility>('hidden');
-  const initialOutlineMessageId = ref<string | undefined>(undefined);
+  const initialOutlineMessageId = ref<MessageId | undefined>(undefined);
   const hideNeuralSyncEffectTimer = ref<number | undefined>(undefined);
 
-  function clearNeuralSyncEffectTimer(_args: Record<never, never>) {
+  function clearNeuralSyncEffectTimer() {
     if (hideNeuralSyncEffectTimer.value === undefined) return;
     window.clearTimeout(hideNeuralSyncEffectTimer.value);
     hideNeuralSyncEffectTimer.value = undefined;
   }
 
-  function clearNeuralSyncEffect(_args: Record<never, never>) {
-    clearNeuralSyncEffectTimer({});
+  function clearNeuralSyncEffect() {
+    clearNeuralSyncEffectTimer();
     showNeuralSyncEffect.value = false;
   }
 
-  function playNeuralSyncEffect(_args: Record<never, never>) {
-    clearNeuralSyncEffectTimer({});
+  function playNeuralSyncEffect() {
+    clearNeuralSyncEffectTimer();
     showNeuralSyncEffect.value = true;
     hideNeuralSyncEffectTimer.value = window.setTimeout(() => {
       showNeuralSyncEffect.value = false;
@@ -33,18 +51,18 @@ export function useChatPaneSession({
     }, 1200);
   }
 
-  function openCompactSettings(_args: Record<never, never>) {
+  function openCompactSettings() {
     showCompactSettings.value = true;
   }
 
-  function closeCompactSettings(_args: Record<never, never>) {
+  function closeCompactSettings() {
     showCompactSettings.value = false;
   }
 
   function toggleOutline({
     getCurrentViewportMessageId,
   }: {
-    getCurrentViewportMessageId: () => string | undefined;
+    getCurrentViewportMessageId: () => MessageId | undefined;
   }) {
     const currentVisibility = outlineVisibility.value;
     switch (currentVisibility) {
@@ -63,20 +81,20 @@ export function useChatPaneSession({
     }
   }
 
-  function closeOutline(_args: Record<never, never>) {
+  function closeOutline() {
     outlineVisibility.value = 'hidden';
     initialOutlineMessageId.value = undefined;
   }
 
   watch(chatIdentityKey, () => {
-    closeCompactSettings({});
-    closeOutline({});
-    clearNeuralSyncEffect({});
+    closeCompactSettings();
+    closeOutline();
+    clearNeuralSyncEffect();
   });
 
   if (getCurrentInstance()) {
     onBeforeUnmount(() => {
-      clearNeuralSyncEffect({});
+      clearNeuralSyncEffect();
     });
   }
 

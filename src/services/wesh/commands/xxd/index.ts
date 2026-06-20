@@ -1,7 +1,9 @@
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { readCommandInputAsBytes } from '@/services/wesh/commands/_shared/binary-input';
+import { openCommandInputStream } from '@/services/wesh/commands/_shared/binary-input';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
 
 function parseNonNegativeInteger({
   value,
@@ -92,62 +94,102 @@ function renderHexSection({
   return parts.join(' ').padEnd(getHexColumnWidth({ columns, groupSize }), ' ');
 }
 
-function renderNormalDump({
+function renderNormalLine({
   bytes,
   columns,
   groupSize,
   uppercase,
-  autoskip,
   displayOffset,
 }: {
   bytes: Uint8Array;
   columns: number;
   groupSize: number;
   uppercase: boolean;
-  autoskip: boolean;
   displayOffset: number;
 }): string {
-  const lines: string[] = [];
-  let skipped = false;
-
-  for (let offset = 0; offset < bytes.length; offset += columns) {
-    const chunk = bytes.slice(offset, offset + columns);
-    const isZeroLine = chunk.length === columns && chunk.every((byte) => byte === 0);
-    if (autoskip && isZeroLine) {
-      if (!skipped) {
-        lines.push('*\n');
-        skipped = true;
-      }
-      continue;
-    }
-
-    skipped = false;
-    lines.push(`${toHex({ value: displayOffset + offset, uppercase, width: 8 })}: ${renderHexSection({
-      bytes: chunk,
-      columns,
-      groupSize,
-      uppercase,
-    })}  ${renderAscii({ bytes: chunk })}\n`);
-  }
-
-  return lines.join('');
+  return `${toHex({ value: displayOffset, uppercase, width: 8 })}: ${renderHexSection({
+    bytes,
+    columns,
+    groupSize,
+    uppercase,
+  })}  ${renderAscii({ bytes })}\n`;
 }
 
-function renderPlainDump({
+function renderPlainLine({
   bytes,
-  columns,
   uppercase,
 }: {
   bytes: Uint8Array;
-  columns: number;
   uppercase: boolean;
 }): string {
-  let result = '';
-  for (let offset = 0; offset < bytes.length; offset += columns) {
-    const chunk = bytes.slice(offset, offset + columns);
-    result += `${Array.from(chunk, (byte) => toHex({ value: byte, uppercase, width: 2 })).join('')}\n`;
+  return `${Array.from(bytes, byte => toHex({
+    value: byte,
+    uppercase,
+    width: 2,
+  })).join('')}\n`;
+}
+
+async function* iterateXxdRows({
+  stream,
+  columns,
+  seek,
+  length,
+}: {
+  stream: ReadableStream<Uint8Array>;
+  columns: number;
+  seek: number;
+  length: number | undefined;
+}): AsyncIterable<Uint8Array> {
+  let bytesToSkip = seek;
+  let bytesRemaining = length;
+  let pending = new Uint8Array(columns);
+  let pendingLength = 0;
+
+  for await (const chunk of iterateReadableStreamChunks({ stream })) {
+    let start = 0;
+    if (bytesToSkip > 0) {
+      const skipped = Math.min(bytesToSkip, chunk.byteLength);
+      bytesToSkip -= skipped;
+      start += skipped;
+    }
+    if (start >= chunk.byteLength) {
+      continue;
+    }
+
+    const availableLength = bytesRemaining === undefined
+      ? chunk.byteLength - start
+      : Math.min(chunk.byteLength - start, bytesRemaining);
+    const end = start + availableLength;
+    if (bytesRemaining !== undefined) {
+      bytesRemaining -= availableLength;
+    }
+
+    while (start < end) {
+      if (pendingLength === 0 && end - start >= columns) {
+        yield chunk.subarray(start, start + columns);
+        start += columns;
+        continue;
+      }
+
+      const copied = Math.min(columns - pendingLength, end - start);
+      pending.set(chunk.subarray(start, start + copied), pendingLength);
+      pendingLength += copied;
+      start += copied;
+      if (pendingLength === columns) {
+        yield pending;
+        pending = new Uint8Array(columns);
+        pendingLength = 0;
+      }
+    }
+
+    if (bytesRemaining === 0) {
+      break;
+    }
   }
-  return result;
+
+  if (pendingLength > 0) {
+    yield pending.subarray(0, pendingLength);
+  }
 }
 
 const xxdArgvSpec: StandardArgvParserSpec = {
@@ -250,27 +292,50 @@ export const xxdCommandDefinition: WeshCommandDefinition = {
     }
 
     try {
-      const input = await readCommandInputAsBytes({
+      const writer = createBufferedTextWriter({
+        handle: context.stdout,
+        maxBufferLength: 16 * 1024,
+      });
+      const plain = parsed.optionValues.plain === true;
+      const uppercase = parsed.optionValues.uppercase === true;
+      const autoskip = parsed.optionValues.autoskip === true;
+      let displayOffset = seekParsed.value;
+      let skippingZeroLines = false;
+      const stream = await openCommandInputStream({
         context,
         input: parsed.positionals[0],
       });
-      const sliced = input.slice(seekParsed.value, lengthParsed.value === undefined ? undefined : seekParsed.value + lengthParsed.value);
-      const output = parsed.optionValues.plain === true
-        ? renderPlainDump({
-          bytes: sliced,
-          columns: columnsParsed.value,
-          uppercase: parsed.optionValues.uppercase === true,
-        })
-        : renderNormalDump({
-          bytes: sliced,
-          columns: columnsParsed.value,
-          groupSize: groupSizeParsed.value,
-          uppercase: parsed.optionValues.uppercase === true,
-          autoskip: parsed.optionValues.autoskip === true,
-          displayOffset: seekParsed.value,
-        });
+      for await (const row of iterateXxdRows({
+        stream,
+        columns: columnsParsed.value,
+        seek: seekParsed.value,
+        length: lengthParsed.value,
+      })) {
+        const isZeroLine = row.byteLength === columnsParsed.value && row.every(byte => byte === 0);
+        if (!plain && autoskip && isZeroLine) {
+          if (!skippingZeroLines) {
+            await writer.write({ text: '*\n' });
+            skippingZeroLines = true;
+          }
+          displayOffset += row.byteLength;
+          continue;
+        }
 
-      await context.text().print({ text: output });
+        skippingZeroLines = false;
+        await writer.write({
+          text: plain
+            ? renderPlainLine({ bytes: row, uppercase })
+            : renderNormalLine({
+              bytes: row,
+              columns: columnsParsed.value,
+              groupSize: groupSizeParsed.value,
+              uppercase,
+              displayOffset,
+            }),
+        });
+        displayOffset += row.byteLength;
+      }
+      await writer.flush();
       return { exitCode: 0 };
     } catch (error: unknown) {
       const name = parsed.positionals[0] ?? '-';

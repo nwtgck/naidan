@@ -22,7 +22,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(errorCount.value).toBe(0);
   });
 
-  it('should execute a tool and loop back to LLM', async () => {
+  it('should execute a tool and loop back to LM', async () => {
     const mockTool: Tool = {
       name: 'get_weather',
       description: 'Get weather',
@@ -56,7 +56,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     await provider.chat({
       messages: [{ role: 'user', content: 'Tokyo weather?' }],
       model: 'gpt-4',
-      onChunk: (chunk) => {
+      onChunk: ({ chunk: chunk }) => {
         result += chunk;
       },
       tools: [mockTool],
@@ -147,7 +147,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     await provider.chat({
       messages: [],
       model: 'gpt-4',
-      onChunk: (chunk) => {
+      onChunk: ({ chunk: chunk }) => {
         result += chunk;
       },
       tools: [mockTool],
@@ -168,7 +168,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
   });
 
-  it('should return error to LLM on invalid arguments (strict mode)', async () => {
+  it('should return error to LM on invalid arguments (strict mode)', async () => {
     const mockTool: Tool = {
       name: 'strict_tool',
       description: 'Strict',
@@ -301,7 +301,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(secondReqBody.messages[1].content).toContain('KABOOM');
   });
 
-  it('should report tool not found error to LLM', async () => {
+  it('should report tool not found error to LM', async () => {
     serverInstance = await startMockServer({
       handler: (_req, res) => {
         res.writeHead(200);
@@ -367,7 +367,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     });
 
     await expect(chatPromise).rejects.toThrow();
-    // Should NOT have made a second request to LLM
+    // Should NOT have made a second request to LM
     expect(serverInstance!.capturedRequests).toHaveLength(1);
   });
 
@@ -453,7 +453,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(secondReqBody.messages[2].content).toContain('BAD');
   });
 
-  it('should send non-empty tool parameters schema to the LLM', async () => {
+  it('should send non-empty tool parameters schema to the LM', async () => {
     const mockTool: Tool = {
       name: 't',
       description: 'T',
@@ -529,7 +529,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { e: '2+2' } }));
   });
 
-  it('should treat concatenated JSON objects as a parse error and report to LLM (correct protocol enforcement)', async () => {
+  it('should treat concatenated JSON objects as a parse error and report to LM (correct protocol enforcement)', async () => {
     const mockTool: Tool = {
       name: 'calc',
       description: 'Calc',
@@ -563,7 +563,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     // Should NOT have executed the tool
     expect(mockTool.execute).not.toHaveBeenCalled();
 
-    // Verify the second request to LLM contains the parse error message
+    // Verify the second request to LM contains the parse error message
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     const toolMsg = secondReqBody.messages.find(m => m.role === 'tool');
     expect(toolMsg.content).toContain('Failed to parse tool arguments');
@@ -574,7 +574,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
       name: 'calc',
       description: 'Calc',
       parametersSchema: z.object({ e: z.string() }),
-      execute: vi.fn().mockImplementation(async ({ args }) => ({ status: 'success', content: `res_${(args as any).e}` })),
+      execute: vi.fn().mockImplementation(async ({ args }) => ({ status: 'success', content: `res_${(args as { e: string }).e}` })),
     };
 
     serverInstance = await startMockServer({
@@ -606,7 +606,7 @@ describe('OpenAIProvider Tool Calls (Integration)', () => {
     expect(mockTool.execute).toHaveBeenNthCalledWith(1, expect.objectContaining({ args: { e: '1+1' } }));
     expect(mockTool.execute).toHaveBeenNthCalledWith(2, expect.objectContaining({ args: { e: '2+2' } }));
 
-    // Verify the second request to LLM contains TWO separate tool results with their respective IDs
+    // Verify the second request to LM contains TWO separate tool results with their respective IDs
     const secondReqBody = serverInstance!.capturedRequests[1]!.body as { messages: any[] };
     const toolMessages = secondReqBody.messages.filter(m => m.role === 'tool');
     expect(toolMessages).toHaveLength(2);

@@ -1,9 +1,7 @@
 import { toRaw } from 'vue';
 import type { ChatGroup, EndpointType } from '@/models/types';
-import type { LLMProvider } from '@/services/lm/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import type { LmProvider } from '@/services/lm/types';
+import { createLmProvider } from '@/services/lm/providerFactory';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import {
@@ -14,6 +12,7 @@ import {
   rootItems,
   triggerCurrentChat,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatId } from '@/models/ids';
 import {
   resolveChatEndpointForChat,
   resolveGlobalEndpoint,
@@ -23,7 +22,7 @@ export async function fetchModelsForChat({
   chatId,
   errorSource,
 }: {
-  chatId: string;
+  chatId: ChatId;
   errorSource: string;
 }): Promise<string[]> {
   const { settings } = useSettings();
@@ -148,19 +147,12 @@ function createProviderForEndpoint({
   endpointType: EndpointType;
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
-}): LLMProvider {
-  const headers = endpointHttpHeaders ? JSON.parse(JSON.stringify(endpointHttpHeaders)) as [string, string][] : undefined;
-
-  switch (endpointType) {
-  case 'openai':
-    return new OpenAIProvider({ endpoint: endpointUrl || '', headers });
-  case 'ollama':
-    return new OllamaProvider({ endpoint: endpointUrl || '', headers });
-  case 'transformers_js':
-    return new TransformersJsProvider();
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unhandled endpoint type: ${_ex}`);
-  }
-  }
+}): LmProvider {
+  const { settings } = useSettings();
+  return createLmProvider({
+    endpointType,
+    endpointUrl,
+    endpointHttpHeaders,
+    fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
+  });
 }

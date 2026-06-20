@@ -10,10 +10,12 @@ import { ImportExportService } from '@/services/import-export/service';
 import { storageService } from '@/services/storage';
 import { useToast } from '@/composables/useToast';
 import type {
+  ExportOptions,
   ImportConfig,
   ImportPreview
 } from '@/services/import-export/types';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import { useExportExclusions } from '@/composables/useExportExclusions';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -23,7 +25,7 @@ const emit = defineEmits<{
   (e: 'close'): void;
 }>();
 
-const service = new ImportExportService(storageService);
+const service = new ImportExportService({ storage: storageService });
 const { addToast } = useToast();
 
 /**
@@ -41,6 +43,14 @@ const error = ref<string | null>(null);
 
 // Export State
 const exportName = ref('');
+const {
+  excludeChats,
+  excludeChatHistory,
+  excludeAttachments,
+  excludeChatHistoryDisabled,
+  buildExcludeList,
+  reset: resetExportExclusions,
+} = useExportExclusions();
 const previewFilename = computed(() => {
   const dateStr = new Date().toISOString().split('T')[0];
   // eslint-disable-next-line no-control-regex
@@ -137,7 +147,13 @@ function resetState() {
   selectedFile.value = null;
   importPreview.value = null;
   exportName.value = '';
+  resetExportExclusions();
   importConfig.value = JSON.parse(JSON.stringify(APPEND_DEFAULT_CONFIG));
+}
+
+function buildExportExclude(): ExportOptions['exclude'] {
+  const exclude = buildExcludeList();
+  return exclude.length === 0 ? undefined : exclude;
 }
 
 // Reset state when modal visibility changes to ensure a clean start
@@ -153,8 +169,10 @@ async function handleExport() {
   error.value = null;
 
   try {
+    const exclude = buildExportExclude();
     const { stream, filename } = await service.exportData({
-      fileNameSegment: exportName.value.trim()
+      fileNameSegment: exportName.value.trim(),
+      ...(exclude === undefined ? {} : { exclude }),
     });
 
     const newResponse = new Response(stream);
@@ -191,7 +209,7 @@ async function handleFileSelect({ event }: { event: Event }) {
   error.value = null;
 
   try {
-    importPreview.value = await service.analyze(file);
+    importPreview.value = await service.analyze({ zipFile: file });
     mode.value = 'import_preview';
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to analyze file';
@@ -281,7 +299,11 @@ defineExpose({
           <!-- MENU MODE -->
           <div v-if="mode === 'menu'" class="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
             <!-- Export Card -->
-            <div class="p-6 rounded-3xl border-2 border-gray-100 dark:border-gray-800 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/10 dark:hover:bg-blue-900/5 transition-all cursor-pointer group flex flex-col gap-4" @click="mode = 'export'">
+            <div
+              data-testid="import-export-export-card"
+              class="p-6 rounded-3xl border-2 border-gray-100 dark:border-gray-800 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/10 dark:hover:bg-blue-900/5 transition-all cursor-pointer group flex flex-col gap-4"
+              @click="mode = 'export'"
+            >
               <div class="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-2xl w-fit text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
                 <component :is="ExportIcon" class="w-6 h-6" />
               </div>
@@ -312,7 +334,7 @@ defineExpose({
               </div>
               <div class="space-y-1">
                 <h3 class="text-lg font-bold text-gray-800 dark:text-white">Ready to Export</h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">Prepare a ZIP file containing all your chats, groups, attachments, and configuration.</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">By default, prepare a ZIP file containing all your chats, groups, attachments, and configuration.</p>
               </div>
 
               <div class="w-full space-y-3 pt-2">
@@ -326,6 +348,40 @@ defineExpose({
                   />
                 </div>
 
+                <div class="mt-4 flex flex-wrap justify-center gap-4">
+                  <label class="flex items-center gap-2 cursor-pointer group">
+                    <input
+                      v-model="excludeChats"
+                      data-testid="export-exclude-chats-checkbox"
+                      type="checkbox"
+                      class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
+                    />
+                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chats</span>
+                  </label>
+                  <label
+                    class="flex items-center gap-2 group"
+                    :class="excludeChatHistoryDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'"
+                  >
+                    <input
+                      v-model="excludeChatHistory"
+                      :disabled="excludeChatHistoryDisabled"
+                      data-testid="export-exclude-chat-history-checkbox"
+                      type="checkbox"
+                      class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700 disabled:cursor-not-allowed"
+                    />
+                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Chat History</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer group">
+                    <input
+                      v-model="excludeAttachments"
+                      data-testid="export-exclude-attachments-checkbox"
+                      type="checkbox"
+                      class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
+                    />
+                    <span class="text-xs font-bold text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200 transition-colors">Exclude Attachments</span>
+                  </label>
+                </div>
+
                 <div class="flex flex-col items-center gap-4">
                   <div class="w-full max-w-md bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-3 flex flex-col gap-1.5 shadow-inner">
                     <span class="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Output Filename</span>
@@ -334,7 +390,11 @@ defineExpose({
                     </p>
                   </div>
 
-                  <button @click="handleExport" class="w-full sm:w-auto px-10 py-4 rounded-2xl font-black bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3">
+                  <button
+                    data-testid="import-export-export-now-button"
+                    class="w-full sm:w-auto px-10 py-4 rounded-2xl font-black bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/20 transition-all active:scale-95 flex items-center justify-center gap-3"
+                    @click="handleExport"
+                  >
                     <component :is="ExportIcon" class="w-6 h-6" />
                     Export Now
                   </button>

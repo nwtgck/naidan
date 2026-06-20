@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { Attachment, LmParameters } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 import { availableModels } from '@/composables/chat/global/chat-core-singletons';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import type { ImageRequestParams } from '@/utils/image-generation';
@@ -16,7 +17,7 @@ export type ChatImageGenerationAdapter = {
   seed: ComputedRef<number | 'browser_random' | undefined>;
   selectedImageModel: ComputedRef<string | undefined>;
 
-  toggleImageMode(_args: Record<never, never>): void;
+  toggleImageMode(): void;
 
   updateResolution({
     width,
@@ -82,7 +83,7 @@ export type ChatImageGenerationAdapter = {
 export function useChatImageGeneration({
   chatId,
 }: {
-  chatId: Readonly<Ref<string>>;
+  chatId: Readonly<Ref<ChatId>>;
 }): ChatImageGenerationAdapter {
   const imageGeneration = useImageGeneration();
 
@@ -99,7 +100,7 @@ export function useChatImageGeneration({
     });
   });
 
-  function toggleImageMode(_args: Record<never, never>) {
+  function toggleImageMode() {
     imageGeneration.toggleImageMode({ chatId: chatId.value });
   }
 

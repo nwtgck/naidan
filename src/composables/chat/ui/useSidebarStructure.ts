@@ -5,6 +5,7 @@ import {
   currentChatGroupRef,
   rootItems,
 } from '@/composables/chat/global/chat-core-singletons';
+import type { ChatGroupId } from '@/models/ids';
 
 export type SidebarStructureAdapter = {
   persistSidebarStructure({
@@ -17,7 +18,7 @@ export type SidebarStructureAdapter = {
     groupId,
     isCollapsed,
   }: {
-    groupId: string;
+    groupId: ChatGroupId;
     isCollapsed: boolean;
   }): Promise<void>;
 
@@ -40,7 +41,7 @@ export function useSidebarStructure(): SidebarStructureAdapter {
           return {
             type: 'chat_group',
             id: item.chatGroup.id,
-            chat_ids: item.chatGroup.items.map((chatItem) => chatItem.id.replace('chat:', '')),
+            chat_ids: item.chatGroup.items.map((chatItem) => chatItem.chat.id),
           };
         default: {
           const _ex: never = item;
@@ -49,14 +50,14 @@ export function useSidebarStructure(): SidebarStructureAdapter {
         }
       }),
     };
-    await storageService.updateHierarchy((_current) => newHierarchy);
+    await storageService.updateHierarchy({ updater: ({ current: _current }) => newHierarchy });
   }
 
   async function setChatGroupCollapsed({
     groupId,
     isCollapsed,
   }: {
-    groupId: string;
+    groupId: ChatGroupId;
     isCollapsed: boolean;
   }): Promise<void> {
     const item = rootItems.value.find((entry) => entry.type === 'chat_group' && entry.chatGroup.id === groupId);
@@ -69,13 +70,13 @@ export function useSidebarStructure(): SidebarStructureAdapter {
       currentChatGroupRef.value.isCollapsed = isCollapsed;
     }
 
-    await storageService.updateChatGroup(groupId, (current) => {
+    await storageService.updateChatGroup({ id: groupId, updater: ({ current }) => {
       if (current === null) {
         throw new Error('Chat group not found');
       }
       current.isCollapsed = isCollapsed;
       return current;
-    });
+    } });
   }
 
   return {

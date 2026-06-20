@@ -1,4 +1,4 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import { openHandleReadStream, writeAllStreamToFile } from '@/services/wesh/utils/fs';
@@ -16,6 +16,26 @@ function basename({ path }: { path: string }): string {
   const normalized = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
   const parts = normalized.split('/').filter(Boolean);
   return parts[parts.length - 1] ?? normalized;
+}
+
+function asDirectoryEntryRef({
+  entry,
+}: {
+  entry: WeshEntryRef;
+}): WeshEntryRef<'directory'> {
+  switch (entry.type) {
+  case 'directory':
+    return entry;
+  case 'file':
+  case 'fifo':
+  case 'chardev':
+  case 'symlink':
+    throw new Error(`Not a directory: ${entry.fullPath}`);
+  default: {
+    const _ex: never = entry;
+    throw new Error(`Unhandled entry type: ${_ex}`);
+  }
+  }
 }
 
 const cpArgvSpec: StandardArgvParserSpec = {
@@ -139,55 +159,52 @@ export const cpCommandDefinition: WeshCommandDefinition = {
       return { exitCode: 1 };
     }
 
-    const statSource = async ({
+    const resolveSourceEntry = ({
       path,
       isCommandLineArgument,
     }: {
       path: string;
       isCommandLineArgument: boolean;
-    }) => {
-      switch (symlinkMode) {
-      case 'logical':
-        return context.files.stat({ path });
-      case 'command-line':
-        return isCommandLineArgument ? context.files.stat({ path }) : context.files.lstat({ path });
-      case 'physical':
-        return context.files.lstat({ path });
-      default: {
-        const _ex: never = symlinkMode;
-        throw new Error(`Unhandled symlink mode: ${_ex}`);
-      }
-      }
+    }): Promise<WeshEntryRef> => {
+      const finalSymlinkTreatment = (() => {
+        switch (symlinkMode) {
+        case 'logical':
+          return 'follow' as const;
+        case 'command-line':
+          return isCommandLineArgument ? 'follow' as const : 'no-follow' as const;
+        case 'physical':
+          return 'no-follow' as const;
+        default: {
+          const _ex: never = symlinkMode;
+          throw new Error(`Unhandled symlink mode: ${_ex}`);
+        }
+        }
+      })();
+      return context.files.resolveEntry({ path, finalSymlinkTreatment });
     };
 
     const copyRegularFile = async ({
-      srcPath,
+      entry,
       destPath,
     }: {
-      srcPath: string;
+      entry: WeshEntryRef;
       destPath: string;
-    }) => {
-      const blobResult = await context.files.tryReadBlobEfficiently({ path: srcPath });
-      let stream: ReadableStream<Uint8Array>;
-      switch (blobResult.kind) {
-      case 'blob':
-        stream = blobResult.blob.stream();
-        break;
-      case 'fallback-required': {
-        const handle = await context.files.open({
-          path: srcPath,
-          flags: { access: 'read', creation: 'never', truncate: 'preserve', append: 'preserve' }
-        });
-        stream = openHandleReadStream({ handle });
-        break;
-      }
-      default: {
-        const _ex: never = blobResult;
-        throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
-      }
-      }
-
-      await writeAllStreamToFile({ files: context.files, path: destPath, stream, mode: 'truncate' });
+    }): Promise<void> => {
+      const handle = await context.files.openEntry({
+        entry,
+        flags: {
+          access: 'read',
+          creation: 'never',
+          truncate: 'preserve',
+          append: 'preserve',
+        },
+      });
+      await writeAllStreamToFile({
+        files: context.files,
+        path: destPath,
+        stream: openHandleReadStream({ handle }),
+        mode: 'truncate',
+      });
     };
 
     const removeExistingTargetIfNeeded = async ({
@@ -238,14 +255,20 @@ export const cpCommandDefinition: WeshCommandDefinition = {
 
     const copyOne = async ({
       srcPath,
+      sourceEntry,
       destPath,
       isCommandLineArgument,
     }: {
       srcPath: string;
+      sourceEntry: WeshEntryRef | undefined;
       destPath: string;
       isCommandLineArgument: boolean;
     }): Promise<void> => {
-      const stat = await statSource({ path: srcPath, isCommandLineArgument });
+      const entry = sourceEntry ?? await resolveSourceEntry({
+        path: srcPath,
+        isCommandLineArgument,
+      });
+      const stat = await context.files.statEntry({ entry });
 
       const existingTargetState = await removeExistingTargetIfNeeded({ destPath });
       switch (existingTargetState) {
@@ -266,18 +289,22 @@ export const cpCommandDefinition: WeshCommandDefinition = {
           throw new Error(`-r not specified; omitting directory '${srcPath}'`);
         }
         await context.files.mkdir({ path: destPath, recursive: true });
-        const readPath = (await context.files.resolve({ path: srcPath })).fullPath;
-        for await (const entry of context.files.readDir({ path: readPath })) {
+        for await (const child of context.files.readDirEntry({
+          entry: asDirectoryEntryRef({ entry }),
+        })) {
           await copyOne({
-            srcPath: entry.fullPath,
-            destPath: `${destPath}/${entry.name}`,
+            srcPath: child.fullPath,
+            sourceEntry: symlinkMode === 'logical' && child.type === 'symlink'
+              ? undefined
+              : child,
+            destPath: `${destPath}/${child.name}`,
             isCommandLineArgument: false,
           });
         }
         break;
       }
       case 'file':
-        await copyRegularFile({ srcPath, destPath });
+        await copyRegularFile({ entry, destPath });
         break;
       case 'symlink':
         if (symlinkMode === 'physical' || (symlinkMode === 'command-line' && !isCommandLineArgument)) {
@@ -288,7 +315,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
           });
           break;
         }
-        await copyRegularFile({ srcPath, destPath });
+        await copyRegularFile({ entry, destPath });
         break;
       case 'fifo':
       case 'chardev':
@@ -378,6 +405,7 @@ export const cpCommandDefinition: WeshCommandDefinition = {
           });
           await copyOne({
             srcPath: fullSrc,
+            sourceEntry: undefined,
             destPath: targetPath,
             isCommandLineArgument: true,
           });

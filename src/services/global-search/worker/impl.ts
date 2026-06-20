@@ -1,9 +1,11 @@
 import { UNTITLED_CHAT_TITLE } from '@/models/constants'
-import type { EmptyArgs } from '@/models/types'
+import { idToRaw, toChatId, toMessageId } from '@/models/ids'
+
 import { searchChatTree, searchLinearBranch } from '@/utils/chat-search'
 import { getChatBranchIterator } from '@/utils/chat-tree'
 import type { Chat, MessageBranch } from '@/models/types'
-import type { ContentMatch, FlatSearchResultItem, SearchSource } from '@/services/global-search/types'
+import type { FlatSearchResultItem, SearchSource } from '@/services/global-search/types'
+import type { ContentMatch as SearchContentMatch } from '@/utils/chat-search'
 import {
   globalSearchWorkerDisposeSessionRequestSchema,
   globalSearchWorkerPrepareSessionRequestSchema,
@@ -40,7 +42,7 @@ function getSessionSource({ sessionId }: {
   return source
 }
 
-export function createGlobalSearchWorker(_args: EmptyArgs): IGlobalSearchWorker {
+export function createGlobalSearchWorker(): IGlobalSearchWorker {
   return {
     async prepareSession({ request }) {
       const validated = globalSearchWorkerPrepareSessionRequestSchema.parse(request)
@@ -112,7 +114,7 @@ export function createGlobalSearchWorker(_args: EmptyArgs): IGlobalSearchWorker 
       const validated = globalSearchWorkerSearchChatContentRequestSchema.parse(request)
       getSessionSource({ sessionId: validated.sessionId })
 
-      let matches: ContentMatch[] = []
+      let matches: SearchContentMatch[] = []
 
       switch (validated.scope) {
       case 'current_thread': {
@@ -121,8 +123,8 @@ export function createGlobalSearchWorker(_args: EmptyArgs): IGlobalSearchWorker 
         matches = searchLinearBranch({
           branch,
           query: validated.searchQuery,
-          chatId: validated.chat.id,
-          targetLeafId: validated.content.currentLeafId,
+          chatId: toChatId({ raw: validated.chat.id }),
+          targetLeafId: validated.content.currentLeafId === undefined ? undefined : toMessageId({ raw: validated.content.currentLeafId }),
           roleFilter: validated.roleFilter,
         })
         break
@@ -134,7 +136,7 @@ export function createGlobalSearchWorker(_args: EmptyArgs): IGlobalSearchWorker 
         matches = searchChatTree({
           root: validated.content.root as unknown as MessageBranch,
           query: validated.searchQuery,
-          chatId: validated.chat.id,
+          chatId: toChatId({ raw: validated.chat.id }),
           activeBranchIds,
           roleFilter: validated.roleFilter,
         })
@@ -149,7 +151,14 @@ export function createGlobalSearchWorker(_args: EmptyArgs): IGlobalSearchWorker 
       }
       }
 
-      return globalSearchWorkerSearchChatContentResponseSchema.parse({ matches })
+      const rawMatches = matches.map(match => ({
+        ...match,
+        chatId: idToRaw({ id: match.chatId }),
+        messageId: idToRaw({ id: match.messageId }),
+        targetLeafId: idToRaw({ id: match.targetLeafId }),
+      }))
+
+      return globalSearchWorkerSearchChatContentResponseSchema.parse({ matches: rawMatches })
     },
 
     async disposeSession({ request }) {

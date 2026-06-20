@@ -1,3 +1,4 @@
+import type { ChatGroupId, ChatId, MessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, type Mock } from 'vitest';
 import { mount, flushPromises, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -7,6 +8,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import { useChatDraft } from '@/composables/useChatDraft';
 import { setupScrollToMock } from '@/utils/test-utils';
 import type { WeshMount } from '@/services/wesh/types';
+import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
 
 // Mock router
 const router = createRouter({
@@ -17,17 +19,19 @@ const router = createRouter({
 import type { MessageNode, Chat } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
+import type { ScopedSettingChange } from '@/models/scoped-setting-change';
+import { applyScopedSettingChangesToChat } from '@/utils/scoped-setting-changes';
 
 const {
   mockEnsureChatTmpDirectory,
   mockOpenFileExplorer,
   mockGetVolumeDirectoryHandle,
-  mockGetNaidanSysfsMountSelection,
+  mockGetNaidanSysfsAccessScope,
 } = vi.hoisted(() => ({
   mockEnsureChatTmpDirectory: vi.fn(),
   mockOpenFileExplorer: vi.fn(),
   mockGetVolumeDirectoryHandle: vi.fn(),
-  mockGetNaidanSysfsMountSelection: vi.fn(),
+  mockGetNaidanSysfsAccessScope: vi.fn(),
 }));
 
 // Mock dependencies
@@ -56,12 +60,12 @@ const mockRenameChat = vi.fn().mockImplementation(({ newTitle }) => {
 const mockSaveSettings = vi.fn().mockResolvedValue(undefined);
 const mockActiveGenerations = reactive(new Map());
 const mockCurrentChat = ref<Chat | null>({
-  id: '1',
+  id: toChatId({ raw: '1' }),
   title: 'Test Chat',
   root: { items: [] } as { items: MessageNode[] },
-  currentLeafId: undefined as string | undefined,
+  currentLeafId: undefined,
   debugEnabled: false,
-  originChatId: undefined as string | undefined,
+  originChatId: undefined,
   modelId: undefined as string | undefined,
   lmParameters: EMPTY_LM_PARAMETERS,
   createdAt: Date.now(),
@@ -71,20 +75,36 @@ const mockActiveMessages = ref<MessageNode[]>([]);
 const mockChatFlowOverride = ref<ChatFlowItem[] | null>(null);
 
 const mockGetLiveChat = vi.fn().mockImplementation((chat) => {
-  if (mockCurrentChat.value && mockCurrentChat.value.id === (chat.id || chat)) {
+  if (mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === (chat.id || chat)) {
     return mockCurrentChat.value;
   }
   return chat;
 });
 
 const mockUpdateChatSettings = vi.fn().mockImplementation(({ id, updates }) => {
-  if (mockCurrentChat.value && mockCurrentChat.value.id === id) {
+  if (mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === id) {
     Object.assign(mockCurrentChat.value, updates);
   }
 });
 const mockUpdateChatGroupMetadata = vi.fn().mockImplementation(({ id, updates }) => {
   if (mockCurrentChatGroup.value && mockCurrentChatGroup.value.id === id) {
     Object.assign(mockCurrentChatGroup.value, updates);
+  }
+});
+const mockUpdateChatGroupScopedSettings = vi.fn();
+const mockUpdateChatScopedSettings = vi.fn().mockImplementation(async ({
+  chatId,
+  changes,
+}: {
+  chatId: ChatId;
+  changes: readonly ScopedSettingChange[];
+}) => {
+  if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
+    mockCurrentChat.value = applyScopedSettingChangesToChat({
+      current: mockCurrentChat.value,
+      changes,
+      updatedAt: mockCurrentChat.value.updatedAt + 1,
+    });
   }
 });
 
@@ -182,13 +202,13 @@ vi.mock('../composables/useChat', () => ({
     imagePersistAsMap: ref({}),
     imageModelOverrideMap: ref({}),
     getReasoningEffort: vi.fn(({ chatId }) => {
-      if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
+      if (mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         return mockCurrentChat.value.lmParameters?.reasoning?.effort;
       }
       return undefined;
     }),
     updateReasoningEffort: vi.fn(({ chatId, effort }) => {
-      if (mockCurrentChat.value && mockCurrentChat.value.id === chatId) {
+      if (mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         const lmParameters = { ...(mockCurrentChat.value.lmParameters || EMPTY_LM_PARAMETERS), reasoning: { effort } };
         mockCurrentChat.value.lmParameters = lmParameters;
       }
@@ -242,11 +262,11 @@ vi.mock('../composables/chat/ui/useChatPaneState', () => ({
 
 vi.mock('../composables/chat/chat-activity-queries', () => ({
   isChatProcessing: ({ chatId }: { chatId: string }) =>
-    !!mockCurrentChat.value && mockCurrentChat.value.id === chatId && (mockStreaming.value || mockActiveGenerations.has(chatId)),
+    !!mockCurrentChat.value && idToRaw({ id: mockCurrentChat.value.id }) === chatId && (mockStreaming.value || mockActiveGenerations.has(chatId)),
   getChatContextCompactProgress: ({ chatId }: { chatId: string }) =>
-    mockCurrentChat.value?.id === chatId ? mockContextCompactProgress.value : { phase: 'idle' },
+    mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId ? mockContextCompactProgress.value : { phase: 'idle' },
   isChatGeneratingTitle: ({ chatId }: { chatId: string }) =>
-    mockCurrentChat.value?.id === chatId ? mockGeneratingTitle.value : false,
+    mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId ? mockGeneratingTitle.value : false,
 }));
 
 function mountChatPane({
@@ -255,16 +275,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -370,6 +390,10 @@ vi.mock('../composables/chat/useChatGroups', () => ({
         id: chatGroupId,
         updates,
       }),
+    updateScopedSettings: ({ chatGroupId, changes }: {
+      chatGroupId: string;
+      changes: readonly unknown[];
+    }) => mockUpdateChatGroupScopedSettings({ chatGroupId, changes }),
   }),
 }));
 
@@ -401,7 +425,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
       }),
     toggleDebug: ({ chatId }: { chatId: string }) => {
       mockToggleChatDebug();
-      if (mockCurrentChat.value?.id === chatId) {
+      if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
           debugEnabled: !mockCurrentChat.value.debugEnabled,
@@ -409,13 +433,13 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
       }
     },
     updateModel: ({ chatId, modelId }: { chatId: string; modelId: string | undefined }) => {
-      if (mockCurrentChat.value?.id === chatId) {
+      if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
           modelId,
         };
         queueMicrotask(() => {
-          if (mockCurrentChat.value?.id === chatId) {
+          if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
             mockCurrentChat.value = {
               ...mockCurrentChat.value,
               modelId,
@@ -423,7 +447,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
           }
         });
         setTimeout(() => {
-          if (mockCurrentChat.value?.id === chatId) {
+          if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
             mockCurrentChat.value = {
               ...mockCurrentChat.value,
               modelId,
@@ -442,10 +466,14 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
         id: chatId,
         updates,
       }),
+    updateScopedSettings: ({ chatId, changes }: {
+      chatId: ChatId;
+      changes: readonly ScopedSettingChange[];
+    }) => mockUpdateChatScopedSettings({ chatId, changes }),
     reasoningEffort: ({ chatId }: { chatId: { value: string } }) =>
-      computed(() => mockCurrentChat.value?.id === chatId.value ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined),
+      computed(() => mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId.value ? mockCurrentChat.value?.lmParameters?.reasoning?.effort : undefined),
     updateReasoningEffort: ({ chatId, effort }: { chatId: string; effort: 'none' | 'low' | 'medium' | 'high' | undefined }) => {
-      if (mockCurrentChat.value?.id === chatId) {
+      if (mockCurrentChat.value?.id !== undefined && idToRaw({ id: mockCurrentChat.value.id }) === chatId) {
         mockCurrentChat.value = {
           ...mockCurrentChat.value,
           lmParameters: {
@@ -475,7 +503,7 @@ vi.mock('../composables/chat/useChatModels', () => ({
 vi.mock('../composables/chat/useChatMounts', () => ({
   useChatMounts: () => ({
     getMounts: ({ chatId }: { chatId: { value: string } }) => computed(() => {
-      if (mockCurrentChat.value?.id !== chatId.value) {
+      if (mockCurrentChat.value?.id === undefined || idToRaw({ id: mockCurrentChat.value.id }) !== chatId.value) {
         return [];
       }
 
@@ -514,13 +542,13 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatGroupMounts,
     chatId,
     chatGroupId,
-    naidanSysfsVisibility,
+    naidanSysfsAccessScope,
   }: {
     chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
     chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
-    chatId: string | undefined;
-    chatGroupId: string | undefined;
-    naidanSysfsVisibility: string;
+    chatId: ChatId | undefined;
+    chatGroupId: ChatGroupId | undefined;
+    naidanSysfsAccessScope: string;
   }) => {
     const mounts: WeshMount[] = [];
 
@@ -528,15 +556,15 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
       mounts.push({ type: 'directory', path: '/tmp', handle: mockTmpHandle, readOnly: false });
     }
 
-    if (naidanSysfsVisibility !== 'none') {
+    if (naidanSysfsAccessScope !== 'none' && chatId !== undefined) {
       mounts.push({
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',
         readOnly: true,
         storageType: mockSettings.value.storageType,
-        visibility: naidanSysfsVisibility as 'current_chat_only' | 'current_chat_with_chat_group' | 'all_chats',
+        visibility: naidanSysfsAccessScope as 'current_chat_only' | 'current_chat_with_chat_group' | 'main_chats',
         binaryObjectAccess: 'data',
-        currentChatId: chatId ?? '',
+        currentChatId: chatId,
         currentChatGroupId: chatGroupId,
       });
     }
@@ -585,6 +613,7 @@ vi.mock('../composables/useSettings', () => ({
     isFetchingModels: mockFetchingModels,
     fetchModels: mockFetchAvailableModels,
     save: mockSaveSettings,
+    setFakeLmDebugModeStatus: mockSetFakeLmDebugModeStatus,
   }),
 }));
 
@@ -599,9 +628,11 @@ vi.mock('mermaid', () => ({
 
 
 
-const { mockAddToast, mockGenerateChatShareURL } = vi.hoisted(() => ({
+const { mockAddToast, mockFakeLmDebugModeAvailability, mockGenerateChatShareURL, mockSetFakeLmDebugModeStatus } = vi.hoisted(() => ({
   mockAddToast: vi.fn(),
+  mockFakeLmDebugModeAvailability: { value: 'available' },
   mockGenerateChatShareURL: vi.fn(),
+  mockSetFakeLmDebugModeStatus: vi.fn(),
 }));
 
 vi.mock('../composables/useToast', () => ({
@@ -612,6 +643,14 @@ vi.mock('../composables/useToast', () => ({
 
 vi.mock('../services/import-export/chat-url-share', () => ({
   generateChatShareURL: mockGenerateChatShareURL,
+}));
+
+
+vi.mock('@/services/fake-lm', () => ({
+  FAKE_LM_ENDPOINT_URL: 'https://fake-lm.invalid',
+  useFakeLmDebugMode: () => ({
+    fakeLmDebugModeAvailability: mockFakeLmDebugModeAvailability,
+  }),
 }));
 
 vi.mock('../composables/useFileExplorerModal', () => ({
@@ -630,7 +669,7 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('../composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
+    getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),
 }));
 
@@ -682,6 +721,7 @@ function resetMocks() {
       };
     }
   });
+  mockFakeLmDebugModeAvailability.value = 'available';
   mockStreaming.value = false;
   mockGeneratingTitle.value = false;
   mockActiveGenerations.clear();
@@ -702,7 +742,7 @@ function resetMocks() {
     sources: { modelId: 'global' }
   };
   mockCurrentChat.value = {
-    id: '1',
+    id: toChatId({ raw: '1' }),
     title: 'Test Chat',
     root: { items: [] },
     currentLeafId: undefined,
@@ -724,7 +764,7 @@ function resetMocks() {
     handle: mockTmpHandle,
   });
   mockCompactCurrentBranch.mockResolvedValue(true);
-  mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_with_chat_group');
+  mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_with_chat_group');
   mockOpenFileExplorer.mockReset();
   mockGetVolumeDirectoryHandle.mockImplementation(({ volumeId }: { volumeId: string }) => {
     return Promise.resolve({ kind: 'directory', name: volumeId } as FileSystemDirectoryHandle);
@@ -768,7 +808,7 @@ describe('ChatPane UI States', () => {
     ];
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      groupId: 'group-1',
+      groupId: toChatGroupId({ raw: 'group-1' }),
     };
 
     wrapper = mountChatPane( {
@@ -807,7 +847,7 @@ describe('ChatPane UI States', () => {
 
   it('opens compact context settings from the header more actions menu', async () => {
     mockActiveMessages.value = Array.from({ length: 7 }, (_, index) => ({
-      id: `message-${index + 1}`,
+      id: toMessageId({ raw: `message-${index + 1}` }),
       role: index % 2 === 0 ? 'user' : 'assistant',
       content: `Message ${index + 1}`,
       timestamp: index + 1,
@@ -827,7 +867,7 @@ describe('ChatPane UI States', () => {
 
   it('runs compact context after confirming the settings dialog', async () => {
     mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => ({
-      id: `message-${index + 1}`,
+      id: toMessageId({ raw: `message-${index + 1}` }),
       role: index % 2 === 0 ? 'user' : 'assistant',
       content: `Message ${index + 1}`,
       timestamp: index + 1,
@@ -846,7 +886,7 @@ describe('ChatPane UI States', () => {
     });
 
     expect(mockCompactCurrentBranch).toHaveBeenCalledWith({
-      chatId: '1',
+      chatId: toChatId({ raw: '1' }),
       keepRecentMessages: 6,
       instructionOverride: 'Edited compact prompt',
     });
@@ -874,7 +914,7 @@ Question`,
     vi.useFakeTimers();
     try {
       mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => ({
-        id: `message-${index + 1}`,
+        id: toMessageId({ raw: `message-${index + 1}` }),
         role: index % 2 === 0 ? 'user' : 'assistant',
         content: `Message ${index + 1}`,
         timestamp: index + 1,
@@ -927,7 +967,7 @@ Question`,
     vi.useFakeTimers();
     try {
       mockActiveMessages.value = Array.from({ length: 9 }, (_, index) => ({
-        id: `message-${index + 1}`,
+        id: toMessageId({ raw: `message-${index + 1}` }),
         role: index % 2 === 0 ? 'user' : 'assistant',
         content: `Message ${index + 1}`,
         timestamp: index + 1,
@@ -950,11 +990,11 @@ Question`,
 
       mockCurrentChat.value = {
         ...(mockCurrentChat.value as Chat),
-        id: 'chat-2',
+        id: toChatId({ raw: 'chat-2' }),
         title: 'Chat 2',
       };
       await wrapper.setProps({
-        chatId: 'chat-2',
+        chatId: toChatId({ raw: 'chat-2' }),
       });
 
       expect(wrapper.find('[data-testid="context-compact-neural-sync-effect"]').exists()).toBe(false);
@@ -1044,12 +1084,12 @@ Question`,
     mockStreaming.value = true;
     const assistantMsgId = 'msg-2';
     if (mockCurrentChat.value) {
-      mockCurrentChat.value.currentLeafId = assistantMsgId;
+      mockCurrentChat.value.currentLeafId = toMessageId({ raw: assistantMsgId });
       mockActiveGenerations.set(mockCurrentChat.value.id, { controller: new AbortController(), chat: mockCurrentChat.value });
     }
     mockActiveMessages.value = [
-      { id: 'msg-1', role: 'user', content: 'hello', timestamp: 0, replies: { items: [] } },
-      { id: assistantMsgId, role: 'assistant', content: 'generating...', timestamp: 0, replies: { items: [] } }
+      { id: toMessageId({ raw: 'msg-1' }), role: 'user', content: 'hello', timestamp: 0, replies: { items: [] } },
+      { id: toMessageId({ raw: assistantMsgId }), role: 'assistant', content: 'generating...', timestamp: 0, replies: { items: [] } }
     ];
 
     wrapper = mountChatPane( {
@@ -1102,10 +1142,71 @@ Question`,
     expect(inspector.text()).toContain('Chat Inspector');
   });
 
+  it('should configure the current chat for fake LM from the inspector shortcut', async () => {
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.debugEnabled = true;
+      mockCurrentChat.value.endpointType = 'openai';
+      mockCurrentChat.value.endpointUrl = 'https://example.com';
+    }
+
+    wrapper = mountChatPane({
+      global: {
+        plugins: [router],
+      },
+    });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]').trigger('click');
+    await flushPromises();
+
+    expect(mockSetFakeLmDebugModeStatus).toHaveBeenCalledWith({ status: 'enabled' });
+    expect(mockUpdateChatScopedSettings).toHaveBeenCalledWith({
+      chatId: toChatId({ raw: '1' }),
+      changes: [{
+        field: 'endpoint',
+        behavior: 'override',
+        value: {
+          type: 'ollama',
+          url: 'https://fake-lm.invalid',
+        },
+      }],
+    });
+    expect(mockCurrentChat.value?.endpointType).toBe('ollama');
+    expect(mockCurrentChat.value?.endpointUrl).toBe('https://fake-lm.invalid');
+    expect(mockAddToast).toHaveBeenCalledWith({
+      message: 'Fake LM enabled for this chat via https://fake-lm.invalid',
+      duration: 3000,
+    });
+  });
+
+  it('should not configure fake LM from the inspector shortcut when the facade is unavailable', async () => {
+    mockFakeLmDebugModeAvailability.value = 'unavailable_in_standalone';
+    if (mockCurrentChat.value) {
+      mockCurrentChat.value.debugEnabled = true;
+      mockCurrentChat.value.endpointType = 'openai';
+      mockCurrentChat.value.endpointUrl = 'https://example.com';
+    }
+
+    wrapper = mountChatPane({
+      global: {
+        plugins: [router],
+      },
+    });
+    await flushPromises();
+
+    await wrapper.find('[data-testid="chat-inspector-enable-fake-lm"]').trigger('click');
+    await flushPromises();
+
+    expect(mockSetFakeLmDebugModeStatus).not.toHaveBeenCalled();
+    expect(mockUpdateChatScopedSettings).not.toHaveBeenCalled();
+    expect(mockCurrentChat.value?.endpointType).toBe('openai');
+    expect(mockCurrentChat.value?.endpointUrl).toBe('https://example.com');
+  });
+
   it('should open the title dialog and save a manual title', async () => {
     vi.useFakeTimers();
     try {
-      mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+      mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
       wrapper = mountChatPane( {
         global: { plugins: [router] },
       });
@@ -1120,14 +1221,14 @@ Question`,
       await vi.advanceTimersByTimeAsync(600);
       await flushPromises();
 
-      expect(mockRenameChat).toHaveBeenCalledWith({ id: '1', newTitle: 'Manual Title' });
+      expect(mockRenameChat).toHaveBeenCalledWith({ id: toChatId({ raw: '1' }), newTitle: 'Manual Title' });
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('should generate a title from the title dialog using the selected global title model', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGenerateChatTitle.mockResolvedValue('Generated Title');
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1141,11 +1242,11 @@ Question`,
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
     expect(mockSaveSettings).toHaveBeenCalledWith({ patch: { titleModelId: 'model-2' } });
-    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: '1', signal: undefined, titleModelIdOverride: 'model-2' });
+    expect(mockGenerateChatTitle).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), signal: undefined, titleModelIdOverride: 'model-2' });
   });
 
   it('should keep title model and generated title history hidden until options are opened', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -1163,7 +1264,7 @@ Question`,
   });
 
   it('should show Stop and the title scan animation while title generation is running', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGeneratingTitle.value = true;
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1178,7 +1279,7 @@ Question`,
   });
 
   it('should preserve the previous title in dialog history when generation replaces it', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGenerateChatTitle.mockImplementation(async () => {
       if (mockCurrentChat.value) mockCurrentChat.value.title = 'Generated Title';
       return 'Generated Title';
@@ -1199,7 +1300,7 @@ Question`,
   });
 
   it('should keep generating the title in the background after the dialog is closed', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     let resolveTitleGeneration: ((title: string) => void) | undefined;
     mockGenerateChatTitle.mockImplementation(async () => new Promise<string>((resolve) => {
       resolveTitleGeneration = (title) => {
@@ -1227,7 +1328,7 @@ Question`,
   });
 
   it('should apply a generated history title to the input and save it when Use is clicked', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGenerateChatTitle.mockResolvedValue('Generated Title');
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1241,11 +1342,11 @@ Question`,
     await wrapper.find('[data-testid="use-generated-title-button"]').trigger('click');
 
     expect((wrapper.find('[data-testid="chat-title-input"]').element as HTMLInputElement).value).toBe('Generated Title');
-    expect(mockRenameChat).toHaveBeenCalledWith({ id: '1', newTitle: 'Generated Title' });
+    expect(mockRenameChat).toHaveBeenCalledWith({ id: toChatId({ raw: '1' }), newTitle: 'Generated Title' });
   });
 
   it('should update the chat title model override when the active title model source is chat', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockResolvedSettings.value = {
       modelId: 'global-default-model',
       titleModelId: 'model-2',
@@ -1263,13 +1364,20 @@ Question`,
     await flushPromises();
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: '1', updates: { titleModelId: 'model-2' } });
+    expect(mockUpdateChatScopedSettings).toHaveBeenCalledWith({
+      chatId: toChatId({ raw: '1' }),
+      changes: [{
+        field: 'title_model_id',
+        behavior: 'override',
+        value: 'model-2',
+      }],
+    });
     expect(mockSaveSettings).not.toHaveBeenCalled();
     expect(mockUpdateChatGroupMetadata).not.toHaveBeenCalled();
   });
 
   it('should update the group title model override when the active title model source is group', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockResolvedSettings.value = {
       modelId: 'global-default-model',
       titleModelId: 'model-2',
@@ -1277,7 +1385,7 @@ Question`,
     };
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      groupId: 'group-1',
+      groupId: toChatGroupId({ raw: 'group-1' }),
     };
     mockCurrentChatGroup.value = {
       id: 'group-1',
@@ -1292,13 +1400,20 @@ Question`,
     await flushPromises();
     await wrapper.find('[data-testid="generate-chat-title-button"]').trigger('click');
 
-    expect(mockUpdateChatGroupMetadata).toHaveBeenCalledWith({ id: 'group-1', updates: { titleModelId: 'model-2' } });
+    expect(mockUpdateChatGroupScopedSettings).toHaveBeenCalledWith({
+      chatGroupId: 'group-1',
+      changes: [{
+        field: 'title_model_id',
+        behavior: 'override',
+        value: 'model-2',
+      }],
+    });
     expect(mockSaveSettings).not.toHaveBeenCalled();
-    expect(mockUpdateChatSettings).not.toHaveBeenCalled();
+    expect(mockUpdateChatScopedSettings).not.toHaveBeenCalled();
   });
 
   it('should abort title generation from the title dialog', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     mockGeneratingTitle.value = true;
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1308,13 +1423,13 @@ Question`,
     await flushPromises();
     await wrapper.find('[data-testid="abort-title-generation-button"]').trigger('click');
 
-    expect(mockAbortTitleGeneration).toHaveBeenCalledWith({ chatId: '1' });
+    expect(mockAbortTitleGeneration).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }) });
   });
 
   it('should open a conversation outline and jump to a selected message', async () => {
     mockActiveMessages.value = [
-      { id: 'u1', role: 'user', content: 'First long user message to revisit later', timestamp: 0, replies: { items: [] } },
-      { id: 'a1', role: 'assistant', content: 'Assistant response with useful details', timestamp: 0, replies: { items: [] } },
+      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'First long user message to revisit later', timestamp: 0, replies: { items: [] } },
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: 'Assistant response with useful details', timestamp: 0, replies: { items: [] } },
     ];
     wrapper = mountChatPane( {
       global: { plugins: [router] },
@@ -1341,7 +1456,7 @@ Question`,
   });
 
   it('should expose Super Edit from the more actions menu', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -1362,22 +1477,22 @@ Question`,
       ...mockSettings.value,
       storageType: 'opfs',
       mounts: [
-        { type: 'volume', volumeId: 'global-vol', mountPath: '/home/user/global', readOnly: true },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'global-vol' }), mountPath: '/home/user/global', readOnly: true },
       ],
     };
     mockCurrentChat.value = {
       ...(mockCurrentChat.value as Chat),
-      id: 'chat-1',
-      groupId: 'group-1',
+      id: toChatId({ raw: 'chat-1' }),
+      groupId: toChatGroupId({ raw: 'group-1' }),
       mounts: [
-        { type: 'volume', volumeId: 'chat-vol', mountPath: '/home/user/chat', readOnly: false },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'chat-vol' }), mountPath: '/home/user/chat', readOnly: false },
       ],
     } as Chat;
     mockCurrentChatGroup.value = {
-      id: 'group-1',
+      id: toChatGroupId({ raw: 'group-1' }),
       name: 'Research',
       mounts: [
-        { type: 'volume', volumeId: 'group-vol', mountPath: '/home/user/group', readOnly: true },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'group-vol' }), mountPath: '/home/user/group', readOnly: true },
       ],
       items: [],
       isCollapsed: false,
@@ -1434,12 +1549,12 @@ Question`,
     ]);
   });
 
-  it('should omit naidan sysfs from header file explorer when the shared selection is none', async () => {
-    mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+  it('should omit naidan sysfs from header file explorer when the shared access scope is none', async () => {
+    mockGetNaidanSysfsAccessScope.mockReturnValue('none');
     mockCurrentChat.value = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Test Chat',
-      groupId: 'group-1',
+      groupId: toChatGroupId({ raw: 'group-1' }),
       root: { items: [] },
       debugEnabled: false,
       lmParameters: EMPTY_LM_PARAMETERS,
@@ -1460,22 +1575,22 @@ Question`,
     expect(options.mounts.some(mount => mount.type === 'naidan_sysfs')).toBe(false);
   });
 
-  it('should pass the shared naidan sysfs selection to the header wesh terminal', async () => {
-    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+  it('should pass the shared naidan sysfs access scope to the header wesh terminal', async () => {
+    mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
     wrapper = mountChatPane( {
       global: {
         plugins: [router],
         stubs: {
           ChatWeshTerminalModal: {
             name: 'ChatWeshTerminalModal',
-            props: ['naidanSysfsVisibility'],
-            template: '<div data-testid="stub-chat-wesh-terminal" :data-visibility="naidanSysfsVisibility"></div>',
+            props: ['naidanSysfsAccessScope'],
+            template: '<div data-testid="stub-chat-wesh-terminal" :data-access-scope="naidanSysfsAccessScope"></div>',
           },
         },
       },
     });
 
-    expect(wrapper.find('[data-testid="stub-chat-wesh-terminal"]').attributes('data-visibility')).toBe('current_chat_only');
+    expect(wrapper.find('[data-testid="stub-chat-wesh-terminal"]').attributes('data-access-scope')).toBe('current_chat_only');
   });
 
   it('should hide the chat inspector when debug mode is disabled', async () => {
@@ -1488,7 +1603,7 @@ Question`,
   });
 
   it('should render header icons (Settings, Outline, More)', async () => {
-    mockActiveMessages.value = [{ id: 'm1', role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'test', timestamp: 0, replies: { items: [] } }];
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -1499,7 +1614,7 @@ Question`,
   });
 
   it('should show jump to origin button when originChatId is present', async () => {
-    if (mockCurrentChat.value) mockCurrentChat.value.originChatId = 'original-id';
+    if (mockCurrentChat.value) mockCurrentChat.value.originChatId = toChatId({ raw: 'original-id' });
     wrapper = mountChatPane( {
       global: { plugins: [router] },
     });
@@ -1526,7 +1641,7 @@ Question`,
     const groupBtn = wrapper.findAll('button').find(b => b.text().includes('Group 1'));
     await groupBtn?.trigger('click');
 
-    expect(mockMoveChatToGroup).toHaveBeenCalledWith({ chatId: '1', targetGroupId: 'group-1' });
+    expect(mockMoveChatToGroup).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), targetGroupId: 'group-1' });
   });
 
   describe('Custom Overrides Indicator', () => {
@@ -1658,15 +1773,15 @@ describe('ChatPane Scrolling Logic', () => {
     setupScrollMock(container);
 
     // 1. Initial load phase
-    mockActiveMessages.value = [{ id: 'init', role: 'assistant', content: 'hello', timestamp: Date.now(), replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: 'init' }), role: 'assistant', content: 'hello', timestamp: Date.now(), replies: { items: [] } }];
     await flushPromises();
     await nextTick();
     scrollTopSetterSpy.mockClear();
 
     // 2. User sends message
     mockActiveMessages.value = [
-      { id: 'init', role: 'assistant', content: 'hello', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'user-1', role: 'user', content: 'how are you?', timestamp: Date.now(), replies: { items: [] } }
+      { id: toMessageId({ raw: 'init' }), role: 'assistant', content: 'hello', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'user-1' }), role: 'user', content: 'how are you?', timestamp: Date.now(), replies: { items: [] } }
     ];
 
     await flushPromises();
@@ -1694,13 +1809,13 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: 'leaf-open-user'
+      currentLeafId: toMessageId({ raw: 'leaf-open-user' })
     };
     mockActiveMessages.value = [
-      { id: 'u1', role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'a1', role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'u2', role: 'user', content: 'Last user message', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'a2', role: 'assistant', content: 'Final assistant message', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'Hello', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'u2' }), role: 'user', content: 'Last user message', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'a2' }), role: 'assistant', content: 'Final assistant message', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     await flushPromises();
@@ -1711,7 +1826,7 @@ describe('ChatPane Scrolling Logic', () => {
 
   it('scrolls to and highlights the target message from a message-id link', async () => {
     mockActiveMessages.value = [
-      { id: 'target-message', role: 'assistant', content: 'Target message', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'target-message' }), role: 'assistant', content: 'Target message', timestamp: Date.now(), replies: { items: [] } },
     ];
     wrapper = mountChatPane( {
       attachTo: document.body,
@@ -1728,7 +1843,7 @@ describe('ChatPane Scrolling Logic', () => {
       return null;
     });
 
-    await wrapper.setProps({ targetMessageId: 'target-message' });
+    await wrapper.setProps({ targetMessageId: toMessageId({ raw: 'target-message' }) });
     await flushPromises();
     await nextTick();
 
@@ -1738,7 +1853,7 @@ describe('ChatPane Scrolling Logic', () => {
 
   it('retries message-id link scrolling after the target message is rendered', async () => {
     wrapper = mountChatPane( {
-      props: { targetMessageId: 'late-message' },
+      props: { targetMessageId: toMessageId({ raw: 'late-message' }) },
       attachTo: document.body,
       global: { plugins: [router] },
     });
@@ -1755,7 +1870,7 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
 
     mockActiveMessages.value = [
-      { id: 'late-message', role: 'assistant', content: 'Late target message', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'late-message' }), role: 'assistant', content: 'Late target message', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     await flushPromises();
@@ -1782,9 +1897,9 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
 
-    const assistantId = 'a1';
+    const assistantId = toMessageId({ raw: 'a1' });
     mockActiveMessages.value = [
-      { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
       { id: assistantId, role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }
     ];
     mockChatFlowOverride.value = [
@@ -1834,8 +1949,8 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
 
-    const userMessage = { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
-    const assistantMessage = { id: 'a1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const userMessage = { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const assistantMessage = { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
     mockStreaming.value = true;
     mockActiveMessages.value = [userMessage, assistantMessage];
     mockChatFlowOverride.value = [
@@ -1901,8 +2016,8 @@ describe('ChatPane Scrolling Logic', () => {
     expect(completedReserve.exists()).toBe(true);
     expect((completedReserve.element as HTMLElement).style.height).toBe('50px');
 
-    const secondUserMessage = { id: 'u2', role: 'user', content: 'next question', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
-    const secondAssistantMessage = { id: 'a2', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const secondUserMessage = { id: toMessageId({ raw: 'u2' }), role: 'user', content: 'next question', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const secondAssistantMessage = { id: toMessageId({ raw: 'a2' }), role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
     mockStreaming.value = true;
     Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 730 });
     mockActiveMessages.value = [userMessage, assistantMessage, secondUserMessage, secondAssistantMessage];
@@ -1940,7 +2055,7 @@ describe('ChatPane Scrolling Logic', () => {
     mockStreaming.value = false;
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: 'changed-branch'
+      currentLeafId: toMessageId({ raw: 'changed-branch' })
     };
 
     await flushPromises();
@@ -1953,11 +2068,11 @@ describe('ChatPane Scrolling Logic', () => {
   it('does not treat a processing leaf update as an initial open', async () => {
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: 'old-leaf'
+      currentLeafId: toMessageId({ raw: 'old-leaf' })
     };
     mockActiveMessages.value = [
-      { id: 'old-user', role: 'user', content: 'before', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'old-assistant', role: 'assistant', content: 'before reply', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'old-user' }), role: 'user', content: 'before', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'old-assistant' }), role: 'assistant', content: 'before reply', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     wrapper = mountChatPane( {
@@ -1978,12 +2093,12 @@ describe('ChatPane Scrolling Logic', () => {
     mockStreaming.value = true;
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: 'streaming-assistant-leaf'
+      currentLeafId: toMessageId({ raw: 'streaming-assistant-leaf' })
     };
     mockActiveMessages.value = [
       ...mockActiveMessages.value,
-      { id: 'u1', role: 'user', content: 'hello, world', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'a1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'hello, world', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } },
     ];
     mockChatFlowOverride.value = [
       {
@@ -2050,10 +2165,10 @@ describe('ChatPane Scrolling Logic', () => {
     container.scrollTop = 0;
     scrollTopSetterSpy.mockClear();
 
-    const firstUser = { id: 'u1', role: 'user', content: 'first', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
-    const abortedAssistant = { id: 'a1', role: 'assistant', content: '[Generation Aborted]', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
-    const retryUser = { id: 'u2', role: 'user', content: 'retry', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
-    const retryAssistant = { id: 'a2', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const firstUser = { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'first', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const abortedAssistant = { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '[Generation Aborted]', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const retryUser = { id: toMessageId({ raw: 'u2' }), role: 'user', content: 'retry', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const retryAssistant = { id: toMessageId({ raw: 'a2' }), role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
 
     mockActiveMessages.value = [firstUser, abortedAssistant];
     mockChatFlowOverride.value = [
@@ -2132,10 +2247,10 @@ describe('ChatPane Scrolling Logic', () => {
   });
 
   it('only scrolls once for the same user turn', async () => {
-    const userMessage = { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
-    const firstAssistant = { id: 'a1', role: 'assistant', content: 'first reply', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const userMessage = { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const firstAssistant = { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: 'first reply', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
     const toolMessage = {
-      id: 't1',
+      id: toMessageId({ raw: 't1' }),
       role: 'tool',
       content: undefined,
       timestamp: Date.now(),
@@ -2148,7 +2263,7 @@ describe('ChatPane Scrolling Logic', () => {
       toolCalls: undefined,
       results: [],
     } as MessageNode;
-    const secondAssistant = { id: 'a2', role: 'assistant', content: 'follow-up', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
+    const secondAssistant = { id: toMessageId({ raw: 'a2' }), role: 'assistant', content: 'follow-up', timestamp: Date.now(), replies: { items: [] } } as MessageNode;
 
     wrapper = mountChatPane( {
       attachTo: document.body,
@@ -2294,10 +2409,10 @@ describe('ChatPane Scrolling Logic', () => {
     scrollTopSetterSpy.mockClear();
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: 'leaf-open-bottom'
+      currentLeafId: toMessageId({ raw: 'leaf-open-bottom' })
     };
     mockActiveMessages.value = [
-      { id: 'a1', role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: 'Hi', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     await flushPromises();
@@ -2323,8 +2438,8 @@ describe('ChatPane Scrolling Logic', () => {
     Object.defineProperty(container, 'scrollHeight', { configurable: true, value: 550 });
 
     mockActiveMessages.value = [
-      { id: 'u1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'a1', role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }
+      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: '', timestamp: Date.now(), replies: { items: [] } }
     ];
     mockChatFlowOverride.value = [
       {
@@ -2366,11 +2481,11 @@ describe('ChatPane Scrolling Logic', () => {
   it('re-runs the initial open scroll when the active leaf changes in the same chat', async () => {
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: 'leaf-1'
+      currentLeafId: toMessageId({ raw: 'leaf-1' })
     };
     mockActiveMessages.value = [
-      { id: 'u1', role: 'user', content: 'first leaf', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'a1', role: 'assistant', content: 'reply', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'u1' }), role: 'user', content: 'first leaf', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'a1' }), role: 'assistant', content: 'reply', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     wrapper = mountChatPane( {
@@ -2389,11 +2504,11 @@ describe('ChatPane Scrolling Logic', () => {
 
     mockCurrentChat.value = {
       ...mockCurrentChat.value!,
-      currentLeafId: 'leaf-2'
+      currentLeafId: toMessageId({ raw: 'leaf-2' })
     };
     mockActiveMessages.value = [
-      { id: 'u2', role: 'user', content: 'second leaf', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'a2', role: 'assistant', content: 'reply', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'u2' }), role: 'user', content: 'second leaf', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'a2' }), role: 'assistant', content: 'reply', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     await flushPromises();
@@ -2541,10 +2656,10 @@ describe('ChatPane Export Functionality', () => {
 
   it('should export chat as Markdown (.txt)', async () => {
     mockCurrentChat.value = {
-      id: 'test-chat-id',
+      id: toChatId({ raw: 'test-chat-id' }),
       title: 'Predefined Chat Title',
       root: { items: [] },
-      currentLeafId: 'msg-2',
+      currentLeafId: toMessageId({ raw: 'msg-2' }),
       debugEnabled: false,
       originChatId: undefined,
       modelId: undefined,
@@ -2552,8 +2667,8 @@ describe('ChatPane Export Functionality', () => {
       updatedAt: Date.now(),
     };
     mockActiveMessages.value = [
-      { id: 'msg-1', role: 'user', content: 'Hello AI', timestamp: Date.now(), replies: { items: [] } },
-      { id: 'msg-2', role: 'assistant', content: 'Hello User', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-1' }), role: 'user', content: 'Hello AI', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-2' }), role: 'assistant', content: 'Hello User', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     wrapper = mountChatPane( {
@@ -2611,10 +2726,10 @@ Hello User`);
 
   it('should export with default title if current chat title is empty', async () => {
     mockCurrentChat.value = {
-      id: 'test-chat-id-2',
+      id: toChatId({ raw: 'test-chat-id-2' }),
       title: '', // Empty title
       root: { items: [] },
-      currentLeafId: 'msg-3',
+      currentLeafId: toMessageId({ raw: 'msg-3' }),
       debugEnabled: false,
       originChatId: undefined,
       modelId: undefined,
@@ -2622,7 +2737,7 @@ Hello User`);
       updatedAt: Date.now(),
     };
     mockActiveMessages.value = [
-      { id: 'msg-3', role: 'user', content: 'Another message', timestamp: Date.now(), replies: { items: [] } },
+      { id: toMessageId({ raw: 'msg-3' }), role: 'user', content: 'Another message', timestamp: Date.now(), replies: { items: [] } },
     ];
 
     wrapper = mountChatPane( {
@@ -2652,7 +2767,7 @@ Another message`);
 
   it('should handle empty active messages for export', async () => {
     mockCurrentChat.value = {
-      id: 'test-chat-id-3',
+      id: toChatId({ raw: 'test-chat-id-3' }),
       title: 'Chat with no messages',
       root: { items: [] },
       currentLeafId: undefined,
@@ -2703,7 +2818,7 @@ Another message`);
     expect(exportUrlBtn.exists()).toBe(true);
     await exportUrlBtn.trigger('click');
 
-    expect(mockGenerateChatShareURL).toHaveBeenCalledWith({ chatId: '1' });
+    expect(mockGenerateChatShareURL).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }) });
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockUrl);
     expect(mockAddToast).toHaveBeenCalledWith({
       message: 'Share URL copied to clipboard!',
@@ -3122,7 +3237,7 @@ Line 6`;
     await router.push('/?message-id=target-message&leaf=leaf-1');
     const replaceSpy = vi.spyOn(router, 'replace').mockResolvedValue(undefined);
     wrapper = mountChatPane( {
-      props: { targetMessageId: 'target-message' },
+      props: { targetMessageId: toMessageId({ raw: 'target-message' }) },
       global: { plugins: [router] },
     });
 
@@ -3169,7 +3284,7 @@ Line 6`;
     (wrapper.findComponent(ChatInput).vm as any).isMaximized = true;
 
     // Simulate chat ID change
-    mockCurrentChat.value = { ...mockCurrentChat.value!, id: 'chat-2' };
+    mockCurrentChat.value = { ...mockCurrentChat.value!, id: toChatId({ raw: 'chat-2' }) };
     await nextTick();
     await nextTick();
 
@@ -3332,7 +3447,7 @@ describe('ChatPane Welcome Screen & Suggestions', () => {
   });
 
   it('should hide the welcome screen when messages are present', async () => {
-    mockActiveMessages.value = [{ id: '1', role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } }];
+    mockActiveMessages.value = [{ id: toMessageId({ raw: '1' }), role: 'user', content: 'hi', timestamp: Date.now(), replies: { items: [] } }];
     wrapper = mountChatPane( {
       global: {
         plugins: [router],
@@ -3415,7 +3530,7 @@ describe('ChatPane Model Selection', () => {
     (model2Btn as HTMLElement).click();
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(mockUpdateChatModel).toHaveBeenCalledWith({ id: '1', modelId: 'model-2' });
+    expect(mockUpdateChatModel).toHaveBeenCalledWith({ id: toChatId({ raw: '1' }), modelId: 'model-2' });
     expect(mockCurrentChat.value!.modelId).toBe('model-2');
   });
 
@@ -3446,7 +3561,7 @@ describe('ChatPane Model Selection', () => {
 
     // Simulate chat ID change
     if (mockCurrentChat.value) {
-      mockCurrentChat.value = { ...mockCurrentChat.value, id: 'chat-new' };
+      mockCurrentChat.value = { ...mockCurrentChat.value, id: toChatId({ raw: 'chat-new' }) };
     }
     await nextTick();
 
@@ -3455,7 +3570,7 @@ describe('ChatPane Model Selection', () => {
 
   it('automatically sends message when autoSendPrompt is provided', async () => {
     mockCurrentChat.value = {
-      id: '1',
+      id: toChatId({ raw: '1' }),
       title: 'Test Chat',
       root: { items: [] },
       createdAt: Date.now(),
@@ -3478,7 +3593,7 @@ describe('ChatPane Model Selection', () => {
     await nextTick();
     await nextTick();
 
-    expect(mockSendMessage).toHaveBeenCalledWith({ chatId: '1', content: 'automatic message', parentId: undefined, attachments: [], lmParameters: expect.anything() });
+    expect(mockSendMessage).toHaveBeenCalledWith({ chatId: toChatId({ raw: '1' }), content: 'automatic message', parentId: undefined, attachments: [], lmParameters: expect.anything() });
     expect(wrapper.emitted('auto-sent')).toBeTruthy();
   });
 
@@ -3493,7 +3608,7 @@ describe('ChatPane Model Selection', () => {
 
     // 1. Initial state
     mockCurrentChat.value = {
-      id: '1',
+      id: toChatId({ raw: '1' }),
       title: 'Test Chat',
       root: { items: [] },
       lmParameters: EMPTY_LM_PARAMETERS,
@@ -3515,10 +3630,14 @@ describe('ChatPane Model Selection', () => {
     // 3. Open Settings Panel
     const settingsBtn = wrapper.find('button[data-testid="model-trigger"]');
     await settingsBtn.trigger('click');
+    await vi.dynamicImportSettled();
+    await flushPromises();
     await nextTick();
 
-    const settingsPanel = wrapper.findComponent({ name: 'ChatSettingsPanel' });
-    expect(settingsPanel.exists()).toBe(true);
+    await vi.waitFor(() => {
+      expect(wrapper!.findComponent({ name: 'ChatSettingsPanel' }).exists()).toBe(true);
+    });
+    const settingsPanel = wrapper!.findComponent({ name: 'ChatSettingsPanel' });
 
     // Verify Settings Panel UI is synced
     const reasoningSettings = settingsPanel.findComponent({ name: 'ReasoningSettings' });
@@ -3527,6 +3646,7 @@ describe('ChatPane Model Selection', () => {
 
     // 4. Change reasoning effort in Settings Panel
     await reasoningSettings.vm.$emit('update:effort', 'low');
+    await flushPromises();
     await nextTick();
 
     // Verify currentChat was updated via the panel's save mechanism
@@ -3534,5 +3654,5 @@ describe('ChatPane Model Selection', () => {
 
     // 5. Verify Tools Menu UI is also synced
     expect(toolsMenu.props('selectedReasoningEffort')).toBe('low');
-  });
+  }, 20_000);
 });

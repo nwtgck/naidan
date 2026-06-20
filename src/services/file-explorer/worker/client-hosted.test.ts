@@ -87,7 +87,7 @@ class FakeWorker {
   constructor(_url: URL | string, _options?: WorkerOptions) {
     this.endpoint.connect({ peer: this.workerEndpoint })
     this.workerEndpoint.connect({ peer: this.endpoint })
-    Comlink.expose(createFileExplorerWorker({}), this.workerEndpoint as unknown as MessagePort)
+    Comlink.expose(createFileExplorerWorker(), this.workerEndpoint as unknown as MessagePort)
   }
 
   postMessage(message: unknown): void {
@@ -133,7 +133,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
 
   it('runs native-directory operations through the hosted worker client facade', async () => {
     const { createFileExplorerWorkerClient } = await import('./client-hosted')
-    const rootHandle = new MockFileSystemDirectoryHandle('root')
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
     const jsonFileHandle = await rootHandle.getFileHandle('data.json', { create: true })
     const jsonWritable = await jsonFileHandle.createWritable()
     await jsonWritable.write('{"hello":"world"}')
@@ -190,14 +190,14 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     const afterDeleteListing = await client.readDirectory({ path: '/' })
     expect(afterDeleteListing.entries.map(entry => entry.name).sort()).toEqual(['data.json', 'docs'])
 
-    await client.dispose({})
+    await client.dispose()
     expect(createdWorkers).toHaveLength(1)
     expect(createdWorkers[0]?.terminated).toBe(true)
   })
 
   it('reads mounted directories through the hosted worker client facade', async () => {
     const { createFileExplorerWorkerClient } = await import('./client-hosted')
-    const mountHandle = new MockFileSystemDirectoryHandle('project')
+    const mountHandle = new MockFileSystemDirectoryHandle({ name: 'project' })
     const fileHandle = await mountHandle.getFileHandle('index.ts', { create: true })
     const writable = await fileHandle.createWritable()
     await writable.write('export const value = 1')
@@ -222,7 +222,7 @@ describe('createFileExplorerWorkerClient hosted integration', () => {
     const mountListing = await client.readDirectory({ path: '/home/user/project' })
     expect(mountListing.entries.map(entry => entry.name)).toEqual(['index.ts'])
 
-    await client.dispose({})
+    await client.dispose()
     expect(createdWorkers.at(-1)?.terminated).toBe(true)
   })
 })

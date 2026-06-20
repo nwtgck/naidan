@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive, defineComponent } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem, StorageType } from '@/models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Shared Mock State ---
 // Using mock prefix to satisfy Vitest hoisting requirements
@@ -11,7 +12,7 @@ const mockIsSidebarOpen = ref(true);
 const mockErrorCount = ref(0);
 const mockEventCount = ref(0);
 const mockToggleDebug = vi.fn();
-const mockOpenOPFS = vi.fn();
+const mockOpenFileExplorer = vi.fn();
 const mockUpdateGlobalModel = vi.fn();
 
 const mockChatGroups = ref<ChatGroup[]>([]);
@@ -55,9 +56,9 @@ vi.mock('../composables/useLayout', () => ({
   }),
 }));
 
-vi.mock('../composables/useOPFSExplorer', () => ({
-  useOPFSExplorer: () => ({
-    openOPFS: mockOpenOPFS,
+vi.mock('../composables/useFileExplorerModal', () => ({
+  useFileExplorerModal: () => ({
+    openFileExplorer: mockOpenFileExplorer,
   }),
 }));
 
@@ -83,8 +84,8 @@ vi.mock('../composables/useChat', () => ({
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: idToRaw({ id: g.id }), type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: idToRaw({ id: c.id }), type: 'chat', chat: c }));
       return items;
     }),
     loadChats: mockLoadChats,
@@ -114,8 +115,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     chatGroups: computed(() => mockChatGroups.value),
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: g.id, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: c.id, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: idToRaw({ id: g.id }), type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: idToRaw({ id: c.id }), type: 'chat', chat: c }));
       return items;
     }),
     TEST_ONLY: {},
@@ -169,7 +170,7 @@ vi.mock('../composables/chat/useChatMetadata', () => ({
 }));
 
 vi.mock('../composables/chat/global/chat-core-singletons', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../composables/chat/global/chat-core-singletons')>();
+  const actual = await importOriginal<typeof import('@/composables/chat/global/chat-core-singletons')>();
   return {
     ...actual,
     isProcessing: ({ chatId: _chatId }: { chatId: string }) => false,
@@ -253,7 +254,7 @@ describe('Sidebar Logic Stability', () => {
           errorCount: mockErrorCount,
           showMenu,
           handleToggleDebug: () => mockToggleDebug(),
-          handleOpenOpfs: () => mockOpenOPFS(),
+          handleOpenFileExplorer: () => mockOpenFileExplorer({ options: { kind: 'opfs-root' } }),
         };
       },
       template: `
@@ -261,7 +262,7 @@ describe('Sidebar Logic Stability', () => {
           <button data-testid="sidebar-debug-button" @click="handleToggleDebug">Debug</button>
           <div v-if="errorCount > 0" data-testid="sidebar-error-badge">{{ errorCount }}</div>
           <button data-testid="sidebar-opfs-menu-button" @click="showMenu = !showMenu">Menu</button>
-          <button v-if="showMenu" data-testid="sidebar-opfs-button" @click="handleOpenOpfs">OPFS</button>
+          <button v-if="showMenu" data-testid="sidebar-file-explorer-button" @click="handleOpenFileExplorer">Files</button>
         </div>
       `,
     }),
@@ -285,7 +286,7 @@ describe('Sidebar Logic Stability', () => {
 
   beforeEach(() => {
     mockChatGroups.value = [];
-    mockChats.value = [{ id: '1', title: 'Initial Chat', updatedAt: 0 }];
+    mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Initial Chat', updatedAt: 0 }];
     mockSettings.value.endpointUrl = 'http://localhost:11434';
     mockSettings.value.defaultModelId = 'llama3';
     mockSettings.value.storageType = 'local';
@@ -398,7 +399,7 @@ describe('Sidebar Logic Stability', () => {
     vm.isDragging = true;
 
     // 3. Simulate an external data update (e.g. a new chat group added)
-    mockChatGroups.value = [{ id: 'g1', name: 'New Group', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'New Group', isCollapsed: false, updatedAt: 0, items: [] }];
     await nextTick();
 
     // 4. Verification: sidebarItemsLocal should NOT have changed yet
@@ -417,8 +418,8 @@ describe('Sidebar Logic Stability', () => {
   });
 
   it('should apply the .handle class to both chat groups and chats for drag-and-drop', async () => {
-    mockChatGroups.value = [{ id: 'g1', name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
-    mockChats.value = [{ id: 'c1', title: 'Chat', updatedAt: 0 }];
+    mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
+    mockChats.value = [{ id: toChatId({ raw: 'c1' }), title: 'Chat', updatedAt: 0 }];
 
     const wrapper = mount(Sidebar, {
       global: {
@@ -580,8 +581,8 @@ describe('Sidebar Logic Stability', () => {
 
   it("should display 'New Chat' when a chat title is empty in the sidebar", async () => {
     mockChats.value = [
-      { id: 'chat-empty-1', title: '', updatedAt: 0 },
-      { id: 'chat-null-1', title: null as any, updatedAt: 0 },
+      { id: toChatId({ raw: 'chat-empty-1' }), title: '', updatedAt: 0 },
+      { id: toChatId({ raw: 'chat-null-1' }), title: null as any, updatedAt: 0 },
     ];
 
     const wrapper = mount(Sidebar, {
@@ -604,8 +605,8 @@ describe('Sidebar Logic Stability', () => {
   describe('Group Deletion Confirmation', () => {
     it('should prompt for confirmation when deleting a group with chats', async () => {
       const groupWithChats: ChatGroup = {
-        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
-        items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
+        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }]
       };
       mockChatGroups.value = [groupWithChats];
 
@@ -625,7 +626,7 @@ describe('Sidebar Logic Stability', () => {
 
     it('should prompt for confirmation when deleting an empty group with custom settings', async () => {
       const groupWithSettings: ChatGroup = {
-        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
+        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [],
         systemPrompt: { content: 'sys', behavior: 'append' }
       };
       mockChatGroups.value = [groupWithSettings];
@@ -646,7 +647,7 @@ describe('Sidebar Logic Stability', () => {
 
     it('should delete IMMEDIATELY without confirmation for an empty group with no settings', async () => {
       const emptyGroup: ChatGroup = {
-        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: []
+        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: []
       };
       mockChatGroups.value = [emptyGroup];
 
@@ -667,8 +668,8 @@ describe('Sidebar Logic Stability', () => {
 
     it('should call deleteChatGroup after confirmation is accepted', async () => {
       const group: ChatGroup = {
-        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
-        items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
+        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }]
       };
       mockChatGroups.value = [group];
       mockShowConfirm.mockResolvedValue(true);
@@ -691,8 +692,8 @@ describe('Sidebar Logic Stability', () => {
 
     it('should NOT call deleteChatGroup if confirmation is cancelled', async () => {
       const group: ChatGroup = {
-        id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0,
-        items: [{ id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C1', updatedAt: 0 } }]
+        id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
+        items: [{ id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 } }]
       };
       mockChatGroups.value = [group];
       mockShowConfirm.mockResolvedValue(false);
@@ -740,7 +741,7 @@ describe('Sidebar Logic Stability', () => {
       expect(mockToggleDebug).toHaveBeenCalled();
     });
 
-    it('opens OPFS explorer when the OPFS button is clicked', async () => {
+    it('opens the file explorer when the file explorer button is clicked', async () => {
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },
         attachTo: document.body
@@ -753,18 +754,18 @@ describe('Sidebar Logic Stability', () => {
       await nextTick();
 
       // The button is now teleported to body
-      const opfsBtn = document.body.querySelector('[data-testid="sidebar-opfs-button"]') as HTMLElement;
-      expect(opfsBtn).toBeTruthy();
-      opfsBtn.click();
+      const fileExplorerBtn = document.body.querySelector('[data-testid="sidebar-file-explorer-button"]') as HTMLElement;
+      expect(fileExplorerBtn).toBeTruthy();
+      fileExplorerBtn.click();
 
-      expect(mockOpenOPFS).toHaveBeenCalled();
+      expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: { kind: 'opfs-root' } });
     });
   });
 
   describe('Touch Support', () => {
     it('applies touch-visible class to action containers for non-hover environments', async () => {
-      mockChatGroups.value = [{ id: 'g1', name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
-      mockChats.value = [{ id: 'c1', title: 'Chat', updatedAt: 0 }];
+      mockChatGroups.value = [{ id: toChatGroupId({ raw: 'g1' }), name: 'Group', isCollapsed: false, updatedAt: 0, items: [] }];
+      mockChats.value = [{ id: toChatId({ raw: 'c1' }), title: 'Chat', updatedAt: 0 }];
 
       const wrapper = mount(Sidebar, {
         global: { plugins: [router], stubs: globalStubs },

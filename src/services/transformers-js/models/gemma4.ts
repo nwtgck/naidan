@@ -12,6 +12,7 @@ export interface Gemma4TemplateMessage {
 }
 
 export interface Gemma4ProcessorLike {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Transformers processor runtime signature.
   (
     text: string | string[],
     images: TransformersRawImage[] | TransformersRawImage | null,
@@ -19,6 +20,7 @@ export interface Gemma4ProcessorLike {
     options: Record<string, unknown>
   ): Promise<Record<string, unknown>>;
   tokenizer: PreTrainedTokenizer;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the Transformers tokenizer apply_chat_template signature.
   apply_chat_template(messages: Gemma4TemplateMessage[], options: Record<string, unknown>): string;
 }
 

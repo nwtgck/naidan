@@ -4,6 +4,7 @@ import { nextTick } from 'vue';
 import ConversationOutlineOverlay from './ConversationOutlineOverlay.vue';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
 import type { MessageNode } from '@/models/types';
+import { toMessageId, toChatId } from '@/models/ids';
 
 vi.mock('./MessageItem.vue', () => ({
   default: {
@@ -22,7 +23,7 @@ function messageFlowItem({ id, role, content }: {
 }): ChatFlowItem {
   return {
     type: 'message',
-    node: { id, role, content, timestamp: 0, replies: { items: [] } },
+    node: { id: toMessageId({ raw: id }), role, content, timestamp: 0, replies: { items: [] } },
     mode: 'content',
     flow: { position: 'standalone', nesting: 'none' },
     isFirstInNode: true,
@@ -35,7 +36,7 @@ describe('ConversationOutlineOverlay', () => {
   it('renders content messages as a compact outline', () => {
     const wrapper = mount(ConversationOutlineOverlay, {
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         visibility: 'visible',
         flowItems: [
           messageFlowItem({ id: 'u1', role: 'user', content: 'First user message' }),
@@ -54,7 +55,7 @@ describe('ConversationOutlineOverlay', () => {
   it('emits close and selected message events', async () => {
     const wrapper = mount(ConversationOutlineOverlay, {
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         visibility: 'visible',
         flowItems: [
           messageFlowItem({ id: 'u1', role: 'user', content: 'First user message' }),
@@ -72,7 +73,7 @@ describe('ConversationOutlineOverlay', () => {
   it('opens a MessageItem peek from the row edge without selecting the message', async () => {
     const wrapper = mount(ConversationOutlineOverlay, {
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         visibility: 'visible',
         flowItems: [
           messageFlowItem({ id: 'u1', role: 'user', content: 'Peekable user message' }),
@@ -90,7 +91,7 @@ describe('ConversationOutlineOverlay', () => {
   it('expands the outline height while a peek is open', async () => {
     const wrapper = mount(ConversationOutlineOverlay, {
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         visibility: 'visible',
         flowItems: [
           messageFlowItem({ id: 'u1', role: 'user', content: 'Peekable user message' }),
@@ -118,7 +119,7 @@ describe('ConversationOutlineOverlay', () => {
   it('shows scroll hints only when more outline content is available', async () => {
     const wrapper = mount(ConversationOutlineOverlay, {
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         visibility: 'visible',
         flowItems: Array.from({ length: 12 }, (_, index) => messageFlowItem({
           id: `u${index}`,
@@ -150,7 +151,7 @@ describe('ConversationOutlineOverlay', () => {
   it('scrolls the initially visible chat message into the outline when opened', async () => {
     const wrapper = mount(ConversationOutlineOverlay, {
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         visibility: 'visible',
         flowItems: Array.from({ length: 8 }, (_, index) => messageFlowItem({
           id: `m${index}`,
@@ -177,7 +178,7 @@ describe('ConversationOutlineOverlay', () => {
       });
     }
 
-    await wrapper.setProps({ initialMessageId: 'm5' });
+    await wrapper.setProps({ initialMessageId: toMessageId({ raw: 'm5' }) });
     await nextTick();
 
     expect(scrollTo).toHaveBeenCalledWith({
@@ -189,9 +190,9 @@ describe('ConversationOutlineOverlay', () => {
   it('does not re-scroll to the initial message when a peek is toggled', async () => {
     const wrapper = mount(ConversationOutlineOverlay, {
       props: {
-        chatId: 'chat-1',
+        chatId: toChatId({ raw: 'chat-1' }),
         visibility: 'visible',
-        initialMessageId: 'm5',
+        initialMessageId: toMessageId({ raw: 'm5' }),
         flowItems: Array.from({ length: 8 }, (_, index) => messageFlowItem({
           id: `m${index}`,
           role: 'user',
@@ -217,7 +218,7 @@ describe('ConversationOutlineOverlay', () => {
       });
     }
 
-    await wrapper.setProps({ initialMessageId: 'm4' });
+    await wrapper.setProps({ initialMessageId: toMessageId({ raw: 'm4' }) });
     await nextTick();
     scrollTo.mockClear();
 

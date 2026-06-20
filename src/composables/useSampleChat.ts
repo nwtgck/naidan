@@ -4,6 +4,7 @@ import { storageService } from '@/services/storage';
 import sampleContent from '@/assets/sample-showcase.md?raw';
 import { useChatBootstrap } from '@/composables/chat/ui/useChatBootstrap';
 import { processThinking } from '@/utils/chat-tree';
+import type { ChatId, MessageId } from '@/models/ids';
 
 const longSampleTopics = [
   'release planning',
@@ -87,20 +88,20 @@ function longMessageContent({ turnIndex, role }: {
 
 async function persistSampleChat({ chat, loadChats, openChat }: {
   chat: Chat;
-  loadChats: (_params: Record<string, never>) => Promise<void>;
-  openChat: ({ id }: { id: string }) => Promise<unknown>;
+  loadChats: () => Promise<void>;
+  openChat: ({ id }: { id: ChatId }) => Promise<unknown>;
 }) {
-  await storageService.updateChatContent(chat.id, () => ({
+  await storageService.updateChatContent({ id: chat.id, updater: () => ({
     root: chat.root,
     currentLeafId: chat.currentLeafId
-  }));
-  await storageService.updateChatMeta(chat.id, () => chat);
-  await storageService.updateHierarchy((curr) => {
+  }) });
+  await storageService.updateChatMeta({ id: chat.id, updater: () => chat });
+  await storageService.updateHierarchy({ updater: ({ current: curr }) => {
     curr.items.push({ type: 'chat', id: chat.id });
     return curr;
-  });
+  } });
 
-  await loadChats({});
+  await loadChats();
   await openChat({ id: chat.id });
 }
 
@@ -110,7 +111,7 @@ export function useSampleChat() {
   const createSampleChat = async () => {
     const now = Date.now();
     const m2: MessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'assistant',
       content: sampleContent,
       timestamp: now,
@@ -119,7 +120,7 @@ export function useSampleChat() {
     processThinking({ node: m2 });
 
     const m3: MessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'assistant',
       content: 'This is an alternative response. You can switch between different versions of assistant replies using the arrows!',
       timestamp: now + 1000,
@@ -127,7 +128,7 @@ export function useSampleChat() {
     };
 
     const m1: MessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'user',
       content: 'Show me your tree-based branching and rendering capabilities!',
       timestamp: now - 5000,
@@ -135,7 +136,7 @@ export function useSampleChat() {
     };
 
     const sampleChatObj: Chat = {
-      id: generateId(),
+      id: generateId<ChatId>(),
       title: '🚀 Sample: Tree Showcase',
       root: { items: [m1] },
       currentLeafId: m2.id,
@@ -157,7 +158,7 @@ export function useSampleChat() {
     const messages: MessageNode[] = Array.from({ length: messageCount }, (_, index) => {
       const role = index % 2 === 0 ? 'user' : 'assistant';
       return {
-        id: generateId(),
+        id: generateId<MessageId>(),
         role,
         content: longMessageContent({ turnIndex: Math.floor(index / 2), role }),
         timestamp: now + index * 1000,
@@ -171,7 +172,7 @@ export function useSampleChat() {
 
     const currentLeafId = messages[messages.length - 1]!.id;
     const longSampleChatObj: Chat = {
-      id: generateId(),
+      id: generateId<ChatId>(),
       title: 'Long Sample: Outline Stress Test',
       root: { items: [messages[0]!] },
       currentLeafId,

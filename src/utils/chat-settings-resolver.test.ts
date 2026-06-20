@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { resolveChatSettings, hasChatOverrides, hasGroupOverrides, type ResolvableSettings } from './chat-settings-resolver';
 import type { Chat, ChatGroup } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 describe('resolveChatSettings - System Prompt Edge Cases', () => {
   const globalSettings: ResolvableSettings = {
@@ -10,7 +11,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
   };
 
   const baseChat: Chat = {
-    id: 'chat-1',
+    id: toChatId({ raw: 'chat-1' }),
     title: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -70,7 +71,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
 
   describe('Hierarchical Resolution (Global -> Group -> Chat)', () => {
     const group: ChatGroup = {
-      id: 'group-1',
+      id: toChatGroupId({ raw: 'group-1' }),
       name: 'Group',
       isCollapsed: false,
       updatedAt: Date.now(),
@@ -81,7 +82,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('Chat override:null should clear both Group and Global prompts', () => {
       const chat: Chat = {
         ...baseChat,
-        groupId: 'group-1',
+        groupId: toChatGroupId({ raw: 'group-1' }),
         systemPrompt: { behavior: 'override', content: null }
       };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
@@ -91,7 +92,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('Chat append should build upon Group override', () => {
       const chat: Chat = {
         ...baseChat,
-        groupId: 'group-1',
+        groupId: toChatGroupId({ raw: 'group-1' }),
         systemPrompt: { behavior: 'append', content: 'Chat Append' }
       };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
@@ -106,7 +107,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       };
       const chat: Chat = {
         ...baseChat,
-        groupId: 'group-1',
+        groupId: toChatGroupId({ raw: 'group-1' }),
         systemPrompt: { behavior: 'append', content: 'Chat Append' }
       };
       const result = resolveChatSettings({ chat, groups: [clearGroup], globalSettings });
@@ -121,7 +122,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       };
       const chat: Chat = {
         ...baseChat,
-        groupId: 'group-1',
+        groupId: toChatGroupId({ raw: 'group-1' }),
         systemPrompt: { behavior: 'append', content: 'Chat Append' }
       };
       const result = resolveChatSettings({ chat, groups: [emptyGroup], globalSettings });
@@ -146,7 +147,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
 
     it('should allow group to override title settings', () => {
       const group: ChatGroup = {
-        id: 'group-1',
+        id: toChatGroupId({ raw: 'group-1' }),
         name: 'Group',
         isCollapsed: false,
         updatedAt: Date.now(),
@@ -154,7 +155,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         autoTitleEnabled: false,
         titleModelId: 'group-title-model',
       };
-      const chat: Chat = { ...baseChat, groupId: 'group-1' };
+      const chat: Chat = { ...baseChat, groupId: toChatGroupId({ raw: 'group-1' }) };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.autoTitleEnabled).toBe(false);
       expect(result.titleModelId).toBe('group-title-model');
@@ -186,7 +187,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     });
 
     it('hasGroupOverrides should detect various overrides', () => {
-      const group: ChatGroup = { id: 'g1', name: 'G', isCollapsed: false, updatedAt: 0, items: [] };
+      const group: ChatGroup = { id: toChatGroupId({ raw: 'g1' }), name: 'G', isCollapsed: false, updatedAt: 0, items: [] };
       expect(hasGroupOverrides({ group })).toBe(false);
       expect(hasGroupOverrides({ group: { ...group, modelId: 'm1' } })).toBe(true);
       expect(hasGroupOverrides({ group: { ...group, autoTitleEnabled: true } })).toBe(true);
@@ -205,7 +206,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     };
 
     const group: ChatGroup = {
-      id: 'group-1',
+      id: toChatGroupId({ raw: 'group-1' }),
       name: 'Group',
       isCollapsed: false,
       updatedAt: Date.now(),
@@ -217,7 +218,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     };
 
     it('should inherit reasoning effort from group when not specified in chat', () => {
-      const chat: Chat = { ...baseChat, groupId: 'group-1' };
+      const chat: Chat = { ...baseChat, groupId: toChatGroupId({ raw: 'group-1' }) };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.lmParameters.reasoning.effort).toBe('high');
     });
@@ -225,7 +226,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('should inherit reasoning effort from group even if other lmParameters are set in chat', () => {
       const chat: Chat = {
         ...baseChat,
-        groupId: 'group-1',
+        groupId: toChatGroupId({ raw: 'group-1' }),
         lmParameters: {
           ...EMPTY_LM_PARAMETERS,
           temperature: 0.5,
@@ -241,7 +242,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('should override group reasoning effort when explicitly set in chat', () => {
       const chat: Chat = {
         ...baseChat,
-        groupId: 'group-1',
+        groupId: toChatGroupId({ raw: 'group-1' }),
         lmParameters: {
           ...EMPTY_LM_PARAMETERS,
           reasoning: { effort: 'low' }

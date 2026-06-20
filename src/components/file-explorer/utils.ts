@@ -127,8 +127,7 @@ export async function copyDirectoryHandle({
       await copyDirectoryHandle({ source: entry as FileSystemDirectoryHandle, targetDir: destDir, signal });
       break;
     default: {
-      const _ex: never = entry.kind;
-      throw new Error(`Unhandled kind: ${_ex}`);
+      throw new Error(`Unhandled kind: ${((entry satisfies never) as { readonly kind: string }).kind}`);
     }
     }
   }

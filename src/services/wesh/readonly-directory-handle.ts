@@ -9,7 +9,12 @@
  * This class duck-types FileSystemDirectoryHandle so the VFS can use it
  * without modification; cast to FileSystemDirectoryHandle where needed.
  */
-export class ReadonlyDirectoryHandle {
+type ReadonlyDirectoryHandleContract = Pick<
+  FileSystemDirectoryHandle,
+  'getFileHandle' | 'getDirectoryHandle' | 'removeEntry' | 'resolve'
+> & Pick<FileSystemHandle, 'isSameEntry'>;
+
+export class ReadonlyDirectoryHandle implements ReadonlyDirectoryHandleContract {
   readonly kind = 'directory' as const;
   readonly name = 'readonly';
 

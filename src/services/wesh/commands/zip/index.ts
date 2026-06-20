@@ -1,15 +1,25 @@
-import JSZip from 'jszip';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { generateZipReadableStream } from '@/services/wesh/commands/_shared/jszip';
+import {
+  createWebZipCompressionCodec,
+  StreamingZipWriter,
+  type ZipCentralDirectoryStore,
+  type ZipCompression,
+} from '@/lib/zip-stream';
+import {
+  createWeshZipByteSink,
+  createWeshZipCentralDirectoryStore,
+} from '@/services/wesh/zip-stream';
 import type {
   WeshCommandContext,
   WeshCommandDefinition,
   WeshCommandResult,
+  WeshEntryRef,
+  WeshFileHandle,
   WeshFileType,
   WeshOpenFlags,
 } from '@/services/wesh/types';
-import { openHandleReadStream, readAllFileBytes, writeAllStreamToHandle } from '@/services/wesh/utils/fs';
+import { openFileReadStream, openHandleReadStream } from '@/services/wesh/utils/fs';
 
 const zipArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -45,14 +55,15 @@ const zipArgvSpec: StandardArgvParserSpec = {
 };
 
 interface PendingZipEntry {
-  sourcePath: string;
-  archivePath: string;
-  type: WeshFileType;
+  readonly sourcePath: string;
+  readonly archivePath: string;
+  readonly type: WeshFileType;
+  readonly entryRef: WeshEntryRef | undefined;
 }
 
 interface SplitZipArgsResult {
-  mainArgs: string[];
-  excludePatterns: string[];
+  readonly mainArgs: string[];
+  readonly excludePatterns: string[];
 }
 
 function resolvePath({
@@ -65,70 +76,45 @@ function resolvePath({
   if (path.startsWith('/')) {
     return path;
   }
-
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
-function basename({
-  path,
-}: {
-  path: string;
-}): string {
+function basename({ path }: { path: string }): string {
   const normalized = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
   const segments = normalized.split('/').filter(Boolean);
-  return segments[segments.length - 1] ?? normalized;
+  return segments.at(-1) ?? normalized;
 }
 
-function sanitizeArchiveRootName({
-  path,
-}: {
-  path: string;
-}): string {
+function sanitizeArchiveRootName({ path }: { path: string }): string {
   return path.replace(/^\/+/, '');
 }
 
-function splitZipArgs({
-  args,
-}: {
-  args: string[];
-}): SplitZipArgsResult {
+function splitZipArgs({ args }: { args: string[] }): SplitZipArgsResult {
   const excludeIndex = args.indexOf('-x');
   if (excludeIndex === -1) {
-    return {
-      mainArgs: args,
-      excludePatterns: [],
-    };
+    return { mainArgs: args, excludePatterns: [] };
   }
-
   return {
     mainArgs: args.slice(0, excludeIndex),
     excludePatterns: args.slice(excludeIndex + 1),
   };
 }
 
-function globToRegExp({
-  pattern,
-}: {
-  pattern: string;
-}): RegExp {
+function globToRegExp({ pattern }: { pattern: string }): RegExp {
   let source = '^';
-
   for (let index = 0; index < pattern.length; index += 1) {
     const char = pattern[index];
     if (char === undefined) {
       continue;
     }
-
     if (char === '*') {
       source += '.*';
       continue;
     }
-
     if (char === '?') {
       source += '.';
       continue;
     }
-
     if (char === '[') {
       const endIndex = pattern.indexOf(']', index + 1);
       if (endIndex > index) {
@@ -137,10 +123,8 @@ function globToRegExp({
         continue;
       }
     }
-
     source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
-
   source += '$';
   return new RegExp(source);
 }
@@ -157,23 +141,89 @@ function buildArchivePath({
   if (junkPaths) {
     return basename({ path: currentPath });
   }
-
   if (operand === '-') {
     return '-';
   }
-
   if (currentPath === operand) {
     return sanitizeArchiveRootName({ path: operand });
   }
-
   const normalizedOperand = operand.endsWith('/') ? operand.slice(0, -1) : operand;
   const prefix = `${normalizedOperand}/`;
-  const relativePart = currentPath.startsWith(prefix) ? currentPath.slice(prefix.length) : basename({ path: currentPath });
+  const relativePart = currentPath.startsWith(prefix)
+    ? currentPath.slice(prefix.length)
+    : basename({ path: currentPath });
   const rootName = sanitizeArchiveRootName({ path: normalizedOperand });
   return rootName === '' ? relativePart : `${rootName}/${relativePart}`;
 }
 
-async function listZipEntriesForOperand({
+function asDirectoryEntry({ entry }: { entry: WeshEntryRef }): WeshEntryRef<'directory'> {
+  switch (entry.type) {
+  case 'directory':
+    return entry;
+  case 'file':
+  case 'fifo':
+  case 'chardev':
+  case 'symlink':
+    throw new Error(`Expected directory entry: ${entry.fullPath}`);
+  default: {
+    const _ex: never = entry;
+    throw new Error(`Unhandled entry type: ${String(_ex)}`);
+  }
+  }
+}
+
+async function* iterateDirectoryEntries({
+  context,
+  operand,
+  directory,
+  junkPaths,
+}: {
+  context: WeshCommandContext;
+  operand: string;
+  directory: WeshEntryRef<'directory'>;
+  junkPaths: boolean;
+}): AsyncIterable<PendingZipEntry> {
+  for await (const child of context.files.readDirEntry({ entry: directory })) {
+    const archivePath = buildArchivePath({
+      operand,
+      currentPath: child.fullPath,
+      junkPaths,
+    });
+    switch (child.type) {
+    case 'directory':
+      yield {
+        sourcePath: child.fullPath,
+        archivePath: `${archivePath}/`,
+        type: 'directory',
+        entryRef: child,
+      };
+      yield* iterateDirectoryEntries({
+        context,
+        operand,
+        directory: asDirectoryEntry({ entry: child }),
+        junkPaths,
+      });
+      break;
+    case 'file':
+    case 'fifo':
+    case 'chardev':
+    case 'symlink':
+      yield {
+        sourcePath: child.fullPath,
+        archivePath,
+        type: child.type,
+        entryRef: child,
+      };
+      break;
+    default: {
+      const _exhaustiveCheck: never = child;
+      throw new Error(`Unhandled entry type: ${String(_exhaustiveCheck)}`);
+    }
+    }
+  }
+}
+
+async function* iterateZipEntriesForOperand({
   context,
   operand,
   recursive,
@@ -183,220 +233,156 @@ async function listZipEntriesForOperand({
   operand: string;
   recursive: boolean;
   junkPaths: boolean;
-}): Promise<PendingZipEntry[]> {
+}): AsyncIterable<PendingZipEntry> {
   if (operand === '-') {
-    return [{
+    yield {
       sourcePath: '-',
       archivePath: '-',
       type: 'file',
-    }];
+      entryRef: undefined,
+    };
+    return;
   }
 
-  const stat = await context.files.stat({ path: operand });
-  switch (stat.type) {
+  const entry = await context.files.resolveEntry({
+    path: operand,
+    finalSymlinkTreatment: 'follow',
+  });
+  const archivePath = buildArchivePath({ operand, currentPath: operand, junkPaths });
+  switch (entry.type) {
   case 'file':
   case 'fifo':
   case 'chardev':
   case 'symlink':
-    return [{
+    yield {
       sourcePath: operand,
-      archivePath: buildArchivePath({
-        operand,
-        currentPath: operand,
-        junkPaths,
-      }),
-      type: stat.type,
-    }];
-  case 'directory': {
-    const directoryEntry: PendingZipEntry = {
-      sourcePath: operand,
-      archivePath: `${buildArchivePath({
-        operand,
-        currentPath: operand,
-        junkPaths,
-      })}/`,
-      type: 'directory',
+      archivePath,
+      type: entry.type,
+      entryRef: entry,
     };
-
-    if (!recursive) {
-      return [directoryEntry];
+    return;
+  case 'directory':
+    yield {
+      sourcePath: operand,
+      archivePath: `${archivePath}/`,
+      type: 'directory',
+      entryRef: entry,
+    };
+    if (recursive) {
+      yield* iterateDirectoryEntries({
+        context,
+        operand,
+        directory: asDirectoryEntry({ entry }),
+        junkPaths,
+      });
     }
-
-    const output: PendingZipEntry[] = [directoryEntry];
-    const stack: string[] = [operand];
-    while (stack.length > 0) {
-      const currentPath = stack.pop();
-      if (currentPath === undefined) {
-        continue;
-      }
-
-      const entries: Array<{ name: string; type: WeshFileType; fullPath: string }> = [];
-      for await (const entry of context.files.readDir({ path: currentPath })) {
-        entries.push(entry);
-      }
-      entries.sort((left, right) => left.name.localeCompare(right.name));
-
-      for (const entry of entries) {
-        const archivePath = buildArchivePath({
-          operand,
-          currentPath: entry.fullPath,
-          junkPaths,
-        });
-
-        switch (entry.type) {
-        case 'directory':
-          output.push({
-            sourcePath: entry.fullPath,
-            archivePath: `${archivePath}/`,
-            type: 'directory',
-          });
-          stack.push(entry.fullPath);
-          break;
-        case 'file':
-        case 'fifo':
-        case 'chardev':
-        case 'symlink':
-          output.push({
-            sourcePath: entry.fullPath,
-            archivePath,
-            type: entry.type,
-          });
-          break;
-        default: {
-          const _ex: never = entry.type;
-          throw new Error(`Unhandled entry type: ${_ex}`);
-        }
-        }
-      }
-    }
-
-    return output;
-  }
+    return;
   default: {
-    const _ex: never = stat.type;
-    throw new Error(`Unhandled file type: ${_ex}`);
+    const _exhaustiveCheck: never = entry;
+    throw new Error(`Unhandled file type: ${String(_exhaustiveCheck)}`);
   }
   }
 }
 
-async function readAllBytesFromStream({
-  stream,
-}: {
-  stream: ReadableStream<Uint8Array>;
-}): Promise<Uint8Array> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let totalLength = 0;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    chunks.push(value);
-    totalLength += value.length;
-  }
-
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return result;
+function createTemporarySuffix(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-async function addRegularEntryToZip({
+function createSiblingTemporaryPath({ path }: { path: string }): string {
+  const slashIndex = path.lastIndexOf('/');
+  const parent = slashIndex <= 0 ? '/' : path.slice(0, slashIndex);
+  const name = slashIndex < 0 ? path : path.slice(slashIndex + 1);
+  const temporaryName = `.${name}.wesh-zip-${createTemporarySuffix()}`;
+  return parent === '/' ? `/${temporaryName}` : `${parent}/${temporaryName}`;
+}
+
+async function removePathIfPresent({
   context,
-  zip,
-  entry,
-  compression,
-  compressionLevel,
+  path,
 }: {
   context: WeshCommandContext;
-  zip: JSZip;
-  entry: PendingZipEntry;
-  compression: 'STORE' | 'DEFLATE';
-  compressionLevel: number;
+  path: string;
 }): Promise<void> {
-  const compressionOptions = (() => {
-    switch (compression) {
-    case 'DEFLATE':
-      return { level: compressionLevel };
-    case 'STORE':
-      return undefined;
-    default: {
-      const _ex: never = compression;
-      throw new Error(`Unhandled compression: ${_ex}`);
-    }
-    }
-  })();
-
-  if (entry.sourcePath === '-') {
-    const stdinBytes = await readAllBytesFromStream({
-      stream: openHandleReadStream({ handle: context.stdin }),
-    });
-    zip.file(entry.archivePath, stdinBytes, {
-      compression,
-      compressionOptions,
-      createFolders: true,
-    });
-    return;
-  }
-
-  const blobResult = await context.files.tryReadBlobEfficiently({ path: entry.sourcePath });
-  switch (blobResult.kind) {
-  case 'blob':
-    zip.file(entry.archivePath, blobResult.blob, {
-      compression,
-      compressionOptions,
-      createFolders: true,
-    });
-    return;
-  case 'fallback-required': {
-    const bytes = await readAllFileBytes({
-      files: context.files,
-      path: entry.sourcePath,
-    });
-    zip.file(entry.archivePath, bytes, {
-      compression,
-      compressionOptions,
-      createFolders: true,
-    });
-    return;
-  }
-  default: {
-    const _ex: never = blobResult;
-    throw new Error(`Unhandled blob result: ${JSON.stringify(_ex)}`);
-  }
+  try {
+    await context.files.unlink({ path });
+  } catch {
+    // Cleanup is best-effort and must not hide the primary command result.
   }
 }
 
-async function writeZipToDestination({
+async function pathExists({
   context,
-  archivePath,
-  zip,
+  path,
 }: {
   context: WeshCommandContext;
-  archivePath: string;
-  zip: JSZip;
-}): Promise<void> {
-  const flags: WeshOpenFlags = {
+  path: string;
+}): Promise<boolean> {
+  try {
+    await context.files.lstat({ path });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function createWriteFlags(): WeshOpenFlags {
+  return {
     access: 'write',
-    creation: 'if-needed',
+    creation: 'always',
     truncate: 'truncate',
     append: 'preserve',
   };
-  const handle = await context.files.open({
-    path: archivePath,
-    flags,
-  });
-  await writeAllStreamToHandle({
-    stream: generateZipReadableStream({ zip }),
-    handle,
-  });
+}
+
+async function openEntryStream({
+  context,
+  entry,
+}: {
+  context: WeshCommandContext;
+  entry: PendingZipEntry;
+}): Promise<ReadableStream<Uint8Array>> {
+  if (entry.sourcePath === '-') {
+    return openHandleReadStream({ handle: context.stdin });
+  }
+  if (entry.entryRef !== undefined) {
+    const handle = await context.files.openEntry({
+      entry: entry.entryRef,
+      flags: {
+        access: 'read',
+        creation: 'never',
+        truncate: 'preserve',
+        append: 'preserve',
+      },
+    });
+    return openHandleReadStream({ handle });
+  }
+  return openFileReadStream({ files: context.files, path: entry.sourcePath });
+}
+
+async function closeHandleSafely({ handle }: { handle: WeshFileHandle | undefined }): Promise<void> {
+  if (handle === undefined) {
+    return;
+  }
+  try {
+    await handle.close();
+  } catch {
+    // Cleanup is best-effort and must not hide the primary command result.
+  }
+}
+
+async function disposeCentralDirectoryStoreSafely({
+  store,
+}: {
+  store: ZipCentralDirectoryStore | undefined;
+}): Promise<void> {
+  if (store === undefined) {
+    return;
+  }
+  try {
+    await store.dispose();
+  } catch {
+    // Continue closing handles and removing temporary paths after any store failure.
+  }
 }
 
 export const zipCommandDefinition: WeshCommandDefinition = {
@@ -406,14 +392,8 @@ export const zipCommandDefinition: WeshCommandDefinition = {
     usage: 'zip [-rjq0-9] zipfile file...',
   },
   fn: async ({ context }: { context: WeshCommandContext }): Promise<WeshCommandResult> => {
-    const splitArgs = splitZipArgs({
-      args: context.args,
-    });
-    const parsed = parseStandardArgv({
-      args: splitArgs.mainArgs,
-      spec: zipArgvSpec,
-    });
-
+    const splitArgs = splitZipArgs({ args: context.args });
+    const parsed = parseStandardArgv({ args: splitArgs.mainArgs, spec: zipArgvSpec });
     const diagnostic = parsed.diagnostics[0];
     if (diagnostic !== undefined) {
       await writeCommandUsageError({
@@ -424,130 +404,173 @@ export const zipCommandDefinition: WeshCommandDefinition = {
       });
       return { exitCode: 2 };
     }
-
     if (parsed.optionValues.help === true) {
-      await writeCommandHelp({
-        context,
-        command: 'zip',
-        argvSpec: zipArgvSpec,
-      });
+      await writeCommandHelp({ context, command: 'zip', argvSpec: zipArgvSpec });
       return { exitCode: 0 };
     }
 
     const archiveOperand = parsed.positionals[0];
     if (archiveOperand === undefined || parsed.positionals.length < 2) {
-      const archiveName = archiveOperand ?? 'zip';
       await context.text().error({
-        text: `zip error: Nothing to do! (${archiveName})\n`,
+        text: `zip error: Nothing to do! (${archiveOperand ?? 'zip'})\n`,
       });
       return { exitCode: 12 };
     }
 
+    const archivePath = resolvePath({ cwd: context.cwd, path: archiveOperand });
+    const archiveTemporaryPath = createSiblingTemporaryPath({ path: archivePath });
+    const archiveRecoveryPath = `${archiveTemporaryPath}.original`;
+    const temporaryDirectory = (context.env.get('TMPDIR') || '/tmp').replace(/\/$/u, '');
+    const centralDirectoryPath = `${temporaryDirectory}/wesh-zip-central-${createTemporarySuffix()}`;
+    const excludeMatchers = splitArgs.excludePatterns.map(pattern => globToRegExp({ pattern }));
+    const inputOperands = parsed.positionals.slice(1).map(path => path === '-'
+      ? '-'
+      : resolvePath({ cwd: context.cwd, path }));
     const recursive = parsed.optionValues.recursive === true;
     const junkPaths = parsed.optionValues.junkPaths === true;
-    const compressionMode = parsed.optionValues.compressionMode;
-    const compressionLevelValue = parsed.optionValues.compressionLevel;
-    const compressionLevel = typeof compressionLevelValue === 'number' ? compressionLevelValue : 6;
-    const compression = compressionMode === 'store' ? 'STORE' : 'DEFLATE';
-    const excludeMatchers = splitArgs.excludePatterns.map((pattern) => globToRegExp({ pattern }));
+    const compression: ZipCompression = parsed.optionValues.compressionMode === 'store'
+      ? 'store'
+      : 'deflate';
 
-    const archivePath = resolvePath({
-      cwd: context.cwd,
-      path: archiveOperand,
-    });
-
-    const inputOperands = parsed.positionals.slice(1).map((path) => {
-      if (path === '-') {
-        return '-';
-      }
-
-      return resolvePath({
-        cwd: context.cwd,
-        path,
-      });
-    });
-
-    const zip = new JSZip();
-    let hadError = false;
+    await context.files.mkdir({ path: temporaryDirectory, recursive: true });
+    let outputHandle: WeshFileHandle | undefined;
+    let centralDirectoryHandle: WeshFileHandle | undefined;
+    let centralDirectoryStore: ZipCentralDirectoryStore | undefined;
     let matchedInput = false;
+    let hadError = false;
+    let archiveInstalled = false;
 
-    for (const operand of inputOperands) {
-      try {
-        const entries = await listZipEntriesForOperand({
-          context,
-          operand,
-          recursive,
-          junkPaths,
-        });
-        const includedEntries = entries.filter((entry) => {
-          return !excludeMatchers.some((matcher) => matcher.test(entry.archivePath));
-        });
+    try {
+      outputHandle = await context.files.open({
+        path: archiveTemporaryPath,
+        flags: createWriteFlags(),
+      });
+      centralDirectoryHandle = await context.files.open({
+        path: centralDirectoryPath,
+        flags: createWriteFlags(),
+      });
+      centralDirectoryStore = createWeshZipCentralDirectoryStore({
+        files: context.files,
+        path: centralDirectoryPath,
+        handle: centralDirectoryHandle,
+      });
+      const writer = new StreamingZipWriter({
+        output: createWeshZipByteSink({ handle: outputHandle }),
+        centralDirectoryStore,
+        compressionCodec: createWebZipCompressionCodec(),
+      });
 
-        if (includedEntries.length === 0) {
-          continue;
-        }
-        matchedInput = true;
-
-        for (const entry of includedEntries) {
-          switch (entry.type) {
-          case 'directory':
-            zip.file(entry.archivePath, null, {
-              dir: true,
-              createFolders: true,
-            });
-            break;
-          case 'file':
-            await addRegularEntryToZip({
-              context,
-              zip,
-              entry,
-              compression,
-              compressionLevel,
-            });
-            break;
-          case 'fifo':
-          case 'chardev':
-          case 'symlink':
+      for (const operand of inputOperands) {
+        try {
+          for await (const entry of iterateZipEntriesForOperand({
+            context,
+            operand,
+            recursive,
+            junkPaths,
+          })) {
+            if (excludeMatchers.some(matcher => matcher.test(entry.archivePath))) {
+              continue;
+            }
+            matchedInput = true;
+            switch (entry.type) {
+            case 'directory':
+              await writer.addDirectory({
+                name: entry.archivePath,
+                modifiedAt: new Date(),
+              });
+              break;
+            case 'file':
+              await writer.addFile({
+                name: entry.archivePath,
+                modifiedAt: new Date(),
+                compression,
+                stream: await openEntryStream({ context, entry }),
+              });
+              break;
+            case 'fifo':
+            case 'chardev':
+            case 'symlink':
+              await context.text().error({
+                text: `zip warning: unsupported file type for ${entry.sourcePath}\n`,
+              });
+              hadError = true;
+              break;
+            default: {
+              const _exhaustiveCheck: never = entry.type;
+              throw new Error(`Unhandled file type: ${String(_exhaustiveCheck)}`);
+            }
+            }
+          }
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.includes('NotFoundError')) {
             await context.text().error({
-              text: `zip warning: unsupported file type for ${entry.sourcePath}\n`,
+              text: `\tzip warning: name not matched: ${operand}\n`,
             });
+          } else {
+            await context.text().error({ text: `zip error: ${message}\n` });
             hadError = true;
-            break;
-          default: {
-            const _ex: never = entry.type;
-            throw new Error(`Unhandled file type: ${_ex}`);
           }
-          }
-        }
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes('NotFoundError')) {
-          await context.text().error({
-            text: `\tzip warning: name not matched: ${operand}\n`,
-          });
-        } else {
-          await context.text().error({
-            text: `zip error: ${message}\n`,
-          });
-          hadError = true;
         }
       }
+
+      if (!matchedInput) {
+        await context.text().error({
+          text: `zip error: Nothing to do! (${archiveOperand})\n`,
+        });
+        return { exitCode: 12 };
+      }
+
+      await writer.finalize();
+      await centralDirectoryStore.dispose();
+      centralDirectoryStore = undefined;
+      await outputHandle.close();
+      outputHandle = undefined;
+      centralDirectoryHandle = undefined;
+
+      let originalMoved = false;
+      if (await pathExists({ context, path: archivePath })) {
+        await context.files.rename({
+          oldPath: archivePath,
+          newPath: archiveRecoveryPath,
+        });
+        originalMoved = true;
+      }
+      try {
+        await context.files.rename({
+          oldPath: archiveTemporaryPath,
+          newPath: archivePath,
+        });
+        archiveInstalled = true;
+      } catch (replaceError: unknown) {
+        if (originalMoved) {
+          try {
+            await context.files.rename({
+              oldPath: archiveRecoveryPath,
+              newPath: archivePath,
+            });
+            originalMoved = false;
+          } catch (restoreError: unknown) {
+            throw new AggregateError(
+              [replaceError, restoreError],
+              `zip: failed to replace and restore ${archivePath}`,
+            );
+          }
+        }
+        throw replaceError;
+      }
+      if (originalMoved) {
+        await removePathIfPresent({ context, path: archiveRecoveryPath });
+      }
+      return { exitCode: hadError ? 1 : 0 };
+    } finally {
+      await disposeCentralDirectoryStoreSafely({ store: centralDirectoryStore });
+      await closeHandleSafely({ handle: centralDirectoryHandle });
+      await closeHandleSafely({ handle: outputHandle });
+      await removePathIfPresent({ context, path: centralDirectoryPath });
+      if (!archiveInstalled) {
+        await removePathIfPresent({ context, path: archiveTemporaryPath });
+      }
     }
-
-    const entryNames = Object.keys(zip.files);
-    if (entryNames.length === 0 || !matchedInput) {
-      await context.text().error({
-        text: `zip error: Nothing to do! (${archiveOperand})\n`,
-      });
-      return { exitCode: 12 };
-    }
-
-    await writeZipToDestination({
-      context,
-      archivePath,
-      zip,
-    });
-
-    return { exitCode: hadError ? 1 : 0 };
   },
 };

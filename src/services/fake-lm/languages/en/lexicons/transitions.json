@@ -1,0 +1,16 @@
+{
+  "connectors": [
+    {"value": "Meanwhile", "weight": 12},
+    {"value": "In other words", "weight": 11},
+    {"value": "Certainly", "weight": 10},
+    {"value": "In some cases", "weight": 9},
+    {"value": "The important part is", "weight": 8},
+    {"value": "Conversely", "weight": 7},
+    {"value": "Even so", "weight": 6},
+    {"value": "However", "weight": 5},
+    {"value": "At this point", "weight": 12},
+    {"value": "Looking at it slowly", "weight": 11},
+    {"value": "Because of that", "weight": 10},
+    {"value": "As a result", "weight": 9}
+  ]
+}

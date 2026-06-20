@@ -1,5 +1,6 @@
+import { z } from 'zod'
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import { FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME } from '@/models/constants'
 import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
@@ -8,9 +9,13 @@ import {
   mapWeshMountsToWorkerMounts,
   weshWorkerStartExecutionResponseSchema,
   weshWorkerInitRequestSchema,
+  weshWorkerShellStateSchema,
+  weshWorkerCommandEntrySchema,
+  weshWorkerListDirectoryRequestSchema,
+  weshWorkerDirectoryEntrySchema,
   type IWeshWorker,
   type WeshWorkerClient,
-  type WeshWorkerExecutionEvent,
+  type WeshWorkerExecutionEventCallback,
   type WeshWorkerExecuteRequest,
   type WeshWorkerRemoteExecutionEvent,
 } from './types'
@@ -74,12 +79,12 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   return {
     async startExecution({ request, onEvent }: {
       request: WeshWorkerExecuteRequest
-      onEvent?: (event: WeshWorkerExecutionEvent) => void | Promise<void>
+      onEvent?: WeshWorkerExecutionEventCallback
     }) {
       const response = await runtime.remote.startExecution(
         request,
         onEvent ? Comlink.proxy(async (event: WeshWorkerRemoteExecutionEvent) => {
-          await onEvent(mapRemoteWeshWorkerExecutionEventToClientEvent({ event }))
+          await onEvent({ event: mapRemoteWeshWorkerExecutionEventToClientEvent({ event }) })
         }) : undefined,
       )
       return weshWorkerStartExecutionResponseSchema.parse(response)
@@ -120,13 +125,26 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
       const response = await runtime.remote.execute({ request })
       return weshWorkerExecutionSummarySchema.parse(response)
     },
-    async interrupt(_args: EmptyArgs) {
-      return runtime.remote.interrupt({})
+    async getShellState() {
+      const response = await runtime.remote.getShellState()
+      return weshWorkerShellStateSchema.parse(response)
     },
-    async dispose(_args: EmptyArgs) {
+    async listCommands() {
+      const response = await runtime.remote.listCommands()
+      return z.array(weshWorkerCommandEntrySchema).parse(response)
+    },
+    async listDirectory({ request }) {
+      const validated = weshWorkerListDirectoryRequestSchema.parse(request)
+      const response = await runtime.remote.listDirectory({ request: validated })
+      return z.array(weshWorkerDirectoryEntrySchema).parse(response)
+    },
+    async interrupt() {
+      return runtime.remote.interrupt()
+    },
+    async dispose() {
       const activeRuntime = runtime
       try {
-        await activeRuntime.remote.dispose({})
+        await activeRuntime.remote.dispose()
       } finally {
         await destroyRuntime(activeRuntime)
       }

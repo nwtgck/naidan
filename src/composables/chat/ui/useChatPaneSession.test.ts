@@ -1,3 +1,4 @@
+import { toMessageId } from '@/models/ids';
 import { computed, nextTick, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useChatPaneSession } from './useChatPaneSession';
@@ -15,11 +16,11 @@ describe('useChatPaneSession', () => {
         chatIdentityKey: computed(() => chatIdentityKey.value),
       });
 
-      session.openCompactSettings({});
+      session.openCompactSettings();
       session.toggleOutline({
-        getCurrentViewportMessageId: () => 'message-1',
+        getCurrentViewportMessageId: () => toMessageId({ raw: 'message-1' }),
       });
-      session.playNeuralSyncEffect({});
+      session.playNeuralSyncEffect();
 
       expect(session.showCompactSettings.value).toBe(true);
       expect(session.outlineVisibility.value).toBe('visible');
@@ -46,7 +47,7 @@ describe('useChatPaneSession', () => {
         chatIdentityKey: computed(() => 'chat-1:leaf-1'),
       });
 
-      session.playNeuralSyncEffect({});
+      session.playNeuralSyncEffect();
       expect(session.showNeuralSyncEffect.value).toBe(true);
 
       await vi.advanceTimersByTimeAsync(1200);
@@ -64,13 +65,13 @@ describe('useChatPaneSession', () => {
     });
 
     session.toggleOutline({
-      getCurrentViewportMessageId: () => 'message-42',
+      getCurrentViewportMessageId: () => toMessageId({ raw: 'message-42' }),
     });
 
     expect(session.outlineVisibility.value).toBe('visible');
     expect(session.initialOutlineMessageId.value).toBe('message-42');
 
-    session.closeOutline({});
+    session.closeOutline();
 
     expect(session.outlineVisibility.value).toBe('hidden');
     expect(session.initialOutlineMessageId.value).toBeUndefined();

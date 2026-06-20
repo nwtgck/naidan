@@ -14,9 +14,11 @@ function createHeadersEntries({
   return Array.from(response.headers.entries())
 }
 
-export async function privacyFetch(
-  request: PrivacyFetchRequest,
-): Promise<PrivacyFetchResponse> {
+export async function privacyFetch({
+  request,
+}: {
+  request: PrivacyFetchRequest;
+}): Promise<PrivacyFetchResponse> {
   if (request.signal?.aborted) {
     throw createPrivacyFetchError({
       code: 'aborted',

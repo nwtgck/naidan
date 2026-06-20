@@ -5,6 +5,7 @@ import type { CombinedToolCall } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useToolCallOutput } from '@/composables/chat/ui/useToolCallOutput';
 import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
+import type { BinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
   toolCall: CombinedToolCall;
@@ -30,7 +31,7 @@ const isLoadingBinary = ref(false);
 
 const resolveBinary = async () => {
   const result = props.toolCall.result;
-  let binaryId: string | null = null;
+  let binaryId: BinaryObjectId | null = null;
 
   if (result.status === 'success' && result.content.type === 'binary_object') {
     binaryId = result.content.id;

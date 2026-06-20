@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -24,12 +25,12 @@ vi.mock('../composables/useSettings', () => ({
   }),
 }));
 
-let triggerChunk: (chunk: string) => void;
+let triggerChunk: (params: { chunk: string }) => void;
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: class {
     constructor() {}
-    async chat(params: { onChunk: (c: string) => void }) {
-      triggerChunk = params.onChunk;
+    async chat({ onChunk }: { onChunk: (params: { chunk: string }) => void }) {
+      triggerChunk = onChunk;
       return new Promise<void>(() => {});
     }
     async listModels() {
@@ -53,22 +54,22 @@ vi.mock('../services/storage', () => ({
     init: vi.fn(),
     subscribeToChanges: vi.fn().mockReturnValue(() => {}),
     saveChat: vi.fn(),
-    updateChatMeta: vi.fn().mockImplementation((id, updater) => {
+    updateChatMeta: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
       if (!chats.has(id)) chats.set(id, existing);
-      const updated = updater(existing);
+      const updated = updater({ current: existing });
       Object.assign(existing, updated);
       return Promise.resolve();
     }),
     loadChatMeta: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id))),
-    updateChatContent: vi.fn().mockImplementation((id, updater) => {
+    updateChatContent: vi.fn().mockImplementation(({ id, updater }) => {
       const existing = chats.get(id) || { id, root: { items: [] } };
       if (!chats.has(id)) chats.set(id, existing);
-      const updated = updater(existing);
+      const updated = updater({ current: existing });
       Object.assign(existing, updated);
       return Promise.resolve();
     }),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadChat: vi.fn().mockImplementation((id) => Promise.resolve(chats.get(id) || null)),
     listChats: vi.fn().mockResolvedValue([]),
@@ -80,7 +81,7 @@ vi.mock('../services/storage', () => ({
 }));
 
 vi.mock('../composables/chat/ui/useChatPaneState', async () => {
-  const currentChatStateModule = await import('../composables/chat/ui/useCurrentChatState');
+  const currentChatStateModule = await import('@/composables/chat/ui/useCurrentChatState');
   return {
     useChatPaneState: () => {
       const state = currentChatStateModule.useCurrentChatState();
@@ -107,7 +108,7 @@ function mountChatPane({
 }) {
   return mount(ChatPane, {
     props: {
-      chatId: useChat().currentChat.value?.id ?? 'chat-1',
+      chatId: useChat().currentChat.value?.id ?? toChatId({ raw: 'chat-1' }),
     },
     global,
   });
@@ -151,10 +152,10 @@ describe('ChatPane Streaming DOM Test', () => {
     await vi.waitUntil(() => triggerChunk !== undefined, { timeout: 2000, interval: 50 });
 
     if (!triggerChunk) {
-      throw new Error('LLM chat was not triggered');
+      throw new Error('LM chat was not triggered');
     }
 
-    triggerChunk('Live');
+    triggerChunk({ chunk: 'Live' });
     await nextTick();
     await nextTick();
 
@@ -166,7 +167,7 @@ describe('ChatPane Streaming DOM Test', () => {
     }
     expect(wrapper.html()).toContain('Live');
 
-    triggerChunk(' Update');
+    triggerChunk({ chunk: ' Update' });
     await nextTick();
     await nextTick();
     expect(wrapper.html()).toContain('Live Update');

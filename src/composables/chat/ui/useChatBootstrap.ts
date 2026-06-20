@@ -7,14 +7,15 @@ import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import type { Settings } from '@/models/types';
 import { transformersJsService } from '@/services/transformers-js';
 import { useSettings } from '@/composables/useSettings';
+import type { ChatId } from '@/models/ids';
 
 export type ChatBootstrapAdapter = {
-  loadChats(_args: Record<never, never>): Promise<void>;
+  loadChats(): Promise<void>;
 
   openChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<unknown>;
 
   TEST_ONLY: Record<never, never>;
@@ -22,7 +23,7 @@ export type ChatBootstrapAdapter = {
 
 export function useChatBootstrap(): ChatBootstrapAdapter {
   const { settings } = useSettings();
-  const chatModels = useChatModels({});
+  const chatModels = useChatModels();
   const chatNavigation = useChatNavigation();
   const chatDerivedState = createChatDerivedState({
     currentChatRef,
@@ -31,7 +32,7 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
   });
 
   installChatBootstrap({
-    registerBeforeUnload: (_args) => {
+    registerBeforeUnload: () => {
       if (typeof window === 'undefined') {
         return undefined;
       }
@@ -47,8 +48,8 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
         window.removeEventListener('beforeunload', onBeforeUnload);
       };
     },
-    subscribeModelList: (_args) => {
-      return transformersJsService.subscribeModelList(async () => {
+    subscribeModelList: () => {
+      return transformersJsService.subscribeModelList({ listener: async () => {
         const type = chatDerivedState.resolvedSettings.value?.endpointType;
         if (type === undefined) {
           return;
@@ -71,18 +72,18 @@ export function useChatBootstrap(): ChatBootstrapAdapter {
           throw new Error(`Unhandled endpoint type: ${_ex}`);
         }
         }
-      });
+      } });
     },
   });
 
-  async function loadChats(_args: Record<never, never>) {
-    await loadData({});
+  async function loadChats() {
+    await loadData();
   }
 
   async function openChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return await chatNavigation.openChat({
       chatId,

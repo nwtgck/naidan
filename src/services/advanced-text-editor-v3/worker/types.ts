@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import type { EmptyArgs } from '@/models/types'
 
 export const advancedTextEditorV3MatchSchema = z.object({
   start: z.number().int().nonnegative(),
@@ -110,5 +109,5 @@ export interface AdvancedTextEditorV3WorkerClient {
   replaceSingle({ request }: { request: AdvancedTextEditorV3ReplaceSingleRequest }): Promise<AdvancedTextEditorV3ReplaceSingleResponse>
   prepareMultiEdit({ request }: { request: AdvancedTextEditorV3PrepareMultiEditRequest }): Promise<AdvancedTextEditorV3PrepareMultiEditResponse>
   applyMultiEdit({ request }: { request: AdvancedTextEditorV3ApplyMultiEditRequest }): Promise<AdvancedTextEditorV3ApplyMultiEditResponse>
-  dispose(_args: EmptyArgs): Promise<void>
+  dispose(): Promise<void>
 }

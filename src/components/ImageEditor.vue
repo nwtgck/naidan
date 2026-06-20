@@ -216,7 +216,9 @@ function onPanning({ event }: { event: MouseEvent }) {
   };
   lastMousePos.value = { x: event.clientX, y: event.clientY };
 }
-const handlePanMouseMove = (event: MouseEvent) => onPanning({ event });
+const handlePanMouseMove: EventListener = (event) => {
+  onPanning({ event: event as MouseEvent });
+};
 
 function stopPanning() {
   isPanning.value = false;
@@ -678,7 +680,9 @@ function onMouseMove({ event }: { event: MouseEvent }) {
   }
   selection.value.rect = { x, y, w, h };
 }
-const handleSelectionMouseMove = (event: MouseEvent) => onMouseMove({ event });
+const handleSelectionMouseMove: EventListener = (event) => {
+  onMouseMove({ event: event as MouseEvent });
+};
 
 function onMouseUp() {
   const mode = editorMode.value;

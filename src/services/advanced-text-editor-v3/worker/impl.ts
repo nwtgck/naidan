@@ -1,4 +1,4 @@
-import type { EmptyArgs } from '@/models/types'
+
 import {
   advancedTextEditorV3ApplyMultiEditRequestSchema,
   advancedTextEditorV3ApplyMultiEditResponseSchema,
@@ -292,7 +292,7 @@ function applyMultiEditWithWorkerLogic({
   }
 }
 
-export function createAdvancedTextEditorV3Worker(_args: EmptyArgs): IAdvancedTextEditorV3Worker {
+export function createAdvancedTextEditorV3Worker(): IAdvancedTextEditorV3Worker {
   return {
     async searchText({ request }) {
       return advancedTextEditorV3SearchTextResponseSchema.parse(

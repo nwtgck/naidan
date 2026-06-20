@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ChatId, MessageId } from '@/models/ids';
+import { idToRaw } from '@/models/ids';
 import { computed, nextTick, ref, watch } from 'vue';
 import { EyeIcon, ListIcon, XIcon } from 'lucide-vue-next';
 import type { ChatFlowItem } from '@/composables/useChatDisplayFlow';
@@ -11,18 +13,18 @@ type OutlineRole = MessageNode['role'];
 type ScrollHintVisibility = 'hidden' | 'visible';
 
 const props = defineProps<{
-  chatId: string;
+  chatId: ChatId;
   visibility: OutlineVisibility;
   flowItems: ChatFlowItem[];
-  initialMessageId?: string;
+  initialMessageId?: MessageId;
 }>();
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'select-message', messageId: string): void;
+  (e: 'select-message', messageId: MessageId): void;
 }>();
 
-const peekMessageId = ref<string | undefined>(undefined);
+const peekMessageId = ref<MessageId | undefined>(undefined);
 const outlineBody = ref<HTMLElement | null>(null);
 const topScrollHintVisibility = ref<ScrollHintVisibility>('hidden');
 const bottomScrollHintVisibility = ref<ScrollHintVisibility>('hidden');
@@ -52,7 +54,7 @@ const outlineBodyMaxHeightClass = computed(() => {
   return peekMessageId.value === undefined ? 'max-h-[calc(55vh-41px)]' : 'max-h-[calc(80vh-41px)]';
 });
 
-function updateScrollHints(_args: Record<string, never>) {
+function updateScrollHints() {
   const body = outlineBody.value;
   if (!body) {
     topScrollHintVisibility.value = 'hidden';
@@ -64,18 +66,18 @@ function updateScrollHints(_args: Record<string, never>) {
   bottomScrollHintVisibility.value = body.scrollTop + body.clientHeight < body.scrollHeight - 1 ? 'visible' : 'hidden';
 }
 
-function scrollToInitialMessage(_args: Record<string, never>) {
+function scrollToInitialMessage() {
   const body = outlineBody.value;
   const initialMessageId = props.initialMessageId;
   if (!body || !initialMessageId) {
-    updateScrollHints({});
+    updateScrollHints();
     return;
   }
 
   const rows = Array.from(body.querySelectorAll('[data-outline-message-id]'));
   const target = rows.find((row) => {
     if (!(row instanceof HTMLElement)) return false;
-    return row.dataset.outlineMessageId === initialMessageId;
+    return row.dataset.outlineMessageId === idToRaw({ id: initialMessageId });
   });
 
   if (target instanceof HTMLElement) {
@@ -86,18 +88,18 @@ function scrollToInitialMessage(_args: Record<string, never>) {
       behavior: 'instant',
     });
   }
-  updateScrollHints({});
+  updateScrollHints();
 }
 
 watch([() => props.visibility, () => props.initialMessageId, outlineItems], () => {
-  nextTick(() => scrollToInitialMessage({}));
+  nextTick(() => scrollToInitialMessage());
 }, { immediate: true });
 
 watch(peekMessageId, () => {
-  nextTick(() => updateScrollHints({}));
+  nextTick(() => updateScrollHints());
 });
 
-function togglePeek({ messageId }: { messageId: string }) {
+function togglePeek({ messageId }: { messageId: MessageId }) {
   const currentPeekMessageId = peekMessageId.value;
   if (currentPeekMessageId === messageId) {
     peekMessageId.value = undefined;
@@ -139,7 +141,6 @@ function roleClass({ role }: { role: OutlineRole }) {
   }
   }
 }
-
 
 defineExpose({
   TEST_ONLY: {
@@ -184,17 +185,17 @@ defineExpose({
         <div class="relative">
           <div
             ref="outlineBody"
-            @scroll="updateScrollHints({})"
+            @scroll="updateScrollHints()"
             class="overflow-y-auto py-1 transition-[max-height] duration-150 ease-out"
             :class="outlineBodyMaxHeightClass"
             data-testid="conversation-outline-body"
           >
             <div
               v-for="item in outlineItems"
-              :key="item.id"
+              :key="idToRaw({ id: item.id })"
               class="border-b border-gray-100 last:border-b-0 dark:border-gray-800"
               data-testid="conversation-outline-item"
-              :data-outline-message-id="item.id"
+              :data-outline-message-id="idToRaw({ id: item.id })"
             >
               <div class="grid grid-cols-[2.25rem_2.5rem_minmax(0,1fr)_2rem] items-center gap-1.5 px-3 py-2 text-sm transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/20">
                 <button

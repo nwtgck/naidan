@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import ChatInput from './ChatInput.vue';
 import { computed, nextTick, ref } from 'vue';
+import { toVolumeId, toChatId } from '@/models/ids';
 
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: {
@@ -58,7 +59,7 @@ vi.mock('./ChatToolsMenu.vue', () => ({ default: { name: 'ChatToolsMenu', templa
 const mockOpenFileExplorer = vi.fn();
 const mockEnsureChatTmpDirectory = vi.fn();
 const mockGetChatTmpDirectory = vi.fn();
-const mockGetNaidanSysfsMountSelection = vi.fn();
+const mockGetNaidanSysfsAccessScope = vi.fn();
 
 const mockSettings = ref<any>({ storageType: 'opfs', mounts: [] });
 vi.mock('../composables/useSettings', () => ({
@@ -75,7 +76,7 @@ vi.mock('../composables/useChatTools', () => ({
 }));
 vi.mock('../composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: mockGetNaidanSysfsMountSelection,
+    getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
   }),
 }));
 vi.mock('../composables/useToast', () => ({
@@ -112,15 +113,15 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
     chatMounts,
     chatGroupMounts,
     chatId,
-    naidanSysfsVisibility,
+    naidanSysfsAccessScope,
   }: {
     chatMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }>;
     chatGroupMounts: Array<{ type: string; volumeId?: string; mountPath: string; readOnly: boolean }> | undefined;
     chatId: string | undefined;
     chatGroupId: string | undefined;
-    naidanSysfsVisibility: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'all_chats';
+    naidanSysfsAccessScope: 'none' | 'current_chat_only' | 'current_chat_with_chat_group' | 'main_chats';
   }) => {
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     const mounts: Array<{ type: string; path: string; readOnly?: boolean; visibility?: string }> = [];
 
     if (chatId !== undefined && mockSettings.value.storageType === 'opfs') {
@@ -128,11 +129,11 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
       mounts.push({ type: 'directory', path: tmp.mountPath, readOnly: false });
     }
 
-    if (naidanSysfsVisibility !== 'none') {
+    if (naidanSysfsAccessScope !== 'none') {
       mounts.push({
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',
-        visibility: naidanSysfsVisibility,
+        visibility: naidanSysfsAccessScope,
       });
     }
 
@@ -156,7 +157,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
       if (mount.volumeId === undefined) {
         continue;
       }
-      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: toVolumeId({ raw: mount.volumeId }) });
       if (handle === undefined) {
         continue;
       }
@@ -176,7 +177,7 @@ vi.mock('../composables/useChatWeshTerminalSessions', () => ({
       if (mount.volumeId === undefined) {
         continue;
       }
-      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+      const handle = await storageService.getVolumeDirectoryHandle({ volumeId: toVolumeId({ raw: mount.volumeId }) });
       if (handle === undefined) {
         continue;
       }
@@ -260,7 +261,7 @@ vi.mock('../composables/useChat', () => ({
   }),
 }));
 
-const mockDraft = ref<any>({ input: '', attachments: [], attachmentUrls: {} });
+const mockDraft = ref<any>({ input: '', attachments: [], attachmentUrls: new Map() });
 vi.mock('../composables/useChatDraft', () => ({
   useChatDraft: () => ({
     getDraft: vi.fn(() => mockDraft.value),
@@ -449,13 +450,13 @@ describe('ChatInput Integration', () => {
     mockSettings.value = { storageType: 'opfs', mounts: [] };
     mockEnsureChatTmpDirectory.mockResolvedValue({ handle: { kind: 'directory', name: 'tmp' }, mountPath: '/tmp' });
     mockGetChatTmpDirectory.mockReturnValue(undefined);
-    mockGetNaidanSysfsMountSelection.mockReturnValue('none');
+    mockGetNaidanSysfsAccessScope.mockReturnValue('none');
     mockSendMessageForChat.mockResolvedValue(true);
   });
 
   const getWrapper = () => mount(ChatInput, {
     props: {
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
       chat: mockCurrentChat.value!,
       chatGroup: mockCurrentChatGroup.value,
       resolvedLmParameters: undefined,
@@ -539,7 +540,7 @@ describe('ChatInput Integration', () => {
       mounts: [],
     };
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -548,7 +549,7 @@ describe('ChatInput Integration', () => {
     await wrapper.find('[data-testid="mount-open-explorer"]').trigger('click');
     await flushPromises();
 
-    expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mockEnsureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
     expect(mockOpenFileExplorer).toHaveBeenCalledWith({ options: expect.objectContaining({
       kind: 'wesh-mounts',
       rootName: 'Files',
@@ -568,7 +569,7 @@ describe('ChatInput Integration', () => {
       mounts: [],
     };
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'work' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -596,7 +597,7 @@ describe('ChatInput Integration', () => {
       mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
     };
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -615,7 +616,7 @@ describe('ChatInput Integration', () => {
     }) });
   });
 
-  it('mount explorer reuses shared naidan sysfs mount selection', async () => {
+  it('mount explorer reuses shared naidan sysfs access scope', async () => {
     mockCurrentChat.value = {
       id: 'chat-1',
       modelId: 'model-1',
@@ -630,9 +631,9 @@ describe('ChatInput Integration', () => {
       storageType: 'opfs',
       mounts: [{ type: 'volume', volumeId: 'vol-global', mountPath: '/home/user/global-vol', readOnly: true }],
     };
-    mockGetNaidanSysfsMountSelection.mockReturnValue('current_chat_only');
+    mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
 
-    const { storageService } = await import('../services/storage');
+    const { storageService } = await import('@/services/storage');
     vi.mocked(storageService.getVolumeDirectoryHandle).mockResolvedValue({ kind: 'directory', name: 'vol' } as FileSystemDirectoryHandle);
 
     const wrapper = getWrapper();
@@ -803,7 +804,7 @@ describe('ChatInput Integration', () => {
       id: 'chat-2',
       lmParameters: { reasoning: { effort: 'high' } }
     };
-    await wrapper.setProps({ chatId: 'chat-2' });
+    await wrapper.setProps({ chatId: toChatId({ raw: 'chat-2' }) });
     await nextTick();
 
     // Verify it reflects the NEW chat's state

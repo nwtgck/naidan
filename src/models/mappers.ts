@@ -1,6 +1,8 @@
 /**
  * Mappers
  */
+import type { ToolConfig } from '@/services/tools/types';
+
 import type {
   RoleDto,
   MessageNodeDto,
@@ -16,6 +18,7 @@ import type {
   BinaryObjectDto,
   LmParametersDto,
   MountDto,
+  VolumeDto,
 } from './dto';
 import type {
   Role,
@@ -43,13 +46,83 @@ import type {
   BinaryObject,
   LmParameters,
   Mount,
+  Volume,
+  ToolConfigPersistence,
 } from './types';
+import { EMPTY_LM_PARAMETERS } from './types';
+import {
+  idToRaw,
+  toAttachmentId,
+  toBinaryObjectId,
+  toChatGroupId,
+  toChatId,
+  toMessageId,
+  toProviderProfileId,
+  toToolCallId,
+  toVolumeId,
+} from '@/models/ids';
+import {
+  LM_PARAMETER_KEYS,
+  normalizeLmParameters,
+  REASONING_PARAMETER_KEYS,
+} from '@/utils/lm-parameters';
+
+
+const toolConfigPersistenceToExperimentalDto = ({
+  persistence,
+}: {
+  persistence: ToolConfigPersistence | undefined;
+}): 'enabled' | undefined => {
+  const normalized = persistence ?? 'disabled';
+  switch (normalized) {
+  case 'disabled':
+    return undefined;
+  case 'enabled':
+    return 'enabled';
+  default: {
+    const _exhaustive: never = normalized;
+    throw new Error(`Unhandled tool config persistence setting: ${String(_exhaustive)}`);
+  }
+  }
+};
+
+const fakeLmToExperimentalDto = ({
+  status,
+}: {
+  status: 'disabled' | 'enabled' | undefined;
+}): 'enabled' | undefined => {
+  const normalized = status ?? 'disabled';
+  switch (normalized) {
+  case 'disabled':
+    return undefined;
+  case 'enabled':
+    return 'enabled';
+  default: {
+    const _exhaustive: never = normalized;
+    throw new Error(`Unhandled fake LM setting: ${String(_exhaustive)}`);
+  }
+  }
+};
+
+const toolConfigsToDomain = ({
+  toolConfigs,
+}: {
+  toolConfigs: ToolConfig[] | undefined;
+}): ToolConfig[] | undefined => toolConfigs;
+
+const toolConfigsToExperimentalDto = ({
+  toolConfigs,
+}: {
+  toolConfigs: ToolConfig[] | undefined;
+}): { toolConfigs: ToolConfig[] | undefined } | undefined => {
+  return toolConfigs === undefined ? undefined : { toolConfigs };
+};
 
 const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
   const type = dto.type;
   switch (type) {
   case 'volume':
-    return { type: 'volume', volumeId: dto.volumeId, mountPath: dto.mountPath, readOnly: dto.readOnly };
+    return { type: 'volume', volumeId: toVolumeId({ raw: dto.volumeId }), mountPath: dto.mountPath, readOnly: dto.readOnly };
   default: {
     const _ex: never = type;
     throw new Error(`Unhandled mount type: ${_ex}`);
@@ -61,7 +134,7 @@ const mountToDto = ({ domain }: { domain: Mount }): MountDto => {
   const type = domain.type;
   switch (type) {
   case 'volume':
-    return { type: 'volume', volumeId: domain.volumeId, mountPath: domain.mountPath, readOnly: domain.readOnly };
+    return { type: 'volume', volumeId: idToRaw({ id: domain.volumeId }), mountPath: domain.mountPath, readOnly: domain.readOnly };
   default: {
     const _ex: never = type;
     throw new Error(`Unhandled mount type: ${_ex}`);
@@ -86,9 +159,13 @@ export const hierarchyToDomain = ({ dto }: { dto: HierarchyDto }): Hierarchy => 
   items: dto.items.map(item => {
     switch (item.type) {
     case 'chat':
-      return { type: 'chat', id: item.id };
+      return { type: 'chat', id: toChatId({ raw: item.id }) };
     case 'chat_group':
-      return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+      return {
+        type: 'chat_group',
+        id: toChatGroupId({ raw: item.id }),
+        chat_ids: item.chat_ids.map(raw => toChatId({ raw })),
+      };
     default: {
       const _ex: never = item;
       throw new Error(`Unhandled hierarchy item type: ${_ex}`);
@@ -101,9 +178,13 @@ export const hierarchyToDto = ({ domain }: { domain: Hierarchy }): HierarchyDto 
   items: domain.items.map(item => {
     switch (item.type) {
     case 'chat':
-      return { type: 'chat', id: item.id };
+      return { type: 'chat', id: idToRaw({ id: item.id }) };
     case 'chat_group':
-      return { type: 'chat_group', id: item.id, chat_ids: item.chat_ids };
+      return {
+        type: 'chat_group',
+        id: idToRaw({ id: item.id }),
+        chat_ids: item.chat_ids.map(id => idToRaw({ id })),
+      };
     default: {
       const _ex: never = item;
       throw new Error(`Unhandled hierarchy item type: ${_ex}`);
@@ -113,7 +194,7 @@ export const hierarchyToDto = ({ domain }: { domain: Hierarchy }): HierarchyDto 
 });
 
 export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
-  id: dto.id,
+  id: toChatId({ raw: dto.id }),
   title: dto.title,
   createdAt: dto.createdAt,
   updatedAt: dto.updatedAt,
@@ -145,10 +226,11 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
   lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
   autoTitleEnabled: dto.autoTitleEnabled,
   titleModelId: dto.titleModelId,
-  currentLeafId: dto.currentLeafId,
-  originChatId: dto.originChatId,
-  originMessageId: dto.originMessageId,
+  currentLeafId: dto.currentLeafId === undefined ? undefined : toMessageId({ raw: dto.currentLeafId }),
+  originChatId: dto.originChatId === undefined ? undefined : toChatId({ raw: dto.originChatId }),
+  originMessageId: dto.originMessageId === undefined ? undefined : toMessageId({ raw: dto.originMessageId }),
   mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
+  toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
 });
 
 /**
@@ -159,7 +241,7 @@ export const chatGroupToDomain = (
   { dto, hierarchy, chatMetas }: { dto: ChatGroupDto, hierarchy: Hierarchy, chatMetas: ChatMeta[] }
 ): ChatGroup => {
   const node = hierarchy.items.find(
-    i => i.type === 'chat_group' && i.id === dto.id
+    i => i.type === 'chat_group' && i.id === toChatGroupId({ raw: dto.id })
   ) as HierarchyChatGroupNode | undefined;
 
   const chatIds = node?.chat_ids || [];
@@ -167,19 +249,19 @@ export const chatGroupToDomain = (
   const items: ChatSidebarItem[] = chatIds.map(cid => {
     const meta = chatMetas.find(m => m.id === cid);
     return {
-      id: `chat:${cid}`,
+      id: `chat:${idToRaw({ id: cid })}`,
       type: 'chat',
       chat: {
         id: cid,
         title: meta?.title || null,
         updatedAt: meta?.updatedAt || 0,
-        groupId: dto.id
+        groupId: toChatGroupId({ raw: dto.id })
       }
     };
   });
 
   return {
-    id: dto.id,
+    id: toChatGroupId({ raw: dto.id }),
     name: dto.name,
     isCollapsed: dto.isCollapsed,
     updatedAt: dto.updatedAt,
@@ -216,7 +298,7 @@ export const chatGroupToDomain = (
 };
 
 export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto => ({
-  id: domain.id,
+  id: idToRaw({ id: domain.id }),
   name: domain.name,
   isCollapsed: domain.isCollapsed,
   updatedAt: domain.updatedAt,
@@ -231,46 +313,121 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
 
 export const lmParametersToDomain = (
   { dto }: { dto: LmParametersDto | undefined }
-): LmParameters => {
-  if (!dto) {
-    return {
-      temperature: undefined,
-      topP: undefined,
-      maxCompletionTokens: undefined,
-      presencePenalty: undefined,
-      frequencyPenalty: undefined,
-      stop: undefined,
-      reasoning: { effort: undefined },
-    };
-  }
-  return {
-    temperature: dto.temperature,
-    topP: dto.topP,
-    maxCompletionTokens: dto.maxCompletionTokens,
-    presencePenalty: dto.presencePenalty,
-    frequencyPenalty: dto.frequencyPenalty,
-    stop: dto.stop,
-    reasoning: {
-      effort: dto.reasoning?.effort,
-    },
+): LmParameters | undefined => {
+  if (!dto) return undefined;
+
+  const lmParameters: LmParameters = {
+    ...EMPTY_LM_PARAMETERS,
+    reasoning: { ...EMPTY_LM_PARAMETERS.reasoning },
   };
+
+  // Map from the canonical domain key set rather than a hand-maintained object.
+  // Adding an LM or reasoning parameter must fail typechecking here until its
+  // DTO conversion is reviewed, preventing persistence omissions in refactors.
+  for (const key of LM_PARAMETER_KEYS) {
+    switch (key) {
+    case 'temperature':
+      lmParameters.temperature = dto.temperature;
+      break;
+    case 'topP':
+      lmParameters.topP = dto.topP;
+      break;
+    case 'maxCompletionTokens':
+      lmParameters.maxCompletionTokens = dto.maxCompletionTokens;
+      break;
+    case 'presencePenalty':
+      lmParameters.presencePenalty = dto.presencePenalty;
+      break;
+    case 'frequencyPenalty':
+      lmParameters.frequencyPenalty = dto.frequencyPenalty;
+      break;
+    case 'stop':
+      lmParameters.stop = dto.stop;
+      break;
+    case 'reasoning':
+      for (const reasoningKey of REASONING_PARAMETER_KEYS) {
+        switch (reasoningKey) {
+        case 'effort':
+          lmParameters.reasoning.effort = dto.reasoning?.effort;
+          break;
+        default: {
+          const _ex: never = reasoningKey;
+          throw new Error(`Unhandled reasoning parameter key: ${_ex}`);
+        }
+        }
+      }
+      break;
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled LM parameter key: ${_ex}`);
+    }
+    }
+  }
+
+  return normalizeLmParameters({ lmParameters });
 };
 
 export const lmParametersToDto = (
   { domain }: { domain: LmParameters | undefined }
 ): LmParametersDto | undefined => {
-  if (!domain) return undefined;
-  return {
-    temperature: domain.temperature,
-    topP: domain.topP,
-    maxCompletionTokens: domain.maxCompletionTokens,
-    presencePenalty: domain.presencePenalty,
-    frequencyPenalty: domain.frequencyPenalty,
-    stop: domain.stop,
-    reasoning: domain.reasoning ? {
-      effort: domain.reasoning.effort,
-    } : undefined,
+  const normalized = normalizeLmParameters({ lmParameters: domain });
+  if (normalized === undefined) return undefined;
+
+  const reasoningDto: NonNullable<LmParametersDto['reasoning']> = { effort: undefined };
+  const dto: LmParametersDto = {
+    temperature: undefined,
+    topP: undefined,
+    maxCompletionTokens: undefined,
+    presencePenalty: undefined,
+    frequencyPenalty: undefined,
+    stop: undefined,
+    reasoning: reasoningDto,
   };
+
+  // DTO fields are optional, so an object literal alone would not reveal a new
+  // domain parameter that was forgotten here. Keep this exhaustive traversal as
+  // a compile-time review gate for every persisted LM and reasoning parameter.
+  for (const key of LM_PARAMETER_KEYS) {
+    switch (key) {
+    case 'temperature':
+      dto.temperature = normalized.temperature;
+      break;
+    case 'topP':
+      dto.topP = normalized.topP;
+      break;
+    case 'maxCompletionTokens':
+      dto.maxCompletionTokens = normalized.maxCompletionTokens;
+      break;
+    case 'presencePenalty':
+      dto.presencePenalty = normalized.presencePenalty;
+      break;
+    case 'frequencyPenalty':
+      dto.frequencyPenalty = normalized.frequencyPenalty;
+      break;
+    case 'stop':
+      dto.stop = normalized.stop;
+      break;
+    case 'reasoning':
+      for (const reasoningKey of REASONING_PARAMETER_KEYS) {
+        switch (reasoningKey) {
+        case 'effort':
+          reasoningDto.effort = normalized.reasoning.effort;
+          break;
+        default: {
+          const _ex: never = reasoningKey;
+          throw new Error(`Unhandled reasoning parameter key: ${_ex}`);
+        }
+        }
+      }
+      break;
+    default: {
+      const _ex: never = key;
+      throw new Error(`Unhandled LM parameter key: ${_ex}`);
+    }
+    }
+  }
+
+  return dto;
 };
 
 export const endpointToDto = ({ endpoint }: { endpoint: Endpoint }): EndpointDto => {
@@ -298,8 +455,8 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
   if ('binaryObjectId' in dto) {
     // V2
     const base = {
-      id: dto.id,
-      binaryObjectId: dto.binaryObjectId,
+      id: toAttachmentId({ raw: dto.id }),
+      binaryObjectId: toBinaryObjectId({ raw: dto.binaryObjectId }),
       originalName: dto.name,
       // Metadata will be hydrated by the StorageProvider
       mimeType: 'application/octet-stream',
@@ -320,8 +477,8 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
   } else {
     // V1 (Legacy)
     const base = {
-      id: dto.id,
-      binaryObjectId: dto.id, // Legacy use id as binaryObjectId
+      id: toAttachmentId({ raw: dto.id }),
+      binaryObjectId: toBinaryObjectId({ raw: dto.id }), // Legacy use id as binaryObjectId
       originalName: dto.originalName,
       mimeType: dto.mimeType,
       size: dto.size,
@@ -344,8 +501,8 @@ const attachmentToDomain = ({ dto }: { dto: AttachmentDto }): Attachment => {
 const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
   // Always output V2
   return {
-    id: domain.id,
-    binaryObjectId: domain.binaryObjectId,
+    id: idToRaw({ id: domain.id }),
+    binaryObjectId: idToRaw({ id: domain.binaryObjectId }),
     name: domain.originalName,
     status: domain.status,
   };
@@ -353,7 +510,7 @@ const attachmentToDto = ({ domain }: { domain: Attachment }): AttachmentDto => {
 
 export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNode => {
   const common = {
-    id: dto.id,
+    id: toMessageId({ raw: dto.id }),
     content: dto.content,
     timestamp: dto.timestamp,
     replies: {
@@ -385,7 +542,7 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       error: undefined,
       modelId: dto.modelId,
       lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
-      toolCalls: dto.toolCalls,
+      toolCalls: dto.toolCalls?.map(dto => ({ ...dto, id: toToolCallId({ raw: dto.id }) })),
       results: undefined,
     };
   case 'system':
@@ -412,7 +569,53 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      results: dto.results,
+      results: dto.results.map(dto => {
+        switch (dto.status) {
+        case 'executing':
+          return { toolCallId: toToolCallId({ raw: dto.toolCallId }), status: 'executing' };
+        case 'success':
+          return {
+            toolCallId: toToolCallId({ raw: dto.toolCallId }),
+            status: 'success',
+            content: (() => {
+              switch (dto.content.type) {
+              case 'text':
+                return dto.content
+              case 'binary_object':
+                return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.content.id }) }
+              default: {
+                const _ex: never = dto.content
+                throw new Error(`Unhandled tool result content: ${((_ex satisfies never) as { readonly type: string }).type}`)
+              }
+              }
+            })(),
+          };
+        case 'error':
+          return {
+            toolCallId: toToolCallId({ raw: dto.toolCallId }),
+            status: 'error',
+            error: {
+              code: dto.error.code,
+              message: (() => {
+                switch (dto.error.message.type) {
+                case 'text':
+                  return dto.error.message
+                case 'binary_object':
+                  return { type: 'binary_object', id: toBinaryObjectId({ raw: dto.error.message.id }) }
+                default: {
+                  const _ex: never = dto.error.message
+                  throw new Error(`Unhandled tool error message: ${((_ex satisfies never) as { readonly type: string }).type}`)
+                }
+                }
+              })(),
+            },
+          };
+        default: {
+          const _ex: never = dto;
+          throw new Error(`Unhandled tool execution result status: ${(_ex as { status: string }).status}`);
+        }
+        }
+      }),
     };
   default: {
     const _ex: never = dto;
@@ -423,7 +626,7 @@ export const messageNodeToDomain = ({ dto }: { dto: MessageNodeDto }): MessageNo
 
 export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNodeDto => {
   const common = {
-    id: domain.id,
+    id: idToRaw({ id: domain.id }),
     content: domain.content,
     timestamp: domain.timestamp,
     replies: {
@@ -453,7 +656,7 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       thinking: domain.thinking,
       modelId: domain.modelId,
       lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
-      toolCalls: domain.toolCalls,
+      toolCalls: domain.toolCalls?.map(domain => ({ ...domain, id: idToRaw({ id: domain.id }) })),
       results: undefined,
     };
   case 'system':
@@ -478,7 +681,53 @@ export const messageNodeToDto = ({ domain }: { domain: MessageNode }): MessageNo
       modelId: undefined,
       lmParameters: undefined,
       toolCalls: undefined,
-      results: domain.results,
+      results: domain.results.map(domain => {
+        switch (domain.status) {
+        case 'executing':
+          return { toolCallId: idToRaw({ id: domain.toolCallId }), status: 'executing' };
+        case 'success':
+          return {
+            toolCallId: idToRaw({ id: domain.toolCallId }),
+            status: 'success',
+            content: (() => {
+              switch (domain.content.type) {
+              case 'text':
+                return domain.content
+              case 'binary_object':
+                return { type: 'binary_object', id: idToRaw({ id: domain.content.id }) }
+              default: {
+                const _ex: never = domain.content
+                throw new Error(`Unhandled tool result content: ${((_ex satisfies never) as { readonly type: string }).type}`)
+              }
+              }
+            })(),
+          };
+        case 'error':
+          return {
+            toolCallId: idToRaw({ id: domain.toolCallId }),
+            status: 'error',
+            error: {
+              code: domain.error.code,
+              message: (() => {
+                switch (domain.error.message.type) {
+                case 'text':
+                  return domain.error.message
+                case 'binary_object':
+                  return { type: 'binary_object', id: idToRaw({ id: domain.error.message.id }) }
+                default: {
+                  const _ex: never = domain.error.message
+                  throw new Error(`Unhandled tool error message: ${((_ex satisfies never) as { readonly type: string }).type}`)
+                }
+                }
+              })(),
+            },
+          };
+        default: {
+          const _ex: never = domain;
+          throw new Error(`Unhandled tool execution result status: ${(_ex as { status: string }).status}`);
+        }
+        }
+      }),
     };
   default: {
     const _ex: never = domain;
@@ -501,7 +750,7 @@ function migrateFlatMessagesToTree({ messages }: { messages: unknown[] }): Messa
   const legacyMsgs = messages as LegacyMessage[];
   const nodes: MessageNode[] = legacyMsgs.map(m => {
     const common = {
-      id: m.id,
+      id: toMessageId({ raw: m.id }),
       content: m.content,
       timestamp: m.timestamp,
       replies: { items: [] },
@@ -623,10 +872,10 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
   };
 
   return {
-    id,
+    id: toChatId({ raw: id }),
     title,
     root,
-    currentLeafId,
+    currentLeafId: currentLeafId === undefined ? undefined : toMessageId({ raw: currentLeafId }),
     createdAt,
     updatedAt,
     debugEnabled: debugEnabled ?? false,
@@ -634,11 +883,12 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     modelId,
     autoTitleEnabled: dto.autoTitleEnabled,
     titleModelId: dto.titleModelId,
-    originChatId,
-    originMessageId,
+    originChatId: originChatId === undefined ? undefined : toChatId({ raw: originChatId }),
+    originMessageId: originMessageId === undefined ? undefined : toMessageId({ raw: originMessageId }),
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: lmParameters }),
     mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
   };
 };
 
@@ -649,7 +899,7 @@ export const chatMetaToSummary = ({ domain }: { domain: ChatMeta }): ChatSummary
 });
 
 export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => ({
-  id: domain.id,
+  id: idToRaw({ id: domain.id }),
   title: domain.title,
   createdAt: domain.createdAt,
   updatedAt: domain.updatedAt,
@@ -658,22 +908,23 @@ export const chatMetaToDto = ({ domain }: { domain: ChatMeta }): ChatMetaDto => 
   modelId: domain.modelId,
   autoTitleEnabled: domain.autoTitleEnabled,
   titleModelId: domain.titleModelId,
-  originChatId: domain.originChatId,
-  originMessageId: domain.originMessageId,
+  originChatId: domain.originChatId === undefined ? undefined : idToRaw({ id: domain.originChatId }),
+  originMessageId: domain.originMessageId === undefined ? undefined : idToRaw({ id: domain.originMessageId }),
   systemPrompt: domain.systemPrompt,
   lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
-  currentLeafId: domain.currentLeafId,
+  currentLeafId: domain.currentLeafId === undefined ? undefined : idToRaw({ id: domain.currentLeafId }),
   mounts: domain.mounts?.map(domain => mountToDto({ domain })),
+  experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
 });
 
 export const chatContentToDto = ({ domain }: { domain: ChatContent }): ChatContentDto => ({
   root: { items: domain.root.items.map(domain => messageNodeToDto({ domain })) },
-  currentLeafId: domain.currentLeafId,
+  currentLeafId: domain.currentLeafId === undefined ? undefined : idToRaw({ id: domain.currentLeafId }),
 });
 
 export const chatContentToDomain = ({ dto }: { dto: ChatContentDto }): ChatContent => ({
   root: { items: dto.root.items.map(dto => messageNodeToDomain({ dto })) },
-  currentLeafId: dto.currentLeafId,
+  currentLeafId: dto.currentLeafId === undefined ? undefined : toMessageId({ raw: dto.currentLeafId }),
 });
 
 export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
@@ -684,10 +935,10 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
   } = domain;
 
   return {
-    id,
+    id: idToRaw({ id }),
     title,
     root: { items: root.items.map(domain => messageNodeToDto({ domain })) },
-    currentLeafId,
+    currentLeafId: currentLeafId === undefined ? undefined : idToRaw({ id: currentLeafId }),
     createdAt,
     updatedAt,
     debugEnabled,
@@ -699,11 +950,12 @@ export const chatToDto = ({ domain }: { domain: Chat }): ChatDto => {
     modelId,
     autoTitleEnabled: domain.autoTitleEnabled,
     titleModelId: domain.titleModelId,
-    originChatId,
-    originMessageId,
+    originChatId: originChatId === undefined ? undefined : idToRaw({ id: originChatId }),
+    originMessageId: originMessageId === undefined ? undefined : idToRaw({ id: originMessageId }),
     systemPrompt,
     lmParameters: lmParametersToDto({ domain: lmParameters }),
     mounts: domain.mounts?.map(domain => mountToDto({ domain })),
+    experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
     messages: undefined,
   };
 };
@@ -718,13 +970,13 @@ export const buildSidebarItemsFromHierarchy = (
   const metaMap = new Map(chatMetas.map(m => [m.id, m]));
   const groupMap = new Map(chatGroups.map(g => [g.id, g]));
 
-  const assembleNode = (node: HierarchyNode): SidebarItem | null => {
+  const assembleNode = ({ node }: { node: HierarchyNode }): SidebarItem | null => {
     switch (node.type) {
     case 'chat': {
       const meta = metaMap.get(node.id);
       if (!meta) return null;
       return {
-        id: `chat:${node.id}`,
+        id: `chat:${idToRaw({ id: node.id })}`,
         type: 'chat',
         chat: { ...chatMetaToSummary({ domain: meta }), groupId: null }
       };
@@ -738,7 +990,7 @@ export const buildSidebarItemsFromHierarchy = (
           const m = metaMap.get(cid);
           if (!m) return null;
           return {
-            id: `chat:${cid}`,
+            id: `chat:${idToRaw({ id: cid })}`,
             type: 'chat' as const,
             chat: { ...chatMetaToSummary({ domain: m }), groupId: groupMeta.id }
           } as ChatSidebarItem;
@@ -746,7 +998,7 @@ export const buildSidebarItemsFromHierarchy = (
         .filter((i): i is ChatSidebarItem => i !== null);
 
       return {
-        id: `chat_group:${node.id}`,
+        id: `chat_group:${idToRaw({ id: node.id })}`,
         type: 'chat_group',
         chatGroup: { ...groupMeta, items: nestedItems }
       };
@@ -759,7 +1011,7 @@ export const buildSidebarItemsFromHierarchy = (
   };
 
   return hierarchy.items
-    .map(assembleNode)
+    .map((node) => assembleNode({ node }))
     .filter((i): i is SidebarItem => i !== null);
 };
 
@@ -793,8 +1045,15 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
     ...endpointInfo,
     storageType: storageType as StorageType,
     experimental: {
-      ...rest.experimental,
+      ...(rest.experimental?.markdownRendering === undefined
+        ? {}
+        : { markdownRendering: rest.experimental.markdownRendering }),
+      toolConfigPersistence: rest.experimental?.toolConfigPersistence ?? 'disabled',
+      fakeLm: rest.experimental?.fakeLm ?? 'disabled',
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
+      ...(rest.experimental?.unreadable === undefined
+        ? {}
+        : { unreadable: rest.experimental.unreadable }),
     },
     providerProfiles: providerProfiles?.map(p => {
       const { endpoint: pEndpoint, ...pRest } = p;
@@ -821,11 +1080,13 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
       })();
       return {
         ...pRest,
+        id: toProviderProfileId({ raw: pRest.id }),
         ...pEndpointInfo,
         lmParameters: lmParametersToDomain({ dto: pRest.lmParameters }),
       };
     }) ?? [],
     lmParameters: lmParametersToDomain({ dto: rest.lmParameters }),
+    mounts: rest.mounts.map(dto => mountToDomain({ dto })),
   };
 };
 
@@ -852,7 +1113,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       } = p;
 
       return {
-        id: pRest.id,
+        id: idToRaw({ id: pRest.id }),
         name: pRest.name,
         endpoint: endpointToDto({ endpoint: {
           type: pType,
@@ -870,6 +1131,12 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
     lmParameters: lmParametersToDto({ domain: rest.lmParameters }),
     experimental: {
       markdownRendering: rest.experimental?.markdownRendering,
+      toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
+        persistence: rest.experimental?.toolConfigPersistence,
+      }),
+      fakeLm: fakeLmToExperimentalDto({
+        status: rest.experimental?.fakeLm,
+      }),
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
     },
     mounts: (domain.mounts || []).map(m => {
@@ -878,7 +1145,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       case 'volume':
         return {
           type: 'volume',
-          volumeId: m.volumeId,
+          volumeId: idToRaw({ id: m.volumeId }),
           mountPath: m.mountPath,
           readOnly: m.readOnly,
         };
@@ -892,7 +1159,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
 };
 
 export const binaryObjectToDomain = ({ dto }: { dto: BinaryObjectDto }): BinaryObject => ({
-  id: dto.id,
+  id: toBinaryObjectId({ raw: dto.id }),
   mimeType: dto.mimeType,
   size: dto.size,
   createdAt: dto.createdAt,
@@ -900,18 +1167,16 @@ export const binaryObjectToDomain = ({ dto }: { dto: BinaryObjectDto }): BinaryO
 });
 
 export const binaryObjectToDto = ({ domain }: { domain: BinaryObject }): BinaryObjectDto => ({
-  id: domain.id,
+  id: idToRaw({ id: domain.id }),
   mimeType: domain.mimeType,
   size: domain.size,
   createdAt: domain.createdAt,
   name: domain.name,
 });
 
-import type { Volume } from '@/models/types';
-import type { VolumeDto } from '@/models/dto';
 
 export const volumeToDomain = ({ dto }: { dto: VolumeDto }): Volume => ({
-  id: dto.id,
+  id: toVolumeId({ raw: dto.id }),
   name: dto.name,
   type: dto.type,
   createdAt: dto.createdAt,
@@ -922,14 +1187,14 @@ export const volumeToDto = ({ domain }: { domain: Volume }): VolumeDto => {
   case 'opfs':
     return {
       type: 'opfs',
-      id: domain.id,
+      id: idToRaw({ id: domain.id }),
       name: domain.name,
       createdAt: domain.createdAt,
     };
   case 'host':
     return {
       type: 'host',
-      id: domain.id,
+      id: idToRaw({ id: domain.id }),
       name: domain.name,
       createdAt: domain.createdAt,
     };

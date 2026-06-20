@@ -1,4 +1,5 @@
 import type { Attachment, Chat } from '@/models/types';
+import type { ChatId, MessageId } from '@/models/ids';
 import { UNKNOWN_STEPS } from '@/services/lm/types';
 import { useImageGeneration } from '@/composables/useImageGeneration';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
@@ -17,7 +18,7 @@ export async function sendImageRequestForChat({
   availableModels,
   sendMessage,
 }: {
-  chatId: string;
+  chatId: ChatId;
   prompt: string;
   width: number;
   height: number;
@@ -33,7 +34,7 @@ export async function sendImageRequestForChat({
     attachments,
   }: {
     content: string;
-    parentId: string | undefined;
+    parentId: MessageId | undefined;
     attachments: Attachment[];
   }) => Promise<boolean>;
 }): Promise<boolean> {
@@ -76,8 +77,8 @@ export async function handleImageGenerationForChat({
   incTask,
   decTask,
 }: {
-  chatId: string;
-  assistantId: string;
+  chatId: ChatId;
+  assistantId: MessageId;
   prompt: string;
   width: number;
   height: number;
@@ -97,12 +98,12 @@ export async function handleImageGenerationForChat({
     chatId,
     updater,
   }: {
-    chatId: string;
-    updater: (current: import('@/models/types').ChatContent) => import('@/models/types').ChatContent;
+    chatId: ChatId;
+    updater: ({ current }: { current: import('@/models/types').ChatContent }) => import('@/models/types').ChatContent;
   }) => Promise<void>;
-  triggerChatRef: ({ chatId }: { chatId: string }) => void;
-  incTask: ({ chatId, type }: { chatId: string; type: 'process' }) => void;
-  decTask: ({ chatId, type }: { chatId: string; type: 'process' }) => void;
+  triggerChatRef: ({ chatId }: { chatId: ChatId }) => void;
+  incTask: ({ chatId, type }: { chatId: ChatId; type: 'process' }) => void;
+  decTask: ({ chatId, type }: { chatId: ChatId; type: 'process' }) => void;
 }): Promise<void> {
   const imageGeneration = useImageGeneration();
   await imageGeneration.handleImageGeneration({
@@ -175,7 +176,7 @@ export async function generateImageForChat({
     images,
     endpointUrl: resolved.endpointUrl,
     endpointHttpHeaders: resolved.endpointHttpHeaders ? [...resolved.endpointHttpHeaders] : undefined,
-    onProgress: (_progress) => {},
+    onProgress: ({ currentStep: _currentStep, totalSteps: _totalSteps }) => {},
     signal,
   });
 }

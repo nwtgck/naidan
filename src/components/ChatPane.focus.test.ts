@@ -1,3 +1,4 @@
+import type { ChatId, MessageId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -8,11 +9,12 @@ import type { MessageNode, Chat } from '@/models/types';
 
 import { setupScrollToMock } from '@/utils/test-utils';
 import type { FocusArea } from '@/composables/useLayout';
+import { toChatId } from '@/models/ids';
 
 
 // Mock dependencies
 const mockCurrentChat = ref<Chat | null>({
-  id: '1',
+  id: toChatId({ raw: '1' }),
   title: 'Test Chat',
   root: { items: [] } as { items: MessageNode[] },
   currentLeafId: undefined,
@@ -130,16 +132,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -203,7 +205,7 @@ describe('ChatPane Focus Specifications', () => {
     const textarea = wrapper.find('[data-testid="chat-input"]').element as HTMLTextAreaElement;
 
     // Switch chat while focused on sidebar
-    mockCurrentChat.value = { ...mockCurrentChat.value!, id: '2' };
+    mockCurrentChat.value = { ...mockCurrentChat.value!, id: toChatId({ raw: '2' }) };
     await nextTick();
     await nextTick();
 
@@ -221,7 +223,7 @@ describe('ChatPane Focus Specifications', () => {
     const textarea = wrapper.find('[data-testid="chat-input"]').element as HTMLTextAreaElement;
 
     // Simulate new chat creation
-    mockCurrentChat.value = { ...mockCurrentChat.value!, id: 'new-chat-id' };
+    mockCurrentChat.value = { ...mockCurrentChat.value!, id: toChatId({ raw: 'new-chat-id' }) };
     await nextTick();
     await nextTick();
 
@@ -244,7 +246,7 @@ describe('ChatPane Focus Specifications', () => {
     mockActiveFocusArea.value = 'chat';
 
     // 3. Simulate store update (new chat ID set)
-    mockCurrentChat.value = { ...mockCurrentChat.value!, id: 'grouped-chat-id' };
+    mockCurrentChat.value = { ...mockCurrentChat.value!, id: toChatId({ raw: 'grouped-chat-id' }) };
     await nextTick();
     await nextTick();
 

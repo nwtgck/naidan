@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StorageService } from './index';
 import { SYNC_LOCK_KEY, LOCK_METADATA, LOCK_CHAT_CONTENT_PREFIX } from '@/models/constants';
+import { toBinaryObjectId, toChatGroupId, toChatId } from '@/models/ids';
 
 // We mock the synchronizer to track calls to withLock and notify
 const { mockWithLock, mockNotify, mockSubscribe } = vi.hoisted(() => ({
-  mockWithLock: vi.fn().mockImplementation((fn, _options) => fn()),
+  mockWithLock: vi.fn().mockImplementation(({ fn }) => fn()),
   mockNotify: vi.fn(),
   mockSubscribe: vi.fn(),
 }));
@@ -78,7 +79,7 @@ describe('StorageService Synchronization Wrapper', () => {
     vi.resetAllMocks();
 
     // Restore default mock implementations after reset
-    mockWithLock.mockImplementation((fn, _options) => fn());
+    mockWithLock.mockImplementation(({ fn }) => fn());
     mockProvider.saveChatMeta.mockResolvedValue(undefined);
     mockProvider.loadChatMeta.mockResolvedValue(null);
     mockProvider.saveChatContent.mockResolvedValue(undefined);
@@ -91,82 +92,94 @@ describe('StorageService Synchronization Wrapper', () => {
     mockProvider.clearAll.mockResolvedValue(undefined);
     mockProvider.saveFile.mockResolvedValue(undefined);
     mockProvider.init.mockResolvedValue(undefined);
+    mockProvider.loadSettings.mockResolvedValue(null);
 
     service = new StorageService();
     await service.init({ type: 'local' });
   });
 
   it('should wrap deleteChat with lock and notify after success', async () => {
-    await service.deleteChat({ id: 'c1' });
+    await service.deleteChat({ id: toChatId({ raw: 'c1' }) });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: LOCK_METADATA,
     }));
     expect(mockProvider.deleteChat).toHaveBeenCalledWith({ id: 'c1' });
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'c1');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
   });
 
   it('should wrap updateChatGroup with lock and notify after success', async () => {
     const group = { id: 'g1' } as any;
     const updater = vi.fn().mockResolvedValue(group);
-    await service.updateChatGroup('g1', updater);
+    await service.updateChatGroup({ id: toChatGroupId({ raw: 'g1' }), updater: updater });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: LOCK_METADATA,
     }));
     expect(updater).toHaveBeenCalled();
-    expect(mockProvider.saveChatGroup).toHaveBeenCalledWith(group);
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'g1');
+    expect(mockProvider.saveChatGroup).toHaveBeenCalledWith({ chatGroup: group });
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'g1' }) });
   });
 
   it('should wrap deleteChatGroup with lock and notify after success', async () => {
-    await service.deleteChatGroup({ id: 'g1' });
+    await service.deleteChatGroup({ id: toChatGroupId({ raw: 'g1' }) });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: LOCK_METADATA,
     }));
     expect(mockProvider.deleteChatGroup).toHaveBeenCalledWith({ id: 'g1' });
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'g1');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'g1' }) });
   });
 
   it('should wrap updateSettings with lock and notify after success', async () => {
     const settings = { endpointUrl: 'test' } as any;
     const updater = vi.fn().mockResolvedValue(settings);
-    await service.updateSettings(updater);
+    await service.updateSettings({ updater: updater });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: SYNC_LOCK_KEY,
     }));
     expect(updater).toHaveBeenCalled();
-    expect(mockProvider.saveSettings).toHaveBeenCalledWith(settings);
-    expect(mockNotify).toHaveBeenCalledWith('settings');
+    expect(mockProvider.saveSettings).toHaveBeenCalledWith({ settings });
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'settings' }) });
   });
 
   it('should wrap clearAll with lock and notify migration', async () => {
     await service.clearAll();
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: SYNC_LOCK_KEY,
     }));
     expect(mockProvider.clearAll).toHaveBeenCalled();
-    expect(mockNotify).toHaveBeenCalledWith('migration');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'migration' }) });
   });
 
   it('should wrap saveFile with lock but not notify (tied to chat)', async () => {
     const blob = new Blob(['test']);
-    await service.saveFile(blob, 'a1', 'test.txt');
+    await service.saveFile({ blob, binaryObjectId: toBinaryObjectId({ raw: 'a1' }), name: 'test.txt' });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: LOCK_METADATA,
     }));
-    expect(mockProvider.saveFile).toHaveBeenCalledWith(blob, 'a1', 'test.txt');
+    expect(mockProvider.saveFile).toHaveBeenCalledWith({
+      blob,
+      binaryObjectId: 'a1',
+      name: 'test.txt',
+      mimeType: undefined,
+    });
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
   it('should NOT notify if the operation inside lock fails', async () => {
     mockProvider.saveChatMeta.mockRejectedValue(new Error('Failed'));
 
-    await expect(service.updateChatMeta('c1', () => ({} as any))).rejects.toThrow('Failed');
+    await expect(service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => ({} as any) })).rejects.toThrow('Failed');
 
     expect(mockWithLock).toHaveBeenCalled();
     expect(mockNotify).not.toHaveBeenCalled();
@@ -176,8 +189,12 @@ describe('StorageService Synchronization Wrapper', () => {
     const meta = { id: 'c1' } as any;
 
     // Extract the callbacks passed to withLock
-    await service.updateChatMeta('c1', () => meta);
-    const options = mockWithLock.mock.calls[0]?.[1];
+    await service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => meta });
+    const options = mockWithLock.mock.calls.find(([options]) => options?.lockKey === LOCK_METADATA)?.[0] as {
+      onLockWait: () => void;
+      onTaskSlow: () => void;
+      onFinalize: () => void;
+    };
 
     options.onLockWait();
     expect(mockAddInfoEvent).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('busy') }));
@@ -194,17 +211,18 @@ describe('StorageService Synchronization Wrapper', () => {
 
     await service.switchProvider({ type: 'opfs' });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       notifyLockWaitAfterMs: 5000,
     }));
-    expect(mockNotify).toHaveBeenCalledWith('migration');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'migration' }) });
   });
 
   it('should report generic storage error via addErrorEvent', async () => {
     const diskError = new Error('Disk full');
     mockProvider.saveChatMeta.mockRejectedValueOnce(diskError);
 
-    await expect(service.updateChatMeta('c1', () => ({} as any))).rejects.toThrow(diskError);
+    await expect(service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => ({} as any) })).rejects.toThrow(diskError);
 
     expect(mockAddErrorEvent).toHaveBeenCalledWith(expect.objectContaining({
       message: expect.stringContaining('An error occurred'),
@@ -217,37 +235,91 @@ describe('StorageService Synchronization Wrapper', () => {
   it('should wrap updateChatMeta with metadata lock and notify', async () => {
     const meta = { id: 'c1' } as any;
     const updater = vi.fn().mockResolvedValue(meta);
-    await service.updateChatMeta('c1', updater);
+    await service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: updater });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: LOCK_METADATA,
     }));
     expect(updater).toHaveBeenCalled();
-    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith(meta);
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group', 'c1');
+    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({ meta });
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group', id: 'c1' }) });
+  });
+
+
+
+  it('should strip tool configs on ordinary chat meta updates when persistence is disabled', async () => {
+    const meta = {
+      id: 'c1',
+      toolConfigs: [{ key: 'builtin.calculator' }],
+    } as any;
+
+    await service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => meta });
+
+    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({
+      meta: { id: 'c1' },
+    });
+  });
+
+  it('should keep tool configs on ordinary chat meta updates when persistence is enabled', async () => {
+    const meta = {
+      id: 'c1',
+      toolConfigs: [{ key: 'builtin.calculator' }],
+    } as any;
+    mockProvider.loadSettings.mockResolvedValue({
+      experimental: {
+        toolConfigPersistence: 'enabled',
+      },
+    });
+
+    await service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => meta });
+
+    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({ meta });
+  });
+
+  it('should not gate restore snapshots by the tool config persistence setting', async () => {
+    const snapshot = {
+      structure: {
+        settings: {
+          experimental: {
+            toolConfigPersistence: 'disabled',
+          },
+        },
+        hierarchy: { items: [] },
+        chatMetas: [{ id: 'c1', toolConfigs: [{ key: 'builtin.calculator' }] }],
+        chatGroups: [],
+      },
+      contentStream: (async function* () {})(),
+    } as any;
+
+    await service.restore({ snapshot });
+
+    expect(mockProvider.restore).toHaveBeenCalledWith({ snapshot });
   });
 
   it('should wrap updateChatContent with specific chat lock and notify', async () => {
     const content = { root: { items: [] } } as any;
     const updater = vi.fn().mockResolvedValue(content);
-    await service.updateChatContent('c1', updater);
+    await service.updateChatContent({ id: toChatId({ raw: 'c1' }), updater: updater });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: `${LOCK_CHAT_CONTENT_PREFIX}c1`,
     }));
     expect(updater).toHaveBeenCalled();
-    expect(mockProvider.saveChatContent).toHaveBeenCalledWith('c1', content);
-    expect(mockNotify).toHaveBeenCalledWith('chat_content', 'c1');
+    expect(mockProvider.saveChatContent).toHaveBeenCalledWith({ id: 'c1', content });
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_content', id: 'c1' }) });
   });
 
   it('should wrap updateHierarchy with metadata lock and notify', async () => {
-    const updater = (h: any) => h;
-    await service.updateHierarchy(updater);
+    const updater = ({ current }: { current: any }) => current;
+    await service.updateHierarchy({ updater: updater });
 
-    expect(mockWithLock).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+    expect(mockWithLock).toHaveBeenCalledWith(expect.objectContaining({
+      fn: expect.any(Function),
       lockKey: LOCK_METADATA,
     }));
     expect(mockProvider.saveHierarchy).toHaveBeenCalled();
-    expect(mockNotify).toHaveBeenCalledWith('chat_meta_and_chat_group');
+    expect(mockNotify).toHaveBeenCalledWith({ event: expect.objectContaining({ type: 'chat_meta_and_chat_group' }) });
   });
 });

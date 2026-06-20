@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useChat } from './useChat';
 import { useSettings } from './useSettings';
+import { idToRaw } from '@/models/ids';
 
 // Mock dependencies
 vi.mock('../services/storage', () => ({
@@ -11,8 +12,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined }))),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } }))),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     loadSettings: vi.fn().mockResolvedValue({}),
     saveFile: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock('../services/storage', () => ({
   },
 }));
 
-// Mock LLM with classes
+// Mock LM with classes
 const mockChat = vi.fn();
 const mockListModels = vi.fn().mockResolvedValue(['gpt-4']);
 
@@ -97,11 +98,11 @@ describe('useChat Error Handling', () => {
 
     // 2. Retry (Success)
     // The next call to mockChat (for retry) should succeed
-    mockChat.mockImplementation(async (params: { onChunk: (c: string) => void }) => {
-      params.onChunk('Success');
+    mockChat.mockImplementation(async (params: { onChunk: (params: { chunk: string }) => void }) => {
+      params.onChunk({ chunk: 'Success' });
     });
 
-    await regenerateMessage({ failedMessageId: failedMsg!.id });
+    await regenerateMessage({ failedMessageId: idToRaw({ id: failedMsg!.id }) });
     await vi.waitUntil(() => !chatStore.streaming.value); // Wait for success retry
 
     // Should have a NEW assistant message at the end

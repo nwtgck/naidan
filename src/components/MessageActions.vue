@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { GitForkIcon, PencilIcon, CopyIcon, CheckIcon, RefreshCwIcon, SendIcon, MoreVerticalIcon, HistoryIcon, MoreHorizontalIcon, LinkIcon } from 'lucide-vue-next';
 import type { MessageNode, LmParameters } from '@/models/types';
+import type { ChatId, MessageId } from '@/models/ids';
 import { isImageGenerationPending } from '@/utils/image-generation';
 import { generateMessageLink } from '@/utils/chat-links';
 import { useToast } from '@/composables/useToast';
@@ -10,7 +11,7 @@ import MessageActionsMenu from './MessageActionsMenu.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 
 const props = defineProps<{
-  chatId?: string;
+  chatId?: ChatId;
   message: MessageNode;
   isImageResponse: boolean;
   isUser: boolean;
@@ -21,9 +22,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'regenerate', messageId: string): void;
-  (e: 'edit', messageId: string, content: string, lmParameters: LmParameters | undefined): void;
-  (e: 'fork', messageId: string): void;
+  (e: 'regenerate', messageId: MessageId): void;
+  (e: 'edit', messageId: MessageId, content: string, lmParameters: LmParameters | undefined): void;
+  (e: 'fork', messageId: MessageId): void;
   (e: 'enter-edit-mode'): void;
   (e: 'show-diff'): void;
   (e: 'update:showExtensions', val: boolean): void;

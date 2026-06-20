@@ -1,4 +1,4 @@
-import type { JqToken } from './ast';
+import type { JqStringTokenPart, JqToken } from './ast';
 
 function isIdentifierStart({
   char,
@@ -16,11 +16,72 @@ function isIdentifierPart({
   return /[A-Za-z0-9_]/.test(char);
 }
 
-function decodeEscape({
+function appendTextPart({
+  parts,
+  value,
+}: {
+  parts: JqStringTokenPart[];
+  value: string;
+}): void {
+  if (value.length === 0) return;
+  const previous = parts.at(-1);
+  if (previous !== undefined) {
+    switch (previous.kind) {
+    case 'text':
+      previous.value += value;
+      return;
+    case 'interpolation':
+      break;
+    default: {
+      const _ex: never = previous;
+      throw new Error(`Unhandled jq string token part: ${((_ex satisfies never) as { readonly kind: string }).kind}`);
+    }
+    }
+  }
+  parts.push({ kind: 'text', value });
+}
+
+function decodeUnicodeEscape({
+  source,
+  index,
+}: {
+  source: string;
+  index: number;
+}): { ok: true; value: string; nextIndex: number } | { ok: false; message: string } {
+  const digits = source.slice(index, index + 4);
+  if (!/^[0-9a-fA-F]{4}$/.test(digits)) {
+    return { ok: false, message: 'invalid unicode escape' };
+  }
+
+  const first = Number.parseInt(digits, 16);
+  const nextIndex = index + 4;
+  if (first >= 0xd800 && first <= 0xdbff && source.slice(nextIndex, nextIndex + 2) === '\\u') {
+    const lowDigits = source.slice(nextIndex + 2, nextIndex + 6);
+    if (/^[0-9a-fA-F]{4}$/.test(lowDigits)) {
+      const low = Number.parseInt(lowDigits, 16);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        const codePoint = 0x10000 + ((first - 0xd800) << 10) + (low - 0xdc00);
+        return {
+          ok: true,
+          value: String.fromCodePoint(codePoint),
+          nextIndex: nextIndex + 6,
+        };
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    value: String.fromCharCode(first),
+    nextIndex,
+  };
+}
+
+function decodeSimpleEscape({
   char,
 }: {
   char: string;
-}): string {
+}): string | undefined {
   switch (char) {
   case '"':
     return '"';
@@ -39,8 +100,129 @@ function decodeEscape({
   case 't':
     return '\t';
   default:
-    return char;
+    return undefined;
   }
+}
+
+function scanInterpolation({
+  source,
+  start,
+}: {
+  source: string;
+  start: number;
+}): { ok: true; body: string; nextIndex: number } | { ok: false; message: string } {
+  let index = start;
+  let depth = 1;
+  let inString = false;
+  let escaped = false;
+
+  while (index < source.length) {
+    const char = source[index];
+    if (char === undefined) break;
+
+    if (inString) {
+      if (!escaped && char === '"') {
+        inString = false;
+      } else if (!escaped && char === '\\') {
+        escaped = true;
+        index += 1;
+        continue;
+      }
+      escaped = false;
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      index += 1;
+      continue;
+    }
+    if (char === '#') {
+      while (index < source.length && source[index] !== '\n') index += 1;
+      continue;
+    }
+    if (char === '(') {
+      depth += 1;
+      index += 1;
+      continue;
+    }
+    if (char === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          ok: true,
+          body: source.slice(start, index),
+          nextIndex: index + 1,
+        };
+      }
+      index += 1;
+      continue;
+    }
+    index += 1;
+  }
+
+  return { ok: false, message: 'unterminated string interpolation' };
+}
+
+function scanString({
+  source,
+  start,
+}: {
+  source: string;
+  start: number;
+}): { ok: true; parts: JqStringTokenPart[]; nextIndex: number } | { ok: false; message: string } {
+  const parts: JqStringTokenPart[] = [];
+  let text = '';
+  let index = start + 1;
+
+  while (index < source.length) {
+    const char = source[index];
+    if (char === undefined) break;
+
+    if (char === '"') {
+      appendTextPart({ parts, value: text });
+      return { ok: true, parts, nextIndex: index + 1 };
+    }
+
+    if (char !== '\\') {
+      text += char;
+      index += 1;
+      continue;
+    }
+
+    const escaped = source[index + 1];
+    if (escaped === undefined) {
+      return { ok: false, message: 'unterminated string literal' };
+    }
+
+    if (escaped === '(') {
+      appendTextPart({ parts, value: text });
+      text = '';
+      const interpolation = scanInterpolation({ source, start: index + 2 });
+      if (!interpolation.ok) return interpolation;
+      parts.push({ kind: 'interpolation', source: interpolation.body });
+      index = interpolation.nextIndex;
+      continue;
+    }
+
+    if (escaped === 'u') {
+      const unicode = decodeUnicodeEscape({ source, index: index + 2 });
+      if (!unicode.ok) return unicode;
+      text += unicode.value;
+      index = unicode.nextIndex;
+      continue;
+    }
+
+    const decoded = decodeSimpleEscape({ char: escaped });
+    if (decoded === undefined) {
+      return { ok: false, message: `invalid escape sequence '\\${escaped}'` };
+    }
+    text += decoded;
+    index += 2;
+  }
+
+  return { ok: false, message: 'unterminated string literal' };
 }
 
 export function lexJq({
@@ -60,36 +242,40 @@ export function lexJq({
       continue;
     }
 
+    if (char === '#') {
+      while (index < source.length && source[index] !== '\n') index += 1;
+      continue;
+    }
+
+    const threeCharacter = source.slice(index, index + 3);
+    if (threeCharacter === '//=') {
+      tokens.push({ kind: 'operator', value: '//=' });
+      index += 3;
+      continue;
+    }
+
     const twoCharacter = source.slice(index, index + 2);
-    if (twoCharacter === '==') {
-      tokens.push({ kind: 'operator', value: '==' });
+    switch (twoCharacter) {
+    case '..':
+      tokens.push({ kind: 'recursive_descent' });
       index += 2;
       continue;
-    }
-    if (twoCharacter === '!=') {
-      tokens.push({ kind: 'operator', value: '!=' });
+    case '==':
+    case '!=':
+    case '<=':
+    case '>=':
+    case '|=':
+    case '//':
+    case '+=':
+    case '-=':
+    case '*=':
+    case '/=':
+    case '%=':
+      tokens.push({ kind: 'operator', value: twoCharacter });
       index += 2;
       continue;
-    }
-    if (twoCharacter === '<=') {
-      tokens.push({ kind: 'operator', value: '<=' });
-      index += 2;
-      continue;
-    }
-    if (twoCharacter === '>=') {
-      tokens.push({ kind: 'operator', value: '>=' });
-      index += 2;
-      continue;
-    }
-    if (twoCharacter === '|=') {
-      tokens.push({ kind: 'operator', value: '|=' });
-      index += 2;
-      continue;
-    }
-    if (twoCharacter === '//') {
-      tokens.push({ kind: 'operator', value: '//' });
-      index += 2;
-      continue;
+    default:
+      break;
     }
 
     if (char === '-') {
@@ -115,6 +301,7 @@ export function lexJq({
     case '-':
     case '*':
     case '/':
+    case '%':
     case ':':
     case '?':
       tokens.push({ kind: 'operator', value: char });
@@ -142,41 +329,15 @@ export function lexJq({
     case '}':
     case '(':
     case ')':
+    case ';':
       tokens.push({ kind: 'punctuation', value: char });
       index += 1;
       continue;
     case '"': {
-      index += 1;
-      let value = '';
-      let escaped = false;
-      let terminated = false;
-
-      while (index < source.length) {
-        const current = source[index];
-        if (current === undefined) break;
-
-        if (!escaped && current === '"') {
-          terminated = true;
-          index += 1;
-          break;
-        }
-
-        if (!escaped && current === '\\') {
-          escaped = true;
-          index += 1;
-          continue;
-        }
-
-        value += escaped ? decodeEscape({ char: current }) : current;
-        escaped = false;
-        index += 1;
-      }
-
-      if (!terminated) {
-        return { ok: false, message: 'unterminated string literal' };
-      }
-
-      tokens.push({ kind: 'string', value });
+      const string = scanString({ source, start: index });
+      if (!string.ok) return string;
+      tokens.push({ kind: 'string', parts: string.parts });
+      index = string.nextIndex;
       continue;
     }
     default:

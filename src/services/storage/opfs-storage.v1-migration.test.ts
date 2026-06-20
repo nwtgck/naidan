@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { toChatId } from '@/models/ids';
 
 vi.mock('../../utils/id', () => ({
   generateId: vi.fn(() => Math.random().toString(36).substring(2))
@@ -158,7 +159,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
 
-    const chat = await provider.loadChat({ id: CHAT_ID_1 });
+    const chat = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
     expect(chat).not.toBeNull();
     const att = chat!.root.items[0]!.attachments![0]!;
     expect(att.binaryObjectId).toBeDefined();
@@ -177,7 +178,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
 
-    const chat = await provider.loadChat({ id: CHAT_ID_1 });
+    const chat = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
     expect(chat).not.toBeNull();
     expect(chat!.root.items[0]!.attachments).toHaveLength(0);
   });
@@ -211,8 +212,8 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
 
-    const chatA = await provider.loadChat({ id: CHAT_ID_1 });
-    const chatB = await provider.loadChat({ id: CHAT_ID_2 });
+    const chatA = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
+    const chatB = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_2 }) });
 
     const bIdA = chatA!.root.items[0]!.attachments![0]!.binaryObjectId;
     const bIdB = chatB!.root.items[0]!.attachments![0]!.binaryObjectId;
@@ -230,7 +231,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
 
-    const chat = await provider.loadChat({ id: CHAT_ID_1 });
+    const chat = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
     expect(chat!.root.items[0]!.attachments![0]!.status).toBe('missing');
   });
 
@@ -248,7 +249,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
 
-    const chat = await provider.loadChat({ id: CHAT_ID_1 });
+    const chat = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
     expect(chat!.root.items[0]!.attachments![0]!.binaryObjectId).toBeDefined();
   });
 
@@ -260,11 +261,11 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
 
-    const chat1 = await provider.loadChat({ id: CHAT_ID_1 });
+    const chat1 = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
     const bId = chat1!.root.items[0]!.attachments![0]!.binaryObjectId;
 
     await provider.init(); // Second call
-    const chat2 = await provider.loadChat({ id: CHAT_ID_1 });
+    const chat2 = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
     expect(chat2!.root.items[0]!.attachments![0]!.binaryObjectId).toBe(bId);
   });
 
@@ -310,7 +311,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const provider = new OPFSStorageProvider();
     await provider.init();
 
-    const chat = await provider.loadChat({ id: CHAT_ID_1 });
+    const chat = await provider.loadChat({ id: toChatId({ raw: CHAT_ID_1 }) });
     expect(chat).not.toBeNull();
     const bId1 = chat!.root.items[0]!.attachments![0]!.binaryObjectId;
     const bId2 = chat!.root.items[0]!.replies.items[0]!.replies.items[0]!.attachments![0]!.binaryObjectId;

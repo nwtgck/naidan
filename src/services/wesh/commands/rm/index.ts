@@ -1,6 +1,27 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshEntryRef } from '@/services/wesh/types';
 import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
+
+
+function asDirectoryEntryRef({
+  entry,
+}: {
+  entry: WeshEntryRef;
+}): WeshEntryRef<'directory'> {
+  switch (entry.type) {
+  case 'directory':
+    return entry;
+  case 'file':
+  case 'fifo':
+  case 'chardev':
+  case 'symlink':
+    throw new Error(`Not a directory: ${entry.fullPath}`);
+  default: {
+    const _ex: never = entry;
+    throw new Error(`Unhandled entry type: ${_ex}`);
+  }
+  }
+}
 
 const rmArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -61,27 +82,33 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     const force = parsed.optionValues.force === true;
     let exitCode = 0;
 
-    const removeRecursive = async (path: string) => {
-      const st = await context.files.lstat({ path });
-      switch (st.type) {
+    const removeRecursive = async ({
+      entry,
+    }: {
+      entry: WeshEntryRef;
+    }): Promise<void> => {
+      const stat = await context.files.statEntry({ entry });
+      switch (stat.type) {
       case 'directory': {
         if (!recursive) {
           throw new Error('is a directory');
         }
-        for await (const entry of context.files.readDir({ path })) {
-          await removeRecursive(entry.fullPath);
+        for await (const child of context.files.readDirEntry({
+          entry: asDirectoryEntryRef({ entry }),
+        })) {
+          await removeRecursive({ entry: child });
         }
-        await context.files.rmdir({ path });
+        await context.files.rmdir({ path: entry.fullPath });
         break;
       }
       case 'file':
       case 'fifo':
       case 'chardev':
       case 'symlink':
-        await context.files.unlink({ path });
+        await context.files.unlink({ path: entry.fullPath });
         break;
       default: {
-        const _ex: never = st.type;
+        const _ex: never = stat.type;
         throw new Error(`Unhandled type: ${_ex}`);
       }
       }
@@ -90,7 +117,12 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     for (const p of parsed.positionals) {
       try {
         const fullPath = p.startsWith('/') ? p : (context.cwd === '/' ? `/${p}` : `${context.cwd}/${p}`);
-        await removeRecursive(fullPath);
+        await removeRecursive({
+          entry: await context.files.resolveEntry({
+            path: fullPath,
+            finalSymlinkTreatment: 'no-follow',
+          }),
+        });
       } catch (e: unknown) {
         if (!force) {
           const message = e instanceof Error ? e.message : String(e);

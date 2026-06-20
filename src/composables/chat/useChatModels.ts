@@ -1,5 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue';
 import type { EndpointType } from '@/models/types';
+import type { ChatId } from '@/models/ids';
 import {
   availableModels,
   fetchingModels,
@@ -23,10 +24,10 @@ export type ChatModelsAdapter = {
   fetchForChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<string[]>;
 
-  fetchForGlobalEndpoint(_args: Record<never, never>): Promise<string[]>;
+  fetchForGlobalEndpoint(): Promise<string[]>;
 
   fetchForEndpoint({
     customEndpoint,
@@ -37,13 +38,13 @@ export type ChatModelsAdapter = {
   TEST_ONLY: Record<never, never>;
 };
 
-export function useChatModels(_args: Record<never, never>): ChatModelsAdapter {
+export function useChatModels(): ChatModelsAdapter {
   const fetchingModelsState = computed(() => fetchingModels.value);
 
   async function fetchForChat({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): Promise<string[]> {
     return await fetchModelsForChat({
       chatId,
@@ -51,7 +52,7 @@ export function useChatModels(_args: Record<never, never>): ChatModelsAdapter {
     });
   }
 
-  async function fetchForGlobalEndpoint(_args: Record<never, never>): Promise<string[]> {
+  async function fetchForGlobalEndpoint(): Promise<string[]> {
     return await fetchModelsForGlobalEndpoint({
       errorSource: 'useChatModels:fetchForGlobalEndpoint',
     });

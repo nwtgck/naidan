@@ -7,44 +7,44 @@ import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { useSettings } from '@/composables/useSettings';
 import { useToolDependencyActions } from '@/composables/useToolDependencyActions';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
-import type { NaidanSysfsMountSelection } from '@/services/wesh/types';
+import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 
 const { currentChat } = useCurrentChatState();
 const { settings } = useSettings();
 const { isToolEnabled, toggleTool } = useChatTools();
-const { getNaidanSysfsMountSelection, setNaidanSysfsMountSelection } = useChatWeshPreferences();
+const { getNaidanSysfsAccessScope, setNaidanSysfsAccessScope } = useChatWeshPreferences();
 const {
   disableNaidanSysfsForCurrentChat,
   disableShellToolForCurrentChat,
 } = useToolDependencyActions();
 const { isFeatureEnabled } = useFeatureFlags();
 const isWeshToolFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'wesh_tool' }));
-const naidanSysfsMountSelection = computed(() => getNaidanSysfsMountSelection({ chatId: currentChat.value?.id }));
-const isNaidanSysfsMounted = computed(() => naidanSysfsMountSelection.value !== 'none');
+const naidanSysfsAccessScope = computed(() => getNaidanSysfsAccessScope({ chatId: currentChat.value?.id }));
+const isNaidanSysfsMounted = computed(() => naidanSysfsAccessScope.value !== 'none');
 const hasWritableTmp = computed(() => shouldIncludeWritableTmpMount({ storageType: settings.value.storageType }));
 
-function handleShellToolToggle(_args: Record<never, never>) {
+function handleShellToolToggle() {
   const enablingShellExecute = !isToolEnabled({ name: 'shell_execute' });
   if (!enablingShellExecute) {
-    disableShellToolForCurrentChat({})
+    disableShellToolForCurrentChat()
     return
   }
 
   toggleTool({ name: 'shell_execute' });
-  if (enablingShellExecute && naidanSysfsMountSelection.value === 'none') {
-    setNaidanSysfsMountSelection({ chatId: currentChat.value?.id, selection: 'current_chat_only' });
+  if (enablingShellExecute && naidanSysfsAccessScope.value === 'none') {
+    setNaidanSysfsAccessScope({ chatId: currentChat.value?.id, accessScope: 'current_chat_only' });
   }
 }
 
-function handleNaidanSysfsToggle(_args: Record<never, never>) {
+function handleNaidanSysfsToggle() {
   if (isNaidanSysfsMounted.value) {
-    disableNaidanSysfsForCurrentChat({})
+    disableNaidanSysfsForCurrentChat()
     return
   }
-  setNaidanSysfsMountSelection({
+  setNaidanSysfsAccessScope({
     chatId: currentChat.value?.id,
-    selection: 'current_chat_only',
+    accessScope: 'current_chat_only',
   });
 }
 
@@ -53,17 +53,17 @@ function handleNaidanSysfsSelectionChange({ event }: { event: Event }) {
   if (!(target instanceof HTMLSelectElement)) {
     return;
   }
-  const selection = target.value as NaidanSysfsMountSelection;
-  switch (selection) {
+  const accessScope = target.value as NaidanSysfsAccessScope;
+  switch (accessScope) {
   case 'none':
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
-  case 'all_chats':
-    setNaidanSysfsMountSelection({ chatId: currentChat.value?.id, selection });
+  case 'main_chats':
+    setNaidanSysfsAccessScope({ chatId: currentChat.value?.id, accessScope });
     break;
   default: {
-    const _ex: never = selection;
-    throw new Error(`Unhandled naidan sysfs selection: ${String(_ex)}`);
+    const _ex: never = accessScope;
+    throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`);
   }
   }
 }
@@ -71,7 +71,7 @@ function handleNaidanSysfsSelectionChange({ event }: { event: Event }) {
 defineExpose({
   TEST_ONLY: {
     isNaidanSysfsMounted,
-    naidanSysfsMountSelection,
+    naidanSysfsAccessScope,
   },
 });
 </script>
@@ -79,11 +79,13 @@ defineExpose({
 <template>
   <template v-if="isWeshToolFeatureEnabled">
     <button
-      @click="handleShellToolToggle({})"
+      @click="handleShellToolToggle()"
       class="relative flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 text-left border overflow-hidden group active:scale-[0.98]"
       :class="isToolEnabled({ name: 'shell_execute' })
         ? 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/30 shadow-sm'
         : 'bg-transparent border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-700'"
+      :aria-expanded="isToolEnabled({ name: 'shell_execute' })"
+      aria-controls="shell-tool-settings"
       data-testid="tool-wesh-toggle"
     >
       <div
@@ -111,54 +113,84 @@ defineExpose({
       </div>
     </button>
 
-    <div
+    <section
       v-if="isToolEnabled({ name: 'shell_execute' })"
-      class="mt-3 space-y-3 p-3 bg-gray-50/50 dark:bg-gray-800/20 rounded-2xl border border-gray-100 dark:border-gray-700/50"
+      id="shell-tool-settings"
+      class="sm:col-span-2 mt-1 overflow-hidden rounded-2xl border border-blue-200/60 dark:border-blue-500/20 bg-white/70 dark:bg-gray-900/30 shadow-sm"
       data-testid="naidan-sysfs-settings"
     >
-      <div class="flex items-start gap-2.5 px-1">
+      <header class="flex items-start justify-between gap-3 px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/60 bg-blue-50/40 dark:bg-blue-500/5">
+        <div class="min-w-0">
+          <h3 class="text-[11px] font-bold tracking-tight text-gray-700 dark:text-gray-200">
+            Shell settings
+          </h3>
+          <p class="mt-0.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
+            Configure browser-based shell access.
+          </p>
+        </div>
+      </header>
+
+      <div class="divide-y divide-gray-100 dark:divide-gray-700/60">
+        <button
+          @click="handleNaidanSysfsToggle()"
+          class="w-full grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-3 text-left transition-colors hover:bg-gray-50/70 dark:hover:bg-gray-800/30"
+          role="switch"
+          :aria-checked="isNaidanSysfsMounted"
+          data-testid="naidan-sysfs-toggle"
+        >
+          <span class="min-w-0">
+            <span class="block text-[11px] font-bold text-gray-700 dark:text-gray-200">
+              Mount <code class="font-mono text-[10px]">/sys/fs/naidan</code>
+            </span>
+            <span class="block mt-0.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
+              Expose chat discovery paths
+            </span>
+          </span>
+
+          <span
+            class="w-7 h-3.5 rounded-full relative transition-colors duration-200"
+            :class="isNaidanSysfsMounted ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'"
+          >
+            <span
+              class="absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-white rounded-full transition-transform duration-200"
+              :class="isNaidanSysfsMounted ? 'translate-x-3.5' : 'translate-x-0'"
+            ></span>
+          </span>
+        </button>
+
+        <div
+          v-if="isNaidanSysfsMounted"
+          class="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:gap-4 px-3 py-3"
+        >
+          <div class="min-w-0">
+            <label class="block text-[11px] font-bold text-gray-700 dark:text-gray-200" for="naidan-sysfs-access-scope-select">
+              Visibility
+            </label>
+            <p class="mt-0.5 text-[10px] leading-relaxed text-gray-500 dark:text-gray-400">
+              Choose which chats are visible to the shell.
+            </p>
+          </div>
+
+          <select
+            id="naidan-sysfs-access-scope-select"
+            :value="naidanSysfsAccessScope"
+            class="w-full sm:w-52 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-[11px] text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+            data-testid="naidan-sysfs-access-scope-select"
+            @change="handleNaidanSysfsSelectionChange({ event: $event })"
+          >
+            <option value="current_chat_only">Current chat</option>
+            <option value="current_chat_with_chat_group">Current chat + chat group</option>
+            <option value="main_chats">All chats</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-2.5 px-3 py-2.5 border-t border-gray-100 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-950/20">
         <InfoIcon class="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
         <p class="text-[10px] leading-relaxed text-gray-500 dark:text-gray-400" data-testid="wesh-storage-mode-note">
           {{ hasWritableTmp ? 'Writable /tmp is available with OPFS storage.' : 'Local and memory storage expose Wesh as read-only, without /tmp.' }}
         </p>
       </div>
-
-      <button
-        @click="handleNaidanSysfsToggle({})"
-        class="w-full flex items-center justify-between rounded-xl px-2.5 py-2 text-left transition-colors bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-900"
-        data-testid="naidan-sysfs-toggle"
-      >
-        <div class="flex flex-col">
-          <span class="text-[11px] font-bold text-gray-700 dark:text-gray-200">Mount `/sys/fs/naidan`</span>
-          <span class="text-[10px] text-gray-500 dark:text-gray-400">Expose chat discovery paths</span>
-        </div>
-        <div
-          class="w-7 h-3.5 rounded-full relative transition-colors duration-200"
-          :class="isNaidanSysfsMounted ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'"
-        >
-          <div
-            class="absolute top-0.5 left-0.5 w-2.5 h-2.5 bg-white rounded-full transition-transform duration-200"
-            :class="isNaidanSysfsMounted ? 'translate-x-3.5' : 'translate-x-0'"
-          />
-        </div>
-      </button>
-
-      <div v-if="isNaidanSysfsMounted" class="px-1">
-        <label class="block text-[10px] font-black tracking-tight text-gray-400 mb-2" for="naidan-sysfs-visibility-select">
-          Visibility
-        </label>
-        <select
-          id="naidan-sysfs-visibility-select"
-          :value="naidanSysfsMountSelection"
-          class="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-[11px] text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-          data-testid="naidan-sysfs-visibility-select"
-          @change="handleNaidanSysfsSelectionChange({ event: $event })"
-        >
-          <option value="current_chat_only">Current chat</option>
-          <option value="current_chat_with_chat_group">Current chat + chat group</option>
-          <option value="all_chats">All chats</option>
-        </select>
-      </div>
-    </div>
+    </section>
   </template>
 </template>

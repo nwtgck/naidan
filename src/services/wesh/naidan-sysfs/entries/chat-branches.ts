@@ -1,4 +1,6 @@
 import type { Chat, MessageNode } from '@/models/types'
+import { idToRaw } from '@/models/ids'
+import type { ChatId, MessageId } from '@/models/ids'
 import {
   NAIDAN_SYSFS_BRANCH_CURRENT_JSON_SYMLINK_NAME,
   NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME,
@@ -32,7 +34,7 @@ function createFormatExtension({ format }: { format: NaidanSysfsBranchFormat }):
   }
 }
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -67,7 +69,7 @@ function createMessageFileName({
   node: MessageNode;
   format: NaidanSysfsBranchFormat;
 }): string {
-  return `${index}-${node.role}-${node.id}.${createFormatExtension({ format })}`
+  return `${index}-${node.role}-${idToRaw({ id: node.id })}.${createFormatExtension({ format })}`
 }
 
 function createBranchDirectoryName({
@@ -85,11 +87,11 @@ function createLeafSymlinkTarget({
   format,
   leafId,
 }: {
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
-  leafId: string;
+  leafId: MessageId;
 }): string {
-  return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${chatId}/branches/leaves-${createFormatExtension({ format })}/${leafId}`
+  return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}/branches/leaves-${createFormatExtension({ format })}/${idToRaw({ id: leafId })}`
 }
 
 function createGeneratedFileEntry({
@@ -148,9 +150,9 @@ function createTreeBranchSymlinkEntry({
   format,
   leafId,
 }: {
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
-  leafId: string;
+  leafId: MessageId;
 }): NaidanSysfsSymlinkEntry {
   const targetPath = createLeafSymlinkTarget({ chatId, format, leafId })
   return {
@@ -192,7 +194,7 @@ function createLeafMetadataEntry({
   format,
 }: {
   chat: Chat;
-  leafId: string;
+  leafId: MessageId;
   nodes: MessageNode[];
   format: NaidanSysfsBranchFormat;
 }): NaidanSysfsFileEntry {
@@ -224,7 +226,7 @@ function createLeafContentDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       for (const [index, node] of nodes.entries()) {
@@ -268,7 +270,7 @@ function createLeafDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       const extension = createFormatExtension({ format })
@@ -309,14 +311,14 @@ function createLeavesDirectoryEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,
@@ -326,7 +328,7 @@ function createLeavesDirectoryEntry({
     }): AsyncIterable<WeshDirEntry> {
       const chat = await loadSysfsChat({ context, chatId, path })
       for (const { leafId } of iterateLeafBranches({ chat })) {
-        yield { name: leafId, type: 'directory', fullPath: `${path}/${leafId}` }
+        yield { name: idToRaw({ id: leafId }), type: 'directory', fullPath: `${path}/${idToRaw({ id: leafId })}` }
       }
     },
     async getChild({
@@ -339,7 +341,7 @@ function createLeavesDirectoryEntry({
     }): Promise<NaidanSysfsEntry | undefined> {
       const chat = await loadSysfsChat({ context, chatId, path: parentPath })
       for (const leafBranch of iterateLeafBranches({ chat })) {
-        if (leafBranch.leafId === name) {
+        if (idToRaw({ id: leafBranch.leafId }) === name) {
           return createLeafDirectoryEntry({ chat, leafBranch, format })
         }
       }
@@ -354,7 +356,7 @@ function createCurrentBranchSymlinkEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
 }): NaidanSysfsSymlinkEntry {
   return {
@@ -388,7 +390,7 @@ function createTreeDirectoryEntry({
   nodes,
   sequenceStart,
 }: {
-  chatId: string;
+  chatId: ChatId;
   format: NaidanSysfsBranchFormat;
   nodes: MessageNode[];
   sequenceStart: number;
@@ -397,7 +399,7 @@ function createTreeDirectoryEntry({
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       const { chain, nextNodes } = collectLinearChain({ nodes })
@@ -474,13 +476,13 @@ export function createChatBranchesDirectoryEntry({
   chatId,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       yield { name: NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME, type: 'symlink', fullPath: `${path}/${NAIDAN_SYSFS_BRANCH_CURRENT_MARKDOWN_SYMLINK_NAME}` }

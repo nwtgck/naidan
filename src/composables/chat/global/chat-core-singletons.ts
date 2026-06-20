@@ -5,6 +5,7 @@ import { createChatRuntimeFacade } from './chat-runtime-facade';
 import { createChatRuntimeStore } from './chat-runtime-store';
 import { createChatVolatileState } from './chat-volatile-state';
 import { createContextCompactRuntime } from './context-compact-runtime';
+import type { ChatId } from '@/models/ids';
 import {
   chatTmpDirectories,
   clearChatTmpDirectories,
@@ -13,16 +14,16 @@ import {
   getChatTmpDirectory,
 } from './chat-tmp-directory-store';
 
-export const chatRuntimeStore = createChatRuntimeStore({});
-export const contextCompactRuntime = createContextCompactRuntime({});
-export const chatVolatileState = createChatVolatileState({});
+export const chatRuntimeStore = createChatRuntimeStore();
+export const contextCompactRuntime = createContextCompactRuntime();
+export const chatVolatileState = createChatVolatileState();
 export const availableModels = ref<string[]>([]);
 export const creatingChat = ref(false);
 
 export function isTaskRunning({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }) {
   return chatRuntimeStore.isTaskRunning({ chatId });
 }
@@ -30,7 +31,7 @@ export function isTaskRunning({
 export function isProcessing({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }) {
   return chatRuntimeStore.isProcessing({ chatId });
 }
@@ -39,7 +40,7 @@ export function setContextCompactProgress({
   chatId,
   progress,
 }: {
-  chatId: string;
+  chatId: ChatId;
   progress: ContextCompactProgress;
 }) {
   contextCompactRuntime.setProgress({ chatId, progress });
@@ -48,7 +49,7 @@ export function setContextCompactProgress({
 export function getContextCompactProgress({
   chatId,
 }: {
-  chatId: string | undefined;
+  chatId: ChatId | undefined;
 }): ContextCompactProgress {
   return contextCompactRuntime.getProgress({ chatId });
 }
@@ -66,11 +67,11 @@ export const chatDataStore = createChatDataStore({
   onExternalGenerationAbortRequest: ({ chatId }) => {
     chatRuntimeStore.getActiveGeneration({ chatId })?.controller.abort();
   },
-  onMigration: (_args) => {
+  onMigration: () => {
     for (const item of chatRuntimeStore.activeGenerations.values()) item.controller.abort();
-    chatRuntimeStore.clearActiveGenerations({});
-    chatRuntimeStore.clearActiveTaskCounts({});
-    clearChatTmpDirectories({});
+    chatRuntimeStore.clearActiveGenerations();
+    chatRuntimeStore.clearActiveTaskCounts();
+    clearChatTmpDirectories();
   },
 });
 
@@ -86,11 +87,12 @@ export const getReadonlyChat = chatDataStore.getReadonlyChat;
 export const loadData = chatDataStore.loadData;
 export const updateChatContent = chatDataStore.updateChatContent;
 export const updateChatMeta = chatDataStore.updateChatMeta;
+export const updateChatScopedSettings = chatDataStore.updateChatScopedSettings;
 
 export function getChatTargetByOptionalId({
   chatId,
 }: {
-  chatId: string | undefined;
+  chatId: ChatId | undefined;
 }) {
   if (chatId === undefined) {
     return null;
@@ -102,7 +104,7 @@ export function getChatTargetByOptionalId({
 export function triggerCurrentChat({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }) {
   if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
     triggerRef(currentChatRef);

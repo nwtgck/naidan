@@ -8,6 +8,8 @@ import { useChatGroups } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
+import { idToRaw, toChatGroupId, toProviderProfileId, toVolumeId } from '@/models/ids';
+import { applyScopedSettingChangesToChatGroup } from '@/utils/scoped-setting-changes';
 
 const mocks = vi.hoisted(() => ({
   addMountToChatGroup: vi.fn().mockResolvedValue(undefined),
@@ -22,7 +24,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 const mockGroup = reactive<ChatGroup>({
-  id: 'g1',
+  id: toChatGroupId({ raw: 'g1' }),
   name: 'Test Group',
   items: [],
   updatedAt: 0,
@@ -32,6 +34,8 @@ const mockGroup = reactive<ChatGroup>({
   systemPrompt: undefined,
   lmParameters: undefined,
 });
+
+const mockCurrentGroup = ref<ChatGroup>(mockGroup);
 
 const mockSettings = reactive<Settings>({
   endpointType: 'openai',
@@ -105,7 +109,11 @@ vi.mock('../composables/useSettings', () => ({
 
 const globalStubs = {
   'lucide-vue-next': true,
-  'LmParametersEditor': true,
+  'LmParametersEditor': {
+    name: 'LmParametersEditor',
+    template: '<div data-testid="lm-parameters-editor-mock"></div>',
+    props: ['modelValue'],
+  },
   'TransformersJsUpsell': {
     name: 'TransformersJsUpsell',
     template: '<div data-testid="upsell-stub"></div>',
@@ -133,17 +141,17 @@ vi.mock('../composables/useGlobalSearch', () => ({
 describe('ChatGroupSettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.updateChatGroup.mockImplementation(async (groupId: string, updater: (current: ChatGroup | null) => ChatGroup) => {
-      if (mockGroup.id === groupId) {
-        const next = updater(mockGroup);
-        mockUpdateChatGroupMetadata(next);
+    mocks.updateChatGroup.mockImplementation(async ({ id, updater }: { id: string; updater: ({ current }: { current: ChatGroup | null }) => ChatGroup }) => {
+      if (idToRaw({ id: mockGroup.id }) === id) {
+        const next = updater({ current: mockGroup });
+        mockUpdateChatGroupMetadata({ id, updates: next });
         Object.assign(mockGroup, next);
       }
     });
     vi.mocked(useCurrentChatState).mockReturnValue({
       currentChatId: computed(() => undefined),
       currentChat: computed(() => null),
-      currentChatGroup: computed(() => mockGroup),
+      currentChatGroup: computed(() => mockCurrentGroup.value),
       activeMessages: computed(() => []),
       allMessages: computed(() => []),
       resolvedSettings: computed(() => null),
@@ -183,6 +191,50 @@ describe('ChatGroupSettingsPanel.vue', () => {
     });
     vi.mocked(useChatGroups).mockReturnValue({
       updateChatGroupMetadata: async ({ chatGroupId, updates }) => {
+        await mockUpdateChatGroupMetadata({ id: chatGroupId, updates });
+      },
+      updateScopedSettings: async ({ chatGroupId, changes }) => {
+        const current = mockCurrentGroup.value.id === chatGroupId
+          ? mockCurrentGroup.value
+          : { id: chatGroupId } as ChatGroup;
+        const updated = applyScopedSettingChangesToChatGroup({
+          current,
+          changes,
+          updatedAt: Date.now(),
+        });
+        const updates: Partial<ChatGroup> = {};
+        for (const change of changes) {
+          switch (change.field) {
+          case 'endpoint':
+            updates.endpoint = updated.endpoint;
+            break;
+          case 'model_id':
+            updates.modelId = updated.modelId;
+            break;
+          case 'auto_title_enabled':
+            updates.autoTitleEnabled = updated.autoTitleEnabled;
+            break;
+          case 'title_model_id':
+            updates.titleModelId = updated.titleModelId;
+            break;
+          case 'system_prompt':
+            updates.systemPrompt = updated.systemPrompt;
+            break;
+          case 'lm_param_temperature':
+          case 'lm_param_top_p':
+          case 'lm_param_max_completion_tokens':
+          case 'lm_param_presence_penalty':
+          case 'lm_param_frequency_penalty':
+          case 'lm_param_stop':
+          case 'lm_param_reasoning_effort':
+            updates.lmParameters = updated.lmParameters;
+            break;
+          default: {
+            const _ex: never = change;
+            throw new Error(`Unhandled test change: ${String(_ex)}`);
+          }
+          }
+        }
         mockUpdateChatGroupMetadata({ id: chatGroupId, updates });
       },
       moveChatToGroup: vi.fn(),
@@ -199,9 +251,11 @@ describe('ChatGroupSettingsPanel.vue', () => {
       lmParameters: { reasoning: { effort: undefined } },
       mounts: undefined,
     });
+    mockCurrentGroup.value = mockGroup;
     // Default global settings
     mockSettings.endpointType = 'openai';
     mockSettings.endpointUrl = 'http://global-url';
+    mockSettings.providerProfiles = [];
   });
 
   it('shows detailed error message when refresh fails', async () => {
@@ -270,7 +324,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expectLatestGroupUpdate({
       partial: {
-        id: 'g1',
+        id: toChatGroupId({ raw: 'g1' }),
         endpoint: expect.objectContaining({ type: 'ollama' }) as ChatGroup['endpoint'],
       },
     });
@@ -278,6 +332,55 @@ describe('ChatGroupSettingsPanel.vue', () => {
     await nextTick();
     // Now local endpoint is set, so URL input should exist
     expect(wrapper.find('[data-testid="group-setting-url-input"]').exists()).toBe(true);
+  });
+
+  it('removes_HTTP_fields_when_applying_a_transformers_js_profile', async () => {
+    mockSettings.providerProfiles = [{
+      id: toProviderProfileId({ raw: 'p-transformers' }),
+      name: 'Transformers.js Profile',
+      endpointType: 'transformers_js',
+      endpointUrl: 'http://stale.test/v1',
+      endpointHttpHeaders: [['Authorization', 'Bearer stale']],
+    }];
+    mockGroup.endpoint = {
+      type: 'openai',
+      url: 'http://old.test/v1',
+      httpHeaders: [['X-Old', 'value']],
+    };
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const profileSelect = wrapper.find('select');
+    await profileSelect.setValue('p-transformers');
+    await profileSelect.trigger('change');
+    await flushPromises();
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        endpoint: { type: 'transformers_js' },
+      },
+    });
+  });
+
+  it('removes_the_atomic_endpoint_override_when_switching_to_global', async () => {
+    mockGroup.endpoint = {
+      type: 'openai',
+      url: 'http://example.test/v1',
+      httpHeaders: [['Authorization', 'Bearer token']],
+    };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+
+    await wrapper.get('[data-testid="group-setting-endpoint-type-select"]').setValue('global');
+    await flushPromises();
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        endpoint: undefined,
+      },
+    });
   });
 
   it('hides endpoint URL when effective type is transformers_js', async () => {
@@ -320,7 +423,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expectLatestGroupUpdate({
       partial: {
-        id: 'g1',
+        id: toChatGroupId({ raw: 'g1' }),
         systemPrompt: expect.objectContaining({ behavior: 'append' }) as ChatGroup['systemPrompt'],
       },
     });
@@ -331,10 +434,96 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expectLatestGroupUpdate({
       partial: {
-        id: 'g1',
+        id: toChatGroupId({ raw: 'g1' }),
         systemPrompt: expect.objectContaining({ behavior: 'override' }) as ChatGroup['systemPrompt'],
       },
     });
+  });
+
+  it('saves pending settings to the previous group when the current group changes', async () => {
+    mockGroup.endpoint = {
+      type: 'openai',
+      url: 'http://group-a',
+    };
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+    mockUpdateChatGroupMetadata.mockClear();
+
+    const urlInput = wrapper.get('[data-testid="group-setting-url-input"]');
+    await urlInput.setValue('http://group-a-edited');
+
+    mockCurrentGroup.value = reactive<ChatGroup>({
+      id: toChatGroupId({ raw: 'g2' }),
+      name: 'Second Group',
+      items: [],
+      updatedAt: 0,
+      isCollapsed: false,
+      endpoint: {
+        type: 'openai',
+        url: 'http://group-b',
+      },
+      modelId: undefined,
+      autoTitleEnabled: undefined,
+      titleModelId: undefined,
+      systemPrompt: undefined,
+      lmParameters: undefined,
+    });
+    await nextTick();
+    await flushPromises();
+
+    expectLatestGroupUpdate({
+      partial: {
+        id: toChatGroupId({ raw: 'g1' }),
+        endpoint: expect.objectContaining({
+          url: 'http://group-a-edited',
+        }) as ChatGroup['endpoint'],
+      },
+    });
+  });
+
+  it('preserves a dirty LM parameter while synchronizing another parameter externally', async () => {
+    let resolveSave: (() => void) | undefined;
+    const pendingSave = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    vi.mocked(useChatGroups).mockReturnValue({
+      updateChatGroupMetadata: vi.fn(),
+      updateScopedSettings: vi.fn(async () => await pendingSave),
+      moveChatToGroup: vi.fn(),
+      TEST_ONLY: {},
+    });
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await nextTick();
+
+    const editor = wrapper.getComponent({ name: 'LmParametersEditor' });
+    editor.vm.$emit('update:modelValue', {
+      temperature: 0.8,
+      reasoning: { effort: undefined },
+    });
+    await nextTick();
+    expect(editor.props('modelValue')).toEqual(expect.objectContaining({
+      temperature: 0.8,
+    }));
+
+    mockGroup.lmParameters = {
+      temperature: undefined,
+      topP: undefined,
+      maxCompletionTokens: undefined,
+      presencePenalty: undefined,
+      frequencyPenalty: undefined,
+      stop: undefined,
+      reasoning: { effort: 'high' },
+    };
+    await nextTick();
+
+    expect(editor.props('modelValue')).toEqual(expect.objectContaining({
+      temperature: 0.8,
+      reasoning: { effort: 'high' },
+    }));
+
+    resolveSave?.();
+    await flushPromises();
   });
 
   it('clears system prompt override when clicking Inherit button', async () => {
@@ -354,7 +543,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expectLatestGroupUpdate({
       partial: {
-        id: 'g1',
+        id: toChatGroupId({ raw: 'g1' }),
         systemPrompt: undefined,
       },
     });
@@ -396,7 +585,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expectLatestGroupUpdate({
       partial: {
-        id: 'g1',
+        id: toChatGroupId({ raw: 'g1' }),
         systemPrompt: expect.objectContaining({ content: 'Custom prompt' }) as ChatGroup['systemPrompt'],
       },
     });
@@ -411,7 +600,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expectLatestGroupUpdate({
       partial: {
-        id: 'g1',
+        id: toChatGroupId({ raw: 'g1' }),
         modelId: undefined,
         systemPrompt: undefined,
       },
@@ -453,7 +642,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expectLatestGroupUpdate({
       partial: {
-        id: 'g1',
+        id: toChatGroupId({ raw: 'g1' }),
         modelId: undefined,
       },
     });
@@ -492,7 +681,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     expectLatestGroupUpdate({
       partial: {
-        id: 'g1',
+        id: toChatGroupId({ raw: 'g1' }),
         name: 'my-model:latest',
       },
     });
@@ -507,8 +696,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     it('renders mount badges for each active mount', async () => {
       mockGroup.mounts = [
-        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: false },
-        { type: 'volume', volumeId: 'vol-2', mountPath: '/home/user/docs', readOnly: true },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/work', readOnly: false },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-2' }), mountPath: '/home/user/docs', readOnly: true },
       ];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
@@ -520,7 +709,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     it('trims /home/user/ prefix from displayed mount path', async () => {
       mockGroup.mounts = [
-        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/my-project', readOnly: false },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/my-project', readOnly: false },
       ];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
@@ -531,7 +720,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     it('calls removeMountFromChatGroup when remove button is clicked', async () => {
       mockGroup.mounts = [
-        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: false },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/work', readOnly: false },
       ];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
@@ -544,7 +733,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
 
     it('calls updateChatGroupMount toggling readOnly when lock button is clicked', async () => {
       mockGroup.mounts = [
-        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: false },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/work', readOnly: false },
       ];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
@@ -579,7 +768,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       const handle = { kind: 'directory', name: 'work' } as unknown as FileSystemDirectoryHandle;
       mocks.getVolumeDirectoryHandle.mockResolvedValue(handle);
       mockGroup.mounts = [
-        { type: 'volume', volumeId: 'vol-1', mountPath: '/home/user/work', readOnly: false },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/home/user/work', readOnly: false },
       ];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();
@@ -600,8 +789,8 @@ describe('ChatGroupSettingsPanel.vue', () => {
       const handle = { kind: 'directory', name: 'docs' } as unknown as FileSystemDirectoryHandle;
       mocks.getVolumeDirectoryHandle.mockResolvedValue(handle);
       mockGroup.mounts = [
-        { type: 'volume', volumeId: 'vol-A', mountPath: '/home/user/alpha', readOnly: true },
-        { type: 'volume', volumeId: 'vol-B', mountPath: '/home/user/beta', readOnly: false },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-A' }), mountPath: '/home/user/alpha', readOnly: true },
+        { type: 'volume', volumeId: toVolumeId({ raw: 'vol-B' }), mountPath: '/home/user/beta', readOnly: false },
       ];
       const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
       await nextTick();

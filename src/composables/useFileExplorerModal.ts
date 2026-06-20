@@ -1,6 +1,7 @@
 import { ref, shallowRef } from 'vue';
 import type { WeshMount } from '@/services/wesh/types';
 import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
+import { mapWeshMountsToWorkerMounts } from '@/services/wesh/worker/types';
 
 export type FileExplorerModalOptions =
   | { kind: 'opfs-root' }
@@ -42,7 +43,7 @@ export function mapFileExplorerModalOptionsToRootDescriptor({
     return {
       kind: 'wesh-mounts',
       rootName: options.rootName,
-      mounts: options.mounts,
+      mounts: mapWeshMountsToWorkerMounts({ mounts: options.mounts }),
     };
   default: {
     const _exhaustiveCheck: never = options;

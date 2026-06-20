@@ -3,15 +3,16 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import type { Chat, ChatGroup } from '@/models/types';
+import { toChatGroupId, toChatId } from '@/models/ids';
 
 function makeChat(overrides: Partial<Chat> = {}): Chat {
   return {
-    id: 'chat-1',
+    id: toChatId({ raw: 'chat-1' }),
     title: 'Header Chat',
     root: { items: [] },
     currentLeafId: undefined,
     debugEnabled: false,
-    groupId: 'group-1',
+    groupId: toChatGroupId({ raw: 'group-1' }),
     createdAt: 1,
     updatedAt: 2,
     ...overrides,
@@ -20,7 +21,7 @@ function makeChat(overrides: Partial<Chat> = {}): Chat {
 
 function makeGroup(overrides: Partial<ChatGroup> = {}): ChatGroup {
   return {
-    id: 'group-1',
+    id: toChatGroupId({ raw: 'group-1' }),
     name: 'Research',
     isCollapsed: false,
     items: [],
@@ -113,7 +114,7 @@ describe('ChatPaneHeader', () => {
   it('emits move-to-group from the move menu', async () => {
     const wrapper = mountHeader({
       chat: makeChat(),
-      groups: [makeGroup(), makeGroup({ id: 'group-2', name: 'Archive' })],
+      groups: [makeGroup(), makeGroup({ id: toChatGroupId({ raw: 'group-2' }), name: 'Archive' })],
     });
 
     await wrapper.find('[data-testid="move-to-group-button"]').trigger('click');

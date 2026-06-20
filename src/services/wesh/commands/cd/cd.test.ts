@@ -11,7 +11,7 @@ describe('wesh cd', () => {
   let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });
@@ -85,6 +85,25 @@ describe('wesh cd', () => {
 `);
     expect(dashed.stderr.text).toBe('');
     expect(dashed.result.exitCode).toBe(0);
+  });
+
+
+  it('changes to HOME when no path is provided', async () => {
+    await makeDir({ path: 'home/user' });
+    await makeDir({ path: 'work' });
+
+    const home = await execute({
+      script: `\
+HOME=/home/user
+cd work
+cd
+pwd
+`,
+    });
+
+    expect(home.stdout.text).toBe('/home/user\n');
+    expect(home.stderr.text).toBe('');
+    expect(home.result.exitCode).toBe(0);
   });
 
   it('prints help and rejects usage errors', async () => {

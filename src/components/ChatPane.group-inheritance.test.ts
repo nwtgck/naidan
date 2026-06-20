@@ -1,3 +1,5 @@
+import type { ChatId, MessageId } from '@/models/ids';
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, reactive, nextTick, computed } from 'vue';
@@ -101,16 +103,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -266,7 +268,7 @@ describe('ChatPane Group Inheritance UI', () => {
     setupScrollToMock();
     vi.clearAllMocks();
     mockCurrentChat.value = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Test Chat',
       modelId: undefined, // Inheriting
       groupId: null,
@@ -373,7 +375,7 @@ describe('ChatPane Group Inheritance UI', () => {
   it('should pass inherited reasoning effort to sendMessage when not overridden at chat level', async () => {
     const mockSendMessage = vi.fn().mockResolvedValue(true);
     // Use an inline spy to verify sendMessage arguments
-    vi.spyOn(await import('../composables/useChat'), 'useChat').mockReturnValue({
+    vi.spyOn(await import('@/composables/useChat'), 'useChat').mockReturnValue({
       currentChat: mockCurrentChat,
       chatGroups: mockChatGroups,
       resolvedSettings: mockResolvedSettings,

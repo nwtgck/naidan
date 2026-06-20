@@ -1,12 +1,14 @@
+import { idToRaw, toChatId } from '@/models/ids'
+import type { ChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry } from '@/services/wesh/naidan-sysfs/types'
 import { createChatDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-export async function listVisibleChatIds({ context }: { context: NaidanSysfsContext }): Promise<string[]> {
+export async function listVisibleChatIds({ context }: { context: NaidanSysfsContext }): Promise<ChatId[]> {
   switch (context.visibility) {
   case 'current_chat_only':
     return [context.currentChatId]
@@ -23,8 +25,8 @@ export async function listVisibleChatIds({ context }: { context: NaidanSysfsCont
       ...chatGroup.items.map(item => item.chat.id),
     ]))
   }
-  case 'all_chats':
-    return (await context.reader.listChats({})).map(chat => chat.id)
+  case 'main_chats':
+    return (await context.reader.listChats()).map(chat => chat.id)
   default: {
     const _ex: never = context.visibility
     throw new Error(`Unhandled visibility: ${String(_ex)}`)
@@ -32,12 +34,12 @@ export async function listVisibleChatIds({ context }: { context: NaidanSysfsCont
   }
 }
 
-export function createChatsDirectoryEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
+export function createChatsDirectoryEntry(): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,
@@ -48,9 +50,9 @@ export function createChatsDirectoryEntry(_args: Record<never, never>): NaidanSy
     }): AsyncIterable<WeshDirEntry> {
       for (const chatId of await listVisibleChatIds({ context })) {
         yield {
-          name: chatId,
+          name: idToRaw({ id: chatId }),
           type: 'directory',
-          fullPath: `${path}/${chatId}`,
+          fullPath: `${path}/${idToRaw({ id: chatId })}`,
         }
       }
     },
@@ -65,10 +67,10 @@ export function createChatsDirectoryEntry(_args: Record<never, never>): NaidanSy
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
       const visibleIds = await listVisibleChatIds({ context })
-      if (!visibleIds.includes(name)) {
+      if (!visibleIds.includes(toChatId({ raw: name }))) {
         return undefined
       }
-      return createChatDirectoryEntry({ context, chatId: name })
+      return createChatDirectoryEntry({ context, chatId: toChatId({ raw: name }) })
     },
   }
 }

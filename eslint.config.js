@@ -2,7 +2,6 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
-import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-init.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
@@ -10,6 +9,14 @@ import requireTestOnlyExport from './eslint-local-rules/require-test-only-export
 import requireDefineExposeTestOnly from './eslint-local-rules/require-define-expose-test-only.js';
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
+import requireNamedArgs from './eslint-local-rules/require-named-args.js';
+import noRawVHtml from './eslint-local-rules/no-raw-v-html.js';
+import noAllowedHtmlCast from './eslint-local-rules/no-allowed-html-cast.js';
+import noNaidanIdCast from './eslint-local-rules/no-naidan-id-cast.js';
+import noInvalidAllowedHtmlTemplate from './eslint-local-rules/no-invalid-allowed-html-template.js';
+import noRawDompurify from './eslint-local-rules/no-raw-dompurify.js';
+import noXssProneBrowserApis from './eslint-local-rules/no-xss-prone-browser-apis.js';
+import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-imports.js';
 
 // TODO: Re-enable this full ESLint configuration once underlying issues are resolved or project stability allows for stricter enforcement.
 // export default tseslint.config(
@@ -76,9 +83,6 @@ export default tseslint.config(
   ...pluginVue.configs['flat/essential'],
   {
     files: ['**/*.ts', '**/*.vue'],
-    plugins: {
-      'no-relative-import-paths': noRelativeImportPaths,
-    },
     languageOptions: {
       parserOptions: {
         parser: tseslint.parser,
@@ -97,6 +101,18 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/restrict-template-expressions': ['error', {
+        allowNever: true,
+        allowAny: false,
+        allowBoolean: true,
+        allowNullish: true,
+        allowNumber: true,
+        allowRegExp: false,
+      }],
+      // ESLint 10 adds stricter recommended rules. Keep this major-version
+      // migration focused on tooling compatibility; tighten these separately.
+      'no-useless-assignment': 'off',
+      'preserve-caught-error': 'off',
       // '@typescript-eslint/no-unused-vars': ['error', { 
       //   argsIgnorePattern: '^_',
       //   varsIgnorePattern: '^_',
@@ -114,10 +130,6 @@ export default tseslint.config(
       'indent': ['warn', 2],
       'brace-style': ['warn', '1tbs', { allowSingleLine: false }],
       'no-trailing-spaces': 'error',
-      'no-relative-import-paths/no-relative-import-paths': [
-        'error',
-        { allowSameFolder: true, rootDir: 'src', prefix: '@' }
-      ],
       // Prevents components (like icons) from disappearing silently due to missing imports.
       // Without this, build succeeds but the component fails to render at runtime.
       'vue/no-undef-components': ['error', {
@@ -187,6 +199,14 @@ export default tseslint.config(
   requireDefineExposeTestOnly,
   requireIconSuffix,
   requireWorkerClientFacade,
+  requireNamedArgs,
+  noRawVHtml,
+  noAllowedHtmlCast,
+  noNaidanIdCast,
+  noInvalidAllowedHtmlTemplate,
+  noRawDompurify,
+  noXssProneBrowserApis,
+  preferRootAliasImports,
   {
     files: ['**/*.test.ts'],
     languageOptions: {

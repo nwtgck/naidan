@@ -20,11 +20,11 @@ export class CalculatorTool implements Tool {
   }: {
     args: unknown;
     signal?: AbortSignal;
-    onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
     approvalContext?: ToolApprovalContext;
   }): Promise<
     | { status: 'success'; content: string }
-    | { status: 'error'; code: import('../types').ToolExecutionErrorCode; message: string }
+    | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string }
   > {
     try {
       if (signal?.aborted) throw new Error('Generation aborted');
@@ -35,7 +35,7 @@ export class CalculatorTool implements Tool {
         content: String(result),
       };
     } catch (error) {
-      // Calculation errors should be communicated to the LLM.
+      // Calculation errors should be communicated to the LM.
       return {
         status: 'error',
         code: 'execution_failed',

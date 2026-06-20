@@ -4,6 +4,7 @@ import Sidebar from './Sidebar.vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import { ref, computed, nextTick, reactive } from 'vue';
 import type { ChatGroup, ChatSummary, SidebarItem } from '@/models/types';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
@@ -13,10 +14,10 @@ const mockOpenChatGroup = vi.fn(({ id }: { id: string | null }) => {
   if (id === null) {
     mockCurrentChatGroup.value = null; return;
   }
-  const group = mockChatGroups.value.find(g => g.id === id);
+  const group = mockChatGroups.value.find(g => idToRaw({ id: g.id }) === id);
   if (group) mockCurrentChatGroup.value = group;
 });
-const mockOpenChat = vi.fn((_args?: { id: string }) => {
+const mockOpenChat = vi.fn(() => {
   mockCurrentChatGroup.value = null;
 });
 const mockSetChatGroupCollapsed = vi.fn();
@@ -31,8 +32,8 @@ vi.mock('../composables/useChat', () => ({
     chats: mockChats,
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${idToRaw({ id: g.id })}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${idToRaw({ id: c.id })}`, type: 'chat', chat: c }));
       return items;
     }),
     loadChats: vi.fn(),
@@ -64,8 +65,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
     chatGroups: computed(() => mockChatGroups.value),
     sidebarItems: computed<SidebarItem[]>(() => {
       const items: SidebarItem[] = [];
-      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${g.id}`, type: 'chat_group', chatGroup: g }));
-      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${c.id}`, type: 'chat', chat: c }));
+      mockChatGroups.value.forEach(g => items.push({ id: `chat_group:${idToRaw({ id: g.id })}`, type: 'chat_group', chatGroup: g }));
+      mockChats.value.filter(c => !c.groupId).forEach(c => items.push({ id: `chat:${idToRaw({ id: c.id })}`, type: 'chat', chat: c }));
       return items;
     }),
     TEST_ONLY: {},
@@ -75,7 +76,8 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 vi.mock('../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: () => ({
     openChat: ({ chatId }: { chatId: string; leafId?: string }) => {
-      mockOpenChat({ id: chatId });
+      void chatId;
+      mockOpenChat();
     },
     openChatAtMessage: vi.fn(),
     openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
@@ -157,7 +159,7 @@ describe('Sidebar Group Overrides', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockChatGroups.value = [
-      { id: 'g1', name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
     ];
     mockChats.value = [];
     mockCurrentChatGroup.value = null;
@@ -213,7 +215,7 @@ describe('Sidebar Group Overrides', () => {
   });
 
   it('clears currentChatGroup when a chat item is clicked', async () => {
-    mockChats.value = [{ id: 'c1', title: 'Chat 1', updatedAt: 0 }];
+    mockChats.value = [{ id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 }];
     mockCurrentChatGroup.value = mockChatGroups.value[0]!;
     mockCurrentChat.value = { id: 'c1' };
 

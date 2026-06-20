@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
 import ChatWeshTerminalModal from './ChatWeshTerminalModal.vue';
+import { toChatGroupId, toChatId, toVolumeId } from '@/models/ids';
 
 const mocks = vi.hoisted(() => ({
   startExecution: vi.fn().mockResolvedValue({ executionId: 'exec-1' }),
@@ -17,9 +18,7 @@ const mocks = vi.hoisted(() => ({
   ensureChatTmpDirectory: vi.fn(),
   settingsValue: {
     storageType: 'opfs' as 'opfs' | 'local' | 'memory',
-    mounts: [
-      { type: 'volume', volumeId: 'global-vol', mountPath: '/home/user/global', readOnly: true },
-    ],
+    mounts: [] as Array<{ type: 'volume'; volumeId: unknown; mountPath: string; readOnly: boolean }>,
   },
 }));
 
@@ -58,6 +57,14 @@ vi.mock('lucide-vue-next', () => ({
   PlusIcon: { template: '<span>Plus</span>' },
 }));
 
+function createDirectoryHandleMock({ name }: { name: string }): FileSystemDirectoryHandle {
+  const handle = {
+    name,
+    getDirectoryHandle: vi.fn(async (childName: string) => createDirectoryHandleMock({ name: childName })),
+  } as unknown as FileSystemDirectoryHandle;
+  return handle;
+}
+
 describe('ChatWeshTerminalModal', () => {
   const tmpHandle = { name: 'tmp' } as unknown as FileSystemDirectoryHandle;
 
@@ -65,7 +72,7 @@ describe('ChatWeshTerminalModal', () => {
     vi.clearAllMocks();
     mocks.settingsValue.storageType = 'opfs';
     mocks.settingsValue.mounts = [
-      { type: 'volume', volumeId: 'global-vol', mountPath: '/home/user/global', readOnly: true },
+      { type: 'volume', volumeId: toVolumeId({ raw: 'global-vol' }), mountPath: '/home/user/global', readOnly: true },
     ];
     mocks.showConfirm.mockResolvedValue(true);
     mocks.ensureChatTmpDirectory.mockResolvedValue({ handle: tmpHandle, mountPath: '/tmp' });
@@ -76,14 +83,9 @@ describe('ChatWeshTerminalModal', () => {
       disposeExecution: mocks.disposeExecution,
       dispose: mocks.dispose,
     });
-    const globalRoot = {
-      name: 'global-root',
-      getDirectoryHandle: vi.fn(),
-    } as unknown as FileSystemDirectoryHandle;
-    const terminalRoot = {
-      name: 'naidan-chat-wesh',
-      getDirectoryHandle: vi.fn().mockResolvedValue(globalRoot),
-    } as unknown as FileSystemDirectoryHandle;
+    const globalRoot = createDirectoryHandleMock({ name: 'global-root' });
+    const terminalRoot = createDirectoryHandleMock({ name: 'naidan-chat-wesh' });
+    vi.mocked(terminalRoot.getDirectoryHandle).mockResolvedValue(globalRoot);
     mocks.getDirectory.mockResolvedValue({
       getDirectoryHandle: vi.fn().mockResolvedValue(terminalRoot),
     });
@@ -96,7 +98,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('creates a session with /tmp, global, and chat mounts', async () => {
     const chatMounts = [
-      { type: 'volume' as const, volumeId: 'chat-vol', mountPath: '/home/user/chat', readOnly: false },
+      { type: 'volume' as const, volumeId: toVolumeId({ raw: 'chat-vol' }), mountPath: '/home/user/chat', readOnly: false },
     ];
 
     mount(ChatWeshTerminalModal, {
@@ -104,21 +106,21 @@ describe('ChatWeshTerminalModal', () => {
         isOpen: true,
         chatMounts,
         chatGroupMounts: undefined,
-        chatId: 'chat-1',
-        chatGroupId: 'chat-group-1',
-        naidanSysfsVisibility: 'all_chats',
+        chatId: toChatId({ raw: 'chat-1' }),
+        chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+        naidanSysfsAccessScope: 'main_chats',
       },
     });
     await flushPromises();
 
-    expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: 'chat-1' });
+    expect(mocks.ensureChatTmpDirectory).toHaveBeenCalledWith({ chatId: toChatId({ raw: 'chat-1' }) });
     expect(mocks.createClient).toHaveBeenCalledWith(expect.objectContaining({
       mounts: expect.arrayContaining([
         expect.objectContaining({ path: '/tmp', handle: tmpHandle, readOnly: false }),
         expect.objectContaining({
           type: 'naidan_sysfs',
           path: '/sys/fs/naidan',
-          visibility: 'all_chats',
+          visibility: 'main_chats',
           currentChatId: 'chat-1',
           currentChatGroupId: 'chat-group-1',
         }),
@@ -126,14 +128,14 @@ describe('ChatWeshTerminalModal', () => {
         expect.objectContaining({ path: '/home/user/chat', readOnly: false }),
       ]),
       user: 'user',
-      initialEnv: { HOME: '/home/user' },
+      initialEnv: { HOME: '/home/user', TMPDIR: '/tmp' },
       initialCwd: '/home/user',
     }));
   });
 
   it('does not call ensureChatTmpDirectory when chatId is undefined', async () => {
     mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsAccessScope: 'none' },
     });
     await flushPromises();
 
@@ -148,9 +150,9 @@ describe('ChatWeshTerminalModal', () => {
         isOpen: true,
         chatMounts: [],
         chatGroupMounts: undefined,
-        chatId: 'chat-1',
-        chatGroupId: 'chat-group-1',
-        naidanSysfsVisibility: 'current_chat_only',
+        chatId: toChatId({ raw: 'chat-1' }),
+        chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+        naidanSysfsAccessScope: 'current_chat_only',
       },
     });
     await flushPromises();
@@ -174,7 +176,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('shows session tab and new session button when open with no chat mounts', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsAccessScope: 'none' },
     });
     await flushPromises();
 
@@ -185,7 +187,7 @@ describe('ChatWeshTerminalModal', () => {
 
   it('asks for confirmation before closing a session', async () => {
     const wrapper = mount(ChatWeshTerminalModal, {
-      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsVisibility: 'none' },
+      props: { isOpen: true, chatMounts: [], chatGroupMounts: undefined, chatId: undefined, chatGroupId: undefined, naidanSysfsAccessScope: 'none' },
     });
     await flushPromises();
 

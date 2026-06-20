@@ -4,6 +4,7 @@ import { storageService } from '@/services/storage';
 import { reactive, nextTick } from 'vue';
 import type { Chat, ChatGroup, SidebarItem } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 // Mock storage
 const mockRootItems: SidebarItem[] = [];
@@ -16,8 +17,8 @@ vi.mock('../services/storage', () => ({
     loadChat: vi.fn(),
     saveChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater(null))),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: null }))),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     deleteChat: vi.fn(),
     updateChatGroup: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
@@ -44,11 +45,11 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-const mockLlmChat = vi.fn();
+const mockLmChat = vi.fn();
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
-      chat: mockLlmChat,
+      chat: mockLmChat,
       listModels: vi.fn().mockResolvedValue(['model-1', 'chat-model', 'group-model', 'group-special-model', 'global-model']),
     };
   },
@@ -57,7 +58,7 @@ vi.mock('../services/lm/openai', () => ({
 vi.mock('../services/lm/ollama', () => ({
   OllamaProvider: function() {
     return {
-      chat: mockLlmChat,
+      chat: mockLmChat,
       listModels: vi.fn().mockResolvedValue(['model-1', 'chat-model', 'group-model', 'group-special-model', 'global-model']),
     };
   },
@@ -68,14 +69,14 @@ describe('useChat Group Overrides Resolution', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    chatStore.TEST_ONLY.clearLiveChatRegistry({});
+    chatStore.TEST_ONLY.clearLiveChatRegistry();
     chatStore.rootItems.value = [];
     mockRootItems.length = 0;
   });
 
   it('resolves settings with Chat > Group > Global priority', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [],
       updatedAt: 0,
@@ -86,10 +87,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'chat-model',
       createdAt: 0,
       updatedAt: 0,
@@ -104,10 +105,10 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    // Verify the LLM was called with resolved settings
+    // Verify the LM was called with resolved settings
     // Resolved System Prompt: ["Group Prompt", "Chat Prompt"]
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: 'system', content: 'Group Prompt' }),
@@ -123,7 +124,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('resolves system prompt with nested overrides/appends correctly', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'Group 1',
       items: [],
       updatedAt: 0,
@@ -132,10 +133,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'base-model',
       createdAt: 0,
       updatedAt: 0,
@@ -151,7 +152,7 @@ describe('useChat Group Overrides Resolution', () => {
     // Global: "Global Prompt"
     // Group: Append "Group Instruction" -> ["Global Prompt", "Group Instruction"]
     // Chat: None -> Inherit from resolved Group
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.arrayContaining([
           expect.objectContaining({ role: 'system', content: 'Global Prompt' }),
@@ -167,7 +168,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('uses Group modelId if Chat override is missing', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'G',
       items: [],
       updatedAt: 0,
@@ -176,10 +177,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: '',
       createdAt: 0,
       updatedAt: 0,
@@ -192,7 +193,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'group-special-model',
@@ -204,20 +205,20 @@ describe('useChat Group Overrides Resolution', () => {
   });
 
   it('clears currentChatGroup when opening a chat or creating a new one', async () => {
-    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
+    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
 
     vi.mocked(storageService.loadChat).mockResolvedValue({ id: 'c1', title: 'C1' } as any);
     await chatStore.openChat({ id: 'c1' });
     expect(chatStore.currentChatGroup.value).toBeNull();
 
-    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: 'g1', name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
+    chatStore.TEST_ONLY.__testOnlySetCurrentChatGroup({ group: { id: toChatGroupId({ raw: 'g1' }), name: 'G1', items: [], updatedAt: 0, isCollapsed: false } });
     await chatStore.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
     expect(chatStore.currentChatGroup.value).toBeNull();
   });
 
   it('inherits endpoint URL and headers from Group if Chat overrides are missing', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'G',
       items: [],
       updatedAt: 0,
@@ -230,10 +231,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'some-model',
       createdAt: 0,
       updatedAt: 0,
@@ -246,7 +247,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),
@@ -260,14 +261,14 @@ describe('useChat Group Overrides Resolution', () => {
   it('merges LM parameters across all 3 levels (Chat > Group > Global)', async () => {
     // Global: temperature: 0.7
     const group: ChatGroup = {
-      id: 'g1', name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
       lmParameters: { ...EMPTY_LM_PARAMETERS, topP: 0.5, temperature: 0.9, reasoning: { effort: undefined } }, // Overrides Global temp
     };
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
@@ -281,7 +282,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),
@@ -298,14 +299,14 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('suppresses Global prompt when Group uses override behavior with empty content', async () => {
     const group: ChatGroup = {
-      id: 'g1', name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
       systemPrompt: { content: '', behavior: 'override' },
     };
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'm1',
       createdAt: 0,
       updatedAt: 0,
@@ -318,7 +319,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    const params = mockLlmChat.mock.calls[0]![0];
+    const params = mockLmChat.mock.calls[0]![0];
     const messages = params.messages;
     // Global "Global Prompt" should be gone. Only User message left.
     expect(messages.filter((m: any) => m.role === 'system')).toHaveLength(0);
@@ -326,27 +327,27 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('updates resolved settings dynamically when chat is moved to a group', async () => {
     const group: ChatGroup = {
-      id: 'g1', name: 'G', items: [], updatedAt: 0, isCollapsed: false,
+      id: toChatGroupId({ raw: 'g1' }), name: 'G', items: [], updatedAt: 0, isCollapsed: false,
       modelId: 'group-model',
     };
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
       groupId: null, // Initially no group
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: '', createdAt: 0, updatedAt: 0, debugEnabled: false,
     });
 
     chatStore.rootItems.value = [
       { id: 'chat_group:g1', type: 'chat_group', chatGroup: group },
-      { id: 'chat:c1', type: 'chat', chat: { id: 'c1', title: 'C', updatedAt: 0 } }
+      { id: 'chat:c1', type: 'chat', chat: { id: toChatId({ raw: 'c1' }), title: 'C', updatedAt: 0 } }
     ];
     mockRootItems.push(...chatStore.rootItems.value);
 
     // 1. Send message while Chat is NOT in group
     await chatStore.sendMessage({ content: 'Hi', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
-    expect(mockLlmChat).toHaveBeenLastCalledWith(
+    expect(mockLmChat).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'global-model',
@@ -357,13 +358,13 @@ describe('useChat Group Overrides Resolution', () => {
     );
 
     // 2. Move chat to group
-    chat.groupId = 'g1';
+    chat.groupId = toChatGroupId({ raw: 'g1' });
     await nextTick();
 
     await chatStore.sendMessage({ content: 'Hi again', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenLastCalledWith(
+    expect(mockLmChat).toHaveBeenLastCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: 'group-model',
@@ -376,7 +377,7 @@ describe('useChat Group Overrides Resolution', () => {
 
   it('inherits endpoint URL and headers from Group if Chat overrides are missing', async () => {
     const group: ChatGroup = {
-      id: 'g1',
+      id: toChatGroupId({ raw: 'g1' }),
       name: 'G',
       items: [],
       updatedAt: 0,
@@ -389,10 +390,10 @@ describe('useChat Group Overrides Resolution', () => {
     };
 
     const chat: Chat = reactive({
-      id: 'c1',
+      id: toChatId({ raw: 'c1' }),
       title: 'Chat 1',
-      groupId: 'g1',
-      root: { items: [{ id: 'm1', role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
+      groupId: toChatGroupId({ raw: 'g1' }),
+      root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'assistant', content: '', replies: { items: [] }, timestamp: 0, attachments: undefined, thinking: undefined, error: undefined, lmParameters: EMPTY_LM_PARAMETERS }] },
       modelId: 'some-model',
       createdAt: 0,
       updatedAt: 0,
@@ -405,7 +406,7 @@ describe('useChat Group Overrides Resolution', () => {
     await chatStore.sendMessage({ content: 'Hello', parentId: null, attachments: [], chatTarget: chat });
     await vi.waitUntil(() => !chatStore.streaming.value);
 
-    expect(mockLlmChat).toHaveBeenCalledWith(
+    expect(mockLmChat).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: expect.any(Array),
         model: expect.any(String),

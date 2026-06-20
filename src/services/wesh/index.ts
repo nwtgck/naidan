@@ -13,6 +13,10 @@ import type {
   WeshProcessSignalDisposition,
   WeshShellOption,
   WeshFileHandleCloseSemantics,
+  WeshShellStateSnapshot,
+  WeshCommandListEntry,
+  WeshDirEntry,
+  WeshEntryRef,
 } from './types';
 import { weshWaitStatusToExitCode } from './types';
 import { WeshVFS } from './vfs';
@@ -21,6 +25,7 @@ import { parseCommandLine } from './parser';
 import { createTextIoHelpers } from './utils/io';
 import { normalizePath, resolvePath } from './path';
 import { createWriteHandleFromStream } from './utils/stream';
+import { WeshOverlayMap } from './utils/overlay-map';
 
 import { builtinCommands } from './commands';
 import { helpCommandDefinition } from './commands/help';
@@ -104,23 +109,23 @@ class StaticTextFileHandle implements WeshFileHandle {
     this.mode = mode;
   }
 
-  async read(options: {
+  async read({ buffer, offset, length: requestedLength, position }: {
     buffer: Uint8Array;
     offset?: number;
     length?: number;
     position?: number;
   }): Promise<{ bytesRead: number }> {
-    const bufferOffset = options.offset ?? 0;
-    const length = options.length ?? (options.buffer.length - bufferOffset);
-    const start = options.position ?? this.position;
+    const bufferOffset = offset ?? 0;
+    const length = requestedLength ?? (buffer.length - bufferOffset);
+    const start = position ?? this.position;
     if (start >= this.bytes.length) {
       return { bytesRead: 0 };
     }
 
     const end = Math.min(start + length, this.bytes.length);
     const slice = this.bytes.subarray(start, end);
-    options.buffer.set(slice, bufferOffset);
-    if (options.position === undefined) {
+    buffer.set(slice, bufferOffset);
+    if (position === undefined) {
       this.position = end;
     }
     return { bytesRead: slice.length };
@@ -180,21 +185,23 @@ class SharedFileHandle implements WeshFileHandle {
     });
   }
 
-  async read(options: {
+  async read({ buffer, offset, length, position }: {
     buffer: Uint8Array;
     offset?: number;
     length?: number;
     position?: number;
   }): Promise<{ bytesRead: number }> {
+    const options = { buffer, offset, length, position };
     return this.state.handle.read(options);
   }
 
-  async write(options: {
+  async write({ buffer, offset, length, position }: {
     buffer: Uint8Array;
     offset?: number;
     length?: number;
     position?: number;
   }): Promise<{ bytesWritten: number }> {
+    const options = { buffer, offset, length, position };
     return this.state.handle.write(options);
   }
 
@@ -214,11 +221,13 @@ class SharedFileHandle implements WeshFileHandle {
     return this.state.handle.stat();
   }
 
-  async truncate(options: { size: number }): Promise<void> {
+  async truncate({ size }: { size: number }): Promise<void> {
+    const options = { size };
     await this.state.handle.truncate(options);
   }
 
-  async ioctl(options: { request: number; arg?: unknown }): Promise<{ ret: number }> {
+  async ioctl({ request, arg }: { request: number; arg?: unknown }): Promise<{ ret: number }> {
+    const options = { request, arg };
     return this.state.handle.ioctl(options);
   }
 
@@ -338,14 +347,14 @@ export class Wesh {
       }),
     });
 
-    this.registerInternalCommand('jobs', async ({ context }) => {
+    this.registerInternalCommand({ name: 'jobs', fn: async ({ context }) => {
       const jobs = context.getJobs();
       const { print } = context.text();
       for (const job of jobs) {
         await print({ text: `[${job.id}] ${job.status} ${job.command}\n` });
       }
       return { exitCode: 0 };
-    });
+    } });
   }
 
   async init(): Promise<void> {
@@ -362,7 +371,40 @@ export class Wesh {
     this.commands.set(definition.meta.name, definition);
   }
 
-  async signalForegroundProcessGroup(options: { signal: number }): Promise<boolean> {
+  getShellState(): WeshShellStateSnapshot {
+    return {
+      cwd: this.cwd,
+      env: Object.fromEntries(this.env.entries()),
+    };
+  }
+
+  listCommands(): WeshCommandListEntry[] {
+    return [
+      ...Array.from(this.commands.values()).map((definition): WeshCommandListEntry => ({
+        name: definition.meta.name,
+        kind: 'builtin',
+        description: definition.meta.description,
+        usage: definition.meta.usage,
+      })),
+      ...Array.from(this.aliases.entries()).map(([name, value]): WeshCommandListEntry => ({
+        name,
+        kind: 'alias',
+        description: `Alias for ${value}`,
+        usage: value,
+      })),
+    ].sort((left, right) => left.name.localeCompare(right.name) || left.kind.localeCompare(right.kind));
+  }
+
+  async listDirectory({ path }: { path: string }): Promise<WeshDirEntry[]> {
+    const resolvedPath = resolvePath({ cwd: this.cwd, path });
+    const entries: WeshDirEntry[] = [];
+    for await (const entry of this.vfs.readDir({ path: resolvedPath })) {
+      entries.push(entry);
+    }
+    return entries.sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async signalForegroundProcessGroup({ signal }: { signal: number }): Promise<boolean> {
     const foregroundProcessGroupId = this.foregroundProcessGroupScopes.at(-1)?.pgid;
     if (foregroundProcessGroupId === undefined) {
       return false;
@@ -370,13 +412,13 @@ export class Wesh {
 
     await this.kernel.killProcessGroup({
       pgid: foregroundProcessGroupId,
-      signal: options.signal,
+      signal: signal,
       excludedPids: [this.shellPid],
     });
     return true;
   }
 
-  private registerInternalCommand(name: string, fn: ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult>) {
+  private registerInternalCommand({ name, fn }: { name: string; fn: ({ context }: { context: WeshCommandContext }) => Promise<WeshCommandResult> }) {
     this.commands.set(name, {
       fn,
       meta: { name, description: 'Built-in command', usage: name }
@@ -471,14 +513,17 @@ usage: ${name} [-c command] [file [argument...]]
           childEnvironment.positionalArgs = context.args.slice(1);
           childEnvironment.env.set('0', scriptPath);
           this.syncSpecialParameters({ environment: childEnvironment });
-          return this.executeShellInState({
-            script: stripShebangLine({
-              script: new TextDecoder().decode(bytes),
-            }),
+          return this.runChildExecutionEnvironment({
             environment: childEnvironment,
-            stdin: context.stdin,
-            stdout: context.stdout,
-            stderr: context.stderr,
+            execute: () => this.executeShellInState({
+              script: stripShebangLine({
+                script: new TextDecoder().decode(bytes),
+              }),
+              environment: childEnvironment,
+              stdin: context.stdin,
+              stdout: context.stdout,
+              stderr: context.stderr,
+            }),
           });
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -1514,19 +1559,24 @@ usage: ${name} [-c command] [file [argument...]]
     if (stdin === undefined || stderr === undefined) {
       throw new Error('Missing standard file descriptors for command substitution');
     }
-    const rawResult = await this.executeShellInState({
-      script: parsed.content,
+    const result = await this.runChildExecutionEnvironment({
       environment: childEnvironment,
-      stdin,
-      stdout: captureHandle,
-      stderr,
-    });
-    const result = await this.runExitTrapIfNeeded({
-      result: rawResult,
-      environment: childEnvironment,
-      stdin,
-      stdout: captureHandle,
-      stderr,
+      execute: async () => {
+        const rawResult = await this.executeShellInState({
+          script: parsed.content,
+          environment: childEnvironment,
+          stdin,
+          stdout: captureHandle,
+          stderr,
+        });
+        return this.runExitTrapIfNeeded({
+          result: rawResult,
+          environment: childEnvironment,
+          stdin,
+          stdout: captureHandle,
+          stderr,
+        });
+      },
     });
     if (result.exitCode !== 0) {
       environment.env.set('?', result.exitCode.toString());
@@ -3178,7 +3228,7 @@ usage: ${name} [-c command] [file [argument...]]
       return read;
     }
 
-    if (redirection.type === 'dup-output' || redirection.type === 'dup-input') {
+    if (redirection.type === 'dup_output' || redirection.type === 'dup_input') {
       if (redirection.closeTarget) {
         return undefined;
       }
@@ -3196,6 +3246,7 @@ usage: ${name} [-c command] [file [argument...]]
     }
 
     if (redirection.target !== undefined && typeof redirection.target !== 'string') {
+      const processSubstitution = redirection.target;
       const redirectedStdin = environment.fds.get(0);
       const redirectedStdout = environment.fds.get(1);
       const redirectedStderr = environment.fds.get(2);
@@ -3212,23 +3263,29 @@ usage: ${name} [-c command] [file [argument...]]
       switch (redirection.target.type) {
       case 'input':
         trackBackgroundTask({
-          task: this.executeNode({
-            node: redirection.target.list,
+          task: this.runChildExecutionEnvironment({
             environment: subEnvironment,
-            stdin: redirectedStdin,
-            stdout: write,
-            stderr: redirectedStderr,
+            execute: () => this.executeNode({
+              node: processSubstitution.list,
+              environment: subEnvironment,
+              stdin: redirectedStdin,
+              stdout: write,
+              stderr: redirectedStderr,
+            }),
           }).finally(() => write.close()),
         });
         return this.createPrimaryFileHandleReference({ handle: read });
       case 'output':
         trackBackgroundTask({
-          task: this.executeNode({
-            node: redirection.target.list,
+          task: this.runChildExecutionEnvironment({
             environment: subEnvironment,
-            stdin: read,
-            stdout: redirectedStdout,
-            stderr: redirectedStderr,
+            execute: () => this.executeNode({
+              node: processSubstitution.list,
+              environment: subEnvironment,
+              stdin: read,
+              stdout: redirectedStdout,
+              stderr: redirectedStderr,
+            }),
           }).finally(() => read.close()),
         });
         return this.createPrimaryFileHandleReference({ handle: write });
@@ -3273,7 +3330,7 @@ usage: ${name} [-c command] [file [argument...]]
         flags: { access: 'write', creation: 'if-needed', truncate: 'preserve', append: 'append' },
         mode: 0o644,
       }) });
-    case 'read-write':
+    case 'read_write':
       return this.createSharedFileHandle({ handle: await this.kernel.open({
         path: fullTarget,
         flags: { access: 'read-write', creation: 'if-needed', truncate: 'preserve', append: 'preserve' },
@@ -3319,8 +3376,8 @@ usage: ${name} [-c command] [file [argument...]]
       }
 
       if (
-        redirection.type !== 'dup-output' &&
-        redirection.type !== 'dup-input'
+        redirection.type !== 'dup_output' &&
+        redirection.type !== 'dup_input'
       ) {
         trackOpenedHandle({ handle });
       }
@@ -3333,7 +3390,7 @@ usage: ${name} [-c command] [file [argument...]]
    * Execute a shell script.
    * Low-level: All I/O goes to provided handles. Returns only exit status.
    */
-  async execute(options: {
+  async execute({ script: rawScript, stdin, stdout, stderr }: {
     script: string;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
@@ -3341,7 +3398,7 @@ usage: ${name} [-c command] [file [argument...]]
   }): Promise<WeshCommandResult> {
     if (this.shellPid === 0) await this.init();
 
-    const script = options.script.trim();
+    const script = rawScript.trim();
     if (!script) {
       return { exitCode: 0 };
     }
@@ -3358,9 +3415,9 @@ usage: ${name} [-c command] [file [argument...]]
         functions: new Map(),
         cwd: this.cwd,
         fds: this.createShellFdTable({
-          stdin: options.stdin,
-          stdout: options.stdout,
-          stderr: options.stderr,
+          stdin: stdin,
+          stdout: stdout,
+          stderr: stderr,
         }),
         traps: this.traps,
         shellOptions: this.shellOptions,
@@ -3395,12 +3452,20 @@ usage: ${name} [-c command] [file [argument...]]
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       const encoder = new TextEncoder();
-      await options.stderr.write({ buffer: encoder.encode(`wesh: ${message}\n`) });
+      await stderr.write({ buffer: encoder.encode(`wesh: ${message}\n`) });
       return { exitCode: 1 };
     }
   }
 
-  private async executeNode(options: {
+  private async executeNode({
+    node,
+    environment,
+    stdin,
+    stdout,
+    stderr,
+    loopDepth = 0,
+    functionDepth = 0,
+  }: {
     node: WeshASTNode,
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
@@ -3409,15 +3474,7 @@ usage: ${name} [-c command] [file [argument...]]
     loopDepth?: number,
     functionDepth?: number,
   }): Promise<WeshCommandResult> {
-    const {
-      node,
-      environment,
-      stdin,
-      stdout,
-      stderr,
-      loopDepth = 0,
-      functionDepth = 0,
-    } = options;
+    const options = { node, environment, stdin, stdout, stderr, loopDepth, functionDepth };
     let result: WeshCommandResult;
 
     switch (node.kind) {
@@ -3444,12 +3501,17 @@ usage: ${name} [-c command] [file [argument...]]
             pgid: undefined,
           });
 
-          this.executeNode({
-            node: part.node,
+          void this.runChildExecutionEnvironment({
             environment: jobEnvironment,
-            stdin, stdout, stderr,
-            loopDepth,
-            functionDepth,
+            execute: () => this.executeNode({
+              node: part.node,
+              environment: jobEnvironment,
+              stdin,
+              stdout,
+              stderr,
+              loopDepth,
+              functionDepth,
+            }),
           }).then(res => {
             const job = this.jobs.get(jobId);
             if (job) job.status = 'done';
@@ -3527,19 +3589,26 @@ usage: ${name} [-c command] [file [argument...]]
         parentEnvironment: environment,
         pgid: undefined,
       });
-      result = await this.executeNode({
-        node: node.list,
+      result = await this.runChildExecutionEnvironment({
         environment: subshellEnvironment,
-        stdin, stdout, stderr,
-        loopDepth,
-        functionDepth,
-      });
-      result = await this.runExitTrapIfNeeded({
-        result,
-        environment: subshellEnvironment,
-        stdin,
-        stdout,
-        stderr,
+        execute: async () => {
+          const subshellResult = await this.executeNode({
+            node: node.list,
+            environment: subshellEnvironment,
+            stdin,
+            stdout,
+            stderr,
+            loopDepth,
+            functionDepth,
+          });
+          return this.runExitTrapIfNeeded({
+            result: subshellResult,
+            environment: subshellEnvironment,
+            stdin,
+            stdout,
+            stderr,
+          });
+        },
       });
       break;
     }
@@ -3837,7 +3906,15 @@ usage: ${name} [-c command] [file [argument...]]
     return result;
   }
 
-  private async executePipeline(options: {
+  private async executePipeline({
+    node,
+    environment,
+    stdin,
+    stdout,
+    stderr,
+    loopDepth = 0,
+    functionDepth = 0,
+  }: {
     node: { commands: WeshASTNode[] },
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
@@ -3846,15 +3923,6 @@ usage: ${name} [-c command] [file [argument...]]
     loopDepth?: number,
     functionDepth?: number,
   }): Promise<WeshCommandResult> {
-    const {
-      node,
-      environment,
-      stdin,
-      stdout,
-      stderr,
-      loopDepth = 0,
-      functionDepth = 0,
-    } = options;
     const commands = node.commands;
     if (commands.length === 0) return { exitCode: 0 };
 
@@ -3882,14 +3950,17 @@ usage: ${name} [-c command] [file [argument...]]
       pipelinePgid = pipelineEnvironment.pgid;
 
       promises.push(
-        this.executeNode({
-          node: cmd,
+        this.runChildExecutionEnvironment({
           environment: pipelineEnvironment,
-          stdin: myStdin,
-          stdout: myStdout,
-          stderr: stderr,
-          loopDepth,
-          functionDepth,
+          execute: () => this.executeNode({
+            node: cmd,
+            environment: pipelineEnvironment,
+            stdin: myStdin,
+            stdout: myStdout,
+            stderr: stderr,
+            loopDepth,
+            functionDepth,
+          }),
         }).then(async res => {
           if (i < commands.length - 1) {
             await myStdout.close();
@@ -3916,27 +3987,32 @@ usage: ${name} [-c command] [file [argument...]]
     return results[results.length - 1]!;
   }
 
-  private async executeCommand(options: {
+  private async executeCommand({
+    node,
+    environment,
+    stdin,
+    stdout,
+    stderr,
+    ignoreAliases,
+    directInvocation,
+    loopDepth = 0,
+    functionDepth = 0,
+  }: {
     node: WeshCommandNode,
     environment: WeshExecutionEnvironment,
     stdin: WeshFileHandle,
     stdout: WeshFileHandle,
     stderr: WeshFileHandle;
     ignoreAliases?: boolean;
+    directInvocation?: {
+      command: string;
+      args: string[];
+      argumentEntryRefs: readonly (WeshEntryRef | undefined)[] | undefined;
+    };
     loopDepth?: number;
     functionDepth?: number;
   }): Promise<WeshCommandResult> {
-    const {
-      node,
-      environment,
-      stdin,
-      stdout,
-      stderr,
-      ignoreAliases,
-      loopDepth = 0,
-      functionDepth = 0,
-    } = options;
-    const aliasExpandedNode = ignoreAliases === true
+    const aliasExpandedNode = directInvocation !== undefined || ignoreAliases === true
       ? node
       : this.expandAliasCommandNode({
         node,
@@ -3944,88 +4020,102 @@ usage: ${name} [-c command] [file [argument...]]
         expandedAliases: new Set(),
       });
 
-    const expandedArgs: string[] = [];
+    const expandedArgs: string[] = directInvocation === undefined
+      ? []
+      : [...directInvocation.args];
     const procSubPreTaskCleanups: Array<() => void> = [];
     const procSubPostTaskCleanups: Array<() => void> = [];
     const procSubTasks: Promise<unknown>[] = [];
     const openHandles: WeshFileHandle[] = [];
     const cmdFds = new Map(environment.fds);
 
-    for (const arg of aliasExpandedNode.args) {
-      if (typeof arg === 'string') {
-        const fields = await this.expandWord({
-          raw: arg,
-          env: environment.env,
-          cwd: environment.cwd,
-          mode: 'argv',
-          shellOptions: environment.shellOptions,
-          environment,
-        });
-        expandedArgs.push(...fields);
-      } else if (arg.kind === 'processSubstitution') {
-        const { read, write } = await this.kernel.pipe();
-        const id = Math.floor(Math.random() * 1000000);
-        const path = `/dev/fd/${id}`;
+    if (directInvocation === undefined) {
+      for (const arg of aliasExpandedNode.args) {
+        if (typeof arg === 'string') {
+          const fields = await this.expandWord({
+            raw: arg,
+            env: environment.env,
+            cwd: environment.cwd,
+            mode: 'argv',
+            shellOptions: environment.shellOptions,
+            environment,
+          });
+          expandedArgs.push(...fields);
+        } else if (arg.kind === 'processSubstitution') {
+          const { read, write } = await this.kernel.pipe();
+          const id = Math.floor(Math.random() * 1000000);
+          const path = `/dev/fd/${id}`;
 
-        switch (arg.type) {
-        case 'input': {
-          const subEnvironment = await this.spawnChildExecutionEnvironment({
-            parentEnvironment: environment,
-            pgid: environment.pgid,
-          });
-          this.executeNode({
-            node: arg.list,
-            environment: subEnvironment,
-            stdin, stdout: write, stderr
-          }).finally(() => write.close());
+          switch (arg.type) {
+          case 'input': {
+            const subEnvironment = await this.spawnChildExecutionEnvironment({
+              parentEnvironment: environment,
+              pgid: environment.pgid,
+            });
+            procSubTasks.push(this.runChildExecutionEnvironment({
+              environment: subEnvironment,
+              execute: () => this.executeNode({
+                node: arg.list,
+                environment: subEnvironment,
+                stdin,
+                stdout: write,
+                stderr,
+              }),
+            }).finally(() => write.close()));
 
-          this.vfs.registerSpecialFile({
-            path,
-            type: 'fifo',
-            handler: () => this.cloneFileHandleReference({ handle: read }),
-          });
+            this.vfs.registerSpecialFile({
+              path,
+              type: 'fifo',
+              handler: () => this.cloneFileHandleReference({ handle: read }),
+            });
 
-          procSubPostTaskCleanups.push(() => {
-            this.vfs.unregisterSpecialFile({ path });
-            read.close();
-          });
-          break;
-        }
-        case 'output': {
-          const subEnvironment = await this.spawnChildExecutionEnvironment({
-            parentEnvironment: environment,
-            pgid: environment.pgid,
-          });
-          this.executeNode({
-            node: arg.list,
-            environment: subEnvironment,
-            stdin: read, stdout, stderr
-          }).finally(() => read.close());
+            procSubPostTaskCleanups.push(() => {
+              this.vfs.unregisterSpecialFile({ path });
+              read.close();
+            });
+            break;
+          }
+          case 'output': {
+            const subEnvironment = await this.spawnChildExecutionEnvironment({
+              parentEnvironment: environment,
+              pgid: environment.pgid,
+            });
+            procSubTasks.push(this.runChildExecutionEnvironment({
+              environment: subEnvironment,
+              execute: () => this.executeNode({
+                node: arg.list,
+                environment: subEnvironment,
+                stdin: read,
+                stdout,
+                stderr,
+              }),
+            }).finally(() => read.close()));
 
-          this.vfs.registerSpecialFile({
-            path,
-            type: 'fifo',
-            handler: () => this.cloneFileHandleReference({ handle: write }),
-          });
-          procSubPreTaskCleanups.push(() => {
-            write.close();
-          });
-          procSubPostTaskCleanups.push(() => {
-            this.vfs.unregisterSpecialFile({ path });
-            read.close();
-          });
-          break;
+            this.vfs.registerSpecialFile({
+              path,
+              type: 'fifo',
+              handler: () => this.cloneFileHandleReference({ handle: write }),
+            });
+            procSubPreTaskCleanups.push(() => {
+              write.close();
+            });
+            procSubPostTaskCleanups.push(() => {
+              this.vfs.unregisterSpecialFile({ path });
+              read.close();
+            });
+            break;
+          }
+          default: {
+            const _ex: never = arg.type;
+            throw new Error(`Unhandled process substitution type: ${_ex}`);
+          }
+          }
+          expandedArgs.push(path);
         }
-        default: {
-          const _ex: never = arg.type;
-          throw new Error(`Unhandled process substitution type: ${_ex}`);
-        }
-        }
-        expandedArgs.push(path);
       }
     }
 
-    const cmdName = await this.expandSingleWord({
+    const cmdName = directInvocation?.command ?? await this.expandSingleWord({
       raw: aliasExpandedNode.name,
       env: environment.env,
       cwd: environment.cwd,
@@ -4052,7 +4142,7 @@ usage: ${name} [-c command] [file [argument...]]
       });
     }
 
-    const currentEnv = new Map(environment.env);
+    const currentEnv = new WeshOverlayMap({ source: environment.env });
     for (const assign of aliasExpandedNode.assignments) {
       currentEnv.set(assign.key, await this.expandSingleWord({
         raw: assign.value,
@@ -4103,6 +4193,14 @@ usage: ${name} [-c command] [file [argument...]]
           stdin,
           stdout,
           stderr,
+          argumentEntryRefs: directInvocation === undefined
+            ? undefined
+            : [
+              ...new Array<WeshEntryRef | undefined>(
+                shebangScript.interpreterArgs.length + 1,
+              ).fill(undefined),
+              ...(directInvocation.argumentEntryRefs ?? []),
+            ],
         });
       }
       throw new Error(`Command not found: ${cmdName}`);
@@ -4184,6 +4282,7 @@ usage: ${name} [-c command] [file [argument...]]
         environment.env.delete(key);
       },
       getHistory: () => [...this.history],
+      getArgumentEntryRef: ({ index }) => directInvocation?.argumentEntryRefs?.[index],
       getAliases: () => Array.from(environment.aliases.entries())
         .sort(([leftName], [rightName]) => leftName.localeCompare(rightName))
         .map(([name, value]) => ({ name, value })),
@@ -4206,7 +4305,7 @@ usage: ${name} [-c command] [file [argument...]]
         }
 
         return {
-          kind: 'not-found',
+          kind: 'not_found',
           name,
         };
       },
@@ -4227,9 +4326,10 @@ usage: ${name} [-c command] [file [argument...]]
       },
       getShellOptions: () => Array.from(environment.shellOptions.entries())
         .sort(([leftName], [rightName]) => leftName.localeCompare(rightName)),
-      executeCommand: ({ command, args, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr, ignoreAliases: nextIgnoreAliases }) => this.executeArgv({
+      executeCommand: ({ command, args, argumentEntryRefs, stdin: nextStdin, stdout: nextStdout, stderr: nextStderr, ignoreAliases: nextIgnoreAliases }) => this.executeArgv({
         command,
         args,
+        argumentEntryRefs,
         environment,
         stdin: nextStdin ?? boundStdin,
         stdout: nextStdout ?? boundStdout,
@@ -4261,6 +4361,21 @@ usage: ${name} [-c command] [file [argument...]]
         readDir: ({ path }) => this.kernel.readDir({ path }),
         readlink: ({ path }) => this.kernel.readlink({ path }),
         resolve: ({ path }) => this.kernel.resolve({ path }),
+        resolveEntry: ({ path, finalSymlinkTreatment }) => this.kernel.resolveEntry({
+          path,
+          finalSymlinkTreatment,
+        }),
+        readDirEntry: ({ entry }) => this.kernel.readDirEntry({ entry }),
+        statEntry: ({ entry }) => this.kernel.statEntry({ entry }),
+        openEntry: async ({ entry, flags, mode }) => {
+          const handle = await this.kernel.openEntry({ entry, flags, mode });
+          return this.kernel.bindFileHandle({
+            pid,
+            handle,
+            trackOwnership: true,
+          });
+        },
+        readlinkEntry: ({ entry }) => this.kernel.readlinkEntry({ entry }),
         tryReadBlobEfficiently: ({ path }) => this.kernel.tryReadBlobEfficiently({ path }),
         tryCreateFileWriterEfficiently: ({ path, mode }) => this.kernel.tryCreateFileWriterEfficiently({ path, mode }),
         mkdir: ({ path, mode, recursive }) => this.kernel.mkdir({ path, mode, recursive }),
@@ -4381,9 +4496,16 @@ usage: ${name} [-c command] [file [argument...]]
       if (signalResult !== undefined) {
         return signalResult;
       }
+      proc.state = 'terminated';
+      proc.waitStatus = {
+        kind: 'exited',
+        exitCode: 1,
+      };
+      proc.exitCode = 1;
       throw error;
     } finally {
       await this.kernel.closeProcessResources({ pid });
+      this.kernel.reapProcess({ pid });
       for (const h of openHandles) {
         await h.close();
       }
@@ -4825,33 +4947,45 @@ usage: ${name} [-c command] [file [argument...]]
     };
   }
 
-  private async executeArgv(options: {
+  private async executeArgv({ command, args, argumentEntryRefs, environment, stdin, stdout, stderr, ignoreAliases }: {
     command: string;
     args: string[];
+    argumentEntryRefs?: readonly (WeshEntryRef | undefined)[];
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
     ignoreAliases?: boolean;
   }): Promise<WeshCommandResult> {
-    const isolatedEnvironment = await this.spawnChildExecutionEnvironment({
-      parentEnvironment: options.environment,
-      pgid: options.environment.pgid,
+    // argv is already separated, so an intermediate shell process would only
+    // duplicate state and leave another process to reap. Keep command-local
+    // mutations isolated with a cloned environment while parenting the actual
+    // command process directly to the current shell.
+    const isolatedEnvironment = this.cloneExecutionEnvironment({
+      environment,
+      shellPid: environment.shellPid,
+      pgid: environment.pgid,
+      mapStrategy: 'synchronous_overlay',
     });
 
     return this.executeCommand({
       node: {
         kind: 'command',
         assignments: [],
-        name: options.command,
-        args: options.args,
+        name: command,
+        args: args,
         redirections: [],
       },
       environment: isolatedEnvironment,
-      stdin: options.stdin,
-      stdout: options.stdout,
-      stderr: options.stderr,
-      ignoreAliases: options.ignoreAliases,
+      stdin: stdin,
+      stdout: stdout,
+      stderr: stderr,
+      ignoreAliases: ignoreAliases,
+      directInvocation: {
+        command,
+        args,
+        argumentEntryRefs,
+      },
     });
   }
 
@@ -4903,24 +5037,96 @@ usage: ${name} [-c command] [file [argument...]]
     environment,
     shellPid,
     pgid,
+    mapStrategy,
   }: {
     environment: WeshExecutionEnvironment;
     shellPid: number | undefined;
     pgid: number | undefined;
+    mapStrategy: 'snapshot_copy' | 'synchronous_overlay';
   }): WeshExecutionEnvironment {
-    return this.createExecutionEnvironment({
+    const cloneMap = <K, V>({ source }: { source: ReadonlyMap<K, V> }): Map<K, V> => {
+      switch (mapStrategy) {
+      case 'snapshot_copy':
+        return new Map(source);
+      case 'synchronous_overlay':
+        return new WeshOverlayMap({ source });
+      default: {
+        const _ex: never = mapStrategy;
+        throw new Error(`Unhandled environment map strategy: ${_ex}`);
+      }
+      }
+    };
+
+    return {
       shellPid: shellPid ?? environment.shellPid,
       pgid: pgid ?? environment.pgid,
-      env: new Map(environment.env),
-      aliases: new Map(environment.aliases),
-      functions: new Map(environment.functions),
+      env: cloneMap({ source: environment.env }),
+      aliases: cloneMap({ source: environment.aliases }),
+      functions: cloneMap({ source: environment.functions }),
       cwd: environment.cwd,
       fds: new Map(environment.fds),
-      traps: new Map(environment.traps),
-      shellOptions: new Map(environment.shellOptions),
+      traps: cloneMap({ source: environment.traps }),
+      shellOptions: cloneMap({ source: environment.shellOptions }),
       positionalArgs: [...environment.positionalArgs],
       lastBackgroundPid: environment.lastBackgroundPid,
-    });
+    };
+  }
+
+  private async runChildExecutionEnvironment({
+    environment,
+    execute,
+  }: {
+    environment: WeshExecutionEnvironment;
+    execute: () => Promise<WeshCommandResult>;
+  }): Promise<WeshCommandResult> {
+    let result: WeshCommandResult | undefined;
+    try {
+      result = await execute();
+      return result;
+    } finally {
+      await this.finishChildExecutionEnvironment({
+        environment,
+        result,
+      });
+    }
+  }
+
+  private async finishChildExecutionEnvironment({
+    environment,
+    result,
+  }: {
+    environment: WeshExecutionEnvironment;
+    result: WeshCommandResult | undefined;
+  }): Promise<void> {
+    const process = this.kernel.getProcess({ pid: environment.shellPid });
+    if (process === undefined) {
+      return;
+    }
+
+    const waitStatus = process.waitStatus ?? result?.waitStatus ?? {
+      kind: 'exited',
+      exitCode: result?.exitCode ?? 1,
+    } satisfies WeshWaitStatus;
+
+    switch (waitStatus.kind) {
+    case 'stopped':
+      process.state = 'stopped';
+      process.waitStatus = waitStatus;
+      process.exitCode = weshWaitStatusToExitCode({ waitStatus });
+      return;
+    case 'exited':
+    case 'signaled':
+      process.state = 'terminated';
+      process.waitStatus = waitStatus;
+      process.exitCode = weshWaitStatusToExitCode({ waitStatus });
+      await this.kernel.closeProcessResources({ pid: process.pid });
+      this.kernel.reapProcess({ pid: process.pid });
+      return;
+    default: {
+      const _ex: never = waitStatus;
+      throw new Error(`Unhandled child shell wait status: ${JSON.stringify(_ex)}`);
+    }
+    }
   }
 
   private async spawnChildExecutionEnvironment({
@@ -4934,6 +5140,7 @@ usage: ${name} [-c command] [file [argument...]]
       environment: parentEnvironment,
       shellPid: undefined,
       pgid,
+      mapStrategy: 'snapshot_copy',
     });
 
     const { pid } = await this.kernel.spawn({
@@ -4953,44 +5160,45 @@ usage: ${name} [-c command] [file [argument...]]
 
     childEnvironment.shellPid = pid;
     childEnvironment.pgid = pgid ?? pid;
+    this.syncSpecialParameters({ environment: childEnvironment });
     return childEnvironment;
   }
 
-  private async runExitTrapIfNeeded(options: {
+  private async runExitTrapIfNeeded({ result, environment, stdin, stdout, stderr }: {
     result: WeshCommandResult;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult> {
-    const exitTrap = options.environment.traps.get('EXIT');
+    const exitTrap = environment.traps.get('EXIT');
     if (exitTrap === undefined || exitTrap.kind !== 'run') {
-      return options.result;
+      return result;
     }
 
     await this.runTrapScript({
       script: exitTrap.action,
-      trapStatus: options.result.waitStatus ?? {
+      trapStatus: result.waitStatus ?? {
         kind: 'exited',
-        exitCode: options.result.exitCode,
+        exitCode: result.exitCode,
       },
-      environment: options.environment,
-      stdin: options.stdin,
-      stdout: options.stdout,
-      stderr: options.stderr,
+      environment: environment,
+      stdin: stdin,
+      stdout: stdout,
+      stderr: stderr,
     });
-    return options.result;
+    return result;
   }
 
-  private async runSignalTrapIfNeeded(options: {
+  private async runSignalTrapIfNeeded({ signal, environment, stdin, stdout, stderr }: {
     signal: number;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<void> {
-    for (const condition of weshSignalConditionNames({ signal: options.signal })) {
-      const trapDisposition = options.environment.traps.get(condition);
+    for (const condition of weshSignalConditionNames({ signal: signal })) {
+      const trapDisposition = environment.traps.get(condition);
       if (trapDisposition === undefined) {
         continue;
       }
@@ -5003,12 +5211,12 @@ usage: ${name} [-c command] [file [argument...]]
           script: trapDisposition.action,
           trapStatus: {
             kind: 'signaled',
-            signal: options.signal,
+            signal: signal,
           },
-          environment: options.environment,
-          stdin: options.stdin,
-          stdout: options.stdout,
-          stderr: options.stderr,
+          environment: environment,
+          stdin: stdin,
+          stdout: stdout,
+          stderr: stderr,
         });
         return;
       default: {
@@ -5019,7 +5227,7 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private async runTrapScript(options: {
+  private async runTrapScript({ script, trapStatus, environment, stdin, stdout, stderr }: {
     script: string;
     trapStatus: WeshWaitStatus;
     environment: WeshExecutionEnvironment;
@@ -5027,51 +5235,51 @@ usage: ${name} [-c command] [file [argument...]]
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<void> {
-    const previousQuestionMark = options.environment.env.get('?');
-    options.environment.env.set(
+    const previousQuestionMark = environment.env.get('?');
+    environment.env.set(
       '?',
       weshWaitStatusToExitCode({
-        waitStatus: options.trapStatus,
+        waitStatus: trapStatus,
       }).toString(),
     );
     try {
       await this.executeShellInState({
-        script: options.script,
-        environment: options.environment,
-        stdin: options.stdin,
-        stdout: options.stdout,
-        stderr: options.stderr,
+        script: script,
+        environment: environment,
+        stdin: stdin,
+        stdout: stdout,
+        stderr: stderr,
       });
     } finally {
       if (previousQuestionMark === undefined) {
-        options.environment.env.delete('?');
+        environment.env.delete('?');
       } else {
-        options.environment.env.set('?', previousQuestionMark);
+        environment.env.set('?', previousQuestionMark);
       }
     }
   }
 
-  private async buildSignalCommandResultIfAny(options: {
+  private async buildSignalCommandResultIfAny({ pid, environment, stdin, stdout, stderr }: {
     pid: number;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
     stdout: WeshFileHandle;
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult | undefined> {
-    const signalWaitStatus = this.kernel.getWaitStatus({ pid: options.pid });
+    const signalWaitStatus = this.kernel.getWaitStatus({ pid: pid });
     if (signalWaitStatus === undefined) {
       return undefined;
     }
 
     switch (signalWaitStatus.kind) {
     case 'signaled':
-      this.kernel.consumePendingSignals({ pid: options.pid });
+      this.kernel.consumePendingSignals({ pid: pid });
       await this.runSignalTrapIfNeeded({
         signal: signalWaitStatus.signal,
-        environment: options.environment,
-        stdin: options.stdin,
-        stdout: options.stdout,
-        stderr: options.stderr,
+        environment: environment,
+        stdin: stdin,
+        stdout: stdout,
+        stderr: stderr,
       });
       return {
         exitCode: weshWaitStatusToExitCode({
@@ -5080,7 +5288,7 @@ usage: ${name} [-c command] [file [argument...]]
         waitStatus: signalWaitStatus,
       };
     case 'stopped':
-      this.kernel.consumePendingSignals({ pid: options.pid });
+      this.kernel.consumePendingSignals({ pid: pid });
       return {
         exitCode: weshWaitStatusToExitCode({
           waitStatus: signalWaitStatus,
@@ -5096,17 +5304,17 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private async runWithForegroundProcessGroup<T>(options: {
+  private async runWithForegroundProcessGroup<T>({ pgid, fn }: {
     pgid: number;
     fn: () => Promise<T>;
   }): Promise<T> {
     const scopeId = this.nextForegroundProcessGroupScopeId++;
     this.foregroundProcessGroupScopes.push({
       id: scopeId,
-      pgid: options.pgid,
+      pgid: pgid,
     });
     try {
-      return await options.fn();
+      return await fn();
     } finally {
       const scopeIndex = this.foregroundProcessGroupScopes.findIndex(scope => scope.id === scopeId);
       if (scopeIndex >= 0) {
@@ -5115,12 +5323,12 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private buildProcessSignalDispositions(options: {
+  private buildProcessSignalDispositions({ environment }: {
     environment: WeshExecutionEnvironment;
   }): Map<number, WeshProcessSignalDisposition> {
     const signalDispositions = new Map<number, WeshProcessSignalDisposition>();
 
-    for (const [condition, disposition] of options.environment.traps.entries()) {
+    for (const [condition, disposition] of environment.traps.entries()) {
       switch (disposition.kind) {
       case 'ignore':
         for (const signal of weshSignalNumbersForCondition({ condition })) {
@@ -5139,10 +5347,9 @@ usage: ${name} [-c command] [file [argument...]]
     return signalDispositions;
   }
 
-  private syncSpecialParameters(options: {
+  private syncSpecialParameters({ environment }: {
     environment: WeshExecutionEnvironment;
   }): void {
-    const { environment } = options;
     environment.env.set('$$', environment.shellPid.toString());
     environment.env.set('#', environment.positionalArgs.length.toString());
     environment.env.set('0', environment.env.get('SHELL') ?? 'wesh');
@@ -5163,7 +5370,7 @@ usage: ${name} [-c command] [file [argument...]]
     }
   }
 
-  private async executeShellInState(options: {
+  private async executeShellInState({ script, environment, stdin, stdout, stderr }: {
     script: string;
     environment: WeshExecutionEnvironment;
     stdin: WeshFileHandle;
@@ -5171,16 +5378,16 @@ usage: ${name} [-c command] [file [argument...]]
     stderr: WeshFileHandle;
   }): Promise<WeshCommandResult> {
     const rootNode = parseCommandLine({
-      commandLine: options.script,
-      env: options.environment.env,
+      commandLine: script,
+      env: environment.env,
     });
 
     return this.executeNode({
       node: rootNode,
-      environment: options.environment,
-      stdin: options.stdin,
-      stdout: options.stdout,
-      stderr: options.stderr,
+      environment: environment,
+      stdin: stdin,
+      stdout: stdout,
+      stderr: stderr,
     });
   }
 }

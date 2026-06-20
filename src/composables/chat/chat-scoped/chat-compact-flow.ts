@@ -15,6 +15,7 @@ import { generateId } from '@/utils/id';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { useSettings } from '@/composables/useSettings';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import type { ChatId, MessageId } from '@/models/ids';
 import {
   chatRuntimeStore,
   contextCompactRuntime,
@@ -32,9 +33,9 @@ import {
 export type CompactCurrentBranchResult =
   | {
       status: 'compacted';
-      chatId: string;
-      compactNodeId: string;
-      currentLeafId: string;
+      chatId: ChatId;
+      compactNodeId: MessageId;
+      currentLeafId: MessageId;
     }
   | {
       status: 'skipped';
@@ -55,7 +56,7 @@ export async function runCompactCurrentBranchForChat({
   keepRecentMessages,
   instructionOverride,
 }: {
-  chatId: string;
+  chatId: ChatId;
   keepRecentMessages: number;
   instructionOverride: string | undefined;
 }): Promise<CompactCurrentBranchResult> {
@@ -105,7 +106,7 @@ export async function runCompactCurrentBranchForChat({
   try {
     const { settings } = useSettings();
     const { addErrorEvent } = useGlobalEvents();
-    const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
+    const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
     const loadedChat = getReadonlyChat({ chatId: mutableChat.id }) ?? mutableChat;
     const resolved = resolveChatSettings({
       chat: loadedChat,
@@ -130,7 +131,7 @@ export async function runCompactCurrentBranchForChat({
     }
 
     const promptMode = resolveCompactPromptMode({
-      mountSelection: getNaidanSysfsMountSelection({ chatId: mutableChat.id }),
+      accessScope: getNaidanSysfsAccessScope({ chatId: mutableChat.id }),
     });
     contextCompactRuntime.setProgress({
       chatId: mutableChat.id,
@@ -174,7 +175,7 @@ export async function runCompactCurrentBranchForChat({
     await provider.chat({
       messages: requestMessages,
       model: resolvedModel,
-      onChunk: (chunk) => {
+      onChunk: ({ chunk }) => {
         compactContent += chunk;
         contextCompactRuntime.setProgress({
           chatId: mutableChat.id,
@@ -218,7 +219,7 @@ export async function runCompactCurrentBranchForChat({
       compactContent: finalCompactContent,
       suffix: split.suffix,
       compactModelId: resolvedModel,
-      createMessageId: () => generateId(),
+      createMessageId: () => generateId<MessageId>(),
       now: () => Date.now(),
     });
 
@@ -228,7 +229,8 @@ export async function runCompactCurrentBranchForChat({
 
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({
+
+      updater: ({ current }) => ({
         ...current,
         root: mutableChat.root,
         currentLeafId: mutableChat.currentLeafId,
@@ -236,7 +238,8 @@ export async function runCompactCurrentBranchForChat({
     });
     await updateChatMeta({
       id: mutableChat.id,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           return mutableChat;
         }
@@ -294,7 +297,7 @@ export async function runCompactCurrentBranchForChat({
 export function abortContextCompactForChat({
   chatId,
 }: {
-  chatId: string | undefined;
+  chatId: ChatId | undefined;
 }): void {
   if (chatId === undefined) {
     return;
@@ -304,20 +307,20 @@ export function abortContextCompactForChat({
 }
 
 function resolveCompactPromptMode({
-  mountSelection,
+  accessScope,
 }: {
-  mountSelection: ReturnType<ReturnType<typeof useChatWeshPreferences>['getNaidanSysfsMountSelection']>;
+  accessScope: ReturnType<ReturnType<typeof useChatWeshPreferences>['getNaidanSysfsAccessScope']>;
 }): ContextCompactPromptMode {
-  switch (mountSelection) {
+  switch (accessScope) {
   case 'none':
     return 'without_message_ids';
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
-  case 'all_chats':
+  case 'main_chats':
     return 'with_message_ids';
   default: {
-    const _ex: never = mountSelection;
-    throw new Error(`Unhandled naidan sysfs mount selection: ${_ex}`);
+    const _ex: never = accessScope;
+    throw new Error(`Unhandled naidan sysfs access scope: ${_ex}`);
   }
   }
 }

@@ -22,7 +22,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     expect(errorCount.value).toBe(0);
   });
 
-  it('should execute a tool and loop back to LLM', async () => {
+  it('should execute a tool and loop back to LM', async () => {
     const mockTool: Tool = {
       name: 'get_weather',
       description: 'Get weather',
@@ -60,7 +60,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     await provider.chat({
       messages: [{ role: 'user', content: 'London weather?' }],
       model: 'llama3',
-      onChunk: (chunk) => {
+      onChunk: ({ chunk: chunk }) => {
         result += chunk;
       },
       tools: [mockTool],
@@ -108,7 +108,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     await provider.chat({
       messages: [],
       model: 'llama3',
-      onChunk: (chunk) => {
+      onChunk: ({ chunk: chunk }) => {
         result += chunk;
       },
       tools: [mockTool],
@@ -153,7 +153,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     expect(mockTool.execute).toHaveBeenCalledWith(expect.objectContaining({ args: { val: 123 } }));
   });
 
-  it('should return error to LLM on invalid arguments (strict mode)', async () => {
+  it('should return error to LM on invalid arguments (strict mode)', async () => {
     const mockTool: Tool = {
       name: 'strict',
       description: 'Strict',

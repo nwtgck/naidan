@@ -1,30 +1,50 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { useChatMetadata } from '@/composables/chat/useChatMetadata';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/models/scoped-setting-change';
+import type {
+  Chat,
+  Endpoint,
+  EndpointType,
+  LmParameters,
+  SystemPrompt,
+} from '@/models/types';
+import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { ChatId } from '@/models/ids';
+import { idToRaw } from '@/models/ids';
 import {
-  XIcon, Settings2Icon,
-  MessageSquareQuoteIcon, LayersIcon, GlobeIcon, AlertCircleIcon, Trash2Icon, PlusIcon
+  XIcon,
+  Settings2Icon,
+  MessageSquareQuoteIcon,
+  LayersIcon,
+  GlobeIcon,
+  AlertCircleIcon,
+  Trash2Icon,
+  PlusIcon,
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
+import { ENDPOINT_PRESETS } from '@/models/constants';
+import { naturalSort } from '@/utils/string';
+import { hasChatOverrides } from '@/utils/chat-settings-resolver';
+import {
+  cloneLmParameters,
+  hasLmParameterOverrides,
+  normalizeLmParameters,
+} from '@/utils/lm-parameters';
+import {
+  createChangedLmParameterSettingChanges,
+  createSystemPromptSettingChange,
+} from '@/utils/scoped-setting-changes';
 
-// IMPORTANT: ModelSelector is used for immediate model override feedback and should not flicker.
 import ModelSelector from './ModelSelector.vue';
 import ReasoningSettings from './ReasoningSettings.vue';
 
-// Lazily load heavier or secondary settings components, but prefetch them when idle.
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
-// Lazily load upsell UI
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
-
-import { ENDPOINT_PRESETS } from '@/models/constants';
-import type { Chat } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import { naturalSort } from '@/utils/string';
-import { hasChatOverrides } from '@/utils/chat-settings-resolver';
 
 const props = defineProps<{
   show?: boolean;
@@ -35,88 +55,526 @@ const emit = defineEmits<{
 }>();
 
 const { currentChatId, currentChat, resolvedSettings, inheritedSettings } = useCurrentChatState();
-const chatMetadata = useChatMetadata({});
-const chatModels = useChatModels({});
+const chatMetadata = useChatMetadata();
+const chatModels = useChatModels();
 const isFetchingModels = computed(() => chatModels.fetchingModels.value);
 const sortedAvailableModels = computed(() => naturalSort({ values: chatModels.availableModels.value || [] }));
 const { settings } = useSettings();
 const { setActiveFocusArea } = useLayout();
 
-const hasActiveOverrides = computed(() => {
-  return hasChatOverrides({ chat: localSettings.value });
-});
+type ChatSettingsDraft = {
+  endpointType: EndpointType | undefined;
+  endpointUrl: string | undefined;
+  endpointHttpHeaders: [string, string][] | undefined;
+  modelId: string | undefined;
+  autoTitleEnabled: boolean | undefined;
+  titleModelId: string | undefined;
+  systemPrompt: SystemPrompt | undefined;
+  lmParameters: LmParameters | undefined;
+};
 
-const effectiveEndpointType = computed(() => {
-  return localSettings.value.endpointType || resolvedSettings?.value?.endpointType;
-});
+function emptyDraft(): ChatSettingsDraft {
+  return {
+    endpointType: undefined,
+    endpointUrl: undefined,
+    endpointHttpHeaders: undefined,
+    modelId: undefined,
+    autoTitleEnabled: undefined,
+    titleModelId: undefined,
+    systemPrompt: undefined,
+    lmParameters: undefined,
+  };
+}
 
-// Local state for editing
-const localSettings = ref<Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>>({});
+function cloneDraft({ draft }: { draft: ChatSettingsDraft }): ChatSettingsDraft {
+  return {
+    endpointType: draft.endpointType,
+    endpointUrl: draft.endpointUrl,
+    endpointHttpHeaders: draft.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+    modelId: draft.modelId,
+    autoTitleEnabled: draft.autoTitleEnabled,
+    titleModelId: draft.titleModelId,
+    systemPrompt: draft.systemPrompt === undefined ? undefined : { ...draft.systemPrompt },
+    lmParameters: cloneLmParameters({ lmParameters: draft.lmParameters }),
+  };
+}
 
-function syncLocalWithCurrent() {
-  if (currentChat.value) {
-    localSettings.value = {
-      endpointType: currentChat.value.endpointType,
-      endpointUrl: currentChat.value.endpointUrl,
-      endpointHttpHeaders: currentChat.value.endpointHttpHeaders ? JSON.parse(JSON.stringify(currentChat.value.endpointHttpHeaders)) : undefined,
-      modelId: currentChat.value.modelId,
-      autoTitleEnabled: currentChat.value.autoTitleEnabled,
-      titleModelId: currentChat.value.titleModelId,
-      systemPrompt: currentChat.value.systemPrompt ? JSON.parse(JSON.stringify(currentChat.value.systemPrompt)) : undefined,
-      lmParameters: currentChat.value.lmParameters ? JSON.parse(JSON.stringify(currentChat.value.lmParameters)) : undefined,
-    };
+function draftFromChat({ chat }: { chat: Chat }): ChatSettingsDraft {
+  return {
+    endpointType: chat.endpointType,
+    endpointUrl: chat.endpointUrl,
+    endpointHttpHeaders: chat.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+    modelId: chat.modelId,
+    autoTitleEnabled: chat.autoTitleEnabled,
+    titleModelId: chat.titleModelId,
+    systemPrompt: chat.systemPrompt === undefined ? undefined : { ...chat.systemPrompt },
+    lmParameters: cloneLmParameters({ lmParameters: chat.lmParameters }),
+  };
+}
+
+function areHeadersEqual({
+  left,
+  right,
+}: {
+  left: [string, string][] | undefined;
+  right: [string, string][] | undefined;
+}): boolean {
+  if (left === right) return true;
+  if (left === undefined || right === undefined || left.length !== right.length) return false;
+  return left.every(([name, value], index) => name === right[index]?.[0] && value === right[index]?.[1]);
+}
+
+function areSystemPromptsEqual({
+  left,
+  right,
+}: {
+  left: SystemPrompt | undefined;
+  right: SystemPrompt | undefined;
+}): boolean {
+  return left?.behavior === right?.behavior && left?.content === right?.content;
+}
+
+// Keep select parsing exhaustive: adding an EndpointType must fail typechecking
+// until the UI value and label handling are reviewed.
+const endpointTypeSelectValueRecord: Readonly<Record<EndpointType, true>> = {
+  openai: true,
+  ollama: true,
+  transformers_js: true,
+};
+
+function endpointTypeFromSelectValue({ value }: { value: string }): EndpointType | undefined {
+  if (value === 'global') return undefined;
+  if (Object.hasOwn(endpointTypeSelectValueRecord, value)) return value as EndpointType;
+  throw new Error(`Unhandled endpoint type value: ${value}`);
+}
+
+function endpointTypeLabel({ endpointType }: { endpointType: EndpointType }): string {
+  switch (endpointType) {
+  case 'openai':
+    return 'OpenAI';
+  case 'ollama':
+    return 'Ollama';
+  case 'transformers_js':
+    return 'Transformers.js';
+  default: {
+    const _ex: never = endpointType;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
   }
+  }
+}
+
+function endpointFromDraft({
+  draft,
+  inheritedEndpointType,
+}: {
+  draft: ChatSettingsDraft;
+  inheritedEndpointType: EndpointType | undefined;
+}): Endpoint | undefined {
+  const endpointType = draft.endpointType ?? inheritedEndpointType;
+  if (endpointType === undefined) return undefined;
+  switch (endpointType) {
+  case 'transformers_js':
+    return { type: endpointType };
+  case 'openai':
+  case 'ollama':
+    return {
+      type: endpointType,
+      url: draft.endpointUrl,
+      httpHeaders: draft.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+    };
+  default: {
+    const _ex: never = endpointType;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
+  }
+}
+
+function createChanges({
+  previous,
+  next,
+  inheritedEndpointType,
+}: {
+  previous: ChatSettingsDraft;
+  next: ChatSettingsDraft;
+  inheritedEndpointType: EndpointType | undefined;
+}): ScopedSettingChange[] {
+  const changes: ScopedSettingChange[] = [];
+  const lmChanges = new Map(
+    createChangedLmParameterSettingChanges({
+      previous: previous.lmParameters,
+      next: next.lmParameters,
+    }).map(change => [change.field, change] as const),
+  );
+
+  // Iterate the exhaustive field list so adding a ScopedSettingChange variant
+  // fails typechecking here until draft comparison semantics are implemented.
+  for (const field of SCOPED_SETTING_FIELDS) {
+    switch (field) {
+    case 'endpoint': {
+      const endpointChanged = previous.endpointType !== next.endpointType
+        || previous.endpointUrl !== next.endpointUrl
+        || !areHeadersEqual({ left: previous.endpointHttpHeaders, right: next.endpointHttpHeaders });
+      if (!endpointChanged) break;
+
+      // The persisted Chat model can contain legacy URL/header-only states.
+      // Treat a fully empty next draft as an explicit return to inheritance even
+      // when the previous endpoint type was already missing.
+      const inheritsEndpoint = next.endpointType === undefined
+        && next.endpointUrl === undefined
+        && next.endpointHttpHeaders === undefined;
+      const endpoint = inheritsEndpoint
+        ? undefined
+        : endpointFromDraft({ draft: next, inheritedEndpointType });
+      changes.push(endpoint === undefined
+        ? { field: 'endpoint', behavior: 'inherit' }
+        : { field: 'endpoint', behavior: 'override', value: endpoint });
+      break;
+    }
+    case 'model_id':
+      if (previous.modelId !== next.modelId) {
+        changes.push(next.modelId === undefined
+          ? { field: 'model_id', behavior: 'inherit' }
+          : { field: 'model_id', behavior: 'override', value: next.modelId });
+      }
+      break;
+    case 'auto_title_enabled':
+      if (previous.autoTitleEnabled !== next.autoTitleEnabled) {
+        changes.push(next.autoTitleEnabled === undefined
+          ? { field: 'auto_title_enabled', behavior: 'inherit' }
+          : { field: 'auto_title_enabled', behavior: 'override', value: next.autoTitleEnabled });
+      }
+      break;
+    case 'title_model_id':
+      if (previous.titleModelId !== next.titleModelId) {
+        changes.push(next.titleModelId === undefined
+          ? { field: 'title_model_id', behavior: 'inherit' }
+          : { field: 'title_model_id', behavior: 'override', value: next.titleModelId });
+      }
+      break;
+    case 'system_prompt':
+      if (!areSystemPromptsEqual({ left: previous.systemPrompt, right: next.systemPrompt })) {
+        changes.push(createSystemPromptSettingChange({ systemPrompt: next.systemPrompt }));
+      }
+      break;
+    case 'lm_param_temperature':
+    case 'lm_param_top_p':
+    case 'lm_param_max_completion_tokens':
+    case 'lm_param_presence_penalty':
+    case 'lm_param_frequency_penalty':
+    case 'lm_param_stop':
+    case 'lm_param_reasoning_effort': {
+      const change = lmChanges.get(field);
+      if (change !== undefined) changes.push(change);
+      break;
+    }
+    default: {
+      const _ex: never = field;
+      throw new Error(`Unhandled scoped setting field: ${_ex}`);
+    }
+    }
+  }
+
+  return changes;
+}
+
+const localSettings = ref<ChatSettingsDraft>(emptyDraft());
+const baselineSettings = ref<ChatSettingsDraft>(emptyDraft());
+const editingChatId = ref<ChatId | undefined>(undefined);
+const editingInheritedEndpointType = ref<EndpointType | undefined>(undefined);
+const pendingFieldRevisions = new Map<ScopedSettingChange['field'], number>();
+const saveQueues = new Map<ChatId, Promise<void>>();
+const saveError = ref<string | null>(null);
+let nextSaveRevision = 0;
+
+const hasActiveOverrides = computed(() => hasChatOverrides({ chat: localSettings.value }));
+const effectiveEndpointType = computed(() => localSettings.value.endpointType || resolvedSettings?.value?.endpointType);
+
+// Keep field synchronization exhaustive. A new LM setting command must
+// fail typechecking here until clean/dirty draft merge semantics are defined.
+function applyLmParameterFieldFromDraft({
+  field,
+  target,
+  source,
+}: {
+  field: LmParameterSettingField;
+  target: ChatSettingsDraft;
+  source: ChatSettingsDraft;
+}): void {
+  const lmParameters: LmParameters = {
+    temperature: target.lmParameters?.temperature,
+    topP: target.lmParameters?.topP,
+    maxCompletionTokens: target.lmParameters?.maxCompletionTokens,
+    presencePenalty: target.lmParameters?.presencePenalty,
+    frequencyPenalty: target.lmParameters?.frequencyPenalty,
+    stop: target.lmParameters?.stop === undefined
+      ? undefined
+      : [...target.lmParameters.stop],
+    reasoning: { effort: target.lmParameters?.reasoning?.effort },
+  };
+
+  switch (field) {
+  case 'lm_param_temperature':
+    lmParameters.temperature = source.lmParameters?.temperature;
+    break;
+  case 'lm_param_top_p':
+    lmParameters.topP = source.lmParameters?.topP;
+    break;
+  case 'lm_param_max_completion_tokens':
+    lmParameters.maxCompletionTokens = source.lmParameters?.maxCompletionTokens;
+    break;
+  case 'lm_param_presence_penalty':
+    lmParameters.presencePenalty = source.lmParameters?.presencePenalty;
+    break;
+  case 'lm_param_frequency_penalty':
+    lmParameters.frequencyPenalty = source.lmParameters?.frequencyPenalty;
+    break;
+  case 'lm_param_stop':
+    lmParameters.stop = source.lmParameters?.stop === undefined
+      ? undefined
+      : [...source.lmParameters.stop];
+    break;
+  case 'lm_param_reasoning_effort':
+    lmParameters.reasoning.effort = source.lmParameters?.reasoning?.effort;
+    break;
+  default: {
+    const _ex: never = field;
+    throw new Error(`Unhandled LM parameter field: ${_ex}`);
+  }
+  }
+
+  target.lmParameters = normalizeLmParameters({ lmParameters });
+}
+
+// Iterate every scoped field explicitly so adding a command cannot silently
+// bypass external-state synchronization or save rollback.
+function applyFieldFromDraft({
+  field,
+  target,
+  source,
+}: {
+  field: ScopedSettingChange['field'];
+  target: ChatSettingsDraft;
+  source: ChatSettingsDraft;
+}): void {
+  switch (field) {
+  case 'endpoint':
+    target.endpointType = source.endpointType;
+    target.endpointUrl = source.endpointUrl;
+    target.endpointHttpHeaders = source.endpointHttpHeaders?.map(([name, value]) => [name, value]);
+    return;
+  case 'model_id':
+    target.modelId = source.modelId;
+    return;
+  case 'auto_title_enabled':
+    target.autoTitleEnabled = source.autoTitleEnabled;
+    return;
+  case 'title_model_id':
+    target.titleModelId = source.titleModelId;
+    return;
+  case 'system_prompt':
+    target.systemPrompt = source.systemPrompt === undefined ? undefined : { ...source.systemPrompt };
+    return;
+  case 'lm_param_temperature':
+  case 'lm_param_top_p':
+  case 'lm_param_max_completion_tokens':
+  case 'lm_param_presence_penalty':
+  case 'lm_param_frequency_penalty':
+  case 'lm_param_stop':
+  case 'lm_param_reasoning_effort':
+    applyLmParameterFieldFromDraft({ field, target, source });
+    return;
+  default: {
+    const _ex: never = field;
+    throw new Error(`Unhandled setting field: ${_ex}`);
+  }
+  }
+}
+
+function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): void {
+  const chat = currentChat.value;
+  if (chat === null || chat === undefined) return;
+  const current = draftFromChat({ chat });
+
+  if (!preserveDirty || editingChatId.value !== chat.id) {
+    pendingFieldRevisions.clear();
+    saveError.value = null;
+    editingChatId.value = chat.id;
+    editingInheritedEndpointType.value = inheritedSettings.value?.endpointType;
+    localSettings.value = cloneDraft({ draft: current });
+    baselineSettings.value = cloneDraft({ draft: current });
+    return;
+  }
+
+  const dirtyFields = new Set<ScopedSettingChange['field']>([
+    ...createChanges({
+      previous: baselineSettings.value,
+      next: localSettings.value,
+      inheritedEndpointType: editingInheritedEndpointType.value,
+    }).map(change => change.field),
+    ...pendingFieldRevisions.keys(),
+  ]);
+
+  for (const field of SCOPED_SETTING_FIELDS) {
+    if (dirtyFields.has(field)) continue;
+    applyFieldFromDraft({ field, target: localSettings.value, source: current });
+    applyFieldFromDraft({ field, target: baselineSettings.value, source: current });
+  }
+  if (!dirtyFields.has('endpoint')) {
+    editingInheritedEndpointType.value = inheritedSettings.value?.endpointType;
+  }
+}
+
+function saveChangesForChat({ chatId }: { chatId: ChatId | undefined }): Promise<void> {
+  if (chatId === undefined) return Promise.resolve();
+
+  // Capture the draft now, but calculate its changes only after earlier saves
+  // for this chat settle. This lets a close or navigation wait for an in-flight
+  // blur save and retry its draft if that earlier save failed.
+  const snapshot = cloneDraft({ draft: localSettings.value });
+  const inheritedEndpointType = editingInheritedEndpointType.value;
+  const previous = saveQueues.get(chatId) ?? Promise.resolve();
+  const operation = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const baselineBeforeSave = cloneDraft({ draft: baselineSettings.value });
+      const changes = createChanges({
+        previous: baselineSettings.value,
+        next: snapshot,
+        inheritedEndpointType,
+      });
+      if (changes.length === 0) return;
+
+      const revision = ++nextSaveRevision;
+      for (const change of changes) {
+        pendingFieldRevisions.set(change.field, revision);
+        applyFieldFromDraft({
+          field: change.field,
+          target: baselineSettings.value,
+          source: snapshot,
+        });
+      }
+
+      if (editingChatId.value === chatId) {
+        saveError.value = null;
+      }
+
+      try {
+        await chatMetadata.updateScopedSettings({ chatId, changes });
+      } catch (cause: unknown) {
+        for (const change of changes) {
+          if (pendingFieldRevisions.get(change.field) !== revision) continue;
+          pendingFieldRevisions.delete(change.field);
+          applyFieldFromDraft({
+            field: change.field,
+            target: baselineSettings.value,
+            source: baselineBeforeSave,
+          });
+        }
+        if (editingChatId.value === chatId) {
+          saveError.value = cause instanceof Error
+            ? cause.message
+            : 'Failed to save chat settings.';
+        }
+        throw cause;
+      }
+
+      for (const change of changes) {
+        if (pendingFieldRevisions.get(change.field) === revision) {
+          pendingFieldRevisions.delete(change.field);
+        }
+      }
+      if (editingChatId.value === chatId) {
+        syncLocalWithCurrent({ preserveDirty: true });
+      }
+    });
+
+  saveQueues.set(chatId, operation);
+  const cleanup = () => {
+    if (saveQueues.get(chatId) === operation) {
+      saveQueues.delete(chatId);
+    }
+  };
+  operation.then(cleanup, cleanup);
+  return operation;
+}
+
+function saveChanges(): Promise<void> {
+  return saveChangesForChat({ chatId: editingChatId.value });
+}
+
+async function saveChangesFromUi(): Promise<void> {
+  try {
+    await saveChanges();
+  } catch {
+    // saveChanges records a user-visible error while preserving the draft.
+  }
+}
+
+async function closePanel(): Promise<void> {
+  try {
+    await saveChanges();
+  } catch {
+    return;
+  }
+  emit('close');
 }
 
 onMounted(() => {
-  syncLocalWithCurrent();
+  syncLocalWithCurrent({ preserveDirty: false });
   if (currentChat.value) {
     const url = currentChat.value.endpointUrl || settings.value.endpointUrl;
     const type = currentChat.value.endpointType || settings.value.endpointType;
-    if (type === 'transformers_js' || isLocalhost({ url })) {
-      fetchModels();
+    if (type === 'transformers_js' || isLocalhost({ url })) void fetchModels();
+  }
+});
+
+onBeforeUnmount(() => {
+  void saveChangesFromUi();
+});
+
+watch(() => currentChat.value?.id, async (newId) => {
+  const oldEditingChatId = editingChatId.value;
+  if (oldEditingChatId !== undefined && oldEditingChatId !== newId) {
+    try {
+      await saveChangesForChat({ chatId: oldEditingChatId });
+    } catch {
+      // Navigation has already selected another chat. The old target's error
+      // must not be displayed as though it belonged to the new chat.
     }
   }
-});
-
-// Sync if currentChat changes while open (e.g. from another tab)
-watch(() => currentChat.value?.id, async (newId, oldId) => {
-  if (oldId && oldId !== newId) {
-    // If we're switching chats while the panel is open, ensure any pending changes in the OLD chat are saved.
-    // We use the ID that was active when the changes were made.
-    await chatMetadata.updateSettings({
-      chatId: oldId,
-      updates: localSettings.value,
-    });
+  if (currentChat.value?.id === newId) {
+    syncLocalWithCurrent({ preserveDirty: false });
   }
-  syncLocalWithCurrent();
-});
+}, { flush: 'sync' });
 
-// Deep watch for lmParameters to keep UI in sync with changes from ChatInput (like Reasoning)
-watch(() => currentChat.value?.lmParameters, (newParams) => {
-  if (newParams) {
-    localSettings.value.lmParameters = JSON.parse(JSON.stringify(newParams));
-  }
-}, { deep: true });
+watch(
+  () => {
+    const chat = currentChat.value;
+    if (chat === null || chat === undefined) return undefined;
+
+    // Watch only the settings projection. The Chat object also contains the
+    // message tree, which changes for every streaming chunk; observing it deeply
+    // would run settings reconciliation for unrelated conversation updates.
+    return JSON.stringify(draftFromChat({ chat }));
+  },
+  () => {
+    if (currentChat.value?.id === editingChatId.value) {
+      syncLocalWithCurrent({ preserveDirty: true });
+    }
+  },
+);
 
 watch(() => props.show, (show) => {
   if (show) {
-    syncLocalWithCurrent();
+    // A prop-driven close cannot await persistence. Preserve dirty fields on
+    // reopen so a failed background save never discards the user's draft.
+    syncLocalWithCurrent({ preserveDirty: true });
     setActiveFocusArea({ area: 'chat-settings' });
   } else {
     setActiveFocusArea({ area: 'chat' });
-    saveChanges();
+    void saveChangesFromUi();
   }
 });
-
-async function saveChanges() {
-  if (currentChat.value) {
-    await chatMetadata.updateSettings({
-      chatId: currentChat.value.id,
-      updates: localSettings.value,
-    });
-  }
-}
 
 function formatLabel({ value, source }: { value: string | undefined, source: 'chat' | 'chat_group' | 'global' | undefined }) {
   if (!value) return 'Default';
@@ -143,111 +601,140 @@ function isLocalhost({ url }: { url: string | undefined }) {
   return url.includes('localhost') || url.includes('127.0.0.1');
 }
 
+async function updateEndpointType({
+  endpointType,
+}: {
+  endpointType: EndpointType | undefined;
+}): Promise<void> {
+  switch (endpointType) {
+  case undefined:
+    localSettings.value.endpointType = undefined;
+    localSettings.value.endpointUrl = undefined;
+    localSettings.value.endpointHttpHeaders = undefined;
+    break;
+  case 'transformers_js':
+    localSettings.value.endpointType = endpointType;
+    localSettings.value.endpointUrl = undefined;
+    localSettings.value.endpointHttpHeaders = undefined;
+    break;
+  case 'openai':
+  case 'ollama':
+    localSettings.value.endpointType = endpointType;
+    break;
+  default: {
+    const _ex: never = endpointType;
+    throw new Error(`Unhandled endpoint type: ${_ex}`);
+  }
+  }
+
+  await saveChangesFromUi();
+}
+
 async function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   localSettings.value.endpointType = preset.type;
   localSettings.value.endpointUrl = preset.url;
   error.value = null;
-  await saveChanges();
+  await saveChangesFromUi();
 }
 
 async function handleQuickProviderProfileChange() {
-  const providerProfile = settings.value.providerProfiles?.find(p => p.id === selectedProviderProfileId.value);
+  const providerProfile = settings.value.providerProfiles?.find(p => idToRaw({ id: p.id }) === selectedProviderProfileId.value);
   if (providerProfile) {
-    localSettings.value.endpointType = providerProfile.endpointType;
-    localSettings.value.endpointUrl = providerProfile.endpointUrl;
-    localSettings.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders ? JSON.parse(JSON.stringify(providerProfile.endpointHttpHeaders)) : undefined;
+    switch (providerProfile.endpointType) {
+    case 'transformers_js':
+      // Provider profiles share the EndpointType union, but Transformers.js is
+      // in-process and must not leave HTTP-only draft fields behind on failure.
+      localSettings.value.endpointType = providerProfile.endpointType;
+      localSettings.value.endpointUrl = undefined;
+      localSettings.value.endpointHttpHeaders = undefined;
+      break;
+    case 'openai':
+    case 'ollama':
+      localSettings.value.endpointType = providerProfile.endpointType;
+      localSettings.value.endpointUrl = providerProfile.endpointUrl;
+      localSettings.value.endpointHttpHeaders = providerProfile.endpointHttpHeaders?.map(([name, value]) => [name, value]);
+      break;
+    default: {
+      const _ex: never = providerProfile.endpointType;
+      throw new Error(`Unhandled provider profile endpoint type: ${_ex}`);
+    }
+    }
     localSettings.value.modelId = providerProfile.defaultModelId;
-    localSettings.value.systemPrompt = providerProfile.systemPrompt ? { content: providerProfile.systemPrompt, behavior: 'override' } : undefined;
-    localSettings.value.lmParameters = providerProfile.lmParameters ? JSON.parse(JSON.stringify(providerProfile.lmParameters)) : undefined;
-    await saveChanges();
+    localSettings.value.systemPrompt = providerProfile.systemPrompt
+      ? { content: providerProfile.systemPrompt, behavior: 'override' }
+      : undefined;
+    localSettings.value.lmParameters = cloneLmParameters({ lmParameters: providerProfile.lmParameters });
+    await saveChangesFromUi();
   }
   error.value = null;
   selectedProviderProfileId.value = '';
 }
 
-async function addHeader() {
+function addHeader() {
   if (!localSettings.value.endpointHttpHeaders) localSettings.value.endpointHttpHeaders = [];
   localSettings.value.endpointHttpHeaders.push(['', '']);
 }
 
 async function removeHeader({ index }: { index: number }) {
-  if (localSettings.value.endpointHttpHeaders) {
-    localSettings.value.endpointHttpHeaders.splice(index, 1);
-    await saveChanges();
-  }
+  localSettings.value.endpointHttpHeaders?.splice(index, 1);
+  await saveChangesFromUi();
 }
 
 async function fetchModels() {
   const chatId = currentChatId.value;
-  if (chatId) {
-    error.value = null;
-    try {
-      const models = await chatModels.fetchForChat({
-        chatId,
-      });
-      if (models.length === 0) {
-        error.value = 'No models found at this endpoint.';
-      }
-
-      // Validate local modelId against new models
-      if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
-        localSettings.value.modelId = undefined;
-        await saveChanges();
-      }
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Connection failed. Check URL or provider.';
+  if (!chatId) return;
+  error.value = null;
+  try {
+    const models = await chatModels.fetchForChat({ chatId });
+    if (models.length === 0) error.value = 'No models found at this endpoint.';
+    if (localSettings.value.modelId && !models.includes(localSettings.value.modelId)) {
+      localSettings.value.modelId = undefined;
+      await saveChangesFromUi();
     }
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : 'Connection failed. Check URL or provider.';
   }
 }
 
-// Auto-fetch for localhost or transformers_js when URL/Type changes
 watch([
   () => localSettings.value.endpointUrl,
   () => localSettings.value.endpointType,
 ], ([url, type]) => {
   error.value = null;
-  if (type === 'transformers_js' || (url && isLocalhost({ url: url as string }))) {
-    fetchModels();
-  }
+  if (type === 'transformers_js' || (url && isLocalhost({ url }))) void fetchModels();
 });
 
-/*
-async function updateSystemPromptContent(content: string) {
-  if (!content && (!localSettings.value.systemPrompt || localSettings.value.systemPrompt.behavior === 'override')) {
-    localSettings.value.systemPrompt = undefined;
-  } else if (!localSettings.value.systemPrompt) {
-    localSettings.value.systemPrompt = { content, behavior: 'override' };
-  } else {
-    localSettings.value.systemPrompt = { ...localSettings.value.systemPrompt, content };
-  }
-}
-*/
-
-async function updateSystemPromptBehavior({ behavior, isClear = false }: { behavior: 'override' | 'append' | 'inherit'; isClear?: boolean }) {
+async function updateSystemPromptBehavior({
+  behavior,
+}: {
+  behavior: 'inherit' | 'clear' | 'replace' | 'append';
+}) {
   switch (behavior) {
   case 'inherit':
     localSettings.value.systemPrompt = undefined;
     break;
-  case 'override':
-  case 'append':
-    if (isClear) {
-      localSettings.value.systemPrompt = { behavior: 'override', content: null };
-    } else if (!localSettings.value.systemPrompt) {
-      localSettings.value.systemPrompt = { content: '', behavior };
-    } else {
-      const content = localSettings.value.systemPrompt.content ?? '';
-      localSettings.value.systemPrompt = { behavior, content };
-    }
+  case 'clear':
+    localSettings.value.systemPrompt = { behavior: 'override', content: null };
     break;
+  case 'replace': {
+    const content = localSettings.value.systemPrompt?.content ?? '';
+    localSettings.value.systemPrompt = { behavior: 'override', content };
+    break;
+  }
+  case 'append': {
+    const content = localSettings.value.systemPrompt?.content ?? '';
+    localSettings.value.systemPrompt = { behavior: 'append', content };
+    break;
+  }
   default: {
     const _ex: never = behavior;
     throw new Error(`Unhandled behavior: ${_ex}`);
   }
   }
-  await saveChanges();
+  await saveChangesFromUi();
 }
 
-async function updateSystemPromptContent({ content }: { content: string }) {
+function updateSystemPromptContent({ content }: { content: string }) {
   if (localSettings.value.systemPrompt) {
     localSettings.value.systemPrompt.content = content;
   } else {
@@ -256,30 +743,20 @@ async function updateSystemPromptContent({ content }: { content: string }) {
 }
 
 async function handleRestoreDefaults() {
-  localSettings.value = {
-    endpointType: undefined,
-    endpointUrl: undefined,
-    endpointHttpHeaders: undefined,
-    modelId: undefined,
-    autoTitleEnabled: undefined,
-    titleModelId: undefined,
-    systemPrompt: undefined,
-    lmParameters: undefined
-  };
-  await saveChanges();
+  localSettings.value = emptyDraft();
+  await saveChangesFromUi();
 }
-
 
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 
 <template>
   <Transition name="modal">
-    <div v-if="show" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6" @click.self="emit('close')">
+    <div v-if="show" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-2 md:p-6" @click.self="closePanel">
       <div class="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col border border-gray-100 dark:border-gray-800 relative overflow-hidden modal-content-zoom">
         <!-- Title & Close -->
         <div class="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800 shrink-0">
@@ -300,13 +777,21 @@ defineExpose({
             </div>
 
             <button
-              @click="emit('close')"
+              @click="closePanel"
               class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
               data-testid="close-button"
             >
               <XIcon class="w-5 h-5" />
             </button>
           </div>
+        </div>
+
+        <div
+          v-if="saveError"
+          class="mx-6 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+          data-testid="chat-settings-save-error"
+        >
+          {{ saveError }}
         </div>
 
         <!-- Scrollable Content -->
@@ -323,7 +808,7 @@ defineExpose({
                   style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
                 >
                   <option value="" disabled>Load from saved profiles...</option>
-                  <option v-for="p in settings.providerProfiles" :key="p.id" :value="p.id">{{ p.name }} ({{ p.endpointType === 'ollama' ? 'Ollama' : 'OpenAI' }})</option>
+                  <option v-for="p in settings.providerProfiles" :key="idToRaw({ id: p.id })" :value="idToRaw({ id: p.id })">{{ p.name }} ({{ endpointTypeLabel({ endpointType: p.endpointType }) }})</option>
                 </select>
               </div>
 
@@ -350,11 +835,11 @@ defineExpose({
             <div class="space-y-2">
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint Type</label>
               <select
+                data-testid="chat-setting-endpoint-type-select"
                 :value="localSettings.endpointType || 'global'"
                 @change="async (e) => {
-                  const val = (e.target as HTMLSelectElement).value;
-                  localSettings.endpointType = val === 'global' ? undefined : val as any;
-                  await saveChanges();
+                  const value = (e.target as HTMLSelectElement).value;
+                  await updateEndpointType({ endpointType: endpointTypeFromSelectValue({ value }) });
                 }"
                 class="w-full text-sm font-bold bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white appearance-none shadow-sm"
                 style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 1rem center; background-size: 1.2em;"
@@ -370,7 +855,7 @@ defineExpose({
               <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Endpoint URL</label>
               <input
                 v-model="localSettings.endpointUrl"
-                @blur="saveChanges"
+                @blur="saveChangesFromUi"
                 @keyup.enter="(e) => (e.target as HTMLInputElement).blur()"
                 @input="error = null"
                 type="text"
@@ -404,14 +889,14 @@ defineExpose({
                 >
                   <input
                     v-model="header[0]"
-                    @blur="saveChanges"
+                    @blur="saveChangesFromUi"
                     type="text"
                     class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                     placeholder="Name"
                   />
                   <input
                     v-model="header[1]"
-                    @blur="saveChanges"
+                    @blur="saveChangesFromUi"
                     type="text"
                     class="flex-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] font-bold text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm"
                     placeholder="Value"
@@ -432,7 +917,7 @@ defineExpose({
                 <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Model Override</label>
                 <ModelSelector
                   :model-value="localSettings.modelId"
-                  @update:model-value="val => { localSettings.modelId = val; saveChanges(); }"
+                  @update:model-value="val => { localSettings.modelId = val; saveChangesFromUi(); }"
                   :models="sortedAvailableModels"
                   :loading="isFetchingModels"
                   :placeholder="formatLabel({ value: resolvedSettings?.modelId, source: resolvedSettings?.sources.modelId })"
@@ -448,7 +933,7 @@ defineExpose({
                   @update:effort="effort => {
                     const params = { ...(localSettings.lmParameters || EMPTY_LM_PARAMETERS), reasoning: { effort } };
                     localSettings.lmParameters = params;
-                    saveChanges();
+                    saveChangesFromUi();
                   }"
                 />
               </div>
@@ -470,21 +955,21 @@ defineExpose({
               </div>
               <div class="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                 <button
-                  @click="localSettings.autoTitleEnabled = undefined; saveChanges();"
+                  @click="localSettings.autoTitleEnabled = undefined; saveChangesFromUi();"
                   class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                   :class="localSettings.autoTitleEnabled === undefined ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                 >
                   Inherit
                 </button>
                 <button
-                  @click="localSettings.autoTitleEnabled = true; saveChanges();"
+                  @click="localSettings.autoTitleEnabled = true; saveChangesFromUi();"
                   class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                   :class="localSettings.autoTitleEnabled === true ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                 >
                   Enabled
                 </button>
                 <button
-                  @click="localSettings.autoTitleEnabled = false; saveChanges();"
+                  @click="localSettings.autoTitleEnabled = false; saveChangesFromUi();"
                   class="px-3 py-1 text-[9px] font-bold rounded transition-all"
                   :class="localSettings.autoTitleEnabled === false ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                 >
@@ -498,7 +983,7 @@ defineExpose({
                 <label class="block text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1">Title Model Override</label>
                 <ModelSelector
                   :model-value="localSettings.titleModelId"
-                  @update:model-value="val => { localSettings.titleModelId = val; saveChanges(); }"
+                  @update:model-value="val => { localSettings.titleModelId = val; saveChangesFromUi(); }"
                   :models="sortedAvailableModels"
                   :loading="isFetchingModels"
                   :placeholder="formatLabel({ value: resolvedSettings?.titleModelId, source: resolvedSettings?.sources.titleModelId })"
@@ -567,14 +1052,14 @@ defineExpose({
                       Inherit
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior({ behavior: 'override', isClear: true })"
+                      @click="updateSystemPromptBehavior({ behavior: 'clear' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content === null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
                       Clear
                     </button>
                     <button
-                      @click="updateSystemPromptBehavior({ behavior: 'override' })"
+                      @click="updateSystemPromptBehavior({ behavior: 'replace' })"
                       class="px-2 py-0.5 text-[9px] font-bold rounded transition-all"
                       :class="localSettings.systemPrompt?.behavior === 'override' && localSettings.systemPrompt.content !== null ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'"
                     >
@@ -603,7 +1088,7 @@ defineExpose({
                   v-else
                   :value="localSettings.systemPrompt?.content || ''"
                   @input="e => updateSystemPromptContent({ content: (e.target as HTMLTextAreaElement).value })"
-                  @blur="saveChanges"
+                  @blur="saveChangesFromUi"
                   rows="4"
                   class="w-full bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium text-gray-800 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all dark:text-white shadow-sm resize-none"
                   :placeholder="localSettings.systemPrompt?.behavior === 'append' ? 'Added after global instructions...' : 'Completely replaces global instructions...'"
@@ -625,8 +1110,8 @@ defineExpose({
                   </div>
                   <div class="flex items-center justify-between text-[10px] font-bold">
                     <span class="text-gray-400">Parameters</span>
-                    <span :class="localSettings.lmParameters && Object.keys(localSettings.lmParameters).length > 0 ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-lm-parameters">
-                      {{ localSettings.lmParameters && Object.keys(localSettings.lmParameters).length > 0 ? 'Chat Overrides' : 'Inherited' }}
+                    <span :class="hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? 'text-blue-500' : 'text-gray-300'" data-testid="resolution-status-lm-parameters">
+                      {{ hasLmParameterOverrides({ lmParameters: localSettings.lmParameters }) ? 'Chat Overrides' : 'Inherited' }}
                     </span>
                   </div>
                   <div class="pt-2 border-t border-gray-50 dark:border-gray-800/50">
@@ -639,7 +1124,7 @@ defineExpose({
             <div class="p-6 bg-white dark:bg-gray-800/30 border border-gray-100 dark:border-gray-800 rounded-3xl">
               <LmParametersEditor
                 :model-value="localSettings.lmParameters"
-                @update:model-value="val => { localSettings.lmParameters = val; saveChanges(); }"
+                @update:model-value="val => { localSettings.lmParameters = val; saveChangesFromUi(); }"
               />
             </div>
           </div>

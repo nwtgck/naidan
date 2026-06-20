@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { LocalStorageProvider } from './local-storage';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { Chat, ChatGroup, Settings } from '@/models/types';
-import { EMPTY_LM_PARAMETERS } from '@/models/types';
 import type { MigrationChunkDto } from '@/models/dto';
+import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 // --- Mocks for OPFS ---
 class MockFileSystemFileHandle {
@@ -89,9 +89,9 @@ vi.stubGlobal('navigator', { storage: mockNavigatorStorage });
 
 // --- Test Data ---
 const mockChat: Chat = {
-  id: '123e4567-e89b-12d3-a456-426614174000',
+  id: toChatId({ raw: '123e4567-e89b-12d3-a456-426614174000' }),
   title: 'Test Chat',
-  groupId: '987fcdeb-51a2-43d1-9456-426614174000',
+  groupId: toChatGroupId({ raw: '987fcdeb-51a2-43d1-9456-426614174000' }),
   root: { items: [] },
   createdAt: Date.now(),
   updatedAt: Date.now(),
@@ -101,7 +101,7 @@ const mockChat: Chat = {
   endpointType: undefined,
   endpointUrl: undefined,
   endpointHttpHeaders: undefined,
-  lmParameters: EMPTY_LM_PARAMETERS,
+  lmParameters: undefined,
   modelId: undefined,
   originChatId: undefined,
   originMessageId: undefined,
@@ -110,7 +110,7 @@ const mockChat: Chat = {
 };
 
 const mockChatGroup: ChatGroup = {
-  id: '987fcdeb-51a2-43d1-9456-426614174000',
+  id: toChatGroupId({ raw: '987fcdeb-51a2-43d1-9456-426614174000' }),
   name: 'Test Group',
   updatedAt: Date.now(),
   items: [],
@@ -125,9 +125,22 @@ const mockSettings: Settings = {
   storageType: 'local',
   mounts: [],
   providerProfiles: [],
-  lmParameters: EMPTY_LM_PARAMETERS,
+  lmParameters: undefined,
   experimental: {
     sidebarSendMessageReorder: 'disabled',
+  },
+};
+
+const normalizedMockSettings: Settings = {
+  ...mockSettings,
+  defaultModelId: undefined,
+  titleModelId: undefined,
+  heavyContentAlertDismissed: undefined,
+  systemPrompt: undefined,
+  experimental: {
+    ...mockSettings.experimental,
+    fakeLm: 'disabled',
+    toolConfigPersistence: 'disabled',
   },
 };
 
@@ -139,15 +152,15 @@ describe('Storage Migration (Round-Trip)', () => {
     // 1. Setup Data
     await provider.init();
     await provider.clearAll();
-    await provider.saveSettings(mockSettings);
-    await provider.saveChatGroup(mockChatGroup);
-    await provider.saveChatContent(mockChat.id, mockChat);
-    await provider.saveChatMeta(mockChat);
-    await provider.saveHierarchy({
+    await provider.saveSettings({ settings: mockSettings });
+    await provider.saveChatGroup({ chatGroup: mockChatGroup });
+    await provider.saveChatContent({ id: mockChat.id, content: mockChat });
+    await provider.saveChatMeta({ meta: mockChat });
+    await provider.saveHierarchy({ hierarchy: {
       items: [
-        { type: 'chat_group', id: mockChatGroup.id, chat_ids: [mockChat.id] }
+        { type: 'chat_group', id: idToRaw({ id: mockChatGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] }
       ]
-    });
+    } });
 
     // 2. Dump
     const snapshot = await provider.dump();
@@ -157,7 +170,7 @@ describe('Storage Migration (Round-Trip)', () => {
     }
 
     // Verify snapshot structure
-    expect(snapshot.structure.settings).toEqual(mockSettings);
+    expect(snapshot.structure.settings).toEqual(normalizedMockSettings);
     expect(snapshot.structure.chatGroups).toHaveLength(1);
     expect(snapshot.structure.chatMetas).toHaveLength(1);
     expect(snapshot.structure.hierarchy.items).toHaveLength(1);
@@ -171,14 +184,14 @@ describe('Storage Migration (Round-Trip)', () => {
     async function* arrayToGenerator(array: MigrationChunkDto[]) {
       for (const item of array) yield item;
     }
-    await provider.restore({
+    await provider.restore({ snapshot: {
       structure: snapshot.structure,
       contentStream: arrayToGenerator(chunks)
-    });
+    } });
 
     // 5. Verify Data Integrity
     const loadedSettings = await provider.loadSettings();
-    expect(loadedSettings).toEqual(expect.objectContaining(mockSettings));
+    expect(loadedSettings).toEqual(normalizedMockSettings);
 
     const chatGroups = await provider.listChatGroups();
     expect(chatGroups).toHaveLength(1);

@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -72,14 +73,14 @@ describe('useChatBootstrap', () => {
 
     expect(mockInstallChatBootstrap).toHaveBeenCalledTimes(1);
 
-    await chatBootstrap.loadChats({});
+    await chatBootstrap.loadChats();
     await chatBootstrap.openChat({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
 
-    expect(mockLoadData).toHaveBeenCalledWith({});
+    expect(mockLoadData).toHaveBeenCalledWith();
     expect(mockOpenChat).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
   });
 });

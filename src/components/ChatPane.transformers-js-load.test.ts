@@ -1,3 +1,5 @@
+import type { ChatId, MessageId } from '@/models/ids';
+import { toChatId } from '@/models/ids';
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
@@ -24,7 +26,7 @@ vi.mock('../services/transformers-js', () => {
     activeModelId: undefined,
     device: 'wasm',
     isCached: false,
-    progressItems: {},
+    progressItems: new Map(),
     totalLoadedAmount: 0,
     totalSizeAmount: 0
   };
@@ -32,15 +34,31 @@ vi.mock('../services/transformers-js', () => {
   return {
     transformersJsService: {
       getState: vi.fn(() => state),
-      subscribe: vi.fn((cb) => {
-        listeners.add(cb);
-        cb(state.status, state.progress, state.error, state.isCached, state.isLoadingFromCache, state.progressItems, state.loadingModelId);
-        return () => listeners.delete(cb);
+      subscribe: vi.fn(({ listener }) => {
+        listeners.add(listener);
+        listener({
+          status: state.status,
+          progress: state.progress,
+          error: state.error,
+          isCached: state.isCached,
+          isLoadingFromCache: state.isLoadingFromCache,
+          progressItems: state.progressItems,
+          loadingModelId: state.loadingModelId,
+        });
+        return () => listeners.delete(listener);
       }),
       // Helper for testing to trigger state changes
       __triggerStateChange: (updates: any) => {
         Object.assign(state, updates);
-        listeners.forEach((cb: any) => cb(state.status, state.progress, state.error, state.isCached, state.isLoadingFromCache, state.progressItems, state.loadingModelId));
+        listeners.forEach((listener: any) => listener({
+          status: state.status,
+          progress: state.progress,
+          error: state.error,
+          isCached: state.isCached,
+          isLoadingFromCache: state.isLoadingFromCache,
+          progressItems: state.progressItems,
+          loadingModelId: state.loadingModelId,
+        }));
       }
     }
   };
@@ -48,7 +66,7 @@ vi.mock('../services/transformers-js', () => {
 
 // Mock dependencies
 const mockCurrentChat = ref<any>({
-  id: '1',
+  id: toChatId({ raw: '1' }),
   title: 'Test Chat',
   root: { items: [] },
   currentLeafId: 'msg-2',
@@ -143,16 +161,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },

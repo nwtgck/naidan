@@ -1,5 +1,7 @@
 import { computed, type ComputedRef, toRaw } from 'vue';
+import { idToRaw } from '@/models/ids';
 import type { MessageNode, CombinedToolCall, ToolCall, AssistantMessageNode, Chat } from '@/models/types';
+import type { ChatId, ToolCallId } from '@/models/ids';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 
@@ -59,7 +61,7 @@ export function useChatDisplayFlow({
   isProcessing
 }: {
   chat: ComputedRef<Chat | null>,
-  isProcessing: ({ chatId }: { chatId: string }) => boolean
+  isProcessing: ({ chatId }: { chatId: ChatId }) => boolean
 }) {
 
   /**
@@ -174,7 +176,7 @@ export function useChatDisplayFlow({
           const toolCalls: CombinedToolCall[] = node.results.map(er => ({
             id: er.toolCallId, nodeId, call: triggeringAssistant!.toolCalls!.find(tc => tc.id === er.toolCallId)!, result: er
           }));
-          yield { type: 'tool_group', id: nodeId, toolCalls, node, isFirstInTurn };
+          yield { type: 'tool_group', id: idToRaw({ id: nodeId }), toolCalls, node, isFirstInTurn };
         } else {
           yield { type: 'content', node, content: '[Tool Results]', isFirstInNode: true, isLastInNode: true, isFirstInTurn };
         }
@@ -210,7 +212,7 @@ export function useChatDisplayFlow({
         const firstType = first.type;
         const id = (() => {
           switch (firstType) {
-          case 'message': return `seq-${first.node.id}-${first.mode}`;
+          case 'message': return `seq-${idToRaw({ id: first.node.id })}-${first.mode}`;
           case 'tool_group': return `seq-${first.id}`;
           case 'process_sequence': return `seq-${first.id}`;
           default: {
@@ -290,7 +292,7 @@ export function useChatDisplayFlow({
 
   const calculateStats = ({ items }: { items: ChatFlowItem[] }): SequenceStats => {
     let thinkingSteps = 0;
-    const seenToolIds = new Set<string>();
+    const seenToolIds = new Set<ToolCallId>();
     const toolNames: string[] = [];
     items.forEach(item => {
       const type = item.type;

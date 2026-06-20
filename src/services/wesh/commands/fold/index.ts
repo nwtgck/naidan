@@ -2,6 +2,9 @@ import { parseStandardArgv, type StandardArgvParserSpec } from '@/services/wesh/
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } from '@/services/wesh/types';
 import { openFileReadStream, openHandleReadStream } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
+import { iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 
 function parseWidth({
   value,
@@ -29,27 +32,30 @@ function resolvePath({
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
-function findFoldBreakIndex({
+function findFoldBreakLength({
   characters,
+  start,
   width,
   breakAtSpaces,
 }: {
   characters: string[];
+  start: number;
   width: number;
   breakAtSpaces: boolean;
 }): number {
-  if (characters.length <= width) {
-    return characters.length;
+  const remainingLength = characters.length - start;
+  if (remainingLength <= width) {
+    return remainingLength;
   }
 
   if (!breakAtSpaces) {
     return width;
   }
 
-  for (let index = width - 1; index >= 0; index--) {
+  for (let index = start + width - 1; index >= start; index--) {
     const character = characters[index];
     if (character === ' ' || character === '\t') {
-      return index + 1;
+      return index - start + 1;
     }
   }
 
@@ -71,29 +77,28 @@ function foldLine({
   }
 
   const foldedLines: string[] = [];
-  let remaining = characters;
-  while (remaining.length > width) {
-    const breakIndex = findFoldBreakIndex({
-      characters: remaining,
+  let start = 0;
+  while (start < characters.length) {
+    const breakLength = findFoldBreakLength({
+      characters,
+      start,
       width,
       breakAtSpaces,
     });
-    foldedLines.push(remaining.slice(0, breakIndex).join(''));
-    remaining = remaining.slice(breakIndex);
+    foldedLines.push(characters.slice(start, start + breakLength).join(''));
+    start += breakLength;
   }
-
-  foldedLines.push(remaining.join(''));
   return foldedLines;
 }
 
 async function writeFoldedLine({
-  context,
+  writer,
   line,
   width,
   breakAtSpaces,
   hadNewline,
 }: {
-  context: WeshCommandContext;
+  writer: ReturnType<typeof createBufferedTextWriter>;
   line: string;
   width: number;
   breakAtSpaces: boolean;
@@ -108,7 +113,7 @@ async function writeFoldedLine({
   for (let index = 0; index < foldedLines.length; index++) {
     const foldedLine = foldedLines[index]!;
     const shouldTerminateWithNewline = hadNewline || index < foldedLines.length - 1;
-    await context.text().print({
+    await writer.write({
       text: shouldTerminateWithNewline ? `${foldedLine}\n` : foldedLine,
     });
   }
@@ -125,45 +130,22 @@ async function processFoldStream({
   width: number;
   breakAtSpaces: boolean;
 }): Promise<void> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        await writeFoldedLine({
-          context,
-          line,
-          width,
-          breakAtSpaces,
-          hadNewline: true,
-        });
-      }
-    }
-
-    buffer += decoder.decode();
-    if (buffer.length > 0) {
-      await writeFoldedLine({
-        context,
-        line: buffer,
-        width,
-        breakAtSpaces,
-        hadNewline: false,
-      });
-    }
-  } finally {
-    reader.releaseLock();
+  const writer = createBufferedTextWriter({
+    handle: context.stdout,
+    maxBufferLength: 16 * 1024,
+  });
+  for await (const record of iterateUtf8LineRecords({
+    chunks: iterateReadableStreamChunks({ stream }),
+  })) {
+    await writeFoldedLine({
+      writer,
+      line: record.text,
+      width,
+      breakAtSpaces,
+      hadNewline: record.termination === 'delimiter',
+    });
   }
+  await writer.flush();
 }
 
 const foldArgvSpec: StandardArgvParserSpec = {

@@ -1,5 +1,5 @@
 import { computed, type ComputedRef } from 'vue';
-import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Reasoning, Settings } from '@/models/types';
+import type { Attachment, Chat, EndpointType, LmParameters, MessageNode, Mount, Reasoning, Settings } from '@/models/types';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import { useSettings } from '@/composables/useSettings';
 import { useImageGeneration } from '@/composables/useImageGeneration';
@@ -61,6 +61,10 @@ import { useChatLifecycle } from '@/composables/chat/ui/useChatLifecycle';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
 import { useChatOrganization } from '@/composables/chat/ui/useChatOrganization';
 import { useSidebarStructure } from '@/composables/chat/ui/useSidebarStructure';
+import type { ChatId, MessageId } from '@/models/ids';
+import { idToRaw, toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
+import type { ImageRequestParams } from '@/utils/image-generation';
+import { storageService } from '@/services/storage';
 
 export type { AddToastOptions } from '@/composables/chat/ui/useChatLifecycle';
 
@@ -84,12 +88,12 @@ export function useChat() {
   });
   const currentChat = chatCurrentBridge.currentChat;
   const currentChatGroup = chatCurrentBridge.currentChatGroup;
-  const chatConversation = useChatConversation({});
-  const chatBranches = useChatBranches({});
-  const chatCompaction = useChatCompaction({});
-  const chatMetadata = useChatMetadata({});
-  const chatModelsOwner = useChatModels({});
-  const chatTitleOwner = useOwnedChatTitle({});
+  const chatConversation = useChatConversation();
+  const chatBranches = useChatBranches();
+  const chatCompaction = useChatCompaction();
+  const chatMetadata = useChatMetadata();
+  const chatModelsOwner = useChatModels();
+  const chatTitleOwner = useOwnedChatTitle();
   const sidebarItems = chatDerivedState.sidebarItems;
   const chats = chatDerivedState.chats;
   const chatGroups = chatDerivedState.chatGroups;
@@ -103,10 +107,10 @@ export function useChat() {
     mount,
   }: {
     chatId: string;
-    mount: import('@/models/types').Mount;
+    mount: Mount;
   }) {
-    await useChatMounts({}).addMount({
-      chatId,
+    await useChatMounts().addMount({
+      chatId: toChatId({ raw: chatId }),
       mount,
     });
   }
@@ -118,9 +122,9 @@ export function useChat() {
     chatId: string;
     volumeId: string;
   }) {
-    await useChatMounts({}).removeMount({
-      chatId,
-      volumeId,
+    await useChatMounts().removeMount({
+      chatId: toChatId({ raw: chatId }),
+      volumeId: toVolumeId({ raw: volumeId }),
     });
   }
 
@@ -133,9 +137,9 @@ export function useChat() {
     volumeId: string;
     readOnly: boolean;
   }) {
-    await useChatMounts({}).updateMount({
-      chatId,
-      volumeId,
+    await useChatMounts().updateMount({
+      chatId: toChatId({ raw: chatId }),
+      volumeId: toVolumeId({ raw: volumeId }),
       readOnly,
     });
   }
@@ -145,10 +149,10 @@ export function useChat() {
     mount,
   }: {
     groupId: string;
-    mount: import('@/models/types').Mount;
+    mount: Mount;
   }) {
-    await useChatGroupMounts({}).addMount({
-      chatGroupId: groupId,
+    await useChatGroupMounts().addMount({
+      chatGroupId: toChatGroupId({ raw: groupId }),
       mount,
     });
   }
@@ -160,9 +164,9 @@ export function useChat() {
     groupId: string;
     volumeId: string;
   }) {
-    await useChatGroupMounts({}).removeMount({
-      chatGroupId: groupId,
-      volumeId,
+    await useChatGroupMounts().removeMount({
+      chatGroupId: toChatGroupId({ raw: groupId }),
+      volumeId: toVolumeId({ raw: volumeId }),
     });
   }
 
@@ -177,9 +181,9 @@ export function useChat() {
     mountPath: string;
     readOnly: boolean;
   }) {
-    await useChatGroupMounts({}).updateMount({
-      chatGroupId: groupId,
-      volumeId,
+    await useChatGroupMounts().updateMount({
+      chatGroupId: toChatGroupId({ raw: groupId }),
+      volumeId: toVolumeId({ raw: volumeId }),
       mountPath,
       readOnly,
     });
@@ -198,8 +202,8 @@ export function useChat() {
     leafId?: string;
   }) {
     return await chatNavigation.openChat({
-      chatId: id,
-      leafId,
+      chatId: toChatId({ raw: id }),
+      leafId: leafId === undefined ? undefined : toMessageId({ raw: leafId }),
     });
   }
 
@@ -211,8 +215,8 @@ export function useChat() {
     messageId: string;
   }) {
     return await chatNavigation.openChatAtMessage({
-      chatId,
-      messageId,
+      chatId: toChatId({ raw: chatId }),
+      messageId: toMessageId({ raw: messageId }),
     });
   }
 
@@ -222,7 +226,7 @@ export function useChat() {
     id: string | null;
   }) {
     chatNavigation.openChatGroup({
-      groupId: id,
+      groupId: id === null ? null : toChatGroupId({ raw: id }),
     });
   }
 
@@ -236,7 +240,7 @@ export function useChat() {
     systemPrompt: Chat['systemPrompt'];
   }) {
     return await chatLifecycle.createNewChat({
-      groupId,
+      groupId: groupId === undefined ? undefined : toChatGroupId({ raw: groupId }),
       modelId,
       systemPrompt,
     });
@@ -247,16 +251,16 @@ export function useChat() {
     injectAddToast,
   }: {
     id: string;
-    injectAddToast?: ((toast: AddToastOptions) => string) | undefined;
+    injectAddToast?: (({ message, actionLabel, onAction, onClose, duration }: AddToastOptions) => string) | undefined;
   }) {
     await chatLifecycle.deleteChat({
-      id,
+      id: toChatId({ raw: id }),
       injectAddToast,
     });
   }
 
-  async function deleteAllChats(_args: Record<never, never>) {
-    await chatLifecycle.deleteAllChats({});
+  async function deleteAllChats() {
+    await chatLifecycle.deleteAllChats();
   }
 
   async function renameChat({
@@ -267,7 +271,7 @@ export function useChat() {
     newTitle: string;
   }) {
     await chatMetadata.rename({
-      chatId: id,
+      chatId: toChatId({ raw: id }),
       title: newTitle,
     });
   }
@@ -280,7 +284,7 @@ export function useChat() {
     modelId: string | undefined;
   }) {
     await chatMetadata.updateModel({
-      chatId: id,
+      chatId: toChatId({ raw: id }),
       modelId,
     });
   }
@@ -293,8 +297,8 @@ export function useChat() {
     groupId: string | null;
   }) {
     await chatMetadata.updateGroupOverride({
-      chatId: id,
-      chatGroupId: groupId ?? undefined,
+      chatId: toChatId({ raw: id }),
+      chatGroupId: groupId === null ? undefined : toChatGroupId({ raw: groupId }),
     });
   }
 
@@ -305,9 +309,55 @@ export function useChat() {
     id: string;
     updates: Partial<Pick<Chat, 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders' | 'modelId' | 'autoTitleEnabled' | 'titleModelId' | 'systemPrompt' | 'lmParameters'>>;
   }) {
+    const chatId = toChatId({ raw: id });
+    const hasEndpointSubfieldUpdate = Object.hasOwn(updates, 'endpointUrl')
+      || Object.hasOwn(updates, 'endpointHttpHeaders');
+    let normalizedUpdates = updates;
+
+    if (hasEndpointSubfieldUpdate && !Object.hasOwn(updates, 'endpointType')) {
+      const liveTarget = liveChatRegistry.get(chatId);
+      const storedTarget = liveTarget === undefined
+        ? await storageService.loadChatMeta({ id: chatId })
+        : undefined;
+      const containingGroupId = chatGroups.value.find(group =>
+        group.items.some(item => item.chat.id === chatId),
+      )?.id;
+      const target = liveTarget ?? (storedTarget === null || storedTarget === undefined
+        ? undefined
+        : {
+          ...storedTarget,
+          // Chat/group membership is persisted in the hierarchy rather than
+          // ChatMeta. Recover it here so a partial endpoint update to a non-live
+          // chat resolves the same Group > Global inheritance as a live chat.
+          groupId: storedTarget.groupId ?? containingGroupId,
+          endpointType: storedTarget.endpoint?.type,
+          endpointUrl: storedTarget.endpoint?.url,
+          endpointHttpHeaders: storedTarget.endpoint?.httpHeaders,
+          root: { items: [] },
+        });
+      if (target === undefined) {
+        throw new Error('Chat not found');
+      }
+      const resolved = resolveChatSettings({
+        chat: target,
+        groups: chatGroups.value,
+        globalSettings: settings.value,
+      });
+      normalizedUpdates = {
+        ...updates,
+        endpointType: resolved.endpointType,
+        endpointUrl: Object.hasOwn(updates, 'endpointUrl')
+          ? updates.endpointUrl
+          : resolved.endpointUrl,
+        endpointHttpHeaders: Object.hasOwn(updates, 'endpointHttpHeaders')
+          ? updates.endpointHttpHeaders
+          : resolved.endpointHttpHeaders?.map(([name, value]) => [name, value]),
+      };
+    }
+
     await chatMetadata.updateSettings({
-      chatId: id,
-      updates,
+      chatId,
+      updates: normalizedUpdates,
     });
   }
 
@@ -317,7 +367,7 @@ export function useChat() {
     chatId: string;
   }) {
     return chatMetadata.reasoningEffort({
-      chatId: computed(() => chatId),
+      chatId: computed(() => toChatId({ raw: chatId })),
     }).value;
   }
 
@@ -345,18 +395,18 @@ export function useChat() {
     }
 
     if (chatId === undefined) {
-      const currentChatId = chatCurrentBridge.getCurrentChatId({});
+      const currentChatId = chatCurrentBridge.getCurrentChatId();
       if (currentChatId !== null) {
         return await chatModelsOwner.fetchForChat({
           chatId: currentChatId,
         });
       }
 
-      return await chatModelsOwner.fetchForGlobalEndpoint({});
+      return await chatModelsOwner.fetchForGlobalEndpoint();
     }
 
     return await chatModelsOwner.fetchForChat({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
     });
   }
 
@@ -406,12 +456,12 @@ export function useChat() {
     count: number;
     steps: number | undefined;
     seed: number | 'browser_random' | undefined;
-    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'] | undefined;
+    persistAs: ImageRequestParams['persistAs'] | undefined;
     images: { blob: Blob }[];
     model: string | undefined;
     signal: AbortSignal | undefined;
   }) {
-    const chat = chatCurrentBridge.getChatTargetById({ id: chatId });
+    const chat = chatCurrentBridge.getChatTargetById({ id: toChatId({ raw: chatId }) });
     if (chat === null) {
       return;
     }
@@ -422,8 +472,8 @@ export function useChat() {
     }
 
     await handleImageGenerationForChat({
-      chatId,
-      assistantId,
+      chatId: toChatId({ raw: chatId }),
+      assistantId: toMessageId({ raw: assistantId }),
       prompt,
       width,
       height,
@@ -442,11 +492,12 @@ export function useChat() {
       updateChatContent: async ({ chatId, updater }) => {
         await updateChatContent({
           id: chatId,
-          updater: (current) => {
+
+          updater: ({ current }) => {
             if (current === null) {
               throw new Error('Chat content not found');
             }
-            return updater(current);
+            return updater({ current: current });
           },
         });
       },
@@ -475,14 +526,14 @@ export function useChat() {
     persistAs,
     attachments,
   }: {
-    chatId: string;
+    chatId: ChatId;
     prompt: string;
     width: number;
     height: number;
     count: number;
     steps: number | undefined;
     seed: number | 'browser_random' | undefined;
-    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'];
+    persistAs: ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }) {
     return await sendImageRequestForChatImpl({
@@ -498,7 +549,7 @@ export function useChat() {
       availableModels: availableModels.value,
       sendMessage: ({ content, parentId, attachments }) => {
         return sendMessageForChat({
-          chatId,
+          chatId: chatId,
           content,
           parentId,
           attachments,
@@ -523,14 +574,14 @@ export function useChat() {
 
     if (signal !== undefined) {
       return await chatTitleOwner.generateTitle({
-        chatId,
+        chatId: toChatId({ raw: chatId }),
         signal,
         titleModelIdOverride,
       });
     }
 
     return await chatTitleOwner.generateTitle({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
       signal: undefined,
       titleModelIdOverride,
     });
@@ -543,12 +594,12 @@ export function useChat() {
   }) {
     if (chatId !== undefined) {
       chatTitleOwner.abortTitleGeneration({
-        chatId,
+        chatId: toChatId({ raw: chatId }),
       });
       return;
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -565,11 +616,11 @@ export function useChat() {
     chat: Chat | Readonly<Chat>;
     assistantId: string;
     lmParameters?: LmParameters;
-    onReady?: (_args: Record<never, never>) => void;
+    onReady?: () => void;
   }): Promise<void> {
     await generateResponseForAssistant({
       chat,
-      assistantId,
+      assistantId: toMessageId({ raw: assistantId }),
       lmParameters,
       onReady,
     });
@@ -592,13 +643,13 @@ export function useChat() {
       return await sendMessageToTargetChat({
         targetChat: chatTarget,
         content,
-        parentId,
+        parentId: parentId === undefined || parentId === null ? parentId : toMessageId({ raw: parentId }),
         attachments,
         lmParameters,
       });
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return false;
     }
@@ -606,7 +657,7 @@ export function useChat() {
     return await chatConversation.sendMessage({
       chatId: currentChatId,
       content,
-      parentId,
+      parentId: parentId === undefined || parentId === null ? parentId : toMessageId({ raw: parentId }),
       attachments,
       lmParameters,
     });
@@ -619,9 +670,9 @@ export function useChat() {
     attachments,
     lmParameters,
   }: {
-    chatId: string;
+    chatId: ChatId;
     content: string;
-    parentId: string | null | undefined;
+    parentId: MessageId | null | undefined;
     attachments: Attachment[] | undefined;
     lmParameters: LmParameters | undefined;
   }): Promise<boolean> {
@@ -641,12 +692,12 @@ export function useChat() {
   }) {
     if (chatId !== undefined) {
       chatCompaction.abort({
-        chatId,
+        chatId: toChatId({ raw: chatId }),
       });
       return;
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -662,12 +713,12 @@ export function useChat() {
   }) {
     if (chatId !== undefined) {
       chatConversation.abort({
-        chatId,
+        chatId: toChatId({ raw: chatId }),
       });
       return;
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -683,7 +734,7 @@ export function useChat() {
     keepRecentMessages: number;
     instructionOverride: string | undefined;
   }) {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return false;
     }
@@ -705,7 +756,7 @@ export function useChat() {
     instructionOverride: string | undefined;
   }) {
     return await chatCompaction.compactCurrentBranch({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
       keepRecentMessages,
       instructionOverride,
     });
@@ -719,20 +770,22 @@ export function useChat() {
     chatId?: string;
   }): Promise<string | null> {
     if (chatId !== undefined) {
-      return await chatBranches.forkChat({
-        chatId,
-        messageId,
+      const forkedChatId = await chatBranches.forkChat({
+        chatId: toChatId({ raw: chatId }),
+        messageId: toMessageId({ raw: messageId }),
       });
+      return forkedChatId === null ? null : idToRaw({ id: forkedChatId });
     }
 
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return null;
     }
-    return await chatBranches.forkChat({
+    const forkedChatId = await chatBranches.forkChat({
       chatId: currentChatId,
-      messageId,
+      messageId: toMessageId({ raw: messageId }),
     });
+    return forkedChatId === null ? null : idToRaw({ id: forkedChatId });
   }
 
   async function forkChatForChat({
@@ -742,10 +795,11 @@ export function useChat() {
     chatId: string;
     messageId: string;
   }): Promise<string | null> {
-    return await chatBranches.forkChat({
-      chatId,
-      messageId,
+    const forkedChatId = await chatBranches.forkChat({
+      chatId: toChatId({ raw: chatId }),
+      messageId: toMessageId({ raw: messageId }),
     });
+    return forkedChatId === null ? null : idToRaw({ id: forkedChatId });
   }
 
   async function editMessage({
@@ -757,13 +811,13 @@ export function useChat() {
     newContent: string;
     lmParameters?: LmParameters;
   }): Promise<void> {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
     await chatBranches.editMessage({
       chatId: currentChatId,
-      messageId,
+      messageId: toMessageId({ raw: messageId }),
       newContent,
       lmParameters,
     });
@@ -781,8 +835,8 @@ export function useChat() {
     lmParameters?: LmParameters;
   }): Promise<void> {
     await chatBranches.editMessage({
-      chatId,
-      messageId,
+      chatId: toChatId({ raw: chatId }),
+      messageId: toMessageId({ raw: messageId }),
       newContent,
       lmParameters,
     });
@@ -793,13 +847,13 @@ export function useChat() {
   }: {
     messageId: string;
   }): Promise<void> {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
     await chatBranches.switchVersion({
       chatId: currentChatId,
-      messageId,
+      messageId: toMessageId({ raw: messageId }),
     });
   }
 
@@ -811,8 +865,8 @@ export function useChat() {
     messageId: string;
   }): Promise<void> {
     await chatBranches.switchVersion({
-      chatId,
-      messageId,
+      chatId: toChatId({ raw: chatId }),
+      messageId: toMessageId({ raw: messageId }),
     });
   }
 
@@ -824,15 +878,15 @@ export function useChat() {
     chatId?: string;
   }): MessageNode[] {
     const targetChat = chatId !== undefined
-      ? chatCurrentBridge.getChatTargetById({ id: chatId })
-      : chatCurrentBridge.getCurrentChat({});
+      ? chatCurrentBridge.getChatTargetById({ id: toChatId({ raw: chatId }) })
+      : chatCurrentBridge.getCurrentChat();
     if (targetChat === null) {
       return [];
     }
 
     return [...getSiblingsInChatBranch({
       root: targetChat.root,
-      messageId,
+      messageId: toMessageId({ raw: messageId }),
     })];
   }
 
@@ -841,13 +895,13 @@ export function useChat() {
   }: {
     failedMessageId: string;
   }): Promise<void> {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
     await chatConversation.regenerateMessage({
       chatId: currentChatId,
-      failedMessageId,
+      failedMessageId: toMessageId({ raw: failedMessageId }),
     });
   }
 
@@ -859,13 +913,13 @@ export function useChat() {
     failedMessageId: string;
   }): Promise<void> {
     await chatConversation.regenerateMessage({
-      chatId,
-      failedMessageId,
+      chatId: toChatId({ raw: chatId }),
+      failedMessageId: toMessageId({ raw: failedMessageId }),
     });
   }
 
-  async function toggleDebug(_args: Record<never, never>) {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+  async function toggleDebug() {
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return;
     }
@@ -881,7 +935,7 @@ export function useChat() {
     chatId: string;
   }) {
     await chatMetadata.toggleDebug({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
     });
   }
 
@@ -893,7 +947,7 @@ export function useChat() {
     effort: Reasoning['effort'];
   }) {
     await chatMetadata.updateReasoningEffort({
-      chatId,
+      chatId: toChatId({ raw: chatId }),
       effort,
     });
   }
@@ -950,10 +1004,10 @@ export function useChat() {
     count: number;
     steps: number | undefined;
     seed: number | 'browser_random' | undefined;
-    persistAs: import('@/utils/image-generation').ImageRequestParams['persistAs'];
+    persistAs: ImageRequestParams['persistAs'];
     attachments: Attachment[];
   }) {
-    const currentChatId = chatCurrentBridge.getCurrentChatId({});
+    const currentChatId = chatCurrentBridge.getCurrentChatId();
     if (currentChatId === null) {
       return false;
     }
@@ -985,7 +1039,7 @@ export function useChat() {
     currentChatGroupRef: _currentChatGroup,
     registerLiveInstance,
     setContextCompactProgress,
-    clearLiveChatRegistryImpl: (_args) => {
+    clearLiveChatRegistryImpl: () => {
       liveChatRegistry.clear();
     },
   });
@@ -994,8 +1048,8 @@ export function useChat() {
   const __testOnlySetContextCompactProgress = chatTestSupport.__testOnlySetContextCompactProgress;
   const clearLiveChatRegistry = chatTestSupport.clearLiveChatRegistry;
 
-  const clearActiveTaskCounts = (_params: Record<string, never>) => {
-    chatRuntimeStore.clearActiveTaskCounts({});
+  const clearActiveTaskCounts = () => {
+    chatRuntimeStore.clearActiveTaskCounts();
   };
 
   const getVolatileToolOutput = chatVolatileState.getVolatileToolOutput;

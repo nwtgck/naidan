@@ -5,6 +5,7 @@ import { storageService } from '@/services/storage';
 import { reactive, nextTick, computed } from 'vue';
 import type { Chat, SidebarItem, Hierarchy } from '@/models/types';
 import { useGlobalEvents } from './useGlobalEvents';
+import { toChatId } from '@/models/ids';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
@@ -52,13 +53,13 @@ vi.mock('./useConfirm', () => ({
   }),
 }));
 
-// Mock LLM Provider
-const mockLlmChat = vi.fn();
+// Mock LM Provider
+const mockLmChat = vi.fn();
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: function() {
     return {
-      chat: mockLlmChat,
+      chat: mockLmChat,
       listModels: vi.fn().mockResolvedValue(['gpt-4']),
     };
   },
@@ -86,6 +87,7 @@ vi.mock('../services/tools/registry', () => ({
 }));
 
 vi.mock('./useChatTools', () => ({
+  getEffectiveToolConfigsForChat: ({ persistedToolConfigs }: { persistedToolConfigs: unknown }) => persistedToolConfigs ?? [{ key: 'builtin.calculator' }],
   useChatTools: () => ({
     enabledToolNames: { value: ['calculator'] },
   }),
@@ -93,7 +95,7 @@ vi.mock('./useChatTools', () => ({
 
 vi.mock('./useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
-    getNaidanSysfsMountSelection: vi.fn(() => 'none'),
+    getNaidanSysfsAccessScope: vi.fn(() => 'none'),
   }),
 }));
 
@@ -117,15 +119,15 @@ describe('useChat Tool Chaining', () => {
 
     // Setup persistence mocks
     vi.mocked(storageService.updateChatMeta).mockResolvedValue(undefined);
-    vi.mocked(storageService.updateChatContent).mockImplementation((_id, updater) => {
-      return Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined })) as any;
+    vi.mocked(storageService.updateChatContent).mockImplementation(({ updater }) => {
+      return Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } })) as any;
     });
     vi.mocked(storageService.loadHierarchy).mockImplementation(() => Promise.resolve(mockHierarchy));
   });
 
   it('should chain multiple tool calls in the active thread', async () => {
     const chat: Chat = reactive({
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Tool Test',
       root: { items: [] },
       createdAt: Date.now(),
@@ -137,8 +139,8 @@ describe('useChat Tool Chaining', () => {
     });
     __testOnlySetCurrentChat({ chat });
 
-    // Mock LLM to return two tool calls
-    mockLlmChat.mockImplementation(async (params) => {
+    // Mock LM to return two tool calls
+    mockLmChat.mockImplementation(async (params) => {
       const { onToolCall, onToolResult, onChunk, onAssistantMessageStart } = params;
 
       // Iteration 1: Assistant makes tool calls
@@ -155,7 +157,7 @@ describe('useChat Tool Chaining', () => {
 
       // Iteration 2: Assistant responds with final text
       onAssistantMessageStart?.();
-      onChunk('Final answer is 4.');
+      onChunk({ chunk: 'Final answer is 4.' });
       await nextTick();
     });
 
@@ -210,7 +212,7 @@ describe('useChat Tool Chaining', () => {
 
   it('should correctly follow the branch even with multiple root items', async () => {
     const chat: Chat = reactive({
-      id: 'chat-2',
+      id: toChatId({ raw: 'chat-2' }),
       title: 'Branch Test',
       root: { items: [] },
       createdAt: Date.now(),

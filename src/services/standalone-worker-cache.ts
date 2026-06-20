@@ -3,7 +3,6 @@ import {
   STANDALONE_WORKER_CACHE_DIRECTORY_NAME,
   STANDALONE_WORKER_MANIFEST_SCRIPT_ID,
 } from '@/models/constants'
-import type { EmptyArgs } from '@/models/types'
 import { z } from 'zod'
 
 const standaloneWorkerManifestEntrySchema = z.object({
@@ -20,7 +19,7 @@ type StandaloneWorkerManifest = z.infer<typeof standaloneWorkerManifestSchema>
 
 let warmScheduled = false
 
-function parseStandaloneWorkerManifest(_args: EmptyArgs): StandaloneWorkerManifest {
+function parseStandaloneWorkerManifest(): StandaloneWorkerManifest {
   const scriptElement = document.getElementById(STANDALONE_WORKER_MANIFEST_SCRIPT_ID)
   if (!(scriptElement instanceof HTMLScriptElement)) {
     return {}
@@ -58,7 +57,7 @@ function getWorkerCacheFileName({ workerId, appVersion, hash }: {
   return `${workerId}.${appVersion}.${hash}.js`
 }
 
-async function getStandaloneWorkerCacheDirectory(_args: EmptyArgs): Promise<FileSystemDirectoryHandle | undefined> {
+async function getStandaloneWorkerCacheDirectory(): Promise<FileSystemDirectoryHandle | undefined> {
   if (
     typeof navigator === 'undefined' ||
     !navigator.storage ||
@@ -123,21 +122,21 @@ async function cleanupStandaloneWorkerCache({
     case 'directory':
       break
     default: {
-      const _exhaustiveCheck: never = handle.kind
-      throw new Error(`Unhandled cache entry kind: ${_exhaustiveCheck}`)
+      const _exhaustiveCheck: never = handle
+      throw new Error(`Unhandled cache entry kind: ${(_exhaustiveCheck as { readonly kind: string }).kind}`)
     }
     }
   }
 }
 
-export async function warmStandaloneWorkerCache(_args: EmptyArgs): Promise<void> {
-  const manifest = parseStandaloneWorkerManifest({})
+export async function warmStandaloneWorkerCache(): Promise<void> {
+  const manifest = parseStandaloneWorkerManifest()
   const workerIds = Object.keys(manifest)
   if (workerIds.length === 0) {
     return
   }
 
-  const cacheDirectoryHandle = await getStandaloneWorkerCacheDirectory({})
+  const cacheDirectoryHandle = await getStandaloneWorkerCacheDirectory()
   if (!cacheDirectoryHandle) {
     return
   }
@@ -176,20 +175,18 @@ export async function warmStandaloneWorkerCache(_args: EmptyArgs): Promise<void>
   })
 }
 
-export function warmStandaloneWorkerCacheAtIdle(_args: EmptyArgs): void {
+export function warmStandaloneWorkerCacheAtIdle(): void {
   if (warmScheduled) {
     return
   }
   warmScheduled = true
 
   const run = () => {
-    void warmStandaloneWorkerCache({})
+    void warmStandaloneWorkerCache()
   }
 
   if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-    ;(window as unknown as {
-      requestIdleCallback: (callback: () => void) => void
-    }).requestIdleCallback(run)
+    ;(window as Window & Pick<Window, 'requestIdleCallback'>).requestIdleCallback(run)
     return
   }
 
@@ -199,13 +196,13 @@ export function warmStandaloneWorkerCacheAtIdle(_args: EmptyArgs): void {
 export async function getCachedStandaloneWorkerFile({ workerId }: {
   workerId: string
 }): Promise<File | undefined> {
-  const manifest = parseStandaloneWorkerManifest({})
+  const manifest = parseStandaloneWorkerManifest()
   const manifestEntry = manifest[workerId]
   if (!manifestEntry) {
     return undefined
   }
 
-  const cacheDirectoryHandle = await getStandaloneWorkerCacheDirectory({})
+  const cacheDirectoryHandle = await getStandaloneWorkerCacheDirectory()
   if (!cacheDirectoryHandle) {
     return undefined
   }

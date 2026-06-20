@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Wesh } from './index';
 import { WeshVFS } from './vfs';
-import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
+import {
+  MockFileSystemDirectoryHandle,
+  MockFileSystemFileHandle,
+  MockFileSystemWritableFileStream,
+} from './mocks/InMemoryFileSystem';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
@@ -54,12 +58,189 @@ function createSymlinkStat({ size }: { size: number }): WeshStat {
   return { size, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 };
 }
 
+interface TestSyncAccessHandle {
+  read(buffer: Uint8Array, options?: { at?: number }): number;
+  write(buffer: Uint8Array, options?: { at?: number }): number;
+  truncate(newSize: number): void;
+  getSize(): number;
+  flush(): void;
+  close(): void;
+}
+
+interface TestSyncAccessCapableFileHandle extends MockFileSystemFileHandle {
+  createSyncAccessHandle(): Promise<TestSyncAccessHandle>;
+}
+
+function attachTestSyncAccessHandle({
+  fileHandle,
+}: {
+  fileHandle: MockFileSystemFileHandle;
+}): {
+  syncAccessHandle: TestSyncAccessHandle;
+  createSyncAccessHandle: ReturnType<typeof vi.fn<() => Promise<TestSyncAccessHandle>>>;
+} {
+  const flush = vi.fn();
+  const close = vi.fn();
+  const syncAccessHandle: TestSyncAccessHandle = {
+    read(buffer, options) {
+      const position = options?.at ?? 0;
+      const bytes = fileHandle.content.subarray(position, position + buffer.byteLength);
+      buffer.set(bytes);
+      return bytes.byteLength;
+    },
+    write(buffer, options) {
+      const position = options?.at ?? 0;
+      const requiredSize = position + buffer.byteLength;
+      if (fileHandle.content.byteLength < requiredSize) {
+        const content = new Uint8Array(requiredSize);
+        content.set(fileHandle.content);
+        fileHandle.content = content;
+      }
+      fileHandle.content.set(buffer, position);
+      fileHandle.lastModified = Date.now();
+      return buffer.byteLength;
+    },
+    truncate(newSize) {
+      const content = new Uint8Array(newSize);
+      content.set(fileHandle.content.subarray(0, newSize));
+      fileHandle.content = content;
+      fileHandle.lastModified = Date.now();
+    },
+    getSize() {
+      return fileHandle.content.byteLength;
+    },
+    flush,
+    close,
+  };
+  const createSyncAccessHandle = vi.fn(async () => syncAccessHandle);
+  (fileHandle as TestSyncAccessCapableFileHandle).createSyncAccessHandle = createSyncAccessHandle;
+  return { syncAccessHandle, createSyncAccessHandle };
+}
+
+describe('WeshVFS mount initialization', () => {
+  it('does not inspect the metadata tree while registering directory mounts', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const rootGetDirectoryHandle = vi.spyOn(rootHandle, 'getDirectoryHandle');
+    const vfs = new WeshVFS({
+      rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
+    });
+
+    expect(rootGetDirectoryHandle).not.toHaveBeenCalled();
+
+    const mountedHandle = new MockFileSystemDirectoryHandle({ name: 'mounted' });
+    const mountedGetDirectoryHandle = vi.spyOn(mountedHandle, 'getDirectoryHandle');
+    await vfs.mount({
+      path: '/mounted',
+      handle: mountedHandle as unknown as FileSystemDirectoryHandle,
+      readOnly: false,
+    });
+
+    expect(mountedGetDirectoryHandle).not.toHaveBeenCalled();
+  });
+});
+
+describe('WeshVFS exclusive file creation', () => {
+  it('rejects an existing path without changing its contents', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const fileHandle = await rootHandle.getFileHandle('existing.txt', { create: true });
+    fileHandle.content = new TextEncoder().encode('preserved');
+    const vfs = new WeshVFS({
+      rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
+    });
+
+    await expect(vfs.open({
+      path: '/existing.txt',
+      flags: {
+        access: 'write',
+        creation: 'always',
+        truncate: 'truncate',
+        append: 'preserve',
+      },
+    })).rejects.toThrow('File exists: /existing.txt');
+    expect(new TextDecoder().decode(fileHandle.content)).toBe('preserved');
+  });
+
+  it('does not treat a permission failure as a missing path', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    vi.spyOn(rootHandle, 'getFileHandle').mockImplementation(async (_name, options) => {
+      if (options?.create === true) {
+        throw new Error('Unexpected create attempt');
+      }
+      throw new DOMException('Permission denied', 'NotAllowedError');
+    });
+    const vfs = new WeshVFS({
+      rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
+    });
+
+    await expect(vfs.open({
+      path: '/blocked.txt',
+      flags: {
+        access: 'write',
+        creation: 'if-needed',
+        truncate: 'truncate',
+        append: 'preserve',
+      },
+    })).rejects.toThrow('Permission denied: /blocked.txt: Permission denied');
+  });
+});
+
+describe('WeshVFS FIFO buffering', () => {
+  it('applies backpressure instead of buffering without a limit', async () => {
+    const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const vfs = new WeshVFS({
+      rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
+    });
+    await vfs.mknod({ path: '/pipe', type: 'fifo' });
+    const reader = await vfs.open({
+      path: '/pipe',
+      flags: {
+        access: 'read',
+        creation: 'never',
+        truncate: 'preserve',
+        append: 'preserve',
+      },
+    });
+    const writer = await vfs.open({
+      path: '/pipe',
+      flags: {
+        access: 'write',
+        creation: 'never',
+        truncate: 'preserve',
+        append: 'preserve',
+      },
+    });
+    const payload = new Uint8Array(128 * 1024).fill(0x61);
+    let writeCompleted = false;
+    const writePromise = writer.write({ buffer: payload }).then((result) => {
+      writeCompleted = true;
+      return result;
+    });
+
+    await vi.waitFor(async () => {
+      expect((await writer.stat()).size).toBe(64 * 1024);
+    });
+    expect(writeCompleted).toBe(false);
+
+    const first = new Uint8Array(64 * 1024);
+    expect(await reader.read({ buffer: first })).toEqual({ bytesRead: first.byteLength });
+    await expect(writePromise).resolves.toEqual({ bytesWritten: payload.byteLength });
+    expect((await writer.stat()).size).toBe(64 * 1024);
+
+    const second = new Uint8Array(64 * 1024);
+    expect(await reader.read({ buffer: second })).toEqual({ bytesRead: second.byteLength });
+    expect(first).toEqual(payload.subarray(0, first.byteLength));
+    expect(second).toEqual(payload.subarray(first.byteLength));
+    await writer.close();
+    await reader.close();
+  });
+});
+
 describe('wesh vfs mounts', () => {
   let wesh: Wesh;
   let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as unknown as FileSystemDirectoryHandle });
     await wesh.init();
   });
@@ -83,7 +264,7 @@ describe('wesh vfs mounts', () => {
   }
 
   it('lists and reads direct mount points from their parent directory', async () => {
-    const mountedRoot = new MockFileSystemDirectoryHandle('mounted');
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'mounted' });
     const fileHandle = await mountedRoot.getFileHandle('note.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('mounted content');
@@ -107,7 +288,7 @@ describe('wesh vfs mounts', () => {
   });
 
   it('treats synthetic parent directories of nested mounts as readable directories', async () => {
-    const mountedRoot = new MockFileSystemDirectoryHandle('nested');
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'nested' });
     const fileHandle = await mountedRoot.getFileHandle('hello.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('hello');
@@ -152,7 +333,7 @@ describe('wesh vfs mounts', () => {
   });
 
   it('readDir reports fullPath for synthetic mount parents and mounted directories', async () => {
-    const mountedRoot = new MockFileSystemDirectoryHandle('work');
+    const mountedRoot = new MockFileSystemDirectoryHandle({ name: 'work' });
     const fileHandle = await mountedRoot.getFileHandle('note.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('hello');
@@ -226,7 +407,7 @@ second
   });
 
   it('rejects unlink and rmdir mutations on read-only mounts', async () => {
-    const readOnlyRoot = new MockFileSystemDirectoryHandle('readonly');
+    const readOnlyRoot = new MockFileSystemDirectoryHandle({ name: 'readonly' });
     const fileHandle = await readOnlyRoot.getFileHandle('locked.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('locked');
@@ -243,7 +424,7 @@ second
   });
 
   it('rejects write-oriented opens on read-only mounts', async () => {
-    const readOnlyRoot = new MockFileSystemDirectoryHandle('readonly-open');
+    const readOnlyRoot = new MockFileSystemDirectoryHandle({ name: 'readonly-open' });
     const fileHandle = await readOnlyRoot.getFileHandle('existing.txt', { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write('existing');
@@ -273,7 +454,7 @@ second
   });
 
   it('rejects mkdir and mknod on read-only mounts', async () => {
-    const readOnlyRoot = new MockFileSystemDirectoryHandle('readonly-create');
+    const readOnlyRoot = new MockFileSystemDirectoryHandle({ name: 'readonly-create' });
 
     await wesh.vfs.mount({
       path: '/ro-create',
@@ -286,13 +467,13 @@ second
   });
 
   it('rejects rename when the source or destination filesystem is read-only', async () => {
-    const sourceRoot = new MockFileSystemDirectoryHandle('readonly-source');
+    const sourceRoot = new MockFileSystemDirectoryHandle({ name: 'readonly-source' });
     const sourceFile = await sourceRoot.getFileHandle('file.txt', { create: true });
     const sourceWritable = await sourceFile.createWritable();
     await sourceWritable.write('source');
     await sourceWritable.close();
 
-    const destinationRoot = new MockFileSystemDirectoryHandle('readonly-destination');
+    const destinationRoot = new MockFileSystemDirectoryHandle({ name: 'readonly-destination' });
     const destinationDir = await destinationRoot.getDirectoryHandle('dir', { create: true });
     void destinationDir;
 
@@ -480,7 +661,7 @@ second
 
 describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () => {
   it('getNativeHandle returns a real handle for a mounted directory', async () => {
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     await mount.getFileHandle('file.txt', { create: true });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
@@ -491,7 +672,7 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('getNativeHandle returns null for a synthetic intermediate directory', async () => {
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/home/user/v1', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
 
@@ -500,7 +681,7 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('getNativeHandle returns a file handle for a real file inside a mount', async () => {
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     await mount.getFileHandle('note.txt', { create: true });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
@@ -511,8 +692,8 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('getReadOnlyForPath returns the mount readOnly flag for paths inside a mount', async () => {
-    const m1 = new MockFileSystemDirectoryHandle('m1');
-    const m2 = new MockFileSystemDirectoryHandle('m2');
+    const m1 = new MockFileSystemDirectoryHandle({ name: 'm1' });
+    const m2 = new MockFileSystemDirectoryHandle({ name: 'm2' });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/home/user/rw', handle: m1 as unknown as FileSystemDirectoryHandle, readOnly: false });
     await vfs.mount({ path: '/home/user/ro', handle: m2 as unknown as FileSystemDirectoryHandle, readOnly: true });
@@ -522,7 +703,7 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('getReadOnlyForPath returns true for synthetic directories outside any mount', async () => {
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/home/user/v1', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
 
@@ -532,8 +713,8 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
   });
 
   it('VFS with no rootHandle synthesises directories for nested mounts', async () => {
-    const v1 = new MockFileSystemDirectoryHandle('v1');
-    const v2 = new MockFileSystemDirectoryHandle('v2');
+    const v1 = new MockFileSystemDirectoryHandle({ name: 'v1' });
+    const v2 = new MockFileSystemDirectoryHandle({ name: 'v2' });
     const vfs = new WeshVFS({ rootHandle: undefined });
     await vfs.mount({ path: '/home/user/v1', handle: v1 as unknown as FileSystemDirectoryHandle, readOnly: false });
     await vfs.mount({ path: '/home/user/v2', handle: v2 as unknown as FileSystemDirectoryHandle, readOnly: true });
@@ -549,7 +730,7 @@ describe('WeshVFS — getNativeHandle / getReadOnlyForPath / optional root', () 
 
   it('VFS with no rootHandle does not expose /dev special files', async () => {
     const vfs = new WeshVFS({ rootHandle: undefined });
-    const mount = new MockFileSystemDirectoryHandle('mount');
+    const mount = new MockFileSystemDirectoryHandle({ name: 'mount' });
     await vfs.mount({ path: '/data', handle: mount as unknown as FileSystemDirectoryHandle, readOnly: false });
 
     const rootEntries: string[] = [];
@@ -671,6 +852,173 @@ describe('WeshVFS virtual mounts', () => {
     expect(stat).toHaveBeenCalledTimes(1);
     expect(lstat).toHaveBeenCalledTimes(1);
     expect(readlink).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one file snapshot for sequential reads', async () => {
+    const localRootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const vfs = new WeshVFS({
+      rootHandle: localRootHandle as unknown as FileSystemDirectoryHandle,
+    });
+    const fileHandle = await localRootHandle.getFileHandle('large-read.bin', { create: true });
+    fileHandle.content = new Uint8Array(4 * 1024 * 1024).fill(0x61);
+    const getFile = vi.spyOn(fileHandle, 'getFile');
+
+    const handle = await vfs.open({
+      path: '/large-read.bin',
+      flags: {
+        access: 'read',
+        creation: 'never',
+        truncate: 'preserve',
+        append: 'preserve',
+      },
+    });
+    const buffer = new Uint8Array(64 * 1024);
+    let totalBytesRead = 0;
+
+    while (true) {
+      const { bytesRead } = await handle.read({ buffer });
+      if (bytesRead === 0) {
+        break;
+      }
+      totalBytesRead += bytesRead;
+    }
+
+    await handle.close();
+
+    expect(totalBytesRead).toBe(fileHandle.content.byteLength);
+    expect(getFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one writable stream for sequential writes', async () => {
+    const localRootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const vfs = new WeshVFS({
+      rootHandle: localRootHandle as unknown as FileSystemDirectoryHandle,
+    });
+    const fileHandle = await localRootHandle.getFileHandle('large-write.bin', { create: true });
+    const createWritable = vi.spyOn(fileHandle, 'createWritable');
+
+    const handle = await vfs.open({
+      path: '/large-write.bin',
+      flags: {
+        access: 'write',
+        creation: 'never',
+        truncate: 'truncate',
+        append: 'preserve',
+      },
+    });
+    const chunk = new Uint8Array(64 * 1024).fill(0x62);
+
+    for (let index = 0; index < 64; index += 1) {
+      const { bytesWritten } = await handle.write({ buffer: chunk });
+      expect(bytesWritten).toBe(chunk.byteLength);
+    }
+
+    await handle.close();
+
+    expect(fileHandle.content.byteLength).toBe(4 * 1024 * 1024);
+    expect(createWritable).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses one sync access handle for OPFS read-write operations when available', async () => {
+    const localRootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const vfs = new WeshVFS({
+      rootHandle: localRootHandle as unknown as FileSystemDirectoryHandle,
+    });
+    const fileHandle = await localRootHandle.getFileHandle('sync-access.bin', { create: true });
+    fileHandle.content = new TextEncoder().encode('abcdef');
+    const createWritable = vi.spyOn(fileHandle, 'createWritable');
+    const { syncAccessHandle, createSyncAccessHandle } = attachTestSyncAccessHandle({ fileHandle });
+    const flush = vi.spyOn(syncAccessHandle, 'flush');
+    const close = vi.spyOn(syncAccessHandle, 'close');
+
+    const handle = await vfs.open({
+      path: '/sync-access.bin',
+      flags: {
+        access: 'read-write',
+        creation: 'never',
+        truncate: 'preserve',
+        append: 'preserve',
+      },
+    });
+    await handle.write({
+      buffer: new TextEncoder().encode('XY'),
+      position: 1,
+    });
+    const buffer = new Uint8Array(6);
+    const { bytesRead } = await handle.read({ buffer, position: 0 });
+    await handle.truncate({ size: 4 });
+    const stat = await handle.stat();
+    await handle.close();
+
+    expect(new TextDecoder().decode(buffer.subarray(0, bytesRead))).toBe('aXYdef');
+    expect(new TextDecoder().decode(fileHandle.content)).toBe('aXYd');
+    expect(stat.size).toBe(4);
+    expect(createSyncAccessHandle).toHaveBeenCalledTimes(1);
+    expect(createWritable).not.toHaveBeenCalled();
+    expect(flush).toHaveBeenCalledTimes(3);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to committed read-write operations when sync access is unavailable', async () => {
+    const localRootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const vfs = new WeshVFS({
+      rootHandle: localRootHandle as unknown as FileSystemDirectoryHandle,
+    });
+    const fileHandle = await localRootHandle.getFileHandle('fallback.bin', { create: true });
+    fileHandle.content = new TextEncoder().encode('abc');
+    const createWritable = vi.spyOn(fileHandle, 'createWritable');
+
+    const handle = await vfs.open({
+      path: '/fallback.bin',
+      flags: {
+        access: 'read-write',
+        creation: 'never',
+        truncate: 'preserve',
+        append: 'preserve',
+      },
+    });
+    await handle.write({
+      buffer: new TextEncoder().encode('Z'),
+      position: 1,
+    });
+    const buffer = new Uint8Array(3);
+    const { bytesRead } = await handle.read({ buffer, position: 0 });
+    await handle.truncate({ size: 2 });
+    await handle.close();
+
+    expect(new TextDecoder().decode(buffer.subarray(0, bytesRead))).toBe('aZc');
+    expect(new TextDecoder().decode(fileHandle.content)).toBe('aZ');
+    expect(createWritable).toHaveBeenCalledTimes(2);
+  });
+
+  it('closes a sequential writer initialized after close begins', async () => {
+    const localRootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
+    const vfs = new WeshVFS({
+      rootHandle: localRootHandle as unknown as FileSystemDirectoryHandle,
+    });
+    const fileHandle = await localRootHandle.getFileHandle('delayed-write.bin', { create: true });
+    const writable = new MockFileSystemWritableFileStream({
+      fileHandle,
+      options: { keepExistingData: true },
+    });
+    const writableClose = vi.spyOn(writable, 'close');
+    const deferred = Promise.withResolvers<MockFileSystemWritableFileStream>();
+    vi.spyOn(fileHandle, 'createWritable').mockReturnValue(deferred.promise);
+
+    const handle = await vfs.open({
+      path: '/delayed-write.bin',
+      flags: {
+        access: 'write',
+        creation: 'never',
+        truncate: 'preserve',
+        append: 'preserve',
+      },
+    });
+    const closePromise = handle.close();
+    deferred.resolve(writable);
+    await closePromise;
+
+    expect(writableClose).toHaveBeenCalledTimes(1);
   });
 
   it('treats virtual mounts as read-only and non-native', async () => {

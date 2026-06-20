@@ -43,7 +43,9 @@ export interface WorkerGenerationRuntimeState {
   activeModelId: string | null;
   gemma4Processor: Gemma4ProcessorLike | null;
   qwen3_5Processor: {
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors the Transformers processor signature.
     (text: string): Promise<Record<string, unknown>>;
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the Transformers tokenizer signature.
     batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[];
   } | null;
   gptOssPastKeyValues: unknown;
@@ -55,8 +57,8 @@ interface GenerationStrategyContext {
   model: PreTrainedModel;
   tokenizer: PreTrainedTokenizer;
   messages: ChatMessage[];
-  onChunk: (chunk: string) => void;
-  onToolCalls: (toolCalls: ToolCall[]) => void;
+  onChunk: ({ chunk }: { chunk: string }) => void;
+  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void;
   params: LmParameters | undefined;
   tools: WorkerToolDefinition[] | undefined;
   runtimeState: WorkerGenerationRuntimeState;
@@ -69,7 +71,7 @@ interface GenerationStrategyContext {
 
 interface GenerationStrategy {
   kind: 'standard' | 'gpt-oss' | 'qwen3_5' | 'gemma4';
-  generate(args: GenerationStrategyContext): Promise<void>;
+  generate({ model, tokenizer, messages, onChunk, onToolCalls, params, tools, runtimeState, stoppingCriteria, debugLog }: GenerationStrategyContext): Promise<void>;
 }
 
 export function selectGenerationStrategy({
@@ -123,7 +125,7 @@ const standardGenerationStrategy: GenerationStrategy = {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const inputs = tokenizer.apply_chat_template(formattedMessages as any, templateOptions) as Record<string, unknown>;
-    const toolCallParser = tools && tools.length > 0 ? new ToolCallStreamParser({ onText: onChunk }) : null;
+    const toolCallParser = tools && tools.length > 0 ? new ToolCallStreamParser({ onText: ({ text }) => onChunk({ chunk: text }) }) : null;
     const streamer = new TextStreamer(tokenizer, {
       skip_prompt: true,
       skip_special_tokens: true,
@@ -131,7 +133,7 @@ const standardGenerationStrategy: GenerationStrategy = {
         if (toolCallParser) {
           toolCallParser.feed({ output });
         } else {
-          onChunk(output);
+          onChunk({ chunk: output });
         }
       },
     });
@@ -148,7 +150,7 @@ const standardGenerationStrategy: GenerationStrategy = {
     if (toolCallParser) {
       toolCallParser.flush();
       const parsedToolCalls = toolCallParser.drainToolCalls();
-      if (parsedToolCalls.length > 0) onToolCalls(parsedToolCalls);
+      if (parsedToolCalls.length > 0) onToolCalls({ toolCalls: parsedToolCalls });
     }
     void result;
   },
@@ -245,7 +247,7 @@ const gemma4GenerationStrategy: GenerationStrategy = {
           index: rawChunkIndex,
           output,
         }));
-        onChunk(output);
+        onChunk({ chunk: output });
       },
     });
 
@@ -335,10 +337,10 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
     });
 
     const toolCallParser = new Qwen3_5ToolCallParser({
-      onText: (text) => {
+      onText: ({ text }) => {
         const sanitized = sanitizeQwen3_5VisibleText({ text });
         if (sanitized.length > 0) {
-          onChunk(sanitized);
+          onChunk({ chunk: sanitized });
         }
       },
     });
@@ -361,7 +363,7 @@ const qwen3_5GenerationStrategy: GenerationStrategy = {
 
     toolCallParser.flush();
     const parsedToolCalls = toolCallParser.drainToolCalls();
-    if (parsedToolCalls.length > 0) onToolCalls(parsedToolCalls);
+    if (parsedToolCalls.length > 0) onToolCalls({ toolCalls: parsedToolCalls });
 
     runtimeState.qwen3_5PastKeyValues = result.past_key_values;
     runtimeState.qwen3_5ConversationState = extractQwen3_5ConversationState({

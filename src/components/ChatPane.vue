@@ -35,6 +35,7 @@ import GeneratingIndicator from './GeneratingIndicator.vue';
 import WelcomeScreen from './WelcomeScreen.vue';
 import ChatInput from './ChatInput.vue';
 import ChatApprovalPanel from './chat-approval/ChatApprovalPanel.vue';
+import ChatChoicesPanel from './chat-choices/ChatChoicesPanel.vue';
 import ChatPaneHeader from './ChatPaneHeader.vue';
 import ContextCompactProgressStrip from './ContextCompactProgressStrip.vue';
 import ContextCompactSettingsDialog from './ContextCompactSettingsDialog.vue';
@@ -46,6 +47,9 @@ const ConversationOutlineOverlay = defineAsyncComponentAndLoadOnMounted({ loader
 import { useImagePreview } from '@/composables/useImagePreview';
 import { useBinaryActions } from '@/composables/useBinaryActions';
 import type { LmParameters } from '@/models/types';
+import type { ChatId } from '@/models/ids';
+import { idToRaw, toMessageId } from '@/models/ids';
+import type { ChatGroupId, MessageId } from '@/models/ids';
 
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatSettingsPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatSettingsPanel.vue') });
@@ -75,11 +79,14 @@ import { useToast } from '@/composables/useToast';
 import { storageService } from '@/services/storage';
 import { createCompactInstruction, type ContextCompactProgress, type ContextCompactPromptMode } from '@/services/context-compact';
 import { useApproval } from '@/composables/useApproval';
+import { useChoices } from '@/composables/useChoices';
+import { FAKE_LM_ENDPOINT_URL, useFakeLmDebugMode } from '@/services/fake-lm';
 import type { ApprovalUiDecision } from '@/services/approval';
 
 const { addToast } = useToast();
+const { fakeLmDebugModeAvailability } = useFakeLmDebugMode();
 const { openFileExplorer } = useFileExplorerModal();
-const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
+const { getNaidanSysfsAccessScope } = useChatWeshPreferences();
 const { state: previewState, closePreview } = useImagePreview({ scoped: true });
 const { deleteBinaryObject, downloadBinaryObject } = useBinaryActions();
 const {
@@ -89,19 +96,20 @@ const {
   isChatWeshTerminalOpen,
   toggleChatWeshTerminal,
 } = useLayout();
-const approval = useApproval({});
-const chatConversation = useChatConversation({});
-const chatBranches = useChatBranches({});
-const chatCompaction = useChatCompaction({});
-const chatGroups = useChatGroups({});
-const chatModels = useChatModels({});
-const chatTitle = useChatTitle({});
-const chatMetadata = useChatMetadata({});
+const approval = useApproval();
+const choices = useChoices();
+const chatConversation = useChatConversation();
+const chatBranches = useChatBranches();
+const chatCompaction = useChatCompaction();
+const chatGroups = useChatGroups();
+const chatModels = useChatModels();
+const chatTitle = useChatTitle();
+const chatMetadata = useChatMetadata();
 const { getSortedImageModels } = useImageGeneration();
 const props = defineProps<{
-  chatId: string
+  chatId: ChatId
   autoSendPrompt?: string
-  targetMessageId?: string
+  targetMessageId?: MessageId
 }>();
 
 const emit = defineEmits<{
@@ -132,12 +140,13 @@ const {
 });
 const contextCompactProgress = computed<ContextCompactProgress>(() => getChatContextCompactProgress({ chatId: props.chatId }));
 const activeApprovalRequest = computed(() => approval.getActiveApprovalRequest({ chatId: props.chatId }).value);
+const activeChoiceRequest = computed(() => choices.getActiveChoiceRequest({ chatId: props.chatId }).value);
 const isGeneratingTitle = computed(() => isChatGeneratingTitle({ chatId: props.chatId }));
 const isDebugEnabled = computed(() => chat.value?.debugEnabled === true);
 const chatIdentityKey = computed(() => {
   const chatId = props.chatId;
   const leafId = chat.value?.currentLeafId ?? 'no-leaf';
-  return `${chatId}:${leafId}`;
+  return `${idToRaw({ id: chatId })}:${leafId === 'no-leaf' ? leafId : idToRaw({ id: leafId })}`;
 });
 
 const chatAreaSession = useChatPaneSession({
@@ -158,22 +167,22 @@ const availableImageModels = computed(() => {
   return getSortedImageModels({ availableModels: availableModels.value });
 });
 
-const chatAreaNaidanSysfsVisibility = computed(() => {
-  return getNaidanSysfsMountSelection({ chatId: props.chatId });
+const chatAreaNaidanSysfsAccessScope = computed(() => {
+  return getNaidanSysfsAccessScope({ chatId: props.chatId });
 });
 
 const contextCompactPromptMode = computed<ContextCompactPromptMode>(() => {
-  const mountSelection = chatAreaNaidanSysfsVisibility.value;
-  switch (mountSelection) {
+  const accessScope = chatAreaNaidanSysfsAccessScope.value;
+  switch (accessScope) {
   case 'none':
     return 'without_message_ids';
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
-  case 'all_chats':
+  case 'main_chats':
     return 'with_message_ids';
   default: {
-    const _ex: never = mountSelection;
-    throw new Error(`Unhandled naidan sysfs visibility: ${_ex}`);
+    const _ex: never = accessScope;
+    throw new Error(`Unhandled naidan sysfs access scope: ${_ex}`);
   }
   }
 });
@@ -226,6 +235,7 @@ const container = ref<HTMLElement | null>(null);
 const {
   settings,
   save: saveSettings,
+  setFakeLmDebugModeStatus,
 } = useSettings();
 const router = useRouter();
 
@@ -247,7 +257,7 @@ const showHistoryModal = ref(false);
 const showTitleDialog = ref(false);
 const generatedTitleHistory = ref<string[]>([]);
 
-function getCurrentViewportMessageId(_args: Record<string, never>) {
+function getCurrentViewportMessageId() {
   const scrollContainer = container.value;
   if (!scrollContainer) return undefined;
 
@@ -255,7 +265,7 @@ function getCurrentViewportMessageId(_args: Record<string, never>) {
   const targetY = containerRect.top + Math.min(120, containerRect.height * 0.25);
   const messageElements = Array.from(scrollContainer.querySelectorAll('[id^="message-"]'));
 
-  let closest: { id: string; distance: number } | undefined;
+  let closest: { id: MessageId; distance: number } | undefined;
   for (const element of messageElements) {
     if (!(element instanceof HTMLElement)) continue;
     const rect = element.getBoundingClientRect();
@@ -264,7 +274,7 @@ function getCurrentViewportMessageId(_args: Record<string, never>) {
     const distance = Math.abs(rect.top - targetY);
     if (!closest || distance < closest.distance) {
       closest = {
-        id: element.id.replace(/^message-/, ''),
+        id: toMessageId({ raw: element.id.replace(/^message-/, '') }),
         distance,
       };
     }
@@ -273,15 +283,15 @@ function getCurrentViewportMessageId(_args: Record<string, never>) {
   return closest?.id;
 }
 
-function toggleOutline(_args: Record<string, never>) {
+function toggleOutline() {
   chatAreaSession.toggleOutline({
-    getCurrentViewportMessageId: () => getCurrentViewportMessageId({}),
+    getCurrentViewportMessageId: () => getCurrentViewportMessageId(),
   });
 }
 
-function jumpToOutlineMessage({ messageId }: { messageId: string }) {
+function jumpToOutlineMessage({ messageId }: { messageId: MessageId }) {
   jumpToMessage({ messageId });
-  closeOutline({});
+  closeOutline();
 }
 
 function clearTargetMessageQuery() {
@@ -293,7 +303,7 @@ function clearTargetMessageQuery() {
   router.replace({ query });
 }
 
-async function handleMoveToGroup({ groupId }: { groupId: string | null }) {
+async function handleMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   await chatGroups.moveChatToGroup({
@@ -335,7 +345,7 @@ async function handleGenerateTitle({ modelId }: { modelId: string | undefined })
   generatedTitleHistory.value = Array.from(new Set(nextHistory));
 }
 
-function handleAbortTitleGeneration(_args: Record<never, never>) {
+function handleAbortTitleGeneration() {
   const chatValue = chat.value;
   if (!chatValue) return;
   chatTitle.abortTitleGeneration({
@@ -348,7 +358,7 @@ async function exportChat() {
 
   let markdownContent = `# ${chat.value.title || 'New Chat'}\n\n`;
 
-  const processFlowItems = async (items: ChatFlowItem[]) => {
+  const processFlowItems = async ({ items }: { items: ChatFlowItem[] }) => {
     for (const item of items) {
       const itemType = item.type;
       switch (itemType) {
@@ -441,7 +451,7 @@ async function exportChat() {
       }
       case 'process_sequence':
         markdownContent += `## Process Sequence: ${item.summary}\n`;
-        await processFlowItems(item.items);
+        await processFlowItems({ items: item.items });
         break;
       default: {
         const _ex: never = itemType;
@@ -451,7 +461,7 @@ async function exportChat() {
     }
   };
 
-  await processFlowItems(chatFlow.value);
+  await processFlowItems({ items: chatFlow.value });
 
   const blob = new Blob([markdownContent], { type: 'text/plain;charset=utf-8' });
   const filename = `${chat.value.title || 'new_chat'}.txt`;
@@ -483,7 +493,7 @@ async function shareAsURL() {
   }
 }
 
-async function openChatFileExplorer(_args: Record<string, never>) {
+async function openChatFileExplorer() {
   if (!chat.value) return;
 
   const mounts = await buildWorkerMountsForChat({
@@ -491,7 +501,7 @@ async function openChatFileExplorer(_args: Record<string, never>) {
     chatGroupMounts: chatGroup.value?.mounts,
     chatId: chat.value.id,
     chatGroupId: chat.value.groupId ?? undefined,
-    naidanSysfsVisibility: chatAreaNaidanSysfsVisibility.value,
+    naidanSysfsAccessScope: chatAreaNaidanSysfsAccessScope.value,
   });
 
   openFileExplorer({ options: {
@@ -553,11 +563,11 @@ async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatPan
   return true;
 }
 
-async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: string, behavior: ScrollBehavior }) {
+async function scrollUserTurnToTop({ userTurnId, behavior }: { userTurnId: MessageId, behavior: ScrollBehavior }) {
   return scrollAnchorToTop({
     target: {
       kind: 'message',
-      anchorId: `message-${userTurnId}`,
+      anchorId: `message-${idToRaw({ id: userTurnId })}`,
       messageId: userTurnId,
     },
     behavior,
@@ -586,9 +596,9 @@ async function scrollInitialOpenTarget({ target }: { target: ChatPaneInitialOpen
   }
 }
 
-function jumpToMessage({ messageId }: { messageId: string }): boolean {
+function jumpToMessage({ messageId }: { messageId: MessageId }): boolean {
   if (!container.value) return false;
-  const el = container.value.querySelector(`#message-${messageId}`);
+  const el = container.value.querySelector(`#message-${idToRaw({ id: messageId })}`);
   if (el instanceof HTMLElement) {
     scrollIntoViewSafe({
       container: container.value,
@@ -612,7 +622,7 @@ watch(
     const flowKey = chatFlow.value.map((item) => {
       switch (item.type) {
       case 'message':
-        return `${item.node.id}:${item.mode}`;
+        return `${idToRaw({ id: item.node.id })}:${item.mode}`;
       case 'process_sequence':
         return `${item.id}:${item.items.length}`;
       case 'tool_group':
@@ -635,7 +645,7 @@ watch(
       lastJumpedTargetMessageKey.value = undefined;
       return;
     }
-    const targetKey = `${chatId ?? ''}:${leafId ?? ''}:${messageId}:${flowKey}`;
+    const targetKey = `${chatId === undefined ? '' : idToRaw({ id: chatId })}:${leafId === undefined ? '' : idToRaw({ id: leafId })}:${idToRaw({ id: messageId })}:${flowKey}`;
     if (lastJumpedTargetMessageKey.value === targetKey) return;
 
     await nextTick();
@@ -713,20 +723,30 @@ async function updateActiveTitleModel({
   modelId,
 }: {
   source: SettingsSource;
-  chatId: string;
-  chatGroupId: string | undefined;
+  chatId: ChatId;
+  chatGroupId: ChatGroupId | undefined;
   modelId: string | undefined;
 }) {
   switch (source) {
   case 'chat':
-    await chatMetadata.updateSettings({ chatId, updates: { titleModelId: modelId } });
+    await chatMetadata.updateScopedSettings({
+      chatId,
+      changes: [modelId === undefined
+        ? { field: 'title_model_id', behavior: 'inherit' }
+        : { field: 'title_model_id', behavior: 'override', value: modelId }],
+    });
     return;
   case 'chat_group':
     if (chatGroupId === undefined) {
       await saveSettings({ patch: { titleModelId: modelId } });
       return;
     }
-    await chatGroups.updateChatGroupMetadata({ chatGroupId, updates: { titleModelId: modelId } });
+    await chatGroups.updateScopedSettings({
+      chatGroupId,
+      changes: [modelId === undefined
+        ? { field: 'title_model_id', behavior: 'inherit' }
+        : { field: 'title_model_id', behavior: 'override', value: modelId }],
+    });
     return;
   case 'global':
     await saveSettings({ patch: { titleModelId: modelId } });
@@ -735,6 +755,12 @@ async function updateActiveTitleModel({
     const _ex: never = source;
     throw new Error(`Unhandled title model source: ${_ex}`);
   }
+  }
+}
+
+function handleSearchChatFromHeader() {
+  if (chat.value) {
+    useGlobalSearch().openSearch({ chatId: idToRaw({ id: chat.value.id }) });
   }
 }
 
@@ -754,7 +780,7 @@ const autoScroll = useChatPaneAutoScroll({
   processingStatus: computed(() => isChatStreaming.value ? 'processing' : 'idle'),
 });
 
-const responseViewportReserve = ref<{ chatId: string, navigationKey: string, userTurnId: string, heightPx: number } | undefined>(undefined);
+const responseViewportReserve = ref<{ chatId: ChatId, navigationKey: string, userTurnId: MessageId, heightPx: number } | undefined>(undefined);
 
 const isResponseViewportReserveActive = computed(() => {
   if (props.targetMessageId) return false;
@@ -783,11 +809,11 @@ function getElementTopInContainer({
   return scrollContainer.scrollTop + elementRect.top - containerRect.top;
 }
 
-function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: string }) {
+function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: MessageId }) {
   const scrollContainer = container.value;
   if (!scrollContainer) return 0;
 
-  const userElement = scrollContainer.querySelector(`#message-${userTurnId}`);
+  const userElement = scrollContainer.querySelector(`#message-${idToRaw({ id: userTurnId })}`);
   if (!(userElement instanceof HTMLElement)) return 0;
 
   const userTop = getElementTopInContainer({
@@ -800,7 +826,7 @@ function calculateResponseViewportReserveHeight({ userTurnId }: { userTurnId: st
   return Math.max(0, Math.ceil(userTop - maxScrollTopWithoutReserve));
 }
 
-async function handleEdit({ messageId, newContent, lmParameters }: { messageId: string, newContent: string, lmParameters?: LmParameters }) {
+async function handleEdit({ messageId, newContent, lmParameters }: { messageId: MessageId, newContent: string, lmParameters?: LmParameters }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   await chatBranches.editMessage({
@@ -811,7 +837,7 @@ async function handleEdit({ messageId, newContent, lmParameters }: { messageId: 
   });
 }
 
-async function handleRegenerate({ messageId }: { messageId: string }) {
+async function handleRegenerate({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   await chatConversation.regenerateMessage({
@@ -820,8 +846,8 @@ async function handleRegenerate({ messageId }: { messageId: string }) {
   });
 }
 
-async function handleCompactContext(_args: Record<never, never>) {
-  openCompactSettings({});
+async function handleCompactContext() {
+  openCompactSettings();
 }
 
 async function handleConfirmCompact({
@@ -831,7 +857,7 @@ async function handleConfirmCompact({
   keepCount: number;
   instruction: string;
 }) {
-  closeCompactSettings({});
+  closeCompactSettings();
   const chatValue = chat.value;
   if (!chatValue) return;
   const didCompact = await chatCompaction.compactCurrentBranch({
@@ -840,11 +866,11 @@ async function handleConfirmCompact({
     instructionOverride: instruction,
   });
   if (didCompact) {
-    playNeuralSyncEffect({});
+    playNeuralSyncEffect();
   }
 }
 
-function handleAbortContextCompact(_args: Record<never, never>) {
+function handleAbortContextCompact() {
   const chatValue = chat.value;
   if (!chatValue) return;
   chatCompaction.abort({
@@ -852,7 +878,7 @@ function handleAbortContextCompact(_args: Record<never, never>) {
   });
 }
 
-function handleSwitchVersion({ messageId }: { messageId: string }) {
+function handleSwitchVersion({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   void chatBranches.switchVersion({
@@ -861,7 +887,7 @@ function handleSwitchVersion({ messageId }: { messageId: string }) {
   });
 }
 
-async function handleFork({ messageId }: { messageId: string }) {
+async function handleFork({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return;
   const newId = await chatBranches.forkChat({
@@ -869,20 +895,20 @@ async function handleFork({ messageId }: { messageId: string }) {
     messageId,
   });
   if (newId) {
-    router.push(`/chat/${newId}`);
+    router.push(`/chat/${idToRaw({ id: newId })}`);
   }
 }
 
 function handleForkLastMessage() {
   // We need to find the last message across all potential levels of nesting in chatFlow
-  const findLastMessage = (items: ChatFlowItem[]): ChatFlowItem | null => {
+  const findLastMessage = ({ items }: { items: ChatFlowItem[] }): ChatFlowItem | null => {
     for (let i = items.length - 1; i >= 0; i--) {
       const item = items[i]!;
       const type = item.type;
       switch (type) {
       case 'message': return item;
       case 'process_sequence': {
-        const nested = findLastMessage(item.items);
+        const nested = findLastMessage({ items: item.items });
         if (nested) return nested;
         break;
       }
@@ -897,13 +923,13 @@ function handleForkLastMessage() {
     return null;
   };
 
-  const lastMsgItem = findLastMessage(chatFlow.value);
+  const lastMsgItem = findLastMessage({ items: chatFlow.value });
   if (lastMsgItem && lastMsgItem.type === 'message') {
     handleFork({ messageId: lastMsgItem.node.id });
   }
 }
 
-function getChatSiblings({ messageId }: { messageId: string }) {
+function getChatSiblings({ messageId }: { messageId: MessageId }) {
   const chatValue = chat.value;
   if (!chatValue) return [];
   return [...getSiblingsInChatBranch({
@@ -912,14 +938,13 @@ function getChatSiblings({ messageId }: { messageId: string }) {
   })];
 }
 
-function handleRefreshModels(_args: Record<never, never>) {
+function handleRefreshModels() {
   const chatValue = chat.value;
   if (!chatValue) return;
   void chatModels.fetchForChat({
     chatId: chatValue.id,
   });
 }
-
 
 function handleApprovalDecision({
   decision,
@@ -936,7 +961,22 @@ function handleApprovalDecision({
   });
 }
 
-function handleAbortGeneration(_args: Record<never, never>) {
+function handleChoiceSelection({
+  index,
+}: {
+  index: number;
+}): void {
+  const request = activeChoiceRequest.value;
+  if (request === undefined) {
+    return;
+  }
+  choices.resolveChoiceRequest({
+    requestId: request.requestId,
+    index,
+  });
+}
+
+function handleAbortGeneration() {
   const chatValue = chat.value;
   if (!chatValue) return;
   chatConversation.abort({
@@ -944,7 +984,7 @@ function handleAbortGeneration(_args: Record<never, never>) {
   });
 }
 
-function handleToggleDebug(_args: Record<never, never>) {
+function handleToggleDebug() {
   const chatValue = chat.value;
   if (!chatValue) return;
   void chatMetadata.toggleDebug({
@@ -952,9 +992,48 @@ function handleToggleDebug(_args: Record<never, never>) {
   });
 }
 
+function canUseFakeLmDebugModeInChatPane(): boolean {
+  const availability = fakeLmDebugModeAvailability.value;
+  switch (availability) {
+  case 'available':
+    return true;
+  case 'unavailable_in_standalone':
+    return false;
+  default: {
+    const _ex: never = availability;
+    throw new Error(`Unhandled fake LM debug mode availability: ${_ex}`);
+  }
+  }
+}
+
+async function handleEnableFakeLmForChat() {
+  const chatValue = chat.value;
+  if (!chatValue) return;
+  if (!canUseFakeLmDebugModeInChatPane()) return;
+
+  await setFakeLmDebugModeStatus({ status: 'enabled' });
+
+  await chatMetadata.updateScopedSettings({
+    chatId: chatValue.id,
+    changes: [{
+      field: 'endpoint',
+      behavior: 'override',
+      value: {
+        type: 'ollama',
+        url: FAKE_LM_ENDPOINT_URL,
+      },
+    }],
+  });
+
+  addToast({
+    message: `Fake LM enabled for this chat via ${FAKE_LM_ENDPOINT_URL}`,
+    duration: 3000,
+  });
+}
+
 function jumpToOrigin() {
   if (chat.value?.originChatId) {
-    router.push(`/chat/${chat.value.originChatId}`);
+    router.push(`/chat/${idToRaw({ id: chat.value.originChatId })}`);
   }
 }
 
@@ -1057,17 +1136,17 @@ watch(
       @update:show-chat-settings="showChatSettings = $event"
       @fork-last-message="handleForkLastMessage"
       @move-to-group="groupId => handleMoveToGroup({ groupId })"
-      @toggle-outline="toggleOutline({})"
+      @toggle-outline="toggleOutline()"
       @print="handlePrint"
-      @search-chat="() => { if (chat) useGlobalSearch().openSearch({ chatId: chat.id }); }"
+      @search-chat="handleSearchChatFromHeader"
       @open-history="showHistoryModal = true"
-      @compact-context="handleCompactContext({})"
+      @compact-context="handleCompactContext()"
       @export-chat="exportChat"
       @toggle-media-shelf="toggleMediaShelf"
       @share-url="shareAsURL"
-      @open-file-explorer="openChatFileExplorer({})"
+      @open-file-explorer="openChatFileExplorer()"
       @toggle-wesh-terminal="toggleChatWeshTerminal"
-      @toggle-debug="handleToggleDebug({})"
+      @toggle-debug="handleToggleDebug()"
     />
 
     <!-- Chat Settings Panel -->
@@ -1088,8 +1167,8 @@ watch(
       @close="showTitleDialog = false"
       @save-title="title => handleSaveTitle({ title })"
       @generate-title="modelId => handleGenerateTitle({ modelId })"
-      @abort-title="handleAbortTitleGeneration({})"
-      @refresh-models="handleRefreshModels({})"
+      @abort-title="handleAbortTitleGeneration()"
+      @refresh-models="handleRefreshModels()"
     />
 
     <!-- History Manipulation Modal -->
@@ -1104,7 +1183,7 @@ watch(
       :total-messages="activeMessages.length"
       :initial-keep-count="6"
       :initial-instruction="initialContextCompactInstruction"
-      @close="closeCompactSettings({})"
+      @close="closeCompactSettings()"
       @confirm="({ keepCount, instruction }) => handleConfirmCompact({ keepCount, instruction })"
     />
 
@@ -1115,7 +1194,7 @@ watch(
       :chat-group-mounts="chatGroup?.mounts"
       :chat-id="props.chatId"
       :chat-group-id="chat?.groupId ?? undefined"
-      :naidan-sysfs-visibility="chatAreaNaidanSysfsVisibility"
+      :naidan-sysfs-access-scope="chatAreaNaidanSysfsAccessScope"
       @close="toggleChatWeshTerminal()"
     />
 
@@ -1128,7 +1207,7 @@ watch(
         <div class="pointer-events-auto">
           <ContextCompactProgressStrip
             :progress="contextCompactProgress"
-            @abort="handleAbortContextCompact({})"
+            @abort="handleAbortContextCompact()"
           />
         </div>
       </div>
@@ -1149,7 +1228,7 @@ watch(
         :visibility="outlineVisibility"
         :flow-items="chatFlow"
         :initial-message-id="initialOutlineMessageId"
-        @close="closeOutline({})"
+        @close="closeOutline()"
         @select-message="(messageId) => jumpToOutlineMessage({ messageId })"
       />
       <div
@@ -1217,7 +1296,7 @@ watch(
                       @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                       @switch-version="messageId => handleSwitchVersion({ messageId })"
                       @regenerate="messageId => handleRegenerate({ messageId })"
-                      @abort="handleAbortGeneration({})"
+                      @abort="handleAbortGeneration()"
                     />
                     <ToolCallGroupItem
                       v-else-if="subItem.type === 'tool_group' && isExpanded"
@@ -1252,7 +1331,7 @@ watch(
                 @edit="(id, content, params) => handleEdit({ messageId: id, newContent: content, lmParameters: params })"
                 @switch-version="messageId => handleSwitchVersion({ messageId })"
                 @regenerate="messageId => handleRegenerate({ messageId })"
-                @abort="handleAbortGeneration({})"
+                @abort="handleAbortGeneration()"
               />
 
               <!-- Standalone Tool Group -->
@@ -1298,7 +1377,8 @@ watch(
         :show="isDebugEnabled"
         :chat="chat"
         :active-messages="activeMessages"
-        @close="handleToggleDebug({})"
+        @close="handleToggleDebug()"
+        @enable-fake-lm="handleEnableFakeLmForChat()"
         data-testid="chat-inspector"
       />
     </div>
@@ -1322,7 +1402,7 @@ watch(
       :inherited-model-source="inheritedSettings?.sources.modelId"
       v-model:visibility="inputVisibility"
       v-model:is-animating-height="isAnimatingHeight"
-      :above-input-visibility="activeApprovalRequest !== undefined ? 'visible' : 'hidden'"
+      :above-input-visibility="activeApprovalRequest !== undefined || activeChoiceRequest !== undefined ? 'visible' : 'hidden'"
       :is-streaming="isChatStreaming"
       :can-generate-image="canGenerateImage"
       :has-image-model="hasImageModel"
@@ -1337,6 +1417,11 @@ watch(
           v-if="activeApprovalRequest !== undefined"
           :request="activeApprovalRequest"
           @decide="decision => handleApprovalDecision({ decision })"
+        />
+        <ChatChoicesPanel
+          v-else-if="activeChoiceRequest !== undefined"
+          :request="activeChoiceRequest"
+          @select="index => handleChoiceSelection({ index })"
         />
       </template>
     </ChatInput>

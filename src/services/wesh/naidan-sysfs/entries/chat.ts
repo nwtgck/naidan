@@ -1,4 +1,5 @@
 import type { ChatMeta } from '@/models/types'
+import type { ChatId } from '@/models/ids'
 import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
 import {
   NAIDAN_SYSFS_BRANCHES_DIRECTORY_NAME,
@@ -14,7 +15,7 @@ import { renderChatMetadataJson } from '@/services/wesh/naidan-sysfs/render/meta
 import { renderChatMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/metadata-markdown'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry } from '@/services/wesh/naidan-sysfs/types'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
@@ -28,7 +29,7 @@ async function loadMetadata({
   path,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   path: string;
 }): Promise<ChatMeta> {
   const metadata = await context.reader.loadChatMeta({ chatId })
@@ -44,7 +45,7 @@ function createMetadataFileEntry({
   format,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
   format: 'markdown' | 'json';
 }): NaidanSysfsFileEntry {
   return {
@@ -97,13 +98,13 @@ export function createChatDirectoryEntry({
   chatId,
 }: {
   context: NaidanSysfsContext;
-  chatId: string;
+  chatId: ChatId;
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
       yield { name: NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME}` }

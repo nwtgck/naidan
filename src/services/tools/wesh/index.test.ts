@@ -8,9 +8,9 @@ describe('createWeshTool', () => {
   beforeEach(() => {
     client = {
       startExecution: vi.fn().mockImplementation(async ({ onEvent }) => {
-        await onEvent?.({ type: 'started' })
-        await onEvent?.({ type: 'stdout', chunk: encoder.encode('hello\n') })
-        await onEvent?.({ type: 'exit', exitCode: 0 })
+        await onEvent?.({ event: { type: 'started' } })
+        await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('hello\n') } })
+        await onEvent?.({ event: { type: 'exit', exitCode: 0 } })
         return {
           executionId: 'exec-1',
         }
@@ -24,6 +24,9 @@ describe('createWeshTool', () => {
       execute: vi.fn().mockResolvedValue({
         exitCode: 0,
       }),
+      getShellState: vi.fn().mockResolvedValue({ cwd: '/', env: {} }),
+      listCommands: vi.fn().mockResolvedValue([]),
+      listDirectory: vi.fn().mockResolvedValue([]),
       interrupt: vi.fn().mockResolvedValue(true),
       dispose: vi.fn().mockResolvedValue(undefined),
     }
@@ -121,10 +124,10 @@ hello
 
   it('returns a timeout error with captured output', async () => {
     vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
-      await onEvent?.({ type: 'started' })
-      await onEvent?.({ type: 'stdout', chunk: encoder.encode('before-timeout\n') })
-      await onEvent?.({ type: 'stderr', chunk: encoder.encode('partial error\n') })
-      await onEvent?.({ type: 'exit', exitCode: 130 })
+      await onEvent?.({ event: { type: 'started' } })
+      await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('before-timeout\n') } })
+      await onEvent?.({ event: { type: 'stderr', chunk: encoder.encode('partial error\n') } })
+      await onEvent?.({ event: { type: 'exit', exitCode: 130 } })
       return {
         executionId: 'exec-1',
       }
@@ -166,9 +169,9 @@ partial error
 
   it('cancels execution when stdout exceeds the configured limit', async () => {
     vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
-      await onEvent?.({ type: 'started' })
-      await onEvent?.({ type: 'stdout', chunk: encoder.encode('abcdef') })
-      await onEvent?.({ type: 'exit', exitCode: 130 })
+      await onEvent?.({ event: { type: 'started' } })
+      await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('abcdef') } })
+      await onEvent?.({ event: { type: 'exit', exitCode: 130 } })
       return {
         executionId: 'exec-1',
       }
@@ -219,10 +222,10 @@ abcd
       })
     })
     vi.mocked(client.startExecution).mockImplementation(async ({ onEvent }) => {
-      await onEvent?.({ type: 'started' })
-      await onEvent?.({ type: 'stdout', chunk: encoder.encode('abcdef') })
+      await onEvent?.({ event: { type: 'started' } })
+      await onEvent?.({ event: { type: 'stdout', chunk: encoder.encode('abcdef') } })
       startExecutionReturned = true
-      await onEvent?.({ type: 'exit', exitCode: 130 })
+      await onEvent?.({ event: { type: 'exit', exitCode: 130 } })
       return {
         executionId: 'exec-1',
       }

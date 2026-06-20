@@ -1,5 +1,10 @@
 import { nanoid } from 'nanoid';
+import type { NaidanId } from '@/models/ids';
 
-export function generateId<T extends string>(): T {
-  return nanoid<T>();
+export function generateId<TId extends NaidanId>(): TId {
+  return nanoid() as unknown as TId;
+}
+
+export function generateOpaqueId(): string {
+  return nanoid();
 }

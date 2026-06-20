@@ -9,11 +9,12 @@ import { useChatOrganization } from './composables/chat/ui/useChatOrganization';
 import { useSettings } from './composables/useSettings';
 import { useConfirm } from './composables/useConfirm'; // Import useConfirm
 import { usePrompt } from './composables/usePrompt';   // Import usePrompt
-import { useOPFSExplorer } from './composables/useOPFSExplorer';
 import { useFileExplorerModal } from './composables/useFileExplorerModal';
 import { useTheme } from './composables/useTheme';
 import { usePrint } from './composables/usePrint';
 import Sidebar from './components/Sidebar.vue';
+import { idToRaw, toChatId } from '@/models/ids';
+import type { ChatGroupId } from '@/models/ids';
 
 // Async components for print mode to keep initial bundle small.
 const PrintView = defineAsyncComponent(() => import('./components/PrintView.vue'));
@@ -39,7 +40,6 @@ const GlobalSearchModal = defineAsyncComponentAndLoadOnMounted({ loader: () => i
 const RecentChatsModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/RecentChatsModal.vue') });
 const DebugPanel = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/DebugPanel.vue') });
 const CustomDialog = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/CustomDialog.vue') });
-const OPFSExplorer = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/OPFSExplorer.vue') });
 const FileExplorerModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./components/FileExplorerModal.vue') });
 
 const currentChatState = useCurrentChatState();
@@ -65,7 +65,7 @@ watch(() => route.path, (path) => {
 // Watch for chat navigation and update recent chats
 watch(() => route.path, () => {
   if (route.name === '/chat/[id]' && route.params.id && typeof route.params.id === 'string') {
-    addRecentChat({ id: route.params.id });
+    addRecentChat({ id: toChatId({ raw: route.params.id }) });
   }
 }, { immediate: true });
 
@@ -79,7 +79,6 @@ const closeSettings = () => {
   }
 };
 
-const { isOPFSOpen } = useOPFSExplorer();
 const { isFileExplorerOpen } = useFileExplorerModal();
 
 // Initialize theme application logic
@@ -162,7 +161,7 @@ watch(
       setActiveFocusArea({ area: 'chat' });
       await chatLifecycle.createNewChat({ groupId: undefined, modelId: undefined, systemPrompt: undefined });
       if (currentChatState.currentChat.value) {
-        router.push(`/chat/${currentChatState.currentChat.value.id}`);
+        router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
       }
       return;
     }
@@ -171,9 +170,9 @@ watch(
     // We only trigger this if 'q' is provided. 'system-prompt' or 'model' alone
     // does not trigger a new chat.
     if (q) {
-      let targetGroupId: string | undefined = undefined;
+      let targetGroupId: ChatGroupId | undefined = undefined;
       if (typeof chatGroupId === 'string') {
-        const group = currentChatState.chatGroups.value.find(g => g.id === chatGroupId || g.name === chatGroupId);
+        const group = currentChatState.chatGroups.value.find(g => idToRaw({ id: g.id }) === chatGroupId || g.name === chatGroupId);
         if (group) {
           targetGroupId = group.id;
         } else {
@@ -197,7 +196,7 @@ watch(
       if (currentChatState.currentChat.value) {
         const id = currentChatState.currentChat.value.id;
         router.push({
-          path: `/chat/${id}`,
+          path: `/chat/${idToRaw({ id })}`,
           query: { q: q.toString() }
         });
       }
@@ -219,7 +218,7 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
       systemPrompt: undefined
     });
     if (currentChatState.currentChat.value) {
-      router.push(`/chat/${currentChatState.currentChat.value.id}`);
+      router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
     }
   }
 
@@ -320,7 +319,6 @@ defineExpose({
       @cancel="handlePromptCancel"
     />
 
-    <OPFSExplorer v-model="isOPFSOpen" />
     <FileExplorerModal v-if="isFileExplorerOpen" />
   </div>
 

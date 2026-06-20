@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { ShapesIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-vue-next';
+import { idToRaw } from '@/models/ids';
 import type { ToolCallRecord } from '@/services/tools/types';
 import LmToolCall from './LmToolCall.vue';
 
@@ -53,7 +54,7 @@ defineExpose({
         <div class="flex flex-col">
           <LmToolCall
             v-for="tc in toolCalls"
-            :key="tc.id"
+            :key="idToRaw({ id: tc.id })"
             :tool-call="tc"
           />
         </div>

@@ -1,8 +1,7 @@
 import type { Chat, ChatMessage } from '@/models/types';
-import type { LLMProvider } from '@/services/lm/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import type { ChatId } from '@/models/ids';
+import type { LmProvider } from '@/services/lm/types';
+import { createLmProvider } from '@/services/lm/providerFactory';
 import { getChatBranchIterator } from '@/utils/chat-tree';
 import { stripNaidanSentinels } from '@/utils/image-generation';
 import { cleanGeneratedTitle, detectLanguage, getTitleSystemPrompt } from '@/utils/title-generator';
@@ -22,7 +21,7 @@ import {
 export function isGeneratingChatTitle({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): boolean {
   return isGeneratingTitle({ chatId });
 }
@@ -30,7 +29,7 @@ export function isGeneratingChatTitle({
 export function abortTitleGenerationForChat({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): void {
   if (!chatRuntimeStore.activeTitleGenerations.has(chatId)) {
     return;
@@ -45,7 +44,7 @@ export async function generateChatTitleForChat({
   titleModelIdOverride,
   signal,
 }: {
-  chatId: string;
+  chatId: ChatId;
   titleModelIdOverride: string | undefined;
   signal: AbortSignal | undefined;
 }): Promise<string | undefined> {
@@ -108,7 +107,7 @@ export async function generateChatTitleForChat({
     await provider.chat({
       messages: promptMessages,
       model: titleModelId,
-      onChunk: (chunk) => {
+      onChunk: ({ chunk }) => {
         generatedTitle += chunk;
       },
       parameters: undefined,
@@ -123,7 +122,8 @@ export async function generateChatTitleForChat({
     if (mutableChat.title === titleAtStart) {
       await updateChatMeta({
         id: mutableChat.id,
-        updater: (current) => {
+
+        updater: ({ current }) => {
           if (current === null) {
             return mutableChat;
           }
@@ -135,7 +135,7 @@ export async function generateChatTitleForChat({
           };
         },
       });
-      await loadData({});
+      await loadData();
       triggerCurrentChat({ chatId: mutableChat.id });
     }
 
@@ -227,23 +227,16 @@ function createTitleProvider({
   endpointType: NonNullable<Chat['endpointType']>;
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
-}): LLMProvider {
-  switch (endpointType) {
-  case 'openai':
-    if (endpointUrl === undefined) {
-      throw new Error('OpenAI title generation requires an endpoint URL');
-    }
-    return new OpenAIProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-  case 'ollama':
-    if (endpointUrl === undefined) {
-      throw new Error('Ollama title generation requires an endpoint URL');
-    }
-    return new OllamaProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-  case 'transformers_js':
-    return new TransformersJsProvider();
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unsupported endpoint type for title generation: ${_ex}`);
+}): LmProvider {
+  if (endpointUrl === undefined && endpointType !== 'transformers_js') {
+    throw new Error(`${endpointType} title generation requires an endpoint URL`);
   }
-  }
+
+  const { settings } = useSettings();
+  return createLmProvider({
+    endpointType,
+    endpointUrl,
+    endpointHttpHeaders,
+    fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
+  });
 }

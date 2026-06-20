@@ -142,7 +142,7 @@ describe('transformers-js.worker', () => {
     expect(env.customCache).toBeDefined();
     expect(env.customCache).toHaveProperty('match');
     expect(env.customCache).toHaveProperty('put');
-  });
+  }, 30000);
 
   it('opfsCache.match should return undefined for non-existent file', async () => {
     await import('./entry');

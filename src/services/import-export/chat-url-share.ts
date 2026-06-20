@@ -1,14 +1,15 @@
 import { storageService } from '@/services/storage';
 import { MemoryStorageProvider } from '@/services/storage/memory-storage';
 import { ImportExportService, type IImportExportStorage } from './service';
-import { hierarchyToDomain } from '@/models/mappers';
+import { hierarchyToDomain, hierarchyToDto } from '@/models/mappers';
 import type { MessageNode, Settings } from '@/models/types';
+import type { BinaryObjectId, ChatId } from '@/models/ids';
 
 /**
  * Generates a URL that contains a zipped version of the current chat.
  * This URL can be shared and when opened, the chat will be imported into the recipient's storage.
  */
-export async function generateChatShareURL({ chatId }: { chatId: string }): Promise<string> {
+export async function generateChatShareURL({ chatId }: { chatId: ChatId }): Promise<string> {
   const chat = await storageService.loadChat({ id: chatId });
   if (!chat) throw new Error('Chat not found');
 
@@ -18,10 +19,10 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
 
   const adapter: IImportExportStorage = {
     loadSettings: () => memoryProvider.loadSettings(),
-    updateSettings: async (updater) => {
+    updateSettings: async ({ updater }) => {
       const current = await memoryProvider.loadSettings();
-      const updated = await updater(current);
-      await memoryProvider.saveSettings(updated);
+      const updated = await updater({ current: current });
+      await memoryProvider.saveSettings({ settings: updated });
     },
     listChats: () => memoryProvider.listChats(),
     listChatGroups: () => memoryProvider.listChatGroups(),
@@ -32,28 +33,28 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
     },
     clearAll: () => memoryProvider.clearAll(),
     dumpWithoutLock: () => memoryProvider.dump(),
-    restore: (snapshot) => memoryProvider.restore(snapshot),
+    restore: ({ snapshot }) => memoryProvider.restore({ snapshot }),
   };
 
   // 1. Settings (minimal)
   const currentSettings = await storageService.loadSettings();
   if (currentSettings) {
-    await memoryProvider.saveSettings({
+    await memoryProvider.saveSettings({ settings: {
       ...currentSettings,
-    } as Settings);
+    } as Settings });
   }
 
   // 2. Chat Data
-  await memoryProvider.saveChatMeta(chat);
-  await memoryProvider.saveChatContent(chat.id, chat);
+  await memoryProvider.saveChatMeta({ meta: chat });
+  await memoryProvider.saveChatContent({ id: chat.id, content: chat });
 
   // 3. Hierarchy (minimal)
-  await memoryProvider.saveHierarchy({
+  await memoryProvider.saveHierarchy({ hierarchy: hierarchyToDto({ domain: {
     items: [{ type: 'chat', id: chat.id }]
-  });
+  } }) });
 
   // 4. Attachments
-  const binaryObjectIds = new Set<string>();
+  const binaryObjectIds = new Set<BinaryObjectId>();
   const collectBinaryIds = ({ nodes }: { nodes: MessageNode[] }) => {
     for (const node of nodes) {
       if (node.role === 'user' && node.attachments) {
@@ -82,7 +83,7 @@ export async function generateChatShareURL({ chatId }: { chatId: string }): Prom
   }
 
   // 5. Export using ImportExportService
-  const exportService = new ImportExportService(adapter);
+  const exportService = new ImportExportService({ storage: adapter });
   const { stream } = await exportService.exportData({
     fileNameSegment: chat.title || 'chat-share'
   });

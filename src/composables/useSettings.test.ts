@@ -4,17 +4,23 @@ import { DEFAULT_SETTINGS } from '@/models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
 import { flushPromises } from '@vue/test-utils';
 
-const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64 } = vi.hoisted(() => ({
+const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmLanguagePacks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
   mockListModels: vi.fn().mockResolvedValue(['model-1', 'model-2']),
   mockShowConfirm: vi.fn(),
   mockImportFromBase64: vi.fn().mockResolvedValue(undefined),
+  mockPreloadFakeLmLanguagePacks: vi.fn(),
 }));
 
 vi.mock('../services/import-export/url-logic', () => ({
   urlImportExportLogic: {
     importFromBase64: mockImportFromBase64,
   },
+}));
+
+vi.mock('@/services/fake-lm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/fake-lm')>()),
+  preloadFakeLmLanguagePacks: mockPreloadFakeLmLanguagePacks,
 }));
 
 vi.mock('./useGlobalEvents', () => ({
@@ -34,9 +40,9 @@ vi.mock('./useConfirm', () => ({
 const mocks = vi.hoisted(() => ({
   init: vi.fn(),
   loadSettings: vi.fn(),
-  updateSettings: vi.fn().mockImplementation(async (updater) => {
+  updateSettings: vi.fn().mockImplementation(async ({ updater }) => {
     const current = await mocks.loadSettings();
-    return await updater(current);
+    return await updater({ current: current });
   }),
   switchProvider: vi.fn(),
   getCurrentType: vi.fn().mockReturnValue('local'),
@@ -125,12 +131,63 @@ describe('useSettings Initialization and Bootstrap', () => {
     expect(settings.value.storageType).toBe('opfs');
     expect(mocks.updateSettings).toHaveBeenCalled();
     // Verify the result of the updater (which we know in this test)
-    const updater = mocks.updateSettings.mock.calls[0]![0];
-    const updated = await updater();
+    const updater = mocks.updateSettings.mock.calls[0]![0].updater;
+    const updated = await updater({ current: settings.value });
     expect(updated).toEqual(expect.objectContaining({
       storageType: 'opfs',
       endpointUrl: 'http://new-endpoint'
     }));
+  });
+
+  it('persists fake LM mode without overwriting other experimental settings', async () => {
+    const current = {
+      ...DEFAULT_SETTINGS,
+      endpointType: 'openai' as const,
+      storageType: 'local' as const,
+      experimental: {
+        toolConfigPersistence: 'enabled' as const,
+        sidebarSendMessageReorder: 'move_sent_chat' as const,
+        fakeLm: 'disabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(current);
+    const { setFakeLmDebugModeStatus, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: current });
+
+    await setFakeLmDebugModeStatus({ status: 'enabled' });
+
+    expect(settings.value.experimental).toEqual({
+      toolConfigPersistence: 'enabled',
+      sidebarSendMessageReorder: 'move_sent_chat',
+      fakeLm: 'enabled',
+    });
+    const updater = mocks.updateSettings.mock.calls[0]![0].updater;
+    const updated = await updater({ current });
+    expect(updated).toEqual(expect.objectContaining({
+      experimental: {
+        toolConfigPersistence: 'enabled',
+        sidebarSendMessageReorder: 'move_sent_chat',
+        fakeLm: 'enabled',
+      },
+    }));
+    expect(mockPreloadFakeLmLanguagePacks).toHaveBeenCalledOnce();
+  });
+
+  it('preloads fake LM language data when persisted mode is enabled during initialization', async () => {
+    localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+    mocks.loadSettings.mockResolvedValue({
+      ...DEFAULT_SETTINGS,
+      endpointType: 'openai',
+      storageType: 'local',
+      experimental: {
+        fakeLm: 'enabled',
+      },
+    });
+
+    const { init } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+
+    expect(mockPreloadFakeLmLanguagePacks).toHaveBeenCalledOnce();
   });
 
   it('should report error and fallback if invalid storage type is in localStorage', async () => {

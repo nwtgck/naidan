@@ -1,14 +1,17 @@
 import { storageService } from '@/services/storage';
+import { idToRaw } from '@/models/ids';
 import { useConfirm } from './useConfirm';
 import { useImagePreview } from './useImagePreview';
+import type { BinaryObject } from '@/models/types';
+import type { BinaryObjectId } from '@/models/ids';
 
 export function useBinaryActions() {
   const { showConfirm } = useConfirm();
   const { closePreview } = useImagePreview();
 
-  const deleteBinaryObject = async ({ id }: { id: string }) => {
+  const deleteBinaryObject = async ({ id }: { id: BinaryObjectId }) => {
     const obj = await storageService.getBinaryObject({ binaryObjectId: id });
-    const name = obj?.name || id;
+    const name = obj?.name || idToRaw({ id });
 
     const confirmed = await showConfirm({
       title: 'Delete Binary Object?',
@@ -29,14 +32,14 @@ export function useBinaryActions() {
     return false;
   };
 
-  const downloadBinaryObject = async ({ obj }: { obj: { id: string; name?: string } }) => {
+  const downloadBinaryObject = async ({ obj }: { obj: Pick<BinaryObject, 'id' | 'name'> }) => {
     const blob = await storageService.getFile({ binaryObjectId: obj.id });
     if (!blob) return;
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = obj.name || obj.id;
+    a.download = obj.name || idToRaw({ id: obj.id });
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

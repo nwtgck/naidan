@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { storageService } from './index';
+import { toChatId } from '@/models/ids';
 
 // Polyfill Blob.arrayBuffer if missing in test environment
 if (!Blob.prototype.arrayBuffer) {
@@ -20,7 +21,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     // Mock navigator.storage with full directory handle simulation
     const entries = new Map();
     const mockRoot = {
-      getDirectoryHandle: vi.fn().mockImplementation(async (name, opts) => {
+      getDirectoryHandle: vi.fn().mockImplementation(async (name: string, opts?: { create?: boolean }) => {
         if (!entries.has(name)) {
           if (opts?.create) {
             entries.set(name, createMockDir(name));
@@ -66,7 +67,7 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       return {
         kind: 'directory',
         name,
-        getDirectoryHandle: vi.fn().mockImplementation(async (n, _opts) => {
+        getDirectoryHandle: vi.fn().mockImplementation(async (n: string, _opts?: { create?: boolean }) => {
           if (!subEntries.has(n)) {
             if (_opts?.create) {
               subEntries.set(n, createMockDir(n));
@@ -102,14 +103,14 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
     await storageService.init({ type: 'local' });
 
     // Setup valid settings to avoid Zod validation errors during switchProvider
-    await storageService.updateSettings(() => ({
+    await storageService.updateSettings({ updater: () => ({
       endpointType: 'openai',
       endpointUrl: 'http://localhost:11434',
       autoTitleEnabled: true,
       storageType: 'local',
       providerProfiles: [],
       mounts: [],
-    }));
+    }) });
 
 
     const mockBlob = new Blob(['binary-content'], { type: 'image/png' });
@@ -141,18 +142,18 @@ describe('Storage Migration - Blob rescue via switchProvider', () => {
       debugEnabled: false
     };
 
-    await storageService.updateChatContent(chat.id, () => ({
+    await storageService.updateChatContent({ id: toChatId({ raw: chat.id }), updater: () => ({
       root: chat.root,
       currentLeafId: undefined
-    } as any));
-    await storageService.updateChatMeta(chat.id, () => chat as any);
-    await storageService.updateHierarchy((curr) => {
-      curr.items.push({ type: 'chat', id: chat.id });
+    } as any) });
+    await storageService.updateChatMeta({ id: toChatId({ raw: chat.id }), updater: () => chat as any });
+    await storageService.updateHierarchy({ updater: ({ current: curr }) => {
+      curr.items.push({ type: 'chat', id: toChatId({ raw: chat.id })});
       return curr;
-    });
+    } });
     await storageService.switchProvider({ type: 'opfs' });
 
-    const loadedChat = await storageService.loadChat({ id: '550e8400-e29b-41d4-a716-446655440000' });
+    const loadedChat = await storageService.loadChat({ id: toChatId({ raw: '550e8400-e29b-41d4-a716-446655440000' }) });
     expect(loadedChat).toBeDefined();
     const firstNode = loadedChat!.root.items[0]!;
     expect(firstNode).toBeDefined();

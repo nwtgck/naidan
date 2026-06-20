@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink'
-import type { EmptyArgs } from '@/models/types'
+
 import type {
   ITransformersJsScannerWorker,
   ScanOptions,
@@ -11,13 +11,13 @@ function createUnavailableEnvironmentError(): Error {
   return new Error('Transformers.js scanner worker is not available in this environment')
 }
 
-export function createTransformersJsScannerWorkerClient(_args: EmptyArgs): TransformersJsScannerWorkerClient {
+export function createTransformersJsScannerWorkerClient(): TransformersJsScannerWorkerClient {
   if (typeof Worker === 'undefined') {
     return {
-      async scanModel(_args: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
+      async scanModel({ tasks: _tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
         throw createUnavailableEnvironmentError()
       },
-      async dispose(_args: EmptyArgs): Promise<void> {
+      async dispose(): Promise<void> {
       },
     }
   }
@@ -33,7 +33,7 @@ export function createTransformersJsScannerWorkerClient(_args: EmptyArgs): Trans
     async scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }> {
       return remote.scanModel({ tasks })
     },
-    async dispose(_args: EmptyArgs): Promise<void> {
+    async dispose(): Promise<void> {
       try {
         await remote[Comlink.releaseProxy]()
       } finally {

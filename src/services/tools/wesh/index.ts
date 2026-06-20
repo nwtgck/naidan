@@ -15,7 +15,7 @@ export interface WeshToolOptions {
 
 /**
  * Creates a tool that executes shell commands using the Wesh service.
- * The tool name and description are configurable to hide the "Wesh" name from the LLM if desired.
+ * The tool name and description are configurable to hide the "Wesh" name from the LM if desired.
  */
 export function createWeshTool({
   client,
@@ -61,7 +61,7 @@ export function createWeshTool({
     description: toolDescription,
     parametersSchema: WeshArgsSchema,
     async dispose() {
-      await client.dispose({});
+      await client.dispose();
     },
 
     async execute({
@@ -72,7 +72,7 @@ export function createWeshTool({
     }: {
       args: unknown;
       signal?: AbortSignal;
-      onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+      onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
       approvalContext?: ToolApprovalContext;
     }) {
       let abortHandler: (() => void) | undefined;
@@ -159,7 +159,7 @@ export function createWeshTool({
             const text = state.decoder.decode(acceptedChunk, { stream: true });
             if (text) {
               appendOutput({ stream, text });
-              await onEvent?.({ type: 'output', stream, text });
+              await onEvent?.({ event: { type: 'output', stream, text } });
             }
           }
 
@@ -185,7 +185,7 @@ export function createWeshTool({
             if (executionId) {
               void client.cancelExecution({ request: { executionId } });
             } else {
-              void client.interrupt({});
+              void client.interrupt();
             }
           };
           signal.addEventListener('abort', abortHandler, { once: true });
@@ -195,10 +195,10 @@ export function createWeshTool({
           request: {
             script: validated.shell_script,
           },
-          onEvent: async (event) => {
+          onEvent: async ({ event }) => {
             switch (event.type) {
             case 'started':
-              await onEvent?.({ type: 'started' });
+              await onEvent?.({ event: { type: 'started' } });
               break;
             case 'stdout':
               await consumeOutputChunk({ stream: 'stdout', chunk: event.chunk });
@@ -207,7 +207,7 @@ export function createWeshTool({
               await consumeOutputChunk({ stream: 'stderr', chunk: event.chunk });
               break;
             case 'exit':
-              await onEvent?.({ type: 'exit', exitCode: event.exitCode });
+              await onEvent?.({ event: { type: 'exit', exitCode: event.exitCode } });
               break;
             case 'error':
               throw new Error(event.message);

@@ -4,6 +4,8 @@ import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue'
 import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer'
 import { createHighlightWorker } from '@/services/highlight/worker/impl'
 import type { FileExplorerContext, FileExplorerEntry } from './types'
+import { sanitizeHighlightHtml } from '@/lib/security/allowedHtml'
+import type { AllowedHtml } from '@/lib/security/allowedHtml'
 import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types'
 
 const rootDescriptor: FileExplorerRootDescriptor = {
@@ -29,7 +31,7 @@ function createEntry(): FileExplorerEntry {
 function createContext({
   highlightedHtml,
 }: {
-  highlightedHtml: string
+  highlightedHtml: AllowedHtml
 }): FileExplorerContext {
   const entry = createEntry()
 
@@ -136,7 +138,7 @@ describe('FileExplorerPreviewPanel security', () => {
   })
 
   it('does not materialize hostile html from highlighted preview output', async () => {
-    const worker = createHighlightWorker({})
+    const worker = createHighlightWorker()
     const probe = vi.fn()
     vi.stubGlobal('__xssProbe', probe)
     const response = await worker.highlight({
@@ -151,7 +153,7 @@ describe('FileExplorerPreviewPanel security', () => {
       global: {
         provide: {
           [FILE_EXPLORER_INJECTION_KEY as symbol]: createContext({
-            highlightedHtml: response.html,
+            highlightedHtml: sanitizeHighlightHtml({ html: response.html }),
           }),
         },
       },

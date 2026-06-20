@@ -1,26 +1,14 @@
 import { reactive, toRaw } from 'vue';
-import type {
-  AssistantMessageNode,
-  Attachment,
-  Chat,
-  ChatGroup,
-  ChatMessage,
-  EndpointType,
-  LmParameters,
-  MessageNode,
-  MultimodalContent,
-  Settings,
-  ToolMessageNode,
-  UserMessageNode,
-} from '@/models/types';
+import type { AssistantMessageNode, Attachment, Chat, ChatGroup, ChatMessage, EndpointType, LmParameters, MessageNode, MultimodalContent, Settings, ToolMessageNode, UserMessageNode } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
-import type { LLMProvider } from '@/services/lm/types';
+import type { LmProvider } from '@/services/lm/types';
 import type { Tool } from '@/services/tools/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import { createLmProvider } from '@/services/lm/providerFactory';
 import { storageService } from '@/services/storage';
 import { getEnabledTools } from '@/services/tools/factory';
+import { markExecutingToolResultsAsInterrupted } from '@/services/tools/interruption';
+import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/services/tools/tool-config';
+import { getEffectiveToolConfigsForChat } from '@/composables/useChatTools';
 import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 import {
@@ -47,9 +35,8 @@ import { useImageGeneration } from '@/composables/useImageGeneration';
 import { useSettings } from '@/composables/useSettings';
 import { useStoragePersistence } from '@/composables/useStoragePersistence';
 import { useToast } from '@/composables/useToast';
-import { useChatTools } from '@/composables/useChatTools';
 import { useApproval } from '@/composables/useApproval';
-import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import { useChoices } from '@/composables/useChoices';
 import {
   availableModels,
   chatRuntimeStore,
@@ -82,13 +69,15 @@ import {
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
+import type { BinaryObjectId, ChatId, MessageId, ToolCallId } from '@/models/ids';
+import { idToRaw } from '@/models/ids';
 import {
   useChatOrganization,
 } from '@/composables/chat/ui/useChatOrganization';
 
 type PersistedToolContent =
   | { type: 'text'; text: string }
-  | { type: 'binary_object'; id: string };
+  | { type: 'binary_object'; id: BinaryObjectId };
 
 type ResolvedGenerationSettings = {
   endpointType: EndpointType;
@@ -107,9 +96,9 @@ export async function sendMessageForChat({
   attachments,
   lmParameters,
 }: {
-  chatId: string;
+  chatId: ChatId;
   content: string;
-  parentId: string | null | undefined;
+  parentId: MessageId | null | undefined;
   attachments: Attachment[] | undefined;
   lmParameters: LmParameters | undefined;
 }): Promise<boolean> {
@@ -130,7 +119,7 @@ export async function sendMessageToCurrentChat({
   lmParameters,
 }: {
   content: string;
-  parentId: string | null | undefined;
+  parentId: MessageId | null | undefined;
   attachments: Attachment[] | undefined;
   lmParameters: LmParameters | undefined;
 }): Promise<boolean> {
@@ -152,7 +141,7 @@ export async function sendMessageToTargetChat({
 }: {
   targetChat: Chat | Readonly<Chat> | null;
   content: string;
-  parentId: string | null | undefined;
+  parentId: MessageId | null | undefined;
   attachments: Attachment[] | undefined;
   lmParameters: LmParameters | undefined;
 }): Promise<boolean> {
@@ -206,7 +195,7 @@ export async function sendMessageToTargetChat({
 
     const processedAttachments: Attachment[] = [];
     if (normalizedAttachments.length > 0 && !storageService.canPersistBinary) {
-      const confirmed = await confirmTemporaryAttachments({});
+      const confirmed = await confirmTemporaryAttachments();
       if (!confirmed) {
         return false;
       }
@@ -248,7 +237,7 @@ export async function sendMessageToTargetChat({
     }
 
     const userMessage: UserMessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'user',
       content: finalContent,
       attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
@@ -263,7 +252,7 @@ export async function sendMessageToTargetChat({
     };
 
     const assistantMessage: AssistantMessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'assistant',
       content: imageModeEnabled
         ? createImageResponseMarker({ count }) + SENTINEL_IMAGE_PENDING
@@ -302,7 +291,8 @@ export async function sendMessageToTargetChat({
     notifyChatChanged({ chatId: mutableChat.id });
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({
+
+      updater: ({ current }) => ({
         ...(current || {}),
         root: mutableChat.root,
         currentLeafId: mutableChat.currentLeafId,
@@ -310,7 +300,8 @@ export async function sendMessageToTargetChat({
     });
     await updateChatMeta({
       id: mutableChat.id,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           return mutableChat;
         }
@@ -327,7 +318,7 @@ export async function sendMessageToTargetChat({
       chat: mutableChat,
       assistantId: assistantMessage.id,
       lmParameters,
-      onReady: (_args) => {
+      onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;
       },
@@ -350,9 +341,9 @@ export async function generateResponseForAssistant({
   onReady,
 }: {
   chat: Chat | Readonly<Chat>;
-  assistantId: string;
+  assistantId: MessageId;
   lmParameters: LmParameters | undefined;
-  onReady: ((_args: Record<never, never>) => void) | undefined;
+  onReady: (() => void) | undefined;
 }): Promise<void> {
   let didSignalReady = false;
   const signalReady = () => {
@@ -360,7 +351,7 @@ export async function generateResponseForAssistant({
       return;
     }
     didSignalReady = true;
-    onReady?.({});
+    onReady?.();
   };
 
   const mutableChat = getLiveChat({ chat });
@@ -382,10 +373,12 @@ export async function generateResponseForAssistant({
     generation: { controller, chat: mutableChat },
   });
   storageService.notify({
-    type: 'chat_content_generation',
-    id: mutableChat.id,
-    status: 'started',
-    timestamp: Date.now(),
+    event: {
+      type: 'chat_content_generation',
+      id: idToRaw({ id: mutableChat.id }),
+      status: 'started',
+      timestamp: Date.now(),
+    },
   });
   registerLiveInstance({ chat: mutableChat });
 
@@ -398,6 +391,7 @@ export async function generateResponseForAssistant({
 
   const parentNode = findParentInBranch({ items: mutableChat.root.items, childId: assistantId });
   const imageRequest = parentNode ? parseImageRequest({ content: parentNode.content || '' }) : null;
+  const currentGenerationToolCallIds = new Set<ToolCallId>();
 
   try {
     if (imageRequest) {
@@ -454,7 +448,7 @@ export async function generateResponseForAssistant({
 
     try {
       signalReady();
-      const { ensureApproval } = useApproval({});
+      const { ensureApproval } = useApproval();
       await provider.chat({
         messages: finalMessages,
         model: resolvedModel,
@@ -468,7 +462,7 @@ export async function generateResponseForAssistant({
 
           if (generationState.currentAssistantNode.content !== '' || (generationState.currentAssistantNode.toolCalls?.length ?? 0) > 0) {
             const newNode: AssistantMessageNode = reactive({
-              id: generateId(),
+              id: generateId<MessageId>(),
               role: 'assistant',
               content: '',
               timestamp: Date.now(),
@@ -490,9 +484,10 @@ export async function generateResponseForAssistant({
           }
         },
         onToolCall: ({ id, toolName, args }) => {
+          currentGenerationToolCallIds.add(id);
           if (generationState.currentToolNode === null) {
             const toolNode: ToolMessageNode = reactive({
-              id: generateId(),
+              id: generateId<MessageId>(),
               role: 'tool',
               results: [],
               content: undefined,
@@ -591,8 +586,9 @@ export async function generateResponseForAssistant({
           }
 
           chatVolatileState.deleteVolatileToolOutput({ toolCallId: id });
+          currentGenerationToolCallIds.delete(id);
         },
-        onChunk: async (chunk) => {
+        onChunk: async ({ chunk }) => {
           generationState.currentAssistantNode.content += chunk;
           notifyChatChanged({ chatId: mutableChat.id });
 
@@ -602,7 +598,8 @@ export async function generateResponseForAssistant({
             try {
               await updateChatContent({
                 id: mutableChat.id,
-                updater: (current) => ({
+
+                updater: ({ current }) => ({
                   ...(current || {}),
                   root: mutableChat.root,
                   currentLeafId: mutableChat.currentLeafId,
@@ -625,7 +622,8 @@ export async function generateResponseForAssistant({
 
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({
+
+      updater: ({ current }) => ({
         ...(current || {}),
         root: mutableChat.root,
         currentLeafId: mutableChat.currentLeafId,
@@ -643,6 +641,34 @@ export async function generateResponseForAssistant({
     }
   } catch (error) {
     signalReady();
+    let interruptedToolCount = 0;
+    for (const message of getAllMessages({ chat: mutableChat })) {
+      switch (message.role) {
+      case 'tool':
+        interruptedToolCount += markExecutingToolResultsAsInterrupted({
+          results: message.results,
+          toolCallIds: currentGenerationToolCallIds,
+        });
+        break;
+      case 'user':
+      case 'assistant':
+      case 'system':
+        break;
+      default: {
+        const _ex: never = message;
+        throw new Error(`Unhandled message role: ${((_ex satisfies never) as { readonly role: string }).role}`);
+      }
+      }
+    }
+    for (const toolCallId of currentGenerationToolCallIds) {
+      chatVolatileState.deleteVolatileToolOutput({ toolCallId });
+    }
+    currentGenerationToolCallIds.clear();
+
+    if (interruptedToolCount > 0) {
+      notifyChatChanged({ chatId: mutableChat.id });
+    }
+
     const lastOpen = assistantNode.content.lastIndexOf('<think>');
     const lastClose = assistantNode.content.lastIndexOf('</think>');
     if (lastOpen > -1 && lastClose < lastOpen) {
@@ -655,7 +681,8 @@ export async function generateResponseForAssistant({
       notifyChatChanged({ chatId: mutableChat.id });
       await updateChatContent({
         id: mutableChat.id,
-        updater: (current) => ({
+
+        updater: ({ current }) => ({
           ...(current || {}),
           root: mutableChat.root,
           currentLeafId: mutableChat.currentLeafId,
@@ -676,7 +703,8 @@ export async function generateResponseForAssistant({
       notifyChatChanged({ chatId: mutableChat.id });
       await updateChatContent({
         id: mutableChat.id,
-        updater: (current) => ({
+
+        updater: ({ current }) => ({
           ...(current || {}),
           root: mutableChat.root,
           currentLeafId: mutableChat.currentLeafId,
@@ -689,21 +717,23 @@ export async function generateResponseForAssistant({
     if (chatRuntimeStore.activeGenerations.has(mutableChat.id)) {
       chatRuntimeStore.deleteActiveGeneration({ chatId: mutableChat.id });
       storageService.notify({
-        type: 'chat_content_generation',
-        id: mutableChat.id,
-        status: 'stopped',
-        timestamp: Date.now(),
+        event: {
+          type: 'chat_content_generation',
+          id: idToRaw({ id: mutableChat.id }),
+          status: 'stopped',
+          timestamp: Date.now(),
+        },
       });
       updateChatMeta({
         id: mutableChat.id,
-        updater: (current) => {
+        updater: ({ current }) => {
           if (current === null) {
             return mutableChat;
           }
           return { ...current, updatedAt: Date.now(), currentLeafId: mutableChat.currentLeafId };
         },
       }).then(async () => {
-        await loadData({});
+        await loadData();
       }).catch(() => {});
 
       const history = Array.from(getChatBranchIterator({ chat: mutableChat }));
@@ -719,8 +749,8 @@ export async function regenerateMessageForChat({
   chatId,
   failedMessageId,
 }: {
-  chatId: string;
-  failedMessageId: string;
+  chatId: ChatId;
+  failedMessageId: MessageId;
 }): Promise<void> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -736,7 +766,7 @@ export async function regenerateMessageForChat({
 export async function regenerateMessageForCurrentChat({
   failedMessageId,
 }: {
-  failedMessageId: string;
+  failedMessageId: MessageId;
 }): Promise<void> {
   if (currentChatRef.value === null) {
     return;
@@ -753,7 +783,7 @@ async function regenerateMessageForTarget({
   failedMessageId,
 }: {
   targetChat: Chat | Readonly<Chat>;
-  failedMessageId: string;
+  failedMessageId: MessageId;
 }): Promise<void> {
   const chatId = targetChat.id;
   if (isProcessing({ chatId })) {
@@ -778,7 +808,7 @@ async function regenerateMessageForTarget({
     }
 
     const newAssistantMessage: AssistantMessageNode = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       role: 'assistant',
       content: '',
       timestamp: Date.now(),
@@ -797,11 +827,13 @@ async function regenerateMessageForTarget({
 
     await updateChatContent({
       id: mutableChat.id,
-      updater: (current) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
+
+      updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
     });
     await updateChatMeta({
       id: mutableChat.id,
-      updater: (current) => {
+
+      updater: ({ current }) => {
         if (current === null) {
           return mutableChat;
         }
@@ -817,7 +849,7 @@ async function regenerateMessageForTarget({
       chat: mutableChat,
       assistantId: newAssistantMessage.id,
       lmParameters: failedNode.lmParameters,
-      onReady: (_args) => {
+      onReady: () => {
         markGenerationReady?.();
         markGenerationReady = undefined;
       },
@@ -873,7 +905,7 @@ function collectChatGroups({
   });
 }
 
-async function confirmTemporaryAttachments(_args: Record<never, never>): Promise<boolean> {
+async function confirmTemporaryAttachments(): Promise<boolean> {
   const { settings } = useSettings();
   if (settings.value.heavyContentAlertDismissed !== false) {
     return true;
@@ -896,7 +928,7 @@ async function persistAttachment({
   case 'memory':
     if (storageService.canPersistBinary) {
       try {
-        await storageService.saveFile(attachment.blob, attachment.binaryObjectId, attachment.originalName);
+        await storageService.saveFile({ blob: attachment.blob, binaryObjectId: attachment.binaryObjectId, name: attachment.originalName });
         return { ...attachment, status: 'persisted' };
       } catch {
         return attachment;
@@ -937,25 +969,18 @@ function createGenerationProvider({
   endpointType: EndpointType;
   endpointUrl: string | undefined;
   endpointHttpHeaders: [string, string][] | undefined;
-}): LLMProvider {
-  switch (endpointType) {
-  case 'openai':
-    if (endpointUrl === undefined) {
-      throw new Error('OpenAI generation requires an endpoint URL');
-    }
-    return new OpenAIProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-  case 'ollama':
-    if (endpointUrl === undefined) {
-      throw new Error('Ollama generation requires an endpoint URL');
-    }
-    return new OllamaProvider({ endpoint: endpointUrl, headers: endpointHttpHeaders });
-  case 'transformers_js':
-    return new TransformersJsProvider();
-  default: {
-    const _ex: never = endpointType;
-    throw new Error(`Unsupported endpoint type: ${_ex}`);
+}): LmProvider {
+  if (endpointUrl === undefined && endpointType !== 'transformers_js') {
+    throw new Error(`${endpointType} generation requires an endpoint URL`);
   }
-  }
+
+  const { settings } = useSettings();
+  return createLmProvider({
+    endpointType,
+    endpointUrl,
+    endpointHttpHeaders,
+    fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
+  });
 }
 
 async function buildGenerationMessages({
@@ -964,7 +989,7 @@ async function buildGenerationMessages({
   systemPromptMessages,
 }: {
   chat: Chat;
-  assistantId: string;
+  assistantId: MessageId;
   systemPromptMessages: string[];
 }): Promise<ChatMessage[]> {
   const messages: ChatMessage[] = [];
@@ -1097,9 +1122,14 @@ async function getEnabledToolsForChat({
   chat: Chat;
 }): Promise<Tool[]> {
   const { settings } = useSettings();
-  const { enabledToolNames } = useChatTools();
-  const { getNaidanSysfsMountSelection } = useChatWeshPreferences();
-  const shellExecuteEnabled = enabledToolNames.value.includes('shell_execute');
+  const { requestChoice } = useChoices();
+  const toolConfigs = getEffectiveToolConfigsForChat({
+    chatId: chat.id,
+    persistedToolConfigs: chat.toolConfigs,
+  });
+  const enabledNames = lmToolNamesFromToolConfigs({ toolConfigs });
+  const shellExecuteEnabled = enabledNames.includes('shell_execute');
+  const weshToolConfig = findLastToolConfigByKey({ toolConfigs, key: 'builtin.wesh' });
   const chatTmpDirectory = shellExecuteEnabled && shouldIncludeWritableTmpMount({ storageType: settings.value.storageType })
     ? await ensureChatTmpDirectory({ chatId: chat.id })
     : undefined;
@@ -1110,14 +1140,15 @@ async function getEnabledToolsForChat({
     : undefined;
 
   return await getEnabledTools({
-    enabledNames: enabledToolNames.value,
+    enabledNames,
     settings: settings.value as unknown as Settings,
     chatGroupMounts,
     chatMounts: chat.mounts,
     chatId: chat.id,
     chatGroupId: chat.groupId ?? undefined,
-    naidanSysfsVisibility: getNaidanSysfsMountSelection({ chatId: chat.id }),
+    naidanSysfsAccessScope: weshToolConfig?.naidanSysfs.accessScope ?? 'none',
     tmpHandle: chatTmpDirectory?.handle,
+    requestChoice,
   });
 }
 
@@ -1135,8 +1166,8 @@ async function handleImageGenerationWithDefaults({
   model,
   signal,
 }: {
-  chatId: string;
-  assistantId: string;
+  chatId: ChatId;
+  assistantId: MessageId;
   prompt: string;
   width: number;
   height: number;
@@ -1179,11 +1210,11 @@ async function handleImageGenerationWithDefaults({
     updateChatContent: async ({ chatId: contentChatId, updater }) => {
       await updateChatContent({
         id: contentChatId,
-        updater: (current) => {
+        updater: ({ current }) => {
           if (current === null) {
             throw new Error('Chat content not found');
           }
-          return updater(current);
+          return updater({ current: current });
         },
       });
     },
@@ -1208,13 +1239,13 @@ async function persistToolContent({
 }: {
   text: string;
   type: 'result' | 'error';
-  toolCallId: string;
+  toolCallId: ToolCallId;
 }): Promise<PersistedToolContent> {
   const binaryThreshold = 100 * 1024;
   if (text.length > binaryThreshold) {
     const blob = new Blob([text], { type: 'text/plain' });
-    const binaryId = generateId();
-    await storageService.saveFile(blob, binaryId, `tool_${type}_${toolCallId}.txt`);
+    const binaryId = generateId<BinaryObjectId>();
+    await storageService.saveFile({ blob, binaryObjectId: binaryId, name: `tool_${type}_${idToRaw({ id: toolCallId })}.txt` });
     return { type: 'binary_object', id: binaryId };
   }
 

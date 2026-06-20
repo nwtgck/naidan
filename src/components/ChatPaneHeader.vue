@@ -11,17 +11,19 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import ContextCompactMenuItem from './ContextCompactMenuItem.vue';
 import type { ChatPaneHeaderMoreAction } from '@/services/context-compact';
+import { idToRaw } from '@/models/ids';
+import type { ChatGroupId, ChatId } from '@/models/ids';
 
 type HeaderChat = {
-  readonly id: string;
+  readonly id: ChatId;
   readonly title: string | null;
-  readonly groupId?: string | null;
-  readonly originChatId?: string;
+  readonly groupId?: ChatGroupId | null;
+  readonly originChatId?: ChatId;
   readonly debugEnabled: boolean;
 };
 
 type HeaderChatGroup = {
-  readonly id: string;
+  readonly id: ChatGroupId;
   readonly name: string;
 };
 
@@ -44,7 +46,7 @@ const emit = defineEmits<{
   (e: 'edit-title'): void;
   (e: 'update:show-chat-settings', value: boolean): void;
   (e: 'fork-last-message'): void;
-  (e: 'move-to-group', groupId: string | null): void;
+  (e: 'move-to-group', groupId: ChatGroupId | null): void;
   (e: 'toggle-outline'): void;
   (e: 'print'): void;
   (e: 'search-chat'): void;
@@ -62,7 +64,7 @@ const showMoreMenu = ref(false);
 const showMoveMenu = ref(false);
 const actionsMenuRoot = ref<HTMLElement | null>(null);
 
-function closeFloatingMenus(_args: Record<string, never>) {
+function closeFloatingMenus() {
   showMoreMenu.value = false;
   showMoveMenu.value = false;
 }
@@ -72,12 +74,12 @@ function handleDocumentPointerDown({ event }: { event: PointerEvent }) {
   const target = event.target;
   if (!(target instanceof Node)) return;
   if (actionsMenuRoot.value?.contains(target)) return;
-  closeFloatingMenus({});
+  closeFloatingMenus();
 }
 
 useEventTargetListener(document, 'pointerdown', (event) => handleDocumentPointerDown({ event }));
 
-function emitMoveToGroup({ groupId }: { groupId: string | null }) {
+function emitMoveToGroup({ groupId }: { groupId: ChatGroupId | null }) {
   emit('move-to-group', groupId);
   showMoveMenu.value = false;
 }
@@ -258,7 +260,7 @@ defineExpose({
 
                 <button
                   v-for="group in chatGroups"
-                  :key="group.id"
+                  :key="idToRaw({ id: group.id })"
                   @click="emitMoveToGroup({ groupId: group.id })"
                   class="w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors"
                   :class="chat.groupId === group.id ? 'text-blue-600 bg-blue-50/50 dark:bg-blue-900/20 font-bold' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"

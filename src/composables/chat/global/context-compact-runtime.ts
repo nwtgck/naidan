@@ -1,28 +1,29 @@
 import { reactive } from 'vue';
 import type { ContextCompactProgress } from '@/services/context-compact';
+import type { ChatId } from '@/models/ids';
 
 export type ContextCompactRuntime = {
-  activeContextCompactions: Map<string, AbortController>;
+  activeContextCompactions: Map<ChatId, AbortController>;
 
   setActiveContextCompaction({
     chatId,
     controller,
   }: {
-    chatId: string;
+    chatId: ChatId;
     controller: AbortController;
   }): void;
 
   getActiveContextCompaction({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): AbortController | undefined;
 
   clearActiveContextCompaction({
     chatId,
     controller,
   }: {
-    chatId: string;
+    chatId: ChatId;
     controller: AbortController | undefined;
   }): void;
 
@@ -30,31 +31,31 @@ export type ContextCompactRuntime = {
     chatId,
     progress,
   }: {
-    chatId: string;
+    chatId: ChatId;
     progress: ContextCompactProgress;
   }): void;
 
   getProgress({
     chatId,
   }: {
-    chatId: string | undefined;
+    chatId: ChatId | undefined;
   }): ContextCompactProgress;
 
   TEST_ONLY: {
-    compactProgressByChat: Map<string, ContextCompactProgress>;
-    compactProgressResetTimers: Map<string, ReturnType<typeof globalThis.setTimeout>>;
+    compactProgressByChat: Map<ChatId, ContextCompactProgress>;
+    compactProgressResetTimers: Map<ChatId, ReturnType<typeof globalThis.setTimeout>>;
   };
 };
 
-export function createContextCompactRuntime(_args: Record<never, never>): ContextCompactRuntime {
-  const compactProgressByChat = reactive(new Map<string, ContextCompactProgress>());
-  const compactProgressResetTimers = reactive(new Map<string, ReturnType<typeof globalThis.setTimeout>>());
-  const activeContextCompactions = reactive(new Map<string, AbortController>());
+export function createContextCompactRuntime(): ContextCompactRuntime {
+  const compactProgressByChat = reactive(new Map<ChatId, ContextCompactProgress>());
+  const compactProgressResetTimers = reactive(new Map<ChatId, ReturnType<typeof globalThis.setTimeout>>());
+  const activeContextCompactions = reactive(new Map<ChatId, AbortController>());
 
   function clearProgressResetTimer({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     const existingTimer = compactProgressResetTimers.get(chatId);
     if (existingTimer === undefined) return;
@@ -66,7 +67,7 @@ export function createContextCompactRuntime(_args: Record<never, never>): Contex
     chatId,
     progress,
   }: {
-    chatId: string;
+    chatId: ChatId;
     progress: ContextCompactProgress;
   }) {
     clearProgressResetTimer({ chatId });
@@ -102,7 +103,7 @@ export function createContextCompactRuntime(_args: Record<never, never>): Contex
   function getProgress({
     chatId,
   }: {
-    chatId: string | undefined;
+    chatId: ChatId | undefined;
   }): ContextCompactProgress {
     if (chatId === undefined) {
       return { phase: 'idle' };
@@ -115,7 +116,7 @@ export function createContextCompactRuntime(_args: Record<never, never>): Contex
     chatId,
     controller,
   }: {
-    chatId: string;
+    chatId: ChatId;
     controller: AbortController;
   }) {
     activeContextCompactions.set(chatId, controller);
@@ -124,7 +125,7 @@ export function createContextCompactRuntime(_args: Record<never, never>): Contex
   function getActiveContextCompaction({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) {
     return activeContextCompactions.get(chatId);
   }
@@ -133,7 +134,7 @@ export function createContextCompactRuntime(_args: Record<never, never>): Contex
     chatId,
     controller,
   }: {
-    chatId: string;
+    chatId: ChatId;
     controller: AbortController | undefined;
   }) {
     if (controller === undefined) {

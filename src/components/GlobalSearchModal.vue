@@ -2,7 +2,6 @@
 import { ref, watch, nextTick, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { SearchIcon, XIcon, Loader2Icon, MessageSquareIcon, CornerDownRightIcon, ClockIcon, GitBranchIcon, FolderIcon, FilterIcon, CheckIcon, EyeIcon } from 'lucide-vue-next';
-import he from 'he';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
 import { useChatSearch, type SearchResultItem, type SearchRoleFilter, type SearchScope, type ContentMatch } from '@/composables/useChatSearch';
 import { useChatNavigation } from '@/composables/chat/ui/useChatNavigation';
@@ -13,6 +12,11 @@ import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import { useEventTargetListener } from '@/composables/useEventTargetListener';
+import { idToRaw } from '@/models/ids';
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
+import { highlightSearchTextAsHtml } from '@/lib/security/allowedHtml';
+import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import { toChatGroupId, toChatId, toMessageId } from '@/models/ids';
 
 const SearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./SearchPreview.vue') });
 const ChatGroupSearchPreview = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupSearchPreview.vue') });
@@ -32,7 +36,7 @@ const {
 
 const searchInput = ref<HTMLInputElement | null>(null);
 const groupPreviewRef = ref<{
-  navigate: (direction: 'up' | 'down') => void;
+  navigate: ({ direction }: { direction: 'up' | 'down' }) => void;
   handleEnter: () => void;
   selectedChatId: string | null;
     } | null>(null);
@@ -132,13 +136,13 @@ const handleClickOutsideGroupSelector = ({ event }: { event: MouseEvent }) => {
 useEventTargetListener(document, 'mousedown', (event) => handleClickOutsideGroupSelector({ event }));
 
 const selectedGroups = computed(() => {
-  return chatGroups.value.filter(g => chatGroupIds.value.includes(g.id));
+  return chatGroups.value.filter(g => chatGroupIds.value.includes(idToRaw({ id: g.id })));
 });
 
 const targetChatTitle = computed(() => {
   if (!chatId.value) return undefined;
   // If it's the current chat, we can get it from currentChat
-  if (currentChat.value?.id === chatId.value) return currentChat.value.title || UNTITLED_CHAT_TITLE;
+  if (currentChat.value && idToRaw({ id: currentChat.value.id }) === chatId.value) return currentChat.value.title || UNTITLED_CHAT_TITLE;
   // Otherwise we'd need to fetch it or rely on a generic name
   return 'Filtered Chat';
 });
@@ -162,52 +166,20 @@ function formatTime({ timestamp }: { timestamp: number }) {
   return timeFormatter.format(new Date(timestamp));
 }
 
-function escapeRegExp({ string }: { string: string }) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 // Performance Optimization: Memoize highlighted strings.
 // Regex matching and string concatenation are expensive during rapid list navigation.
-const highlightCache = new Map<string, string>();
+const highlightCache = new Map<string, AllowedHtml>();
 
 function highlight({ text, query, color }: {
   text: string,
   query: string,
   color: 'indigo' | 'blue',
-}) {
-  if (!query) return he.encode(text);
-
+}): AllowedHtml {
   const cacheKey = `${color}:${query}:${text}`;
   const cached = highlightCache.get(cacheKey);
   if (cached) return cached;
 
-  const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
-  if (keywords.length === 0) return he.encode(text);
-
-  const pattern = keywords.map(k => escapeRegExp({ string: k })).join('|');
-  const regex = new RegExp(`(${pattern})`, 'gi');
-
-  const parts = text.split(regex);
-  const colorClasses = (() => {
-    switch (color) {
-    case 'blue':
-      return 'bg-blue-200 dark:bg-blue-900/50 text-blue-800 dark:text-blue-100';
-    case 'indigo':
-      return 'bg-indigo-200 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-100';
-    default: {
-      const _ex: never = color;
-      throw new Error(`Unhandled color: ${_ex}`);
-    }
-    }
-  })();
-
-  const result = parts.map(part => {
-    const isMatch = keywords.some(k => part.toLowerCase() === k);
-    if (isMatch) {
-      return `<span class="${colorClasses} font-bold rounded px-0.5">${he.encode(part)}</span>`;
-    }
-    return he.encode(part);
-  }).join('');
+  const result = highlightSearchTextAsHtml({ text, query, color });
 
   // Limit cache size to prevent memory leaks
   if (highlightCache.size > 1000) highlightCache.clear();
@@ -288,7 +260,7 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
     switch (pane) {
     case 'preview':
       if (groupPreviewRef.value) {
-        groupPreviewRef.value.navigate('down');
+        groupPreviewRef.value.navigate({ direction: 'down' });
       }
       break;
     case 'results':
@@ -306,7 +278,7 @@ const handleKeydown = ({ event }: { event: KeyboardEvent }) => {
     switch (pane) {
     case 'preview':
       if (groupPreviewRef.value) {
-        groupPreviewRef.value.navigate('up');
+        groupPreviewRef.value.navigate({ direction: 'up' });
       }
       break;
     case 'results':
@@ -397,7 +369,7 @@ async function selectItem({ index }: { index: number }) {
   switch (type) {
   case 'chat': {
     const chatItem = target.item;
-    await openChat({ chatId: chatItem.chatId });
+    await openChat({ chatId: toChatId({ raw: chatItem.chatId }) });
     router.push(`/chat/${chatItem.chatId}`);
     closeSearch();
     break;
@@ -405,7 +377,10 @@ async function selectItem({ index }: { index: number }) {
   case 'message': {
     const matchItem = target.item;
     const parentChat = target.parentChat;
-    await openChatAtMessage({ chatId: parentChat.chatId, messageId: matchItem.messageId });
+    await openChatAtMessage({
+      chatId: toChatId({ raw: parentChat.chatId }),
+      messageId: toMessageId({ raw: matchItem.messageId }),
+    });
     router.push({
       path: `/chat/${parentChat.chatId}`,
       query: { 'message-id': matchItem.messageId }
@@ -415,7 +390,7 @@ async function selectItem({ index }: { index: number }) {
   }
   case 'chat_group': {
     const groupItem = target.item;
-    openChatGroup({ groupId: groupItem.groupId });
+    openChatGroup({ groupId: toChatGroupId({ raw: groupItem.groupId }) });
     closeSearch();
     break;
   }
@@ -426,7 +401,7 @@ async function selectItem({ index }: { index: number }) {
   }
 }
 
-const previousFocusArea = ref<import('../composables/useLayout').FocusArea | undefined>(undefined);
+const previousFocusArea = ref<import('@/composables/useLayout').FocusArea | undefined>(undefined);
 
 watch(isSearchOpen, (isOpen) => {
   if (isOpen) {
@@ -551,17 +526,17 @@ defineExpose({
                     <div class="max-h-64 overflow-y-auto p-1">
                       <button
                         v-for="group in chatGroups"
-                        :key="group.id"
-                        @click="toggleGroupFilter({ groupId: group.id })"
+                        :key="idToRaw({ id: group.id })"
+                        @click="toggleGroupFilter({ groupId: idToRaw({ id: group.id }) })"
                         class="w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors"
-                        :class="chatGroupIds.includes(group.id) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:indigo-text-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
-                        :data-testid="'group-filter-item-' + group.id"
+                        :class="chatGroupIds.includes(idToRaw({ id: group.id })) ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:indigo-text-400' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'"
+                        :data-testid="'group-filter-item-' + idToRaw({ id: group.id })"
                       >
                         <div class="flex items-center gap-2 overflow-hidden">
                           <FolderIcon class="w-3.5 h-3.5 shrink-0 opacity-60" />
                           <span class="truncate">{{ group.name }}</span>
                         </div>
-                        <CheckIcon v-if="chatGroupIds.includes(group.id)" class="w-3.5 h-3.5 shrink-0" />
+                        <CheckIcon v-if="chatGroupIds.includes(idToRaw({ id: group.id }))" class="w-3.5 h-3.5 shrink-0" />
                       </button>
                       <div v-if="chatGroups.length === 0" class="p-4 text-center text-[10px] text-gray-400 italic">No groups available</div>
                     </div>
@@ -588,11 +563,11 @@ defineExpose({
 
                 <div
                   v-for="group in selectedGroups"
-                  :key="group.id"
+                  :key="idToRaw({ id: group.id })"
                   class="flex items-center gap-1.5 px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-900/30 whitespace-nowrap"
                 >
                   <span>{{ group.name }}</span>
-                  <button @click="toggleGroupFilter({ groupId: group.id })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
+                  <button @click="toggleGroupFilter({ groupId: idToRaw({ id: group.id }) })" class="hover:text-indigo-800 dark:hover:text-indigo-300">
                     <XIcon class="w-2.5 h-2.5" />
                   </button>
                 </div>
@@ -679,7 +654,12 @@ defineExpose({
                   </div>
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
-                      <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.name, query, color: 'blue' })"></span>
+                      <AllowedHtmlView
+                        v-if="isHighlightingEnabled"
+                        as="span"
+                        :html="highlight({ text: entry.item.name, query, color: 'blue' })"
+                        class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
+                      />
                       <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.name }}</span>
                       <div class="flex items-center gap-1.5 shrink-0">
                         <span class="text-[9px] px-1.5 py-0.5 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded font-black uppercase tracking-wider">{{ entry.item.chatCount }} chats</span>
@@ -696,11 +676,20 @@ defineExpose({
                   <div class="flex flex-col flex-1 overflow-hidden">
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex flex-col overflow-hidden">
-                        <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"></span>
+                        <AllowedHtmlView
+                          v-if="isHighlightingEnabled"
+                          as="span"
+                          :html="highlight({ text: entry.item.title || UNTITLED_CHAT_TITLE, query, color: 'indigo' })"
+                          class="font-bold text-sm truncate text-gray-900 dark:text-gray-100"
+                        />
                         <span class="font-bold text-sm truncate text-gray-900 dark:text-gray-100" v-else>{{ entry.item.title || UNTITLED_CHAT_TITLE }}</span>
                         <span v-if="entry.item.groupName" class="text-[10px] text-gray-400 truncate flex items-center gap-1">
                           <FolderIcon class="w-2.5 h-2.5 opacity-50 text-blue-500" />
-                          <span v-if="isHighlightingEnabled" v-html="highlight({ text: entry.item.groupName, query, color: 'blue' })"></span>
+                          <AllowedHtmlView
+                            v-if="isHighlightingEnabled"
+                            as="span"
+                            :html="highlight({ text: entry.item.groupName, query, color: 'blue' })"
+                          />
                           <span v-else>{{ entry.item.groupName }}</span>
                         </span>
                       </div>
@@ -722,7 +711,12 @@ defineExpose({
                       <span class="text-[9px] font-black uppercase tracking-wider text-gray-400">{{ entry.item.role }}</span>
                       <span class="text-[9px] text-gray-400">{{ formatTime({ timestamp: entry.item.timestamp }) }}</span>
                     </div>
-                    <span v-if="isHighlightingEnabled" class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed" v-html="highlight({ text: entry.item.excerpt, query, color: 'indigo' })"></span>
+                    <AllowedHtmlView
+                      v-if="isHighlightingEnabled"
+                      as="span"
+                      :html="highlight({ text: entry.item.excerpt, query, color: 'indigo' })"
+                      class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed"
+                    />
                     <span v-else class="text-gray-600 dark:text-gray-300 line-clamp-2 text-xs leading-relaxed">{{ entry.item.excerpt }}</span>
 
                     <div v-if="!entry.item.isCurrentThread" class="flex items-center gap-1 mt-1.5 text-[9px] text-amber-600 dark:text-amber-500 font-bold">

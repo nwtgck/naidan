@@ -1,48 +1,56 @@
-import type { EmptyArgs, ChatMessage, LmParameters, ToolCall } from '@/models/types'
+import type { ChatMessage, LmParameters } from '@/models/types'
 import type {
   TransformersJsWorkerClient,
-  ProgressInfo,
   ModelLoadResult,
   WorkerToolDefinition,
+  TransformersJsProgressCallback,
+  TransformersJsChunkCallback,
+  TransformersJsToolCallsCallback,
 } from '@/services/transformers-js/types'
 
 function createUnsupportedError(): Error {
   return new Error('Transformers.js is not available in standalone mode')
 }
 
-export function createTransformersJsWorkerClient(_args: EmptyArgs): TransformersJsWorkerClient {
+export function createTransformersJsWorkerClient(): TransformersJsWorkerClient {
   return {
-    async downloadModel(_args: { modelId: string, progressCallback: (x: ProgressInfo) => void }): Promise<void> {
-      throw createUnsupportedError()
-    },
-    async prefetchUrls(_args: { urls: string[], progressCallback: (x: ProgressInfo) => void }): Promise<void> {
-      throw createUnsupportedError()
-    },
-    async loadModel(_args: {
+    async downloadModel({ modelId: _modelId, progressCallback: _progressCallback }: {
       modelId: string
-      progressCallback: (x: ProgressInfo) => void
+      progressCallback: TransformersJsProgressCallback
+    }): Promise<void> {
+      throw createUnsupportedError()
+    },
+    async prefetchUrls({ urls: _urls, progressCallback: _progressCallback }: {
+      urls: string[]
+      progressCallback: TransformersJsProgressCallback
+    }): Promise<void> {
+      throw createUnsupportedError()
+    },
+    async loadModel({ modelId: _modelId, progressCallback: _progressCallback }: {
+      modelId: string
+      progressCallback: TransformersJsProgressCallback
     }): Promise<ModelLoadResult> {
       throw createUnsupportedError()
     },
-    async unloadModel(_args: EmptyArgs): Promise<void> {
+    async unloadModel(): Promise<void> {
       throw createUnsupportedError()
     },
-    async interrupt(_args: EmptyArgs): Promise<void> {
+    async interrupt(): Promise<void> {
       throw createUnsupportedError()
     },
-    async resetCache(_args: EmptyArgs): Promise<void> {
+    async resetCache(): Promise<void> {
       throw createUnsupportedError()
     },
-    async generateText(_args: {
+    async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools }: {
       messages: ChatMessage[]
-      onChunk: (chunk: string) => void
-      onToolCalls: (toolCalls: ToolCall[]) => void
+      onChunk: TransformersJsChunkCallback
+      onToolCalls: TransformersJsToolCallsCallback
       params?: LmParameters
       tools?: WorkerToolDefinition[]
     }): Promise<void> {
       throw createUnsupportedError()
     },
-    async dispose(_args: EmptyArgs): Promise<void> {
+    async dispose(): Promise<void> {
     },
   }
 }

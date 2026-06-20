@@ -1,35 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted, watch } from 'vue';
 import { ChevronRightIcon, ChevronDownIcon, CopyIcon, CheckIcon, ImageIcon, CpuIcon, EyeIcon, EyeOffIcon, FileIcon } from 'lucide-vue-next';
-import createDOMPurify from 'dompurify';
 import { storageService } from '@/services/storage';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { IMAGE_BLOCK_LANG, GeneratedImageBlockSchema, stripNaidanSentinels } from '@/utils/image-generation';
 import type { GeneratedImageBlock } from '@/utils/image-generation';
 import type { MessageNode } from '@/models/types';
-
-const DOMPurify = (() => {
-  const t = typeof window;
-  switch (t) {
-  case 'undefined': return createDOMPurify();
-  case 'object':
-  case 'boolean':
-  case 'string':
-  case 'number':
-  case 'function':
-  case 'symbol':
-  case 'bigint':
-    return createDOMPurify(window);
-  default: {
-    const _ex: never = t;
-    return _ex;
-  }
-  }
-})();
+import AllowedHtmlView from '@/components/common/AllowedHtmlView.vue';
+import { jsonToHighlightedHtml } from '@/lib/security/allowedHtml';
+import { idToRaw, toBinaryObjectId } from '@/models/ids';
+import type { BinaryObjectId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
   node: Readonly<MessageNode>;
-  activeIds: Set<string>;
+  activeIds: Set<MessageId>;
   highlight: boolean;
   isContentCollapsed?: boolean;
   isLast?: boolean;
@@ -39,7 +23,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'preview-attachment', objId: string): void;
+  (e: 'preview-attachment', objId: BinaryObjectId): void;
   (e: 'select-node', node: Readonly<MessageNode>): void;
 }>();
 
@@ -60,47 +44,14 @@ const copyContent = async () => {
   setTimeout(() => isCopied.value = false, 2000);
 };
 
-// JSON Processing (Escaping + Optional Highlighting + Sanitization)
-const processJsonOutput = ({ json }: { json: string }) => {
-  // 1. First, encode everything as plain text by escaping HTML special chars
-  const escaped = json
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  let html = escaped;
-  if (props.highlight) {
-    // 2. Add spans for highlighting. Since we already escaped the input,
-    // 'match' here cannot contain unescaped < or >.
-    html = escaped.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
-      let cls = 'text-blue-500 dark:text-blue-400';
-      if (/^"/.test(match)) {
-        if (/:$/.test(match)) {
-          cls = 'text-red-500 dark:text-red-400 opacity-80';
-        } else {
-          cls = 'text-green-600 dark:text-green-400';
-        }
-      } else if (/true|false/.test(match)) {
-        cls = 'text-orange-500';
-      } else if (/null/.test(match)) {
-        cls = 'text-magenta-500';
-      }
-      return `<span class="${cls}">${match}</span>`;
-    });
-  }
-
-  // 3. Finally, sanitize the result to be absolutely sure no XSS is possible.
-  // We only allow span tags with class attributes.
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['span'],
-    ALLOWED_ATTR: ['class']
-  });
-};
-
 const jsonOutput = computed(() => {
   const cleanNode = { ...props.node, replies: undefined };
   const json = JSON.stringify(cleanNode, null, 2);
-  return processJsonOutput({ json });
+  return jsonToHighlightedHtml({
+    json,
+    highlight: props.highlight,
+    keyStyle: 'tree',
+  });
 });
 
 const isoTimestamp = computed(() => {
@@ -160,11 +111,11 @@ async function loadThumbnails() {
   // 1. Load from attachments
   if (props.node.attachments) {
     for (const att of props.node.attachments) {
-      if (att.mimeType.startsWith('image/') && !thumbnailUrls.value[att.binaryObjectId]) {
+      if (att.mimeType.startsWith('image/') && !thumbnailUrls.value[idToRaw({ id: att.binaryObjectId })]) {
         try {
           const blob = await storageService.getFile({ binaryObjectId: att.binaryObjectId });
           if (blob) {
-            thumbnailUrls.value[att.binaryObjectId] = URL.createObjectURL(blob);
+            thumbnailUrls.value[idToRaw({ id: att.binaryObjectId })] = URL.createObjectURL(blob);
           }
         } catch (e) {
           console.error('Failed to load thumbnail:', e);
@@ -177,7 +128,7 @@ async function loadThumbnails() {
   for (const img of inlineImages.value) {
     if (!thumbnailUrls.value[img.binaryObjectId]) {
       try {
-        const blob = await storageService.getFile({ binaryObjectId: img.binaryObjectId });
+        const blob = await storageService.getFile({ binaryObjectId: toBinaryObjectId({ raw: img.binaryObjectId }) });
         if (blob) {
           thumbnailUrls.value[img.binaryObjectId] = URL.createObjectURL(blob);
         }
@@ -344,7 +295,7 @@ export default {
                   <span>Generated Image Reference</span>
                 </div>
                 <div
-                  @click.stop="emit('preview-attachment', img.binaryObjectId)"
+                  @click.stop="emit('preview-attachment', toBinaryObjectId({ raw: img.binaryObjectId }))"
                   class="rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center w-fit max-w-full shadow-sm hover:shadow-md transition-shadow"
                 >
                   <img
@@ -366,11 +317,11 @@ export default {
             <div v-if="node.attachments && node.attachments.length" class="mt-4 flex flex-wrap gap-2">
               <div
                 v-for="att in node.attachments"
-                :key="att.id"
+                :key="idToRaw({ id: att.id })"
                 @click.stop="emit('preview-attachment', att.binaryObjectId)"
                 class="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-100 dark:border-white/5 cursor-pointer bg-gray-100/30 dark:bg-white/5 flex items-center justify-center group/att"
               >
-                <img v-if="thumbnailUrls[att.binaryObjectId]" :src="thumbnailUrls[att.binaryObjectId]" class="w-full h-full object-cover" />
+                <img v-if="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" :src="thumbnailUrls[idToRaw({ id: att.binaryObjectId })]" class="w-full h-full object-cover" />
                 <div v-else class="flex flex-col items-center justify-center gap-1">
                   <ImageIcon v-if="att.mimeType.startsWith('image/')" class="w-4 h-4 text-gray-400" />
                   <FileIcon v-else class="w-4 h-4 text-gray-400" />
@@ -385,10 +336,11 @@ export default {
 
         <!-- Integrated JSON -->
         <div class="p-4 bg-gray-50/20 dark:bg-black/10 border-t border-gray-100 dark:border-white/5">
-          <pre
+          <AllowedHtmlView
+            as="pre"
+            :html="jsonOutput"
             class="text-[10px] overflow-x-auto text-gray-500 dark:text-gray-400 leading-tight font-mono max-h-48 thin-scrollbar"
-            v-html="jsonOutput"
-          ></pre>
+          />
         </div>
       </div>
     </div>
@@ -401,7 +353,7 @@ export default {
     >
       <ChatDebugTreeNode
         v-for="(child, index) in node.replies.items"
-        :key="child.id"
+        :key="idToRaw({ id: child.id })"
         :node="child"
         :active-ids="activeIds"
         :highlight="highlight"
@@ -421,7 +373,7 @@ export default {
     >
       <ChatDebugTreeNode
         v-for="(child, index) in node.replies.items"
-        :key="child.id"
+        :key="idToRaw({ id: child.id })"
         :node="child"
         :active-ids="activeIds"
         :highlight="highlight"

@@ -1,6 +1,7 @@
 import { computed, reactive, type ComputedRef } from 'vue';
-import { generateId } from '@/utils/id';
+import { generateOpaqueId } from '@/utils/id';
 import { Semaphore } from '@/utils/concurrency';
+import type { ChatId } from '@/models/ids';
 import type {
   ApprovalActionId,
   ApprovalActiveRequest,
@@ -12,8 +13,8 @@ import type {
 } from '@/services/approval';
 
 type ApprovalRuntimeState = {
-  activeRequestsByChatId: Map<string, ApprovalActiveRequest>;
-  chatApprovalsByChatId: Map<string, Set<ApprovalActionId>>;
+  activeRequestsByChatId: Map<ChatId, ApprovalActiveRequest>;
+  chatApprovalsByChatId: Map<ChatId, Set<ApprovalActionId>>;
   globalApprovalActionIds: Set<ApprovalActionId>;
 };
 
@@ -23,20 +24,20 @@ const approvalRuntimeState = reactive<ApprovalRuntimeState>({
   globalApprovalActionIds: new Set(),
 });
 
-const chatApprovalLocks = new Map<string, Semaphore>();
-const pendingDecisionResolvers = new Map<string, (decision: ApprovalUiDecision) => void>();
+const chatApprovalLocks = new Map<ChatId, Semaphore>();
+const pendingDecisionResolvers = new Map<string, ({ decision }: { decision: ApprovalUiDecision }) => void>();
 
 function getChatApprovalLock({
   chatId,
 }: {
-  chatId: string;
+  chatId: ChatId;
 }): Semaphore {
   const existing = chatApprovalLocks.get(chatId);
   if (existing !== undefined) {
     return existing;
   }
 
-  const lock = new Semaphore(1);
+  const lock = new Semaphore({ maxConcurrency: 1 });
   chatApprovalLocks.set(chatId, lock);
   return lock;
 }
@@ -45,7 +46,7 @@ function getStoredApprovalStatus({
   chatId,
   actionId,
 }: {
-  chatId: string;
+  chatId: ChatId;
   actionId: ApprovalActionId;
 }): ApprovalStoredStatus {
   if (approvalRuntimeState.globalApprovalActionIds.has(actionId)) {
@@ -65,7 +66,7 @@ function storeApprovalDecision({
   actionId,
   decision,
 }: {
-  chatId: string;
+  chatId: ChatId;
   actionId: ApprovalActionId;
   decision: ApprovalUiDecision;
 }): void {
@@ -111,7 +112,7 @@ function waitForApprovalUiDecision({
     };
     signal?.addEventListener('abort', handleAbort, { once: true });
 
-    pendingDecisionResolvers.set(request.requestId, (decision) => {
+    pendingDecisionResolvers.set(request.requestId, ({ decision }) => {
       signal?.removeEventListener('abort', handleAbort);
       resolve(decision);
     });
@@ -122,7 +123,7 @@ function clearActiveApprovalRequest({
   chatId,
   requestId,
 }: {
-  chatId: string;
+  chatId: ChatId;
   requestId: string;
 }): void {
   const activeRequest = approvalRuntimeState.activeRequestsByChatId.get(chatId);
@@ -136,7 +137,7 @@ async function runWithChatApprovalLock<TResult>({
   chatId,
   run,
 }: {
-  chatId: string;
+  chatId: ChatId;
   run: () => Promise<TResult>;
 }): Promise<TResult> {
   const lock = getChatApprovalLock({ chatId });
@@ -149,7 +150,7 @@ export async function ensureApproval({
   preview,
   signal,
 }: {
-  chatId: string;
+  chatId: ChatId;
   action: ApprovalEnsureRequest['action'];
   preview: ApprovalEnsureRequest['preview'];
   signal: ApprovalEnsureRequest['signal'];
@@ -179,7 +180,7 @@ export async function ensureApproval({
       }
 
       const request: ApprovalActiveRequest = {
-        requestId: generateId(),
+        requestId: generateOpaqueId(),
         chatId,
         action,
         preview,
@@ -219,12 +220,12 @@ export async function ensureApproval({
   });
 }
 
-export function useApproval(_args: Record<never, never>): {
+export function useApproval(): {
   ensureApproval: EnsureApproval;
   getActiveApprovalRequest: ({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }) => ComputedRef<ApprovalActiveRequest | undefined>;
   resolveApprovalRequest: ({
     requestId,
@@ -238,16 +239,16 @@ export function useApproval(_args: Record<never, never>): {
       chatId,
       actionId,
     }: {
-      chatId: string;
+      chatId: ChatId;
       actionId: ApprovalActionId;
     }) => ApprovalStoredStatus;
-    clearAll: (_args: Record<never, never>) => void;
+    clearAll: () => void;
   };
-} {
+  } {
   function getActiveApprovalRequest({
     chatId,
   }: {
-    chatId: string;
+    chatId: ChatId;
   }): ComputedRef<ApprovalActiveRequest | undefined> {
     return computed(() => approvalRuntimeState.activeRequestsByChatId.get(chatId));
   }
@@ -263,10 +264,10 @@ export function useApproval(_args: Record<never, never>): {
     if (resolver === undefined) {
       return;
     }
-    resolver(decision);
+    resolver({ decision });
   }
 
-  function clearAll(_args: Record<never, never>): void {
+  function clearAll(): void {
     approvalRuntimeState.activeRequestsByChatId.clear();
     approvalRuntimeState.chatApprovalsByChatId.clear();
     approvalRuntimeState.globalApprovalActionIds.clear();

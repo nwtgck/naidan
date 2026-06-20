@@ -1,8 +1,11 @@
-import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext, WeshFileHandle } from '@/services/wesh/types';
+import type { WeshCommandDefinition, WeshCommandResult, WeshCommandContext } from '@/services/wesh/types';
 import { parseStandardArgv } from '@/services/wesh/argv';
 import type { StandardArgvParserSpec } from '@/services/wesh/argv';
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
-import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/fs';
+import { openHandleReadStream, openFileReadStream, writeAllStreamToHandle } from '@/services/wesh/utils/fs';
+import { createBufferedTextWriter } from '@/services/wesh/utils/io';
+import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
+import { getWeshTextRecordTerminator, iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 
 function renderVisibleAscii({ char }: { char: string }): string {
   if (char === '\t') return char;
@@ -17,27 +20,6 @@ function renderVisibleAscii({ char }: { char: string }): string {
 
 function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
   return path.startsWith('/') ? path : `${cwd}/${path}`;
-}
-
-async function writeAll({
-  handle,
-  buffer,
-}: {
-  handle: WeshFileHandle;
-  buffer: Uint8Array;
-}): Promise<void> {
-  let offset = 0;
-  while (offset < buffer.length) {
-    const { bytesWritten } = await handle.write({
-      buffer,
-      offset,
-      length: buffer.length - offset,
-    });
-    if (bytesWritten === 0) {
-      return;
-    }
-    offset += bytesWritten;
-  }
 }
 
 const catArgvSpec: StandardArgvParserSpec = {
@@ -134,89 +116,59 @@ export const catCommandDefinition: WeshCommandDefinition = {
     const applyNumbering = numberAllLines || numberNonBlankLines;
     const hasTransform = applyNumbering || showEnds || showTabs || showNonPrinting || squeezeBlank;
 
-    const processRawStream = async (stream: ReadableStream<Uint8Array>) => {
-      const reader = stream.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          await writeAll({ handle: context.stdout, buffer: value });
-        }
-      } finally {
-        reader.releaseLock();
-      }
+    const processRawStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
+      await writeAllStreamToHandle({
+        stream,
+        handle: context.stdout,
+        closeHandle: false,
+      });
     };
 
-    const processStream = async (stream: ReadableStream<Uint8Array>) => {
-      const decoder = new TextDecoder();
-      const reader = stream.getReader();
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            buffer += decoder.decode();
-            break;
-          }
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-
-          for (const line of lines) {
-            const isEmpty = line.length === 0;
-            if (squeezeBlank && isEmpty && lastWasEmpty) continue;
-
-            let output = '';
-            const shouldNumberLine = numberNonBlankLines ? !isEmpty : numberAllLines;
-            if (shouldNumberLine) {
-              output += `${String(lineNumber++).padStart(6, ' ')}  `;
-            }
-
-            let processedLine = line;
-            if (showTabs) processedLine = processedLine.replace(/\t/g, '^I');
-            if (showNonPrinting) {
-              processedLine = Array.from(processedLine, char => renderVisibleAscii({ char })).join('');
-            }
-            if (showEnds) processedLine += '$';
-
-            await text.print({ text: output + processedLine + '\n' });
-            lastWasEmpty = isEmpty;
-          }
+    const processStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
+      const writer = createBufferedTextWriter({
+        handle: context.stdout,
+        maxBufferLength: 16 * 1024,
+      });
+      for await (const record of iterateUtf8LineRecords({
+        chunks: iterateReadableStreamChunks({ stream }),
+      })) {
+        const isEmpty = record.text.length === 0;
+        if (squeezeBlank && isEmpty && lastWasEmpty) {
+          continue;
         }
 
-        if (buffer.length > 0) {
-          const isEmpty = buffer.length === 0;
-          if (!(squeezeBlank && isEmpty && lastWasEmpty)) {
-            let output = '';
-            const shouldNumberLine = numberNonBlankLines ? !isEmpty : numberAllLines;
-            if (shouldNumberLine) {
-              output += `${String(lineNumber++).padStart(6, ' ')}  `;
-            }
-
-            let processedLine = buffer;
-            if (showTabs) processedLine = processedLine.replace(/\t/g, '^I');
-            if (showNonPrinting) {
-              processedLine = Array.from(processedLine, char => renderVisibleAscii({ char })).join('');
-            }
-            if (showEnds) processedLine += '$';
-
-            await text.print({ text: output + processedLine });
-            lastWasEmpty = isEmpty;
-          }
+        let output = '';
+        const shouldNumberLine = numberNonBlankLines ? !isEmpty : numberAllLines;
+        if (shouldNumberLine) {
+          output += `${String(lineNumber++).padStart(6, ' ')}  `;
         }
-      } finally {
-        reader.releaseLock();
+
+        let processedLine = record.text;
+        if (showTabs) {
+          processedLine = processedLine.replace(/\t/g, '^I');
+        }
+        if (showNonPrinting) {
+          processedLine = Array.from(processedLine, char => renderVisibleAscii({ char })).join('');
+        }
+        if (showEnds) {
+          processedLine += '$';
+        }
+        await writer.write({
+          text: output + processedLine + getWeshTextRecordTerminator({
+            termination: record.termination,
+          }),
+        });
+        lastWasEmpty = isEmpty;
       }
+      await writer.flush();
     };
 
     const processInputStream = async ({ stream }: { stream: ReadableStream<Uint8Array> }) => {
       if (hasTransform) {
-        await processStream(stream);
+        await processStream({ stream });
         return;
       }
-      await processRawStream(stream);
+      await processRawStream({ stream });
     };
 
     if (files.length === 0) {

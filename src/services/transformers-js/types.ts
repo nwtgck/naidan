@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-imports -- Worker-facing transformers.js type references are centralized here to keep service and worker contracts aligned. */
 import type { AutoProcessor, AutoTokenizer, AutoModelForCausalLM, AutoModelForImageTextToText } from '@huggingface/transformers';
-import type { ChatMessage, EmptyArgs, LmParameters, ToolCall } from '@/models/types';
+import type { ChatMessage, LmParameters, ToolCall } from '@/models/types';
 
 /**
  * Shared types for Transformers.js service and worker
@@ -39,7 +39,7 @@ export interface ITransformersJsScannerWorker {
 
 export interface TransformersJsScannerWorkerClient {
   scanModel({ tasks }: ScanOptions): Promise<{ files: ScannedModelFile[] }>;
-  dispose(_args: EmptyArgs): Promise<void>;
+  dispose(): Promise<void>;
 }
 
 export interface WorkerToolDefinition {
@@ -51,18 +51,28 @@ export interface WorkerToolDefinition {
   };
 }
 
+export type TransformersJsProgressCallback = ({ info }: { info: ProgressInfo }) => void;
+export type TransformersJsChunkCallback = ({ chunk }: { chunk: string }) => void;
+export type TransformersJsToolCallsCallback = ({ toolCalls }: { toolCalls: ToolCall[] }) => void;
+
 // We define the interface here so that the service can use it
 // without importing the entire worker file.
 export interface ITransformersJsWorker {
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   downloadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<void>;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   prefetchUrls(urls: string[], progressCallback: (x: ProgressInfo) => void): Promise<void>;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   loadModel(modelId: string, progressCallback: (x: ProgressInfo) => void): Promise<ModelLoadResult>;
   unloadModel(): Promise<void>;
   interrupt(): Promise<void>;
   resetCache(): Promise<void>;
+  // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
   generateText(
     messages: ChatMessage[],
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onChunk: (chunk: string) => void,
+    // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onToolCalls: (toolCalls: ToolCall[]) => void,
     params?: LmParameters,
     tools?: WorkerToolDefinition[]
@@ -72,25 +82,25 @@ export interface ITransformersJsWorker {
 export interface TransformersJsWorkerClient {
   downloadModel({ modelId, progressCallback }: {
     modelId: string
-    progressCallback: (x: ProgressInfo) => void
+    progressCallback: TransformersJsProgressCallback
   }): Promise<void>;
   prefetchUrls({ urls, progressCallback }: {
     urls: string[]
-    progressCallback: (x: ProgressInfo) => void
+    progressCallback: TransformersJsProgressCallback
   }): Promise<void>;
   loadModel({ modelId, progressCallback }: {
     modelId: string
-    progressCallback: (x: ProgressInfo) => void
+    progressCallback: TransformersJsProgressCallback
   }): Promise<ModelLoadResult>;
-  unloadModel(_args: EmptyArgs): Promise<void>;
-  interrupt(_args: EmptyArgs): Promise<void>;
-  resetCache(_args: EmptyArgs): Promise<void>;
+  unloadModel(): Promise<void>;
+  interrupt(): Promise<void>;
+  resetCache(): Promise<void>;
   generateText({ messages, onChunk, onToolCalls, params, tools }: {
     messages: ChatMessage[]
-    onChunk: (chunk: string) => void
-    onToolCalls: (toolCalls: ToolCall[]) => void
+    onChunk: TransformersJsChunkCallback
+    onToolCalls: TransformersJsToolCallsCallback
     params?: LmParameters
     tools?: WorkerToolDefinition[]
   }): Promise<void>;
-  dispose(_args: EmptyArgs): Promise<void>;
+  dispose(): Promise<void>;
 }

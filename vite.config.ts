@@ -1,5 +1,5 @@
 /// <reference types="vitest" />
-import VueRouter from 'unplugin-vue-router/vite'
+import VueRouter from 'vue-router/vite'
 import { defineConfig } from 'vitest/config'
 import { build as viteBuild } from 'vite'
 import type { Alias } from 'vite'
@@ -505,6 +505,7 @@ const standalonePostBuildPlugin = ({ outDir, workers, zipFileName, folderName }:
   async closeBundle() {
     await finalizeStandaloneIndexHtml({ outDir })
     await embedStandaloneWorkers({ outDir, workers })
+    await assertStandaloneOutput({ outDir, workers })
     await createZipPackage({ outDir, zipFileName, folderName })
   },
 })
@@ -556,6 +557,9 @@ async function finalizeStandaloneIndexHtml({ outDir }: { outDir: string }) {
     if (src !== null && /^(\.\/)?assets\/index-[^/]+\.js$/.test(src)) {
       script.removeAttribute('type')
       script.removeAttribute('crossorigin')
+      if (!src.startsWith('./')) {
+        script.setAttribute('src', `./${src}`)
+      }
     }
   }
 
@@ -611,9 +615,9 @@ async function embedStandaloneWorkers({ outDir, workers }: {
           },
           minify: true,
           outDir: workerOutDir,
-          rollupOptions: {
+          rolldownOptions: {
             output: {
-              inlineDynamicImports: true,
+              codeSplitting: false,
             },
           },
           sourcemap: false,
@@ -659,4 +663,209 @@ async function embedStandaloneWorkers({ outDir, workers }: {
   } finally {
     await fs.promises.rm(tempRootDir, { recursive: true, force: true })
   }
+}
+
+async function assertStandaloneOutput({ outDir, workers }: {
+  outDir: string
+  workers: EmbeddedWorkerSpec[]
+}) {
+  const distDir = path.resolve(__dirname, outDir)
+  const htmlPath = path.join(distDir, 'index.html')
+  const html = await fs.promises.readFile(htmlPath, 'utf8')
+  const dom = new JSDOM(html)
+  const { document } = dom.window
+  const failures: string[] = []
+
+  assertStandaloneHtmlStructure({
+    document,
+    workers,
+    failures,
+  })
+
+  await assertStandaloneTextOutput({
+    distDir,
+    failures,
+  })
+
+  if (failures.length > 0) {
+    throw new Error([
+      'Standalone output validation failed:',
+      ...failures.map((failure) => `- ${failure}`),
+    ].join('\n'))
+  }
+
+  console.log(`  ✓ Validated standalone output in ${outDir}.`)
+}
+
+function assertStandaloneHtmlStructure({ document, workers, failures }: {
+  document: Document
+  workers: EmbeddedWorkerSpec[]
+  failures: string[]
+}) {
+  const externalScripts = Array.from(document.querySelectorAll('script[src]'))
+
+  const mainScripts = externalScripts.filter((script) => {
+    const src = script.getAttribute('src') ?? ''
+    return /^\.\/assets\/index-[^/]+\.js$/.test(src)
+  })
+
+  if (mainScripts.length !== 1) {
+    failures.push(`expected exactly one standalone main script, found ${mainScripts.length}`)
+  }
+
+  for (const script of mainScripts) {
+    if (script.getAttribute('type') !== null) {
+      failures.push('standalone main script must not have a type attribute')
+    }
+
+    if (script.getAttribute('crossorigin') !== null) {
+      failures.push('standalone main script must not have crossorigin')
+    }
+  }
+
+  const unexpectedExternalScriptSources = externalScripts
+    .filter((script) => !mainScripts.includes(script))
+    .map((script) => script.getAttribute('src') ?? '(missing src)')
+
+  if (unexpectedExternalScriptSources.length > 0) {
+    failures.push(`unexpected external scripts: ${unexpectedExternalScriptSources.join(', ')}`)
+  }
+
+  assertStandaloneWorkerManifest({
+    document,
+    workers,
+    failures,
+  })
+}
+
+function assertStandaloneWorkerManifest({ document, workers, failures }: {
+  document: Document
+  workers: EmbeddedWorkerSpec[]
+  failures: string[]
+}) {
+  const manifestElement = document.getElementById(STANDALONE_WORKER_MANIFEST_SCRIPT_ID)
+
+  if (manifestElement === null) {
+    failures.push('missing standalone worker manifest script')
+    return
+  }
+
+  if (manifestElement.tagName.toLowerCase() !== 'script') {
+    failures.push('standalone worker manifest element must be a script')
+    return
+  }
+
+  if (manifestElement.getAttribute('type') !== 'application/json') {
+    failures.push('standalone worker manifest script must have type="application/json"')
+  }
+
+  let manifest: unknown
+  try {
+    manifest = JSON.parse(manifestElement.textContent ?? '{}')
+  } catch (error) {
+    failures.push(`standalone worker manifest is not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
+    return
+  }
+
+  if (typeof manifest !== 'object' || manifest === null) {
+    failures.push('standalone worker manifest must be a JSON object')
+    return
+  }
+
+  const manifestRecord = manifest as Record<string, unknown>
+
+  for (const worker of workers) {
+    const workerElement = document.getElementById(worker.workerId)
+    if (workerElement === null) {
+      failures.push(`missing embedded standalone worker script: ${worker.workerId}`)
+      continue
+    }
+
+    if (workerElement.tagName.toLowerCase() !== 'script') {
+      failures.push(`embedded standalone worker element must be a script: ${worker.workerId}`)
+      continue
+    }
+
+    if (workerElement.getAttribute('type') !== worker.scriptType) {
+      failures.push(`embedded standalone worker script has wrong type: ${worker.workerId}`)
+    }
+
+    const workerContent = workerElement.textContent ?? ''
+
+    if (workerContent.length === 0) {
+      failures.push(`embedded standalone worker script is empty: ${worker.workerId}`)
+    }
+
+    const entry = manifestRecord[worker.workerId]
+    if (typeof entry !== 'object' || entry === null) {
+      failures.push(`standalone worker manifest is missing entry: ${worker.workerId}`)
+      continue
+    }
+
+    const manifestEntry = entry as {
+      hash?: unknown
+      size?: unknown
+    }
+    const expectedHash = createHash('sha256').update(workerContent).digest('hex')
+    const expectedSize = Buffer.byteLength(workerContent, 'utf8')
+
+    if (manifestEntry.hash !== expectedHash) {
+      failures.push(`standalone worker manifest hash mismatch: ${worker.workerId}`)
+    }
+
+    if (manifestEntry.size !== expectedSize) {
+      failures.push(`standalone worker manifest size mismatch: ${worker.workerId}`)
+    }
+  }
+}
+
+
+async function assertStandaloneTextOutput({ distDir, failures }: {
+  distDir: string
+  failures: string[]
+}) {
+  const textFiles = await collectStandaloneTextFiles({ distDir })
+
+  for (const filePath of textFiles) {
+    const relativePath = path.relative(distDir, filePath).replaceAll('\\', '/')
+    const content = await fs.promises.readFile(filePath, 'utf8')
+
+    if (content.includes('import.meta.url')) {
+      failures.push(`${relativePath} contains import.meta.url`)
+    }
+
+    if (content.includes('new Worker(new URL(')) {
+      failures.push(`${relativePath} contains hosted-style new Worker(new URL(...))`)
+    }
+
+    if (/new Worker\([^)]*,\s*\{[^}]*type:\s*["']module["']/.test(content)) {
+      failures.push(`${relativePath} contains module worker construction`)
+    }
+  }
+}
+
+async function collectStandaloneTextFiles({ distDir }: {
+  distDir: string
+}): Promise<string[]> {
+  const results: string[] = []
+
+  async function visit({ dir }: { dir: string }) {
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true })
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+
+      if (entry.isDirectory()) {
+        await visit({ dir: fullPath })
+        continue
+      }
+
+      if (/\.(html|js)$/.test(entry.name)) {
+        results.push(fullPath)
+      }
+    }
+  }
+
+  await visit({ dir: distDir })
+  return results
 }

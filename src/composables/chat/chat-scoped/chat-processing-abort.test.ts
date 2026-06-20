@@ -1,3 +1,4 @@
+import { toChatId } from '@/models/ids';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -69,23 +70,25 @@ describe('abortProcessingForChat', () => {
     });
 
     abortProcessingForChat({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
     await vi.runAllTimersAsync();
 
     expect(abortGeneration).toHaveBeenCalledTimes(1);
     expect(mockDeleteActiveGeneration).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
     expect(abortCompaction).toHaveBeenCalledTimes(1);
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({
-      chatId: 'chat-1',
+      chatId: toChatId({ raw: 'chat-1' }),
     });
     expect(mockNotify).toHaveBeenCalledWith({
-      type: 'chat_content_generation',
-      id: 'chat-1',
-      status: 'abort_request',
-      timestamp: expect.any(Number),
+      event: {
+        type: 'chat_content_generation',
+        id: 'chat-1',
+        status: 'abort_request',
+        timestamp: expect.any(Number),
+      },
     });
   });
 
@@ -93,18 +96,20 @@ describe('abortProcessingForChat', () => {
     mockHasExternalGeneration.mockReturnValue(true);
 
     abortProcessingForChat({
-      chatId: 'chat-2',
+      chatId: toChatId({ raw: 'chat-2' }),
     });
 
     expect(mockDeleteActiveGeneration).not.toHaveBeenCalled();
     expect(mockNotify).toHaveBeenCalledWith({
-      type: 'chat_content_generation',
-      id: 'chat-2',
-      status: 'abort_request',
-      timestamp: expect.any(Number),
+      event: {
+        type: 'chat_content_generation',
+        id: 'chat-2',
+        status: 'abort_request',
+        timestamp: expect.any(Number),
+      },
     });
     expect(mockAbortTitleGeneration).toHaveBeenCalledWith({
-      chatId: 'chat-2',
+      chatId: toChatId({ raw: 'chat-2' }),
     });
   });
 });

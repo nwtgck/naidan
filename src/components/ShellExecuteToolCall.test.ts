@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { h } from 'vue';
 import ShellExecuteToolCall from './ShellExecuteToolCall.vue';
 import type { ToolExecutionResult } from '@/services/tools/types';
+import { toToolCallId } from '@/models/ids';
 
 vi.mock('lucide-vue-next', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
@@ -15,7 +16,7 @@ vi.mock('lucide-vue-next', async (importOriginal) => {
 });
 
 const makeResult = (text = 'output text'): ToolExecutionResult => ({
-  toolCallId: 'call-1',
+  toolCallId: toToolCallId({ raw: 'call-1' }),
   status: 'success',
   content: { type: 'text', text },
 });
@@ -58,7 +59,7 @@ describe('ShellExecuteToolCall', () => {
   });
 
   it('does not show result while executing', () => {
-    const result: ToolExecutionResult = { toolCallId: 'call-1', status: 'executing' };
+    const result: ToolExecutionResult = { toolCallId: toToolCallId({ raw: 'call-1' }), status: 'executing' };
     const wrapper = mount(ShellExecuteToolCall, {
       props: { args: validArgs, result },
     });
@@ -129,7 +130,7 @@ describe('ShellExecuteToolCall', () => {
 
   it('shows error code and message for error result', () => {
     const result: ToolExecutionResult = {
-      toolCallId: 'call-1',
+      toolCallId: toToolCallId({ raw: 'call-1' }),
       status: 'error',
       error: { code: 'execution_failed', message: { type: 'text', text: 'exit code 1' } },
     };

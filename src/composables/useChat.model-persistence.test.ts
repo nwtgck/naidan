@@ -3,6 +3,7 @@ import { useChat } from './useChat';
 import { storageService } from '@/services/storage';
 import { reactive, triggerRef } from 'vue';
 import type { Chat, SidebarItem } from '@/models/types';
+import { idToRaw, toChatId } from '@/models/ids';
 
 // Mock storage service state
 const mockRootItems: SidebarItem[] = [];
@@ -14,9 +15,9 @@ vi.mock('../services/storage', () => ({
     listChats: vi.fn().mockResolvedValue([]),
     loadChat: vi.fn(),
     updateChatMeta: vi.fn(), loadChatMeta: vi.fn(),
-    updateChatContent: vi.fn().mockImplementation((_id, updater) => Promise.resolve(updater({ root: { items: [] }, currentLeafId: undefined }))),
+    updateChatContent: vi.fn().mockImplementation(({ updater }) => Promise.resolve(updater({ current: { root: { items: [] }, currentLeafId: undefined } }))),
     loadChatContent: vi.fn().mockResolvedValue(null),
-    updateHierarchy: vi.fn().mockImplementation((updater) => updater({ items: [] })),
+    updateHierarchy: vi.fn().mockImplementation(({ updater }) => updater({ current: { items: [] } })),
     loadHierarchy: vi.fn().mockResolvedValue({ items: [] }),
     deleteChat: vi.fn(),
     listChatGroups: vi.fn().mockResolvedValue([]),
@@ -44,9 +45,9 @@ vi.mock('./useSettings', () => ({
   }),
 }));
 
-// Mock LLM Provider
-const mockChat = vi.fn().mockImplementation(async (params: { model: string, onChunk: (chunk: string) => void }) => {
-  params.onChunk('Response from ' + params.model);
+// Mock LM Provider
+const mockChat = vi.fn().mockImplementation(async (params: { model: string, onChunk: (params: { chunk: string }) => void }) => {
+  params.onChunk({ chunk: 'Response from ' + params.model });
 });
 
 vi.mock('../services/lm/openai', () => {
@@ -73,8 +74,8 @@ describe('useChat Model ID Persistence & Resolution', () => {
     vi.clearAllMocks();
     mockRootItems.length = 0;
 
-    vi.mocked(storageService.loadChat).mockImplementation(({ id }) => {
-      if (id === 'c1') return Promise.resolve({ id: 'c1', title: 'C1', modelId: 'm1', root: { items: [] } } as any);
+    vi.mocked(storageService.loadChat).mockImplementation(({ id }: any) => {
+      if (id === 'c1') return Promise.resolve({ id: toChatId({ raw: 'c1' }), title: 'C1', modelId: 'm1', root: { items: [] } } as any);
       return Promise.resolve(null);
     });
   });
@@ -82,7 +83,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
   it('should persist different modelIds for each assistant message when model is changed', async () => {
     // 1. Setup a chat with initial model
     const chatObj: Chat = reactive({
-      id: 'model-test-chat',
+      id: toChatId({ raw: 'model-test-chat' }),
       title: 'Model Test',
       root: { items: [] },
       createdAt: Date.now(),
@@ -102,7 +103,7 @@ describe('useChat Model ID Persistence & Resolution', () => {
     expect(activeMessages.value[1]?.content).toContain('Response from gpt-3.5-turbo');
 
     // 3. Change the model for the chat
-    await updateChatModel({ id: chatObj.id, modelId: 'gpt-4' });
+    await updateChatModel({ id: idToRaw({ id: chatObj.id }), modelId: 'gpt-4' });
 
     // 4. Send second message with new model
     await sendMessage({ content: 'Hello with 4' });
@@ -122,8 +123,8 @@ describe('useChat Model ID Persistence & Resolution', () => {
     // 5. Verify storage was called with correct modelIds in the tree
     expect(storageService.updateChatContent).toHaveBeenCalled();
     const lastCall = vi.mocked(storageService.updateChatContent).mock.calls[vi.mocked(storageService.updateChatContent).mock.calls.length - 1];
-    const updater = lastCall![1];
-    const lastSavedContent = await (updater as any)(null);
+    const updater = lastCall![0].updater;
+    const lastSavedContent = await (updater as any)({ current: null });
 
     // Path: root -> user1 -> assistant1 (gpt-3.5) -> user2 -> assistant2 (gpt-4)
     const assistant1 = lastSavedContent.root.items[0]?.replies.items[0];

@@ -47,6 +47,14 @@ vi.mock('lucide-vue-next', () => ({
   PlusIcon: { template: '<span>Plus</span>' },
 }));
 
+function createDirectoryHandleMock({ name }: { name: string }): FileSystemDirectoryHandle {
+  const handle = {
+    name,
+    getDirectoryHandle: vi.fn(async (childName: string) => createDirectoryHandleMock({ name: childName })),
+  } as unknown as FileSystemDirectoryHandle;
+  return handle;
+}
+
 describe('DebugWeshTerminalModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,14 +66,9 @@ describe('DebugWeshTerminalModal', () => {
       disposeExecution: mocks.disposeExecution,
       dispose: mocks.dispose,
     });
-    const globalRoot = {
-      name: 'global-root',
-      getDirectoryHandle: vi.fn(),
-    } as unknown as FileSystemDirectoryHandle;
-    const debugRoot = {
-      name: 'naidan-debug-wesh',
-      getDirectoryHandle: vi.fn().mockResolvedValue(globalRoot),
-    } as unknown as FileSystemDirectoryHandle;
+    const globalRoot = createDirectoryHandleMock({ name: 'global-root' });
+    const debugRoot = createDirectoryHandleMock({ name: 'naidan-debug-wesh' });
+    vi.mocked(debugRoot.getDirectoryHandle).mockResolvedValue(globalRoot);
     mocks.getDirectory.mockResolvedValue({
       getDirectoryHandle: vi.fn().mockResolvedValue(debugRoot),
     });
@@ -93,8 +96,8 @@ describe('DebugWeshTerminalModal', () => {
         },
       ],
       user: 'debug',
-      initialEnv: {},
-      initialCwd: undefined,
+      initialEnv: { HOME: '/home/debug', TMPDIR: '/tmp' },
+      initialCwd: '/home/debug',
     }));
     expect(wrapper.text()).toContain('Session 1');
     expect(wrapper.find('[data-testid="new-session-button"]').exists()).toBe(true);

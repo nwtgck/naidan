@@ -15,18 +15,29 @@ export const rule = createRule({
     messages: {
       preferSwitch: `Use a switch statement with an exhaustive never check for union types instead of \`{{condition}}\`.
 This ensures that all cases are handled when the union type is expanded.
-Consider using an IIFE if you need to assign the result:
+
+For primitive unions:
+
+default: {
+  const _ex: never = value;
+  throw new Error(\`Unhandled case: \${_ex}\`);
+}
+
+For discriminated object unions:
 
 const result = (() => {
-  switch (type) {
+  switch (value.type) {
     case "a": return "value1";
     case "b": return "value2";
     default: {
-      const _ex: never = type;
-      throw new Error(\`Unhandled case: \${_ex}\`);
+      const _ex: never = value;
+      throw new Error(\`Unhandled type: \${((_ex satisfies never) as { readonly type: string }).type}\`);
     }
   }
-})();`,
+})();
+
+Use \`satisfies never\` before casting the discriminant for diagnostics.
+For a \`kind\` discriminant, use \`((value satisfies never) as { readonly kind: string }).kind\`.`,
     },
     schema: [],
   },

@@ -1,3 +1,4 @@
+import { toChatGroupId, toChatId } from '@/models/ids';
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as Comlink from 'comlink'
 
@@ -57,7 +58,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
     const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
     const client = await createFileProtocolCompatibleWeshWorkerClient({
-      rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+      rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
       mounts: [],
       user: 'user',
       initialEnv: {},
@@ -69,8 +70,8 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
         script: 'echo ok',
       },
     })
-    const interrupted = await client.interrupt({})
-    await client.dispose({})
+    const interrupted = await client.interrupt()
+    await client.dispose()
 
     expect(init).toHaveBeenCalledTimes(1)
     expect(response.exitCode).toBe(0)
@@ -130,7 +131,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
     const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
     const client = await createFileProtocolCompatibleWeshWorkerClient({
-      rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+      rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
       mounts: [],
       user: 'user',
       initialEnv: {},
@@ -192,7 +193,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     const { MockFileSystemDirectoryHandle } = await import('@/services/wesh/mocks/InMemoryFileSystem')
     const { createFileProtocolCompatibleWeshWorkerClient } = await import('./client')
     const client = await createFileProtocolCompatibleWeshWorkerClient({
-      rootHandle: new MockFileSystemDirectoryHandle('root') as unknown as FileSystemDirectoryHandle,
+      rootHandle: new MockFileSystemDirectoryHandle({ name: 'root' }) as unknown as FileSystemDirectoryHandle,
       mounts: [{
         type: 'naidan_sysfs',
         path: '/sys/fs/naidan',
@@ -200,8 +201,8 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
         storageType: 'local',
         visibility: 'current_chat_only',
         binaryObjectAccess: 'data',
-        currentChatId: 'chat-1',
-        currentChatGroupId: 'chat-group-1',
+        currentChatId: toChatId({ raw: 'chat-1' }),
+        currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
       }],
       user: 'user',
       initialEnv: {},
@@ -217,8 +218,8 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
           storageType: 'local',
           visibility: 'current_chat_only',
           binaryObjectAccess: 'data',
-          currentChatId: 'chat-1',
-          currentChatGroupId: 'chat-group-1',
+          currentChatId: toChatId({ raw: 'chat-1' }),
+          currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
         }],
       }),
       expect.objectContaining({
@@ -227,7 +228,7 @@ describe('createFileProtocolCompatibleWeshWorkerClient', () => {
     )
     expect(init.mock.calls[0]?.[0]).not.toHaveProperty('naidanSysfsRemoteReader')
 
-    await client.dispose({})
+    await client.dispose()
     expect(release).toHaveBeenCalledTimes(1)
     expect(terminate).toHaveBeenCalledTimes(1)
   })

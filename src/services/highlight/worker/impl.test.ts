@@ -3,7 +3,7 @@ import { createHighlightWorker } from './impl'
 
 describe('highlight worker', () => {
   it('highlights with a named language when available', async () => {
-    const worker = createHighlightWorker({})
+    const worker = createHighlightWorker()
 
     const response = await worker.highlight({
       request: {
@@ -18,7 +18,7 @@ describe('highlight worker', () => {
   })
 
   it('falls back to auto-detect when the named language is unknown', async () => {
-    const worker = createHighlightWorker({})
+    const worker = createHighlightWorker()
 
     const response = await worker.highlight({
       request: {
@@ -33,7 +33,7 @@ describe('highlight worker', () => {
   })
 
   it('supports auto-detect mode directly', async () => {
-    const worker = createHighlightWorker({})
+    const worker = createHighlightWorker()
 
     const response = await worker.highlight({
       request: {
@@ -48,7 +48,7 @@ describe('highlight worker', () => {
   })
 
   it('escapes hostile html in the highlighted output', async () => {
-    const worker = createHighlightWorker({})
+    const worker = createHighlightWorker()
 
     const response = await worker.highlight({
       request: {

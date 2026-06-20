@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OPFSStorageProvider } from './opfs-storage';
 import type { MessageNode } from '@/models/types';
+import { toAttachmentId, toBinaryObjectId, toMessageId } from '@/models/ids';
 
 // --- Reusable Mocks ---
 class MockFileSystemFileHandle {
@@ -96,7 +97,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
 
     await provider.saveFile({
       blob,
-      binaryObjectId: id,
+      binaryObjectId: toBinaryObjectId({ raw: id }),
       name: 'test.png',
       mimeType: undefined
     });
@@ -138,13 +139,13 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     await w.close();
 
     // Attempt to get file should return null because marker is missing
-    const result = await provider.getFile({ binaryObjectId: id });
+    const result = await provider.getFile({ binaryObjectId: toBinaryObjectId({ raw: id }) });
     expect(result).toBeNull();
 
     // Now add the marker
     await shardDir.getFileHandle(`.${id}.bin.complete`, { create: true });
 
-    const resultAfterMarker = await provider.getFile({ binaryObjectId: id });
+    const resultAfterMarker = await provider.getFile({ binaryObjectId: toBinaryObjectId({ raw: id }) });
     expect(resultAfterMarker).not.toBeNull();
     expect(await resultAfterMarker!.text()).toBe('DATA');
   });
@@ -156,32 +157,32 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
 
     await provider.saveFile({
       blob: new Blob(['1'], { type: 'image/png' }),
-      binaryObjectId: id1,
+      binaryObjectId: toBinaryObjectId({ raw: id1 }),
       name: 'img1.png',
       mimeType: undefined
     });
     await provider.saveFile({
       blob: new Blob(['22'], { type: 'application/pdf' }),
-      binaryObjectId: id2,
+      binaryObjectId: toBinaryObjectId({ raw: id2 }),
       name: 'doc2.pdf',
       mimeType: undefined
     });
 
     const nodes: MessageNode[] = [{
-      id: '11111111-1111-4111-a111-111111111111',
+      id: toMessageId({ raw: '11111111-1111-4111-a111-111111111111' }),
       role: 'user',
       content: 'hello',
       timestamp: Date.now(),
       attachments: [
-        { id: '22222222-2222-4222-a222-222222222222', binaryObjectId: id1, originalName: 'img1.png', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 },
-        { id: '33333333-3333-4333-a333-333333333333', binaryObjectId: id2, originalName: 'doc2.pdf', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 }
+        { id: toAttachmentId({ raw: '22222222-2222-4222-a222-222222222222' }), binaryObjectId: toBinaryObjectId({ raw: id1 }), originalName: 'img1.png', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 },
+        { id: toAttachmentId({ raw: '33333333-3333-4333-a333-333333333333' }), binaryObjectId: toBinaryObjectId({ raw: id2 }), originalName: 'doc2.pdf', mimeType: '', size: 0, status: 'persisted', uploadedAt: 0 }
       ],
       replies: { items: [] }
     }];
 
     // Hydrate
     // @ts-expect-error: Accessing private for test
-    await provider.hydrateAttachments(nodes);
+    await provider.hydrateAttachments({ nodes });
 
     const atts = nodes[0]!.attachments!;
     expect(atts[0]!.mimeType).toBe('image/png');
@@ -196,7 +197,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
 
     await provider.saveFile({
       blob: new Blob(['test']),
-      binaryObjectId: '550e8400-e29b-41d4-a716-4466554400a1',
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-4466554400a1' }),
       name: 't.txt',
       mimeType: undefined
     });
@@ -207,7 +208,7 @@ describe('OPFSStorageProvider - Binary Object Operations', () => {
     await provider.init();
     await provider.saveFile({
       blob: new Blob(['test']),
-      binaryObjectId: '550e8400-e29b-41d4-a716-4466554400a1',
+      binaryObjectId: toBinaryObjectId({ raw: '550e8400-e29b-41d4-a716-4466554400a1' }),
       name: 't.txt',
       mimeType: undefined
     });

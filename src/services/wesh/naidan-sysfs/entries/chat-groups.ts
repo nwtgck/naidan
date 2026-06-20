@@ -1,19 +1,21 @@
+import type { ChatGroupId } from '@/models/ids'
 import type { ChatGroup } from '@/models/types'
+import { idToRaw, toChatGroupId } from '@/models/ids'
 import type { WeshDirEntry, WeshStat } from '@/services/wesh/types'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry } from '@/services/wesh/naidan-sysfs/types'
 import { createChatGroupDirectoryEntry } from '@/services/wesh/naidan-sysfs/entries/chat-group'
 
-function createDirectoryStat(_args: Record<never, never>): WeshStat {
+function createDirectoryStat(): WeshStat {
   return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
 }
 
-export async function listVisibleChatGroupIds({ context }: { context: NaidanSysfsContext }): Promise<string[]> {
+export async function listVisibleChatGroupIds({ context }: { context: NaidanSysfsContext }): Promise<ChatGroupId[]> {
   switch (context.visibility) {
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
     return context.currentChatGroupId === undefined ? [] : [context.currentChatGroupId]
-  case 'all_chats':
-    return (await context.reader.listChatGroups({})).map(chatGroup => chatGroup.id)
+  case 'main_chats':
+    return (await context.reader.listChatGroups()).map(chatGroup => chatGroup.id)
   default: {
     const _ex: never = context.visibility
     throw new Error(`Unhandled visibility: ${String(_ex)}`)
@@ -26,7 +28,7 @@ async function loadChatGroup({
   chatGroupId,
 }: {
   context: NaidanSysfsContext;
-  chatGroupId: string;
+  chatGroupId: ChatGroupId;
 }): Promise<ChatGroup | undefined> {
   const ids = await listVisibleChatGroupIds({ context })
   if (!ids.includes(chatGroupId)) {
@@ -35,12 +37,12 @@ async function loadChatGroup({
   return context.reader.loadChatGroup({ chatGroupId })
 }
 
-export function createChatGroupsDirectoryEntry(_args: Record<never, never>): NaidanSysfsDirectoryEntry {
+export function createChatGroupsDirectoryEntry(): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
       void path
-      return createDirectoryStat({})
+      return createDirectoryStat()
     },
     async *readDir({
       path,
@@ -52,9 +54,9 @@ export function createChatGroupsDirectoryEntry(_args: Record<never, never>): Nai
       const ids = await listVisibleChatGroupIds({ context })
       for (const chatGroupId of ids) {
         yield {
-          name: chatGroupId,
+          name: idToRaw({ id: chatGroupId }),
           type: 'directory',
-          fullPath: `${path}/${chatGroupId}`,
+          fullPath: `${path}/${idToRaw({ id: chatGroupId })}`,
         }
       }
     },
@@ -68,7 +70,7 @@ export function createChatGroupsDirectoryEntry(_args: Record<never, never>): Nai
       context: NaidanSysfsContext;
     }): Promise<NaidanSysfsEntry | undefined> {
       void parentPath
-      const chatGroup = await loadChatGroup({ context, chatGroupId: name })
+      const chatGroup = await loadChatGroup({ context, chatGroupId: toChatGroupId({ raw: name }) })
       if (chatGroup === undefined) {
         return undefined
       }

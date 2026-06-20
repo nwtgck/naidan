@@ -1,7 +1,8 @@
-import type { WeshDirEntry, WeshFileHandle, WeshOpenFlags, WeshStat, WeshVirtualMountProvider } from '@/services/wesh/types'
+import type { WeshDirEntry, WeshFileHandle, WeshFinalSymlinkTreatment, WeshOpenFlags, WeshStat, WeshVirtualEntryRef, WeshVirtualMountProvider } from '@/services/wesh/types'
 import { NAIDAN_SYSFS_ROOT_PATH } from './constants'
 import { createRootEntry } from './entries/root'
 import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsStorageReader } from './types'
+import { toChatGroupId, toChatId } from '@/models/ids'
 
 export class NaidanSysfsProvider implements WeshVirtualMountProvider {
   private readonly context: NaidanSysfsContext
@@ -24,10 +25,24 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
       reader,
       visibility,
       binaryObjectAccess,
-      currentChatId,
-      currentChatGroupId,
+      currentChatId: toChatId({ raw: currentChatId }),
+      currentChatGroupId: currentChatGroupId === undefined ? undefined : toChatGroupId({ raw: currentChatGroupId }),
     }
-    this.rootEntry = createRootEntry({})
+    this.rootEntry = createRootEntry()
+  }
+
+  async resolveEntryRef({
+    path,
+    finalSymlinkTreatment,
+  }: {
+    path: string;
+    finalSymlinkTreatment: WeshFinalSymlinkTreatment;
+  }): Promise<WeshVirtualEntryRef> {
+    const entry = await this.resolveEntry({
+      path,
+      finalSymlinkTreatment,
+    })
+    return this.createVirtualEntryRef({ entry, path })
   }
 
   async open({
@@ -42,14 +57,14 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
     void mode
     const entry = await this.resolveEntry({
       path,
-      followFinalSymlink: true,
+      finalSymlinkTreatment: 'follow',
     })
     switch (entry.kind) {
     case 'file':
       return entry.open({ path, flags })
     case 'directory':
     case 'symlink':
-    case 'restricted-directory':
+    case 'restricted_directory':
       throw new Error(`Not a file: ${path}`)
     default: {
       const _ex: never = entry
@@ -61,7 +76,7 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
   async stat({ path }: { path: string }): Promise<WeshStat> {
     const entry = await this.resolveEntry({
       path,
-      followFinalSymlink: true,
+      finalSymlinkTreatment: 'follow',
     })
     return entry.stat({ path })
   }
@@ -69,7 +84,7 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
   async lstat({ path }: { path: string }): Promise<WeshStat> {
     const entry = await this.resolveEntry({
       path,
-      followFinalSymlink: false,
+      finalSymlinkTreatment: 'no-follow',
     })
     return entry.stat({ path })
   }
@@ -77,13 +92,13 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
   async *readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry> {
     const entry = await this.resolveEntry({
       path,
-      followFinalSymlink: true,
+      finalSymlinkTreatment: 'follow',
     })
     switch (entry.kind) {
     case 'directory':
       yield* entry.readDir({ path, context: this.context })
       return
-    case 'restricted-directory':
+    case 'restricted_directory':
       yield* entry.readDir({ path })
       return
     case 'file':
@@ -99,14 +114,14 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
   async readlink({ path }: { path: string }): Promise<string> {
     const entry = await this.resolveEntry({
       path,
-      followFinalSymlink: false,
+      finalSymlinkTreatment: 'no-follow',
     })
     switch (entry.kind) {
     case 'symlink':
       return entry.readlink({ path })
     case 'directory':
     case 'file':
-    case 'restricted-directory':
+    case 'restricted_directory':
       throw new Error(`Invalid argument: ${path}`)
     default: {
       const _ex: never = entry
@@ -115,12 +130,130 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
     }
   }
 
+  private basename({ path }: { path: string }): string {
+    if (path === NAIDAN_SYSFS_ROOT_PATH) {
+      return 'naidan'
+    }
+    const segments = path.split('/')
+    return segments[segments.length - 1] ?? path
+  }
+
+  private createVirtualEntryRef({
+    entry,
+    path,
+  }: {
+    entry: NaidanSysfsEntry;
+    path: string;
+  }): WeshVirtualEntryRef {
+    const name = this.basename({ path })
+    switch (entry.kind) {
+    case 'file':
+      return {
+        type: 'file',
+        name,
+        fullPath: path,
+        stat: () => entry.stat({ path }),
+        open: ({ flags, mode }) => {
+          void mode
+          return entry.open({ path, flags })
+        },
+      }
+    case 'directory':
+      return {
+        type: 'directory',
+        name,
+        fullPath: path,
+        stat: () => entry.stat({ path }),
+        readDir: () => this.readDirectoryChildren({ entry, path }),
+      }
+    case 'restricted_directory':
+      return {
+        type: 'directory',
+        name,
+        fullPath: path,
+        stat: () => entry.stat({ path }),
+        readDir: () => this.readRestrictedDirectoryChildren({ entry, path }),
+      }
+    case 'symlink':
+      return {
+        type: 'symlink',
+        name,
+        fullPath: path,
+        stat: () => entry.stat({ path }),
+        readlink: () => entry.readlink({ path }),
+      }
+    default: {
+      const _ex: never = entry
+      throw new Error(`Unhandled sysfs entry: ${String(_ex)}`)
+    }
+    }
+  }
+
+  private async *readDirectoryChildren({
+    entry,
+    path,
+  }: {
+    entry: NaidanSysfsDirectoryEntry;
+    path: string;
+  }): AsyncIterable<WeshVirtualEntryRef> {
+    if (entry.readChildren !== undefined) {
+      for await (const child of entry.readChildren({
+        path,
+        context: this.context,
+      })) {
+        const childPath = `${path}/${child.name}`
+        yield this.createVirtualEntryRef({
+          entry: child.entry,
+          path: childPath,
+        })
+      }
+      return
+    }
+
+    for await (const child of entry.readDir({
+      path,
+      context: this.context,
+    })) {
+      const childEntry = await entry.getChild({
+        name: child.name,
+        parentPath: path,
+        context: this.context,
+      })
+      if (childEntry === undefined) {
+        throw new Error(`Path not found: ${child.fullPath}`)
+      }
+      yield this.createVirtualEntryRef({
+        entry: childEntry,
+        path: child.fullPath,
+      })
+    }
+  }
+
+  private async *readRestrictedDirectoryChildren({
+    entry,
+    path,
+  }: {
+    entry: Extract<NaidanSysfsEntry, { kind: 'restricted_directory' }>;
+    path: string;
+  }): AsyncIterable<WeshVirtualEntryRef> {
+    for await (const child of entry.readDir({ path })) {
+      const childEntry = await this.resolveEntry({
+        path: child.fullPath,
+        finalSymlinkTreatment: 'no-follow',
+      })
+      yield this.createVirtualEntryRef({
+        entry: childEntry,
+        path: child.fullPath,
+      })
+    }
+  }
+
   private async resolveEntry({
     path,
-    followFinalSymlink,
+    finalSymlinkTreatment,
   }: {
     path: string;
-    followFinalSymlink: boolean;
+    finalSymlinkTreatment: WeshFinalSymlinkTreatment;
   }): Promise<NaidanSysfsEntry> {
     if (path === NAIDAN_SYSFS_ROOT_PATH) {
       return this.rootEntry
@@ -155,11 +288,11 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
         const remainingPath = remainingSegments.join('/')
         return this.resolveEntry({
           path: remainingPath.length === 0 ? targetPath : `${targetPath}/${remainingPath}`,
-          followFinalSymlink,
+          finalSymlinkTreatment,
         })
       }
       case 'file':
-      case 'restricted-directory':
+      case 'restricted_directory':
         throw new Error(`Not a directory: ${currentPath}`)
       default: {
         const _ex: never = entry
@@ -170,16 +303,22 @@ export class NaidanSysfsProvider implements WeshVirtualMountProvider {
 
     switch (entry.kind) {
     case 'symlink':
-      if (followFinalSymlink) {
+      switch (finalSymlinkTreatment) {
+      case 'follow':
         return this.resolveEntry({
           path: await entry.readlink({ path: currentPath }),
-          followFinalSymlink,
+          finalSymlinkTreatment,
         })
+      case 'no-follow':
+        return entry
+      default: {
+        const _ex: never = finalSymlinkTreatment
+        throw new Error(`Unhandled symlink treatment: ${_ex}`)
       }
-      return entry
+      }
     case 'directory':
     case 'file':
-    case 'restricted-directory':
+    case 'restricted_directory':
       return entry
     default: {
       const _ex: never = entry

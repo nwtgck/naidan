@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContextCompactProgress } from '@/services/context-compact';
+import { toChatId } from '@/models/ids';
 
 const {
   mockIsChatProcessing,
@@ -33,7 +34,7 @@ describe('useChatActivity', () => {
   });
 
   it('reads reactive activity state for the scoped chatId', () => {
-    const chatId = ref('chat-1');
+    const chatId = ref(toChatId({ raw: 'chat-1' }));
     mockIsChatProcessing.mockImplementation(({ chatId }: { chatId: string }) => chatId === 'chat-1');
     mockIsChatTaskRunning.mockImplementation(({ chatId }: { chatId: string }) => chatId === 'chat-1');
     mockIsChatGeneratingTitle.mockImplementation(({ chatId }: { chatId: string }) => chatId === 'chat-1');
@@ -64,7 +65,7 @@ describe('useChatActivity', () => {
       requestPreview: 'compact',
     });
 
-    chatId.value = 'chat-2';
+    chatId.value = toChatId({ raw: 'chat-2' });
 
     expect(chatActivity.isProcessing.value).toBe(false);
     expect(chatActivity.isTaskRunning.value).toBe(false);

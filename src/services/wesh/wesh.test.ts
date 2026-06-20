@@ -62,7 +62,7 @@ describe('Wesh Shell', () => {
   let rootHandle: MockFileSystemDirectoryHandle;
 
   beforeEach(async () => {
-    rootHandle = new MockFileSystemDirectoryHandle('root');
+    rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
     wesh = new Wesh({ rootHandle: rootHandle as any });
     await wesh.init();
 
@@ -78,6 +78,34 @@ describe('Wesh Shell', () => {
         fn: async () => ({ exitCode: 1 })
       }
     });
+  });
+
+
+  it('exposes read-only shell and directory snapshots for terminal observation', async () => {
+    const home = await rootHandle.getDirectoryHandle('home', { create: true });
+    await home.getDirectoryHandle('user', { create: true });
+    await rootHandle.getFileHandle('note.txt', { create: true });
+    await wesh.execute({
+      script: 'alias ll="ls -l"; cd /home/user',
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: createTestWriteCaptureHandle().handle,
+      stderr: createTestWriteCaptureHandle().handle,
+    });
+
+    const shellState = wesh.getShellState();
+    const commands = wesh.listCommands();
+    const entries = await wesh.listDirectory({ path: '/' });
+
+    expect(shellState.cwd).toBe('/home/user');
+    expect(shellState.env.PWD).toBe('/home/user');
+    expect(commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'echo', kind: 'builtin' }),
+      expect.objectContaining({ name: 'll', kind: 'alias', usage: 'ls -l' }),
+    ]));
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'home', type: 'directory', fullPath: '/home' }),
+      expect.objectContaining({ name: 'note.txt', type: 'file', fullPath: '/note.txt' }),
+    ]));
   });
 
   it('executes simple commands', async () => {
@@ -1465,8 +1493,69 @@ echo "$PIPE_VALUE"`,
     expect(seenProcesses[0]!.pid).not.toBe(seenProcesses[1]!.pid);
     expect(seenProcesses[0]!.pgid).toBe(seenProcesses[1]!.pgid);
     const processGroup = wesh.kernel.getProcessesByGroup({ pgid: seenProcesses[0]!.pgid });
-    expect(processGroup.some(proc => proc.pid === seenProcesses[0]!.pid)).toBe(true);
-    expect(processGroup.some(proc => proc.pid === seenProcesses[1]!.pid)).toBe(true);
+    expect(processGroup.some(proc => proc.pid === seenProcesses[0]!.pid)).toBe(false);
+    expect(processGroup.some(proc => proc.pid === seenProcesses[1]!.pid)).toBe(false);
+  });
+
+  it('reaps completed command processes across repeated executions', async () => {
+    const initialProcessCount = wesh.kernel.getProcesses().length;
+
+    for (let index = 0; index < 100; index += 1) {
+      const result = await wesh.execute({
+        script: 'true',
+        stdin: createTestReadHandleFromText({ text: '' }),
+        stdout: createTestWriteCaptureHandle().handle,
+        stderr: createTestWriteCaptureHandle().handle,
+      });
+      expect(result.exitCode).toBe(0);
+    }
+
+    expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
+  });
+
+  it('reaps transient child shell processes after compound execution', async () => {
+    const initialProcessCount = wesh.kernel.getProcesses().length;
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+
+    const result = await wesh.execute({
+      script: `\
+echo "$(printf command-substitution)"
+(printf subshell)
+printf pipeline | cat
+cat <(printf process-substitution)`,
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(stderr.text).toBe('');
+    expect(stdout.text).toContain('command-substitution');
+    expect(stdout.text).toContain('subshell');
+    expect(stdout.text).toContain('pipeline');
+    expect(stdout.text).toContain('process-substitution');
+    expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
+  });
+
+  it('does not retain intermediate processes for direct argv execution', async () => {
+    const work = await rootHandle.getDirectoryHandle('work', { create: true });
+    await work.getFileHandle('a.txt', { create: true });
+    await work.getFileHandle('b.txt', { create: true });
+    const initialProcessCount = wesh.kernel.getProcesses().length;
+
+    const stdout = createTestWriteCaptureHandle();
+    const stderr = createTestWriteCaptureHandle();
+    const result = await wesh.execute({
+      script: 'find work -type f -exec true {} \\;',
+      stdin: createTestReadHandleFromText({ text: '' }),
+      stdout: stdout.handle,
+      stderr: stderr.handle,
+    });
+
+    expect(stderr.text).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(wesh.kernel.getProcesses()).toHaveLength(initialProcessCount);
   });
 
   it('stores traps in the current shell and lists them', async () => {

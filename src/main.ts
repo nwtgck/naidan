@@ -71,11 +71,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
-  await chatBootstrap.loadChats({})
+  await chatBootstrap.loadChats()
 
   app.mount('#app')
 
   if (__BUILD_MODE_IS_STANDALONE__) {
-    warmStandaloneWorkerCacheAtIdle({})
+    warmStandaloneWorkerCacheAtIdle()
   }
 })

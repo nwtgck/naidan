@@ -2,10 +2,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import type { LLMProvider } from '@/services/lm/types';
-import { OpenAIProvider } from '@/services/lm/openai';
-import { OllamaProvider } from '@/services/lm/ollama';
-import { TransformersJsProvider } from '@/services/transformers-js/provider';
+import type { LmProvider } from '@/services/lm/types';
+import { createLmProvider } from '@/services/lm/providerFactory';
 import { type EndpointType, type Settings as SettingsType } from '@/models/types';
 import { ENDPOINT_PRESETS } from '@/models/constants';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
@@ -100,7 +98,7 @@ onMounted(async () => {
     }
   }
 
-  unsubscribe = transformersJsService.subscribe(() => {
+  unsubscribe = transformersJsService.subscribe({ listener: () => {
     const state = transformersJsService.getState();
     const type = effectiveType.value;
     switch (type) {
@@ -117,7 +115,7 @@ onMounted(async () => {
       return _ex;
     }
     }
-  });
+  } });
 });
 
 onUnmounted(() => {
@@ -279,23 +277,12 @@ async function handleConnect() {
       }
     }
 
-    let provider: LLMProvider;
-    // We use effectiveType.value which is guaranteed to be EndpointType
-    switch (effectiveType.value) {
-    case 'openai':
-      provider = new OpenAIProvider({ endpoint: url || '', headers: customHeaders.value });
-      break;
-    case 'ollama':
-      provider = new OllamaProvider({ endpoint: url || '', headers: customHeaders.value });
-      break;
-    case 'transformers_js':
-      provider = new TransformersJsProvider();
-      break;
-    default: {
-      const _ex: never = effectiveType.value;
-      throw new Error(`Unsupported endpoint type: ${_ex}`);
-    }
-    }
+    const provider: LmProvider = createLmProvider({
+      endpointType: effectiveType.value,
+      endpointUrl: url ?? undefined,
+      endpointHttpHeaders: customHeaders.value,
+      fakeLmDebugModeStatus: settings.value.experimental?.fakeLm ?? 'disabled',
+    });
     const models = await provider.listModels({ signal: abortController.signal });
 
     if (models.length === 0) {

@@ -1,13 +1,14 @@
 import type { MessageBranch, MessageNode, Role } from '@/models/types';
+import type { ChatId, MessageId } from '@/models/ids';
 import { findDeepestLeaf } from './chat-tree';
 
 export interface ContentMatch {
-  chatId: string;
-  messageId: string;
+  chatId: ChatId;
+  messageId: MessageId;
   excerpt: string;
   fullContent: string;
   role: string;
-  targetLeafId: string;
+  targetLeafId: MessageId;
   timestamp: number;
   isCurrentThread: boolean;
 }
@@ -43,8 +44,8 @@ function matchesRoleFilter({ role, roleFilter }: {
 export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilter }: {
   root: MessageBranch;
   query: string;
-  chatId: string;
-  activeBranchIds?: Set<string>;
+  chatId: ChatId;
+  activeBranchIds?: Set<MessageId>;
   roleFilter?: SearchRoleFilter;
 }): ContentMatch[] {
   const matches: ContentMatch[] = [];
@@ -117,8 +118,8 @@ function getExcerpt({ content, keywords }: { content: string; keywords: string[]
 export function searchLinearBranch({ branch, query, chatId, targetLeafId, roleFilter }: {
   branch: MessageNode[];
   query: string;
-  chatId: string;
-  targetLeafId?: string;
+  chatId: ChatId;
+  targetLeafId?: MessageId;
   roleFilter?: SearchRoleFilter;
 }): ContentMatch[] {
   const matches: ContentMatch[] = [];

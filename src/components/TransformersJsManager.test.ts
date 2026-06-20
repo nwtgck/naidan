@@ -87,23 +87,23 @@ describe('TransformersJsManager.vue', () => {
     device: 'wasm',
     isCached: false,
     isLoadingFromCache: false,
-    progressItems: {},
+    progressItems: new Map(),
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     (transformersJsService.getState as any).mockReturnValue({ ...mockState });
     (transformersJsService.listCachedModels as any).mockResolvedValue([]);
-    (transformersJsService.subscribe as any).mockImplementation((listener: any) => {
+    (transformersJsService.subscribe as any).mockImplementation(({ listener }: any) => {
       const state = transformersJsService.getState();
-      listener(
-        state.status,
-        state.progress,
-        state.error,
-        state.isCached,
-        state.isLoadingFromCache,
-        state.progressItems
-      );
+      listener({
+        status: state.status,
+        progress: state.progress,
+        error: state.error,
+        isCached: state.isCached,
+        isLoadingFromCache: state.isLoadingFromCache,
+        progressItems: state.progressItems,
+      });
       return () => {}; // Unsubscribe mock
     });
 

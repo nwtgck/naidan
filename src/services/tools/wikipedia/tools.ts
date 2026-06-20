@@ -33,7 +33,7 @@ The result contains only title and pageId. Use wikipedia_get_page to read a page
   }: {
     args: unknown;
     signal?: AbortSignal;
-    onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
     approvalContext?: ToolApprovalContext;
   }): Promise<
     | { status: 'success'; content: string }
@@ -130,7 +130,7 @@ Long page text may be saved to sysfs Naidan instead of being returned inline.`;
   }: {
     args: unknown;
     signal?: AbortSignal;
-    onEvent?: (event: ToolExecutionEvent) => void | Promise<void>;
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
     approvalContext?: ToolApprovalContext;
   }): Promise<
     | { status: 'success'; content: string }

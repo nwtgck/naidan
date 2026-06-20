@@ -1,0 +1,16 @@
+{
+  "items": [
+    {"weight": 5, "requires": ["inputKeyword"], "parts": ["最後に、", {"slot": "inputKeyword"}, "は", {"slot": "nounPhrase"}, "の横で静かにまとまります。"]},
+    {"weight": 4, "parts": ["このまま", {"slot": "inputReference"}, "を少し残しておけば十分です。"]},
+    {"weight": 8, "parts": ["そのため、この話は", {"slot": "nounPhrase"}, "として急がずに置いておけます。"]},
+    {"weight": 7, "parts": ["最後に残るのは、", {"slot": "nounPhrase"}, "よりも少し軽い", {"slot": "nounPhrase"}, "です。"]},
+    {"weight": 7, "parts": ["ここでは、", {"slot": "nounPhrase"}, "を小さな", {"slot": "nounPhrase"}, "として扱えば十分です。"]},
+    {"weight": 6, "parts": ["つまり、答えよりも", {"slot": "nounPhrase"}, "の順番を先に見る必要があります。"]},
+    {"weight": 6, "parts": ["このまま", {"slot": "nounPhrase"}, "を少し残しておけば、", {"slot": "nounPhrase"}, "は静かにまとまります。"]},
+    {"weight": 6, "parts": ["最終的には、", {"slot": "nounPhrase"}, "を", {"slot": "timeNoun"}, "の手前に置くだけで足ります。"]},
+    {"weight": 5, "parts": ["だからこそ、", {"slot": "nounPhrase"}, "は急がずに", {"slot": "physicalNoun"}, "の横で待てます。"]},
+    {"weight": 5, "parts": ["この整理では、", {"slot": "abstractNoun"}, "を少し軽くして終えるのが自然です。"]},
+    {"weight": 4, "parts": ["残りの部分は、", {"slot": "nounPhrase"}, "として明日まで置いておけます。"]},
+    {"weight": 4, "parts": ["ここまで来れば、", {"slot": "nounPhrase"}, "は静かな結論として十分です。"]}
+  ]
+}

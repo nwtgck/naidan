@@ -2,6 +2,7 @@ import { generateId } from './id';
 import { toRaw } from 'vue';
 import type { MessageNode, AssistantMessageNode, UserMessageNode, SystemMessageNode, SidebarItem, Chat } from '@/models/types';
 import { EMPTY_LM_PARAMETERS } from '@/models/types';
+import type { MessageId } from '@/models/ids';
 
 export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -12,7 +13,7 @@ export function fileToDataUrl({ blob }: { blob: Blob }): Promise<string> {
   });
 }
 
-export function findNodeInBranch({ items, targetId }: { items: MessageNode[], targetId: string }): MessageNode | null {
+export function findNodeInBranch({ items, targetId }: { items: MessageNode[], targetId: MessageId }): MessageNode | null {
   for (const item of items) {
     if (toRaw(item).id === targetId) return item;
     const found = findNodeInBranch({ items: item.replies.items, targetId });
@@ -21,7 +22,7 @@ export function findNodeInBranch({ items, targetId }: { items: MessageNode[], ta
   return null;
 }
 
-export function findParentInBranch({ items, childId }: { items: MessageNode[], childId: string }): MessageNode | null {
+export function findParentInBranch({ items, childId }: { items: MessageNode[], childId: MessageId }): MessageNode | null {
   for (const item of items) {
     if (toRaw(item).replies.items.some(child => toRaw(child).id === childId)) return item;
     const found = findParentInBranch({ items: item.replies.items, childId });
@@ -37,7 +38,7 @@ export function* getChatBranchIterator({ chat }: { chat: Chat | Readonly<Chat> }
   const targetId = chat.currentLeafId;
   const path: MessageNode[] = [];
 
-  function findPath({ nodes, target }: { nodes: MessageNode[], target: string }): boolean {
+  function findPath({ nodes, target }: { nodes: MessageNode[], target: MessageId }): boolean {
     for (const node of nodes) {
       path.push(node);
       if (toRaw(node).id === target) return true;
@@ -111,13 +112,13 @@ export interface HistoryItem {
   content: string;
   modelId?: string;
   thinking?: string;
-  attachments?: import('../models/types').Attachment[];
+  attachments?: import('@/models/types').Attachment[];
 }
 
 export function createBranchFromMessages({ messages }: { messages: HistoryItem[] }): MessageNode[] {
   const nodes: MessageNode[] = messages.map(m => {
     const common = {
-      id: generateId(),
+      id: generateId<MessageId>(),
       content: m.content,
       timestamp: Date.now(),
       replies: { items: [] }

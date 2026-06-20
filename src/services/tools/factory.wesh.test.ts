@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toChatGroupId, toChatId, toVolumeId } from '@/models/ids'
 
 const mockCreateClient = vi.fn()
 const mockGetVolumeDirectoryHandle = vi.fn()
@@ -74,23 +75,25 @@ describe('getEnabledTools shell_execute', () => {
     const [toolA] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleA,
-      chatId: 'chat-1',
-      chatGroupId: 'chat-group-1',
-      naidanSysfsVisibility: 'current_chat_only',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
+      chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+      naidanSysfsAccessScope: 'current_chat_only',
       settings: {
         storageType: 'opfs',
-        mounts: [{ type: 'volume', volumeId: 'a', mountPath: '/mnt/a', readOnly: false }],
+        mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'a' }), mountPath: '/mnt/a', readOnly: false }],
       } as never,
     })
     const [toolB] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: tmpHandleB,
-      chatId: 'chat-2',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-2' }),
       chatGroupId: undefined,
-      naidanSysfsVisibility: 'all_chats',
+      naidanSysfsAccessScope: 'main_chats',
       settings: {
         storageType: 'opfs',
-        mounts: [{ type: 'volume', volumeId: 'b', mountPath: '/mnt/b', readOnly: true }],
+        mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'b' }), mountPath: '/mnt/b', readOnly: true }],
       } as never,
     })
 
@@ -123,7 +126,7 @@ describe('getEnabledTools shell_execute', () => {
           path: '/sys/fs/naidan',
           readOnly: true,
           storageType: 'opfs',
-          visibility: 'all_chats',
+          visibility: 'main_chats',
           binaryObjectAccess: 'data',
           currentChatId: 'chat-2',
           currentChatGroupId: undefined,
@@ -163,9 +166,10 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
-      chatId: 'chat-1',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
-      naidanSysfsVisibility: 'current_chat_with_chat_group',
+      naidanSysfsAccessScope: 'current_chat_with_chat_group',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'x', mountPath: '/home/user/myproject', readOnly: false }],
@@ -184,9 +188,10 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: undefined,
-      chatId: 'chat-1',
-      chatGroupId: 'chat-group-1',
-      naidanSysfsVisibility: 'current_chat_only',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
+      chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+      naidanSysfsAccessScope: 'current_chat_only',
       settings: {
         storageType: 'local',
         mounts: [{ type: 'volume', volumeId: 'vol-local-only', mountPath: '/mnt/local-only', readOnly: true }],
@@ -222,9 +227,10 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
-      chatId: 'chat-1',
-      chatGroupId: 'chat-group-1',
-      naidanSysfsVisibility: 'none',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
+      chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+      naidanSysfsAccessScope: 'none',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-none', mountPath: '/mnt/none', readOnly: true }],
@@ -245,9 +251,10 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['wikipedia_search', 'wikipedia_get_page'],
       tmpHandle: { kind: 'directory', name: 'tmp' } as FileSystemDirectoryHandle,
-      chatId: 'chat-1',
-      chatGroupId: 'chat-group-1',
-      naidanSysfsVisibility: 'current_chat_only',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
+      chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+      naidanSysfsAccessScope: 'current_chat_only',
       settings: {
         storageType: 'opfs',
         mounts: [],
@@ -264,9 +271,10 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
       tmpHandle,
-      chatId: 'chat-1',
-      chatGroupId: 'chat-group-1',
-      naidanSysfsVisibility: 'none',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
+      chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+      naidanSysfsAccessScope: 'none',
       settings: {
         storageType: 'opfs',
         mounts: [],
@@ -282,9 +290,10 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['shell_execute', 'wikipedia_search', 'wikipedia_get_page'],
       tmpHandle: undefined,
-      chatId: 'chat-1',
-      chatGroupId: 'chat-group-1',
-      naidanSysfsVisibility: 'current_chat_only',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
+      chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+      naidanSysfsAccessScope: 'current_chat_only',
       settings: {
         storageType: 'opfs',
         mounts: [],
@@ -311,9 +320,10 @@ Mounted directories:
     const tools = await getEnabledTools({
       enabledNames: ['wikipedia_search', 'shell_execute', 'wikipedia_get_page'],
       tmpHandle,
-      chatId: 'chat-1',
-      chatGroupId: 'chat-group-1',
-      naidanSysfsVisibility: 'current_chat_only',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
+      chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+      naidanSysfsAccessScope: 'current_chat_only',
       settings: {
         storageType: 'opfs',
         mounts: [],
@@ -337,9 +347,10 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle: undefined,
-      chatId: 'chat-1',
-      chatGroupId: 'chat-group-1',
-      naidanSysfsVisibility: 'current_chat_with_chat_group',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
+      chatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
+      naidanSysfsAccessScope: 'current_chat_with_chat_group',
       settings: {
         storageType: 'local',
         mounts: [{ type: 'volume', volumeId: 'vol-local', mountPath: '/mnt/local', readOnly: true }],
@@ -375,9 +386,10 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
-      chatId: 'chat-1',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
-      naidanSysfsVisibility: 'current_chat_with_chat_group',
+      naidanSysfsAccessScope: 'current_chat_with_chat_group',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-s', mountPath: '/mnt/s', readOnly: true }],
@@ -402,9 +414,10 @@ Mounted directories:
     await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
-      chatId: 'chat-1',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
-      naidanSysfsVisibility: 'current_chat_with_chat_group',
+      naidanSysfsAccessScope: 'current_chat_with_chat_group',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-r', mountPath: '/mnt/r', readOnly: true }],
@@ -426,9 +439,10 @@ Mounted directories:
     const [tool] = await getEnabledTools({
       enabledNames: ['shell_execute'],
       tmpHandle,
-      chatId: 'chat-1',
+      requestChoice: undefined,
+      chatId: toChatId({ raw: 'chat-1' }),
       chatGroupId: undefined,
-      naidanSysfsVisibility: 'current_chat_with_chat_group',
+      naidanSysfsAccessScope: 'current_chat_with_chat_group',
       settings: {
         storageType: 'opfs',
         mounts: [{ type: 'volume', volumeId: 'vol-d', mountPath: '/mnt/d', readOnly: true }],

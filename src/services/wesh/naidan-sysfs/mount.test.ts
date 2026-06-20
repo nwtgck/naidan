@@ -1,3 +1,4 @@
+import { toChatGroupId, toChatId } from '@/models/ids';
 import { describe, expect, it } from 'vitest'
 import { createNaidanSysfsMount } from './mount'
 
@@ -7,8 +8,8 @@ describe('createNaidanSysfsMount', () => {
       storageType: 'opfs',
       visibility: 'current_chat_only',
       binaryObjectAccess: 'data',
-      currentChatId: 'chat-1',
-      currentChatGroupId: 'chat-group-1',
+      currentChatId: toChatId({ raw: 'chat-1' }),
+      currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
     })).toEqual({
       type: 'naidan_sysfs',
       path: '/sys/fs/naidan',
@@ -16,8 +17,8 @@ describe('createNaidanSysfsMount', () => {
       storageType: 'opfs',
       visibility: 'current_chat_only',
       binaryObjectAccess: 'data',
-      currentChatId: 'chat-1',
-      currentChatGroupId: 'chat-group-1',
+      currentChatId: toChatId({ raw: 'chat-1' }),
+      currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
     })
   })
 
@@ -27,25 +28,25 @@ describe('createNaidanSysfsMount', () => {
       visibility: 'current_chat_with_chat_group',
       binaryObjectAccess: 'data',
       currentChatId: undefined,
-      currentChatGroupId: 'chat-group-1',
+      currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
     })).toBeUndefined()
   })
 
   it('returns a naidan sysfs mount for local storage', () => {
     expect(createNaidanSysfsMount({
       storageType: 'local',
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
-      currentChatId: 'chat-1',
+      currentChatId: toChatId({ raw: 'chat-1' }),
       currentChatGroupId: undefined,
     })).toEqual({
       type: 'naidan_sysfs',
       path: '/sys/fs/naidan',
       readOnly: true,
       storageType: 'local',
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
-      currentChatId: 'chat-1',
+      currentChatId: toChatId({ raw: 'chat-1' }),
       currentChatGroupId: undefined,
     })
   })
@@ -53,18 +54,18 @@ describe('createNaidanSysfsMount', () => {
   it('returns a naidan sysfs mount for memory storage', () => {
     expect(createNaidanSysfsMount({
       storageType: 'memory',
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
-      currentChatId: 'chat-1',
+      currentChatId: toChatId({ raw: 'chat-1' }),
       currentChatGroupId: undefined,
     })).toEqual({
       type: 'naidan_sysfs',
       path: '/sys/fs/naidan',
       readOnly: true,
       storageType: 'memory',
-      visibility: 'all_chats',
+      visibility: 'main_chats',
       binaryObjectAccess: 'data',
-      currentChatId: 'chat-1',
+      currentChatId: toChatId({ raw: 'chat-1' }),
       currentChatGroupId: undefined,
     })
   })

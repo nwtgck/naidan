@@ -1,3 +1,5 @@
+import type { ChatId, MessageId } from '@/models/ids';
+import { toChatId } from '@/models/ids';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ChatPane from './ChatPane.vue';
@@ -8,7 +10,7 @@ import { setupScrollToMock } from '@/utils/test-utils';
 
 // Define shared refs for the mock
 const mockCurrentChat = ref({
-  id: 'chat-1',
+  id: toChatId({ raw: 'chat-1' }),
   title: 'Test Chat',
   root: { items: [] }
 });
@@ -101,16 +103,16 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: string;
+    chatId?: ChatId;
     autoSendPrompt?: string;
-    targetMessageId?: string;
+    targetMessageId?: MessageId;
   };
   attachTo?: Element | string;
   global?: Record<string, unknown>;
 } = {}) {
   return mount(ChatPane, {
     props: {
-      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? '1',
+      chatId: props?.chatId ?? mockCurrentChat.value?.id ?? toChatId({ raw: '1' }),
       autoSendPrompt: props?.autoSendPrompt,
       targetMessageId: props?.targetMessageId,
     },
@@ -237,10 +239,10 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: vi.fn(),
-    currentRoute: { value: { params: { id: 'chat-1' } } }
+    currentRoute: { value: { params: { id: toChatId({ raw: 'chat-1' }) } } }
   }),
   useRoute: () => ({
-    params: { id: 'chat-1' }
+    params: { id: toChatId({ raw: 'chat-1' }) }
   })
 }));
 
@@ -281,7 +283,7 @@ describe('ChatPane - Attachment UI', () => {
   it('should show preview when files are selected', async () => {
     // Reset refs for this test
     mockCurrentChat.value = {
-      id: 'chat-1',
+      id: toChatId({ raw: 'chat-1' }),
       title: 'Test Chat',
       root: { items: [] }
     } as any;
@@ -363,7 +365,7 @@ describe('ChatPane - Attachment UI', () => {
     // Ensure input or attachments exist to pass the guard
     (chatInput.vm as any).input = 'hello';
     mockStreaming.value = false;
-    mockCurrentChat.value = { id: 'chat-1', title: 'T', root: { items: [] } } as any;
+    mockCurrentChat.value = { id: toChatId({ raw: 'chat-1' }), title: 'T', root: { items: [] } } as any;
 
     // Trigger send
     await (chatInput.vm as any).handleSend();

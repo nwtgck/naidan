@@ -8,6 +8,8 @@ import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
+import { idToRaw } from '@/models/ids';
+import type { ChatGroupId } from '@/models/ids';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 import { scrollIntoViewSafe } from '@/utils/dom';
 import RecentChatListItem from './RecentChatListItem.vue';
@@ -35,7 +37,7 @@ let previewHoverTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Optimization: Pre-map group names to avoid repeated lookups in the loop
 const groupNameMap = computed(() => {
-  const map = new Map<string, string>();
+  const map = new Map<ChatGroupId, string>();
   for (const group of chatGroups.value) {
     map.set(group.id, group.name);
   }
@@ -174,11 +176,11 @@ async function selectItem({ index }: { index: number }) {
   if (!target) return;
 
   await openChat({ chatId: target.id });
-  router.push(`/chat/${target.id}`);
+  router.push(`/chat/${idToRaw({ id: target.id })}`);
   closeRecent();
 }
 
-const previousFocusArea = ref<import('../composables/useLayout').FocusArea | undefined>(undefined);
+const previousFocusArea = ref<import('@/composables/useLayout').FocusArea | undefined>(undefined);
 
 watch(isRecentOpen, (isOpen) => {
   if (isOpen) {
@@ -204,9 +206,9 @@ const mappedDeferredItem = computed(() => {
   if (!deferredSelectedItem.value) return undefined;
   return {
     type: 'chat' as const,
-    chatId: deferredSelectedItem.value.id,
+    chatId: idToRaw({ id: deferredSelectedItem.value.id }),
     title: deferredSelectedItem.value.title,
-    groupId: deferredSelectedItem.value.groupId,
+    groupId: deferredSelectedItem.value.groupId === undefined || deferredSelectedItem.value.groupId === null ? deferredSelectedItem.value.groupId : idToRaw({ id: deferredSelectedItem.value.groupId }),
     updatedAt: deferredSelectedItem.value.updatedAt,
     matchType: 'title' as const,
     contentMatches: [],
@@ -267,11 +269,11 @@ defineExpose({
             <template v-else>
               <RecentChatListItem
                 v-for="(chat, index) in filteredRecentChats"
-                :key="chat.id"
-                v-memo="[chat.id, selectedIndex === index, activePane]"
+                :key="idToRaw({ id: chat.id })"
+                v-memo="[idToRaw({ id: chat.id }), selectedIndex === index, activePane]"
                 :data-index="index"
                 :chat="chat"
-                :group-name="groupNameMap.get(chat.groupId || '')"
+                :group-name="chat.groupId ? groupNameMap.get(chat.groupId) : undefined"
                 :is-selected="selectedIndex === index"
                 :active-pane="activePane"
                 @mouseenter="selectedIndex = index"
