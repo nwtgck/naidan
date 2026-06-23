@@ -1,5 +1,8 @@
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { createRequire } from 'node:module'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 import {
@@ -19,7 +22,98 @@ type RetryLoader = {
   instantiate: (url: string, parentUrl?: string, meta?: unknown) => Promise<unknown>
   resolve: (id: string, parentUrl?: string) => string
   delete: (url: string) => boolean
+  createScript: (url: string) => HTMLScriptElement
   mode: 'loader-error' | 'application-error' | 'success'
+}
+
+
+
+type RealSystemJs = Readonly<{
+  import: (id: string, parentUrl?: string) => Promise<Record<string, unknown>>
+}>
+
+function hasErrorMessage(value: unknown): value is Readonly<{ message: string }> {
+  return typeof value === 'object'
+    && value !== null
+    && 'message' in value
+    && typeof value.message === 'string'
+}
+
+async function captureUnhandledRejections({ action }: {
+  action: () => Promise<void>
+}): Promise<readonly unknown[]> {
+  const rejections: unknown[] = []
+  const listener = (reason: unknown): void => {
+    rejections.push(reason)
+  }
+  process.on('unhandledRejection', listener)
+  try {
+    await action()
+    // SystemJS can report the child load rejection on the following task even
+    // though the root import Promise is already observed. Keep the user-level
+    // listener alive for that turn and assert the exact rejection below.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    return rejections
+  } finally {
+    process.off('unhandledRejection', listener)
+  }
+}
+
+async function createRealSystemJsHarness({ fixtureDirectory }: {
+  fixtureDirectory: string
+}): Promise<Readonly<{
+  dom: JSDOM
+  system: RealSystemJs
+}>> {
+  const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
+    url: pathToFileURL(path.join(fixtureDirectory, 'index.html')).href,
+    runScripts: 'outside-only',
+  })
+  const runtimeSource = await fs.promises.readFile(require.resolve('systemjs/dist/system.min.js'), 'utf8')
+  dom.window.eval(runtimeSource)
+  dom.window.eval(createSystemJsFileProtocolPatchSource())
+  dom.window.eval(createSystemJsRetryHookSource())
+
+  const head = dom.window.document.head
+  const appendChild = head.appendChild.bind(head)
+  Object.defineProperty(head, 'appendChild', {
+    configurable: true,
+    value(node: Node): Node {
+      const appended = appendChild(node)
+      if (!(node instanceof dom.window.HTMLScriptElement)) {
+        return appended
+      }
+
+      const script = node
+      const url = script.src
+      dom.window.setTimeout(() => {
+        void fs.promises.readFile(fileURLToPath(url), 'utf8').then((source) => {
+          try {
+            dom.window.eval(`${source}\n//# sourceURL=${url}`)
+          } catch (error) {
+            dom.window.dispatchEvent(new dom.window.ErrorEvent('error', {
+              cancelable: true,
+              error,
+              filename: url,
+              message: error instanceof Error ? error.message : String(error),
+            }))
+          }
+          script.dispatchEvent(new dom.window.Event('load'))
+        }, () => {
+          script.dispatchEvent(new dom.window.Event('error'))
+        })
+      }, 0)
+      return appended
+    },
+  })
+  // SystemJS observes evaluation errors through window.error before resolving
+  // the script load. Mark the synthetic browser event as handled after its own
+  // listener has recorded it so JSDOM does not duplicate it as a test failure.
+  dom.window.addEventListener('error', (event) => event.preventDefault())
+  return {
+    dom,
+    system: (dom.window as unknown as { System: RealSystemJs }).System,
+  }
 }
 
 function createScriptPatchHarness(): Readonly<{
@@ -28,7 +122,7 @@ function createScriptPatchHarness(): Readonly<{
   evaluatePatch: () => void
 }> {
   const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
-    url: 'file:///tmp/naidan/index.html',
+    url: 'file:///__nonexistent_file_protocol_test_root__/index.html',
     runScripts: 'outside-only',
   })
   class Loader {
@@ -56,33 +150,51 @@ function createRetryHarness(): Readonly<{
   evaluateRetryHook: () => void
 }> {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {
-    url: 'file:///tmp/naidan/index.html',
+    url: 'file:///__nonexistent_file_protocol_test_root__/index.html',
     runScripts: 'outside-only',
   })
   const deletedUrls: string[] = []
-  const loader: RetryLoader = {
-    mode: 'success',
-    resolve(id, parentUrl) {
+  const deleted = new Set<string>()
+
+  class Loader implements RetryLoader {
+    mode: RetryLoader['mode'] = 'success'
+
+    resolve(id: string, parentUrl?: string): string {
       return new URL(id, parentUrl ?? dom.window.document.baseURI).href
-    },
-    delete(url) {
+    }
+
+    delete(url: string): boolean {
+      if (deleted.has(url)) return false
+      deleted.add(url)
       deletedUrls.push(url)
       return true
-    },
-    instantiate() {
-      if (loader.mode === 'loader-error') {
-        return Promise.reject(new Error('Synthetic loader failure (SystemJS Error#3)'))
+    }
+
+    createScript(url: string): HTMLScriptElement {
+      const script = dom.window.document.createElement('script')
+      script.src = url
+      return script
+    }
+
+    instantiate(url: string, _parentUrl?: string, _meta?: unknown): Promise<unknown> {
+      if (this.mode === 'loader-error') {
+        const script = this.createScript(url)
+        script.dispatchEvent(new dom.window.Event('error'))
+        return Promise.reject(new Error('Synthetic physical script failure'))
       }
-      return Promise.resolve('loaded')
-    },
-    import(id, parentUrl, meta) {
-      if (loader.mode === 'application-error') {
+      if (this.mode === 'application-error') {
         return Promise.reject(new Error('Application failure that says SystemJS Error#3'))
       }
-      return loader.instantiate(loader.resolve(id, parentUrl), parentUrl, meta)
-    },
+      return Promise.resolve('loaded')
+    }
+
+    import(id: string, parentUrl?: string, meta?: unknown): Promise<unknown> {
+      return this.instantiate(this.resolve(id, parentUrl), parentUrl, meta)
+    }
   }
-  ;(dom.window as unknown as { System: RetryLoader }).System = loader
+
+  const loader = new Loader()
+  ;(dom.window as unknown as { System: Loader }).System = loader
 
   return {
     dom,
@@ -97,7 +209,7 @@ describe('fileProtocolStandalone SystemJS file patch', () => {
     const harness = createScriptPatchHarness()
     harness.evaluatePatch()
 
-    const fileScript = harness.loader.createScript('file:///tmp/naidan/assets/chunk.js')
+    const fileScript = harness.loader.createScript('file:///__nonexistent_file_protocol_test_root__/assets/chunk.js')
     const httpsScript = harness.loader.createScript('https://example.test/chunk.js')
     expect(fileScript.getAttribute('crossorigin')).toBeNull()
     expect(fileScript.crossOrigin).toBeNull()
@@ -116,7 +228,7 @@ describe('fileProtocolStandalone SystemJS file patch', () => {
     expect(state).toEqual({
       installed: true,
       patchedScripts: [{
-        url: 'file:///tmp/naidan/assets/chunk.js',
+        url: 'file:///__nonexistent_file_protocol_test_root__/assets/chunk.js',
         crossOriginProperty: null,
         crossoriginAttribute: null,
       }],
@@ -130,7 +242,7 @@ describe('fileProtocolStandalone SystemJS file patch', () => {
     harness.evaluatePatch()
 
     expect(harness.loader.createScript).toBe(firstPatchedFunction)
-    harness.loader.createScript('file:///tmp/naidan/assets/entry.js')
+    harness.loader.createScript('file:///__nonexistent_file_protocol_test_root__/assets/entry.js')
     const state = (harness.dom.window as unknown as {
       __FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__: { patchedScripts: unknown[] }
     }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
@@ -139,7 +251,7 @@ describe('fileProtocolStandalone SystemJS file patch', () => {
 
   it('fails explicitly when the expected SystemJS prototype hook is unavailable', () => {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {
-      url: 'file:///tmp/naidan/index.html',
+      url: 'file:///__nonexistent_file_protocol_test_root__/index.html',
       runScripts: 'outside-only',
     })
     ;(dom.window as unknown as { System: object }).System = {}
@@ -154,9 +266,9 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
     harness.evaluateRetryHook()
     harness.loader.mode = 'loader-error'
 
-    await expect(harness.loader.import('./lazy.js', harness.dom.window.document.baseURI)).rejects.toThrow('SystemJS Error#3')
+    await expect(harness.loader.import('./lazy.js', harness.dom.window.document.baseURI)).rejects.toThrow('Synthetic physical script failure')
 
-    const resolved = 'file:///tmp/naidan/lazy.js'
+    const resolved = 'file:///__nonexistent_file_protocol_test_root__/lazy.js'
     expect(harness.deletedUrls).toContain(resolved)
     const state = (harness.dom.window as unknown as {
       __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__: {
@@ -182,8 +294,92 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
     harness.evaluateRetryHook()
     harness.loader.mode = 'loader-error'
 
-    await expect(harness.loader.import('https://example.test/lazy.js')).rejects.toThrow('SystemJS Error#3')
+    await expect(harness.loader.import('https://example.test/lazy.js')).rejects.toThrow('Synthetic physical script failure')
     expect(harness.deletedUrls).toEqual([])
+  })
+
+
+
+  it('recovers a real file:// child load after the missing file is created', async () => {
+    const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'))
+    try {
+      await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./child.js'], function (_export) {
+  var child;
+  return {
+    setters: [function (module) { child = module; }],
+    execute: function () { _export('value', child.value); }
+  };
+});\n`)
+      const harness = await createRealSystemJsHarness({ fixtureDirectory })
+      try {
+        const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href
+        const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href
+        const unhandledRejections = await captureUnhandledRejections({
+          action: async () => {
+            await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading')
+
+            const stateAfterFailure = (harness.dom.window as unknown as {
+              __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__: {
+                physicalScriptLoadFailureUrls: string[]
+                deletedModuleUrls: string[]
+              }
+            }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
+            expect(stateAfterFailure.physicalScriptLoadFailureUrls).toEqual([childUrl])
+            expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([childUrl, entryUrl]))
+
+            await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
+  return { execute: function () { _export('value', 42); } };
+});\n`)
+            await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 })
+          },
+        })
+        expect(unhandledRejections).toHaveLength(1)
+        const [unhandledRejection] = unhandledRejections
+        expect(hasErrorMessage(unhandledRejection)).toBe(true)
+        if (!hasErrorMessage(unhandledRejection)) {
+          throw new Error('Expected the captured SystemJS rejection to expose a message')
+        }
+        expect(unhandledRejection.message).toContain(`Error loading ${childUrl} from ${entryUrl}`)
+      } finally {
+        harness.dom.window.close()
+      }
+    } finally {
+      await fs.promises.rm(fixtureDirectory, { recursive: true, force: true })
+    }
+  })
+
+  it('does not evict a real module whose execute function throws an application error', async () => {
+    const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'))
+    try {
+      await fs.promises.writeFile(path.join(fixtureDirectory, 'application-error.js'), `System.register([], function () {
+  return {
+    execute: function () {
+      throw new Error('Application failure that says SystemJS Error#3');
+    }
+  };
+});\n`)
+      const harness = await createRealSystemJsHarness({ fixtureDirectory })
+      try {
+        await expect(harness.system.import('./application-error.js')).rejects.toThrow('SystemJS Error#3')
+        const state = (harness.dom.window as unknown as {
+          __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__: {
+            physicalScriptLoadFailureUrls: string[]
+            deletedModuleUrls: string[]
+            retryableErrorCount: number
+            nonRetryableErrorCount: number
+          }
+        }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
+        expect(state).toMatchObject({
+          physicalScriptLoadFailureUrls: [],
+          deletedModuleUrls: [],
+          retryableErrorCount: 0,
+        })
+      } finally {
+        harness.dom.window.close()
+      }
+    } finally {
+      await fs.promises.rm(fixtureDirectory, { recursive: true, force: true })
+    }
   })
 
   it('is idempotent and leaves successful imports unchanged', async () => {
@@ -205,7 +401,7 @@ describe('fileProtocolStandalone bundled SystemJS runtime contract', () => {
     expect(() => validateSystemJsRuntimeCapabilities({ source: runtimeSource })).not.toThrow()
 
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
-      url: 'file:///tmp/naidan/index.html',
+      url: 'file:///__nonexistent_file_protocol_test_root__/index.html',
       runScripts: 'outside-only',
     })
     dom.window.eval(runtimeSource)

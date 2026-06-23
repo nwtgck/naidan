@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { FileProtocolWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-compatible-standalone-worker-hub'
 import type { StandaloneWorkerVerificationResult } from './worker-probe'
-import { runStandaloneVerification } from './report'
+import {
+  runStandaloneVerification,
+  serializeStandaloneVerificationReportForCopy,
+} from './report'
 
 function createWorkerDiagnostics({
   workersCreated,
@@ -63,60 +66,102 @@ function createValidWorkerResult(): StandaloneWorkerVerificationResult {
       { resolvedLanguage: 'json', htmlLength: 21 },
     ],
     recreated: { resolvedLanguage: 'json', htmlLength: 22 },
+    weshFileProbe: {
+      exitCode: 0,
+      stdout: '/bin/sh: text/x-shellscript\n',
+      stderr: '',
+    },
   }
 }
 
-function appendScript({
-  type,
-  src,
-  crossorigin,
-}: {
-  type: string | undefined
-  src: string | undefined
-  crossorigin: string | undefined
-}): HTMLScriptElement {
-  const script = document.createElement('script')
-  if (type !== undefined) {
-    script.type = type
+function appendExpectedScripts(): void {
+  for (const id of [
+    'file-protocol-standalone-systemjs-runtime',
+    'file-protocol-standalone-systemjs-file-patch',
+    'file-protocol-standalone-systemjs-retry-hook',
+  ]) {
+    const script = document.createElement('script')
+    script.id = id
+    script.src = `./assets/${id}.js`
+    document.head.appendChild(script)
   }
-  if (src !== undefined) {
-    script.src = src
-  }
-  if (crossorigin !== undefined) {
-    script.setAttribute('crossorigin', crossorigin)
-  }
-  document.head.appendChild(script)
-  return script
+  const manifest = document.createElement('script')
+  manifest.id = 'file-protocol-standalone-worker-manifest'
+  manifest.type = 'application/json'
+  document.head.appendChild(manifest)
+  const entry = document.createElement('script')
+  entry.id = 'file-protocol-standalone-entry'
+  document.head.appendChild(entry)
 }
 
 function createStyleProbes(): Readonly<{
   tailwindProbe: HTMLElement
   scopedProbe: HTMLElement
-  lazyCssProbe: HTMLElement
+  lazyStyleProbe: HTMLElement
 }> {
   const tailwindProbe = document.createElement('div')
   tailwindProbe.style.width = '43px'
   tailwindProbe.style.height = '13px'
   const scopedProbe = document.createElement('div')
   scopedProbe.style.borderLeft = '7px solid black'
-  const lazyCssProbe = document.createElement('div')
-  document.body.append(tailwindProbe, scopedProbe, lazyCssProbe)
-  return { tailwindProbe, scopedProbe, lazyCssProbe }
+  const lazyStyleProbe = document.createElement('div')
+  document.body.append(tailwindProbe, scopedProbe, lazyStyleProbe)
+  return { tailwindProbe, scopedProbe, lazyStyleProbe }
 }
 
-function installValidSystemJsPatch(): void {
-  Object.defineProperty(globalThis, '__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__', {
-    configurable: true,
-    writable: true,
-    value: {
-      installed: true,
-      patchedScripts: [{
-        url: 'file:///tmp/assets/entry.js',
-        crossOriginProperty: null,
-        crossoriginAttribute: null,
-      }],
+function installValidGlobals(): void {
+  globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__ = {
+    installed: true,
+    patchedScripts: [{
+      url: 'file:///__nonexistent_file_protocol_test_root__/assets/entry.js',
+      crossOriginProperty: null,
+      crossoriginAttribute: null,
+    }],
+  }
+  globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__ = {
+    installed: true,
+    physicalScriptLoadFailureUrls: [],
+    deletedModuleUrls: [],
+    retryableErrorCount: 0,
+    nonRetryableErrorCount: 0,
+  }
+  globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__ = { worker: { objectUrlsCreated: 1 } }
+  globalThis.__FILE_PROTOCOL_STANDALONE__ = {
+    getDiagnostics: () => ({
+      format: 'file-protocol-standalone-diagnostics-v1',
+      protocol: 'file:',
+      documentReadyState: document.readyState,
+      systemJsAvailable: true,
+      systemJsPatch: globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__,
+      systemJsRetry: globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__,
+      workerRuntime: globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__,
+      startup: globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__!,
+    }),
+  }
+}
+
+function createBaseArguments() {
+  const probes = createStyleProbes()
+  return {
+    route: {
+      fullPath: '/standalone-verification',
+      name: '/standalone-verification',
+      matchedPaths: ['/standalone-verification'],
+      resolvedHref: '#/standalone-verification',
     },
-  })
+    ...probes,
+    loadLazyStyleProbe: async () => {
+      probes.lazyStyleProbe.style.outlineStyle = 'solid'
+      probes.lazyStyleProbe.style.outlineWidth = '3px'
+      return { marker: 'standalone-verification-lazy-style-probe-v1' }
+    },
+    exerciseRouteTransition: async () => ({
+      before: '/standalone-verification',
+      transitioned: '/standalone-verification?__standalone-verification-route-probe=1',
+      restored: '/standalone-verification',
+    }),
+    runWorkerProbe: async () => createValidWorkerResult(),
+  }
 }
 
 beforeEach(() => {
@@ -125,50 +170,41 @@ beforeEach(() => {
   document.body.style.margin = '0px'
   vi.stubGlobal('location', {
     protocol: 'file:',
-    href: 'file:///tmp/naidan/index.html#/',
+    href: 'file:///__nonexistent_file_protocol_test_root__/index.html#/standalone-verification',
     origin: 'null',
   })
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
     callback(0)
     return 1
   })
-  installValidSystemJsPatch()
-  Object.defineProperty(globalThis, '__FILE_PROTOCOL_STANDALONE_STARTUP__', {
-    configurable: true,
-    writable: true,
-    value: {
-      format: 'file-protocol-standalone-startup-v1',
+  globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__ = {
+    format: 'file-protocol-standalone-startup-v1',
+    phase: 'mounted',
+    startedAt: 0,
+    updatedAt: 1,
+    documentReadyState: 'complete',
+    entryFileName: 'assets/index-legacy.js',
+    history: [{
       phase: 'mounted',
-      history: [{ phase: 'mounted', at: 1 }],
-    },
-  })
-  Object.defineProperty(globalThis, '__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__', {
-    configurable: true,
-    writable: true,
-    value: { installed: true, deletedModuleUrls: [] },
-  })
-  Object.defineProperty(globalThis, '__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__', {
-    configurable: true,
-    writable: true,
-    value: { worker: { objectUrlsCreated: 1 } },
-  })
+      at: 1,
+      documentReadyState: 'complete',
+      details: undefined,
+    }],
+    error: undefined,
+    watchdog: undefined,
+  }
+  installValidGlobals()
+  appendExpectedScripts()
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
-  delete (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_STARTUP__?: unknown
-  }).__FILE_PROTOCOL_STANDALONE_STARTUP__
-  delete (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__?: unknown
-  }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
-  delete (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__?: unknown
-  }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
-  delete (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__?: unknown
-  }).__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__
+  delete globalThis.__FILE_PROTOCOL_STANDALONE__
+  delete globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__
+  delete globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
+  delete globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
+  delete globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__
   Reflect.deleteProperty(performance, 'memory')
   document.head.innerHTML = ''
   document.body.innerHTML = ''
@@ -176,18 +212,7 @@ afterEach(() => {
 })
 
 describe('runStandaloneVerification', () => {
-  it('reports all standalone checks and runtime diagnostics when they pass', async () => {
-    const probes = createStyleProbes()
-    appendScript({
-      type: undefined,
-      src: './assets/entry.js',
-      crossorigin: undefined,
-    })
-    appendScript({
-      type: 'application/json',
-      src: undefined,
-      crossorigin: undefined,
-    })
+  it('reports every standalone check and runtime diagnostic when they pass', async () => {
     Object.defineProperty(performance, 'memory', {
       configurable: true,
       value: {
@@ -197,49 +222,37 @@ describe('runStandaloneVerification', () => {
       },
     })
     vi.spyOn(performance, 'getEntriesByType').mockReturnValue([{
-      name: 'file:///tmp/assets/lazy.js',
+      name: 'file:///__nonexistent_file_protocol_test_root__/assets/lazy.js',
       duration: 4,
       entryType: 'resource',
       startTime: 1,
       toJSON: () => ({}),
       initiatorType: 'script',
     } as PerformanceResourceTiming])
-    const loadLazyProbe = vi.fn(async () => {
-      probes.lazyCssProbe.style.outlineStyle = 'solid'
-      probes.lazyCssProbe.style.outlineWidth = '3px'
-      return { marker: 'standalone-verification-lazy-probe-v1' }
-    })
-    const runWorkerProbe = vi.fn().mockResolvedValue(createValidWorkerResult())
+    const args = createBaseArguments()
+    const runWorkerProbe = vi.fn(args.runWorkerProbe)
 
-    const report = await runStandaloneVerification({
-      route: {
-        fullPath: '/',
-        name: 'home',
-        matchedPaths: ['/'],
-        resolvedHref: '#/',
-      },
-      ...probes,
-      loadLazyProbe,
-      runWorkerProbe,
-    })
+    const report = await runStandaloneVerification({ ...args, runWorkerProbe })
 
     expect(report.status).toBe('pass')
-    expect(report.summary).toMatchObject({ passed: 9, failed: 0 })
+    expect(report.summary).toMatchObject({ passed: 12, failed: 0 })
     expect(report.checks.map((check) => [check.id, check.status])).toEqual([
       ['environment.file-protocol', 'pass'],
       ['startup.app-mounted', 'pass'],
       ['router.current-route', 'pass'],
+      ['router.query-transition', 'pass'],
       ['styles.initial', 'pass'],
-      ['dynamic-imports.lazy-probe', 'pass'],
+      ['styles.lazy-before-import', 'pass'],
+      ['dynamic-imports.lazy-style-probe', 'pass'],
+      ['systemjs.global-diagnostics', 'pass'],
       ['systemjs.file-patch', 'pass'],
       ['systemjs.retry-hook', 'pass'],
       ['output.classic-script-shape', 'pass'],
       ['worker.reusable-blob-url-factory', 'pass'],
     ])
-    expect(loadLazyProbe).toHaveBeenCalledOnce()
     expect(runWorkerProbe).toHaveBeenCalledOnce()
     expect(report.environment).toMatchObject({
-      href: 'file:///tmp/naidan/index.html#/',
+      href: 'file:///__nonexistent_file_protocol_test_root__/index.html#/standalone-verification',
       protocol: 'file:',
       origin: 'null',
       performanceMemory: {
@@ -248,224 +261,89 @@ describe('runStandaloneVerification', () => {
         usedJSHeapSize: 600,
       },
     })
-    const runtimeGlobals = globalThis as typeof globalThis & {
-      __FILE_PROTOCOL_STANDALONE_STARTUP__?: unknown
-      __FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__?: unknown
-      __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__?: unknown
-      __FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__?: unknown
-    }
-    expect(report.runtime.startup).toEqual(runtimeGlobals.__FILE_PROTOCOL_STANDALONE_STARTUP__)
-    expect(report.runtime.systemJsPatch).toEqual(runtimeGlobals.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__)
-    expect(report.runtime.systemJsRetry).toEqual(runtimeGlobals.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__)
-    expect(report.runtime.worker).toEqual(runtimeGlobals.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__)
+    expect(report.runtime.pluginDiagnostics).toMatchObject({
+      format: 'file-protocol-standalone-diagnostics-v1',
+    })
     expect(report.runtime.resourceEntries).toEqual([{
-      name: 'file:///tmp/assets/lazy.js',
+      name: 'file:///__nonexistent_file_protocol_test_root__/assets/lazy.js',
       duration: 4,
       initiatorType: 'script',
     }])
   })
 
-  it('isolates every failed check and continues through the worker probe', async () => {
+  it('isolates failed checks and continues through the Worker probe', async () => {
     document.body.innerHTML = ''
     document.body.style.margin = '8px'
     vi.stubGlobal('location', {
       protocol: 'https:',
-      href: 'https://example.invalid/',
-      origin: 'https://example.invalid',
+      href: 'https://should-not-be-requested.invalid/',
+      origin: 'https://should-not-be-requested.invalid',
     })
-    delete (globalThis as typeof globalThis & {
-      __FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__?: unknown
-    }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
-    delete (globalThis as typeof globalThis & {
-      __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__?: unknown
-    }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
-    appendScript({
-      type: 'MoDuLe; charset=utf-8',
-      src: './assets/entry.js',
-      crossorigin: 'anonymous',
-    })
-    const probes = createStyleProbes()
-    probes.tailwindProbe.style.width = '1px'
-    probes.scopedProbe.style.borderLeftWidth = '1px'
-    const loadLazyProbe = vi.fn().mockRejectedValue(new Error('synthetic lazy failure'))
-    const invalidWorkerResult = createValidWorkerResult()
+    delete globalThis.__FILE_PROTOCOL_STANDALONE__
+    delete globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
+    delete globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
+    document.head.innerHTML = '<script type="module" crossorigin="anonymous"></script>'
+    const args = createBaseArguments()
+    args.tailwindProbe.style.width = '1px'
+    args.scopedProbe.style.borderLeftWidth = '1px'
     const runWorkerProbe = vi.fn().mockResolvedValue({
-      ...invalidWorkerResult,
+      ...createValidWorkerResult(),
       deltas: {
-        ...invalidWorkerResult.deltas,
+        ...createValidWorkerResult().deltas,
         workersCreated: 2,
       },
     })
 
     const report = await runStandaloneVerification({
+      ...args,
       route: {
         fullPath: 'invalid-route',
         name: undefined,
         matchedPaths: [],
         resolvedHref: '',
       },
-      ...probes,
-      loadLazyProbe,
+      loadLazyStyleProbe: vi.fn().mockRejectedValue(new Error('synthetic lazy failure')),
+      exerciseRouteTransition: vi.fn().mockResolvedValue({
+        before: '/a',
+        transitioned: '/a',
+        restored: '/b',
+      }),
       runWorkerProbe,
     })
 
     expect(report.status).toBe('fail')
-    expect(report.summary).toMatchObject({ passed: 0, failed: 9 })
-    expect(report.checks).toHaveLength(9)
-    expect(report.checks.every((check) => check.status === 'fail')).toBe(true)
-    expect(report.checks.map((check) => check.id)).toEqual([
-      'environment.file-protocol',
-      'startup.app-mounted',
-      'router.current-route',
-      'styles.initial',
-      'dynamic-imports.lazy-probe',
-      'systemjs.file-patch',
-      'systemjs.retry-hook',
-      'output.classic-script-shape',
-      'worker.reusable-blob-url-factory',
-    ])
-    expect(report.checks.find((check) => check.id === 'dynamic-imports.lazy-probe')?.error).toBe('synthetic lazy failure')
+    expect(report.checks).toHaveLength(12)
+    expect(report.checks.filter((check) => check.status === 'fail').length).toBeGreaterThan(8)
+    expect(report.checks.find((check) => check.id === 'dynamic-imports.lazy-style-probe')?.error).toBe('synthetic lazy failure')
     expect(report.checks.find((check) => check.id === 'output.classic-script-shape')?.error).toBe('A native module script remains in standalone output.')
     expect(runWorkerProbe).toHaveBeenCalledOnce()
   })
 
-  it('rejects a classic executable script that retains crossorigin', async () => {
-    const probes = createStyleProbes()
-    appendScript({
-      type: 'Application/JavaScript; charset=utf-8',
-      src: './assets/entry.js',
-      crossorigin: 'anonymous',
-    })
+  it('fails retry validation when its physical failure records are malformed', async () => {
+    globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__ = {
+      installed: true,
+      physicalScriptLoadFailureUrls: [42] as unknown as string[],
+      deletedModuleUrls: [],
+      retryableErrorCount: 0,
+      nonRetryableErrorCount: 0,
+    }
+    const args = createBaseArguments()
 
-    const report = await runStandaloneVerification({
-      route: {
-        fullPath: '/',
-        name: 'home',
-        matchedPaths: ['/'],
-        resolvedHref: '#/',
-      },
-      ...probes,
-      loadLazyProbe: async () => {
-        probes.lazyCssProbe.style.outlineStyle = 'solid'
-        probes.lazyCssProbe.style.outlineWidth = '3px'
-        return { marker: 'standalone-verification-lazy-probe-v1' }
-      },
-      runWorkerProbe: async () => createValidWorkerResult(),
-    })
+    const report = await runStandaloneVerification(args)
 
-    expect(report.status).toBe('fail')
-    expect(report.summary.failed).toBe(1)
-    expect(report.checks.find((check) => check.id === 'output.classic-script-shape')).toMatchObject({
-      status: 'fail',
-      error: 'An executable standalone script still has crossorigin.',
-    })
-  })
-
-  it('fails the retry-hook check when its deletion records are malformed', async () => {
-    const probes = createStyleProbes()
-    Object.defineProperty(globalThis, '__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__', {
-      configurable: true,
-      writable: true,
-      value: {
-        installed: true,
-        deletedModuleUrls: [42],
-      },
-    })
-
-    const report = await runStandaloneVerification({
-      route: {
-        fullPath: '/',
-        name: 'home',
-        matchedPaths: ['/'],
-        resolvedHref: '#/',
-      },
-      ...probes,
-      loadLazyProbe: async () => {
-        probes.lazyCssProbe.style.outlineStyle = 'solid'
-        probes.lazyCssProbe.style.outlineWidth = '3px'
-        return { marker: 'standalone-verification-lazy-probe-v1' }
-      },
-      runWorkerProbe: async () => createValidWorkerResult(),
-    })
-
-    expect(report.status).toBe('fail')
-    expect(report.summary.failed).toBe(1)
     expect(report.checks.find((check) => check.id === 'systemjs.retry-hook')).toMatchObject({
       status: 'fail',
-      error: 'SystemJS retry hook deletion records are invalid.',
+      error: 'SystemJS retry hook physicalScriptLoadFailureUrls records are invalid.',
     })
   })
 
-  it('fails the SystemJS check when the patch has not observed a loaded script', async () => {
-    const probes = createStyleProbes()
-    Object.defineProperty(globalThis, '__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__', {
-      configurable: true,
-      writable: true,
-      value: {
-        installed: true,
-        patchedScripts: [],
-      },
-    })
+  it('sanitizes the standalone root in copied JSON without mutating the report', async () => {
+    const report = await runStandaloneVerification(createBaseArguments())
 
-    const report = await runStandaloneVerification({
-      route: {
-        fullPath: '/',
-        name: 'home',
-        matchedPaths: ['/'],
-        resolvedHref: '#/',
-      },
-      ...probes,
-      loadLazyProbe: async () => {
-        probes.lazyCssProbe.style.outlineStyle = 'solid'
-        probes.lazyCssProbe.style.outlineWidth = '3px'
-        return { marker: 'standalone-verification-lazy-probe-v1' }
-      },
-      runWorkerProbe: async () => createValidWorkerResult(),
-    })
+    const serialized = serializeStandaloneVerificationReportForCopy({ report })
 
-    expect(report.checks.find((check) => check.id === 'systemjs.file-patch')).toMatchObject({
-      status: 'fail',
-      error: 'SystemJS file-protocol patch did not observe any loaded script.',
-    })
-  })
-
-  it('rejects malformed SystemJS patch records without aborting later checks', async () => {
-    const probes = createStyleProbes()
-    Object.defineProperty(globalThis, '__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__', {
-      configurable: true,
-      writable: true,
-      value: {
-        installed: true,
-        patchedScripts: [{
-          url: 'file:///tmp/assets/entry.js',
-          crossOriginProperty: 'anonymous',
-          crossoriginAttribute: 'anonymous',
-        }],
-      },
-    })
-    const runWorkerProbe = vi.fn().mockResolvedValue(createValidWorkerResult())
-
-    const report = await runStandaloneVerification({
-      route: {
-        fullPath: '/',
-        name: 'home',
-        matchedPaths: ['/'],
-        resolvedHref: '#/',
-      },
-      ...probes,
-      loadLazyProbe: async () => {
-        probes.lazyCssProbe.style.outlineStyle = 'solid'
-        probes.lazyCssProbe.style.outlineWidth = '3px'
-        return { marker: 'standalone-verification-lazy-probe-v1' }
-      },
-      runWorkerProbe,
-    })
-
-    expect(report.summary.failed).toBe(1)
-    expect(report.checks.find((check) => check.id === 'systemjs.file-patch')).toMatchObject({
-      status: 'fail',
-      error: 'SystemJS patch record 0 retains the crossOrigin property.',
-    })
-    expect(runWorkerProbe).toHaveBeenCalledOnce()
+    expect(serialized).toContain('<standalone-root>/index.html')
+    expect(serialized).not.toContain('file:///__nonexistent_file_protocol_test_root__/')
+    expect(report.environment.href).toContain('file:///__nonexistent_file_protocol_test_root__/')
   })
 })

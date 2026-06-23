@@ -1,9 +1,6 @@
 import { JSDOM } from 'jsdom'
 import { describe, expect, it, vi } from 'vitest'
-import {
-  createEntryImportSource,
-  removeTrailingSourceMapDirective,
-} from './file-protocol-standalone'
+import { createEntryImportSource } from './file-protocol-standalone'
 
 type StartupState = Readonly<{
   phase: string
@@ -34,7 +31,7 @@ function executeEntryLoader({
   consoleError: ReturnType<typeof vi.fn>
 }> {
   const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
-    url: 'file:///tmp/naidan/index.html',
+    url: 'file:///__nonexistent_file_protocol_test_root__/index.html',
   })
   const callbacks: Array<() => void> = []
   const globalObject: Record<string, unknown> = {
@@ -93,28 +90,25 @@ function readStartupState({ globalObject }: {
 }
 
 describe('standalone startup entry loader', () => {
-  it('removes only a trailing source map directive from the emitted SystemJS runtime', () => {
-    const trailingDirective = '//# ' + 'sourceMappingURL=system.min.js.map'
-    const nonTrailingDirective = '//# ' + 'sourceMappingURL=kept-because-not-final.map'
+  it('exposes read-only diagnostics before the application entry resolves', () => {
+    const harness = executeEntryLoader({
+      systemImport: () => new Promise(() => {}),
+      watchdogTimeoutMs: 25,
+    })
+    const diagnostics = harness.globalObject['__FILE_PROTOCOL_STANDALONE__'] as Readonly<{
+      getDiagnostics: () => Readonly<Record<string, unknown>>
+    }>
 
-    expect(removeTrailingSourceMapDirective({
-      source: `\
-console.log('runtime')
-${trailingDirective}
-`,
-    })).toBe(`\
-console.log('runtime')
-`)
-
-    expect(removeTrailingSourceMapDirective({
-      source: `\
-${nonTrailingDirective}
-console.log('runtime')
-`,
-    })).toBe(`\
-${nonTrailingDirective}
-console.log('runtime')
-`)
+    const snapshot = diagnostics.getDiagnostics()
+    expect(snapshot).toMatchObject({
+      format: 'file-protocol-standalone-diagnostics-v1',
+      startup: {
+        phase: 'importing-entry',
+        entryFileName: 'assets/index-legacy.js',
+      },
+    })
+    ;(snapshot.startup as { phase: string }).phase = 'mutated-from-devtools'
+    expect(readStartupState({ globalObject: harness.globalObject }).phase).toBe('importing-entry')
   })
 
   it('records an import rejection and renders diagnostics before Vue exists', async () => {

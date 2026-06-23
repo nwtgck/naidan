@@ -18,6 +18,12 @@ export type StandaloneVerificationRouteSnapshot = Readonly<{
   resolvedHref: string
 }>
 
+export type StandaloneVerificationRouteTransition = Readonly<{
+  before: string
+  transitioned: string
+  restored: string
+}>
+
 export type StandaloneVerificationReport = Readonly<{
   format: 'naidan-standalone-verification-v1'
   generatedAt: string
@@ -37,6 +43,7 @@ export type StandaloneVerificationReport = Readonly<{
   }>
   checks: readonly StandaloneVerificationCheck[]
   runtime: Readonly<{
+    pluginDiagnostics: unknown
     startup: unknown
     systemJsPatch: unknown
     systemJsRetry: unknown
@@ -56,13 +63,16 @@ type SystemJsPatchRecord = Readonly<{
 }>
 
 type SystemJsPatchState = Readonly<{
-  installed: boolean
+  installed: true
   patchedScripts: readonly SystemJsPatchRecord[]
 }>
 
 type SystemJsRetryState = Readonly<{
   installed: true
+  physicalScriptLoadFailureUrls: readonly string[]
   deletedModuleUrls: readonly string[]
+  retryableErrorCount: number
+  nonRetryableErrorCount: number
 }>
 
 const executableScriptTypes = new Set([
@@ -124,10 +134,7 @@ function readPerformanceMemory(): Readonly<Record<string, number>> | undefined {
 }
 
 function readSystemJsPatchState(): SystemJsPatchState {
-  const value = (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__?: unknown
-  }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
-
+  const value = globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
   if (typeof value !== 'object' || value === null) {
     throw new Error('SystemJS file-protocol patch state is missing.')
   }
@@ -186,31 +193,46 @@ function readSystemJsPatchState(): SystemJsPatchState {
 }
 
 function readSystemJsRetryState(): SystemJsRetryState {
-  const value = (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__?: unknown
-  }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
-
+  const value = globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
   if (typeof value !== 'object' || value === null) {
     throw new Error('SystemJS retry hook state is missing.')
   }
 
   const candidate = value as {
     installed?: unknown
+    physicalScriptLoadFailureUrls?: unknown
     deletedModuleUrls?: unknown
+    retryableErrorCount?: unknown
+    nonRetryableErrorCount?: unknown
   }
   assertCondition({
     condition: candidate.installed === true,
     message: 'SystemJS retry hook is not installed.',
   })
+  for (const [field, fieldValue] of [
+    ['physicalScriptLoadFailureUrls', candidate.physicalScriptLoadFailureUrls],
+    ['deletedModuleUrls', candidate.deletedModuleUrls],
+  ] as const) {
+    assertCondition({
+      condition: Array.isArray(fieldValue) && fieldValue.every((url) => typeof url === 'string'),
+      message: `SystemJS retry hook ${field} records are invalid.`,
+    })
+  }
   assertCondition({
-    condition: Array.isArray(candidate.deletedModuleUrls)
-      && candidate.deletedModuleUrls.every((url) => typeof url === 'string'),
-    message: 'SystemJS retry hook deletion records are invalid.',
+    condition: Number.isSafeInteger(candidate.retryableErrorCount) && Number(candidate.retryableErrorCount) >= 0,
+    message: 'SystemJS retryable error count is invalid.',
+  })
+  assertCondition({
+    condition: Number.isSafeInteger(candidate.nonRetryableErrorCount) && Number(candidate.nonRetryableErrorCount) >= 0,
+    message: 'SystemJS non-retryable error count is invalid.',
   })
 
   return {
     installed: true,
+    physicalScriptLoadFailureUrls: [...candidate.physicalScriptLoadFailureUrls as string[]],
     deletedModuleUrls: [...candidate.deletedModuleUrls as string[]],
+    retryableErrorCount: candidate.retryableErrorCount as number,
+    nonRetryableErrorCount: candidate.nonRetryableErrorCount as number,
   }
 }
 
@@ -227,6 +249,12 @@ function readOutputScriptShape(): readonly Readonly<{
     crossorigin: script.getAttribute('crossorigin') || undefined,
   }))
   const executableScripts = scripts.filter((script) => isExecutableScriptType({ type: script.type }))
+  const expectedExecutableIds = [
+    'file-protocol-standalone-systemjs-runtime',
+    'file-protocol-standalone-systemjs-file-patch',
+    'file-protocol-standalone-systemjs-retry-hook',
+    'file-protocol-standalone-entry',
+  ]
 
   assertCondition({
     condition: scripts.every((script) => normalizeScriptType({ type: script.type }) !== 'module'),
@@ -235,6 +263,10 @@ function readOutputScriptShape(): readonly Readonly<{
   assertCondition({
     condition: executableScripts.every((script) => script.crossorigin === undefined),
     message: 'An executable standalone script still has crossorigin.',
+  })
+  assertCondition({
+    condition: JSON.stringify(executableScripts.map((script) => script.id)) === JSON.stringify(expectedExecutableIds),
+    message: 'Standalone executable scripts are missing or out of order.',
   })
 
   return scripts
@@ -258,24 +290,54 @@ function validateWorkerResult({ result }: { result: StandaloneWorkerVerification
     message: 'A Worker highlight round trip returned an empty result.',
   })
   assertCondition({
+    condition: result.weshFileProbe.exitCode === 0,
+    message: `Wesh file verification exited with ${result.weshFileProbe.exitCode}.`,
+  })
+  assertCondition({
+    condition: result.weshFileProbe.stdout === '/bin/sh: text/x-shellscript\n',
+    message: `Unexpected Wesh file verification output: ${JSON.stringify(result.weshFileProbe.stdout)}`,
+  })
+  assertCondition({
+    condition: result.weshFileProbe.stderr === '',
+    message: `Wesh file verification wrote stderr: ${result.weshFileProbe.stderr}`,
+  })
+  assertCondition({
     condition: before.activeWorkers === after.activeWorkers,
     message: 'Verification leaked an active Worker.',
   })
+}
+
+async function waitForStyleApplication(): Promise<void> {
+  if (typeof requestAnimationFrame === 'function') {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    return
+  }
+  await Promise.resolve()
+}
+
+function readPluginDiagnostics(): unknown {
+  const diagnostics = globalThis.__FILE_PROTOCOL_STANDALONE__
+  if (diagnostics === undefined || typeof diagnostics.getDiagnostics !== 'function') {
+    throw new Error('The standalone global diagnostics API is missing.')
+  }
+  return diagnostics.getDiagnostics()
 }
 
 export async function runStandaloneVerification({
   route,
   tailwindProbe,
   scopedProbe,
-  lazyCssProbe,
-  loadLazyProbe,
+  lazyStyleProbe,
+  loadLazyStyleProbe,
+  exerciseRouteTransition,
   runWorkerProbe,
 }: {
   route: StandaloneVerificationRouteSnapshot
   tailwindProbe: HTMLElement
   scopedProbe: HTMLElement
-  lazyCssProbe: HTMLElement
-  loadLazyProbe: () => Promise<Readonly<{ marker: string }>>
+  lazyStyleProbe: HTMLElement
+  loadLazyStyleProbe: () => Promise<Readonly<{ marker: string }>>
+  exerciseRouteTransition: () => Promise<StandaloneVerificationRouteTransition>
   runWorkerProbe: () => Promise<StandaloneWorkerVerificationResult>
 }): Promise<StandaloneVerificationReport> {
   const startedAt = performance.now()
@@ -329,7 +391,15 @@ export async function runStandaloneVerification({
       const app = document.querySelector('#app')
       assertCondition({ condition: app !== null, message: 'The #app element is missing.' })
       assertCondition({ condition: app?.childElementCount !== 0, message: 'The Vue application is not mounted.' })
-      return { readyState: document.readyState, appChildElementCount: app?.childElementCount ?? 0 }
+      assertCondition({
+        condition: globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__?.phase === 'mounted',
+        message: `Startup phase is ${String(globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__?.phase)} instead of mounted.`,
+      })
+      return {
+        readyState: document.readyState,
+        appChildElementCount: app?.childElementCount ?? 0,
+        startup: globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__,
+      }
     },
   })
 
@@ -337,9 +407,21 @@ export async function runStandaloneVerification({
     id: 'router.current-route',
     category: 'router',
     action: () => {
-      assertCondition({ condition: route.fullPath.startsWith('/'), message: `Current route is invalid: ${route.fullPath}` })
+      assertCondition({ condition: route.fullPath.startsWith('/standalone-verification'), message: `Current route is invalid: ${route.fullPath}` })
       assertCondition({ condition: route.resolvedHref.length > 0, message: 'Router did not resolve the current route.' })
+      assertCondition({ condition: route.matchedPaths.includes('/standalone-verification'), message: 'Verification route is not matched.' })
       return route
+    },
+  })
+
+  await check({
+    id: 'router.query-transition',
+    category: 'router',
+    action: async () => {
+      const transition = await exerciseRouteTransition()
+      assertCondition({ condition: transition.transitioned !== transition.before, message: 'Router transition did not change the route.' })
+      assertCondition({ condition: transition.restored === transition.before, message: 'Router transition did not restore the original route.' })
+      return transition
     },
   })
 
@@ -365,16 +447,35 @@ export async function runStandaloneVerification({
   })
 
   await check({
-    id: 'dynamic-imports.lazy-probe',
+    id: 'styles.lazy-before-import',
+    category: 'styles',
+    action: () => {
+      const outlineWidth = getComputedStyle(lazyStyleProbe).outlineWidth
+      assertCondition({ condition: outlineWidth !== '3px', message: 'Lazy CSS was already applied before its dynamic import.' })
+      return { outlineWidth }
+    },
+  })
+
+  await check({
+    id: 'dynamic-imports.lazy-style-probe',
     category: 'dynamic-imports',
     action: async () => {
-      const loaded = await loadLazyProbe()
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      const outlineWidth = getComputedStyle(lazyCssProbe).outlineWidth
-      assertCondition({ condition: loaded.marker === 'standalone-verification-lazy-probe-v1', message: `Unexpected lazy marker: ${loaded.marker}` })
+      const loaded = await loadLazyStyleProbe()
+      await waitForStyleApplication()
+      const outlineWidth = getComputedStyle(lazyStyleProbe).outlineWidth
+      assertCondition({
+        condition: loaded.marker === 'standalone-verification-lazy-style-probe-v1',
+        message: `Unexpected lazy marker: ${loaded.marker}`,
+      })
       assertCondition({ condition: outlineWidth === '3px', message: `Lazy CSS outline is ${outlineWidth}.` })
       return { marker: loaded.marker, outlineWidth }
     },
+  })
+
+  await check({
+    id: 'systemjs.global-diagnostics',
+    category: 'systemjs',
+    action: () => readPluginDiagnostics(),
   })
 
   await check({
@@ -406,15 +507,7 @@ export async function runStandaloneVerification({
   })
 
   const failed = checks.filter((item) => item.status === 'fail').length
-  const systemJsPatch = (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__?: unknown
-  }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
-  const systemJsRetry = (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__?: unknown
-  }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
-  const workerRuntime = (globalThis as typeof globalThis & {
-    __FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__?: Record<string, unknown>
-  }).__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__
+  const pluginDiagnostics = globalThis.__FILE_PROTOCOL_STANDALONE__?.getDiagnostics()
 
   return {
     format: 'naidan-standalone-verification-v1',
@@ -435,12 +528,11 @@ export async function runStandaloneVerification({
     },
     checks,
     runtime: {
-      startup: (globalThis as typeof globalThis & {
-        __FILE_PROTOCOL_STANDALONE_STARTUP__?: unknown
-      }).__FILE_PROTOCOL_STANDALONE_STARTUP__,
-      systemJsPatch: systemJsPatch ?? undefined,
-      systemJsRetry: systemJsRetry ?? undefined,
-      worker: workerRuntime ?? undefined,
+      pluginDiagnostics: pluginDiagnostics ?? undefined,
+      startup: globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__,
+      systemJsPatch: globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__,
+      systemJsRetry: globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__,
+      worker: globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__,
       resourceEntries: performance.getEntriesByType('resource').map((entry) => {
         const resource = entry as PerformanceResourceTiming
         return {
@@ -451,4 +543,26 @@ export async function runStandaloneVerification({
       }),
     },
   }
+}
+
+export function serializeStandaloneVerificationReportForCopy({
+  report,
+}: {
+  report: StandaloneVerificationReport
+}): string {
+  let standaloneRoot: string | undefined
+  try {
+    if (report.environment.protocol === 'file:') {
+      standaloneRoot = new URL('./', report.environment.href).href
+    }
+  } catch {
+    standaloneRoot = undefined
+  }
+
+  return JSON.stringify(report, (_key, value: unknown) => {
+    if (standaloneRoot !== undefined && typeof value === 'string') {
+      return value.replaceAll(standaloneRoot, '<standalone-root>/')
+    }
+    return value
+  }, 2)
 }

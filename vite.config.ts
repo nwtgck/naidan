@@ -14,7 +14,10 @@ import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js'
-import { fileProtocolStandalone } from './build/file-protocol-standalone.js'
+import {
+  fileProtocolStandalone,
+  type FileProtocolStandaloneLicenseDependency,
+} from './build/file-protocol-standalone.js'
 import { FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID } from './src/models/constants'
 import license from 'rollup-plugin-license'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
@@ -37,11 +40,20 @@ if (!fs.existsSync(licensesPath)) {
   }]))
 }
 
-interface LicenseDependency {
-  name: string
-  version: string
-  license: string
-  licenseText: string
+type LicenseDependency = FileProtocolStandaloneLicenseDependency
+
+function mergeLicenseDependencies({ dependencies, additions }: {
+  dependencies: readonly LicenseDependency[]
+  additions: readonly LicenseDependency[]
+}): readonly LicenseDependency[] {
+  const merged = new Map<string, LicenseDependency>()
+  for (const dependency of [...dependencies, ...additions]) {
+    merged.set(`${dependency.name}\0${dependency.version}`, dependency)
+  }
+  return [...merged.values()].sort((left, right) => {
+    const nameOrder = left.name.localeCompare(right.name)
+    return nameOrder === 0 ? left.version.localeCompare(right.version) : nameOrder
+  })
 }
 
 function setCrossOriginResourcePolicy({ res }: {
@@ -56,6 +68,22 @@ function setCrossOriginModuleHeaders({ res }: {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
   res.setHeader('Access-Control-Allow-Origin', '*')
 }
+
+const standaloneBrowserSupport = {
+  // @vitejs/plugin-legacy consumes Browserslist queries, while the nested
+  // Worker build consumes Vite/esbuild targets. Keep both representations next
+  // to each other so one compatibility decision cannot silently drift.
+  legacy: ['Firefox >= 140', 'Chrome >= 140'],
+  worker: ['firefox140', 'chrome140'],
+} as const
+
+const standaloneBuildBudgets = {
+  // The attached baseline report measured 631,232 entry bytes and 1,033,893
+  // initial-request bytes. These limits leave about 19% and 16% headroom while
+  // still failing on a meaningful initial-load regression.
+  maxInitialEntryBytes: 750_000,
+  maxInitialRequestBytes: 1_200_000,
+} as const
 
 const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch'
 const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/services/privacy-fetch/'
@@ -231,6 +259,7 @@ export default defineConfig(({ mode }) => {
       resolvePath: ensureExistingPath,
     })
     : []
+  let standaloneAdditionalLicenseDependencies: readonly LicenseDependency[] = []
   return {
     base: './',
     server: {
@@ -278,6 +307,7 @@ export default defineConfig(({ mode }) => {
       VueDevTools(),
       vue(),
       isStandalone && legacy({
+        targets: [...standaloneBrowserSupport.legacy],
         renderModernChunks: false,
         renderLegacyChunks: true,
         externalSystemJS: true,
@@ -305,7 +335,11 @@ export default defineConfig(({ mode }) => {
             {
               file: licensesPath,
               template(dependencies: LicenseDependency[]) {
-                return JSON.stringify(dependencies.map((dep: LicenseDependency) => ({
+                const mergedDependencies = mergeLicenseDependencies({
+                  dependencies,
+                  additions: standaloneAdditionalLicenseDependencies,
+                })
+                return JSON.stringify(mergedDependencies.map((dep: LicenseDependency) => ({
                   name: dep.name,
                   version: dep.version,
                   license: dep.license,
@@ -316,12 +350,16 @@ export default defineConfig(({ mode }) => {
             isStandalone && {
               file: path.resolve(__dirname, outDir, 'THIRD_PARTY_LICENSES.txt'),
               template(dependencies: LicenseDependency[]) {
-                return dependencies.map((dep: LicenseDependency) => (
+                const mergedDependencies = mergeLicenseDependencies({
+                  dependencies,
+                  additions: standaloneAdditionalLicenseDependencies,
+                })
+                return mergedDependencies.map((dep: LicenseDependency) => (
                   `Name: ${dep.name}\n` +
                   `Version: ${dep.version}\n` +
-                  `License: ${dep.license}\n` +
+                  `License: ${dep.license ?? 'Unknown'}\n` +
                   `--------------------------------------------------------------------------------\n` +
-                  `${dep.licenseText}\n` +
+                  `${dep.licenseText ?? 'License text unavailable.'}\n` +
                   `================================================================================\n`
                 )).join('\n');
               },
@@ -331,12 +369,16 @@ export default defineConfig(({ mode }) => {
       }),
       !isStandalone && manualGzipWasmPlugin({ outDir }),
       isStandalone && fileProtocolStandalone({
+        workerTarget: [...standaloneBrowserSupport.worker],
         reportFile: 'dist/standalone-build-report.json',
         workers: [{
           id: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
           entry: 'src/services/worker-hub-standalone.worker.ts',
         }],
-        budgets: undefined,
+        budgets: standaloneBuildBudgets,
+        onAdditionalLicenseDependencies({ dependencies }) {
+          standaloneAdditionalLicenseDependencies = dependencies
+        },
       }),
       // Packaging remains separate from file-protocol transformation so the
       // plugin can be reused without assuming Naidan's ZIP layout.

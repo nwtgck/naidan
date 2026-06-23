@@ -4,6 +4,7 @@ import type { FileProtocolWorkerDiagnostics } from 'virtual:file-protocol-standa
 import {
   runStandaloneWorkerFactoryVerificationWithDependencies,
   type StandaloneWorkerRoundTripResult,
+  type StandaloneWeshFileProbeResult,
 } from './worker-probe'
 
 type MutableDiagnostics = {
@@ -89,15 +90,22 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
         htmlLength: source.length,
       }
     })
+    const runFileProbe = vi.fn(async (): Promise<StandaloneWeshFileProbeResult> => ({
+      exitCode: 0,
+      stdout: '/bin/sh: text/x-shellscript\n',
+      stderr: '',
+    }))
 
     const result = await runStandaloneWorkerFactoryVerificationWithDependencies({
       createWorker,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip,
+      runFileProbe,
     })
 
     expect(createWorker).toHaveBeenCalledTimes(3)
     expect(runRoundTrip).toHaveBeenCalledTimes(3)
+    expect(runFileProbe).toHaveBeenCalledOnce()
     expect(sources).toEqual([
       '{"probe":"concurrent-a"}',
       '{"probe":"concurrent-b"}',
@@ -111,6 +119,11 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
     expect(result.recreated).toEqual({
       resolvedLanguage: 'json',
       htmlLength: 37,
+    })
+    expect(result.weshFileProbe).toEqual({
+      exitCode: 0,
+      stdout: '/bin/sh: text/x-shellscript\n',
+      stderr: '',
     })
     expect(result.deltas).toEqual({
       workersCreated: 3,
@@ -141,15 +154,18 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
       }
       return { resolvedLanguage: 'json', htmlLength: source.length }
     })
+    const runFileProbe = vi.fn()
 
     await expect(runStandaloneWorkerFactoryVerificationWithDependencies({
       createWorker,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip,
+      runFileProbe,
     })).rejects.toThrow('synthetic round-trip failure')
 
     expect(createWorker).toHaveBeenCalledTimes(2)
     expect(terminateCalls).toEqual([0, 1])
+    expect(runFileProbe).not.toHaveBeenCalled()
     expect(mutable).toEqual({
       workersCreated: 2,
       workersTerminated: 2,
@@ -169,15 +185,53 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
       activeWorkers: 1,
     }
     const runRoundTrip = vi.fn()
+    const runFileProbe = vi.fn()
 
     await expect(runStandaloneWorkerFactoryVerificationWithDependencies({
       createWorker,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip,
+      runFileProbe,
     })).rejects.toThrow('synthetic worker creation failure')
 
     expect(createWorker).toHaveBeenCalledTimes(2)
     expect(terminate).toHaveBeenCalledOnce()
     expect(runRoundTrip).not.toHaveBeenCalled()
+    expect(runFileProbe).not.toHaveBeenCalled()
+  })
+
+  it('terminates the recreated Worker when the Wesh file probe fails', async () => {
+    const mutable: MutableDiagnostics = {
+      workersCreated: 0,
+      workersTerminated: 0,
+      activeWorkers: 0,
+    }
+    const terminateCalls: number[] = []
+    const createWorker = vi.fn(createTrackedWorkerFactory({ mutable, terminateCalls }))
+    const runRoundTrip = vi.fn(async ({ source }: {
+      worker: Worker
+      source: string
+    }): Promise<StandaloneWorkerRoundTripResult> => ({
+      resolvedLanguage: 'json',
+      htmlLength: source.length,
+    }))
+    const runFileProbe = vi.fn(async () => {
+      throw new Error('synthetic Wesh file probe failure')
+    })
+
+    await expect(runStandaloneWorkerFactoryVerificationWithDependencies({
+      createWorker,
+      readDiagnostics: () => createDiagnostics({ mutable }),
+      runRoundTrip,
+      runFileProbe,
+    })).rejects.toThrow('synthetic Wesh file probe failure')
+
+    expect(createWorker).toHaveBeenCalledTimes(3)
+    expect(terminateCalls).toEqual([0, 1, 2])
+    expect(mutable).toEqual({
+      workersCreated: 3,
+      workersTerminated: 3,
+      activeWorkers: 0,
+    })
   })
 })

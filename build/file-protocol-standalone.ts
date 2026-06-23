@@ -1,13 +1,46 @@
-import { parse } from 'acorn'
-import { simple } from 'acorn-walk'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { JSDOM } from 'jsdom'
-import { build as viteBuild } from 'vite'
-import type { Plugin, ResolvedConfig } from 'vite'
-import type { OutputAsset, OutputBundle, OutputChunk, RolldownOutput } from 'rolldown'
+import type { BuildOptions, Plugin, ResolvedConfig } from 'vite'
+import type { OutputAsset, OutputBundle, OutputChunk } from 'rolldown'
+
+import {
+  normalizeModuleId,
+  validateClassicJavaScriptSource,
+} from './file-protocol-standalone/javascript-validation'
+import type { RuntimeDynamicImportReport } from './file-protocol-standalone/javascript-validation'
+import {
+  createEntryImportSource,
+  createSystemJsFileProtocolPatchSource,
+  createSystemJsRetryHookSource,
+  readSystemJsLicenseDependency,
+  startupWatchdogTimeoutMs,
+  validateSystemJsRuntimeCapabilities,
+  validateSystemJsSourceMapPair,
+} from './file-protocol-standalone/systemjs'
+import {
+  assertSafeWorkerId,
+  buildWorker,
+  createWorkerRegistrySource,
+  createWorkerVirtualModule,
+  mergeLicenseDependencies,
+  resolvedVirtualWorkerPrefix,
+  splitWorkerSourceForBlob,
+  virtualWorkerPrefix,
+  workerManifestScriptId,
+} from './file-protocol-standalone/worker'
+import type { WorkerBuildResult } from './file-protocol-standalone/worker'
+
+export { normalizeModuleId, validateClassicJavaScriptSource } from './file-protocol-standalone/javascript-validation'
+export {
+  createEntryImportSource,
+  createSystemJsFileProtocolPatchSource,
+  createSystemJsRetryHookSource,
+  validateSystemJsRuntimeCapabilities,
+  validateSystemJsSourceMapPair,
+} from './file-protocol-standalone/systemjs'
+export { splitWorkerSourceForBlob } from './file-protocol-standalone/worker'
 
 export type FileProtocolStandaloneWorker = Readonly<{
   id: string
@@ -19,23 +52,21 @@ export type FileProtocolStandaloneBudgets = Readonly<{
   maxInitialRequestBytes: number | undefined
 }>
 
-export type FileProtocolStandaloneOptions = Readonly<{
-  reportFile: string
-  workers: readonly FileProtocolStandaloneWorker[]
-  budgets: FileProtocolStandaloneBudgets | undefined
+export type FileProtocolStandaloneLicenseDependency = Readonly<{
+  name: string
+  version: string
+  license: string | null
+  licenseText: string | null
 }>
 
-type WorkerBuildResult = Readonly<{
-  id: string
-  entry: string
-  source: string
-  sourceBytes: number
-  sha256: string
-  sourcePartCount: number
-  sourcePartSizeCodeUnits: number
-  moduleIds: readonly string[]
-  runtimeDynamicImportCount: number
-  registryFileName: string
+export type FileProtocolStandaloneOptions = Readonly<{
+  reportFile: string
+  workerTarget: Exclude<BuildOptions['target'], false | undefined>
+  workers: readonly FileProtocolStandaloneWorker[]
+  budgets: FileProtocolStandaloneBudgets | undefined
+  onAdditionalLicenseDependencies: (({ dependencies }: {
+    dependencies: readonly FileProtocolStandaloneLicenseDependency[]
+  }) => void) | undefined
 }>
 
 type InitialRequestReport = Readonly<{
@@ -56,12 +87,13 @@ type ChunkReport = Readonly<{
 }>
 
 type BuildReport = Readonly<{
-  format: 'file-protocol-standalone-build-report-v4'
+  format: 'file-protocol-standalone-build-report-v5'
   generatedAt: string
   plugin: Readonly<{
     name: 'file-protocol-standalone'
     systemJsVersion: string
     systemJsRuntimeFile: string
+    systemJsSourceMapFile: string
     systemJsFileProtocolPatchFile: string
     systemJsRetryHookFile: string
   }>
@@ -74,7 +106,7 @@ type BuildReport = Readonly<{
   }>
   chunks: readonly ChunkReport[]
   styles: Readonly<{
-    strategy: 'external-css-assets' | 'javascript-injected-css'
+    strategy: 'external-css-assets' | 'javascript-injected-css' | 'none'
     assets: readonly Readonly<{ fileName: string, bytes: number, phase: 'initial' | 'lazy' }>[]
   }>
   workers: readonly Readonly<{
@@ -85,7 +117,16 @@ type BuildReport = Readonly<{
     sourcePartCount: number
     sourcePartSizeCodeUnits: number
     moduleIds: readonly string[]
-    runtimeDynamicImportCount: number
+    singleJavaScriptArtifact: true
+    additionalAssetCount: 0
+    staticModuleSyntax: false
+    importMeta: false
+    runtimeDynamicImports: Readonly<{
+      total: number
+      staticSpecifier: number
+      dynamicSpecifier: number
+      occurrences: readonly RuntimeDynamicImportReport[]
+    }>
     sha256: string
     sha256Purpose: string
     registryStrategy: 'classic-script-registers-blob'
@@ -104,698 +145,16 @@ type BuildReport = Readonly<{
   budgets: Readonly<{
     maxInitialEntryBytes: number | undefined
     maxInitialRequestBytes: number | undefined
+    initialEntry: Readonly<{ actual: number, limit: number | undefined, remaining: number | undefined, status: 'pass' | 'fail' | 'disabled' }>
+    initialRequests: Readonly<{ actual: number, limit: number | undefined, remaining: number | undefined, status: 'pass' | 'fail' | 'disabled' }>
   }>
 }>
 
 const pluginName = 'file-protocol-standalone'
 const require = createRequire(import.meta.url)
-const virtualWorkerPrefix = 'virtual:file-protocol-standalone/worker/'
-const resolvedVirtualWorkerPrefix = `\0${virtualWorkerPrefix}`
-const workerRegistryGlobal = '__FILE_PROTOCOL_STANDALONE_WORKER_BLOBS__'
-const workerRuntimeGlobal = '__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__'
-const workerManifestScriptId = 'file-protocol-standalone-worker-manifest'
-const workerSourcePartSizeCodeUnits = 64 * 1024
-const startupGlobal = '__FILE_PROTOCOL_STANDALONE_STARTUP__'
-const startupWatchdogTimeoutMs = 15_000
-
-function sha256({ source }: { source: string | Uint8Array }): string {
-  return createHash('sha256').update(source).digest('hex')
-}
 
 function byteLength({ source }: { source: string }): number {
   return Buffer.byteLength(source, 'utf8')
-}
-
-/** @internal Exported for focused plugin tests. */
-export function removeTrailingSourceMapDirective({ source }: { source: string }): string {
-  // The SystemJS package points at a sibling map that the standalone build does
-  // not emit. Remove only a final line directive so browser developer tools do
-  // not report a misleading network warning for an intentionally absent file.
-  return source.replace(/(?:\r?\n)?\/\/[#@]\s*sourceMappingURL=[^\r\n]*\s*$/, '\n')
-}
-
-/** @internal Exported for focused plugin tests. */
-export function createEntryImportSource({ entryFileName, watchdogTimeoutMs }: {
-  entryFileName: string
-  watchdogTimeoutMs: number
-}): string {
-  return `/* file-protocol-standalone: import entry with pre-Vue diagnostics */
-(function () {
-  'use strict';
-  var stateName = ${JSON.stringify(startupGlobal)};
-  var now = function () {
-    return globalThis.performance && typeof globalThis.performance.now === 'function'
-      ? globalThis.performance.now()
-      : Date.now();
-  };
-  var state = globalThis[stateName] = {
-    format: 'file-protocol-standalone-startup-v1',
-    phase: 'importing-entry',
-    startedAt: now(),
-    updatedAt: now(),
-    documentReadyState: document.readyState,
-    entryFileName: ${JSON.stringify(entryFileName)},
-    history: [],
-    error: undefined,
-    watchdog: undefined
-  };
-
-  function transition(phase, details) {
-    var at = now();
-    state.phase = phase;
-    state.updatedAt = at;
-    state.documentReadyState = document.readyState;
-    state.history.push({
-      phase: phase,
-      at: at,
-      documentReadyState: document.readyState,
-      details: details
-    });
-  }
-
-  function serializeError(error) {
-    if (error && typeof error === 'object') {
-      return {
-        name: typeof error.name === 'string' ? error.name : 'Error',
-        message: typeof error.message === 'string' ? error.message : String(error),
-        stack: typeof error.stack === 'string' ? error.stack : undefined
-      };
-    }
-    return {
-      name: 'NonErrorThrownValue',
-      message: String(error),
-      stack: undefined
-    };
-  }
-
-  function renderDiagnostic(panelId, title, message) {
-    var previous = document.getElementById(panelId);
-    if (previous) previous.remove();
-    var panel = document.createElement('section');
-    panel.id = panelId;
-    panel.setAttribute('role', 'alert');
-    panel.setAttribute('data-testid', panelId);
-    panel.style.cssText = 'box-sizing:border-box;margin:24px;padding:20px;border:1px solid #dc2626;border-radius:12px;background:#fff7f7;color:#7f1d1d;font:14px/1.5 system-ui,sans-serif;white-space:pre-wrap;overflow-wrap:anywhere';
-    panel.textContent = title + '\\n' + message + '\\nInspect globalThis.' + stateName + ' for startup history.';
-    var host = document.getElementById('app') || document.body || document.documentElement;
-    host.appendChild(panel);
-  }
-
-  function recordWatchdog(stalledPhase) {
-    var at = now();
-    state.watchdog = {
-      firedAt: at,
-      stalledPhase: stalledPhase,
-      timeoutMs: ${watchdogTimeoutMs}
-    };
-    state.history.push({
-      phase: 'startup-watchdog-fired',
-      at: at,
-      documentReadyState: document.readyState,
-      details: {
-        stalledPhase: stalledPhase,
-        timeoutMs: ${watchdogTimeoutMs}
-      }
-    });
-  }
-
-  transition('importing-entry', undefined);
-  setTimeout(function () {
-    var terminalPhase = state.phase === 'mounted'
-      || state.phase === 'entry-imported'
-      || state.phase === 'entry-import-failed'
-      || state.phase === 'bootstrap-failed';
-    if (terminalPhase) return;
-
-    var stalledPhase = state.phase;
-    recordWatchdog(stalledPhase);
-    var appElement = document.getElementById('app');
-    if (appElement && appElement.childElementCount > 0) return;
-    renderDiagnostic(
-      'file-protocol-standalone-startup-watchdog',
-      'Naidan is taking unusually long to start.',
-      'Startup has remained in phase "' + stalledPhase + '" for ${watchdogTimeoutMs} ms.'
-    );
-  }, ${watchdogTimeoutMs});
-  try {
-    Promise.resolve(System.import(${JSON.stringify(`./${entryFileName}`)})).then(function () {
-      // Naidan updates the phase synchronously while its entry executes. Only
-      // use the generic phase when an entry does not participate in diagnostics.
-      if (state.phase === 'importing-entry') transition('entry-imported', undefined);
-    }, function (error) {
-      state.error = serializeError(error);
-      transition('entry-import-failed', { errorName: state.error.name });
-      console.error('[file-protocol-standalone] Entry import failed:', error);
-      renderDiagnostic(
-        'file-protocol-standalone-startup-failure',
-        '[file-protocol-standalone] Entry import failed.',
-        state.error.name + ': ' + state.error.message
-      );
-    });
-  } catch (error) {
-    state.error = serializeError(error);
-    transition('entry-import-failed', { errorName: state.error.name });
-    console.error('[file-protocol-standalone] Entry import failed:', error);
-    renderDiagnostic(
-      'file-protocol-standalone-startup-failure',
-      '[file-protocol-standalone] Entry import failed.',
-      state.error.name + ': ' + state.error.message
-    );
-  }
-})();
-`
-}
-
-/** @internal Exported for focused plugin tests. */
-export function validateSystemJsRuntimeCapabilities({ source }: { source: string }): void {
-  const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
-    url: 'file:///file-protocol-standalone/runtime-validation.html',
-    runScripts: 'outside-only',
-  })
-
-  try {
-    dom.window.eval(source)
-    const system = (dom.window as unknown as { System?: Record<string, unknown> }).System
-    const requiredApis = ['import', 'resolve', 'instantiate', 'delete'] as const
-    const missingApis: string[] = requiredApis.filter((api) => typeof system?.[api] !== 'function')
-    const constructor = system?.constructor as { prototype?: Record<string, unknown> } | undefined
-    if (typeof constructor?.prototype?.createScript !== 'function') {
-      missingApis.push('createScript')
-    }
-
-    if (missingApis.length > 0) {
-      throw new Error(
-        `[${pluginName}] SystemJS runtime is missing APIs required by the file:// patches: ${missingApis.join(', ')}.`,
-      )
-    }
-  } finally {
-    dom.window.close()
-  }
-}
-
-/** @internal Exported for focused plugin tests. */
-export function normalizeModuleId({ root, moduleId }: {
-  root: string
-  moduleId: string
-}): string {
-  const normalized = moduleId.replaceAll('\\', '/')
-  const normalizedRoot = root.replaceAll('\\', '/').replace(/\/$/, '')
-  if (normalized.startsWith(`${normalizedRoot}/`)) {
-    return `/${normalized.slice(normalizedRoot.length + 1)}`
-  }
-  if (normalized.startsWith('\0')) {
-    return normalized.slice(1)
-  }
-  if (normalized.includes('/node_modules/')) {
-    return `/node_modules/${normalized.split('/node_modules/')[1]}`
-  }
-  return normalized
-}
-
-function assertSafeWorkerId({ workerId }: { workerId: string }): void {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(workerId)) {
-    throw new Error(`[${pluginName}] Worker id must match ^[a-z0-9][a-z0-9-]*$: ${workerId}`)
-  }
-}
-
-/** @internal Exported for focused plugin tests. */
-export function splitWorkerSourceForBlob({ source, maxCodeUnits }: {
-  source: string
-  maxCodeUnits: number
-}): string[] {
-  const parts: string[] = []
-  let start = 0
-
-  while (start < source.length) {
-    let end = Math.min(source.length, start + maxCodeUnits)
-
-    // Blob converts each string part independently. Splitting a surrogate pair
-    // would replace both separated halves with U+FFFD and corrupt the worker.
-    if (end < source.length) {
-      const previous = source.charCodeAt(end - 1)
-      const next = source.charCodeAt(end)
-      const previousIsHighSurrogate = previous >= 0xD800 && previous <= 0xDBFF
-      const nextIsLowSurrogate = next >= 0xDC00 && next <= 0xDFFF
-      if (previousIsHighSurrogate && nextIsLowSurrogate) {
-        end -= 1
-      }
-    }
-
-    parts.push(source.slice(start, end))
-    start = end
-  }
-
-  return parts.length > 0 ? parts : ['']
-}
-
-/** @internal Exported for focused plugin tests. */
-export function validateClassicJavaScriptSource({
-  source,
-  label,
-  allowRuntimeDynamicImport,
-}: {
-  source: string
-  label: string
-  allowRuntimeDynamicImport: boolean
-}): Readonly<{ runtimeDynamicImportCount: number }> {
-  const ast = parse(source, {
-    ecmaVersion: 'latest',
-    sourceType: 'script',
-    allowHashBang: true,
-  })
-  let runtimeDynamicImportCount = 0
-  let importMetaFound = false
-
-  simple(ast, {
-    ImportExpression() {
-      runtimeDynamicImportCount += 1
-    },
-    MetaProperty(node) {
-      if (node.meta.name === 'import' && node.property.name === 'meta') {
-        importMetaFound = true
-      }
-    },
-  })
-
-  const rejectedDynamicImport = runtimeDynamicImportCount > 0 && !allowRuntimeDynamicImport
-  if (rejectedDynamicImport || importMetaFound) {
-    const reasons = [
-      rejectedDynamicImport ? 'dynamic import() remains' : undefined,
-      importMetaFound ? 'import.meta remains' : undefined,
-    ].filter((reason): reason is string => reason !== undefined)
-    throw new Error(`[${pluginName}] ${label} is not self-contained classic JavaScript: ${reasons.join(', ')}.`)
-  }
-
-  return { runtimeDynamicImportCount }
-}
-
-function asOutputArray({ result }: {
-  result: RolldownOutput | RolldownOutput[]
-}): readonly (OutputChunk | OutputAsset)[] {
-  return (Array.isArray(result) ? result : [result]).flatMap((item) => item.output)
-}
-
-async function buildWorker({ root, resolvedConfig, worker }: {
-  root: string
-  resolvedConfig: ResolvedConfig
-  worker: FileProtocolStandaloneWorker
-}): Promise<Omit<WorkerBuildResult, 'registryFileName'>> {
-  const bundleGlobalName = `FileProtocolStandaloneWorker_${sha256({ source: worker.id }).slice(0, 12)}`
-  const result = await viteBuild({
-    root,
-    configFile: false,
-    publicDir: false,
-    logLevel: 'silent',
-    define: {
-      ...resolvedConfig.define,
-      'process.env.NODE_ENV': JSON.stringify('production'),
-    },
-    resolve: {
-      alias: resolvedConfig.resolve.alias,
-    },
-    build: {
-      write: false,
-      target: 'esnext',
-      minify: true,
-      sourcemap: false,
-      emptyOutDir: false,
-      lib: {
-        entry: path.resolve(root, worker.entry),
-        name: bundleGlobalName,
-        formats: ['iife'],
-        fileName: () => `${worker.id}.js`,
-        cssFileName: `${worker.id}.css`,
-      },
-      rolldownOptions: {
-        output: {
-          codeSplitting: false,
-        },
-      },
-    },
-  })
-
-  if (!Array.isArray(result) && 'close' in result && typeof result.close === 'function') {
-    throw new Error(`[${pluginName}] Worker build unexpectedly returned a watcher.`)
-  }
-
-  const outputs = asOutputArray({ result: result as RolldownOutput | RolldownOutput[] })
-  const chunks = outputs.filter((item): item is OutputChunk => item.type === 'chunk')
-  const assets = outputs.filter((item): item is OutputAsset => item.type === 'asset')
-
-  if (chunks.length !== 1 || assets.length !== 0) {
-    throw new Error(
-      `[${pluginName}] Worker ${worker.id} must produce exactly one JavaScript chunk and no assets; produced ${chunks.length} chunks and ${assets.length} assets.`,
-    )
-  }
-
-  const chunk = chunks[0]
-  if (chunk.imports.length > 0 || chunk.dynamicImports.length > 0) {
-    throw new Error(`[${pluginName}] Worker ${worker.id} emitted dependency chunks and is not self-contained.`)
-  }
-  const workerValidation = validateClassicJavaScriptSource({
-    source: chunk.code,
-    label: `worker ${worker.id}`,
-    // Some browser-oriented dependencies retain unreachable Node-only
-    // import(specifier) helpers. The worker still has to be one physical IIFE
-    // with no emitted imports or assets. Record the syntax explicitly instead
-    // of hiding it or applying a dependency-specific source rewrite.
-    allowRuntimeDynamicImport: true,
-  })
-
-  const sourceParts = splitWorkerSourceForBlob({
-    source: chunk.code,
-    maxCodeUnits: workerSourcePartSizeCodeUnits,
-  })
-
-  // This digest is build-time diagnostics only. It detects mixed or unexpected
-  // artifacts, but is not a signature or proof of origin and is not recomputed
-  // from the large Blob at runtime.
-  const sourceSha256 = sha256({ source: chunk.code })
-
-  return {
-    id: worker.id,
-    entry: worker.entry,
-    source: chunk.code,
-    sourceBytes: byteLength({ source: chunk.code }),
-    sha256: sourceSha256,
-    sourcePartCount: sourceParts.length,
-    sourcePartSizeCodeUnits: workerSourcePartSizeCodeUnits,
-    moduleIds: Object.keys(chunk.modules)
-      .map((moduleId) => normalizeModuleId({ root, moduleId }))
-      .sort(),
-    runtimeDynamicImportCount: workerValidation.runtimeDynamicImportCount,
-  }
-}
-
-function createWorkerRegistrySource({ worker }: {
-  worker: Omit<WorkerBuildResult, 'registryFileName'>
-}): string {
-  const sourceParts = splitWorkerSourceForBlob({
-    source: worker.source,
-    maxCodeUnits: worker.sourcePartSizeCodeUnits,
-  })
-  const serializedParts = sourceParts.map((part) => JSON.stringify(part)).join(',\n      ')
-
-  return `/* file-protocol-standalone worker Blob registry: ${worker.id} */
-(function () {
-  'use strict';
-  var registryName = ${JSON.stringify(workerRegistryGlobal)};
-  var runtimeName = ${JSON.stringify(workerRuntimeGlobal)};
-  var workerId = ${JSON.stringify(worker.id)};
-  var registry = globalThis[registryName] || (globalThis[registryName] = Object.create(null));
-  var allRuntime = globalThis[runtimeName] || (globalThis[runtimeName] = Object.create(null));
-  var state = allRuntime[workerId] || (allRuntime[workerId] = {
-    registryScriptLoads: 0,
-    registryScriptLoadFailures: 0,
-    blobRegistrations: 0,
-    objectUrlsCreated: 0,
-    workersCreated: 0,
-    workersTerminated: 0,
-    activeWorkers: 0,
-    runtimeDigestCalls: 0,
-    sourceStoredAsGlobalString: false,
-    objectUrlLifetime: 'page',
-    registryEntryReleased: false,
-    registryEntryPresent: false,
-    timingsMs: Object.create(null)
-  });
-  var startedAt = performance.now();
-
-  // Pass source parts directly to Blob instead of joining them. Joining would
-  // allocate another giant worker-source string at runtime.
-  var sourceBlob = new Blob([
-      ${serializedParts}
-  ], { type: 'text/javascript' });
-
-  registry[workerId] = {
-    sourceBlob: sourceBlob,
-    sourceBytes: ${worker.sourceBytes},
-    sourcePartCount: ${worker.sourcePartCount},
-    sha256: ${JSON.stringify(worker.sha256)}
-  };
-  state.blobRegistrations += 1;
-  state.registryEntryPresent = true;
-  state.blobBytes = sourceBlob.size;
-  state.sourcePartCount = ${worker.sourcePartCount};
-  state.timingsMs.registryEvaluationAndBlobCreation = performance.now() - startedAt;
-})();
-`
-}
-
-function createWorkerVirtualModule({ workerId }: { workerId: string }): string {
-  return `const workerId = ${JSON.stringify(workerId)};
-const registryGlobal = ${JSON.stringify(workerRegistryGlobal)};
-const runtimeGlobal = ${JSON.stringify(workerRuntimeGlobal)};
-const manifestScriptId = ${JSON.stringify(workerManifestScriptId)};
-const loadPromises = new Map();
-let workerBlobUrlPromise;
-
-function getRuntimeState() {
-  const allWorkers = globalThis[runtimeGlobal] ||= Object.create(null);
-  return allWorkers[workerId] ||= {
-    registryScriptLoads: 0,
-    registryScriptLoadFailures: 0,
-    blobRegistrations: 0,
-    objectUrlsCreated: 0,
-    workersCreated: 0,
-    workersTerminated: 0,
-    activeWorkers: 0,
-    runtimeDigestCalls: 0,
-    sourceStoredAsGlobalString: false,
-    objectUrlLifetime: 'page',
-    registryEntryReleased: false,
-    registryEntryPresent: false,
-    timingsMs: Object.create(null)
-  };
-}
-
-function readManifest() {
-  const script = document.getElementById(manifestScriptId);
-  if (!script || !script.textContent) throw new Error('[file-protocol-standalone] Missing worker manifest.');
-  const manifest = JSON.parse(script.textContent);
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
-    throw new Error('[file-protocol-standalone] Invalid worker manifest.');
-  }
-  return manifest;
-}
-
-function loadClassicScriptOnce(src) {
-  const url = new URL(src, document.baseURI).href;
-  if ((new URL(url)).protocol !== 'file:') {
-    throw new Error('[file-protocol-standalone] Worker registry must be a local file:// URL: ' + url);
-  }
-  if (loadPromises.has(url)) return loadPromises.get(url);
-  const promise = new Promise((resolve, reject) => {
-    const startedAt = performance.now();
-    const script = document.createElement('script');
-    script.async = false;
-    // Do not set crossorigin. Firefox turns a local classic script into a CORS
-    // request when that attribute is present and rejects it from file://.
-    script.src = url;
-    script.onload = () => {
-      const state = getRuntimeState();
-      state.registryScriptLoads += 1;
-      state.timingsMs.registryScriptLoad = performance.now() - startedAt;
-      script.remove();
-      resolve();
-    };
-    script.onerror = () => {
-      const state = getRuntimeState();
-      state.registryScriptLoadFailures += 1;
-      loadPromises.delete(url);
-      script.remove();
-      reject(new Error('[file-protocol-standalone] Failed to load worker registry: ' + url));
-    };
-    document.head.appendChild(script);
-  });
-  loadPromises.set(url, promise);
-  return promise;
-}
-
-async function createWorkerBlobUrl() {
-  const manifest = readManifest();
-  const meta = manifest[workerId];
-  if (!meta || typeof meta !== 'object') throw new Error('[file-protocol-standalone] Worker is not listed in manifest: ' + workerId);
-  if (typeof meta.registryScript !== 'string' || typeof meta.sourceBytes !== 'number' || typeof meta.sha256 !== 'string' || typeof meta.sourcePartCount !== 'number') {
-    throw new Error('[file-protocol-standalone] Invalid worker manifest entry: ' + workerId);
-  }
-
-  await loadClassicScriptOnce(meta.registryScript);
-  const registry = globalThis[registryGlobal];
-  const entry = registry && registry[workerId];
-  if (!entry || !(entry.sourceBlob instanceof Blob)) {
-    throw new Error('[file-protocol-standalone] Worker Blob was not registered: ' + workerId);
-  }
-
-  // SHA-256 is calculated at build time. Comparing metadata detects mixed build
-  // outputs without reading the large Blob into another ArrayBuffer. It is not
-  // a signature or proof of origin.
-  if (entry.sourceBytes !== meta.sourceBytes || entry.sha256 !== meta.sha256 || entry.sourcePartCount !== meta.sourcePartCount) {
-    throw new Error('[file-protocol-standalone] Worker registry metadata mismatch: ' + workerId);
-  }
-  if (entry.sourceBlob.size !== meta.sourceBytes) {
-    throw new Error('[file-protocol-standalone] Worker Blob byte length mismatch: ' + workerId);
-  }
-
-  const startedAt = performance.now();
-  const blobUrl = URL.createObjectURL(entry.sourceBlob);
-  const state = getRuntimeState();
-  state.objectUrlsCreated += 1;
-  state.blobBytes = entry.sourceBlob.size;
-  state.sourcePartCount = entry.sourcePartCount;
-  state.sha256 = entry.sha256;
-  state.timingsMs.objectUrlCreation = performance.now() - startedAt;
-
-  // The object URL keeps the Blob alive, so the global registry no longer needs
-  // a second reference to the large payload. Remove it to make the temporary
-  // registration object collectible after initialization.
-  delete registry[workerId];
-  state.registryEntryReleased = true;
-  state.registryEntryPresent = Object.prototype.hasOwnProperty.call(registry, workerId);
-
-  // This URL intentionally lives for the page lifetime. Naidan creates multiple
-  // Worker instances from one shared hub asset; revoking after the first start
-  // would make later creation unreliable or force the Blob to be rebuilt.
-  return blobUrl;
-}
-
-function getWorkerBlobUrl() {
-  if (!workerBlobUrlPromise) {
-    workerBlobUrlPromise = createWorkerBlobUrl().catch((error) => {
-      // A physical load failure must be retryable. Do not cache rejection.
-      workerBlobUrlPromise = undefined;
-      throw error;
-    });
-  }
-  return workerBlobUrlPromise;
-}
-
-export async function createFileProtocolWorker({ name }) {
-  const blobUrl = await getWorkerBlobUrl();
-  const worker = new Worker(blobUrl, name === undefined ? undefined : { name });
-  const state = getRuntimeState();
-  state.workersCreated += 1;
-  state.activeWorkers += 1;
-  const originalTerminate = worker.terminate.bind(worker);
-  let active = true;
-  worker.terminate = function fileProtocolStandaloneTerminate() {
-    if (active) {
-      active = false;
-      state.activeWorkers -= 1;
-      state.workersTerminated += 1;
-    }
-    return originalTerminate();
-  };
-  return worker;
-}
-
-export function getFileProtocolWorkerDiagnostics() {
-  const state = getRuntimeState();
-  const registry = globalThis[registryGlobal];
-  return {
-    ...state,
-    timingsMs: { ...state.timingsMs },
-    registryEntryPresent: Boolean(registry && Object.prototype.hasOwnProperty.call(registry, workerId)),
-    blobUrlReady: Boolean(workerBlobUrlPromise),
-    workerId
-  };
-}
-
-export function warmFileProtocolWorkerAssetAtIdle() {
-  const run = () => { void getWorkerBlobUrl().catch(() => {}); };
-  if ('requestIdleCallback' in globalThis) {
-    globalThis.requestIdleCallback(run, { timeout: 1000 });
-  } else {
-    setTimeout(run, 0);
-  }
-}
-`
-}
-
-/** @internal Exported for focused plugin tests. */
-export function createSystemJsFileProtocolPatchSource(): string {
-  return `/* file-protocol-standalone: remove SystemJS crossorigin for file:// */
-(function () {
-  'use strict';
-  if (!globalThis.System || !System.constructor || !System.constructor.prototype) {
-    throw new Error('[file-protocol-standalone] SystemJS prototype is unavailable.');
-  }
-  var prototype = System.constructor.prototype;
-  var originalCreateScript = prototype.createScript;
-  if (typeof originalCreateScript !== 'function') {
-    throw new Error('[file-protocol-standalone] SystemJS createScript hook is unavailable.');
-  }
-  if (originalCreateScript.__fileProtocolStandalonePatched) return;
-  var state = globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__ = { installed: true, patchedScripts: [] };
-  function fileProtocolCreateScript(url) {
-    var script = originalCreateScript.call(this, url);
-    if ((new URL(url, document.baseURI)).protocol === 'file:') {
-      script.removeAttribute('crossorigin');
-      state.patchedScripts.push({
-        url: url,
-        crossOriginProperty: script.crossOrigin || null,
-        crossoriginAttribute: script.getAttribute('crossorigin')
-      });
-    }
-    return script;
-  }
-  fileProtocolCreateScript.__fileProtocolStandalonePatched = true;
-  prototype.createScript = fileProtocolCreateScript;
-})();
-`
-}
-
-/** @internal Exported for focused plugin tests. */
-export function createSystemJsRetryHookSource(): string {
-  return `/* file-protocol-standalone: retry failed local SystemJS loads */
-(function () {
-  'use strict';
-  if (!globalThis.System || typeof System.import !== 'function' || typeof System.delete !== 'function') {
-    throw new Error('[file-protocol-standalone] SystemJS retry hook requires public import/delete APIs.');
-  }
-  if (System.import.__fileProtocolStandaloneRetryPatched) return;
-  var originalImport = System.import;
-  var originalInstantiate = System.instantiate;
-  var retryableLoadErrors = new WeakSet();
-  var state = globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__ = { installed: true, deletedModuleUrls: [] };
-
-  // Message matching alone is unsafe: application code may throw identical
-  // SystemJS text. Track the exact Error object observed by instantiate so only
-  // real loader failures can evict a failed module record.
-  function hasLoadErrorCode(error) {
-    var message = error && typeof error.message === 'string' ? error.message : String(error);
-    return message.includes('SystemJS Error#2') || message.includes('SystemJS Error#3');
-  }
-  function deleteResolved(id, parentUrl) {
-    try {
-      var resolved = System.resolve(id, parentUrl);
-      if ((new URL(resolved, document.baseURI)).protocol !== 'file:') return;
-      if (System.delete(resolved)) state.deletedModuleUrls.push(resolved);
-    } catch (_) {
-      // Preserve the original loader error instead of replacing it with cleanup.
-    }
-  }
-  if (typeof originalInstantiate === 'function') {
-    System.instantiate = function fileProtocolRetryableInstantiate(url, parentUrl, meta) {
-      return Promise.resolve(originalInstantiate.call(this, url, parentUrl, meta)).catch(function (error) {
-        if (error && typeof error === 'object' && hasLoadErrorCode(error)) {
-          retryableLoadErrors.add(error);
-          deleteResolved(url, parentUrl);
-        }
-        throw error;
-      });
-    };
-  }
-  function fileProtocolRetryableImport(id, parentUrl, meta) {
-    return Promise.resolve(originalImport.call(this, id, parentUrl, meta)).catch(function (error) {
-      if (error && typeof error === 'object' && retryableLoadErrors.has(error)) deleteResolved(id, parentUrl);
-      throw error;
-    });
-  }
-  fileProtocolRetryableImport.__fileProtocolStandaloneRetryPatched = true;
-  System.import = fileProtocolRetryableImport;
-})();
-`
 }
 
 const executableScriptTypes = new Set([
@@ -826,6 +185,41 @@ function contentHasExecutableScriptType({ type }: { type: string | null }): bool
   return executableScriptTypes.has(normalized)
 }
 
+function readRelativeOutputFileName({ value, attribute }: {
+  value: string
+  attribute: string
+}): string {
+  const trimmed = value.trim()
+  if (trimmed === '' || trimmed.startsWith('/') || trimmed.startsWith('\\')) {
+    throw new Error(`[${pluginName}] ${attribute} must be a relative local output URL: ${value}`)
+  }
+
+  const baseUrl = new URL('https://file-protocol-standalone.invalid/__output__/')
+  let resolved: URL
+  try {
+    resolved = new URL(trimmed, baseUrl)
+  } catch {
+    throw new Error(`[${pluginName}] ${attribute} is not a valid URL: ${value}`)
+  }
+  if (
+    resolved.origin !== baseUrl.origin
+    || !resolved.pathname.startsWith(baseUrl.pathname)
+    || resolved.search !== ''
+    || resolved.hash !== ''
+  ) {
+    throw new Error(`[${pluginName}] ${attribute} must identify one local output file without a query or fragment: ${value}`)
+  }
+
+  let decodedPath: string
+  try {
+    decodedPath = decodeURIComponent(resolved.pathname)
+  } catch {
+    throw new Error(`[${pluginName}] ${attribute} contains invalid percent encoding: ${value}`)
+  }
+  const outputPrefix = decodeURIComponent(baseUrl.pathname)
+  return decodedPath.slice(outputPrefix.length)
+}
+
 function finalizeHtml({
   html,
   entryFileName,
@@ -833,7 +227,6 @@ function finalizeHtml({
   patchFileName,
   retryFileName,
   workers,
-  generatedChunkFileNames,
 }: {
   html: string
   entryFileName: string
@@ -841,32 +234,59 @@ function finalizeHtml({
   patchFileName: string
   retryFileName: string
   workers: readonly WorkerBuildResult[]
-  generatedChunkFileNames: ReadonlySet<string>
 }): string {
   const dom = new JSDOM(html)
   const { document } = dom.window
 
-  for (const link of document.querySelectorAll('link[rel="modulepreload"]')) {
-    link.remove()
+  const modulePreloads = Array.from(document.querySelectorAll('link[rel]')).filter((link) => (
+    (link.getAttribute('rel') ?? '')
+      .split(/\s+/)
+      .some((token) => token.toLowerCase() === 'modulepreload')
+  ))
+  if (modulePreloads.length > 0) {
+    throw new Error(
+      `[${pluginName}] Expected @vitejs/plugin-legacy to remove modulepreload links; found ${modulePreloads.length}.`,
+    )
   }
 
-  for (const script of Array.from(document.querySelectorAll('script'))) {
-    const type = script.getAttribute('type')
-    if (!contentHasExecutableScriptType({ type })) {
-      continue
-    }
-    const src = script.getAttribute('src')
-    const normalizedSrc = src?.replace(/^\.\//, '').replace(/^\//, '')
-    // Remove only JavaScript chunks known to this exact output bundle. Treating
-    // every assets/*.js URL as generated would silently delete an unrelated
-    // user or plugin script that happened to use the conventional asset path.
-    const isGeneratedChunk = normalizedSrc !== undefined && generatedChunkFileNames.has(normalizedSrc)
-    const isViteLegacyBootstrap = script.id === 'vite-legacy-entry' || script.id === 'vite-legacy-polyfill'
-    if (!isGeneratedChunk && !isViteLegacyBootstrap) {
-      throw new Error(`[${pluginName}] Unexpected executable script in index.html; refusing to remove it.`)
-    }
-    script.remove()
+  const executableScripts = Array.from(document.querySelectorAll('script'))
+    .filter((script) => contentHasExecutableScriptType({ type: script.getAttribute('type') }))
+  const legacyEntries = executableScripts.filter((script) => script.id === 'vite-legacy-entry')
+  if (legacyEntries.length !== 1) {
+    throw new Error(`[${pluginName}] Expected exactly one @vitejs/plugin-legacy entry script; found ${legacyEntries.length}.`)
   }
+  const legacyPolyfills = executableScripts.filter((script) => script.id === 'vite-legacy-polyfill')
+  if (legacyPolyfills.length > 0) {
+    throw new Error(`[${pluginName}] Legacy polyfill scripts are unsupported when externalSystemJS and polyfills are disabled.`)
+  }
+
+  const legacyEntry = legacyEntries[0]
+  if (legacyEntry.hasAttribute('src')) {
+    throw new Error(`[${pluginName}] The @vitejs/plugin-legacy entry must be an inline bootstrap script.`)
+  }
+  const dataSrc = legacyEntry.getAttribute('data-src')
+  if (dataSrc === null) {
+    throw new Error(`[${pluginName}] The @vitejs/plugin-legacy entry is missing data-src.`)
+  }
+  const legacyEntryFileName = readRelativeOutputFileName({ value: dataSrc, attribute: 'legacy entry data-src' })
+  if (legacyEntryFileName !== entryFileName) {
+    throw new Error(
+      `[${pluginName}] Legacy entry data-src does not match the generated entry chunk: ${legacyEntryFileName} !== ${entryFileName}.`,
+    )
+  }
+
+  const unexpectedScripts = executableScripts.filter((script) => script !== legacyEntry)
+  if (unexpectedScripts.length > 0) {
+    const descriptions = unexpectedScripts.map((script) => {
+      const id = script.id === '' ? '(no id)' : script.id
+      const src = script.getAttribute('src') ?? '(inline)'
+      return `${id}:${src}`
+    })
+    throw new Error(
+      `[${pluginName}] Unexpected executable script(s) in index.html; refusing to remove them: ${descriptions.join(', ')}.`,
+    )
+  }
+  legacyEntry.remove()
 
   const appendClassicScript = ({ id, src, source }: {
     id: string
@@ -973,10 +393,10 @@ function readInitialStylesheetFileNames({ bundle }: {
   const dom = new JSDOM(html)
   const fileNames = Array.from(dom.window.document.querySelectorAll('link[rel="stylesheet"][href]')).map((link) => {
     const href = link.getAttribute('href')
-    if (href === null || /^(?:[a-z]+:|\/\/)/i.test(href)) {
-      throw new Error(`[${pluginName}] Standalone stylesheet must be a local emitted asset: ${String(href)}`)
+    if (href === null) {
+      throw new Error(`[${pluginName}] Standalone stylesheet is missing href.`)
     }
-    return href.replace(/^\.\//, '').replace(/^\//, '')
+    return readRelativeOutputFileName({ value: href, attribute: 'stylesheet href' })
   })
 
   for (const fileName of fileNames) {
@@ -989,12 +409,28 @@ function readInitialStylesheetFileNames({ bundle }: {
   return [...new Set(fileNames)].sort()
 }
 
+function createBudgetMetric({ actual, limit }: {
+  actual: number
+  limit: number | undefined
+}): Readonly<{ actual: number, limit: number | undefined, remaining: number | undefined, status: 'pass' | 'fail' | 'disabled' }> {
+  if (limit === undefined) {
+    return { actual, limit, remaining: undefined, status: 'disabled' }
+  }
+  return {
+    actual,
+    limit,
+    remaining: limit - actual,
+    status: actual <= limit ? 'pass' : 'fail',
+  }
+}
+
 function createReport({
   root,
   bundle,
   workers,
   entryFileName,
   runtimeFileName,
+  sourceMapFileName,
   patchFileName,
   retryFileName,
   systemJsVersion,
@@ -1005,6 +441,7 @@ function createReport({
   workers: readonly WorkerBuildResult[]
   entryFileName: string
   runtimeFileName: string
+  sourceMapFileName: string
   patchFileName: string
   retryFileName: string
   systemJsVersion: string
@@ -1058,12 +495,13 @@ function createReport({
     .sort((left, right) => left.fileName.localeCompare(right.fileName))
 
   return {
-    format: 'file-protocol-standalone-build-report-v4',
+    format: 'file-protocol-standalone-build-report-v5',
     generatedAt: new Date().toISOString(),
     plugin: {
       name: pluginName,
       systemJsVersion,
       systemJsRuntimeFile: runtimeFileName,
+      systemJsSourceMapFile: sourceMapFileName,
       systemJsFileProtocolPatchFile: patchFileName,
       systemJsRetryHookFile: retryFileName,
     },
@@ -1076,7 +514,11 @@ function createReport({
     },
     chunks: chunkReports,
     styles: {
-      strategy: styleAssets.length > 0 ? 'external-css-assets' : 'javascript-injected-css',
+      strategy: styleAssets.length > 0
+        ? 'external-css-assets'
+        : chunks.some((chunk) => Object.keys(chunk.modules).some((moduleId) => moduleId.endsWith('.css')))
+          ? 'javascript-injected-css'
+          : 'none',
       assets: styleAssets,
     },
     workers: workers.map((worker) => ({
@@ -1087,7 +529,16 @@ function createReport({
       sourcePartCount: worker.sourcePartCount,
       sourcePartSizeCodeUnits: worker.sourcePartSizeCodeUnits,
       moduleIds: worker.moduleIds,
-      runtimeDynamicImportCount: worker.runtimeDynamicImportCount,
+      singleJavaScriptArtifact: true,
+      additionalAssetCount: 0,
+      staticModuleSyntax: false,
+      importMeta: false,
+      runtimeDynamicImports: {
+        total: worker.runtimeDynamicImports.length,
+        staticSpecifier: worker.runtimeDynamicImports.filter((item) => item.kind === 'static-specifier').length,
+        dynamicSpecifier: worker.runtimeDynamicImports.filter((item) => item.kind === 'dynamic-specifier').length,
+        occurrences: worker.runtimeDynamicImports,
+      },
       sha256: worker.sha256,
       sha256Purpose: 'Build-time diagnostic digest for comparing artifacts and detecting mixed outputs; it is not recomputed at runtime and is not a signature or proof of origin.',
       registryStrategy: 'classic-script-registers-blob',
@@ -1098,23 +549,32 @@ function createReport({
       supportsMultipleInstances: true,
     })),
     validations: [
-      { id: 'html.classic-scripts', status: 'pass', details: 'No native module or crossorigin executable scripts remain.' },
-      { id: 'chunks.classic-javascript', status: 'pass', details: 'All application chunks parse as classic scripts without import() or import.meta.' },
-      { id: 'workers.self-contained', status: 'pass', details: 'Configured workers build to one physical IIFE chunk with no emitted dependency chunks or assets.' },
+      { id: 'html.classic-scripts', status: 'pass', details: 'The final HTML contains only expected local classic executable scripts.' },
+      { id: 'chunks.system-register', status: 'pass', details: 'All application chunks are classic scripts that register through System.register without import() or import.meta.' },
+      { id: 'workers.single-javascript-artifact', status: 'pass', details: 'Configured workers build to one physical IIFE chunk with no additional assets or static runtime dependencies.' },
       { id: 'workers.runtime-digest-disabled', status: 'pass', details: 'Worker Blob metadata is checked without a runtime SHA-256 pass.' },
     ],
     limitations: [
       'SystemJS is pinned because the file:// patch depends on its createScript prototype hook.',
       'Object URLs intentionally live for the page lifetime so multiple Worker instances can reuse one large Blob.',
       'The browser may retain parser or compiled representations internally; application code can remove references but cannot guarantee immediate physical memory release.',
-      'CSS remains external assets because local file:// stylesheet links work in the target browsers.',
-      ...workers
-        .filter((worker) => worker.runtimeDynamicImportCount > 0)
-        .map((worker) => `Worker ${worker.id} contains ${worker.runtimeDynamicImportCount} runtime dynamic import expression(s) retained by dependencies. They are not guaranteed to work from a Blob file:// worker and must remain unreachable in browser execution paths.`),
+      ...(styleAssets.length > 0
+        ? ['CSS is emitted as local stylesheet assets that are loaded directly from file://.']
+        : chunks.some((chunk) => Object.keys(chunk.modules).some((moduleId) => moduleId.endsWith('.css')))
+          ? ['CSS is injected by the JavaScript chunk that owns each transformed CSS module.']
+          : ['This build contains no CSS modules or emitted stylesheet assets.']),
+      ...workers.flatMap((worker) => {
+        const count = worker.runtimeDynamicImports.filter((item) => item.kind === 'dynamic-specifier').length
+        return count === 0
+          ? []
+          : [`Worker ${worker.id} contains ${count} runtime import expression(s) with dynamic specifiers. The plugin reports but does not resolve them; they must remain unreachable unless the application provides a compatible runtime loader.`]
+      }),
     ],
     budgets: {
       maxInitialEntryBytes: budgets?.maxInitialEntryBytes,
       maxInitialRequestBytes: budgets?.maxInitialRequestBytes,
+      initialEntry: createBudgetMetric({ actual: entryReport.bytes, limit: budgets?.maxInitialEntryBytes }),
+      initialRequests: createBudgetMetric({ actual: initialRequestBytes, limit: budgets?.maxInitialRequestBytes }),
     },
   }
 }
@@ -1174,13 +634,130 @@ async function refreshReportByteCountsFromWrittenFiles({
       ...report.styles,
       assets: styles,
     },
+    budgets: {
+      ...report.budgets,
+      initialEntry: createBudgetMetric({ actual: entry.bytes, limit: report.budgets.maxInitialEntryBytes }),
+      initialRequests: createBudgetMetric({ actual: initialRequestBytes, limit: report.budgets.maxInitialRequestBytes }),
+    },
   }
 }
 
-export function fileProtocolStandalone({ reportFile, workers, budgets }: FileProtocolStandaloneOptions): Plugin {
+function assertPositiveBudget({ name, value }: { name: string, value: number | undefined }): void {
+  if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+    throw new Error(`[${pluginName}] ${name} must be a non-negative safe integer: ${value}`)
+  }
+}
+
+function assertWorkerTarget({ workerTarget }: {
+  workerTarget: Exclude<BuildOptions['target'], false | undefined>
+}): void {
+  const values = Array.isArray(workerTarget) ? workerTarget : [workerTarget]
+  if (values.length === 0 || values.some((value) => typeof value !== 'string' || value.trim() === '')) {
+    throw new Error(`[${pluginName}] workerTarget must contain at least one non-empty target.`)
+  }
+}
+
+/** @internal Exported for focused plugin tests. */
+export function validateResolvedConfig({ config, reportFile }: {
+  config: ResolvedConfig
+  reportFile: string
+}): void {
+  if (config.base !== './' && config.base !== '') {
+    throw new Error(`[${pluginName}] Vite base must be './' or '' for file:// output; received ${JSON.stringify(config.base)}.`)
+  }
+  if (config.build.modulePreload !== false) {
+    throw new Error(`[${pluginName}] build.modulePreload must be false so no fetch-based preload runtime is emitted.`)
+  }
+  if (config.build.ssr) {
+    throw new Error(`[${pluginName}] SSR builds are unsupported.`)
+  }
+  if (config.build.lib) {
+    throw new Error(`[${pluginName}] Library mode is unsupported; an HTML application entry is required.`)
+  }
+  if (config.build.write === false) {
+    throw new Error(`[${pluginName}] build.write=false is unsupported because the final report verifies written artifact sizes.`)
+  }
+  const pluginInstances = config.plugins.filter((plugin) => plugin.name === pluginName).length
+  if (pluginInstances !== 1) {
+    throw new Error(`[${pluginName}] Expected exactly one plugin instance; found ${pluginInstances}.`)
+  }
+  const outputDirectory = path.resolve(config.root, config.build.outDir)
+  const reportPath = path.resolve(config.root, reportFile)
+  const relative = path.relative(outputDirectory, reportPath)
+  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    throw new Error(`[${pluginName}] reportFile must be outside build.outDir: ${reportFile}`)
+  }
+}
+
+function validateFinalHtml({ html }: { html: string }): void {
+  const dom = new JSDOM(html)
+  const executableScripts = Array.from(dom.window.document.querySelectorAll('script'))
+    .filter((script) => contentHasExecutableScriptType({ type: script.getAttribute('type') }))
+  const expectedIds = [
+    'file-protocol-standalone-systemjs-runtime',
+    'file-protocol-standalone-systemjs-file-patch',
+    'file-protocol-standalone-systemjs-retry-hook',
+    'file-protocol-standalone-entry',
+  ]
+  const actualIds = executableScripts.map((script) => script.id)
+  if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) {
+    throw new Error(`[${pluginName}] Final executable script order is invalid: ${actualIds.join(', ')}.`)
+  }
+  const manifest = dom.window.document.getElementById(workerManifestScriptId)
+  if (manifest === null || manifest.tagName !== 'SCRIPT' || manifest.getAttribute('type') !== 'application/json') {
+    throw new Error(`[${pluginName}] Worker manifest script is missing or has an unexpected type.`)
+  }
+  const entryScript = dom.window.document.getElementById('file-protocol-standalone-entry')
+  if (entryScript === null || (manifest.compareDocumentPosition(entryScript) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
+    throw new Error(`[${pluginName}] Worker manifest must appear before the standalone entry bootstrap.`)
+  }
+  for (const script of executableScripts) {
+    if (script.getAttribute('type') === 'module') {
+      throw new Error(`[${pluginName}] Native module script remains in index.html.`)
+    }
+    if (script.hasAttribute('crossorigin')) {
+      throw new Error(`[${pluginName}] Executable script still has crossorigin in index.html.`)
+    }
+    const src = script.getAttribute('src')
+    if (src !== null) {
+      readRelativeOutputFileName({ value: src, attribute: `script#${script.id} src` })
+    }
+  }
+}
+
+/**
+ * Converts one Vite HTML application into split classic-script output that can
+ * be opened directly through file://. The plugin understands Vite artifacts,
+ * SystemJS chunks, local styles, and explicitly registered Worker entries; it
+ * must not depend on application routes, stores, or components. For example,
+ * adding a Naidan chat route or settings component must not require a plugin
+ * change.
+ *
+ * This is deliberately not a universal file:// compatibility layer. Unknown
+ * executable output, multiple HTML entries, SSR/library builds, Worker child
+ * artifacts, and runtime module loading are rejected or reported rather than
+ * guessed and silently rewritten.
+ */
+export function fileProtocolStandalone({
+  reportFile,
+  workerTarget,
+  workers,
+  budgets,
+  onAdditionalLicenseDependencies,
+}: FileProtocolStandaloneOptions): Plugin {
+  if (reportFile.trim() === '') {
+    throw new Error(`[${pluginName}] reportFile must not be empty.`)
+  }
+  assertWorkerTarget({ workerTarget })
+  assertPositiveBudget({ name: 'budgets.maxInitialEntryBytes', value: budgets?.maxInitialEntryBytes })
+  assertPositiveBudget({ name: 'budgets.maxInitialRequestBytes', value: budgets?.maxInitialRequestBytes })
+
   const workerIds = new Set<string>()
   for (const worker of workers) {
     assertSafeWorkerId({ workerId: worker.id })
+    if (worker.entry.trim() === '') {
+      throw new Error(`[${pluginName}] Worker entry must not be empty: ${worker.id}`)
+    }
     if (workerIds.has(worker.id)) {
       throw new Error(`[${pluginName}] Duplicate worker id: ${worker.id}`)
     }
@@ -1192,23 +769,21 @@ export function fileProtocolStandalone({ reportFile, workers, budgets }: FilePro
   let finalizedWorkers: readonly WorkerBuildResult[] = []
   let report: BuildReport | undefined
   let runtimeReferenceId = ''
+  let sourceMapReferenceId = ''
   let patchReferenceId = ''
   let retryReferenceId = ''
   const registryReferenceIds = new Map<string, string>()
   const systemJsRuntimePath = require.resolve('systemjs/dist/system.min.js')
-  const systemJsPackage = JSON.parse(fs.readFileSync(require.resolve('systemjs/package.json'), 'utf8')) as { version: string }
+  const systemJsSourceMapPath = require.resolve('systemjs/dist/system.min.js.map')
+  const systemJsPackagePath = require.resolve('systemjs/package.json')
+  const systemJsPackage = JSON.parse(fs.readFileSync(systemJsPackagePath, 'utf8')) as { version: string }
 
   return {
     name: pluginName,
     enforce: 'post',
     configResolved(config) {
       resolvedConfig = config
-      const outputDirectory = path.resolve(config.root, config.build.outDir)
-      const reportPath = path.resolve(config.root, reportFile)
-      const relative = path.relative(outputDirectory, reportPath)
-      if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
-        throw new Error(`[${pluginName}] reportFile must be outside build.outDir: ${reportFile}`)
-      }
+      validateResolvedConfig({ config, reportFile })
     },
     resolveId(id) {
       if (id.startsWith(virtualWorkerPrefix)) {
@@ -1235,26 +810,42 @@ export function fileProtocolStandalone({ reportFile, workers, budgets }: FilePro
         root: config.root,
         resolvedConfig: config,
         worker,
+        workerTarget,
       })))
-
-      const runtimeSource = removeTrailingSourceMapDirective({
-        source: fs.readFileSync(systemJsRuntimePath, 'utf8'),
+      onAdditionalLicenseDependencies?.({
+        dependencies: mergeLicenseDependencies({
+          dependencies: [
+            readSystemJsLicenseDependency({ packageJsonPath: systemJsPackagePath }),
+            ...workerBuilds.flatMap((worker) => worker.licenseDependencies),
+          ],
+        }),
       })
-      // The slim SystemJS build intentionally omits registry APIs such as
-      // System.delete. Validate the exact emitted runtime so a dependency or
-      // path change cannot produce a standalone build that fails only at load.
+
+      const runtimeSource = fs.readFileSync(systemJsRuntimePath, 'utf8')
+      const sourceMapSource = fs.readFileSync(systemJsSourceMapPath)
       validateSystemJsRuntimeCapabilities({ source: runtimeSource })
+      validateSystemJsSourceMapPair({ runtimeSource, sourceMapSource })
       const patchSource = createSystemJsFileProtocolPatchSource()
       const retrySource = createSystemJsRetryHookSource()
-      validateClassicJavaScriptSource({ source: runtimeSource, label: 'SystemJS runtime', allowRuntimeDynamicImport: false })
-      validateClassicJavaScriptSource({ source: patchSource, label: 'SystemJS file-protocol patch', allowRuntimeDynamicImport: false })
-      validateClassicJavaScriptSource({ source: retrySource, label: 'SystemJS retry hook', allowRuntimeDynamicImport: false })
-      runtimeReferenceId = this.emitFile({ type: 'asset', name: 'systemjs-runtime.js', source: runtimeSource })
+      validateClassicJavaScriptSource({ source: runtimeSource, label: 'SystemJS runtime', mode: 'support-script' })
+      validateClassicJavaScriptSource({ source: patchSource, label: 'SystemJS file-protocol patch', mode: 'support-script' })
+      validateClassicJavaScriptSource({ source: retrySource, label: 'SystemJS retry hook', mode: 'support-script' })
+      const runtimeDirectory = path.posix.join(config.build.assetsDir, 'file-protocol-standalone')
+      runtimeReferenceId = this.emitFile({
+        type: 'asset',
+        fileName: path.posix.join(runtimeDirectory, 'system.min.js'),
+        source: runtimeSource,
+      })
+      sourceMapReferenceId = this.emitFile({
+        type: 'asset',
+        fileName: path.posix.join(runtimeDirectory, 'system.min.js.map'),
+        source: sourceMapSource,
+      })
       patchReferenceId = this.emitFile({ type: 'asset', name: 'systemjs-file-protocol-patch.js', source: patchSource })
       retryReferenceId = this.emitFile({ type: 'asset', name: 'systemjs-retry-hook.js', source: retrySource })
       for (const worker of workerBuilds) {
         const source = createWorkerRegistrySource({ worker })
-        validateClassicJavaScriptSource({ source, label: `worker registry ${worker.id}`, allowRuntimeDynamicImport: false })
+        validateClassicJavaScriptSource({ source, label: `worker registry ${worker.id}`, mode: 'support-script' })
         registryReferenceIds.set(worker.id, this.emitFile({
           type: 'asset',
           name: `worker-source-${worker.id}.js`,
@@ -1267,6 +858,7 @@ export function fileProtocolStandalone({ reportFile, workers, budgets }: FilePro
         throw new Error(`[${pluginName}] Vite config was not resolved.`)
       }
       const runtimeFileName = this.getFileName(runtimeReferenceId)
+      const sourceMapFileName = this.getFileName(sourceMapReferenceId)
       const patchFileName = this.getFileName(patchReferenceId)
       const retryFileName = this.getFileName(retryReferenceId)
       finalizedWorkers = workerBuilds.map((worker) => {
@@ -1284,8 +876,12 @@ export function fileProtocolStandalone({ reportFile, workers, budgets }: FilePro
       }
       const entry = entryChunks[0]
       for (const chunk of chunks) {
-        validateClassicJavaScriptSource({ source: chunk.code, label: chunk.fileName, allowRuntimeDynamicImport: false })
-        if (chunk.code.includes('new Worker(new URL(')) {
+        const validation = validateClassicJavaScriptSource({
+          source: chunk.code,
+          label: chunk.fileName,
+          mode: 'application-chunk',
+        })
+        if (validation.hostedWorkerUrlCount > 0) {
           throw new Error(`[${pluginName}] Hosted-style Worker URL remains in ${chunk.fileName}.`)
         }
       }
@@ -1303,18 +899,8 @@ export function fileProtocolStandalone({ reportFile, workers, budgets }: FilePro
         patchFileName,
         retryFileName,
         workers: finalizedWorkers,
-        generatedChunkFileNames: new Set(chunks.map((chunk) => chunk.fileName)),
       })
-
-      const finalizedDom = new JSDOM(String(htmlAsset.source))
-      const executableScripts = Array.from(finalizedDom.window.document.querySelectorAll('script'))
-        .filter((script) => contentHasExecutableScriptType({ type: script.getAttribute('type') }))
-      if (executableScripts.some((script) => script.getAttribute('type') === 'module')) {
-        throw new Error(`[${pluginName}] Native module script remains in index.html.`)
-      }
-      if (executableScripts.some((script) => script.hasAttribute('crossorigin'))) {
-        throw new Error(`[${pluginName}] Executable script still has crossorigin in index.html.`)
-      }
+      validateFinalHtml({ html: String(htmlAsset.source) })
 
       report = createReport({
         root: resolvedConfig.root,
@@ -1322,6 +908,7 @@ export function fileProtocolStandalone({ reportFile, workers, budgets }: FilePro
         workers: finalizedWorkers,
         entryFileName: entry.fileName,
         runtimeFileName,
+        sourceMapFileName,
         patchFileName,
         retryFileName,
         systemJsVersion: systemJsPackage.version,

@@ -66,8 +66,8 @@ function serializeError({ error }: { error: unknown }): FileProtocolStandaloneSt
 /**
  * The standalone entry loader creates this state before it starts the async
  * System.import graph. App startup extends the same history so a white screen
- * can be diagnosed even when Vue has not mounted and the in-app developer panel
- * is therefore unavailable. Hosted builds intentionally have no loader-created
+ * can be diagnosed even when Vue has not mounted and the verification route is
+ * therefore unavailable. Hosted builds intentionally have no loader-created
  * state, so recording becomes a no-op there.
  */
 export function recordFileProtocolStandaloneStartupPhase({
@@ -121,7 +121,7 @@ function renderStartupFailure({ document, error }: {
   const message = document.createElement('div')
   message.textContent = `${error.name}: ${error.message}`
   const hint = document.createElement('div')
-  hint.textContent = 'Inspect globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__ for startup history.'
+  hint.textContent = 'Open DevTools and run: globalThis.__FILE_PROTOCOL_STANDALONE__?.getDiagnostics()'
   panel.append(title, message, hint)
 
   const appElement = document.querySelector('#app')

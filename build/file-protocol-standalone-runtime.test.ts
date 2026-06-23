@@ -41,8 +41,14 @@ type WorkerRegistryEntry = {
 type RuntimeHarness = Readonly<{
   api: WorkerRuntimeApi
   globalObject: Record<string, unknown>
+  idleCallbacks: readonly Readonly<{
+    callback: IdleRequestCallback
+    options: IdleRequestOptions | undefined
+  }>[]
   objectUrlBlobs: readonly Blob[]
+  revokedObjectUrls: readonly string[]
   scheduledCallbacks: readonly (() => void)[]
+  registryScriptElementCount: () => number
   scriptLoadCount: () => number
   workerRecords: readonly FakeWorkerRecord[]
 }>
@@ -53,9 +59,11 @@ const manifestScriptId = 'file-protocol-standalone-worker-manifest'
 
 function getWorkerVirtualModuleSource(): string {
   const plugin = fileProtocolStandalone({
+    workerTarget: ['chrome140', 'firefox140'],
     reportFile: 'dist/report.json',
     workers: [{ id: workerId, entry: 'src/worker.ts' }],
     budgets: undefined,
+    onAdditionalLicenseDependencies: undefined,
   })
   const resolveId = plugin.resolveId as unknown as ((id: string) => string | undefined)
   const load = plugin.load as unknown as ((id: string) => string | undefined)
@@ -140,6 +148,9 @@ function createRuntimeHarness({
   registrySourceBytes,
   registrySourcePartCount,
   registrySha256,
+  idleCallbackMode,
+  createObjectUrlFailureCount,
+  workerConstructorFailureCount,
 }: {
   registryScript: string
   failLoadCount: number
@@ -151,9 +162,12 @@ function createRuntimeHarness({
   registrySourceBytes: number | undefined
   registrySourcePartCount: number
   registrySha256: string
+  idleCallbackMode: 'available' | 'unavailable'
+  createObjectUrlFailureCount: number
+  workerConstructorFailureCount: number
 }): RuntimeHarness {
   const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
-    url: 'file:///tmp/naidan/index.html',
+    url: 'file:///__nonexistent_file_protocol_test_root__/index.html',
   })
   const { document } = dom.window
   const expectedBlob = new Blob([workerSource], { type: 'text/javascript' })
@@ -174,18 +188,33 @@ function createRuntimeHarness({
 
   const globalObject = dom.window as unknown as Record<string, unknown>
   const objectUrlBlobs: Blob[] = []
+  const revokedObjectUrls: string[] = []
+  let createObjectUrlCalls = 0
   class RuntimeUrl extends URL {
     static createObjectURL(blob: Blob): string {
+      createObjectUrlCalls += 1
+      if (createObjectUrlCalls <= createObjectUrlFailureCount) {
+        throw new Error('synthetic createObjectURL failure')
+      }
       objectUrlBlobs.push(blob)
       return `blob:test-${objectUrlBlobs.length}`
+    }
+
+    static revokeObjectURL(url: string): void {
+      revokedObjectUrls.push(url)
     }
   }
 
   const workerRecords: FakeWorkerRecord[] = []
+  let workerConstructorCalls = 0
   class FakeWorker {
     private terminateCalls = 0
 
     constructor(url: string | URL, options: WorkerOptions | undefined) {
+      workerConstructorCalls += 1
+      if (workerConstructorCalls <= workerConstructorFailureCount) {
+        throw new Error('synthetic Worker constructor failure')
+      }
       const record = {
         url: String(url),
         options,
@@ -226,6 +255,16 @@ function createRuntimeHarness({
   }) as typeof document.head.appendChild
 
   const scheduledCallbacks: (() => void)[] = []
+  const idleCallbacks: Array<Readonly<{
+    callback: IdleRequestCallback
+    options: IdleRequestOptions | undefined
+  }>> = []
+  if (idleCallbackMode === 'available') {
+    ;(globalObject as { requestIdleCallback?: typeof requestIdleCallback }).requestIdleCallback = (callback, options) => {
+      idleCallbacks.push({ callback, options })
+      return idleCallbacks.length
+    }
+  }
   const api = compileWorkerRuntime({
     source: getWorkerVirtualModuleSource(),
     globalObject,
@@ -238,14 +277,19 @@ function createRuntimeHarness({
   return {
     api,
     globalObject,
+    idleCallbacks,
     objectUrlBlobs,
+    revokedObjectUrls,
     scheduledCallbacks,
+    registryScriptElementCount: () => document.head.querySelectorAll('script').length,
     scriptLoadCount: () => scriptLoadCount,
     workerRecords,
   }
 }
 
-function createSuccessfulHarness(): RuntimeHarness {
+function createSuccessfulHarness({ idleCallbackMode }: {
+  idleCallbackMode: 'available' | 'unavailable'
+}): RuntimeHarness {
   const workerSource = `\
 self.onmessage = function () {
   self.postMessage('ok');
@@ -263,12 +307,15 @@ self.onmessage = function () {
     registrySourceBytes: sourceBytes,
     registrySourcePartCount: 1,
     registrySha256: 'fixture-sha256',
+    idleCallbackMode,
+    createObjectUrlFailureCount: 0,
+    workerConstructorFailureCount: 0,
   })
 }
 
 describe('fileProtocolStandalone generated worker runtime', () => {
   it('loads one registry and reuses one Blob URL for multiple named Worker instances', async () => {
-    const harness = createSuccessfulHarness()
+    const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
 
     const [first, second] = await Promise.all([
       harness.api.createFileProtocolWorker({ name: 'first-worker' }),
@@ -304,6 +351,8 @@ describe('fileProtocolStandalone generated worker runtime', () => {
     expect(harness.workerRecords[0]?.terminateCallCount()).toBe(2)
     expect(harness.workerRecords[1]?.terminateCallCount()).toBe(1)
     expect(harness.globalObject[registryGlobal]).toEqual({})
+    expect(harness.registryScriptElementCount()).toBe(0)
+    expect(harness.revokedObjectUrls).toEqual([])
   })
 
   it('clears a rejected load promise so a later call performs a physical retry', async () => {
@@ -320,12 +369,17 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       registrySourceBytes: sourceBytes,
       registrySourcePartCount: 1,
       registrySha256: 'retry-sha256',
+      idleCallbackMode: 'unavailable',
+      createObjectUrlFailureCount: 0,
+      workerConstructorFailureCount: 0,
     })
 
     await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('Failed to load worker registry')
+    expect(harness.registryScriptElementCount()).toBe(0)
     await expect(harness.api.createFileProtocolWorker({ name: undefined })).resolves.toBeDefined()
 
     expect(harness.scriptLoadCount()).toBe(2)
+    expect(harness.registryScriptElementCount()).toBe(0)
     expect(harness.api.getFileProtocolWorkerDiagnostics()).toMatchObject({
       registryScriptLoads: 1,
       registryScriptLoadFailures: 1,
@@ -348,6 +402,9 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       registrySourceBytes: sourceBytes,
       registrySourcePartCount: 1,
       registrySha256: 'different-sha256',
+      idleCallbackMode: 'unavailable',
+      createObjectUrlFailureCount: 0,
+      workerConstructorFailureCount: 0,
     })
 
     await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('metadata mismatch')
@@ -373,6 +430,9 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       registrySourceBytes: sourceBytes,
       registrySourcePartCount: 1,
       registrySha256: 'fixture-sha256',
+      idleCallbackMode: 'unavailable',
+      createObjectUrlFailureCount: 0,
+      workerConstructorFailureCount: 0,
     })
 
     await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('byte length mismatch')
@@ -392,6 +452,9 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       registrySourceBytes: undefined,
       registrySourcePartCount: 1,
       registrySha256: 'fixture-sha256',
+      idleCallbackMode: 'unavailable',
+      createObjectUrlFailureCount: 0,
+      workerConstructorFailureCount: 0,
     })
 
     await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('must be a local file:// URL')
@@ -400,7 +463,7 @@ describe('fileProtocolStandalone generated worker runtime', () => {
   })
 
   it('uses the timeout fallback to warm the shared asset without creating a Worker', async () => {
-    const harness = createSuccessfulHarness()
+    const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
 
     harness.api.warmFileProtocolWorkerAssetAtIdle()
     expect(harness.scheduledCallbacks).toHaveLength(1)
@@ -416,4 +479,142 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       workersCreated: 0,
     })
   })
+
+  it('uses requestIdleCallback with an explicit timeout when it is available', async () => {
+    const harness = createSuccessfulHarness({ idleCallbackMode: 'available' })
+
+    harness.api.warmFileProtocolWorkerAssetAtIdle()
+
+    expect(harness.scheduledCallbacks).toEqual([])
+    expect(harness.idleCallbacks).toHaveLength(1)
+    expect(harness.idleCallbacks[0]?.options).toEqual({ timeout: 1000 })
+    harness.idleCallbacks[0]?.callback({
+      didTimeout: false,
+      timeRemaining: () => 50,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(harness.scriptLoadCount()).toBe(1)
+    expect(harness.workerRecords).toEqual([])
+  })
+
+  it('coalesces repeated warmup requests before and after the shared Blob URL is ready', async () => {
+    const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
+
+    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    expect(harness.scheduledCallbacks).toHaveLength(1)
+
+    harness.scheduledCallbacks[0]?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    harness.api.warmFileProtocolWorkerAssetAtIdle()
+
+    expect(harness.scheduledCallbacks).toHaveLength(1)
+    expect(harness.scriptLoadCount()).toBe(1)
+    expect(harness.objectUrlBlobs).toHaveLength(1)
+  })
+
+  it('shares one physical load when idle warming and first Worker creation overlap', async () => {
+    const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
+
+    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.scheduledCallbacks[0]?.()
+    const worker = await harness.api.createFileProtocolWorker({ name: 'first-worker' })
+
+    expect(worker).toBeDefined()
+    expect(harness.scriptLoadCount()).toBe(1)
+    expect(harness.objectUrlBlobs).toHaveLength(1)
+    expect(harness.workerRecords).toHaveLength(1)
+  })
+
+  it('does not let a failed idle warmup poison later Worker creation', async () => {
+    const workerSource = 'self.onmessage = function () {};'
+    const sourceBytes = new Blob([workerSource]).size
+    const harness = createRuntimeHarness({
+      registryScript: './assets/worker-source-worker-hub.js',
+      failLoadCount: 1,
+      workerSource,
+      blobSource: workerSource,
+      manifestSourceBytes: sourceBytes,
+      manifestSourcePartCount: 1,
+      manifestSha256: 'retry-sha256',
+      registrySourceBytes: sourceBytes,
+      registrySourcePartCount: 1,
+      registrySha256: 'retry-sha256',
+      idleCallbackMode: 'unavailable',
+      createObjectUrlFailureCount: 0,
+      workerConstructorFailureCount: 0,
+    })
+
+    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.scheduledCallbacks[0]?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await expect(harness.api.createFileProtocolWorker({ name: undefined })).resolves.toBeDefined()
+
+    expect(harness.scriptLoadCount()).toBe(2)
+    expect(harness.api.getFileProtocolWorkerDiagnostics()).toMatchObject({
+      registryScriptLoadFailures: 1,
+      registryScriptLoads: 1,
+      workersCreated: 1,
+    })
+  })
+
+  it('retries Object URL creation without reloading the already registered Blob', async () => {
+    const workerSource = 'self.onmessage = function () {};'
+    const sourceBytes = new Blob([workerSource]).size
+    const harness = createRuntimeHarness({
+      registryScript: './assets/worker-source-worker-hub.js',
+      failLoadCount: 0,
+      workerSource,
+      blobSource: workerSource,
+      manifestSourceBytes: sourceBytes,
+      manifestSourcePartCount: 1,
+      manifestSha256: 'object-url-retry-sha256',
+      registrySourceBytes: sourceBytes,
+      registrySourcePartCount: 1,
+      registrySha256: 'object-url-retry-sha256',
+      idleCallbackMode: 'unavailable',
+      createObjectUrlFailureCount: 1,
+      workerConstructorFailureCount: 0,
+    })
+
+    await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('synthetic createObjectURL failure')
+    expect(harness.globalObject[registryGlobal]).toHaveProperty(workerId)
+    await expect(harness.api.createFileProtocolWorker({ name: undefined })).resolves.toBeDefined()
+
+    expect(harness.scriptLoadCount()).toBe(1)
+    expect(harness.objectUrlBlobs).toHaveLength(1)
+    expect(harness.globalObject[registryGlobal]).toEqual({})
+  })
+
+  it('reuses the page-lifetime Blob URL after a Worker constructor failure', async () => {
+    const workerSource = 'self.onmessage = function () {};'
+    const sourceBytes = new Blob([workerSource]).size
+    const harness = createRuntimeHarness({
+      registryScript: './assets/worker-source-worker-hub.js',
+      failLoadCount: 0,
+      workerSource,
+      blobSource: workerSource,
+      manifestSourceBytes: sourceBytes,
+      manifestSourcePartCount: 1,
+      manifestSha256: 'worker-constructor-retry-sha256',
+      registrySourceBytes: sourceBytes,
+      registrySourcePartCount: 1,
+      registrySha256: 'worker-constructor-retry-sha256',
+      idleCallbackMode: 'unavailable',
+      createObjectUrlFailureCount: 0,
+      workerConstructorFailureCount: 1,
+    })
+
+    await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('synthetic Worker constructor failure')
+    await expect(harness.api.createFileProtocolWorker({ name: 'retry-worker' })).resolves.toBeDefined()
+
+    expect(harness.scriptLoadCount()).toBe(1)
+    expect(harness.objectUrlBlobs).toHaveLength(1)
+    expect(harness.workerRecords).toHaveLength(1)
+    expect(harness.workerRecords[0]?.url).toBe('blob:test-1')
+    expect(harness.workerRecords[0]?.options).toEqual({ name: 'retry-worker' })
+  })
+
 })

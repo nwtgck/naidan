@@ -1,25 +1,33 @@
 import legacy from '@vitejs/plugin-legacy'
 import fs from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { JSDOM } from 'jsdom'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { build as viteBuild } from 'vite'
-import type { Plugin } from 'vite'
+import type { Plugin, ResolvedConfig } from 'vite'
 import {
   fileProtocolStandalone,
+  type FileProtocolStandaloneLicenseDependency,
+  type FileProtocolStandaloneOptions,
   normalizeModuleId,
   splitWorkerSourceForBlob,
   validateClassicJavaScriptSource,
+  validateResolvedConfig,
   validateSystemJsRuntimeCapabilities,
+  validateSystemJsSourceMapPair,
 } from './file-protocol-standalone'
 
+const require = createRequire(import.meta.url)
+
 const fixtureRoots: string[] = []
+const workerTarget = ['chrome140', 'firefox140']
 
 async function createFixture({ files }: {
   files: Readonly<Record<string, string>>
 }): Promise<string> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'naidan-file-protocol-plugin-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'))
   fixtureRoots.push(root)
   await Promise.all(Object.entries(files).map(async ([fileName, source]) => {
     const filePath = path.join(root, fileName)
@@ -37,6 +45,7 @@ async function buildFixtureWithOptions({
   input,
   define,
   alias,
+  onAdditionalLicenseDependencies,
 }: {
   root: string
   budgets: {
@@ -48,6 +57,7 @@ async function buildFixtureWithOptions({
   input: string | string[] | Record<string, string>
   define: Readonly<Record<string, string>> | undefined
   alias: Readonly<Record<string, string>> | undefined
+  onAdditionalLicenseDependencies: FileProtocolStandaloneOptions['onAdditionalLicenseDependencies']
 }): Promise<void> {
   await viteBuild({
     root,
@@ -58,6 +68,7 @@ async function buildFixtureWithOptions({
     resolve: { alias },
     plugins: [
       legacy({
+        targets: ['Firefox >= 140', 'Chrome >= 140'],
         renderModernChunks: false,
         renderLegacyChunks: true,
         externalSystemJS: true,
@@ -67,8 +78,10 @@ async function buildFixtureWithOptions({
       ...pluginsBeforeStandalone,
       fileProtocolStandalone({
         reportFile: 'dist/standalone-build-report.json',
+        workerTarget,
         workers,
         budgets,
+        onAdditionalLicenseDependencies,
       }),
     ],
     build: {
@@ -97,6 +110,7 @@ async function buildFixture({ root, budgets }: {
     input: path.join(root, 'index.html'),
     define: undefined,
     alias: undefined,
+    onAdditionalLicenseDependencies: undefined,
   })
 }
 
@@ -147,6 +161,36 @@ self.onmessage = () => self.postMessage(featureA() + featureB())
   }
 }
 
+function resolvedConfigFixture({
+  base,
+  modulePreload,
+  ssr,
+  lib,
+  write,
+  pluginInstanceCount,
+}: {
+  base: string
+  modulePreload: false | Readonly<Record<string, unknown>>
+  ssr: boolean | string
+  lib: false | Readonly<Record<string, unknown>>
+  write: boolean
+  pluginInstanceCount: number
+}): ResolvedConfig {
+  return {
+    base,
+    root: '/project',
+    build: {
+      modulePreload,
+      ssr,
+      lib,
+      write,
+      outDir: 'dist/standalone',
+    },
+    plugins: Array.from({ length: pluginInstanceCount }, () => ({ name: 'file-protocol-standalone' })),
+  } as unknown as ResolvedConfig
+}
+
+
 afterEach(async () => {
   await Promise.all(fixtureRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })))
 })
@@ -174,6 +218,7 @@ describe('fileProtocolStandalone', () => {
       format: string
       plugin: {
         systemJsRuntimeFile: string
+        systemJsSourceMapFile: string
         systemJsFileProtocolPatchFile: string
         systemJsRetryHookFile: string
       }
@@ -201,23 +246,23 @@ describe('fileProtocolStandalone', () => {
         registryFileName: string
         moduleIds: string[]
         sourcePartCount: number
-        runtimeDynamicImportCount: number
+        runtimeDynamicImports: { total: number, staticSpecifier: number, dynamicSpecifier: number }
         sourceStoredAsGlobalString: boolean
         runtimeDigest: boolean
         objectUrlLifetime: string
       }>
     }
-    expect(report.format).toBe('file-protocol-standalone-build-report-v4')
+    expect(report.format).toBe('file-protocol-standalone-build-report-v5')
     expect(report.startup.entryFileName).toContain('-legacy-')
     expect(report.startup.staticChunkClosure).toContain(report.startup.entryFileName)
     expect(report.chunks.some((chunk) => chunk.phase === 'lazy')).toBe(true)
     expect(report.chunks.some((chunk) => chunk.dynamicImports.length > 0)).toBe(true)
-    expect(['external-css-assets', 'javascript-injected-css']).toContain(report.styles.strategy)
+    expect(['external-css-assets', 'javascript-injected-css', 'none']).toContain(report.styles.strategy)
     expect(reportText).not.toContain(root)
     expect(report.validations.map((validation) => validation.id)).toEqual([
       'html.classic-scripts',
-      'chunks.classic-javascript',
-      'workers.self-contained',
+      'chunks.system-register',
+      'workers.single-javascript-artifact',
       'workers.runtime-digest-disabled',
     ])
 
@@ -241,6 +286,12 @@ describe('fileProtocolStandalone', () => {
       'utf8',
     )
     expect(() => validateSystemJsRuntimeCapabilities({ source: emittedRuntimeSource })).not.toThrow()
+    expect(emittedRuntimeSource).toBe(await fs.readFile(require.resolve('systemjs/dist/system.min.js'), 'utf8'))
+    expect(emittedRuntimeSource).toContain('sourceMappingURL=system.min.js.map')
+    const emittedSourceMap = await fs.readFile(
+      path.join(root, 'dist/standalone', report.plugin.systemJsSourceMapFile),
+    )
+    expect(emittedSourceMap).toEqual(await fs.readFile(require.resolve('systemjs/dist/system.min.js.map')))
     const emittedFilePatchSource = await fs.readFile(
       path.join(root, 'dist/standalone', report.plugin.systemJsFileProtocolPatchFile),
       'utf8',
@@ -250,7 +301,7 @@ describe('fileProtocolStandalone', () => {
       'utf8',
     )
     const runtimeDom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
-      url: 'file:///tmp/naidan/index.html',
+      url: 'file:///__nonexistent_file_protocol_test_root__/index.html',
       runScripts: 'outside-only',
     })
     runtimeDom.window.eval(emittedRuntimeSource)
@@ -284,7 +335,7 @@ describe('fileProtocolStandalone', () => {
     expect(worker.runtimeDigest).toBe(false)
     expect(worker.objectUrlLifetime).toBe('page')
     expect(worker.sourcePartCount).toBeGreaterThan(0)
-    expect(worker.runtimeDynamicImportCount).toBe(0)
+    expect(worker.runtimeDynamicImports).toEqual({ total: 0, staticSpecifier: 0, dynamicSpecifier: 0, occurrences: [] })
     expect(worker.moduleIds.filter((moduleId) => moduleId === '/src/worker-shared.ts')).toHaveLength(1)
 
     const registry = await fs.readFile(path.join(root, 'dist/standalone', worker.registryFileName), 'utf8')
@@ -318,27 +369,73 @@ self.onmessage = (event) => {
     await buildFixture({ root, budgets: undefined })
 
     const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
-      workers: Array<{ runtimeDynamicImportCount: number }>
+      workers: Array<{ runtimeDynamicImports: { total: number, staticSpecifier: number, dynamicSpecifier: number } }>
       limitations: string[]
     }
-    expect(report.workers[0]?.runtimeDynamicImportCount).toBe(1)
+    expect(report.workers[0]?.runtimeDynamicImports).toMatchObject({ total: 1, staticSpecifier: 0, dynamicSpecifier: 1 })
     expect(report.limitations.some((limitation) => limitation.includes('must remain unreachable'))).toBe(true)
+  })
+
+  it('accepts a literal Worker dynamic import when Vite inlines it into the single artifact', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'src/worker-hub.worker.ts': `\
+self.onmessage = async () => {
+  const module = await import('./worker-feature-a')
+  self.postMessage(module.featureA())
+}
+`,
+      },
+    })
+
+    await buildFixture({ root, budgets: undefined })
+
+    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
+      workers: Array<{ runtimeDynamicImports: { total: number, staticSpecifier: number, dynamicSpecifier: number } }>
+    }
+    expect(report.workers[0]?.runtimeDynamicImports).toMatchObject({
+      total: 0,
+      staticSpecifier: 0,
+      dynamicSpecifier: 0,
+    })
+  })
+
+  it('rejects a static runtime Worker import that Vite was explicitly told not to bundle', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'src/worker-hub.worker.ts': `\
+self.onmessage = async () => {
+  const module = await import(/* @vite-ignore */ './worker-feature-a')
+  self.postMessage(module.featureA())
+}
+`,
+      },
+    })
+
+    await expect(buildFixture({ root, budgets: undefined }))
+      .rejects.toThrow('unsupported runtime import expression')
   })
 
   it('rejects unsafe and duplicate worker identifiers before building', () => {
     expect(() => fileProtocolStandalone({
       reportFile: 'dist/report.json',
+      workerTarget,
       workers: [{ id: '../worker', entry: 'worker.ts' }],
       budgets: undefined,
+      onAdditionalLicenseDependencies: undefined,
     })).toThrow('Worker id must match')
 
     expect(() => fileProtocolStandalone({
       reportFile: 'dist/report.json',
+      workerTarget,
       workers: [
         { id: 'worker-hub', entry: 'worker-a.ts' },
         { id: 'worker-hub', entry: 'worker-b.ts' },
       ],
       budgets: undefined,
+      onAdditionalLicenseDependencies: undefined,
     })).toThrow('Duplicate worker id')
   })
 
@@ -351,11 +448,15 @@ self.onmessage = (event) => {
       logLevel: 'silent',
       plugins: [fileProtocolStandalone({
         reportFile: 'dist/standalone/report.json',
+        workerTarget,
         workers: [],
         budgets: undefined,
+        onAdditionalLicenseDependencies: undefined,
       })],
+      base: './',
       build: {
         outDir: path.join(root, 'dist/standalone'),
+        modulePreload: false,
         rolldownOptions: { input: path.join(root, 'index.html') },
       },
     })).rejects.toThrow('reportFile must be outside build.outDir')
@@ -406,6 +507,7 @@ self.onmessage = () => self.postMessage('ok')
       input: path.join(root, 'index.html'),
       define: undefined,
       alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
     })
 
     const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
@@ -439,6 +541,7 @@ self.onmessage = () => self.postMessage('secondary')
       input: path.join(root, 'index.html'),
       define: undefined,
       alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
     })
 
     const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
@@ -490,7 +593,108 @@ globalThis.customClassicLoaded = true
     }
     const root = await createFixture({ files })
 
-    await expect(buildFixture({ root, budgets: undefined })).rejects.toThrow('Unexpected executable script in index.html')
+    await expect(buildFixture({ root, budgets: undefined })).rejects.toThrow('Unexpected executable script(s) in index.html')
+  })
+
+  it('rejects a modulepreload link injected after plugin-legacy processing', async () => {
+    const root = await createFixture({ files: basicFixtureFiles() })
+    const injectModulePreload: Plugin = {
+      name: 'inject-modulepreload-after-legacy',
+      enforce: 'post',
+      transformIndexHtml() {
+        return [{
+          tag: 'link',
+          attrs: { rel: 'modulepreload', href: './should-not-be-loaded.js' },
+          injectTo: 'head',
+        }]
+      },
+    }
+
+    await expect(buildFixtureWithOptions({
+      root,
+      budgets: undefined,
+      workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
+      pluginsBeforeStandalone: [injectModulePreload],
+      input: path.join(root, 'index.html'),
+      define: undefined,
+      alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).rejects.toThrow('Expected @vitejs/plugin-legacy to remove modulepreload links')
+  })
+
+  it('rejects a user script that collides with the plugin-legacy entry id', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'index.html': `\
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8"><title>fixture</title></head>
+  <body>
+    <div id="app"></div>
+    <script id="vite-legacy-entry">globalThis.userScript = true</script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+`,
+      },
+    })
+
+    await expect(buildFixture({ root, budgets: undefined }))
+      .rejects.toThrow('Expected exactly one @vitejs/plugin-legacy entry script; found 2')
+  })
+
+  it('rejects a plugin-legacy data-src that does not match the generated entry', async () => {
+    const root = await createFixture({ files: basicFixtureFiles() })
+    const mutateLegacyDataSource: Plugin = {
+      name: 'mutate-legacy-entry-data-src',
+      enforce: 'post',
+      transformIndexHtml(html) {
+        const dom = new JSDOM(html)
+        const entry = dom.window.document.getElementById('vite-legacy-entry')
+        if (entry === null) throw new Error('Expected plugin-legacy entry in fixture.')
+        entry.setAttribute('data-src', './assets/not-the-generated-entry.js')
+        return dom.serialize()
+      },
+    }
+
+    await expect(buildFixtureWithOptions({
+      root,
+      budgets: undefined,
+      workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
+      pluginsBeforeStandalone: [mutateLegacyDataSource],
+      input: path.join(root, 'index.html'),
+      define: undefined,
+      alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).rejects.toThrow('Legacy entry data-src does not match the generated entry chunk')
+  })
+
+  it('rejects a legacy polyfill bootstrap that contradicts the standalone configuration', async () => {
+    const root = await createFixture({ files: basicFixtureFiles() })
+    const injectLegacyPolyfill: Plugin = {
+      name: 'inject-unexpected-legacy-polyfill',
+      enforce: 'post',
+      transformIndexHtml() {
+        return [{
+          tag: 'script',
+          attrs: { id: 'vite-legacy-polyfill' },
+          children: 'globalThis.unexpectedLegacyPolyfill = true',
+          injectTo: 'body',
+        }]
+      },
+    }
+
+    await expect(buildFixtureWithOptions({
+      root,
+      budgets: undefined,
+      workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
+      pluginsBeforeStandalone: [injectLegacyPolyfill],
+      input: path.join(root, 'index.html'),
+      define: undefined,
+      alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).rejects.toThrow('Legacy polyfill scripts are unsupported')
   })
 
   it.each([
@@ -555,7 +759,8 @@ globalThis.customClassicLoaded = true
       input: path.join(root, 'index.html'),
       define: undefined,
       alias: undefined,
-    })).rejects.toThrow('Unexpected executable script in index.html')
+      onAdditionalLicenseDependencies: undefined,
+    })).rejects.toThrow('Unexpected executable script(s) in index.html')
   })
 
   it('rejects an external stylesheet instead of creating a network-dependent standalone build', async () => {
@@ -580,7 +785,8 @@ globalThis.customClassicLoaded = true
       input: path.join(root, 'index.html'),
       define: undefined,
       alias: undefined,
-    })).rejects.toThrow('Standalone stylesheet must be a local emitted asset')
+      onAdditionalLicenseDependencies: undefined,
+    })).rejects.toThrow('stylesheet href must identify one local output file without a query or fragment')
   })
 
   it('rejects multiple HTML entry points instead of choosing one implicitly', async () => {
@@ -604,6 +810,7 @@ globalThis.customClassicLoaded = true
       },
       define: undefined,
       alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
     })).rejects.toThrow(/Expected exactly one application entry chunk|Expected only index.html/)
   })
 
@@ -611,7 +818,7 @@ globalThis.customClassicLoaded = true
     {
       name: 'dynamic import',
       injectedSource: `\nvoid import('./unexpected.js');`,
-      expectedError: 'dynamic import() remains',
+      expectedError: 'unsupported runtime import expression',
     },
     {
       name: 'import.meta',
@@ -639,6 +846,7 @@ globalThis.customClassicLoaded = true
       input: path.join(root, 'index.html'),
       define: undefined,
       alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
     })).rejects.toThrow(expectedError)
   })
 
@@ -665,6 +873,7 @@ self.onmessage = () => self.postMessage(workerAliasValue + ':' + __WORKER_DEFINE
       input: path.join(root, 'index.html'),
       define: { __WORKER_DEFINE__: JSON.stringify('WORKER_DEFINE_VALUE') },
       alias: { '@worker-value': path.join(root, 'src/worker-value.ts') },
+      onAdditionalLicenseDependencies: undefined,
     })
 
     const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
@@ -675,6 +884,40 @@ self.onmessage = () => self.postMessage(workerAliasValue + ':' + __WORKER_DEFINE
     expect(registry).toContain('WORKER_ALIAS_VALUE')
     expect(registry).toContain('WORKER_DEFINE_VALUE')
     expect(worker?.moduleIds).toContain('/src/worker-value.ts')
+  })
+
+  it('reports licenses for manually emitted SystemJS and nested Worker-only dependencies', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'src/worker-hub.worker.ts': `\
+import { z } from 'fixture-worker-dependency'
+const schema = z.object({ value: z.string() })
+self.onmessage = (event) => self.postMessage(schema.parse(event.data))
+`,
+      },
+    })
+    let additionalLicenses: readonly FileProtocolStandaloneLicenseDependency[] = []
+
+    await buildFixtureWithOptions({
+      root,
+      budgets: undefined,
+      workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
+      pluginsBeforeStandalone: [],
+      input: path.join(root, 'index.html'),
+      define: undefined,
+      alias: { 'fixture-worker-dependency': require.resolve('zod') },
+      onAdditionalLicenseDependencies({ dependencies }) {
+        additionalLicenses = dependencies
+      },
+    })
+
+    expect(additionalLicenses.map(({ name }) => name)).toEqual(expect.arrayContaining(['systemjs', 'zod']))
+    for (const dependency of additionalLicenses.filter(({ name }) => name === 'systemjs' || name === 'zod')) {
+      expect(dependency.version).not.toBe('')
+      expect(dependency.license).not.toBeNull()
+      expect(dependency.licenseText?.trim()).not.toBe('')
+    }
   })
 
   it('splits a large Unicode worker into Blob parts without broken surrogate boundaries', async () => {
@@ -749,6 +992,7 @@ self.onmessage = () => self.postMessage(unicodeCorpus)
       input: path.join(root, 'index.html'),
       define: undefined,
       alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
     })).rejects.toThrow(/Cannot resolve entry module|Could not resolve entry module|Failed to resolve entry/)
   })
 
@@ -795,7 +1039,7 @@ describe('fileProtocolStandalone pure helpers', () => {
     expect(splitWorkerSourceForBlob({ source: 'abcdefgh', maxCodeUnits: 4 })).toEqual(['abcd', 'efgh'])
   })
 
-  it('accepts classic scripts and counts allowed runtime dynamic imports', () => {
+  it('classifies Worker runtime imports without rejecting dynamic specifiers', () => {
     expect(validateClassicJavaScriptSource({
       source: `\
 (function () {
@@ -804,8 +1048,12 @@ describe('fileProtocolStandalone pure helpers', () => {
 })();
 `,
       label: 'classic fixture',
-      allowRuntimeDynamicImport: false,
-    })).toEqual({ runtimeDynamicImportCount: 0 })
+      mode: 'support-script',
+    })).toEqual({
+      runtimeDynamicImports: [],
+      systemRegisterCallCount: 0,
+      hostedWorkerUrlCount: 0,
+    })
 
     expect(validateClassicJavaScriptSource({
       source: `\
@@ -813,17 +1061,150 @@ const load = (specifier) => import(specifier);
 void load('node:fs/promises');
 `,
       label: 'worker dependency helper',
-      allowRuntimeDynamicImport: true,
-    })).toEqual({ runtimeDynamicImportCount: 1 })
+      mode: 'worker',
+    })).toEqual({
+      runtimeDynamicImports: [{
+        kind: 'dynamic-specifier',
+        line: 1,
+        column: 28,
+        specifier: undefined,
+      }],
+      systemRegisterCallCount: 0,
+      hostedWorkerUrlCount: 0,
+    })
   })
 
-  it('rejects runtime dynamic imports when classic output must be fully self-contained', () => {
+  it('rejects static runtime imports left in a Worker artifact', () => {
     expect(() => validateClassicJavaScriptSource({
       source: `\
 void import('./lazy.js');
 `,
+      label: 'worker chunk',
+      mode: 'worker',
+    })).toThrow('unsupported runtime import expression')
+  })
+
+  it('rejects invalid Worker source part sizes instead of risking a non-progressing split', () => {
+    for (const maxCodeUnits of [0, -1, 1.5, Number.NaN]) {
+      expect(() => splitWorkerSourceForBlob({ source: 'worker', maxCodeUnits }))
+        .toThrow('Worker source part size must be a positive safe integer')
+    }
+  })
+
+  it('validates options before Vite starts a build', () => {
+    expect(() => fileProtocolStandalone({
+      reportFile: '',
+      workerTarget,
+      workers: [],
+      budgets: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).toThrow('reportFile must not be empty')
+
+    expect(() => fileProtocolStandalone({
+      reportFile: 'dist/report.json',
+      workerTarget: [],
+      workers: [],
+      budgets: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).toThrow('workerTarget must contain at least one non-empty target')
+
+    expect(() => fileProtocolStandalone({
+      reportFile: 'dist/report.json',
+      workerTarget,
+      workers: [{ id: 'worker-hub', entry: '   ' }],
+      budgets: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).toThrow('Worker entry must not be empty')
+
+    for (const invalidBudget of [-1, 1.5, Number.NaN]) {
+      expect(() => fileProtocolStandalone({
+        reportFile: 'dist/report.json',
+        workerTarget,
+        workers: [],
+        budgets: {
+          maxInitialEntryBytes: invalidBudget,
+          maxInitialRequestBytes: undefined,
+        },
+        onAdditionalLicenseDependencies: undefined,
+      })).toThrow('must be a non-negative safe integer')
+    }
+  })
+
+  it('requires the Vite settings that make local file output deterministic', () => {
+    const validConfigArguments = {
+      base: './',
+      modulePreload: false as const,
+      ssr: false as const,
+      lib: false as const,
+      write: true,
+      pluginInstanceCount: 1,
+    }
+    const validConfig = resolvedConfigFixture(validConfigArguments)
+    expect(() => validateResolvedConfig({
+      config: validConfig,
+      reportFile: '../../explicit-outside-project/report.json',
+    })).not.toThrow()
+
+    expect(() => validateResolvedConfig({
+      config: resolvedConfigFixture({ ...validConfigArguments, base: '/' }),
+      reportFile: 'dist/report.json',
+    })).toThrow("Vite base must be './' or ''")
+    expect(() => validateResolvedConfig({
+      config: resolvedConfigFixture({ ...validConfigArguments, modulePreload: {} }),
+      reportFile: 'dist/report.json',
+    })).toThrow('build.modulePreload must be false')
+    expect(() => validateResolvedConfig({
+      config: resolvedConfigFixture({ ...validConfigArguments, ssr: true }),
+      reportFile: 'dist/report.json',
+    })).toThrow('SSR builds are unsupported')
+    expect(() => validateResolvedConfig({
+      config: resolvedConfigFixture({ ...validConfigArguments, lib: {} }),
+      reportFile: 'dist/report.json',
+    })).toThrow('Library mode is unsupported')
+    expect(() => validateResolvedConfig({
+      config: resolvedConfigFixture({ ...validConfigArguments, write: false }),
+      reportFile: 'dist/report.json',
+    })).toThrow('build.write=false is unsupported')
+    expect(() => validateResolvedConfig({
+      config: resolvedConfigFixture({ ...validConfigArguments, pluginInstanceCount: 2 }),
+      reportFile: 'dist/report.json',
+    })).toThrow('Expected exactly one plugin instance; found 2')
+  })
+
+  it('validates the unmodified SystemJS runtime and its sibling source map', async () => {
+    const runtimeSource = await fs.readFile(require.resolve('systemjs/dist/system.min.js'), 'utf8')
+    const sourceMapSource = await fs.readFile(require.resolve('systemjs/dist/system.min.js.map'))
+    expect(() => validateSystemJsSourceMapPair({ runtimeSource, sourceMapSource })).not.toThrow()
+
+    expect(() => validateSystemJsSourceMapPair({
+      runtimeSource: runtimeSource.replace('//# sourceMappingURL=system.min.js.map', ''),
+      sourceMapSource,
+    })).toThrow('must retain its exact sibling source map directive')
+    expect(() => validateSystemJsSourceMapPair({
+      runtimeSource,
+      sourceMapSource: '{not json}',
+    })).toThrow('source map is not valid JSON')
+    expect(() => validateSystemJsSourceMapPair({
+      runtimeSource,
+      sourceMapSource: JSON.stringify({ version: 3, sources: ['one.js'], sourcesContent: [] }),
+    })).toThrow('source map is missing embedded source content')
+  })
+
+  it('requires application chunks to register through System.register', () => {
+    expect(() => validateClassicJavaScriptSource({
+      source: `\
+(function () { globalThis.value = 1 })();
+`,
       label: 'application chunk',
-      allowRuntimeDynamicImport: false,
-    })).toThrow('dynamic import() remains')
+      mode: 'application-chunk',
+    })).toThrow('System.register(...) is missing')
+
+    expect(validateClassicJavaScriptSource({
+      source: `\
+System.register([], function () { return { execute: function () {} } });
+`,
+      label: 'application chunk',
+      mode: 'application-chunk',
+    }).systemRegisterCallCount).toBe(1)
   })
 })
