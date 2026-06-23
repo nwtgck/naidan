@@ -16,8 +16,7 @@ import type { RuntimeDynamicImportReport } from './javascript-validation'
 const pluginName = 'file-protocol-standalone'
 export const virtualWorkerPrefix = 'virtual:file-protocol-standalone/worker/'
 export const resolvedVirtualWorkerPrefix = `\0${virtualWorkerPrefix}`
-const workerRegistryGlobal = '__FILE_PROTOCOL_STANDALONE_WORKER_BLOBS__'
-const workerRuntimeGlobal = '__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__'
+const diagnosticsGlobal = '__FILE_PROTOCOL_STANDALONE__'
 export const workerManifestScriptId = 'file-protocol-standalone-worker-manifest'
 const workerSourcePartSizeCodeUnits = 64 * 1024
 
@@ -233,11 +232,12 @@ export function createWorkerRegistrySource({ worker }: {
   return `/* file-protocol-standalone worker Blob registry: ${worker.id} */
 (function () {
   'use strict';
-  var registryName = ${JSON.stringify(workerRegistryGlobal)};
-  var runtimeName = ${JSON.stringify(workerRuntimeGlobal)};
+  var diagnosticsName = ${JSON.stringify(diagnosticsGlobal)};
   var workerId = ${JSON.stringify(worker.id)};
-  var registry = globalThis[registryName] || (globalThis[registryName] = Object.create(null));
-  var allRuntime = globalThis[runtimeName] || (globalThis[runtimeName] = Object.create(null));
+  var diagnostics = globalThis[diagnosticsName] || (globalThis[diagnosticsName] = {});
+  var internal = diagnostics.internal || (diagnostics.internal = {});
+  var registry = internal.workerBlobRegistry || (internal.workerBlobRegistry = Object.create(null));
+  var allRuntime = internal.workerRuntime || (internal.workerRuntime = Object.create(null));
   var state = allRuntime[workerId] || (allRuntime[workerId] = {
     registryScriptLoads: 0,
     registryScriptLoadFailures: 0,
@@ -278,15 +278,25 @@ export function createWorkerRegistrySource({ worker }: {
 
 export function createWorkerVirtualModule({ workerId }: { workerId: string }): string {
   return `const workerId = ${JSON.stringify(workerId)};
-const registryGlobal = ${JSON.stringify(workerRegistryGlobal)};
-const runtimeGlobal = ${JSON.stringify(workerRuntimeGlobal)};
+const diagnosticsGlobal = ${JSON.stringify(diagnosticsGlobal)};
 const manifestScriptId = ${JSON.stringify(workerManifestScriptId)};
 const loadPromises = new Map();
 let workerBlobUrlPromise;
 let workerWarmupScheduled = false;
 
+function getInternalState() {
+  const diagnostics = globalThis[diagnosticsGlobal] ||= {};
+  return diagnostics.internal ||= {};
+}
+
+function getWorkerBlobRegistry() {
+  const internal = getInternalState();
+  return internal.workerBlobRegistry ||= Object.create(null);
+}
+
 function getRuntimeState() {
-  const allWorkers = globalThis[runtimeGlobal] ||= Object.create(null);
+  const internal = getInternalState();
+  const allWorkers = internal.workerRuntime ||= Object.create(null);
   return allWorkers[workerId] ||= {
     registryScriptLoads: 0,
     registryScriptLoadFailures: 0,
@@ -356,7 +366,7 @@ async function createWorkerBlobUrl() {
   }
 
   await loadClassicScriptOnce(meta.registryScript);
-  const registry = globalThis[registryGlobal];
+  const registry = getWorkerBlobRegistry();
   const entry = registry && registry[workerId];
   if (!entry || !(entry.sourceBlob instanceof Blob)) {
     throw new Error('[file-protocol-standalone] Worker Blob was not registered: ' + workerId);
@@ -426,7 +436,7 @@ export async function createFileProtocolWorker({ name }) {
 
 export function getFileProtocolWorkerDiagnostics() {
   const state = getRuntimeState();
-  const registry = globalThis[registryGlobal];
+  const registry = getWorkerBlobRegistry();
   return {
     ...state,
     timingsMs: { ...state.timingsMs },

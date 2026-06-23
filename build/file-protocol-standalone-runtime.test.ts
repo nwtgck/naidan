@@ -54,7 +54,6 @@ type RuntimeHarness = Readonly<{
 }>
 
 const workerId = 'worker-hub'
-const registryGlobal = '__FILE_PROTOCOL_STANDALONE_WORKER_BLOBS__'
 const manifestScriptId = 'file-protocol-standalone-worker-manifest'
 
 function getWorkerVirtualModuleSource(): string {
@@ -248,7 +247,12 @@ function createRuntimeHarness({
         sourcePartCount: registrySourcePartCount,
         sha256: registrySha256,
       }
-      globalObject[registryGlobal] = { [workerId]: entry }
+      const namespace = (globalObject.__FILE_PROTOCOL_STANDALONE__ ??= {}) as {
+        internal?: { workerBlobRegistry?: Record<string, WorkerRegistryEntry> }
+      }
+      const internal = namespace.internal ??= {}
+      const registry = internal.workerBlobRegistry ??= {}
+      registry[workerId] = entry
       script.onload?.(new dom.window.Event('load'))
     })
     return result
@@ -350,7 +354,16 @@ describe('fileProtocolStandalone generated worker runtime', () => {
     })
     expect(harness.workerRecords[0]?.terminateCallCount()).toBe(2)
     expect(harness.workerRecords[1]?.terminateCallCount()).toBe(1)
-    expect(harness.globalObject[registryGlobal]).toEqual({})
+    expect(harness.globalObject).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__')
+    expect(harness.globalObject).toHaveProperty(
+      '__FILE_PROTOCOL_STANDALONE__.internal.workerRuntime.worker-hub.objectUrlsCreated',
+      1,
+    )
+    expect(harness.globalObject).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_WORKER_BLOBS__')
+    expect(harness.globalObject).toHaveProperty(
+      '__FILE_PROTOCOL_STANDALONE__.internal.workerBlobRegistry',
+      {},
+    )
     expect(harness.registryScriptElementCount()).toBe(0)
     expect(harness.revokedObjectUrls).toEqual([])
   })
@@ -580,12 +593,18 @@ describe('fileProtocolStandalone generated worker runtime', () => {
     })
 
     await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('synthetic createObjectURL failure')
-    expect(harness.globalObject[registryGlobal]).toHaveProperty(workerId)
+    expect(harness.globalObject).toHaveProperty(
+      `__FILE_PROTOCOL_STANDALONE__.internal.workerBlobRegistry.${workerId}`,
+    )
     await expect(harness.api.createFileProtocolWorker({ name: undefined })).resolves.toBeDefined()
 
     expect(harness.scriptLoadCount()).toBe(1)
     expect(harness.objectUrlBlobs).toHaveLength(1)
-    expect(harness.globalObject[registryGlobal]).toEqual({})
+    expect(harness.globalObject).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_WORKER_BLOBS__')
+    expect(harness.globalObject).toHaveProperty(
+      '__FILE_PROTOCOL_STANDALONE__.internal.workerBlobRegistry',
+      {},
+    )
   })
 
   it('reuses the page-lifetime Blob URL after a Worker constructor failure', async () => {

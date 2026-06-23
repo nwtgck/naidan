@@ -89,7 +89,7 @@ Why:
 - A classic `<script src>` can load a local file where direct `file:` Worker creation and native modules are unreliable.
 - Keeping the large source outside `index.html` avoids parsing the Worker payload during initial page startup.
 - Passing source parts directly to `Blob` avoids creating another large joined string.
-- The Object URL keeps the Blob alive, so the global registry reference is removed after URL creation.
+- The Object URL keeps the Blob alive, so the temporary Blob entry under `globalThis.__FILE_PROTOCOL_STANDALONE__.internal` is removed after URL creation.
 - The Object URL is intentionally not revoked during normal page lifetime because later callers may create more Worker instances from the same hub.
 - The plugin does not make Worker instances singletons; isolation and lifetime are application decisions.
 - SHA-256 is build-time diagnostic metadata only. Runtime code verifies metadata and `Blob.size` without reading the whole Blob into another buffer.

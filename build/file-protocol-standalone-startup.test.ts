@@ -84,7 +84,10 @@ function executeEntryLoader({
 function readStartupState({ globalObject }: {
   globalObject: Record<string, unknown>
 }): StartupState {
-  const state = globalObject['__FILE_PROTOCOL_STANDALONE_STARTUP__']
+  const namespace = globalObject['__FILE_PROTOCOL_STANDALONE__'] as Readonly<{
+    internal?: Readonly<{ startup?: unknown }>
+  }> | undefined
+  const state = namespace?.internal?.startup
   if (state === undefined) throw new Error('Expected startup state to be created.')
   return state as StartupState
 }
@@ -99,6 +102,8 @@ describe('standalone startup entry loader', () => {
       getDiagnostics: () => Readonly<Record<string, unknown>>
     }>
 
+    expect(harness.globalObject).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_STARTUP__')
+    expect(diagnostics).toHaveProperty('internal.startup')
     const snapshot = diagnostics.getDiagnostics()
     expect(snapshot).toMatchObject({
       format: 'file-protocol-standalone-diagnostics-v1',

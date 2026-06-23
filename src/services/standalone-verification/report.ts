@@ -103,6 +103,15 @@ function isExecutableScriptType({ type }: { type: string | undefined }): boolean
   return type === undefined || type.trim() === '' || executableScriptTypes.has(normalizeScriptType({ type }))
 }
 
+
+function snapshotReportValue<Value>({ value }: { value: Value }): Value {
+  if (value === undefined) return value
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value)
+  }
+  return JSON.parse(JSON.stringify(value)) as Value
+}
+
 function toErrorMessage({ error }: { error: unknown }): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -133,8 +142,7 @@ function readPerformanceMemory(): Readonly<Record<string, number>> | undefined {
   }
 }
 
-function readSystemJsPatchState(): SystemJsPatchState {
-  const value = globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
+function readSystemJsPatchState({ value }: { value: unknown }): SystemJsPatchState {
   if (typeof value !== 'object' || value === null) {
     throw new Error('SystemJS file-protocol patch state is missing.')
   }
@@ -192,8 +200,7 @@ function readSystemJsPatchState(): SystemJsPatchState {
   }
 }
 
-function readSystemJsRetryState(): SystemJsRetryState {
-  const value = globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
+function readSystemJsRetryState({ value }: { value: unknown }): SystemJsRetryState {
   if (typeof value !== 'object' || value === null) {
     throw new Error('SystemJS retry hook state is missing.')
   }
@@ -315,12 +322,36 @@ async function waitForStyleApplication(): Promise<void> {
   await Promise.resolve()
 }
 
-function readPluginDiagnostics(): unknown {
+function readPluginDiagnostics(): FileProtocolStandaloneGlobalDiagnostics {
   const diagnostics = globalThis.__FILE_PROTOCOL_STANDALONE__
   if (diagnostics === undefined || typeof diagnostics.getDiagnostics !== 'function') {
     throw new Error('The standalone global diagnostics API is missing.')
   }
   return diagnostics.getDiagnostics()
+}
+
+const standaloneVerificationCheckTimeoutMs = 60_000
+
+async function runVerificationCheckWithTimeout<Result>({
+  id,
+  timeoutMs,
+  action,
+}: {
+  id: string
+  timeoutMs: number
+  action: () => Result | Promise<Result>
+}): Promise<Result> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Standalone verification check "${id}" timed out after ${timeoutMs} ms.`))
+    }, timeoutMs)
+  })
+  try {
+    return await Promise.race([Promise.resolve().then(action), timeout])
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+  }
 }
 
 export async function runStandaloneVerification({
@@ -331,6 +362,7 @@ export async function runStandaloneVerification({
   loadLazyStyleProbe,
   exerciseRouteTransition,
   runWorkerProbe,
+  checkTimeoutMs = standaloneVerificationCheckTimeoutMs,
 }: {
   route: StandaloneVerificationRouteSnapshot
   tailwindProbe: HTMLElement
@@ -339,9 +371,38 @@ export async function runStandaloneVerification({
   loadLazyStyleProbe: () => Promise<Readonly<{ marker: string }>>
   exerciseRouteTransition: () => Promise<StandaloneVerificationRouteTransition>
   runWorkerProbe: () => Promise<StandaloneWorkerVerificationResult>
+  checkTimeoutMs?: number
 }): Promise<StandaloneVerificationReport> {
   const startedAt = performance.now()
   const checks: StandaloneVerificationCheck[] = []
+  let pluginDiagnosticsReadResult:
+    | Readonly<{ status: 'fulfilled'; value: FileProtocolStandaloneGlobalDiagnostics }>
+    | Readonly<{ status: 'rejected'; reason: unknown }>
+    | undefined
+
+  function getPluginDiagnosticsSnapshot(): FileProtocolStandaloneGlobalDiagnostics {
+    if (pluginDiagnosticsReadResult === undefined) {
+      try {
+        pluginDiagnosticsReadResult = {
+          status: 'fulfilled',
+          value: snapshotReportValue({ value: readPluginDiagnostics() }),
+        }
+      } catch (reason) {
+        pluginDiagnosticsReadResult = { status: 'rejected', reason }
+      }
+    }
+
+    switch (pluginDiagnosticsReadResult.status) {
+    case 'fulfilled':
+      return pluginDiagnosticsReadResult.value
+    case 'rejected':
+      throw pluginDiagnosticsReadResult.reason
+    default: {
+      const _ex: never = pluginDiagnosticsReadResult
+      throw new Error(`Unhandled diagnostics read result: ${String(_ex)}`)
+    }
+    }
+  }
 
   async function check({
     id,
@@ -354,7 +415,13 @@ export async function runStandaloneVerification({
   }): Promise<void> {
     const checkStartedAt = performance.now()
     try {
-      const details = await action()
+      const details = snapshotReportValue({
+        value: await runVerificationCheckWithTimeout({
+          id,
+          timeoutMs: checkTimeoutMs,
+          action,
+        }),
+      })
       checks.push({
         id,
         category,
@@ -391,14 +458,15 @@ export async function runStandaloneVerification({
       const app = document.querySelector('#app')
       assertCondition({ condition: app !== null, message: 'The #app element is missing.' })
       assertCondition({ condition: app?.childElementCount !== 0, message: 'The Vue application is not mounted.' })
+      const startup = getPluginDiagnosticsSnapshot().startup
       assertCondition({
-        condition: globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__?.phase === 'mounted',
-        message: `Startup phase is ${String(globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__?.phase)} instead of mounted.`,
+        condition: startup?.phase === 'mounted',
+        message: `Startup phase is ${String(startup?.phase)} instead of mounted.`,
       })
       return {
         readyState: document.readyState,
         appChildElementCount: app?.childElementCount ?? 0,
-        startup: globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__,
+        startup,
       }
     },
   })
@@ -475,19 +543,19 @@ export async function runStandaloneVerification({
   await check({
     id: 'systemjs.global-diagnostics',
     category: 'systemjs',
-    action: () => readPluginDiagnostics(),
+    action: () => getPluginDiagnosticsSnapshot(),
   })
 
   await check({
     id: 'systemjs.file-patch',
     category: 'systemjs',
-    action: () => readSystemJsPatchState(),
+    action: () => readSystemJsPatchState({ value: getPluginDiagnosticsSnapshot().systemJsPatch }),
   })
 
   await check({
     id: 'systemjs.retry-hook',
     category: 'systemjs',
-    action: () => readSystemJsRetryState(),
+    action: () => readSystemJsRetryState({ value: getPluginDiagnosticsSnapshot().systemJsRetry }),
   })
 
   await check({
@@ -507,7 +575,19 @@ export async function runStandaloneVerification({
   })
 
   const failed = checks.filter((item) => item.status === 'fail').length
-  const pluginDiagnostics = globalThis.__FILE_PROTOCOL_STANDALONE__?.getDiagnostics()
+  const resolvedPluginDiagnostics = (() => {
+    if (pluginDiagnosticsReadResult === undefined) return undefined
+    switch (pluginDiagnosticsReadResult.status) {
+    case 'fulfilled':
+      return pluginDiagnosticsReadResult.value
+    case 'rejected':
+      return undefined
+    default: {
+      const _ex: never = pluginDiagnosticsReadResult
+      throw new Error(`Unhandled diagnostics read result: ${String(_ex)}`)
+    }
+    }
+  })()
 
   return {
     format: 'naidan-standalone-verification-v1',
@@ -528,11 +608,11 @@ export async function runStandaloneVerification({
     },
     checks,
     runtime: {
-      pluginDiagnostics: pluginDiagnostics ?? undefined,
-      startup: globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__,
-      systemJsPatch: globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__,
-      systemJsRetry: globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__,
-      worker: globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__,
+      pluginDiagnostics: snapshotReportValue({ value: resolvedPluginDiagnostics }),
+      startup: snapshotReportValue({ value: resolvedPluginDiagnostics?.startup }),
+      systemJsPatch: snapshotReportValue({ value: resolvedPluginDiagnostics?.systemJsPatch }),
+      systemJsRetry: snapshotReportValue({ value: resolvedPluginDiagnostics?.systemJsRetry }),
+      worker: snapshotReportValue({ value: resolvedPluginDiagnostics?.workerRuntime }),
       resourceEntries: performance.getEntriesByType('resource').map((entry) => {
         const resource = entry as PerformanceResourceTiming
         return {

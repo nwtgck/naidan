@@ -67,6 +67,7 @@ async function runVerification(): Promise<void> {
   }
 
   running.value = true
+  report.value = undefined
   try {
     const resolved = router.resolve(route.fullPath)
     report.value = await runStandaloneVerification({

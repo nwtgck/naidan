@@ -32,14 +32,40 @@ function createStartupState(): FileProtocolStandaloneStartupState {
   }
 }
 
+function installStandaloneNamespace(): void {
+  const startup = createStartupState()
+  globalThis.__FILE_PROTOCOL_STANDALONE__ = {
+    internal: {
+      startup,
+      systemJsPatch: undefined,
+      systemJsRetry: undefined,
+      workerRuntime: undefined,
+    },
+    getDiagnostics: () => ({
+      format: 'file-protocol-standalone-diagnostics-v1',
+      protocol: location.protocol,
+      documentReadyState: document.readyState,
+      systemJsAvailable: false,
+      systemJsPatch: undefined,
+      systemJsRetry: undefined,
+      workerRuntime: undefined,
+      startup,
+    }),
+  }
+}
+
+function readStartupState(): FileProtocolStandaloneStartupState | undefined {
+  return globalThis.__FILE_PROTOCOL_STANDALONE__?.internal.startup
+}
+
 describe('app startup scheduling', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>'
-    globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__ = createStartupState()
+    installStandaloneNamespace()
   })
 
   afterEach(() => {
-    globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__ = undefined
+    delete globalThis.__FILE_PROTOCOL_STANDALONE__
     vi.restoreAllMocks()
   })
 
@@ -50,7 +76,7 @@ describe('app startup scheduling', () => {
 
     scheduleAppStartup({ document, bootstrap, onFailure })
     expect(bootstrap).not.toHaveBeenCalled()
-    expect(globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__?.phase).toBe('waiting-dom')
+    expect(readStartupState()?.phase).toBe('waiting-dom')
 
     document.dispatchEvent(new Event('DOMContentLoaded'))
     document.dispatchEvent(new Event('DOMContentLoaded'))
@@ -95,11 +121,11 @@ describe('app startup scheduling', () => {
 describe('app startup diagnostics', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>'
-    globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__ = createStartupState()
+    installStandaloneNamespace()
   })
 
   afterEach(() => {
-    globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__ = undefined
+    delete globalThis.__FILE_PROTOCOL_STANDALONE__
     vi.restoreAllMocks()
   })
 
@@ -109,12 +135,12 @@ describe('app startup diagnostics', () => {
       details: { route: '/chat/example' },
     })
 
-    expect(globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__).toMatchObject({
+    expect(readStartupState()).toMatchObject({
       phase: 'waiting-router',
       documentReadyState: document.readyState,
       error: undefined,
     })
-    expect(globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__?.history.at(-1)).toMatchObject({
+    expect(readStartupState()?.history.at(-1)).toMatchObject({
       phase: 'waiting-router',
       details: { route: '/chat/example' },
     })
@@ -128,7 +154,7 @@ describe('app startup diagnostics', () => {
       error: new TypeError('bootstrap exploded'),
     })
 
-    expect(globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__).toMatchObject({
+    expect(readStartupState()).toMatchObject({
       phase: 'bootstrap-failed',
       error: {
         name: 'TypeError',
@@ -137,6 +163,7 @@ describe('app startup diagnostics', () => {
     })
     expect(document.querySelectorAll('[data-testid="file-protocol-standalone-startup-failure"]')).toHaveLength(1)
     expect(document.querySelector('#app')?.textContent).toContain('Naidan failed to start.')
-    expect(document.querySelector('#app')?.textContent).toContain('__FILE_PROTOCOL_STANDALONE_STARTUP__')
+    expect(document.querySelector('#app')?.textContent).toContain('__FILE_PROTOCOL_STANDALONE__')
+    expect(document.querySelector('#app')?.textContent).toContain('getDiagnostics()')
   })
 })

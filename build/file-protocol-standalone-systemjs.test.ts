@@ -32,6 +32,37 @@ type RealSystemJs = Readonly<{
   import: (id: string, parentUrl?: string) => Promise<Record<string, unknown>>
 }>
 
+
+type StandaloneInternalState = Readonly<{
+  systemJsPatch?: {
+    installed: boolean
+    patchedScripts: Array<{
+      url: string
+      crossOriginProperty: string | null
+      crossoriginAttribute: string | null
+    }>
+  }
+  systemJsRetry?: {
+    installed: boolean
+    physicalScriptLoadFailureUrls: string[]
+    deletedModuleUrls: string[]
+    retryableErrorCount: number
+    nonRetryableErrorCount: number
+  }
+}>
+
+function readStandaloneInternalState({ window }: {
+  window: unknown
+}): StandaloneInternalState {
+  const namespace = (window as unknown as {
+    __FILE_PROTOCOL_STANDALONE__?: Readonly<{ internal?: unknown }>
+  }).__FILE_PROTOCOL_STANDALONE__
+  if (namespace === undefined || typeof namespace.internal !== 'object' || namespace.internal === null) {
+    throw new Error('Expected standalone diagnostics namespace.')
+  }
+  return namespace.internal as StandaloneInternalState
+}
+
 function hasErrorMessage(value: unknown): value is Readonly<{ message: string }> {
   return typeof value === 'object'
     && value !== null
@@ -215,16 +246,8 @@ describe('fileProtocolStandalone SystemJS file patch', () => {
     expect(fileScript.crossOrigin).toBeNull()
     expect(httpsScript.getAttribute('crossorigin')).toBe('anonymous')
 
-    const state = (harness.dom.window as unknown as {
-      __FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__: {
-        installed: boolean
-        patchedScripts: Array<{
-          url: string
-          crossOriginProperty: string | null
-          crossoriginAttribute: string | null
-        }>
-      }
-    }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
+    const state = readStandaloneInternalState({ window: harness.dom.window }).systemJsPatch
+    expect(harness.dom.window).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__')
     expect(state).toEqual({
       installed: true,
       patchedScripts: [{
@@ -243,10 +266,8 @@ describe('fileProtocolStandalone SystemJS file patch', () => {
 
     expect(harness.loader.createScript).toBe(firstPatchedFunction)
     harness.loader.createScript('file:///__nonexistent_file_protocol_test_root__/assets/entry.js')
-    const state = (harness.dom.window as unknown as {
-      __FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__: { patchedScripts: unknown[] }
-    }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
-    expect(state.patchedScripts).toHaveLength(1)
+    const state = readStandaloneInternalState({ window: harness.dom.window }).systemJsPatch
+    expect(state?.patchedScripts).toHaveLength(1)
   })
 
   it('fails explicitly when the expected SystemJS prototype hook is unavailable', () => {
@@ -270,14 +291,10 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
 
     const resolved = 'file:///__nonexistent_file_protocol_test_root__/lazy.js'
     expect(harness.deletedUrls).toContain(resolved)
-    const state = (harness.dom.window as unknown as {
-      __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__: {
-        installed: boolean
-        deletedModuleUrls: string[]
-      }
-    }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
-    expect(state.installed).toBe(true)
-    expect(state.deletedModuleUrls).toContain(resolved)
+    const state = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry
+    expect(harness.dom.window).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__')
+    expect(state?.installed).toBe(true)
+    expect(state?.deletedModuleUrls).toContain(resolved)
   })
 
   it('does not retry an application error that merely imitates SystemJS Error#3 text', async () => {
@@ -299,7 +316,6 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   })
 
 
-
   it('recovers a real file:// child load after the missing file is created', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'))
     try {
@@ -318,14 +334,9 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
           action: async () => {
             await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading')
 
-            const stateAfterFailure = (harness.dom.window as unknown as {
-              __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__: {
-                physicalScriptLoadFailureUrls: string[]
-                deletedModuleUrls: string[]
-              }
-            }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
-            expect(stateAfterFailure.physicalScriptLoadFailureUrls).toEqual([childUrl])
-            expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([childUrl, entryUrl]))
+            const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry
+            expect(stateAfterFailure?.physicalScriptLoadFailureUrls).toEqual([childUrl])
+            expect(stateAfterFailure?.deletedModuleUrls).toEqual(expect.arrayContaining([childUrl, entryUrl]))
 
             await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
   return { execute: function () { _export('value', 42); } };
@@ -348,6 +359,59 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
     }
   })
 
+  it('evicts every local ancestor before retrying a failed dependency chain', async () => {
+    const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'))
+    try {
+      await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./middle.js'], function (_export) {
+  var middle;
+  return {
+    setters: [function (module) { middle = module; }],
+    execute: function () { _export('value', middle.value); }
+  };
+});
+`)
+      await fs.promises.writeFile(path.join(fixtureDirectory, 'middle.js'), `System.register(['./child.js'], function (_export) {
+  var child;
+  return {
+    setters: [function (module) { child = module; }],
+    execute: function () { _export('value', child.value); }
+  };
+});
+`)
+      const harness = await createRealSystemJsHarness({ fixtureDirectory })
+      try {
+        const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href
+        const middleUrl = pathToFileURL(path.join(fixtureDirectory, 'middle.js')).href
+        const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href
+        await captureUnhandledRejections({
+          action: async () => {
+            await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading')
+
+            const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry
+            if (stateAfterFailure === undefined) {
+              throw new Error('Expected SystemJS retry diagnostics after a failed child load.')
+            }
+            expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([
+              childUrl,
+              middleUrl,
+              entryUrl,
+            ]))
+
+            await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
+  return { execute: function () { _export('value', 42); } };
+});
+`)
+            await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 })
+          },
+        })
+      } finally {
+        harness.dom.window.close()
+      }
+    } finally {
+      await fs.promises.rm(fixtureDirectory, { recursive: true, force: true })
+    }
+  })
+
   it('does not evict a real module whose execute function throws an application error', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'))
     try {
@@ -361,14 +425,7 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
       const harness = await createRealSystemJsHarness({ fixtureDirectory })
       try {
         await expect(harness.system.import('./application-error.js')).rejects.toThrow('SystemJS Error#3')
-        const state = (harness.dom.window as unknown as {
-          __FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__: {
-            physicalScriptLoadFailureUrls: string[]
-            deletedModuleUrls: string[]
-            retryableErrorCount: number
-            nonRetryableErrorCount: number
-          }
-        }).__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
+        const state = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry
         expect(state).toMatchObject({
           physicalScriptLoadFailureUrls: [],
           deletedModuleUrls: [],

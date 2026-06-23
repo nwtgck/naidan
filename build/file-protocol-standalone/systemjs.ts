@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom'
 import type { FileProtocolStandaloneLicenseDependency } from '../file-protocol-standalone'
 
 const pluginName = 'file-protocol-standalone'
-const startupGlobal = '__FILE_PROTOCOL_STANDALONE_STARTUP__'
+const diagnosticsGlobal = '__FILE_PROTOCOL_STANDALONE__'
 export const startupWatchdogTimeoutMs = 15_000
 
 export function readSystemJsLicenseDependency({ packageJsonPath }: {
@@ -41,13 +41,15 @@ export function createEntryImportSource({ entryFileName, watchdogTimeoutMs }: {
   return `/* file-protocol-standalone: import entry with pre-Vue diagnostics */
 (function () {
   'use strict';
-  var stateName = ${JSON.stringify(startupGlobal)};
+  var diagnosticsName = ${JSON.stringify(diagnosticsGlobal)};
+  var diagnostics = globalThis[diagnosticsName] || (globalThis[diagnosticsName] = {});
+  var internal = diagnostics.internal || (diagnostics.internal = {});
   var now = function () {
     return globalThis.performance && typeof globalThis.performance.now === 'function'
       ? globalThis.performance.now()
       : Date.now();
   };
-  var state = globalThis[stateName] = {
+  var state = internal.startup = {
     format: 'file-protocol-standalone-startup-v1',
     phase: 'importing-entry',
     startedAt: now(),
@@ -58,8 +60,6 @@ export function createEntryImportSource({ entryFileName, watchdogTimeoutMs }: {
     error: undefined,
     watchdog: undefined
   };
-  var diagnosticsName = '__FILE_PROTOCOL_STANDALONE__';
-  var diagnostics = globalThis[diagnosticsName] || (globalThis[diagnosticsName] = {});
   function snapshotDiagnosticValue(value) {
     if (value === undefined) return undefined;
     // Diagnostic state is intentionally plain data. Return a detached snapshot
@@ -72,10 +72,10 @@ export function createEntryImportSource({ entryFileName, watchdogTimeoutMs }: {
       protocol: globalThis.location && globalThis.location.protocol,
       documentReadyState: document.readyState,
       systemJsAvailable: Boolean(globalThis.System && typeof System.import === 'function'),
-      systemJsPatch: snapshotDiagnosticValue(globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__),
-      systemJsRetry: snapshotDiagnosticValue(globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__),
-      workerRuntime: snapshotDiagnosticValue(globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__),
-      startup: snapshotDiagnosticValue(state)
+      systemJsPatch: snapshotDiagnosticValue(internal.systemJsPatch),
+      systemJsRetry: snapshotDiagnosticValue(internal.systemJsRetry),
+      workerRuntime: snapshotDiagnosticValue(internal.workerRuntime),
+      startup: snapshotDiagnosticValue(internal.startup)
     };
   };
 
@@ -269,7 +269,10 @@ export function createSystemJsFileProtocolPatchSource(): string {
     throw new Error('[file-protocol-standalone] SystemJS createScript hook is unavailable.');
   }
   if (originalCreateScript.__fileProtocolStandalonePatched) return;
-  var state = globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__ = { installed: true, patchedScripts: [] };
+  var diagnosticsName = ${JSON.stringify(diagnosticsGlobal)};
+  var diagnostics = globalThis[diagnosticsName] || (globalThis[diagnosticsName] = {});
+  var internal = diagnostics.internal || (diagnostics.internal = {});
+  var state = internal.systemJsPatch = { installed: true, patchedScripts: [] };
   function fileProtocolCreateScript(url) {
     var script = originalCreateScript.call(this, url);
     if ((new URL(url, document.baseURI)).protocol === 'file:') {
@@ -305,8 +308,13 @@ export function createSystemJsRetryHookSource(): string {
   var originalImport = System.import;
   var originalInstantiate = System.instantiate;
   var failedScriptAttempts = Object.create(null);
+  var parentUrls = Object.create(null);
   var retryableLoadErrors = new WeakSet();
-  var state = globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__ = {
+  var retryableLoadChains = new WeakMap();
+  var diagnosticsName = ${JSON.stringify(diagnosticsGlobal)};
+  var diagnostics = globalThis[diagnosticsName] || (globalThis[diagnosticsName] = {});
+  var internal = diagnostics.internal || (diagnostics.internal = {});
+  var state = internal.systemJsRetry = {
     installed: true,
     physicalScriptLoadFailureUrls: [],
     deletedModuleUrls: [],
@@ -341,23 +349,55 @@ export function createSystemJsRetryHookSource(): string {
     else failedScriptAttempts[resolvedUrl] = count - 1;
     return true;
   }
-  function deleteResolved(id, parentUrl) {
+  function resolveFileUrl(id, parentUrl) {
     try {
       var resolved = System.resolve(id, parentUrl);
-      if ((new URL(resolved, document.baseURI)).protocol !== 'file:') return;
-      if (System.delete(resolved)) state.deletedModuleUrls.push(resolved);
+      return (new URL(resolved, document.baseURI)).protocol === 'file:' ? resolved : undefined;
+    } catch (_) {
+      return undefined;
+    }
+  }
+  function rememberParent(url, parentUrl) {
+    var resolvedUrl = resolveFileUrl(url, parentUrl);
+    var resolvedParentUrl = typeof parentUrl === 'string' ? resolveFileUrl(parentUrl, undefined) : undefined;
+    if (resolvedUrl !== undefined && resolvedParentUrl !== undefined && resolvedUrl !== resolvedParentUrl) {
+      parentUrls[resolvedUrl] = resolvedParentUrl;
+    }
+    return resolvedUrl;
+  }
+  function collectLoadChain(url, parentUrl) {
+    var chain = [];
+    var seen = Object.create(null);
+    var current = resolveFileUrl(url, parentUrl);
+    var explicitParent = typeof parentUrl === 'string' ? resolveFileUrl(parentUrl, undefined) : undefined;
+    while (current !== undefined && !seen[current]) {
+      seen[current] = true;
+      chain.push(current);
+      current = parentUrls[current] || (chain.length === 1 ? explicitParent : undefined);
+    }
+    return chain;
+  }
+  function deleteUrl(url) {
+    try {
+      if (System.delete(url)) state.deletedModuleUrls.push(url);
     } catch (_) {
       // Preserve the original loader error instead of replacing it with cleanup.
     }
   }
+  function deleteLoadChain(chain) {
+    for (var index = 0; index < chain.length; index += 1) deleteUrl(chain[index]);
+  }
   if (typeof originalInstantiate === 'function') {
     System.instantiate = function fileProtocolRetryableInstantiate(url, parentUrl, meta) {
+      rememberParent(url, parentUrl);
       return Promise.resolve(originalInstantiate.call(this, url, parentUrl, meta)).catch(function (error) {
         if (error && typeof error === 'object' && consumePhysicalFailure(url)) {
+          var loadChain = collectLoadChain(url, parentUrl);
           retryableLoadErrors.add(error);
+          retryableLoadChains.set(error, loadChain);
           state.retryableErrorCount += 1;
-          deleteResolved(url, parentUrl);
-        } else {
+          deleteLoadChain(loadChain);
+        } else if (!(error && typeof error === 'object' && retryableLoadErrors.has(error))) {
           state.nonRetryableErrorCount += 1;
         }
         throw error;
@@ -366,7 +406,12 @@ export function createSystemJsRetryHookSource(): string {
   }
   function fileProtocolRetryableImport(id, parentUrl, meta) {
     return Promise.resolve(originalImport.call(this, id, parentUrl, meta)).catch(function (error) {
-      if (error && typeof error === 'object' && retryableLoadErrors.has(error)) deleteResolved(id, parentUrl);
+      if (error && typeof error === 'object' && retryableLoadErrors.has(error)) {
+        var importChain = retryableLoadChains.get(error) || [];
+        var resolvedImport = resolveFileUrl(id, parentUrl);
+        if (resolvedImport !== undefined && importChain.indexOf(resolvedImport) === -1) importChain.push(resolvedImport);
+        deleteLoadChain(importChain);
+      }
       throw error;
     });
   }

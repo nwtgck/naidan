@@ -110,32 +110,52 @@ function createStyleProbes(): Readonly<{
 }
 
 function installValidGlobals(): void {
-  globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__ = {
-    installed: true,
-    patchedScripts: [{
-      url: 'file:///__nonexistent_file_protocol_test_root__/assets/entry.js',
-      crossOriginProperty: null,
-      crossoriginAttribute: null,
+  const startup = {
+    format: 'file-protocol-standalone-startup-v1' as const,
+    phase: 'mounted' as const,
+    startedAt: 0,
+    updatedAt: 1,
+    documentReadyState: 'complete' as const,
+    entryFileName: 'assets/index-legacy.js',
+    history: [{
+      phase: 'mounted' as const,
+      at: 1,
+      documentReadyState: 'complete' as const,
+      details: undefined,
     }],
+    error: undefined,
+    watchdog: undefined,
   }
-  globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__ = {
-    installed: true,
-    physicalScriptLoadFailureUrls: [],
-    deletedModuleUrls: [],
-    retryableErrorCount: 0,
-    nonRetryableErrorCount: 0,
+  const internal: FileProtocolStandaloneInternalState = {
+    startup,
+    systemJsPatch: {
+      installed: true,
+      patchedScripts: [{
+        url: 'file:///__nonexistent_file_protocol_test_root__/assets/entry.js',
+        crossOriginProperty: null,
+        crossoriginAttribute: null,
+      }],
+    },
+    systemJsRetry: {
+      installed: true,
+      physicalScriptLoadFailureUrls: [],
+      deletedModuleUrls: [],
+      retryableErrorCount: 0,
+      nonRetryableErrorCount: 0,
+    },
+    workerRuntime: { worker: { objectUrlsCreated: 1 } },
   }
-  globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__ = { worker: { objectUrlsCreated: 1 } }
   globalThis.__FILE_PROTOCOL_STANDALONE__ = {
+    internal,
     getDiagnostics: () => ({
       format: 'file-protocol-standalone-diagnostics-v1',
       protocol: 'file:',
       documentReadyState: document.readyState,
       systemJsAvailable: true,
-      systemJsPatch: globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__,
-      systemJsRetry: globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__,
-      workerRuntime: globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__,
-      startup: globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__!,
+      systemJsPatch: internal.systemJsPatch,
+      systemJsRetry: internal.systemJsRetry,
+      workerRuntime: internal.workerRuntime,
+      startup: internal.startup,
     }),
   }
 }
@@ -177,34 +197,15 @@ beforeEach(() => {
     callback(0)
     return 1
   })
-  globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__ = {
-    format: 'file-protocol-standalone-startup-v1',
-    phase: 'mounted',
-    startedAt: 0,
-    updatedAt: 1,
-    documentReadyState: 'complete',
-    entryFileName: 'assets/index-legacy.js',
-    history: [{
-      phase: 'mounted',
-      at: 1,
-      documentReadyState: 'complete',
-      details: undefined,
-    }],
-    error: undefined,
-    watchdog: undefined,
-  }
   installValidGlobals()
   appendExpectedScripts()
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   delete globalThis.__FILE_PROTOCOL_STANDALONE__
-  delete globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__
-  delete globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
-  delete globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
-  delete globalThis.__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__
   Reflect.deleteProperty(performance, 'memory')
   document.head.innerHTML = ''
   document.body.innerHTML = ''
@@ -280,8 +281,6 @@ describe('runStandaloneVerification', () => {
       origin: 'https://should-not-be-requested.invalid',
     })
     delete globalThis.__FILE_PROTOCOL_STANDALONE__
-    delete globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_PATCH__
-    delete globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__
     document.head.innerHTML = '<script type="module" crossorigin="anonymous"></script>'
     const args = createBaseArguments()
     args.tailwindProbe.style.width = '1px'
@@ -319,8 +318,114 @@ describe('runStandaloneVerification', () => {
     expect(runWorkerProbe).toHaveBeenCalledOnce()
   })
 
+  it('times out a pending check and continues to a completed report', async () => {
+    const args = createBaseArguments()
+    const runWorkerProbe = vi.fn(async () => new Promise<StandaloneWorkerVerificationResult>(() => {}))
+
+    const report = await runStandaloneVerification({
+      ...args,
+      runWorkerProbe,
+      checkTimeoutMs: 100,
+    })
+
+    expect(report.status).toBe('fail')
+    expect(report.checks.find((check) => check.id === 'worker.reusable-blob-url-factory')).toMatchObject({
+      status: 'fail',
+      error: 'Standalone verification check "worker.reusable-blob-url-factory" timed out after 100 ms.',
+    })
+    expect(report.summary).toMatchObject({ passed: 11, failed: 1 })
+  })
+
+  it('reads the global diagnostics API once and reuses one snapshot for all checks', async () => {
+    const namespace = globalThis.__FILE_PROTOCOL_STANDALONE__
+    if (namespace === undefined) throw new Error('Expected standalone namespace.')
+    const originalGetDiagnostics = namespace.getDiagnostics
+    const getDiagnostics = vi.fn(originalGetDiagnostics)
+      .mockImplementationOnce(originalGetDiagnostics)
+      .mockImplementation(() => {
+        throw new Error('diagnostics should not be read twice')
+      })
+    globalThis.__FILE_PROTOCOL_STANDALONE__ = {
+      internal: namespace.internal,
+      getDiagnostics,
+    }
+
+    const report = await runStandaloneVerification(createBaseArguments())
+
+    expect(report.status).toBe('pass')
+    expect(getDiagnostics).toHaveBeenCalledOnce()
+  })
+
+  it('does not retry a failed diagnostics read for later checks', async () => {
+    const namespace = globalThis.__FILE_PROTOCOL_STANDALONE__
+    if (namespace === undefined) throw new Error('Expected standalone namespace.')
+    const getDiagnostics = vi.fn(() => {
+      throw new Error('synthetic diagnostics failure')
+    })
+    globalThis.__FILE_PROTOCOL_STANDALONE__ = {
+      internal: namespace.internal,
+      getDiagnostics,
+    }
+
+    const report = await runStandaloneVerification(createBaseArguments())
+
+    expect(report.status).toBe('fail')
+    expect(getDiagnostics).toHaveBeenCalledOnce()
+    for (const id of [
+      'startup.app-mounted',
+      'systemjs.global-diagnostics',
+      'systemjs.file-patch',
+      'systemjs.retry-hook',
+    ]) {
+      expect(report.checks.find((check) => check.id === id)).toMatchObject({
+        status: 'fail',
+        error: 'synthetic diagnostics failure',
+      })
+    }
+  })
+
+  it('keeps report diagnostics detached from later live runtime mutations', async () => {
+    const report = await runStandaloneVerification(createBaseArguments())
+    const startupDetails = report.checks.find(({ id }) => id === 'startup.app-mounted')?.details
+
+    const internal = globalThis.__FILE_PROTOCOL_STANDALONE__?.internal
+    if (internal === undefined || internal.startup === undefined) {
+      throw new Error('Expected standalone startup diagnostics.')
+    }
+    internal.startup.phase = 'bootstrap-failed'
+    internal.startup.history.push({
+      phase: 'bootstrap-failed',
+      at: 2,
+      documentReadyState: 'complete',
+      details: undefined,
+    })
+    const livePatch = internal.systemJsPatch as unknown as {
+      patchedScripts: {
+        url: string
+        crossOriginProperty: string | null
+        crossoriginAttribute: string | null
+      }[]
+    }
+    livePatch.patchedScripts.push({
+      url: 'file:///__nonexistent_file_protocol_test_root__/assets/later.js',
+      crossOriginProperty: null,
+      crossoriginAttribute: null,
+    })
+    const liveWorker = internal.workerRuntime as {
+      worker: { objectUrlsCreated: number }
+    }
+    liveWorker.worker.objectUrlsCreated = 99
+
+    expect(startupDetails).toHaveProperty('startup.phase', 'mounted')
+    expect(report.runtime.startup).toHaveProperty('phase', 'mounted')
+    expect(report.runtime.systemJsPatch).toHaveProperty('patchedScripts.length', 1)
+    expect(report.runtime.worker).toHaveProperty('worker.objectUrlsCreated', 1)
+  })
+
   it('fails retry validation when its physical failure records are malformed', async () => {
-    globalThis.__FILE_PROTOCOL_STANDALONE_SYSTEMJS_RETRY__ = {
+    const internal = globalThis.__FILE_PROTOCOL_STANDALONE__?.internal
+    if (internal === undefined) throw new Error('Expected standalone namespace.')
+    internal.systemJsRetry = {
       installed: true,
       physicalScriptLoadFailureUrls: [42] as unknown as string[],
       deletedModuleUrls: [],

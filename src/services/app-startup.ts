@@ -44,9 +44,6 @@ export type FileProtocolStandaloneStartupState = {
   watchdog: FileProtocolStandaloneStartupWatchdog | undefined
 }
 
-declare global {
-  var __FILE_PROTOCOL_STANDALONE_STARTUP__: FileProtocolStandaloneStartupState | undefined
-}
 
 function serializeError({ error }: { error: unknown }): FileProtocolStandaloneStartupError {
   if (error instanceof Error) {
@@ -77,7 +74,7 @@ export function recordFileProtocolStandaloneStartupPhase({
   phase: FileProtocolStandaloneStartupPhase
   details: Readonly<Record<string, string | number | boolean>> | undefined
 }): void {
-  const state = globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__
+  const state = globalThis.__FILE_PROTOCOL_STANDALONE__?.internal.startup
   if (state === undefined) return
 
   const now = performance.now()
@@ -137,7 +134,7 @@ export function reportAppStartupFailure({ document, error }: {
   error: unknown
 }): void {
   const serialized = serializeError({ error })
-  const state = globalThis.__FILE_PROTOCOL_STANDALONE_STARTUP__
+  const state = globalThis.__FILE_PROTOCOL_STANDALONE__?.internal.startup
   if (state !== undefined) {
     state.error = serialized
   }
