@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { FileProtocolWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-compatible-standalone-worker-hub'
-import type { StandaloneWorkerVerificationResult } from './worker-probe'
+import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub'
+import type { DebugFileProtocolStandaloneWorkerVerificationResult } from './worker-probe'
+import type {
+  DebugFileProtocolStandaloneGlobalDiagnostics,
+  FileProtocolStandaloneInternalState,
+} from '@/services/debug-file-protocol-standalone/runtime-state'
 import {
-  runStandaloneVerification,
-  serializeStandaloneVerificationReportForCopy,
+  debugRunFileProtocolStandaloneVerification,
+  debugSerializeFileProtocolStandaloneVerificationReportForCopy,
 } from './report'
 
 function createWorkerDiagnostics({
@@ -15,9 +19,9 @@ function createWorkerDiagnostics({
   workersCreated: number
   workersTerminated: number
   activeWorkers: number
-}): FileProtocolWorkerDiagnostics {
+}): DebugFileProtocolStandaloneWorkerDiagnostics {
   return {
-    workerId: 'file-protocol-compatible-standalone-worker-hub',
+    workerId: 'file-protocol-standalone-worker-hub',
     registryScriptLoads: 1,
     registryScriptLoadFailures: 0,
     blobRegistrations: 1,
@@ -25,12 +29,13 @@ function createWorkerDiagnostics({
     workersCreated,
     workersTerminated,
     activeWorkers,
+    terminateInstrumentationFailures: 0,
     runtimeDigestCalls: 0,
     sourceStoredAsGlobalString: false,
     objectUrlLifetime: 'page',
     registryEntryReleased: true,
     registryEntryPresent: false,
-    blobUrlReady: true,
+    blobUrlStatus: 'ready',
     blobBytes: 4096,
     sourcePartCount: 2,
     sha256: 'diagnostic-sha256',
@@ -38,22 +43,22 @@ function createWorkerDiagnostics({
   }
 }
 
-function createValidWorkerResult(): StandaloneWorkerVerificationResult {
-  const before = createWorkerDiagnostics({
+function createValidWorkerResult(): DebugFileProtocolStandaloneWorkerVerificationResult {
+  const diagnosticsBefore = createWorkerDiagnostics({
     workersCreated: 2,
     workersTerminated: 2,
     activeWorkers: 0,
   })
-  const after = createWorkerDiagnostics({
+  const diagnosticsAfter = createWorkerDiagnostics({
     workersCreated: 5,
     workersTerminated: 5,
     activeWorkers: 0,
   })
 
   return {
-    before,
-    after,
-    deltas: {
+    diagnosticsBefore,
+    diagnosticsAfter,
+    diagnosticDeltas: {
       workersCreated: 3,
       workersTerminated: 3,
       activeWorkers: 0,
@@ -61,11 +66,11 @@ function createValidWorkerResult(): StandaloneWorkerVerificationResult {
       blobRegistrations: 0,
       objectUrlsCreated: 0,
     },
-    concurrent: [
+    concurrentHighlights: [
       { resolvedLanguage: 'json', htmlLength: 20 },
       { resolvedLanguage: 'json', htmlLength: 21 },
     ],
-    recreated: { resolvedLanguage: 'json', htmlLength: 22 },
+    recreatedWorkerHighlight: { resolvedLanguage: 'json', htmlLength: 22 },
     weshFileProbe: {
       exitCode: 0,
       stdout: '/bin/sh: text/x-shellscript\n',
@@ -95,69 +100,85 @@ function appendExpectedScripts(): void {
 }
 
 function createStyleProbes(): Readonly<{
-  tailwindProbe: HTMLElement
-  scopedProbe: HTMLElement
-  lazyStyleProbe: HTMLElement
+  tailwindStyleProbeElement: HTMLElement
+  scopedStyleProbeElement: HTMLElement
+  lazyStyleProbeElement: HTMLElement
 }> {
-  const tailwindProbe = document.createElement('div')
-  tailwindProbe.style.width = '43px'
-  tailwindProbe.style.height = '13px'
-  const scopedProbe = document.createElement('div')
-  scopedProbe.style.borderLeft = '7px solid black'
-  const lazyStyleProbe = document.createElement('div')
-  document.body.append(tailwindProbe, scopedProbe, lazyStyleProbe)
-  return { tailwindProbe, scopedProbe, lazyStyleProbe }
+  const tailwindStyleProbeElement = document.createElement('div')
+  tailwindStyleProbeElement.style.width = '43px'
+  tailwindStyleProbeElement.style.height = '13px'
+  const scopedStyleProbeElement = document.createElement('div')
+  scopedStyleProbeElement.style.borderLeft = '7px solid black'
+  const lazyStyleProbeElement = document.createElement('div')
+  document.body.append(tailwindStyleProbeElement, scopedStyleProbeElement, lazyStyleProbeElement)
+  return { tailwindStyleProbeElement, scopedStyleProbeElement, lazyStyleProbeElement }
+}
+
+type MutableStandaloneNamespace = {
+  getDiagnostics: () => DebugFileProtocolStandaloneGlobalDiagnostics
+  internal: FileProtocolStandaloneInternalState
+}
+
+function readMutableNamespace(): MutableStandaloneNamespace {
+  const namespace = globalThis.__FILE_PROTOCOL_STANDALONE__
+  if (namespace === undefined) throw new Error('Expected standalone namespace.')
+  return namespace as unknown as MutableStandaloneNamespace
 }
 
 function installValidGlobals(): void {
   const startup = {
-    format: 'file-protocol-standalone-startup-v1' as const,
-    phase: 'mounted' as const,
+    format: 'file-protocol-standalone-startup-v2' as const,
+    checkpoint: 'mounted' as const,
     startedAt: 0,
     updatedAt: 1,
     documentReadyState: 'complete' as const,
     entryFileName: 'assets/index-legacy.js',
-    history: [{
-      phase: 'mounted' as const,
+    checkpointHistory: [{
+      source: 'naidan-app' as const,
+      name: 'mounted' as const,
       at: 1,
       documentReadyState: 'complete' as const,
       details: undefined,
     }],
     error: undefined,
-    watchdog: undefined,
+    slowStartupNotice: undefined,
   }
   const internal: FileProtocolStandaloneInternalState = {
-    startup,
-    systemJsPatch: {
-      installed: true,
-      patchedScripts: [{
-        url: 'file:///__nonexistent_file_protocol_test_root__/assets/entry.js',
-        crossOriginProperty: null,
-        crossoriginAttribute: null,
-      }],
+    core: {},
+    debug: {
+      startup,
+      systemJsPatch: {
+        installed: true,
+        patchedScripts: [{
+          url: 'file:///__nonexistent_file_protocol_test_root__/assets/entry.js',
+          crossOriginProperty: null,
+          crossoriginAttribute: null,
+        }],
+      },
+      systemJsRetry: {
+        installed: true,
+        physicalScriptLoadFailureUrls: [],
+        deletedModuleUrls: [],
+        retryableErrorCount: 0,
+        nonRetryableErrorCount: 0,
+      },
+      workerRuntime: { worker: { objectUrlsCreated: 1 } },
     },
-    systemJsRetry: {
-      installed: true,
-      physicalScriptLoadFailureUrls: [],
-      deletedModuleUrls: [],
-      retryableErrorCount: 0,
-      nonRetryableErrorCount: 0,
-    },
-    workerRuntime: { worker: { objectUrlsCreated: 1 } },
   }
-  globalThis.__FILE_PROTOCOL_STANDALONE__ = {
+  const namespace: MutableStandaloneNamespace = {
     internal,
     getDiagnostics: () => ({
-      format: 'file-protocol-standalone-diagnostics-v1',
+      format: 'file-protocol-standalone-diagnostics-v2',
       protocol: 'file:',
       documentReadyState: document.readyState,
       systemJsAvailable: true,
-      systemJsPatch: internal.systemJsPatch,
-      systemJsRetry: internal.systemJsRetry,
-      workerRuntime: internal.workerRuntime,
-      startup: internal.startup,
+      systemJsPatch: internal.debug?.systemJsPatch,
+      systemJsRetry: internal.debug?.systemJsRetry,
+      workerRuntime: internal.debug?.workerRuntime,
+      startup: internal.debug?.startup,
     }),
   }
+  globalThis.__FILE_PROTOCOL_STANDALONE__ = namespace as unknown as typeof globalThis.__FILE_PROTOCOL_STANDALONE__
 }
 
 function createBaseArguments() {
@@ -170,17 +191,26 @@ function createBaseArguments() {
       resolvedHref: '#/standalone-verification',
     },
     ...probes,
-    loadLazyStyleProbe: async () => {
-      probes.lazyStyleProbe.style.outlineStyle = 'solid'
-      probes.lazyStyleProbe.style.outlineWidth = '3px'
+    lazyStyleInitialOutlineWidth: '',
+    debugLoadFileProtocolStandaloneLazyStyleProbeModule: async ({ signal }: { signal: AbortSignal }) => {
+      signal.throwIfAborted()
+      probes.lazyStyleProbeElement.style.outlineStyle = 'solid'
+      probes.lazyStyleProbeElement.style.outlineWidth = '3px'
       return { marker: 'standalone-verification-lazy-style-probe-v1' }
     },
-    exerciseRouteTransition: async () => ({
-      before: '/standalone-verification',
-      transitioned: '/standalone-verification?__standalone-verification-route-probe=1',
-      restored: '/standalone-verification',
-    }),
-    runWorkerProbe: async () => createValidWorkerResult(),
+    debugExerciseFileProtocolStandaloneRouteRoundTrip: async ({ signal }: { signal: AbortSignal }) => {
+      signal.throwIfAborted()
+      return {
+        beforePath: '/standalone-verification',
+        transitionedPath: '/standalone-verification?__standalone-verification-route-probe=1',
+        restoredPath: '/standalone-verification',
+      }
+    },
+    debugRunWorkerProbe: async ({ signal }: { signal: AbortSignal }) => {
+      signal.throwIfAborted()
+      return createValidWorkerResult()
+    },
+    checkTimeoutMs: 60_000,
   }
 }
 
@@ -212,7 +242,7 @@ afterEach(() => {
   document.body.removeAttribute('style')
 })
 
-describe('runStandaloneVerification', () => {
+describe('debugRunFileProtocolStandaloneVerification', () => {
   it('reports every standalone check and runtime diagnostic when they pass', async () => {
     Object.defineProperty(performance, 'memory', {
       configurable: true,
@@ -231,9 +261,9 @@ describe('runStandaloneVerification', () => {
       initiatorType: 'script',
     } as PerformanceResourceTiming])
     const args = createBaseArguments()
-    const runWorkerProbe = vi.fn(args.runWorkerProbe)
+    const debugRunWorkerProbe = vi.fn(args.debugRunWorkerProbe)
 
-    const report = await runStandaloneVerification({ ...args, runWorkerProbe })
+    const report = await debugRunFileProtocolStandaloneVerification({ ...args, debugRunWorkerProbe })
 
     expect(report.status).toBe('pass')
     expect(report.summary).toMatchObject({ passed: 12, failed: 0 })
@@ -251,7 +281,7 @@ describe('runStandaloneVerification', () => {
       ['output.classic-script-shape', 'pass'],
       ['worker.reusable-blob-url-factory', 'pass'],
     ])
-    expect(runWorkerProbe).toHaveBeenCalledOnce()
+    expect(debugRunWorkerProbe).toHaveBeenCalledOnce()
     expect(report.environment).toMatchObject({
       href: 'file:///__nonexistent_file_protocol_test_root__/index.html#/standalone-verification',
       protocol: 'file:',
@@ -263,7 +293,7 @@ describe('runStandaloneVerification', () => {
       },
     })
     expect(report.runtime.pluginDiagnostics).toMatchObject({
-      format: 'file-protocol-standalone-diagnostics-v1',
+      format: 'file-protocol-standalone-diagnostics-v2',
     })
     expect(report.runtime.resourceEntries).toEqual([{
       name: 'file:///__nonexistent_file_protocol_test_root__/assets/lazy.js',
@@ -283,17 +313,17 @@ describe('runStandaloneVerification', () => {
     delete globalThis.__FILE_PROTOCOL_STANDALONE__
     document.head.innerHTML = '<script type="module" crossorigin="anonymous"></script>'
     const args = createBaseArguments()
-    args.tailwindProbe.style.width = '1px'
-    args.scopedProbe.style.borderLeftWidth = '1px'
-    const runWorkerProbe = vi.fn().mockResolvedValue({
+    args.tailwindStyleProbeElement.style.width = '1px'
+    args.scopedStyleProbeElement.style.borderLeftWidth = '1px'
+    const debugRunWorkerProbe = vi.fn().mockResolvedValue({
       ...createValidWorkerResult(),
-      deltas: {
-        ...createValidWorkerResult().deltas,
+      diagnosticDeltas: {
+        ...createValidWorkerResult().diagnosticDeltas,
         workersCreated: 2,
       },
     })
 
-    const report = await runStandaloneVerification({
+    const report = await debugRunFileProtocolStandaloneVerification({
       ...args,
       route: {
         fullPath: 'invalid-route',
@@ -301,13 +331,13 @@ describe('runStandaloneVerification', () => {
         matchedPaths: [],
         resolvedHref: '',
       },
-      loadLazyStyleProbe: vi.fn().mockRejectedValue(new Error('synthetic lazy failure')),
-      exerciseRouteTransition: vi.fn().mockResolvedValue({
-        before: '/a',
-        transitioned: '/a',
-        restored: '/b',
+      debugLoadFileProtocolStandaloneLazyStyleProbeModule: vi.fn().mockRejectedValue(new Error('synthetic lazy failure')),
+      debugExerciseFileProtocolStandaloneRouteRoundTrip: vi.fn().mockResolvedValue({
+        beforePath: '/a',
+        transitionedPath: '/a',
+        restoredPath: '/b',
       }),
-      runWorkerProbe,
+      debugRunWorkerProbe,
     })
 
     expect(report.status).toBe('fail')
@@ -315,16 +345,20 @@ describe('runStandaloneVerification', () => {
     expect(report.checks.filter((check) => check.status === 'fail').length).toBeGreaterThan(8)
     expect(report.checks.find((check) => check.id === 'dynamic-imports.lazy-style-probe')?.error).toBe('synthetic lazy failure')
     expect(report.checks.find((check) => check.id === 'output.classic-script-shape')?.error).toBe('A native module script remains in standalone output.')
-    expect(runWorkerProbe).toHaveBeenCalledOnce()
+    expect(debugRunWorkerProbe).toHaveBeenCalledOnce()
   })
 
   it('times out a pending check and continues to a completed report', async () => {
     const args = createBaseArguments()
-    const runWorkerProbe = vi.fn(async () => new Promise<StandaloneWorkerVerificationResult>(() => {}))
+    let workerProbeSignal: AbortSignal | undefined
+    const debugRunWorkerProbe = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
+      workerProbeSignal = signal
+      return new Promise<DebugFileProtocolStandaloneWorkerVerificationResult>(() => {})
+    })
 
-    const report = await runStandaloneVerification({
+    const report = await debugRunFileProtocolStandaloneVerification({
       ...args,
-      runWorkerProbe,
+      debugRunWorkerProbe,
       checkTimeoutMs: 100,
     })
 
@@ -334,11 +368,28 @@ describe('runStandaloneVerification', () => {
       error: 'Standalone verification check "worker.reusable-blob-url-factory" timed out after 100 ms.',
     })
     expect(report.summary).toMatchObject({ passed: 11, failed: 1 })
+    expect(workerProbeSignal?.aborted).toBe(true)
+  })
+
+  it('reuses the page-lifetime lazy style observation across repeated runs', async () => {
+    const args = createBaseArguments()
+
+    const first = await debugRunFileProtocolStandaloneVerification(args)
+    const second = await debugRunFileProtocolStandaloneVerification(args)
+
+    expect(first.checks.find((check) => check.id === 'styles.lazy-before-import')).toMatchObject({
+      status: 'pass',
+      details: { outlineWidth: '' },
+    })
+    expect(second.checks.find((check) => check.id === 'styles.lazy-before-import')).toMatchObject({
+      status: 'pass',
+      details: { outlineWidth: '' },
+    })
+    expect(second.checks.find((check) => check.id === 'dynamic-imports.lazy-style-probe')?.status).toBe('pass')
   })
 
   it('reads the global diagnostics API once and reuses one snapshot for all checks', async () => {
-    const namespace = globalThis.__FILE_PROTOCOL_STANDALONE__
-    if (namespace === undefined) throw new Error('Expected standalone namespace.')
+    const namespace = readMutableNamespace()
     const originalGetDiagnostics = namespace.getDiagnostics
     const getDiagnostics = vi.fn(originalGetDiagnostics)
       .mockImplementationOnce(originalGetDiagnostics)
@@ -346,28 +397,24 @@ describe('runStandaloneVerification', () => {
         throw new Error('diagnostics should not be read twice')
       })
     globalThis.__FILE_PROTOCOL_STANDALONE__ = {
-      internal: namespace.internal,
       getDiagnostics,
-    }
+    } as unknown as typeof globalThis.__FILE_PROTOCOL_STANDALONE__
 
-    const report = await runStandaloneVerification(createBaseArguments())
+    const report = await debugRunFileProtocolStandaloneVerification(createBaseArguments())
 
     expect(report.status).toBe('pass')
     expect(getDiagnostics).toHaveBeenCalledOnce()
   })
 
   it('does not retry a failed diagnostics read for later checks', async () => {
-    const namespace = globalThis.__FILE_PROTOCOL_STANDALONE__
-    if (namespace === undefined) throw new Error('Expected standalone namespace.')
     const getDiagnostics = vi.fn(() => {
       throw new Error('synthetic diagnostics failure')
     })
     globalThis.__FILE_PROTOCOL_STANDALONE__ = {
-      internal: namespace.internal,
       getDiagnostics,
-    }
+    } as unknown as typeof globalThis.__FILE_PROTOCOL_STANDALONE__
 
-    const report = await runStandaloneVerification(createBaseArguments())
+    const report = await debugRunFileProtocolStandaloneVerification(createBaseArguments())
 
     expect(report.status).toBe('fail')
     expect(getDiagnostics).toHaveBeenCalledOnce()
@@ -385,21 +432,21 @@ describe('runStandaloneVerification', () => {
   })
 
   it('keeps report diagnostics detached from later live runtime mutations', async () => {
-    const report = await runStandaloneVerification(createBaseArguments())
+    const report = await debugRunFileProtocolStandaloneVerification(createBaseArguments())
     const startupDetails = report.checks.find(({ id }) => id === 'startup.app-mounted')?.details
 
-    const internal = globalThis.__FILE_PROTOCOL_STANDALONE__?.internal
-    if (internal === undefined || internal.startup === undefined) {
-      throw new Error('Expected standalone startup diagnostics.')
-    }
-    internal.startup.phase = 'bootstrap-failed'
-    internal.startup.history.push({
-      phase: 'bootstrap-failed',
+    const internal = readMutableNamespace().internal
+    const startup = internal.debug?.startup
+    if (startup === undefined) throw new Error('Expected standalone startup diagnostics.')
+    startup.checkpoint = 'bootstrap-failed'
+    startup.checkpointHistory.push({
+      source: 'naidan-app',
+      name: 'bootstrap-failed',
       at: 2,
       documentReadyState: 'complete',
       details: undefined,
     })
-    const livePatch = internal.systemJsPatch as unknown as {
+    const livePatch = internal.debug?.systemJsPatch as unknown as {
       patchedScripts: {
         url: string
         crossOriginProperty: string | null
@@ -411,21 +458,21 @@ describe('runStandaloneVerification', () => {
       crossOriginProperty: null,
       crossoriginAttribute: null,
     })
-    const liveWorker = internal.workerRuntime as {
+    const liveWorker = internal.debug?.workerRuntime as {
       worker: { objectUrlsCreated: number }
     }
     liveWorker.worker.objectUrlsCreated = 99
 
-    expect(startupDetails).toHaveProperty('startup.phase', 'mounted')
-    expect(report.runtime.startup).toHaveProperty('phase', 'mounted')
+    expect(startupDetails).toHaveProperty('startup.checkpoint', 'mounted')
+    expect(report.runtime.startup).toHaveProperty('checkpoint', 'mounted')
     expect(report.runtime.systemJsPatch).toHaveProperty('patchedScripts.length', 1)
     expect(report.runtime.worker).toHaveProperty('worker.objectUrlsCreated', 1)
   })
 
   it('fails retry validation when its physical failure records are malformed', async () => {
-    const internal = globalThis.__FILE_PROTOCOL_STANDALONE__?.internal
-    if (internal === undefined) throw new Error('Expected standalone namespace.')
-    internal.systemJsRetry = {
+    const internal = readMutableNamespace().internal
+    const debug = internal.debug ??= {}
+    debug.systemJsRetry = {
       installed: true,
       physicalScriptLoadFailureUrls: [42] as unknown as string[],
       deletedModuleUrls: [],
@@ -434,7 +481,7 @@ describe('runStandaloneVerification', () => {
     }
     const args = createBaseArguments()
 
-    const report = await runStandaloneVerification(args)
+    const report = await debugRunFileProtocolStandaloneVerification(args)
 
     expect(report.checks.find((check) => check.id === 'systemjs.retry-hook')).toMatchObject({
       status: 'fail',
@@ -443,9 +490,9 @@ describe('runStandaloneVerification', () => {
   })
 
   it('sanitizes the standalone root in copied JSON without mutating the report', async () => {
-    const report = await runStandaloneVerification(createBaseArguments())
+    const report = await debugRunFileProtocolStandaloneVerification(createBaseArguments())
 
-    const serialized = serializeStandaloneVerificationReportForCopy({ report })
+    const serialized = debugSerializeFileProtocolStandaloneVerificationReportForCopy({ report })
 
     expect(serialized).toContain('<standalone-root>/index.html')
     expect(serialized).not.toContain('file:///__nonexistent_file_protocol_test_root__/')

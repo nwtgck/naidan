@@ -1,4 +1,4 @@
-import type { FileProtocolWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-compatible-standalone-worker-hub'
+import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub'
 
 const unavailableMessage = 'The file-protocol standalone Worker asset is unavailable outside standalone builds.'
 
@@ -10,15 +10,15 @@ const unavailableMessage = 'The file-protocol standalone Worker asset is unavail
  * Fail explicitly if that boundary is violated rather than silently creating a
  * different Worker implementation in hosted mode.
  */
-export async function createFileProtocolWorker(): Promise<Worker> {
+export async function createFileProtocolStandaloneWorker(): Promise<Worker> {
   throw new Error(unavailableMessage)
 }
 
-export function getFileProtocolWorkerDiagnostics(): FileProtocolWorkerDiagnostics {
+export function debugGetFileProtocolStandaloneWorkerDiagnostics(): DebugFileProtocolStandaloneWorkerDiagnostics {
   throw new Error(unavailableMessage)
 }
 
-export function warmFileProtocolWorkerAssetAtIdle(): void {
+export function scheduleFileProtocolStandaloneWorkerAssetWarmup(): void {
   // Hosted builds use their native Worker entry points. This function exists
   // only so Vite can resolve and tree-shake the guarded standalone warm-up call.
 }

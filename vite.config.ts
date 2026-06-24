@@ -18,7 +18,7 @@ import {
   fileProtocolStandalone,
   type FileProtocolStandaloneLicenseDependency,
 } from './build/file-protocol-standalone.js'
-import { FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID } from './src/models/constants'
+import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/models/constants'
 import license from 'rollup-plugin-license'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -286,7 +286,7 @@ export default defineConfig(({ mode }) => {
       alias: [
         ...standaloneAliases,
         ...(!isStandalone ? [{
-          find: `virtual:file-protocol-standalone/worker/${FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID}`,
+          find: `virtual:file-protocol-standalone/worker/${FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID}`,
           replacement: path.resolve(
             __dirname,
             mode === 'test'
@@ -370,9 +370,9 @@ export default defineConfig(({ mode }) => {
       !isStandalone && manualGzipWasmPlugin({ outDir }),
       isStandalone && fileProtocolStandalone({
         workerTarget: [...standaloneBrowserSupport.worker],
-        reportFile: 'dist/standalone-build-report.json',
+        debugBuildReportFile: 'dist/debug-file-protocol-standalone-build-report.json',
         workers: [{
-          id: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
+          id: FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID,
           entry: 'src/services/worker-hub-standalone.worker.ts',
         }],
         budgets: standaloneBuildBudgets,

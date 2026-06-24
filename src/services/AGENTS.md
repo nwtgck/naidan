@@ -89,7 +89,7 @@ Why:
 - A classic `<script src>` can load a local file where direct `file:` Worker creation and native modules are unreliable.
 - Keeping the large source outside `index.html` avoids parsing the Worker payload during initial page startup.
 - Passing source parts directly to `Blob` avoids creating another large joined string.
-- The Object URL keeps the Blob alive, so the temporary Blob entry under `globalThis.__FILE_PROTOCOL_STANDALONE__.internal` is removed after URL creation.
+- The Object URL keeps the Blob alive, so the temporary Blob entry under `globalThis.__FILE_PROTOCOL_STANDALONE__.internal.core.workerBlobRegistry` is removed after URL creation.
 - The Object URL is intentionally not revoked during normal page lifetime because later callers may create more Worker instances from the same hub.
 - The plugin does not make Worker instances singletons; isolation and lifetime are application decisions.
 - SHA-256 is build-time diagnostic metadata only. Runtime code verifies metadata and `Blob.size` without reading the whole Blob into another buffer.
@@ -97,6 +97,29 @@ Why:
 The plugin guarantees one JavaScript artifact with no additional Vite-managed Worker assets, static module syntax, or `import.meta`. A remaining runtime `import(specifier)` with a dynamic specifier is reported because the plugin cannot prove whether a dependency's code path is reachable; the plugin does not rewrite Naidan or its dependencies to remove it.
 
 Adding a normal service to the existing hub does not require registering a new Worker entry. Update `vite.config.ts` only when introducing a genuinely independent standalone Worker artifact.
+
+
+## Core, Debug, Optimization, and Verification Boundaries
+
+File-protocol standalone code intentionally uses names that expose which path a symbol belongs to. Preserve these boundaries when adding features:
+
+- **Core** makes the standalone application function: Worker Blob registration, Worker creation, SystemJS loading and recovery, HTML bootstrap replacement, output validation, build metrics, and budget enforcement.
+- **Debug** observes Core but does not decide Core behavior. Names start with `Debug...` or `debug...` so unfamiliar implementers do not reuse them as normal product APIs. Core may write Debug checkpoints or counters, but Core must not read Debug state to choose its behavior.
+- **Optimization** may improve latency without changing correctness. Worker asset warmup uses `scheduleFileProtocolStandaloneWorkerHubWarmup()` and is not Debug state.
+- **Verification** actively probes a built standalone application. It lives under `debug-file-protocol-standalone/verification/` and must not become a dependency of normal application behavior.
+
+The only public runtime namespace is `globalThis.__FILE_PROTOCOL_STANDALONE__`. Application code may call `getDiagnostics()`. Generated runtime scripts use the private namespace as follows:
+
+- `internal.core.workerBlobRegistry` is Core state required while constructing the page-lifetime Worker Object URL.
+- `internal.debug.startup`, `systemJsPatch`, `systemJsRetry`, and `workerRuntime` are optional Debug state. Their initialization and updates must fail open.
+
+Do not make a normal feature depend on a `debug...` result. If a value starts controlling product behavior, promote it to an explicit Core API and rename it accordingly.
+
+The standalone Worker facade is exposed through:
+
+- `createFileProtocolStandaloneWorkerHub()` for normal Worker creation
+- `scheduleFileProtocolStandaloneWorkerHubWarmup()` for optional idle warmup
+- `debugGetFileProtocolStandaloneWorkerHubDiagnostics()` for Debug-only observation
 
 ## Pattern B: Hosted Only + Standalone Unsupported
 

@@ -1,5 +1,5 @@
-declare module 'virtual:file-protocol-standalone/worker/file-protocol-compatible-standalone-worker-hub' {
-  export type FileProtocolWorkerDiagnostics = Readonly<{
+declare module 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub' {
+  export type DebugFileProtocolStandaloneWorkerDiagnostics = Readonly<{
     workerId: string
     registryScriptLoads: number
     registryScriptLoadFailures: number
@@ -8,22 +8,23 @@ declare module 'virtual:file-protocol-standalone/worker/file-protocol-compatible
     workersCreated: number
     workersTerminated: number
     activeWorkers: number
+    terminateInstrumentationFailures: number
     runtimeDigestCalls: number
     sourceStoredAsGlobalString: false
     objectUrlLifetime: 'page'
     registryEntryReleased: boolean
     registryEntryPresent: boolean
-    blobUrlReady: boolean
+    blobUrlStatus: 'idle' | 'warmup-scheduled' | 'loading' | 'ready' | 'failed'
     blobBytes?: number
     sourcePartCount?: number
     sha256?: string
     timingsMs: Readonly<Record<string, number>>
   }>
 
-  export function createFileProtocolWorker({ name }: {
+  export function createFileProtocolStandaloneWorker({ name }: {
     name: string | undefined
   }): Promise<Worker>
 
-  export function getFileProtocolWorkerDiagnostics(): FileProtocolWorkerDiagnostics
-  export function warmFileProtocolWorkerAssetAtIdle(): void
+  export function debugGetFileProtocolStandaloneWorkerDiagnostics(): DebugFileProtocolStandaloneWorkerDiagnostics
+  export function scheduleFileProtocolStandaloneWorkerAssetWarmup(): void
 }

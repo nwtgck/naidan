@@ -5,19 +5,23 @@ import { JSDOM } from 'jsdom'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { build as viteBuild } from 'vite'
-import type { Plugin, ResolvedConfig } from 'vite'
+import { build as viteBuild, createLogger } from 'vite'
+import type { Logger, Plugin, ResolvedConfig } from 'vite'
 import {
   fileProtocolStandalone,
   type FileProtocolStandaloneLicenseDependency,
   type FileProtocolStandaloneOptions,
-  normalizeModuleId,
-  splitWorkerSourceForBlob,
-  validateClassicJavaScriptSource,
-  validateResolvedConfig,
-  validateSystemJsRuntimeCapabilities,
-  validateSystemJsSourceMapPair,
 } from './file-protocol-standalone'
+import {
+  assertFileProtocolStandaloneClassicScript,
+  debugSanitizeFileProtocolStandaloneModuleId,
+} from './file-protocol-standalone/javascript-validation'
+import { splitFileProtocolStandaloneWorkerSourceIntoBlobParts } from './file-protocol-standalone/worker'
+import { assertSupportedFileProtocolStandaloneConfig } from './file-protocol-standalone/configuration'
+import {
+  assertMatchingSystemJsSourceMap,
+  assertSupportedSystemJsRuntime,
+} from './file-protocol-standalone/systemjs'
 
 const require = createRequire(import.meta.url)
 
@@ -77,7 +81,7 @@ async function buildFixtureWithOptions({
       }),
       ...pluginsBeforeStandalone,
       fileProtocolStandalone({
-        reportFile: 'dist/standalone-build-report.json',
+        debugBuildReportFile: 'dist/debug-file-protocol-standalone-build-report.json',
         workerTarget,
         workers,
         budgets,
@@ -111,6 +115,51 @@ async function buildFixture({ root, budgets }: {
     define: undefined,
     alias: undefined,
     onAdditionalLicenseDependencies: undefined,
+  })
+}
+
+async function buildBasicFixtureWithPluginOptions({
+  root,
+  debugBuildReportFile,
+  budgets,
+  customLogger,
+}: {
+  root: string
+  debugBuildReportFile: string | undefined
+  budgets: FileProtocolStandaloneOptions['budgets']
+  customLogger: Logger | undefined
+}): Promise<void> {
+  await viteBuild({
+    root,
+    configFile: false,
+    base: './',
+    logLevel: 'silent',
+    customLogger,
+    plugins: [
+      legacy({
+        targets: ['Firefox >= 140', 'Chrome >= 140'],
+        renderModernChunks: false,
+        renderLegacyChunks: true,
+        externalSystemJS: true,
+        modernPolyfills: false,
+        polyfills: false,
+      }),
+      fileProtocolStandalone({
+        debugBuildReportFile,
+        workerTarget,
+        workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
+        budgets,
+        onAdditionalLicenseDependencies: undefined,
+      }),
+    ],
+    build: {
+      outDir: path.join(root, 'dist/standalone'),
+      emptyOutDir: true,
+      minify: true,
+      modulePreload: false,
+      sourcemap: false,
+      rolldownOptions: { input: path.join(root, 'index.html') },
+    },
   })
 }
 
@@ -213,7 +262,7 @@ describe('fileProtocolStandalone', () => {
     expect(html).toContain('id="fixture-data"')
     expect(html).toContain('{"preserved":true}')
 
-    const reportText = await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')
+    const reportText = await fs.readFile(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')
     const report = JSON.parse(reportText) as {
       format: string
       plugin: {
@@ -285,7 +334,7 @@ describe('fileProtocolStandalone', () => {
       path.join(root, 'dist/standalone', report.plugin.systemJsRuntimeFile),
       'utf8',
     )
-    expect(() => validateSystemJsRuntimeCapabilities({ source: emittedRuntimeSource })).not.toThrow()
+    expect(() => assertSupportedSystemJsRuntime({ source: emittedRuntimeSource })).not.toThrow()
     expect(emittedRuntimeSource).toBe(await fs.readFile(require.resolve('systemjs/dist/system.min.js'), 'utf8'))
     expect(emittedRuntimeSource).toContain('sourceMappingURL=system.min.js.map')
     const emittedSourceMap = await fs.readFile(
@@ -368,12 +417,40 @@ self.onmessage = (event) => {
 
     await buildFixture({ root, budgets: undefined })
 
-    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
+    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as {
       workers: Array<{ runtimeDynamicImports: { total: number, staticSpecifier: number, dynamicSpecifier: number } }>
       limitations: string[]
     }
     expect(report.workers[0]?.runtimeDynamicImports).toMatchObject({ total: 1, staticSpecifier: 0, dynamicSpecifier: 1 })
     expect(report.limitations.some((limitation) => limitation.includes('must remain unreachable'))).toBe(true)
+  })
+
+  it('warns about dynamic Worker runtime imports without requiring a Debug build report', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'src/worker-hub.worker.ts': `\
+const importAtRuntime = (specifier: string) => import(specifier)
+self.onmessage = (event) => {
+  if (event.data === 'node-only') void importAtRuntime('node:fs/promises')
+  self.postMessage('ok')
+}
+`,
+      },
+    })
+    const warnings: string[] = []
+    const logger = createLogger('silent')
+    logger.warn = (message) => warnings.push(message)
+
+    await buildBasicFixtureWithPluginOptions({
+      root,
+      debugBuildReportFile: undefined,
+      budgets: undefined,
+      customLogger: logger,
+    })
+
+    expect(warnings.some((warning) => warning.includes('runtime import expression(s) with dynamic specifiers'))).toBe(true)
+    await expect(fs.access(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'))).rejects.toThrow()
   })
 
   it('accepts a literal Worker dynamic import when Vite inlines it into the single artifact', async () => {
@@ -391,7 +468,7 @@ self.onmessage = async () => {
 
     await buildFixture({ root, budgets: undefined })
 
-    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
+    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as {
       workers: Array<{ runtimeDynamicImports: { total: number, staticSpecifier: number, dynamicSpecifier: number } }>
     }
     expect(report.workers[0]?.runtimeDynamicImports).toMatchObject({
@@ -420,7 +497,7 @@ self.onmessage = async () => {
 
   it('rejects unsafe and duplicate worker identifiers before building', () => {
     expect(() => fileProtocolStandalone({
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
       workerTarget,
       workers: [{ id: '../worker', entry: 'worker.ts' }],
       budgets: undefined,
@@ -428,7 +505,7 @@ self.onmessage = async () => {
     })).toThrow('Worker id must match')
 
     expect(() => fileProtocolStandalone({
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
       workerTarget,
       workers: [
         { id: 'worker-hub', entry: 'worker-a.ts' },
@@ -447,7 +524,7 @@ self.onmessage = async () => {
       configFile: false,
       logLevel: 'silent',
       plugins: [fileProtocolStandalone({
-        reportFile: 'dist/standalone/report.json',
+        debugBuildReportFile: 'dist/standalone/report.json',
         workerTarget,
         workers: [],
         budgets: undefined,
@@ -459,7 +536,7 @@ self.onmessage = async () => {
         modulePreload: false,
         rolldownOptions: { input: path.join(root, 'index.html') },
       },
-    })).rejects.toThrow('reportFile must be outside build.outDir')
+    })).rejects.toThrow('debugBuildReportFile must be outside build.outDir')
   })
 
   it('rejects a worker that emits CSS or another asset', async () => {
@@ -489,11 +566,49 @@ self.onmessage = () => self.postMessage('ok')
       },
     })).rejects.toThrow('Build budget exceeded')
 
-    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
+    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as {
       startup: { entryBytes: number, initialRequestBytes: number }
     }
     expect(report.startup.entryBytes).toBeGreaterThan(1)
     expect(report.startup.initialRequestBytes).toBeGreaterThan(1)
+  })
+
+  it('enforces startup budgets when the Debug build report is disabled', async () => {
+    const root = await createFixture({ files: basicFixtureFiles() })
+
+    await expect(buildBasicFixtureWithPluginOptions({
+      root,
+      debugBuildReportFile: undefined,
+      budgets: {
+        maxInitialEntryBytes: 1,
+        maxInitialRequestBytes: 1,
+      },
+      customLogger: undefined,
+    })).rejects.toThrow('Build budget exceeded')
+
+    await expect(fs.access(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'))).rejects.toThrow()
+  })
+
+  it('warns instead of failing the Core build when the Debug build report cannot be written', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'debug-report-parent': 'not a directory',
+      },
+    })
+    const warnings: string[] = []
+    const logger = createLogger('silent')
+    logger.warn = (message) => warnings.push(message)
+
+    await buildBasicFixtureWithPluginOptions({
+      root,
+      debugBuildReportFile: 'debug-report-parent/report.json',
+      budgets: undefined,
+      customLogger: logger,
+    })
+
+    expect(warnings.some((warning) => warning.includes('Debug build report write failed'))).toBe(true)
+    expect(await fs.readFile(path.join(root, 'dist/standalone/index.html'), 'utf8')).toContain('file-protocol-standalone-entry')
   })
 
   it('supports standalone output with no configured workers', async () => {
@@ -510,7 +625,7 @@ self.onmessage = () => self.postMessage('ok')
       onAdditionalLicenseDependencies: undefined,
     })
 
-    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
+    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as {
       workers: unknown[]
     }
     const html = await fs.readFile(path.join(root, 'dist/standalone/index.html'), 'utf8')
@@ -544,7 +659,7 @@ self.onmessage = () => self.postMessage('secondary')
       onAdditionalLicenseDependencies: undefined,
     })
 
-    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
+    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as {
       workers: Array<{ id: string, registryFileName: string }>
     }
     expect(report.workers.map((worker) => worker.id).sort()).toEqual(['secondary-worker', 'worker-hub'])
@@ -564,8 +679,8 @@ self.onmessage = () => self.postMessage('secondary')
     const files = {
       ...basicFixtureFiles(),
       'src/main.ts': `\
-import { createFileProtocolWorker } from 'virtual:file-protocol-standalone/worker/missing-worker'
-void createFileProtocolWorker({ name: undefined })
+import { createFileProtocolStandaloneWorker } from 'virtual:file-protocol-standalone/worker/missing-worker'
+void createFileProtocolStandaloneWorker({ name: undefined })
 `,
     }
     const root = await createFixture({ files })
@@ -644,6 +759,28 @@ globalThis.customClassicLoaded = true
       .rejects.toThrow('Expected exactly one @vitejs/plugin-legacy entry script; found 2')
   })
 
+  it('rejects an existing element that uses a reserved standalone runtime id', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'index.html': `\
+<!doctype html>
+<html>
+  <head><meta charset="UTF-8"><title>fixture</title></head>
+  <body>
+    <div id="app"></div>
+    <script id="file-protocol-standalone-worker-manifest" type="application/json">{"unexpected":true}</script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+`,
+      },
+    })
+
+    await expect(buildFixture({ root, budgets: undefined }))
+      .rejects.toThrow('index.html already contains reserved standalone element id "file-protocol-standalone-worker-manifest"')
+  })
+
   it('rejects a plugin-legacy data-src that does not match the generated entry', async () => {
     const root = await createFixture({ files: basicFixtureFiles() })
     const mutateLegacyDataSource: Plugin = {
@@ -668,6 +805,32 @@ globalThis.customClassicLoaded = true
       alias: undefined,
       onAdditionalLicenseDependencies: undefined,
     })).rejects.toThrow('Legacy entry data-src does not match the generated entry chunk')
+  })
+
+  it('rejects an encoded Windows path separator in a generated output URL', async () => {
+    const root = await createFixture({ files: basicFixtureFiles() })
+    const mutateLegacyDataSource: Plugin = {
+      name: 'mutate-legacy-entry-to-encoded-windows-traversal',
+      enforce: 'post',
+      transformIndexHtml(html) {
+        const dom = new JSDOM(html)
+        const entry = dom.window.document.getElementById('vite-legacy-entry')
+        if (entry === null) throw new Error('Expected plugin-legacy entry in fixture.')
+        entry.setAttribute('data-src', './..%5csecret.js')
+        return dom.serialize()
+      },
+    }
+
+    await expect(buildFixtureWithOptions({
+      root,
+      budgets: undefined,
+      workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
+      pluginsBeforeStandalone: [mutateLegacyDataSource],
+      input: path.join(root, 'index.html'),
+      define: undefined,
+      alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).rejects.toThrow('must remain a normalized relative output path')
   })
 
   it('rejects a legacy polyfill bootstrap that contradicts the standalone configuration', async () => {
@@ -876,7 +1039,7 @@ self.onmessage = () => self.postMessage(workerAliasValue + ':' + __WORKER_DEFINE
       onAdditionalLicenseDependencies: undefined,
     })
 
-    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
+    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as {
       workers: Array<{ registryFileName: string, moduleIds: string[] }>
     }
     const worker = report.workers[0]
@@ -934,7 +1097,7 @@ self.onmessage = () => self.postMessage(unicodeCorpus)
 
     await buildFixture({ root, budgets: undefined })
 
-    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/standalone-build-report.json'), 'utf8')) as {
+    const report = JSON.parse(await fs.readFile(path.join(root, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as {
       workers: Array<{ registryFileName: string, sourcePartCount: number }>
     }
     const worker = report.workers[0]
@@ -974,8 +1137,8 @@ self.onmessage = () => self.postMessage(unicodeCorpus)
     await buildFixture({ root: firstRoot, budgets: undefined })
     await buildFixture({ root: secondRoot, budgets: undefined })
 
-    const firstReport = JSON.parse(await fs.readFile(path.join(firstRoot, 'dist/standalone-build-report.json'), 'utf8')) as Record<string, unknown>
-    const secondReport = JSON.parse(await fs.readFile(path.join(secondRoot, 'dist/standalone-build-report.json'), 'utf8')) as Record<string, unknown>
+    const firstReport = JSON.parse(await fs.readFile(path.join(firstRoot, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as Record<string, unknown>
+    const secondReport = JSON.parse(await fs.readFile(path.join(secondRoot, 'dist/debug-file-protocol-standalone-build-report.json'), 'utf8')) as Record<string, unknown>
     delete firstReport.generatedAt
     delete secondReport.generatedAt
     expect(secondReport).toEqual(firstReport)
@@ -1001,19 +1164,31 @@ self.onmessage = () => self.postMessage(unicodeCorpus)
 
 describe('fileProtocolStandalone pure helpers', () => {
   it('normalizes project, virtual, dependency, and Windows module identifiers', () => {
-    expect(normalizeModuleId({
+    expect(debugSanitizeFileProtocolStandaloneModuleId({
       root: '/tmp/project',
       moduleId: '/tmp/project/src/main.ts',
     })).toBe('/src/main.ts')
-    expect(normalizeModuleId({
+    expect(debugSanitizeFileProtocolStandaloneModuleId({
       root: 'C:\\work\\project',
       moduleId: 'C:\\work\\project\\src\\main.ts',
     })).toBe('/src/main.ts')
-    expect(normalizeModuleId({
+    expect(debugSanitizeFileProtocolStandaloneModuleId({
+      root: 'C:\\work\\project',
+      moduleId: 'c:\\WORK\\project\\src\\main.ts',
+    })).toBe('/src/main.ts')
+    expect(debugSanitizeFileProtocolStandaloneModuleId({
+      root: 'C:\\work\\project',
+      moduleId: 'D:\\Users\\Alice\\private\\file.ts',
+    })).toMatch(/^\/outside-root\/[a-f0-9]{12}-file\.ts$/)
+    expect(debugSanitizeFileProtocolStandaloneModuleId({
+      root: '/tmp/project',
+      moduleId: 'D:\\Users\\Alice\\private\\file.ts',
+    })).toMatch(/^\/outside-root\/[a-f0-9]{12}-file\.ts$/)
+    expect(debugSanitizeFileProtocolStandaloneModuleId({
       root: '/tmp/project',
       moduleId: '\0virtual:file-protocol-standalone/worker/worker-hub',
     })).toBe('virtual:file-protocol-standalone/worker/worker-hub')
-    expect(normalizeModuleId({
+    expect(debugSanitizeFileProtocolStandaloneModuleId({
       root: '/tmp/project',
       moduleId: '/tmp/project/node_modules/example-package/index.js',
     })).toBe('/node_modules/example-package/index.js')
@@ -1022,7 +1197,7 @@ describe('fileProtocolStandalone pure helpers', () => {
   it('splits worker source without losing content or separating surrogate pairs', () => {
     const maxCodeUnits = 8
     const source = `1234567😀abcdefgh😀tail`
-    const parts = splitWorkerSourceForBlob({ source, maxCodeUnits })
+    const parts = splitFileProtocolStandaloneWorkerSourceIntoBlobParts({ source, maxCodeUnits })
 
     expect(parts.join('')).toBe(source)
     expect(parts.length).toBeGreaterThan(1)
@@ -1035,12 +1210,12 @@ describe('fileProtocolStandalone pure helpers', () => {
   })
 
   it('returns one empty Blob part for an empty worker and exact chunks for ASCII source', () => {
-    expect(splitWorkerSourceForBlob({ source: '', maxCodeUnits: 4 })).toEqual([''])
-    expect(splitWorkerSourceForBlob({ source: 'abcdefgh', maxCodeUnits: 4 })).toEqual(['abcd', 'efgh'])
+    expect(splitFileProtocolStandaloneWorkerSourceIntoBlobParts({ source: '', maxCodeUnits: 4 })).toEqual([''])
+    expect(splitFileProtocolStandaloneWorkerSourceIntoBlobParts({ source: 'abcdefgh', maxCodeUnits: 4 })).toEqual(['abcd', 'efgh'])
   })
 
   it('classifies Worker runtime imports without rejecting dynamic specifiers', () => {
-    expect(validateClassicJavaScriptSource({
+    expect(assertFileProtocolStandaloneClassicScript({
       source: `\
 (function () {
   'use strict';
@@ -1055,7 +1230,7 @@ describe('fileProtocolStandalone pure helpers', () => {
       hostedWorkerUrlCount: 0,
     })
 
-    expect(validateClassicJavaScriptSource({
+    expect(assertFileProtocolStandaloneClassicScript({
       source: `\
 const load = (specifier) => import(specifier);
 void load('node:fs/promises');
@@ -1075,7 +1250,7 @@ void load('node:fs/promises');
   })
 
   it('rejects static runtime imports left in a Worker artifact', () => {
-    expect(() => validateClassicJavaScriptSource({
+    expect(() => assertFileProtocolStandaloneClassicScript({
       source: `\
 void import('./lazy.js');
 `,
@@ -1086,22 +1261,22 @@ void import('./lazy.js');
 
   it('rejects invalid Worker source part sizes instead of risking a non-progressing split', () => {
     for (const maxCodeUnits of [0, -1, 1.5, Number.NaN]) {
-      expect(() => splitWorkerSourceForBlob({ source: 'worker', maxCodeUnits }))
+      expect(() => splitFileProtocolStandaloneWorkerSourceIntoBlobParts({ source: 'worker', maxCodeUnits }))
         .toThrow('Worker source part size must be a positive safe integer')
     }
   })
 
   it('validates options before Vite starts a build', () => {
     expect(() => fileProtocolStandalone({
-      reportFile: '',
+      debugBuildReportFile: '',
       workerTarget,
       workers: [],
       budgets: undefined,
       onAdditionalLicenseDependencies: undefined,
-    })).toThrow('reportFile must not be empty')
+    })).toThrow('debugBuildReportFile must not be empty')
 
     expect(() => fileProtocolStandalone({
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
       workerTarget: [],
       workers: [],
       budgets: undefined,
@@ -1109,7 +1284,7 @@ void import('./lazy.js');
     })).toThrow('workerTarget must contain at least one non-empty target')
 
     expect(() => fileProtocolStandalone({
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
       workerTarget,
       workers: [{ id: 'worker-hub', entry: '   ' }],
       budgets: undefined,
@@ -1118,7 +1293,7 @@ void import('./lazy.js');
 
     for (const invalidBudget of [-1, 1.5, Number.NaN]) {
       expect(() => fileProtocolStandalone({
-        reportFile: 'dist/report.json',
+        debugBuildReportFile: 'dist/report.json',
         workerTarget,
         workers: [],
         budgets: {
@@ -1140,58 +1315,58 @@ void import('./lazy.js');
       pluginInstanceCount: 1,
     }
     const validConfig = resolvedConfigFixture(validConfigArguments)
-    expect(() => validateResolvedConfig({
+    expect(() => assertSupportedFileProtocolStandaloneConfig({
       config: validConfig,
-      reportFile: '../../explicit-outside-project/report.json',
+      debugBuildReportFile: '../../explicit-outside-project/report.json',
     })).not.toThrow()
 
-    expect(() => validateResolvedConfig({
+    expect(() => assertSupportedFileProtocolStandaloneConfig({
       config: resolvedConfigFixture({ ...validConfigArguments, base: '/' }),
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
     })).toThrow("Vite base must be './' or ''")
-    expect(() => validateResolvedConfig({
+    expect(() => assertSupportedFileProtocolStandaloneConfig({
       config: resolvedConfigFixture({ ...validConfigArguments, modulePreload: {} }),
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
     })).toThrow('build.modulePreload must be false')
-    expect(() => validateResolvedConfig({
+    expect(() => assertSupportedFileProtocolStandaloneConfig({
       config: resolvedConfigFixture({ ...validConfigArguments, ssr: true }),
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
     })).toThrow('SSR builds are unsupported')
-    expect(() => validateResolvedConfig({
+    expect(() => assertSupportedFileProtocolStandaloneConfig({
       config: resolvedConfigFixture({ ...validConfigArguments, lib: {} }),
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
     })).toThrow('Library mode is unsupported')
-    expect(() => validateResolvedConfig({
+    expect(() => assertSupportedFileProtocolStandaloneConfig({
       config: resolvedConfigFixture({ ...validConfigArguments, write: false }),
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
     })).toThrow('build.write=false is unsupported')
-    expect(() => validateResolvedConfig({
+    expect(() => assertSupportedFileProtocolStandaloneConfig({
       config: resolvedConfigFixture({ ...validConfigArguments, pluginInstanceCount: 2 }),
-      reportFile: 'dist/report.json',
+      debugBuildReportFile: 'dist/report.json',
     })).toThrow('Expected exactly one plugin instance; found 2')
   })
 
   it('validates the unmodified SystemJS runtime and its sibling source map', async () => {
     const runtimeSource = await fs.readFile(require.resolve('systemjs/dist/system.min.js'), 'utf8')
     const sourceMapSource = await fs.readFile(require.resolve('systemjs/dist/system.min.js.map'))
-    expect(() => validateSystemJsSourceMapPair({ runtimeSource, sourceMapSource })).not.toThrow()
+    expect(() => assertMatchingSystemJsSourceMap({ runtimeSource, sourceMapSource })).not.toThrow()
 
-    expect(() => validateSystemJsSourceMapPair({
+    expect(() => assertMatchingSystemJsSourceMap({
       runtimeSource: runtimeSource.replace('//# sourceMappingURL=system.min.js.map', ''),
       sourceMapSource,
     })).toThrow('must retain its exact sibling source map directive')
-    expect(() => validateSystemJsSourceMapPair({
+    expect(() => assertMatchingSystemJsSourceMap({
       runtimeSource,
       sourceMapSource: '{not json}',
     })).toThrow('source map is not valid JSON')
-    expect(() => validateSystemJsSourceMapPair({
+    expect(() => assertMatchingSystemJsSourceMap({
       runtimeSource,
       sourceMapSource: JSON.stringify({ version: 3, sources: ['one.js'], sourcesContent: [] }),
     })).toThrow('source map is missing embedded source content')
   })
 
   it('requires application chunks to register through System.register', () => {
-    expect(() => validateClassicJavaScriptSource({
+    expect(() => assertFileProtocolStandaloneClassicScript({
       source: `\
 (function () { globalThis.value = 1 })();
 `,
@@ -1199,7 +1374,7 @@ void import('./lazy.js');
       mode: 'application-chunk',
     })).toThrow('System.register(...) is missing')
 
-    expect(validateClassicJavaScriptSource({
+    expect(assertFileProtocolStandaloneClassicScript({
       source: `\
 System.register([], function () { return { execute: function () {} } });
 `,

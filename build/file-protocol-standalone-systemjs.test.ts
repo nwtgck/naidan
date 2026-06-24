@@ -6,10 +6,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
 import {
-  createSystemJsFileProtocolPatchSource,
-  createSystemJsRetryHookSource,
-  validateSystemJsRuntimeCapabilities,
-} from './file-protocol-standalone'
+  createSystemJsFileScriptLoaderPatchSource,
+  createSystemJsPhysicalLoadRecoverySource,
+  assertSupportedSystemJsRuntime,
+} from './file-protocol-standalone/systemjs'
 
 const require = createRequire(import.meta.url)
 
@@ -60,7 +60,11 @@ function readStandaloneInternalState({ window }: {
   if (namespace === undefined || typeof namespace.internal !== 'object' || namespace.internal === null) {
     throw new Error('Expected standalone diagnostics namespace.')
   }
-  return namespace.internal as StandaloneInternalState
+  const internal = namespace.internal as { debug?: unknown }
+  if (typeof internal.debug !== 'object' || internal.debug === null) {
+    throw new Error('Expected standalone Debug state.')
+  }
+  return internal.debug as StandaloneInternalState
 }
 
 function hasErrorMessage(value: unknown): value is Readonly<{ message: string }> {
@@ -102,8 +106,8 @@ async function createRealSystemJsHarness({ fixtureDirectory }: {
   })
   const runtimeSource = await fs.promises.readFile(require.resolve('systemjs/dist/system.min.js'), 'utf8')
   dom.window.eval(runtimeSource)
-  dom.window.eval(createSystemJsFileProtocolPatchSource())
-  dom.window.eval(createSystemJsRetryHookSource())
+  dom.window.eval(createSystemJsFileScriptLoaderPatchSource())
+  dom.window.eval(createSystemJsPhysicalLoadRecoverySource())
 
   const head = dom.window.document.head
   const appendChild = head.appendChild.bind(head)
@@ -170,7 +174,7 @@ function createScriptPatchHarness(): Readonly<{
   return {
     dom,
     loader,
-    evaluatePatch: () => dom.window.eval(createSystemJsFileProtocolPatchSource()),
+    evaluatePatch: () => dom.window.eval(createSystemJsFileScriptLoaderPatchSource()),
   }
 }
 
@@ -231,7 +235,7 @@ function createRetryHarness(): Readonly<{
     dom,
     deletedUrls,
     loader,
-    evaluateRetryHook: () => dom.window.eval(createSystemJsRetryHookSource()),
+    evaluateRetryHook: () => dom.window.eval(createSystemJsPhysicalLoadRecoverySource()),
   }
 }
 
@@ -277,7 +281,7 @@ describe('fileProtocolStandalone SystemJS file patch', () => {
     })
     ;(dom.window as unknown as { System: object }).System = {}
 
-    expect(() => dom.window.eval(createSystemJsFileProtocolPatchSource())).toThrow('createScript hook is unavailable')
+    expect(() => dom.window.eval(createSystemJsFileScriptLoaderPatchSource())).toThrow('createScript hook is unavailable')
   })
 })
 
@@ -412,6 +416,71 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
     }
   })
 
+  it('evicts every loaded local ancestor in a diamond dependency graph before retrying', async () => {
+    const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'))
+    try {
+      await fs.promises.writeFile(path.join(fixtureDirectory, 'entry.js'), `System.register(['./left.js', './right.js'], function (_export) {
+  var left;
+  var right;
+  return {
+    setters: [
+      function (module) { left = module; },
+      function (module) { right = module; }
+    ],
+    execute: function () { _export('value', left.value + right.value); }
+  };
+});
+`)
+      await fs.promises.writeFile(path.join(fixtureDirectory, 'left.js'), `System.register(['./child.js'], function (_export) {
+  var child;
+  return {
+    setters: [function (module) { child = module; }],
+    execute: function () { _export('value', child.value); }
+  };
+});
+`)
+      await fs.promises.writeFile(path.join(fixtureDirectory, 'right.js'), `System.register(['./child.js'], function (_export) {
+  var child;
+  return {
+    setters: [function (module) { child = module; }],
+    execute: function () { _export('value', child.value); }
+  };
+});
+`)
+      const harness = await createRealSystemJsHarness({ fixtureDirectory })
+      try {
+        const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href
+        const leftUrl = pathToFileURL(path.join(fixtureDirectory, 'left.js')).href
+        const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href
+        await captureUnhandledRejections({
+          action: async () => {
+            await expect(harness.system.import('./entry.js')).rejects.toThrow('Error loading')
+
+            const stateAfterFailure = readStandaloneInternalState({ window: harness.dom.window }).systemJsRetry
+            if (stateAfterFailure === undefined) {
+              throw new Error('Expected SystemJS retry diagnostics after a failed shared child load.')
+            }
+            expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([
+              childUrl,
+              leftUrl,
+              entryUrl,
+            ]))
+
+            await fs.promises.writeFile(path.join(fixtureDirectory, 'child.js'), `System.register([], function (_export) {
+  return { execute: function () { _export('value', 21); } };
+});
+`)
+            await expect(harness.system.import('./entry.js')).resolves.toMatchObject({ value: 42 })
+          },
+        })
+      } finally {
+        harness.dom.window.close()
+      }
+    } finally {
+      await fs.promises.rm(fixtureDirectory, { recursive: true, force: true })
+    }
+  })
+
   it('does not evict a real module whose execute function throws an application error', async () => {
     const fixtureDirectory = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'file-protocol-standalone-test-fixture-'))
     try {
@@ -455,7 +524,7 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
 describe('fileProtocolStandalone bundled SystemJS runtime contract', () => {
   it('provides the registry and loader APIs required by both file:// hooks', () => {
     const runtimeSource = fs.readFileSync(require.resolve('systemjs/dist/system.min.js'), 'utf8')
-    expect(() => validateSystemJsRuntimeCapabilities({ source: runtimeSource })).not.toThrow()
+    expect(() => assertSupportedSystemJsRuntime({ source: runtimeSource })).not.toThrow()
 
     const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
       url: 'file:///__nonexistent_file_protocol_test_root__/index.html',
@@ -475,15 +544,15 @@ describe('fileProtocolStandalone bundled SystemJS runtime contract', () => {
     expect(typeof system.resolve).toBe('function')
     expect(typeof system.instantiate).toBe('function')
     expect(typeof system.delete).toBe('function')
-    expect(() => dom.window.eval(createSystemJsFileProtocolPatchSource())).not.toThrow()
-    expect(() => dom.window.eval(createSystemJsRetryHookSource())).not.toThrow()
+    expect(() => dom.window.eval(createSystemJsFileScriptLoaderPatchSource())).not.toThrow()
+    expect(() => dom.window.eval(createSystemJsPhysicalLoadRecoverySource())).not.toThrow()
     dom.window.close()
   })
 
   it('rejects the slim runtime because it omits System.delete', () => {
     const runtimeSource = fs.readFileSync(require.resolve('systemjs/dist/s.min.js'), 'utf8')
 
-    expect(() => validateSystemJsRuntimeCapabilities({ source: runtimeSource }))
+    expect(() => assertSupportedSystemJsRuntime({ source: runtimeSource }))
       .toThrow('missing APIs required by the file:// patches: delete')
   })
 })

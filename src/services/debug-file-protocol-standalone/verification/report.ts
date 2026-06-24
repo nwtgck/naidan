@@ -1,33 +1,34 @@
-import type { StandaloneWorkerVerificationResult } from './worker-probe'
+import { FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS } from '@/file-protocol-standalone-protocol'
+import type { DebugFileProtocolStandaloneWorkerVerificationResult } from './worker-probe'
 
-export type StandaloneVerificationStatus = 'pass' | 'fail'
+export type DebugFileProtocolStandaloneVerificationStatus = 'pass' | 'fail'
 
-export type StandaloneVerificationCheck = Readonly<{
+export type DebugFileProtocolStandaloneVerificationCheck = Readonly<{
   id: string
   category: 'environment' | 'startup' | 'router' | 'styles' | 'dynamic-imports' | 'systemjs' | 'output' | 'worker'
-  status: StandaloneVerificationStatus
+  status: DebugFileProtocolStandaloneVerificationStatus
   durationMs: number
   details: unknown | undefined
   error: string | undefined
 }>
 
-export type StandaloneVerificationRouteSnapshot = Readonly<{
+export type DebugFileProtocolStandaloneVerificationRouteSnapshot = Readonly<{
   fullPath: string
   name: string | undefined
   matchedPaths: readonly string[]
   resolvedHref: string
 }>
 
-export type StandaloneVerificationRouteTransition = Readonly<{
-  before: string
-  transitioned: string
-  restored: string
+export type DebugFileProtocolStandaloneVerificationRouteTransition = Readonly<{
+  beforePath: string
+  transitionedPath: string
+  restoredPath: string
 }>
 
-export type StandaloneVerificationReport = Readonly<{
+export type DebugFileProtocolStandaloneVerificationReport = Readonly<{
   format: 'naidan-standalone-verification-v1'
   generatedAt: string
-  status: StandaloneVerificationStatus
+  status: DebugFileProtocolStandaloneVerificationStatus
   summary: Readonly<{
     passed: number
     failed: number
@@ -41,7 +42,7 @@ export type StandaloneVerificationReport = Readonly<{
     readyState: DocumentReadyState
     performanceMemory: Readonly<Record<string, number>> | undefined
   }>
-  checks: readonly StandaloneVerificationCheck[]
+  checks: readonly DebugFileProtocolStandaloneVerificationCheck[]
   runtime: Readonly<{
     pluginDiagnostics: unknown
     startup: unknown
@@ -104,7 +105,7 @@ function isExecutableScriptType({ type }: { type: string | undefined }): boolean
 }
 
 
-function snapshotReportValue<Value>({ value }: { value: Value }): Value {
+function debugCloneFileProtocolStandaloneVerificationValue<Value>({ value }: { value: Value }): Value {
   if (value === undefined) return value
   if (typeof structuredClone === 'function') {
     return structuredClone(value)
@@ -243,7 +244,7 @@ function readSystemJsRetryState({ value }: { value: unknown }): SystemJsRetrySta
   }
 }
 
-function readOutputScriptShape(): readonly Readonly<{
+function debugValidateAndReadFileProtocolStandaloneOutputScripts(): readonly Readonly<{
   id: string | undefined
   type: string | undefined
   src: string | undefined
@@ -256,12 +257,7 @@ function readOutputScriptShape(): readonly Readonly<{
     crossorigin: script.getAttribute('crossorigin') || undefined,
   }))
   const executableScripts = scripts.filter((script) => isExecutableScriptType({ type: script.type }))
-  const expectedExecutableIds = [
-    'file-protocol-standalone-systemjs-runtime',
-    'file-protocol-standalone-systemjs-file-patch',
-    'file-protocol-standalone-systemjs-retry-hook',
-    'file-protocol-standalone-entry',
-  ]
+  const expectedExecutableIds = FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS
 
   assertCondition({
     condition: scripts.every((script) => normalizeScriptType({ type: script.type }) !== 'module'),
@@ -279,21 +275,21 @@ function readOutputScriptShape(): readonly Readonly<{
   return scripts
 }
 
-function validateWorkerResult({ result }: { result: StandaloneWorkerVerificationResult }): void {
-  const { after, before, deltas } = result
-  assertCondition({ condition: deltas.workersCreated === 3, message: `Expected 3 verification Workers; created ${deltas.workersCreated}.` })
-  assertCondition({ condition: deltas.workersTerminated === 3, message: `Expected 3 verification Workers to terminate; terminated ${deltas.workersTerminated}.` })
-  assertCondition({ condition: deltas.activeWorkers === 0, message: 'Verification changed the number of active Workers.' })
-  assertCondition({ condition: after.registryScriptLoads === 1, message: `Expected one worker registry load; observed ${after.registryScriptLoads}.` })
-  assertCondition({ condition: after.blobRegistrations === 1, message: `Expected one worker Blob registration; observed ${after.blobRegistrations}.` })
-  assertCondition({ condition: after.objectUrlsCreated === 1, message: `Expected one worker object URL; observed ${after.objectUrlsCreated}.` })
-  assertCondition({ condition: after.runtimeDigestCalls === 0, message: 'Worker runtime unexpectedly calculated a digest.' })
-  assertCondition({ condition: after.sourceStoredAsGlobalString === false, message: 'Worker source is retained as a global string.' })
-  assertCondition({ condition: after.registryEntryReleased === true, message: 'Worker registry entry was not released.' })
-  assertCondition({ condition: after.registryEntryPresent === false, message: 'Worker registry entry is still present.' })
-  assertCondition({ condition: result.concurrent.length === 2, message: 'Concurrent Worker verification did not return two results.' })
+function debugAssertValidFileProtocolStandaloneWorkerVerificationResult({ result }: { result: DebugFileProtocolStandaloneWorkerVerificationResult }): void {
+  const { diagnosticsAfter, diagnosticsBefore, diagnosticDeltas } = result
+  assertCondition({ condition: diagnosticDeltas.workersCreated === 3, message: `Expected 3 verification Workers; created ${diagnosticDeltas.workersCreated}.` })
+  assertCondition({ condition: diagnosticDeltas.workersTerminated === 3, message: `Expected 3 verification Workers to terminate; terminated ${diagnosticDeltas.workersTerminated}.` })
+  assertCondition({ condition: diagnosticDeltas.activeWorkers === 0, message: 'Verification changed the number of active Workers.' })
+  assertCondition({ condition: diagnosticsAfter.registryScriptLoads === 1, message: `Expected one worker registry load; observed ${diagnosticsAfter.registryScriptLoads}.` })
+  assertCondition({ condition: diagnosticsAfter.blobRegistrations === 1, message: `Expected one worker Blob registration; observed ${diagnosticsAfter.blobRegistrations}.` })
+  assertCondition({ condition: diagnosticsAfter.objectUrlsCreated === 1, message: `Expected one worker object URL; observed ${diagnosticsAfter.objectUrlsCreated}.` })
+  assertCondition({ condition: diagnosticsAfter.runtimeDigestCalls === 0, message: 'Worker runtime unexpectedly calculated a digest.' })
+  assertCondition({ condition: diagnosticsAfter.sourceStoredAsGlobalString === false, message: 'Worker source is retained as a global string.' })
+  assertCondition({ condition: diagnosticsAfter.registryEntryReleased === true, message: 'Worker registry entry was not released.' })
+  assertCondition({ condition: diagnosticsAfter.registryEntryPresent === false, message: 'Worker registry entry is still present.' })
+  assertCondition({ condition: result.concurrentHighlights.length === 2, message: 'Concurrent Worker verification did not return two results.' })
   assertCondition({
-    condition: [...result.concurrent, result.recreated].every((roundTrip) => roundTrip.htmlLength > 0 && roundTrip.resolvedLanguage.length > 0),
+    condition: [...result.concurrentHighlights, result.recreatedWorkerHighlight].every((roundTrip) => roundTrip.htmlLength > 0 && roundTrip.resolvedLanguage.length > 0),
     message: 'A Worker highlight round trip returned an empty result.',
   })
   assertCondition({
@@ -309,20 +305,22 @@ function validateWorkerResult({ result }: { result: StandaloneWorkerVerification
     message: `Wesh file verification wrote stderr: ${result.weshFileProbe.stderr}`,
   })
   assertCondition({
-    condition: before.activeWorkers === after.activeWorkers,
+    condition: diagnosticsBefore.activeWorkers === diagnosticsAfter.activeWorkers,
     message: 'Verification leaked an active Worker.',
   })
 }
 
-async function waitForStyleApplication(): Promise<void> {
+async function waitForStyleApplication({ signal }: { signal: AbortSignal }): Promise<void> {
   if (typeof requestAnimationFrame === 'function') {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    signal.throwIfAborted()
     return
   }
   await Promise.resolve()
+  signal.throwIfAborted()
 }
 
-function readPluginDiagnostics(): FileProtocolStandaloneGlobalDiagnostics {
+function debugReadFileProtocolStandalonePluginDiagnostics(): DebugFileProtocolStandaloneGlobalDiagnostics {
   const diagnostics = globalThis.__FILE_PROTOCOL_STANDALONE__
   if (diagnostics === undefined || typeof diagnostics.getDiagnostics !== 'function') {
     throw new Error('The standalone global diagnostics API is missing.')
@@ -330,62 +328,69 @@ function readPluginDiagnostics(): FileProtocolStandaloneGlobalDiagnostics {
   return diagnostics.getDiagnostics()
 }
 
-const standaloneVerificationCheckTimeoutMs = 60_000
 
-async function runVerificationCheckWithTimeout<Result>({
+async function debugWaitForVerificationCheckUntilDeadline<Result>({
   id,
   timeoutMs,
   action,
 }: {
   id: string
   timeoutMs: number
-  action: () => Result | Promise<Result>
+  action: ({ signal }: { signal: AbortSignal }) => Result | Promise<Result>
 }): Promise<Result> {
+  const controller = new AbortController()
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_resolve, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(`Standalone verification check "${id}" timed out after ${timeoutMs} ms.`))
+      const error = new Error(`Standalone verification check "${id}" timed out after ${timeoutMs} ms.`)
+      controller.abort(error)
+      reject(error)
     }, timeoutMs)
   })
   try {
-    return await Promise.race([Promise.resolve().then(action), timeout])
+    return await Promise.race([
+      Promise.resolve().then(() => action({ signal: controller.signal })),
+      timeout,
+    ])
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId)
   }
 }
 
-export async function runStandaloneVerification({
+export async function debugRunFileProtocolStandaloneVerification({
   route,
-  tailwindProbe,
-  scopedProbe,
-  lazyStyleProbe,
-  loadLazyStyleProbe,
-  exerciseRouteTransition,
-  runWorkerProbe,
-  checkTimeoutMs = standaloneVerificationCheckTimeoutMs,
+  tailwindStyleProbeElement,
+  scopedStyleProbeElement,
+  lazyStyleProbeElement,
+  lazyStyleInitialOutlineWidth,
+  debugLoadFileProtocolStandaloneLazyStyleProbeModule,
+  debugExerciseFileProtocolStandaloneRouteRoundTrip,
+  debugRunWorkerProbe,
+  checkTimeoutMs,
 }: {
-  route: StandaloneVerificationRouteSnapshot
-  tailwindProbe: HTMLElement
-  scopedProbe: HTMLElement
-  lazyStyleProbe: HTMLElement
-  loadLazyStyleProbe: () => Promise<Readonly<{ marker: string }>>
-  exerciseRouteTransition: () => Promise<StandaloneVerificationRouteTransition>
-  runWorkerProbe: () => Promise<StandaloneWorkerVerificationResult>
-  checkTimeoutMs?: number
-}): Promise<StandaloneVerificationReport> {
+  route: DebugFileProtocolStandaloneVerificationRouteSnapshot
+  tailwindStyleProbeElement: HTMLElement
+  scopedStyleProbeElement: HTMLElement
+  lazyStyleProbeElement: HTMLElement
+  lazyStyleInitialOutlineWidth: string
+  debugLoadFileProtocolStandaloneLazyStyleProbeModule: ({ signal }: { signal: AbortSignal }) => Promise<Readonly<{ marker: string }>>
+  debugExerciseFileProtocolStandaloneRouteRoundTrip: ({ signal }: { signal: AbortSignal }) => Promise<DebugFileProtocolStandaloneVerificationRouteTransition>
+  debugRunWorkerProbe: ({ signal }: { signal: AbortSignal }) => Promise<DebugFileProtocolStandaloneWorkerVerificationResult>
+  checkTimeoutMs: number
+}): Promise<DebugFileProtocolStandaloneVerificationReport> {
   const startedAt = performance.now()
-  const checks: StandaloneVerificationCheck[] = []
+  const checks: DebugFileProtocolStandaloneVerificationCheck[] = []
   let pluginDiagnosticsReadResult:
-    | Readonly<{ status: 'fulfilled'; value: FileProtocolStandaloneGlobalDiagnostics }>
+    | Readonly<{ status: 'fulfilled'; value: DebugFileProtocolStandaloneGlobalDiagnostics }>
     | Readonly<{ status: 'rejected'; reason: unknown }>
     | undefined
 
-  function getPluginDiagnosticsSnapshot(): FileProtocolStandaloneGlobalDiagnostics {
+  function getPluginDiagnosticsSnapshot(): DebugFileProtocolStandaloneGlobalDiagnostics {
     if (pluginDiagnosticsReadResult === undefined) {
       try {
         pluginDiagnosticsReadResult = {
           status: 'fulfilled',
-          value: snapshotReportValue({ value: readPluginDiagnostics() }),
+          value: debugCloneFileProtocolStandaloneVerificationValue({ value: debugReadFileProtocolStandalonePluginDiagnostics() }),
         }
       } catch (reason) {
         pluginDiagnosticsReadResult = { status: 'rejected', reason }
@@ -410,13 +415,13 @@ export async function runStandaloneVerification({
     action,
   }: {
     id: string
-    category: StandaloneVerificationCheck['category']
-    action: () => unknown | Promise<unknown>
+    category: DebugFileProtocolStandaloneVerificationCheck['category']
+    action: ({ signal }: { signal: AbortSignal }) => unknown | Promise<unknown>
   }): Promise<void> {
     const checkStartedAt = performance.now()
     try {
-      const details = snapshotReportValue({
-        value: await runVerificationCheckWithTimeout({
+      const details = debugCloneFileProtocolStandaloneVerificationValue({
+        value: await debugWaitForVerificationCheckUntilDeadline({
           id,
           timeoutMs: checkTimeoutMs,
           action,
@@ -460,8 +465,8 @@ export async function runStandaloneVerification({
       assertCondition({ condition: app?.childElementCount !== 0, message: 'The Vue application is not mounted.' })
       const startup = getPluginDiagnosticsSnapshot().startup
       assertCondition({
-        condition: startup?.phase === 'mounted',
-        message: `Startup phase is ${String(startup?.phase)} instead of mounted.`,
+        condition: startup?.checkpoint === 'mounted',
+        message: `Startup checkpoint is ${String(startup?.checkpoint)} instead of mounted.`,
       })
       return {
         readyState: document.readyState,
@@ -485,10 +490,10 @@ export async function runStandaloneVerification({
   await check({
     id: 'router.query-transition',
     category: 'router',
-    action: async () => {
-      const transition = await exerciseRouteTransition()
-      assertCondition({ condition: transition.transitioned !== transition.before, message: 'Router transition did not change the route.' })
-      assertCondition({ condition: transition.restored === transition.before, message: 'Router transition did not restore the original route.' })
+    action: async ({ signal }) => {
+      const transition = await debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal })
+      assertCondition({ condition: transition.transitionedPath !== transition.beforePath, message: 'Router transition did not change the route.' })
+      assertCondition({ condition: transition.restoredPath === transition.beforePath, message: 'Router transition did not restore the original route.' })
       return transition
     },
   })
@@ -498,8 +503,8 @@ export async function runStandaloneVerification({
     category: 'styles',
     action: () => {
       const bodyStyle = getComputedStyle(document.body)
-      const tailwindStyle = getComputedStyle(tailwindProbe)
-      const scopedStyle = getComputedStyle(scopedProbe)
+      const tailwindStyle = getComputedStyle(tailwindStyleProbeElement)
+      const scopedStyle = getComputedStyle(scopedStyleProbeElement)
       const details = {
         bodyMargin: bodyStyle.margin,
         tailwindWidth: tailwindStyle.width,
@@ -518,19 +523,21 @@ export async function runStandaloneVerification({
     id: 'styles.lazy-before-import',
     category: 'styles',
     action: () => {
-      const outlineWidth = getComputedStyle(lazyStyleProbe).outlineWidth
-      assertCondition({ condition: outlineWidth !== '3px', message: 'Lazy CSS was already applied before its dynamic import.' })
-      return { outlineWidth }
+      assertCondition({
+        condition: lazyStyleInitialOutlineWidth !== '3px',
+        message: 'Lazy CSS was already applied before its first dynamic import.',
+      })
+      return { outlineWidth: lazyStyleInitialOutlineWidth }
     },
   })
 
   await check({
     id: 'dynamic-imports.lazy-style-probe',
     category: 'dynamic-imports',
-    action: async () => {
-      const loaded = await loadLazyStyleProbe()
-      await waitForStyleApplication()
-      const outlineWidth = getComputedStyle(lazyStyleProbe).outlineWidth
+    action: async ({ signal }) => {
+      const loaded = await debugLoadFileProtocolStandaloneLazyStyleProbeModule({ signal })
+      await waitForStyleApplication({ signal })
+      const outlineWidth = getComputedStyle(lazyStyleProbeElement).outlineWidth
       assertCondition({
         condition: loaded.marker === 'standalone-verification-lazy-style-probe-v1',
         message: `Unexpected lazy marker: ${loaded.marker}`,
@@ -561,15 +568,17 @@ export async function runStandaloneVerification({
   await check({
     id: 'output.classic-script-shape',
     category: 'output',
-    action: () => readOutputScriptShape(),
+    action: () => debugValidateAndReadFileProtocolStandaloneOutputScripts(),
   })
 
   await check({
     id: 'worker.reusable-blob-url-factory',
     category: 'worker',
-    action: async () => {
-      const result = await runWorkerProbe()
-      validateWorkerResult({ result })
+    action: async ({ signal }) => {
+      signal.throwIfAborted()
+      const result = await debugRunWorkerProbe({ signal })
+      signal.throwIfAborted()
+      debugAssertValidFileProtocolStandaloneWorkerVerificationResult({ result })
       return result
     },
   })
@@ -608,11 +617,11 @@ export async function runStandaloneVerification({
     },
     checks,
     runtime: {
-      pluginDiagnostics: snapshotReportValue({ value: resolvedPluginDiagnostics }),
-      startup: snapshotReportValue({ value: resolvedPluginDiagnostics?.startup }),
-      systemJsPatch: snapshotReportValue({ value: resolvedPluginDiagnostics?.systemJsPatch }),
-      systemJsRetry: snapshotReportValue({ value: resolvedPluginDiagnostics?.systemJsRetry }),
-      worker: snapshotReportValue({ value: resolvedPluginDiagnostics?.workerRuntime }),
+      pluginDiagnostics: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics }),
+      startup: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics?.startup }),
+      systemJsPatch: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics?.systemJsPatch }),
+      systemJsRetry: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics?.systemJsRetry }),
+      worker: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics?.workerRuntime }),
       resourceEntries: performance.getEntriesByType('resource').map((entry) => {
         const resource = entry as PerformanceResourceTiming
         return {
@@ -625,10 +634,10 @@ export async function runStandaloneVerification({
   }
 }
 
-export function serializeStandaloneVerificationReportForCopy({
+export function debugSerializeFileProtocolStandaloneVerificationReportForCopy({
   report,
 }: {
-  report: StandaloneVerificationReport
+  report: DebugFileProtocolStandaloneVerificationReport
 }): string {
   let standaloneRoot: string | undefined
   try {

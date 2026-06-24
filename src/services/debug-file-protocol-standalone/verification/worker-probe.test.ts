@@ -3,16 +3,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { IWorkerHub } from '@/services/worker-hub.types'
 import type { IWeshWorker } from '@/services/wesh/worker/types'
-import type { FileProtocolWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-compatible-standalone-worker-hub'
+import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub'
 import {
-  releaseStandaloneWorkerHubSession,
-  runHighlightRoundTrip,
-  runStandaloneWeshFileProbeWithRemote,
-  runStandaloneWorkerFactoryVerificationWithDependencies,
-  runWeshFileProbe,
-  type StandaloneWorkerHubSession,
-  type StandaloneWorkerRoundTripResult,
-  type StandaloneWeshFileProbeResult,
+  debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
+  debugRunFileProtocolStandaloneHighlightProbe,
+  debugRunFileProtocolStandaloneWeshFileProbeWithRemote,
+  debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies,
+  debugRunFileProtocolStandaloneWeshFileProbe,
+  type DebugFileProtocolStandaloneWorkerHubSession,
+  type DebugFileProtocolStandaloneHighlightProbeResult,
+  type DebugFileProtocolStandaloneWeshFileProbeResult,
 } from './worker-probe'
 
 type MutableDiagnostics = {
@@ -21,7 +21,7 @@ type MutableDiagnostics = {
   activeWorkers: number
 }
 
-type TrackedSession = StandaloneWorkerHubSession & Readonly<{
+type TrackedSession = DebugFileProtocolStandaloneWorkerHubSession & Readonly<{
   testId: number
 }>
 
@@ -29,9 +29,9 @@ function createDiagnostics({
   mutable,
 }: {
   mutable: MutableDiagnostics
-}): FileProtocolWorkerDiagnostics {
+}): DebugFileProtocolStandaloneWorkerDiagnostics {
   return {
-    workerId: 'file-protocol-compatible-standalone-worker-hub',
+    workerId: 'file-protocol-standalone-worker-hub',
     registryScriptLoads: 1,
     registryScriptLoadFailures: 0,
     blobRegistrations: 1,
@@ -39,12 +39,13 @@ function createDiagnostics({
     workersCreated: mutable.workersCreated,
     workersTerminated: mutable.workersTerminated,
     activeWorkers: mutable.activeWorkers,
+    terminateInstrumentationFailures: 0,
     runtimeDigestCalls: 0,
     sourceStoredAsGlobalString: false,
     objectUrlLifetime: 'page',
     registryEntryReleased: true,
     registryEntryPresent: false,
-    blobUrlReady: true,
+    blobUrlStatus: 'ready',
     blobBytes: 1024,
     sourcePartCount: 2,
     sha256: 'diagnostic-sha256',
@@ -58,7 +59,7 @@ function createTrackedSessionFactory({
 }: {
   mutable: MutableDiagnostics
   events: string[]
-}): () => Promise<StandaloneWorkerHubSession> {
+}): () => Promise<DebugFileProtocolStandaloneWorkerHubSession> {
   let nextId = 0
 
   return async () => {
@@ -86,12 +87,12 @@ function createTrackedSessionFactory({
   }
 }
 
-function getTestId({ session }: { session: StandaloneWorkerHubSession }): number {
+function getTestId({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }): number {
   return (session as TrackedSession).testId
 }
 
 function createReleaseSession({ events }: { events: string[] }) {
-  return vi.fn(async ({ session }: { session: StandaloneWorkerHubSession }) => {
+  return vi.fn(async ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => {
     const testId = getTestId({ session })
     events.push(`release:${testId}`)
     session.worker.terminate()
@@ -160,8 +161,8 @@ function createRealComlinkSessionFactory({
 }: {
   mutable: MutableDiagnostics
   events: string[]
-  sessions: StandaloneWorkerHubSession[]
-}): () => Promise<StandaloneWorkerHubSession> {
+  sessions: DebugFileProtocolStandaloneWorkerHubSession[]
+}): () => Promise<DebugFileProtocolStandaloneWorkerHubSession> {
   let nextId = 0
 
   return async () => {
@@ -245,7 +246,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
+describe('debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies', () => {
   it('keeps a real Comlink root endpoint alive through highlight and Wesh before release', async () => {
     const mutable: MutableDiagnostics = {
       workersCreated: 0,
@@ -253,14 +254,15 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
       activeWorkers: 0,
     }
     const events: string[] = []
-    const sessions: StandaloneWorkerHubSession[] = []
+    const sessions: DebugFileProtocolStandaloneWorkerHubSession[] = []
 
-    const result = await runStandaloneWorkerFactoryVerificationWithDependencies({
+    const result = await debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession: createRealComlinkSessionFactory({ mutable, events, sessions }),
       readDiagnostics: () => createDiagnostics({ mutable }),
-      runRoundTrip: runHighlightRoundTrip,
-      runFileProbe: runWeshFileProbe,
-      releaseSession: releaseStandaloneWorkerHubSession,
+      runRoundTrip: debugRunFileProtocolStandaloneHighlightProbe,
+      runFileProbe: debugRunFileProtocolStandaloneWeshFileProbe,
+      releaseSession: debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
+      sessionCreationTimeoutMs: 1_000,
       operationTimeoutMs: 1_000,
       cleanupTimeoutMs: 1_000,
     })
@@ -293,11 +295,11 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
     const events: string[] = []
     const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }))
     const releaseSession = createReleaseSession({ events })
-    const roundTripSessions: StandaloneWorkerHubSession[] = []
+    const roundTripSessions: DebugFileProtocolStandaloneWorkerHubSession[] = []
     const runRoundTrip = vi.fn(async ({ session, source }: {
-      session: StandaloneWorkerHubSession
+      session: DebugFileProtocolStandaloneWorkerHubSession
       source: string
-    }): Promise<StandaloneWorkerRoundTripResult> => {
+    }): Promise<DebugFileProtocolStandaloneHighlightProbeResult> => {
       roundTripSessions.push(session)
       events.push(`highlight:${getTestId({ session })}`)
       return {
@@ -305,10 +307,10 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
         htmlLength: source.length,
       }
     })
-    const fileProbeSessions: StandaloneWorkerHubSession[] = []
+    const fileProbeSessions: DebugFileProtocolStandaloneWorkerHubSession[] = []
     const runFileProbe = vi.fn(async ({ session }: {
-      session: StandaloneWorkerHubSession
-    }): Promise<StandaloneWeshFileProbeResult> => {
+      session: DebugFileProtocolStandaloneWorkerHubSession
+    }): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> => {
       fileProbeSessions.push(session)
       events.push(`wesh:${getTestId({ session })}`)
       return {
@@ -318,12 +320,13 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
       }
     })
 
-    const result = await runStandaloneWorkerFactoryVerificationWithDependencies({
+    const result = await debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip,
       runFileProbe,
       releaseSession,
+      sessionCreationTimeoutMs: 1_000,
       operationTimeoutMs: 1_000,
       cleanupTimeoutMs: 1_000,
     })
@@ -344,7 +347,7 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
       'release:2',
       'terminate:2',
     ])
-    expect(result.deltas).toEqual({
+    expect(result.diagnosticDeltas).toEqual({
       workersCreated: 3,
       workersTerminated: 3,
       activeWorkers: 0,
@@ -363,11 +366,11 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
     const events: string[] = []
     const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }))
     const releaseSession = createReleaseSession({ events })
-    const sibling = createDeferred<StandaloneWorkerRoundTripResult>()
+    const sibling = createDeferred<DebugFileProtocolStandaloneHighlightProbeResult>()
     const runRoundTrip = vi.fn(async ({ source }: {
-      session: StandaloneWorkerHubSession
+      session: DebugFileProtocolStandaloneWorkerHubSession
       source: string
-    }): Promise<StandaloneWorkerRoundTripResult> => {
+    }): Promise<DebugFileProtocolStandaloneHighlightProbeResult> => {
       if (source.includes('concurrent-a')) {
         throw new Error('synthetic round-trip failure')
       }
@@ -375,12 +378,13 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
     })
 
     let settled = false
-    const verification = runStandaloneWorkerFactoryVerificationWithDependencies({
+    const verification = debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip,
       runFileProbe: vi.fn(),
       releaseSession,
+      sessionCreationTimeoutMs: 1_000,
       operationTimeoutMs: 1_000,
       cleanupTimeoutMs: 1_000,
     }).finally(() => {
@@ -414,18 +418,70 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
       .mockRejectedValueOnce(new Error('synthetic worker creation failure'))
     const releaseSession = createReleaseSession({ events })
 
-    await expect(runStandaloneWorkerFactoryVerificationWithDependencies({
+    await expect(debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: vi.fn(),
       runFileProbe: vi.fn(),
       releaseSession,
+      sessionCreationTimeoutMs: 1_000,
       operationTimeoutMs: 1_000,
       cleanupTimeoutMs: 1_000,
     })).rejects.toThrow('synthetic worker creation failure')
 
     expect(releaseSession).toHaveBeenCalledOnce()
     expect(events).toEqual(['release:0', 'terminate:0'])
+  })
+
+  it('releases a session that resolves after its creation deadline', async () => {
+    vi.useFakeTimers()
+    const events: string[] = []
+    const mutable: MutableDiagnostics = {
+      workersCreated: 0,
+      workersTerminated: 0,
+      activeWorkers: 0,
+    }
+    const trackedFactory = createTrackedSessionFactory({ mutable, events })
+    const firstSession = await trackedFactory()
+    const lateSession = createDeferred<DebugFileProtocolStandaloneWorkerHubSession>()
+    const createSession = vi.fn()
+      .mockResolvedValueOnce(firstSession)
+      .mockImplementationOnce(async () => lateSession.promise)
+    const releaseSession = createReleaseSession({ events })
+
+    const verification = debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+      createSession,
+      readDiagnostics: () => createDiagnostics({ mutable }),
+      runRoundTrip: vi.fn(),
+      runFileProbe: vi.fn(),
+      releaseSession,
+      sessionCreationTimeoutMs: 25,
+      operationTimeoutMs: 25,
+      cleanupTimeoutMs: 25,
+    })
+    const rejection = expect(verification).rejects.toThrow(
+      'Second standalone Worker session creation timed out after 25 ms.',
+    )
+
+    await vi.advanceTimersByTimeAsync(25)
+    await rejection
+    expect(releaseSession).toHaveBeenCalledOnce()
+    expect(mutable.activeWorkers).toBe(0)
+
+    const resolvedLateSession = await trackedFactory()
+    lateSession.resolve(resolvedLateSession)
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(releaseSession).toHaveBeenCalledTimes(2)
+    expect(events).toEqual([
+      'release:0',
+      'terminate:0',
+      'release:1',
+      'terminate:1',
+    ])
+    expect(mutable.activeWorkers).toBe(0)
   })
 
   it('releases the recreated session when the Wesh file probe fails', async () => {
@@ -438,7 +494,7 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
     const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }))
     const releaseSession = createReleaseSession({ events })
 
-    await expect(runStandaloneWorkerFactoryVerificationWithDependencies({
+    await expect(debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: async ({ session, source }) => {
@@ -450,6 +506,7 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
         throw new Error('synthetic Wesh file probe failure')
       },
       releaseSession,
+      sessionCreationTimeoutMs: 1_000,
       operationTimeoutMs: 1_000,
       cleanupTimeoutMs: 1_000,
     })).rejects.toThrow('synthetic Wesh file probe failure')
@@ -474,12 +531,13 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
     const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }))
     const releaseSession = createReleaseSession({ events })
 
-    const verification = runStandaloneWorkerFactoryVerificationWithDependencies({
+    const verification = debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: async ({ source }) => ({ resolvedLanguage: 'json', htmlLength: source.length }),
-      runFileProbe: async () => new Promise<StandaloneWeshFileProbeResult>(() => {}),
+      runFileProbe: async () => new Promise<DebugFileProtocolStandaloneWeshFileProbeResult>(() => {}),
       releaseSession,
+      sessionCreationTimeoutMs: 25,
       operationTimeoutMs: 25,
       cleanupTimeoutMs: 25,
     })
@@ -503,7 +561,7 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
     const events: string[] = []
     const createSession = vi.fn(createTrackedSessionFactory({ mutable, events }))
     let releaseCount = 0
-    const releaseSession = vi.fn(async ({ session }: { session: StandaloneWorkerHubSession }) => {
+    const releaseSession = vi.fn(async ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => {
       releaseCount += 1
       if (releaseCount < 3) {
         session.worker.terminate()
@@ -512,12 +570,13 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
       await new Promise<void>(() => {})
     })
 
-    const verification = runStandaloneWorkerFactoryVerificationWithDependencies({
+    const verification = debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
       createSession,
       readDiagnostics: () => createDiagnostics({ mutable }),
       runRoundTrip: async ({ source }) => ({ resolvedLanguage: 'json', htmlLength: source.length }),
       runFileProbe: async () => ({ exitCode: 0, stdout: '/bin/sh: text/x-shellscript\n', stderr: '' }),
       releaseSession,
+      sessionCreationTimeoutMs: 25,
       operationTimeoutMs: 25,
       cleanupTimeoutMs: 25,
     })
@@ -536,7 +595,7 @@ describe('runStandaloneWorkerFactoryVerificationWithDependencies', () => {
   })
 })
 
-describe('runStandaloneWeshFileProbeWithRemote', () => {
+describe('debugRunFileProtocolStandaloneWeshFileProbeWithRemote', () => {
   it('runs the real file command probe and disposes its execution and remote', async () => {
     const events: string[] = []
     const stdout = new TextEncoder().encode('/bin/sh: text/x-shellscript\n').buffer as ArrayBuffer
@@ -561,7 +620,7 @@ describe('runStandaloneWeshFileProbeWithRemote', () => {
       }),
     } as unknown as IWeshWorker
 
-    const result = await runStandaloneWeshFileProbeWithRemote({
+    const result = await debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
       wesh: asRemoteWesh({ worker }),
     })
 
@@ -590,7 +649,7 @@ describe('runStandaloneWeshFileProbeWithRemote', () => {
       dispose: vi.fn(async () => {}),
     } as unknown as IWeshWorker
 
-    await expect(runStandaloneWeshFileProbeWithRemote({
+    await expect(debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
       wesh: asRemoteWesh({ worker }),
     })).resolves.toEqual({ exitCode: 7, stdout: 'out', stderr: 'err' })
   })
@@ -608,7 +667,7 @@ describe('runStandaloneWeshFileProbeWithRemote', () => {
       dispose,
     } as unknown as IWeshWorker
 
-    await expect(runStandaloneWeshFileProbeWithRemote({
+    await expect(debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
       wesh: asRemoteWesh({ worker }),
     })).rejects.toThrow('synthetic await failure')
     expect(disposeExecution).toHaveBeenCalledWith({ request: { executionId: 'execution-3' } })
@@ -628,7 +687,7 @@ describe('runStandaloneWeshFileProbeWithRemote', () => {
       dispose,
     } as unknown as IWeshWorker
 
-    await expect(runStandaloneWeshFileProbeWithRemote({
+    await expect(debugRunFileProtocolStandaloneWeshFileProbeWithRemote({
       wesh: asRemoteWesh({ worker }),
     })).rejects.toThrow('synthetic start failure')
     expect(disposeExecution).not.toHaveBeenCalled()

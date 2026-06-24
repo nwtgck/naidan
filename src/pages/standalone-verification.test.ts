@@ -1,39 +1,39 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   addToast: vi.fn(),
-  runStandaloneVerification: vi.fn(),
-  runStandaloneWorkerFactoryVerification: vi.fn(),
+  debugRunFileProtocolStandaloneVerification: vi.fn(),
+  debugVerifyFileProtocolStandaloneWorkerFactory: vi.fn(),
 }))
 
 vi.mock('@/composables/useToast', () => ({
   useToast: () => ({ addToast: mocks.addToast }),
 }))
 
-vi.mock('@/services/standalone-verification/report', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@/services/standalone-verification/report')>()
+vi.mock('@/services/debug-file-protocol-standalone/verification/report', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/services/debug-file-protocol-standalone/verification/report')>()
   return {
     ...original,
-    runStandaloneVerification: mocks.runStandaloneVerification,
+    debugRunFileProtocolStandaloneVerification: mocks.debugRunFileProtocolStandaloneVerification,
   }
 })
 
-vi.mock('@/services/standalone-verification/worker-probe', () => ({
-  runStandaloneWorkerFactoryVerification: mocks.runStandaloneWorkerFactoryVerification,
+vi.mock('@/services/debug-file-protocol-standalone/verification/worker-probe', () => ({
+  debugVerifyFileProtocolStandaloneWorkerFactory: mocks.debugVerifyFileProtocolStandaloneWorkerFactory,
 }))
 
-import type { StandaloneVerificationReport } from '@/services/standalone-verification/report'
+import type { DebugFileProtocolStandaloneVerificationReport } from '@/services/debug-file-protocol-standalone/verification/report'
 import StandaloneVerificationPage from './standalone-verification.vue'
 
-function createReport({
+function createDebugVerificationReport({
   passed = 12,
   failed = 0,
 }: {
   passed?: number
   failed?: number
-} = {}): StandaloneVerificationReport {
+} = {}): DebugFileProtocolStandaloneVerificationReport {
   return {
     format: 'naidan-standalone-verification-v1',
     generatedAt: '2026-06-23T00:00:00.000Z',
@@ -95,14 +95,32 @@ async function mountPage() {
 
 describe('standalone verification page', () => {
   beforeEach(() => {
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true)
     vi.clearAllMocks()
-    mocks.runStandaloneVerification.mockResolvedValue(createReport())
-    mocks.runStandaloneWorkerFactoryVerification.mockResolvedValue(undefined)
+    mocks.debugRunFileProtocolStandaloneVerification.mockResolvedValue(createDebugVerificationReport())
+    mocks.debugVerifyFileProtocolStandaloneWorkerFactory.mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: undefined,
     })
     Reflect.deleteProperty(document, 'execCommand')
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('disables active verification outside the standalone build', async () => {
+    vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', false)
+    const { wrapper } = await mountPage()
+    const button = wrapper.get('[data-testid="run-standalone-verification-button"]')
+
+    expect(button.attributes('disabled')).toBeDefined()
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(mocks.debugRunFileProtocolStandaloneVerification).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="standalone-verification-unavailable"]').text()).toContain('standalone')
   })
 
   it('runs verification with route, style, lazy import, and Worker probes', async () => {
@@ -111,15 +129,16 @@ describe('standalone verification page', () => {
     await wrapper.get('[data-testid="run-standalone-verification-button"]').trigger('click')
     await flushPromises()
 
-    expect(mocks.runStandaloneVerification).toHaveBeenCalledOnce()
-    const call = mocks.runStandaloneVerification.mock.calls[0]?.[0] as {
+    expect(mocks.debugRunFileProtocolStandaloneVerification).toHaveBeenCalledOnce()
+    const call = mocks.debugRunFileProtocolStandaloneVerification.mock.calls[0]?.[0] as {
       route: { fullPath: string, name: string | undefined, matchedPaths: string[], resolvedHref: string }
-      tailwindProbe: HTMLElement
-      scopedProbe: HTMLElement
-      lazyStyleProbe: HTMLElement
-      loadLazyStyleProbe: () => Promise<Readonly<{ marker: string }>>
-      exerciseRouteTransition: () => Promise<unknown>
-      runWorkerProbe: unknown
+      tailwindStyleProbeElement: HTMLElement
+      scopedStyleProbeElement: HTMLElement
+      lazyStyleProbeElement: HTMLElement
+      lazyStyleInitialOutlineWidth: string
+      debugLoadFileProtocolStandaloneLazyStyleProbeModule: ({ signal }: { signal: AbortSignal }) => Promise<Readonly<{ marker: string }>>
+      debugExerciseFileProtocolStandaloneRouteRoundTrip: ({ signal }: { signal: AbortSignal }) => Promise<unknown>
+      debugRunWorkerProbe: ({ signal }: { signal: AbortSignal }) => Promise<unknown>
     }
     expect(call.route).toMatchObject({
       fullPath: '/standalone-verification',
@@ -127,49 +146,51 @@ describe('standalone verification page', () => {
       matchedPaths: ['/standalone-verification'],
       resolvedHref: '/standalone-verification',
     })
-    expect(call.tailwindProbe.dataset.testid).toBe('standalone-tailwind-probe')
-    expect(call.scopedProbe.dataset.testid).toBe('standalone-scoped-probe')
-    expect(call.lazyStyleProbe.dataset.testid).toBe('standalone-lazy-style-probe')
-    expect(call.runWorkerProbe).toBe(mocks.runStandaloneWorkerFactoryVerification)
-    await expect(call.loadLazyStyleProbe()).resolves.toEqual({
+    expect(call.tailwindStyleProbeElement.dataset.testid).toBe('standalone-tailwind-probe')
+    expect(call.scopedStyleProbeElement.dataset.testid).toBe('standalone-scoped-probe')
+    expect(call.lazyStyleProbeElement.dataset.testid).toBe('standalone-lazy-style-probe')
+    expect(call.lazyStyleInitialOutlineWidth).not.toBe('3px')
+    await expect(call.debugRunWorkerProbe({ signal: new AbortController().signal })).resolves.toBeUndefined()
+    expect(mocks.debugVerifyFileProtocolStandaloneWorkerFactory).toHaveBeenCalledOnce()
+    await expect(call.debugLoadFileProtocolStandaloneLazyStyleProbeModule({ signal: new AbortController().signal })).resolves.toEqual({
       marker: 'standalone-verification-lazy-style-probe-v1',
     })
-    await expect(call.exerciseRouteTransition()).resolves.toEqual({
-      before: '/standalone-verification',
-      transitioned: '/standalone-verification?__standalone-verification-route-probe=1',
-      restored: '/standalone-verification',
+    await expect(call.debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal: new AbortController().signal })).resolves.toEqual({
+      beforePath: '/standalone-verification',
+      transitionedPath: '/standalone-verification?__standalone-verification-route-probe=1',
+      restoredPath: '/standalone-verification',
     })
     expect(wrapper.get('[data-testid="standalone-verification-status"]').text()).toContain('12 passed')
   })
 
   it('shows Running while a verification is pending and restores the button afterward', async () => {
-    const deferred = createDeferred<StandaloneVerificationReport>()
-    mocks.runStandaloneVerification.mockReturnValueOnce(deferred.promise)
+    const deferred = createDeferred<DebugFileProtocolStandaloneVerificationReport>()
+    mocks.debugRunFileProtocolStandaloneVerification.mockReturnValueOnce(deferred.promise)
     const { wrapper } = await mountPage()
     const button = wrapper.get('[data-testid="run-standalone-verification-button"]')
 
     await button.trigger('click')
 
-    expect(mocks.runStandaloneVerification).toHaveBeenCalledOnce()
+    expect(mocks.debugRunFileProtocolStandaloneVerification).toHaveBeenCalledOnce()
     expect(button.attributes('disabled')).toBeDefined()
     expect(button.text()).toContain('Running')
-    deferred.resolve(createReport())
+    deferred.resolve(createDebugVerificationReport())
     await flushPromises()
     expect(button.attributes('disabled')).toBeUndefined()
     expect(button.text()).not.toContain('Running')
   })
 
   it('ignores duplicate Run clicks while one verification is pending', async () => {
-    const deferred = createDeferred<StandaloneVerificationReport>()
-    mocks.runStandaloneVerification.mockReturnValueOnce(deferred.promise)
+    const deferred = createDeferred<DebugFileProtocolStandaloneVerificationReport>()
+    mocks.debugRunFileProtocolStandaloneVerification.mockReturnValueOnce(deferred.promise)
     const { wrapper } = await mountPage()
     const button = wrapper.get('[data-testid="run-standalone-verification-button"]')
 
     await button.trigger('click')
     await button.trigger('click')
 
-    expect(mocks.runStandaloneVerification).toHaveBeenCalledOnce()
-    deferred.resolve(createReport())
+    expect(mocks.debugRunFileProtocolStandaloneVerification).toHaveBeenCalledOnce()
+    deferred.resolve(createDebugVerificationReport())
     await flushPromises()
   })
 
@@ -181,7 +202,7 @@ describe('standalone verification page', () => {
     await flushPromises()
     expect(wrapper.find('[data-testid="standalone-verification-status"]').exists()).toBe(true)
 
-    mocks.runStandaloneVerification.mockRejectedValueOnce(new Error('synthetic runner failure'))
+    mocks.debugRunFileProtocolStandaloneVerification.mockRejectedValueOnce(new Error('synthetic runner failure'))
     await button.trigger('click')
     await flushPromises()
 
@@ -200,12 +221,36 @@ describe('standalone verification page', () => {
 
     await button.trigger('click')
     await flushPromises()
-    mocks.runStandaloneVerification.mockResolvedValueOnce(createReport({ passed: 10, failed: 2 }))
+    mocks.debugRunFileProtocolStandaloneVerification.mockResolvedValueOnce(createDebugVerificationReport({ passed: 10, failed: 2 }))
     await button.trigger('click')
     await flushPromises()
 
-    expect(mocks.runStandaloneVerification).toHaveBeenCalledTimes(2)
+    expect(mocks.debugRunFileProtocolStandaloneVerification).toHaveBeenCalledTimes(2)
+    const firstInitialOutlineWidth = mocks.debugRunFileProtocolStandaloneVerification.mock.calls[0]?.[0]
+      .lazyStyleInitialOutlineWidth as unknown
+    expect(firstInitialOutlineWidth).not.toBe('3px')
+    expect(mocks.debugRunFileProtocolStandaloneVerification.mock.calls[1]?.[0]).toHaveProperty(
+      'lazyStyleInitialOutlineWidth',
+      firstInitialOutlineWidth,
+    )
     expect(wrapper.get('[data-testid="standalone-verification-status"]').text()).toContain('10 passed / 2 failed')
+  })
+
+  it('attempts to restore the original route when the probe transition fails', async () => {
+    const { router, wrapper } = await mountPage()
+    const replace = vi.spyOn(router, 'replace')
+      .mockRejectedValueOnce(new Error('synthetic transition failure'))
+      .mockResolvedValueOnce(undefined)
+
+    await wrapper.get('[data-testid="run-standalone-verification-button"]').trigger('click')
+    await flushPromises()
+    const call = mocks.debugRunFileProtocolStandaloneVerification.mock.calls[0]?.[0] as {
+      debugExerciseFileProtocolStandaloneRouteRoundTrip: ({ signal }: { signal: AbortSignal }) => Promise<unknown>
+    }
+
+    await expect(call.debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal: new AbortController().signal })).rejects.toThrow('synthetic transition failure')
+    expect(replace).toHaveBeenCalledTimes(2)
+    expect(replace).toHaveBeenNthCalledWith(2, '/standalone-verification')
   })
 
   it('copies report JSON through the Clipboard API when available', async () => {

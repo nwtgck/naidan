@@ -1,5 +1,5 @@
 /**
- * Enforce the startup boundary required by the file-protocol build.
+ * Enforce the ready-state-aware application startup boundary.
  *
  * The standalone entry is evaluated asynchronously through SystemJS. On a
  * sufficiently large module graph, DOMContentLoaded may have fired before
@@ -12,28 +12,15 @@ export const rule = {
   meta: {
     type: 'problem',
     docs: {
-      description: 'Enforce ready-state-aware Vue initialization for file-protocol compatibility.',
+      description: 'Enforce ready-state-aware Vue initialization for asynchronous entry loading.',
     },
   },
   create(context) {
-    let hasErrorHandler = false
     let bootstrapFunctionName
     const functionStack = []
     const functionsContainingMount = new Set()
 
     return {
-      AssignmentExpression(node) {
-        const left = node.left
-        if (
-          left.type === 'MemberExpression'
-          && left.object.type === 'MemberExpression'
-          && left.object.object.name === 'app'
-          && left.object.property.name === 'config'
-          && left.property.name === 'errorHandler'
-        ) {
-          hasErrorHandler = true
-        }
-      },
       FunctionDeclaration(node) {
         functionStack.push(node.id?.name)
       },
@@ -70,12 +57,6 @@ export const rule = {
         }
       },
       'Program:exit'(node) {
-        if (!hasErrorHandler) {
-          context.report({
-            node,
-            message: "The 'file:///' protocol requires a global error handler: 'app.config.errorHandler = ...' must be defined in main.ts.",
-          })
-        }
         if (bootstrapFunctionName === undefined) {
           context.report({
             node,
@@ -97,13 +78,13 @@ export const rule = {
 export default {
   files: ['src/main.ts'],
   plugins: {
-    'local-rules': {
+    'local-rules-ready-state-startup': {
       rules: {
-        'ensure-file-protocol-init': rule,
+        'ensure-ready-state-aware-app-startup': rule,
       },
     },
   },
   rules: {
-    'local-rules/ensure-file-protocol-init': 'error',
+    'local-rules-ready-state-startup/ensure-ready-state-aware-app-startup': 'error',
   },
 }

@@ -1,31 +1,31 @@
 import * as Comlink from 'comlink'
 
 import {
-  createFileProtocolCompatibleStandaloneWorkerHub,
-  getFileProtocolCompatibleStandaloneWorkerHubDiagnostics,
+  createFileProtocolStandaloneWorkerHub,
+  debugGetFileProtocolStandaloneWorkerHubDiagnostics,
 } from '@/services/worker-hub-standalone-loader'
 import type { IWorkerHub } from '@/services/worker-hub.types'
 import type {
   IWeshWorker,
   WeshWorkerRemoteExecutionEvent,
 } from '@/services/wesh/worker/types'
-import type { FileProtocolWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-compatible-standalone-worker-hub'
+import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub'
 
-export type StandaloneWorkerRoundTripResult = Readonly<{
+export type DebugFileProtocolStandaloneHighlightProbeResult = Readonly<{
   resolvedLanguage: string
   htmlLength: number
 }>
 
-export type StandaloneWeshFileProbeResult = Readonly<{
+export type DebugFileProtocolStandaloneWeshFileProbeResult = Readonly<{
   exitCode: number
   stdout: string
   stderr: string
 }>
 
-export type StandaloneWorkerVerificationResult = Readonly<{
-  before: FileProtocolWorkerDiagnostics
-  after: FileProtocolWorkerDiagnostics
-  deltas: Readonly<{
+export type DebugFileProtocolStandaloneWorkerVerificationResult = Readonly<{
+  diagnosticsBefore: DebugFileProtocolStandaloneWorkerDiagnostics
+  diagnosticsAfter: DebugFileProtocolStandaloneWorkerDiagnostics
+  diagnosticDeltas: Readonly<{
     workersCreated: number
     workersTerminated: number
     activeWorkers: number
@@ -33,20 +33,25 @@ export type StandaloneWorkerVerificationResult = Readonly<{
     blobRegistrations: number
     objectUrlsCreated: number
   }>
-  concurrent: readonly StandaloneWorkerRoundTripResult[]
-  recreated: StandaloneWorkerRoundTripResult
-  weshFileProbe: StandaloneWeshFileProbeResult
+  concurrentHighlights: readonly DebugFileProtocolStandaloneHighlightProbeResult[]
+  recreatedWorkerHighlight: DebugFileProtocolStandaloneHighlightProbeResult
+  weshFileProbe: DebugFileProtocolStandaloneWeshFileProbeResult
 }>
 
-export type StandaloneWorkerHubSession = Readonly<{
+export type DebugFileProtocolStandaloneWorkerHubSession = Readonly<{
   worker: Worker
   remote: Comlink.Remote<IWorkerHub>
 }>
 
-const standaloneWorkerProbeOperationTimeoutMs = 30_000
-const standaloneWorkerProbeCleanupTimeoutMs = 5_000
+const debugFileProtocolStandaloneWorkerSessionCreationDeadlineMs = 30_000
+const debugFileProtocolStandaloneWorkerOperationDeadlineMs = 30_000
+const debugFileProtocolStandaloneWorkerCleanupDeadlineMs = 5_000
 
-async function runWithTimeout<Result>({
+/**
+ * Stop waiting at the deadline. This does not cancel the underlying operation;
+ * resource-producing callers must arrange late cleanup explicitly.
+ */
+async function debugWaitForOperationUntilDeadline<Result>({
   label,
   timeoutMs,
   action,
@@ -71,8 +76,8 @@ async function runWithTimeout<Result>({
   }
 }
 
-async function createStandaloneWorkerHubSession(): Promise<StandaloneWorkerHubSession> {
-  const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
+async function debugCreateFileProtocolStandaloneWorkerHubSession(): Promise<DebugFileProtocolStandaloneWorkerHubSession> {
+  const worker = await createFileProtocolStandaloneWorkerHub()
   try {
     return {
       worker,
@@ -85,14 +90,14 @@ async function createStandaloneWorkerHubSession(): Promise<StandaloneWorkerHubSe
 }
 
 /** @internal Exported for Comlink lifecycle regression tests. */
-export async function releaseStandaloneWorkerHubSession({ session }: {
-  session: StandaloneWorkerHubSession
+export async function debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession({ session }: {
+  session: DebugFileProtocolStandaloneWorkerHubSession
 }): Promise<void> {
   let releaseError: unknown | undefined
   try {
-    await runWithTimeout({
+    await debugWaitForOperationUntilDeadline({
       label: 'Standalone Worker Comlink proxy release',
-      timeoutMs: standaloneWorkerProbeCleanupTimeoutMs,
+      timeoutMs: debugFileProtocolStandaloneWorkerCleanupDeadlineMs,
       action: async () => {
         await session.remote[Comlink.releaseProxy]()
       },
@@ -110,10 +115,10 @@ export async function releaseStandaloneWorkerHubSession({ session }: {
 }
 
 /** @internal Exported for Comlink lifecycle regression tests. */
-export async function runHighlightRoundTrip({ session, source }: {
-  session: StandaloneWorkerHubSession
+export async function debugRunFileProtocolStandaloneHighlightProbe({ session, source }: {
+  session: DebugFileProtocolStandaloneWorkerHubSession
   source: string
-}): Promise<StandaloneWorkerRoundTripResult> {
+}): Promise<DebugFileProtocolStandaloneHighlightProbeResult> {
   const highlight = await session.remote.highlight
   const result = await highlight.highlight({
     request: {
@@ -130,14 +135,14 @@ export async function runHighlightRoundTrip({ session, source }: {
 }
 
 /** @internal Exported for Wesh lifecycle regression tests. */
-export async function runStandaloneWeshFileProbeWithRemote({ wesh }: {
+export async function debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh }: {
   wesh: Comlink.Remote<IWeshWorker>
-}): Promise<StandaloneWeshFileProbeResult> {
+}): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
   const stdout: string[] = []
   const stderr: string[] = []
   const decoder = new TextDecoder()
   let executionId: string | undefined
-  let result: StandaloneWeshFileProbeResult | undefined
+  let result: DebugFileProtocolStandaloneWeshFileProbeResult | undefined
   let operationError: unknown | undefined
 
   try {
@@ -216,24 +221,24 @@ export async function runStandaloneWeshFileProbeWithRemote({ wesh }: {
 }
 
 /** @internal Exported for Comlink lifecycle regression tests. */
-export async function runWeshFileProbe({ session }: {
-  session: StandaloneWorkerHubSession
-}): Promise<StandaloneWeshFileProbeResult> {
+export async function debugRunFileProtocolStandaloneWeshFileProbe({ session }: {
+  session: DebugFileProtocolStandaloneWorkerHubSession
+}): Promise<DebugFileProtocolStandaloneWeshFileProbeResult> {
   const wesh = await session.remote.wesh as unknown as Comlink.Remote<IWeshWorker>
-  return runStandaloneWeshFileProbeWithRemote({ wesh })
+  return debugRunFileProtocolStandaloneWeshFileProbeWithRemote({ wesh })
 }
 
-async function releaseSessionWithTimeout({
+async function debugReleaseAndTerminateSessionUntilDeadline({
   session,
   releaseSession,
   timeoutMs,
 }: {
-  session: StandaloneWorkerHubSession
-  releaseSession: ({ session }: { session: StandaloneWorkerHubSession }) => Promise<void>
+  session: DebugFileProtocolStandaloneWorkerHubSession
+  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>
   timeoutMs: number
 }): Promise<void> {
   try {
-    await runWithTimeout({
+    await debugWaitForOperationUntilDeadline({
       label: 'Standalone Worker session cleanup',
       timeoutMs,
       action: async () => releaseSession({ session }),
@@ -246,18 +251,81 @@ async function releaseSessionWithTimeout({
   }
 }
 
-async function createConcurrentSessions({
+async function debugCreateSessionUntilDeadline({
   createSession,
   releaseSession,
+  creationTimeoutMs,
+  cleanupTimeoutMs,
+  label,
+}: {
+  createSession: () => Promise<DebugFileProtocolStandaloneWorkerHubSession>
+  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>
+  creationTimeoutMs: number
+  cleanupTimeoutMs: number
+  label: string
+}): Promise<DebugFileProtocolStandaloneWorkerHubSession> {
+  const timeoutError = new Error(`${label} timed out after ${creationTimeoutMs} ms.`)
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  let timedOut = false
+  const creation = Promise.resolve().then(createSession)
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      timedOut = true
+      reject(timeoutError)
+    }, creationTimeoutMs)
+  })
+
+  try {
+    return await Promise.race([creation, timeout])
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+    if (timedOut) {
+      // Promise.race does not cancel Worker creation. If it completes after the
+      // deadline, release the late session instead of leaking a live Worker.
+      void creation.then(
+        async (session) => {
+          try {
+            await debugReleaseAndTerminateSessionUntilDeadline({
+              session,
+              releaseSession,
+              timeoutMs: cleanupTimeoutMs,
+            })
+          } catch {
+            // debugReleaseAndTerminateSessionUntilDeadline already forces physical termination.
+          }
+        },
+        () => undefined,
+      )
+    }
+  }
+}
+
+async function debugCreateConcurrentWorkerHubSessions({
+  createSession,
+  releaseSession,
+  sessionCreationTimeoutMs,
   cleanupTimeoutMs,
 }: {
-  createSession: () => Promise<StandaloneWorkerHubSession>
-  releaseSession: ({ session }: { session: StandaloneWorkerHubSession }) => Promise<void>
+  createSession: () => Promise<DebugFileProtocolStandaloneWorkerHubSession>
+  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>
+  sessionCreationTimeoutMs: number
   cleanupTimeoutMs: number
-}): Promise<readonly [StandaloneWorkerHubSession, StandaloneWorkerHubSession]> {
+}): Promise<readonly [DebugFileProtocolStandaloneWorkerHubSession, DebugFileProtocolStandaloneWorkerHubSession]> {
   const [first, second] = await Promise.allSettled([
-    createSession(),
-    createSession(),
+    debugCreateSessionUntilDeadline({
+      createSession,
+      releaseSession,
+      creationTimeoutMs: sessionCreationTimeoutMs,
+      cleanupTimeoutMs,
+      label: 'First standalone Worker session creation',
+    }),
+    debugCreateSessionUntilDeadline({
+      createSession,
+      releaseSession,
+      creationTimeoutMs: sessionCreationTimeoutMs,
+      cleanupTimeoutMs,
+      label: 'Second standalone Worker session creation',
+    }),
   ])
 
   switch (first.status) {
@@ -267,7 +335,7 @@ async function createConcurrentSessions({
       return [first.value, second.value]
     case 'rejected':
       try {
-        await releaseSessionWithTimeout({
+        await debugReleaseAndTerminateSessionUntilDeadline({
           session: first.value,
           releaseSession,
           timeoutMs: cleanupTimeoutMs,
@@ -286,7 +354,7 @@ async function createConcurrentSessions({
     switch (second.status) {
     case 'fulfilled':
       try {
-        await releaseSessionWithTimeout({
+        await debugReleaseAndTerminateSessionUntilDeadline({
           session: second.value,
           releaseSession,
           timeoutMs: cleanupTimeoutMs,
@@ -310,7 +378,7 @@ async function createConcurrentSessions({
   }
 }
 
-async function runRoundTripAndRelease({
+async function debugRunHighlightProbeAndCleanup({
   session,
   source,
   runRoundTrip,
@@ -318,20 +386,20 @@ async function runRoundTripAndRelease({
   operationTimeoutMs,
   cleanupTimeoutMs,
 }: {
-  session: StandaloneWorkerHubSession
+  session: DebugFileProtocolStandaloneWorkerHubSession
   source: string
   runRoundTrip: ({ session, source }: {
-    session: StandaloneWorkerHubSession
+    session: DebugFileProtocolStandaloneWorkerHubSession
     source: string
-  }) => Promise<StandaloneWorkerRoundTripResult>
-  releaseSession: ({ session }: { session: StandaloneWorkerHubSession }) => Promise<void>
+  }) => Promise<DebugFileProtocolStandaloneHighlightProbeResult>
+  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>
   operationTimeoutMs: number
   cleanupTimeoutMs: number
-}): Promise<StandaloneWorkerRoundTripResult> {
-  let result: StandaloneWorkerRoundTripResult | undefined
+}): Promise<DebugFileProtocolStandaloneHighlightProbeResult> {
+  let result: DebugFileProtocolStandaloneHighlightProbeResult | undefined
   let operationError: unknown | undefined
   try {
-    result = await runWithTimeout({
+    result = await debugWaitForOperationUntilDeadline({
       label: 'Standalone Worker highlight probe',
       timeoutMs: operationTimeoutMs,
       action: async () => runRoundTrip({ session, source }),
@@ -342,7 +410,7 @@ async function runRoundTripAndRelease({
 
   let cleanupError: unknown | undefined
   try {
-    await releaseSessionWithTimeout({
+    await debugReleaseAndTerminateSessionUntilDeadline({
       session,
       releaseSession,
       timeoutMs: cleanupTimeoutMs,
@@ -363,36 +431,39 @@ async function runRoundTripAndRelease({
   return result
 }
 
-export async function runStandaloneWorkerFactoryVerificationWithDependencies({
+export async function debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
   createSession,
   readDiagnostics,
   runRoundTrip,
   runFileProbe,
   releaseSession,
+  sessionCreationTimeoutMs,
   operationTimeoutMs,
   cleanupTimeoutMs,
 }: {
-  createSession: () => Promise<StandaloneWorkerHubSession>
-  readDiagnostics: () => FileProtocolWorkerDiagnostics
+  createSession: () => Promise<DebugFileProtocolStandaloneWorkerHubSession>
+  readDiagnostics: () => DebugFileProtocolStandaloneWorkerDiagnostics
   runRoundTrip: ({ session, source }: {
-    session: StandaloneWorkerHubSession
+    session: DebugFileProtocolStandaloneWorkerHubSession
     source: string
-  }) => Promise<StandaloneWorkerRoundTripResult>
+  }) => Promise<DebugFileProtocolStandaloneHighlightProbeResult>
   runFileProbe: ({ session }: {
-    session: StandaloneWorkerHubSession
-  }) => Promise<StandaloneWeshFileProbeResult>
-  releaseSession: ({ session }: { session: StandaloneWorkerHubSession }) => Promise<void>
+    session: DebugFileProtocolStandaloneWorkerHubSession
+  }) => Promise<DebugFileProtocolStandaloneWeshFileProbeResult>
+  releaseSession: ({ session }: { session: DebugFileProtocolStandaloneWorkerHubSession }) => Promise<void>
+  sessionCreationTimeoutMs: number
   operationTimeoutMs: number
   cleanupTimeoutMs: number
-}): Promise<StandaloneWorkerVerificationResult> {
-  const before = readDiagnostics()
-  const concurrentSessions = await createConcurrentSessions({
+}): Promise<DebugFileProtocolStandaloneWorkerVerificationResult> {
+  const diagnosticsBefore = readDiagnostics()
+  const concurrentSessions = await debugCreateConcurrentWorkerHubSessions({
     createSession,
     releaseSession,
+    sessionCreationTimeoutMs,
     cleanupTimeoutMs,
   })
   const concurrentOutcomes = await Promise.allSettled([
-    runRoundTripAndRelease({
+    debugRunHighlightProbeAndCleanup({
       session: concurrentSessions[0],
       source: '{"probe":"concurrent-a"}',
       runRoundTrip,
@@ -400,7 +471,7 @@ export async function runStandaloneWorkerFactoryVerificationWithDependencies({
       operationTimeoutMs,
       cleanupTimeoutMs,
     }),
-    runRoundTripAndRelease({
+    debugRunHighlightProbeAndCleanup({
       session: concurrentSessions[1],
       source: '{"probe":"concurrent-b"}',
       runRoundTrip,
@@ -436,12 +507,18 @@ export async function runStandaloneWorkerFactoryVerificationWithDependencies({
     }
   })
 
-  const recreatedSession = await createSession()
-  let recreated: StandaloneWorkerRoundTripResult | undefined
-  let weshFileProbe: StandaloneWeshFileProbeResult | undefined
+  const recreatedSession = await debugCreateSessionUntilDeadline({
+    createSession,
+    releaseSession,
+    creationTimeoutMs: sessionCreationTimeoutMs,
+    cleanupTimeoutMs,
+    label: 'Recreated standalone Worker session creation',
+  })
+  let recreatedWorkerHighlight: DebugFileProtocolStandaloneHighlightProbeResult | undefined
+  let weshFileProbe: DebugFileProtocolStandaloneWeshFileProbeResult | undefined
   let operationError: unknown | undefined
   try {
-    recreated = await runWithTimeout({
+    recreatedWorkerHighlight = await debugWaitForOperationUntilDeadline({
       label: 'Recreated standalone Worker highlight probe',
       timeoutMs: operationTimeoutMs,
       action: async () => runRoundTrip({
@@ -449,7 +526,7 @@ export async function runStandaloneWorkerFactoryVerificationWithDependencies({
         source: '{"probe":"recreated-after-terminate"}',
       }),
     })
-    weshFileProbe = await runWithTimeout({
+    weshFileProbe = await debugWaitForOperationUntilDeadline({
       label: 'Recreated standalone Worker Wesh file probe',
       timeoutMs: operationTimeoutMs,
       action: async () => runFileProbe({ session: recreatedSession }),
@@ -460,7 +537,7 @@ export async function runStandaloneWorkerFactoryVerificationWithDependencies({
 
   let cleanupError: unknown | undefined
   try {
-    await releaseSessionWithTimeout({
+    await debugReleaseAndTerminateSessionUntilDeadline({
       session: recreatedSession,
       releaseSession,
       timeoutMs: cleanupTimeoutMs,
@@ -475,24 +552,24 @@ export async function runStandaloneWorkerFactoryVerificationWithDependencies({
   if (cleanupError !== undefined) {
     throw cleanupError
   }
-  if (recreated === undefined || weshFileProbe === undefined) {
+  if (recreatedWorkerHighlight === undefined || weshFileProbe === undefined) {
     throw new Error('Recreated standalone Worker verification produced no result.')
   }
 
-  const after = readDiagnostics()
+  const diagnosticsAfter = readDiagnostics()
   return {
-    before,
-    after,
-    deltas: {
-      workersCreated: after.workersCreated - before.workersCreated,
-      workersTerminated: after.workersTerminated - before.workersTerminated,
-      activeWorkers: after.activeWorkers - before.activeWorkers,
-      registryScriptLoads: after.registryScriptLoads - before.registryScriptLoads,
-      blobRegistrations: after.blobRegistrations - before.blobRegistrations,
-      objectUrlsCreated: after.objectUrlsCreated - before.objectUrlsCreated,
+    diagnosticsBefore,
+    diagnosticsAfter,
+    diagnosticDeltas: {
+      workersCreated: diagnosticsAfter.workersCreated - diagnosticsBefore.workersCreated,
+      workersTerminated: diagnosticsAfter.workersTerminated - diagnosticsBefore.workersTerminated,
+      activeWorkers: diagnosticsAfter.activeWorkers - diagnosticsBefore.activeWorkers,
+      registryScriptLoads: diagnosticsAfter.registryScriptLoads - diagnosticsBefore.registryScriptLoads,
+      blobRegistrations: diagnosticsAfter.blobRegistrations - diagnosticsBefore.blobRegistrations,
+      objectUrlsCreated: diagnosticsAfter.objectUrlsCreated - diagnosticsBefore.objectUrlsCreated,
     },
-    concurrent,
-    recreated,
+    concurrentHighlights: concurrent,
+    recreatedWorkerHighlight,
     weshFileProbe,
   }
 }
@@ -503,14 +580,15 @@ export async function runStandaloneWorkerFactoryVerificationWithDependencies({
  * session intentionally runs highlight and Wesh through that same proxy before
  * releasing it, which guards against reusing a Worker after Comlink RELEASE.
  */
-export async function runStandaloneWorkerFactoryVerification(): Promise<StandaloneWorkerVerificationResult> {
-  return runStandaloneWorkerFactoryVerificationWithDependencies({
-    createSession: createStandaloneWorkerHubSession,
-    readDiagnostics: getFileProtocolCompatibleStandaloneWorkerHubDiagnostics,
-    runRoundTrip: runHighlightRoundTrip,
-    runFileProbe: runWeshFileProbe,
-    releaseSession: releaseStandaloneWorkerHubSession,
-    operationTimeoutMs: standaloneWorkerProbeOperationTimeoutMs,
-    cleanupTimeoutMs: standaloneWorkerProbeCleanupTimeoutMs,
+export async function debugVerifyFileProtocolStandaloneWorkerFactory(): Promise<DebugFileProtocolStandaloneWorkerVerificationResult> {
+  return debugVerifyFileProtocolStandaloneWorkerFactoryWithDependencies({
+    createSession: debugCreateFileProtocolStandaloneWorkerHubSession,
+    readDiagnostics: debugGetFileProtocolStandaloneWorkerHubDiagnostics,
+    runRoundTrip: debugRunFileProtocolStandaloneHighlightProbe,
+    runFileProbe: debugRunFileProtocolStandaloneWeshFileProbe,
+    releaseSession: debugReleaseAndTerminateFileProtocolStandaloneWorkerHubSession,
+    sessionCreationTimeoutMs: debugFileProtocolStandaloneWorkerSessionCreationDeadlineMs,
+    operationTimeoutMs: debugFileProtocolStandaloneWorkerOperationDeadlineMs,
+    cleanupTimeoutMs: debugFileProtocolStandaloneWorkerCleanupDeadlineMs,
   })
 }

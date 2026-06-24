@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import * as Comlink from 'comlink'
 
-import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
+import { createFileProtocolStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
 import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
   mapRemoteWeshWorkerExecutionEventToClientEvent,
@@ -44,7 +44,7 @@ export async function createFileProtocolCompatibleWeshWorkerClient({
   })
 
   const createRuntime = async () => {
-    const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
+    const worker = await createFileProtocolStandaloneWorkerHub()
     const remote = Comlink.wrap<IWorkerHub>(worker)
     const wesh = await remote.wesh
     // Keep the proxied reader as a separate top-level argument.

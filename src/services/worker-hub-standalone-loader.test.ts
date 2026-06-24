@@ -4,13 +4,13 @@ import {
   getFileProtocolStandaloneWorkerMockState,
 } from '@/test-mocks/file-protocol-standalone-worker'
 import {
-  createFileProtocolCompatibleStandaloneWorkerHub,
-  getFileProtocolCompatibleStandaloneWorkerHubDiagnostics,
-  warmFileProtocolCompatibleStandaloneWorkerHubAssetAtIdle,
+  createFileProtocolStandaloneWorkerHub,
+  debugGetFileProtocolStandaloneWorkerHubDiagnostics,
+  scheduleFileProtocolStandaloneWorkerHubWarmup,
 } from './worker-hub-standalone-loader'
 
 const baseDiagnostics = {
-  workerId: 'file-protocol-compatible-standalone-worker-hub',
+  workerId: 'file-protocol-standalone-worker-hub',
   registryScriptLoads: 1,
   registryScriptLoadFailures: 0,
   blobRegistrations: 1,
@@ -18,12 +18,13 @@ const baseDiagnostics = {
   workersCreated: 2,
   workersTerminated: 1,
   activeWorkers: 1,
+  terminateInstrumentationFailures: 0,
   runtimeDigestCalls: 0,
   sourceStoredAsGlobalString: false as const,
   objectUrlLifetime: 'page' as const,
   registryEntryReleased: true,
   registryEntryPresent: false,
-  blobUrlReady: true,
+  blobUrlStatus: 'ready' as const,
   timingsMs: {},
 }
 
@@ -45,9 +46,9 @@ describe('worker-hub-standalone-loader', () => {
       nextDiagnostics: baseDiagnostics,
     })
 
-    await expect(createFileProtocolCompatibleStandaloneWorkerHub()).resolves.toBe(worker)
+    await expect(createFileProtocolStandaloneWorkerHub()).resolves.toBe(worker)
     expect(factory).toHaveBeenCalledWith({
-      name: 'file-protocol-compatible-standalone-worker-hub',
+      name: 'file-protocol-standalone-worker-hub',
     })
   })
 
@@ -58,13 +59,13 @@ describe('worker-hub-standalone-loader', () => {
       nextDiagnostics: baseDiagnostics,
     })
 
-    warmFileProtocolCompatibleStandaloneWorkerHubAssetAtIdle()
+    scheduleFileProtocolStandaloneWorkerHubWarmup()
 
     expect(getFileProtocolStandaloneWorkerMockState().warmCallCount).toBe(1)
     expect(factory).not.toHaveBeenCalled()
   })
 
   it('exposes plugin diagnostics without adding a second state model', () => {
-    expect(getFileProtocolCompatibleStandaloneWorkerHubDiagnostics()).toEqual(baseDiagnostics)
+    expect(debugGetFileProtocolStandaloneWorkerHubDiagnostics()).toEqual(baseDiagnostics)
   })
 })

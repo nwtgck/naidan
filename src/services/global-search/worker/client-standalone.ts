@@ -1,6 +1,6 @@
 import * as Comlink from 'comlink'
 
-import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
+import { createFileProtocolStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
 import type { IWorkerHub } from '@/services/worker-hub.types'
 import {
   globalSearchWorkerPrepareSessionResponseSchema,
@@ -10,7 +10,7 @@ import {
 } from './types'
 
 export async function createGlobalSearchWorkerClient(): Promise<GlobalSearchWorkerClient> {
-  const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
+  const worker = await createFileProtocolStandaloneWorkerHub()
   const remote = Comlink.wrap<IWorkerHub>(worker)
   const globalSearch = await remote.globalSearch
 

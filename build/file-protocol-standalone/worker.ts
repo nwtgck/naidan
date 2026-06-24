@@ -9,18 +9,20 @@ import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown'
 import type {
   FileProtocolStandaloneLicenseDependency,
   FileProtocolStandaloneWorker,
-} from '../file-protocol-standalone'
-import { normalizeModuleId, validateClassicJavaScriptSource } from './javascript-validation'
-import type { RuntimeDynamicImportReport } from './javascript-validation'
+} from './types'
+import { debugSanitizeFileProtocolStandaloneModuleId, assertFileProtocolStandaloneClassicScript } from './javascript-validation'
+import type { FileProtocolStandaloneRuntimeDynamicImportOccurrence } from './javascript-validation'
+import {
+  FILE_PROTOCOL_STANDALONE_ELEMENT_IDS,
+  FILE_PROTOCOL_STANDALONE_GLOBAL_NAME,
+} from '../../src/file-protocol-standalone-protocol'
 
 const pluginName = 'file-protocol-standalone'
 export const virtualWorkerPrefix = 'virtual:file-protocol-standalone/worker/'
 export const resolvedVirtualWorkerPrefix = `\0${virtualWorkerPrefix}`
-const diagnosticsGlobal = '__FILE_PROTOCOL_STANDALONE__'
-export const workerManifestScriptId = 'file-protocol-standalone-worker-manifest'
 const workerSourcePartSizeCodeUnits = 64 * 1024
 
-export type WorkerBuildResult = Readonly<{
+export type BuiltFileProtocolStandaloneWorkerArtifact = Readonly<{
   id: string
   entry: string
   source: string
@@ -29,20 +31,20 @@ export type WorkerBuildResult = Readonly<{
   sourcePartCount: number
   sourcePartSizeCodeUnits: number
   moduleIds: readonly string[]
-  runtimeDynamicImports: readonly RuntimeDynamicImportReport[]
+  runtimeDynamicImports: readonly FileProtocolStandaloneRuntimeDynamicImportOccurrence[]
   licenseDependencies: readonly FileProtocolStandaloneLicenseDependency[]
   registryFileName: string
 }>
 
-function sha256({ source }: { source: string | Uint8Array }): string {
+function computeSha256Hex({ source }: { source: string | Uint8Array }): string {
   return createHash('sha256').update(source).digest('hex')
 }
 
-function byteLength({ source }: { source: string }): number {
+function utf8ByteLength({ source }: { source: string }): number {
   return Buffer.byteLength(source, 'utf8')
 }
 
-function normalizeLicenseDependency({ dependency }: {
+function convertRollupLicenseDependency({ dependency }: {
   dependency: RollupLicenseDependency
 }): FileProtocolStandaloneLicenseDependency | undefined {
   if (dependency.name === null || dependency.version === null) {
@@ -56,7 +58,7 @@ function normalizeLicenseDependency({ dependency }: {
   }
 }
 
-export function mergeLicenseDependencies({ dependencies }: {
+export function deduplicateLicenseDependencies({ dependencies }: {
   dependencies: readonly FileProtocolStandaloneLicenseDependency[]
 }): readonly FileProtocolStandaloneLicenseDependency[] {
   const merged = new Map<string, FileProtocolStandaloneLicenseDependency>()
@@ -69,14 +71,14 @@ export function mergeLicenseDependencies({ dependencies }: {
   })
 }
 
-export function assertSafeWorkerId({ workerId }: { workerId: string }): void {
+export function assertValidFileProtocolStandaloneWorkerId({ workerId }: { workerId: string }): void {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(workerId)) {
     throw new Error(`[${pluginName}] Worker id must match ^[a-z0-9][a-z0-9-]*$: ${workerId}`)
   }
 }
 
 /** @internal Exported for focused plugin tests. */
-export function splitWorkerSourceForBlob({ source, maxCodeUnits }: {
+export function splitFileProtocolStandaloneWorkerSourceIntoBlobParts({ source, maxCodeUnits }: {
   source: string
   maxCodeUnits: number
 }): string[] {
@@ -109,19 +111,19 @@ export function splitWorkerSourceForBlob({ source, maxCodeUnits }: {
 }
 
 
-function asOutputArray({ result }: {
+function flattenBuildOutputs({ result }: {
   result: RolldownOutput | RolldownOutput[]
 }): readonly (OutputChunk | OutputAsset)[] {
   return (Array.isArray(result) ? result : [result]).flatMap((item) => item.output)
 }
 
-export async function buildWorker({ root, resolvedConfig, worker, workerTarget }: {
+export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolvedConfig, worker, workerTarget }: {
   root: string
   resolvedConfig: ResolvedConfig
   worker: FileProtocolStandaloneWorker
   workerTarget: Exclude<BuildOptions['target'], false | undefined>
-}): Promise<Omit<WorkerBuildResult, 'registryFileName'>> {
-  const bundleGlobalName = `FileProtocolStandaloneWorker_${sha256({ source: worker.id }).slice(0, 12)}`
+}): Promise<Omit<BuiltFileProtocolStandaloneWorkerArtifact, 'registryFileName'>> {
+  const bundleGlobalName = `FileProtocolStandaloneWorker_${computeSha256Hex({ source: worker.id }).slice(0, 12)}`
   let licenseDependencies: readonly FileProtocolStandaloneLicenseDependency[] = []
   const result = await viteBuild({
     root,
@@ -131,9 +133,9 @@ export async function buildWorker({ root, resolvedConfig, worker, workerTarget }
     plugins: [license({
       sourcemap: false,
       thirdParty(dependencies) {
-        licenseDependencies = mergeLicenseDependencies({
+        licenseDependencies = deduplicateLicenseDependencies({
           dependencies: dependencies
-            .map((dependency) => normalizeLicenseDependency({ dependency }))
+            .map((dependency) => convertRollupLicenseDependency({ dependency }))
             .filter((dependency): dependency is FileProtocolStandaloneLicenseDependency => dependency !== undefined),
         })
       },
@@ -170,7 +172,7 @@ export async function buildWorker({ root, resolvedConfig, worker, workerTarget }
     throw new Error(`[${pluginName}] Worker build unexpectedly returned a watcher.`)
   }
 
-  const outputs = asOutputArray({ result: result as RolldownOutput | RolldownOutput[] })
+  const outputs = flattenBuildOutputs({ result: result as RolldownOutput | RolldownOutput[] })
   const chunks = outputs.filter((item): item is OutputChunk => item.type === 'chunk')
   const assets = outputs.filter((item): item is OutputAsset => item.type === 'asset')
 
@@ -184,7 +186,7 @@ export async function buildWorker({ root, resolvedConfig, worker, workerTarget }
   if (chunk.imports.length > 0) {
     throw new Error(`[${pluginName}] Worker ${worker.id} emitted static dependency chunks and is not a single JavaScript artifact.`)
   }
-  const workerValidation = validateClassicJavaScriptSource({
+  const workerValidation = assertFileProtocolStandaloneClassicScript({
     source: chunk.code,
     label: `worker ${worker.id}`,
     // A dynamic specifier may be an unreachable Node-only helper retained by a
@@ -194,7 +196,7 @@ export async function buildWorker({ root, resolvedConfig, worker, workerTarget }
     mode: 'worker',
   })
 
-  const sourceParts = splitWorkerSourceForBlob({
+  const sourceParts = splitFileProtocolStandaloneWorkerSourceIntoBlobParts({
     source: chunk.code,
     maxCodeUnits: workerSourcePartSizeCodeUnits,
   })
@@ -202,28 +204,28 @@ export async function buildWorker({ root, resolvedConfig, worker, workerTarget }
   // This digest is build-time diagnostics only. It detects mixed or unexpected
   // artifacts, but is not a signature or proof of origin and is not recomputed
   // from the large Blob at runtime.
-  const sourceSha256 = sha256({ source: chunk.code })
+  const sourceSha256 = computeSha256Hex({ source: chunk.code })
 
   return {
     id: worker.id,
     entry: worker.entry,
     source: chunk.code,
-    sourceBytes: byteLength({ source: chunk.code }),
+    sourceBytes: utf8ByteLength({ source: chunk.code }),
     sha256: sourceSha256,
     sourcePartCount: sourceParts.length,
     sourcePartSizeCodeUnits: workerSourcePartSizeCodeUnits,
     moduleIds: Object.keys(chunk.modules)
-      .map((moduleId) => normalizeModuleId({ root, moduleId }))
+      .map((moduleId) => debugSanitizeFileProtocolStandaloneModuleId({ root, moduleId }))
       .sort(),
     runtimeDynamicImports: workerValidation.runtimeDynamicImports,
     licenseDependencies,
   }
 }
 
-export function createWorkerRegistrySource({ worker }: {
-  worker: Omit<WorkerBuildResult, 'registryFileName'>
+export function createFileProtocolStandaloneWorkerBlobRegistrationSource({ worker }: {
+  worker: Omit<BuiltFileProtocolStandaloneWorkerArtifact, 'registryFileName'>
 }): string {
-  const sourceParts = splitWorkerSourceForBlob({
+  const sourceParts = splitFileProtocolStandaloneWorkerSourceIntoBlobParts({
     source: worker.source,
     maxCodeUnits: worker.sourcePartSizeCodeUnits,
   })
@@ -232,28 +234,59 @@ export function createWorkerRegistrySource({ worker }: {
   return `/* file-protocol-standalone worker Blob registry: ${worker.id} */
 (function () {
   'use strict';
-  var diagnosticsName = ${JSON.stringify(diagnosticsGlobal)};
+  var namespaceName = ${JSON.stringify(FILE_PROTOCOL_STANDALONE_GLOBAL_NAME)};
   var workerId = ${JSON.stringify(worker.id)};
-  var diagnostics = globalThis[diagnosticsName] || (globalThis[diagnosticsName] = {});
-  var internal = diagnostics.internal || (diagnostics.internal = {});
-  var registry = internal.workerBlobRegistry || (internal.workerBlobRegistry = Object.create(null));
-  var allRuntime = internal.workerRuntime || (internal.workerRuntime = Object.create(null));
-  var state = allRuntime[workerId] || (allRuntime[workerId] = {
-    registryScriptLoads: 0,
-    registryScriptLoadFailures: 0,
-    blobRegistrations: 0,
-    objectUrlsCreated: 0,
-    workersCreated: 0,
-    workersTerminated: 0,
-    activeWorkers: 0,
-    runtimeDigestCalls: 0,
-    sourceStoredAsGlobalString: false,
-    objectUrlLifetime: 'page',
-    registryEntryReleased: false,
-    registryEntryPresent: false,
-    timingsMs: Object.create(null)
-  });
-  var startedAt = performance.now();
+  var namespace = globalThis[namespaceName] || (globalThis[namespaceName] = {});
+  var internal = namespace.internal || (namespace.internal = {});
+  var core = internal.core || (internal.core = {});
+  var registry = core.workerBlobRegistry || (core.workerBlobRegistry = Object.create(null));
+  var debugState;
+  var debugStartedAt;
+
+  function debugNow() {
+    return globalThis.performance && typeof globalThis.performance.now === 'function'
+      ? globalThis.performance.now()
+      : Date.now();
+  }
+  function debugWarn(message, error) {
+    try {
+      console.warn('[file-protocol-standalone] ' + message, error);
+    } catch (_) {}
+  }
+  function debugInitializeWorkerRuntimeState() {
+    try {
+      var debug = internal.debug || (internal.debug = {});
+      var allRuntime = debug.workerRuntime || (debug.workerRuntime = Object.create(null));
+      debugState = allRuntime[workerId] || (allRuntime[workerId] = {
+        registryScriptLoads: 0,
+        registryScriptLoadFailures: 0,
+        blobRegistrations: 0,
+        objectUrlsCreated: 0,
+        workersCreated: 0,
+        workersTerminated: 0,
+        activeWorkers: 0,
+        terminateInstrumentationFailures: 0,
+        runtimeDigestCalls: 0,
+        sourceStoredAsGlobalString: false,
+        objectUrlLifetime: 'page',
+        registryEntryReleased: false,
+        registryEntryPresent: false,
+        timingsMs: Object.create(null)
+      });
+      debugStartedAt = debugNow();
+    } catch (error) {
+      debugState = undefined;
+      debugWarn('Failed to initialize Worker runtime diagnostics. Blob registration will continue.', error);
+    }
+  }
+  function debugMutateWorkerRuntimeState(mutate) {
+    if (!debugState) return;
+    try {
+      mutate(debugState);
+    } catch (_) {}
+  }
+
+  debugInitializeWorkerRuntimeState();
 
   // Pass source parts directly to Blob instead of joining them. Joining would
   // allocate another giant worker-source string at runtime.
@@ -267,55 +300,84 @@ export function createWorkerRegistrySource({ worker }: {
     sourcePartCount: ${worker.sourcePartCount},
     sha256: ${JSON.stringify(worker.sha256)}
   };
-  state.blobRegistrations += 1;
-  state.registryEntryPresent = true;
-  state.blobBytes = sourceBlob.size;
-  state.sourcePartCount = ${worker.sourcePartCount};
-  state.timingsMs.registryEvaluationAndBlobCreation = performance.now() - startedAt;
+  debugMutateWorkerRuntimeState(function (state) {
+    state.blobRegistrations += 1;
+    state.registryEntryPresent = true;
+    state.blobBytes = sourceBlob.size;
+    state.sourcePartCount = ${worker.sourcePartCount};
+    state.timingsMs.registryEvaluationAndBlobCreation = debugNow() - debugStartedAt;
+  });
 })();
 `
 }
 
-export function createWorkerVirtualModule({ workerId }: { workerId: string }): string {
+export function createFileProtocolStandaloneWorkerFactoryModuleSource({ workerId }: { workerId: string }): string {
   return `const workerId = ${JSON.stringify(workerId)};
-const diagnosticsGlobal = ${JSON.stringify(diagnosticsGlobal)};
-const manifestScriptId = ${JSON.stringify(workerManifestScriptId)};
-const loadPromises = new Map();
+const standaloneNamespaceGlobalName = ${JSON.stringify(FILE_PROTOCOL_STANDALONE_GLOBAL_NAME)};
+const manifestElementId = ${JSON.stringify(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.workerManifest)};
+const registryScriptLoadPromises = new Map();
 let workerBlobUrlPromise;
+let workerBlobUrlStatus = 'idle';
 let workerWarmupScheduled = false;
 
-function getInternalState() {
-  const diagnostics = globalThis[diagnosticsGlobal] ||= {};
-  return diagnostics.internal ||= {};
+function getFileProtocolStandaloneInternalState() {
+  const namespace = globalThis[standaloneNamespaceGlobalName] ||= {};
+  return namespace.internal ||= {};
+}
+
+function getFileProtocolStandaloneCoreState() {
+  const internal = getFileProtocolStandaloneInternalState();
+  return internal.core ||= {};
 }
 
 function getWorkerBlobRegistry() {
-  const internal = getInternalState();
-  return internal.workerBlobRegistry ||= Object.create(null);
+  const core = getFileProtocolStandaloneCoreState();
+  return core.workerBlobRegistry ||= Object.create(null);
 }
 
-function getRuntimeState() {
-  const internal = getInternalState();
-  const allWorkers = internal.workerRuntime ||= Object.create(null);
-  return allWorkers[workerId] ||= {
-    registryScriptLoads: 0,
-    registryScriptLoadFailures: 0,
-    blobRegistrations: 0,
-    objectUrlsCreated: 0,
-    workersCreated: 0,
-    workersTerminated: 0,
-    activeWorkers: 0,
-    runtimeDigestCalls: 0,
-    sourceStoredAsGlobalString: false,
-    objectUrlLifetime: 'page',
-    registryEntryReleased: false,
-    registryEntryPresent: false,
-    timingsMs: Object.create(null)
-  };
+function debugWarn(message, error) {
+  try {
+    console.warn('[file-protocol-standalone] ' + message, error);
+  } catch (_) {}
 }
 
-function readManifest() {
-  const script = document.getElementById(manifestScriptId);
+function debugGetWorkerRuntimeState() {
+  try {
+    const internal = getFileProtocolStandaloneInternalState();
+    const debug = internal.debug ||= {};
+    const allWorkers = debug.workerRuntime ||= Object.create(null);
+    return allWorkers[workerId] ||= {
+      registryScriptLoads: 0,
+      registryScriptLoadFailures: 0,
+      blobRegistrations: 0,
+      objectUrlsCreated: 0,
+      workersCreated: 0,
+      workersTerminated: 0,
+      activeWorkers: 0,
+      terminateInstrumentationFailures: 0,
+      runtimeDigestCalls: 0,
+      sourceStoredAsGlobalString: false,
+      objectUrlLifetime: 'page',
+      registryEntryReleased: false,
+      registryEntryPresent: false,
+      timingsMs: Object.create(null)
+    };
+  } catch (error) {
+    debugWarn('Failed to access Worker runtime diagnostics. Worker operation will continue.', error);
+    return undefined;
+  }
+}
+
+function debugMutateWorkerRuntimeState(mutate) {
+  const workerRuntimeDebugState = debugGetWorkerRuntimeState();
+  if (!workerRuntimeDebugState) return;
+  try {
+    mutate(workerRuntimeDebugState);
+  } catch (_) {}
+}
+
+function readWorkerManifest() {
+  const script = document.getElementById(manifestElementId);
   if (!script || !script.textContent) throw new Error('[file-protocol-standalone] Missing worker manifest.');
   const manifest = JSON.parse(script.textContent);
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
@@ -324,12 +386,12 @@ function readManifest() {
   return manifest;
 }
 
-function loadClassicScriptOnce(src) {
+function loadWorkerRegistryScriptOnce(src) {
   const url = new URL(src, document.baseURI).href;
   if ((new URL(url)).protocol !== 'file:') {
     throw new Error('[file-protocol-standalone] Worker registry must be a local file:// URL: ' + url);
   }
-  if (loadPromises.has(url)) return loadPromises.get(url);
+  if (registryScriptLoadPromises.has(url)) return registryScriptLoadPromises.get(url);
   const promise = new Promise((resolve, reject) => {
     const startedAt = performance.now();
     const script = document.createElement('script');
@@ -338,65 +400,70 @@ function loadClassicScriptOnce(src) {
     // request when that attribute is present and rejects it from file://.
     script.src = url;
     script.onload = () => {
-      const state = getRuntimeState();
-      state.registryScriptLoads += 1;
-      state.timingsMs.registryScriptLoad = performance.now() - startedAt;
+      debugMutateWorkerRuntimeState((state) => {
+        state.registryScriptLoads += 1;
+        state.timingsMs.registryScriptLoad = performance.now() - startedAt;
+      });
       script.remove();
       resolve();
     };
     script.onerror = () => {
-      const state = getRuntimeState();
-      state.registryScriptLoadFailures += 1;
-      loadPromises.delete(url);
+      debugMutateWorkerRuntimeState((state) => {
+        state.registryScriptLoadFailures += 1;
+      });
+      registryScriptLoadPromises.delete(url);
       script.remove();
       reject(new Error('[file-protocol-standalone] Failed to load worker registry: ' + url));
     };
     document.head.appendChild(script);
   });
-  loadPromises.set(url, promise);
+  registryScriptLoadPromises.set(url, promise);
   return promise;
 }
 
-async function createWorkerBlobUrl() {
-  const manifest = readManifest();
-  const meta = manifest[workerId];
-  if (!meta || typeof meta !== 'object') throw new Error('[file-protocol-standalone] Worker is not listed in manifest: ' + workerId);
-  if (typeof meta.registryScript !== 'string' || typeof meta.sourceBytes !== 'number' || typeof meta.sha256 !== 'string' || typeof meta.sourcePartCount !== 'number') {
+async function loadAndCreateWorkerBlobUrl() {
+  const manifest = readWorkerManifest();
+  const manifestEntry = manifest[workerId];
+  if (!manifestEntry || typeof manifestEntry !== 'object') throw new Error('[file-protocol-standalone] Worker is not listed in manifest: ' + workerId);
+  if (typeof manifestEntry.registryScript !== 'string' || typeof manifestEntry.sourceBytes !== 'number' || typeof manifestEntry.sha256 !== 'string' || typeof manifestEntry.sourcePartCount !== 'number') {
     throw new Error('[file-protocol-standalone] Invalid worker manifest entry: ' + workerId);
   }
 
-  await loadClassicScriptOnce(meta.registryScript);
+  await loadWorkerRegistryScriptOnce(manifestEntry.registryScript);
   const registry = getWorkerBlobRegistry();
-  const entry = registry && registry[workerId];
-  if (!entry || !(entry.sourceBlob instanceof Blob)) {
+  const blobRegistryEntry = registry && registry[workerId];
+  if (!blobRegistryEntry || !(blobRegistryEntry.sourceBlob instanceof Blob)) {
     throw new Error('[file-protocol-standalone] Worker Blob was not registered: ' + workerId);
   }
 
   // SHA-256 is calculated at build time. Comparing metadata detects mixed build
   // outputs without reading the large Blob into another ArrayBuffer. It is not
   // a signature or proof of origin.
-  if (entry.sourceBytes !== meta.sourceBytes || entry.sha256 !== meta.sha256 || entry.sourcePartCount !== meta.sourcePartCount) {
+  if (blobRegistryEntry.sourceBytes !== manifestEntry.sourceBytes || blobRegistryEntry.sha256 !== manifestEntry.sha256 || blobRegistryEntry.sourcePartCount !== manifestEntry.sourcePartCount) {
     throw new Error('[file-protocol-standalone] Worker registry metadata mismatch: ' + workerId);
   }
-  if (entry.sourceBlob.size !== meta.sourceBytes) {
+  if (blobRegistryEntry.sourceBlob.size !== manifestEntry.sourceBytes) {
     throw new Error('[file-protocol-standalone] Worker Blob byte length mismatch: ' + workerId);
   }
 
   const startedAt = performance.now();
-  const blobUrl = URL.createObjectURL(entry.sourceBlob);
-  const state = getRuntimeState();
-  state.objectUrlsCreated += 1;
-  state.blobBytes = entry.sourceBlob.size;
-  state.sourcePartCount = entry.sourcePartCount;
-  state.sha256 = entry.sha256;
-  state.timingsMs.objectUrlCreation = performance.now() - startedAt;
+  const blobUrl = URL.createObjectURL(blobRegistryEntry.sourceBlob);
+  debugMutateWorkerRuntimeState((state) => {
+    state.objectUrlsCreated += 1;
+    state.blobBytes = blobRegistryEntry.sourceBlob.size;
+    state.sourcePartCount = blobRegistryEntry.sourcePartCount;
+    state.sha256 = blobRegistryEntry.sha256;
+    state.timingsMs.objectUrlCreation = performance.now() - startedAt;
+  });
 
   // The object URL keeps the Blob alive, so the global registry no longer needs
   // a second reference to the large payload. Remove it to make the temporary
   // registration object collectible after initialization.
   delete registry[workerId];
-  state.registryEntryReleased = true;
-  state.registryEntryPresent = Object.prototype.hasOwnProperty.call(registry, workerId);
+  debugMutateWorkerRuntimeState((state) => {
+    state.registryEntryReleased = true;
+    state.registryEntryPresent = Object.prototype.hasOwnProperty.call(registry, workerId);
+  });
 
   // This URL intentionally lives for the page lifetime. Applications may create
   // multiple Worker instances from one shared asset; revoking after the first start
@@ -404,10 +471,15 @@ async function createWorkerBlobUrl() {
   return blobUrl;
 }
 
-function getWorkerBlobUrl() {
+function getOrCreateWorkerBlobUrl() {
   if (!workerBlobUrlPromise) {
-    workerBlobUrlPromise = createWorkerBlobUrl().catch((error) => {
+    workerBlobUrlStatus = 'loading';
+    workerBlobUrlPromise = loadAndCreateWorkerBlobUrl().then((blobUrl) => {
+      workerBlobUrlStatus = 'ready';
+      return blobUrl;
+    }).catch((error) => {
       // A physical load failure must be retryable. Do not cache rejection.
+      workerBlobUrlStatus = 'failed';
       workerBlobUrlPromise = undefined;
       throw error;
     });
@@ -415,43 +487,58 @@ function getWorkerBlobUrl() {
   return workerBlobUrlPromise;
 }
 
-export async function createFileProtocolWorker({ name }) {
-  const blobUrl = await getWorkerBlobUrl();
+export async function createFileProtocolStandaloneWorker({ name }) {
+  const blobUrl = await getOrCreateWorkerBlobUrl();
   const worker = new Worker(blobUrl, name === undefined ? undefined : { name });
-  const state = getRuntimeState();
-  state.workersCreated += 1;
-  state.activeWorkers += 1;
-  const originalTerminate = worker.terminate.bind(worker);
-  let active = true;
-  worker.terminate = function fileProtocolStandaloneTerminate() {
-    if (active) {
-      active = false;
-      state.activeWorkers -= 1;
-      state.workersTerminated += 1;
-    }
-    return originalTerminate();
-  };
+  debugMutateWorkerRuntimeState((state) => {
+    state.workersCreated += 1;
+  });
+
+  try {
+    const originalTerminate = worker.terminate.bind(worker);
+    let active = true;
+    worker.terminate = function fileProtocolStandaloneTerminate() {
+      if (active) {
+        active = false;
+        debugMutateWorkerRuntimeState((state) => {
+          state.activeWorkers -= 1;
+          state.workersTerminated += 1;
+        });
+      }
+      return originalTerminate();
+    };
+    debugMutateWorkerRuntimeState((state) => {
+      state.activeWorkers += 1;
+    });
+  } catch (error) {
+    debugMutateWorkerRuntimeState((state) => {
+      state.terminateInstrumentationFailures += 1;
+    });
+    debugWarn('Failed to instrument Worker termination diagnostics. Worker creation will continue.', error);
+  }
+
   return worker;
 }
 
-export function getFileProtocolWorkerDiagnostics() {
-  const state = getRuntimeState();
+export function debugGetFileProtocolStandaloneWorkerDiagnostics() {
+  const workerRuntimeDebugState = debugGetWorkerRuntimeState();
   const registry = getWorkerBlobRegistry();
   return {
-    ...state,
-    timingsMs: { ...state.timingsMs },
+    ...(workerRuntimeDebugState || {}),
+    timingsMs: { ...(workerRuntimeDebugState && workerRuntimeDebugState.timingsMs || {}) },
     registryEntryPresent: Boolean(registry && Object.prototype.hasOwnProperty.call(registry, workerId)),
-    blobUrlReady: Boolean(workerBlobUrlPromise),
+    blobUrlStatus: workerBlobUrlStatus,
     workerId
   };
 }
 
-export function warmFileProtocolWorkerAssetAtIdle() {
+export function scheduleFileProtocolStandaloneWorkerAssetWarmup() {
   if (workerBlobUrlPromise || workerWarmupScheduled) return;
   workerWarmupScheduled = true;
+  workerBlobUrlStatus = 'warmup-scheduled';
   const run = () => {
     workerWarmupScheduled = false;
-    void getWorkerBlobUrl().catch(() => {});
+    void getOrCreateWorkerBlobUrl().catch(() => {});
   };
   if ('requestIdleCallback' in globalThis) {
     globalThis.requestIdleCallback(run, { timeout: 1000 });

@@ -10,19 +10,20 @@ type WorkerDiagnostics = Readonly<{
   workersCreated: number
   workersTerminated: number
   activeWorkers: number
+  terminateInstrumentationFailures: number
   runtimeDigestCalls: number
   sourceStoredAsGlobalString: boolean
   objectUrlLifetime: string
   registryEntryReleased: boolean
   registryEntryPresent: boolean
-  blobUrlReady: boolean
+  blobUrlStatus: 'idle' | 'warmup-scheduled' | 'loading' | 'ready' | 'failed'
   workerId: string
 }>
 
 type WorkerRuntimeApi = Readonly<{
-  createFileProtocolWorker: ({ name }: { name: string | undefined }) => Promise<Worker>
-  getFileProtocolWorkerDiagnostics: () => WorkerDiagnostics
-  warmFileProtocolWorkerAssetAtIdle: () => void
+  createFileProtocolStandaloneWorker: ({ name }: { name: string | undefined }) => Promise<Worker>
+  debugGetFileProtocolStandaloneWorkerDiagnostics: () => WorkerDiagnostics
+  scheduleFileProtocolStandaloneWorkerAssetWarmup: () => void
 }>
 
 type FakeWorkerRecord = Readonly<{
@@ -59,7 +60,7 @@ const manifestScriptId = 'file-protocol-standalone-worker-manifest'
 function getWorkerVirtualModuleSource(): string {
   const plugin = fileProtocolStandalone({
     workerTarget: ['chrome140', 'firefox140'],
-    reportFile: 'dist/report.json',
+    debugBuildReportFile: 'dist/report.json',
     workers: [{ id: workerId, entry: 'src/worker.ts' }],
     budgets: undefined,
     onAdditionalLicenseDependencies: undefined,
@@ -93,9 +94,9 @@ function compileWorkerRuntime({
   scheduledCallbacks: (() => void)[]
 }): WorkerRuntimeApi {
   const executableSource = source
-    .replace('export async function createFileProtocolWorker', 'async function createFileProtocolWorker')
-    .replace('export function getFileProtocolWorkerDiagnostics', 'function getFileProtocolWorkerDiagnostics')
-    .replace('export function warmFileProtocolWorkerAssetAtIdle', 'function warmFileProtocolWorkerAssetAtIdle')
+    .replace('export async function createFileProtocolStandaloneWorker', 'async function createFileProtocolStandaloneWorker')
+    .replace('export function debugGetFileProtocolStandaloneWorkerDiagnostics', 'function debugGetFileProtocolStandaloneWorkerDiagnostics')
+    .replace('export function scheduleFileProtocolStandaloneWorkerAssetWarmup', 'function scheduleFileProtocolStandaloneWorkerAssetWarmup')
   const factory = new Function(
     'globalThis',
     'document',
@@ -107,9 +108,9 @@ function compileWorkerRuntime({
     `\
 ${executableSource}
 return {
-  createFileProtocolWorker,
-  getFileProtocolWorkerDiagnostics,
-  warmFileProtocolWorkerAssetAtIdle
+  createFileProtocolStandaloneWorker,
+  debugGetFileProtocolStandaloneWorkerDiagnostics,
+  scheduleFileProtocolStandaloneWorkerAssetWarmup
 };
 `,
   ) as (
@@ -248,10 +249,11 @@ function createRuntimeHarness({
         sha256: registrySha256,
       }
       const namespace = (globalObject.__FILE_PROTOCOL_STANDALONE__ ??= {}) as {
-        internal?: { workerBlobRegistry?: Record<string, WorkerRegistryEntry> }
+        internal?: { core?: { workerBlobRegistry?: Record<string, WorkerRegistryEntry> } }
       }
       const internal = namespace.internal ??= {}
-      const registry = internal.workerBlobRegistry ??= {}
+      const core = internal.core ??= {}
+      const registry = core.workerBlobRegistry ??= {}
       registry[workerId] = entry
       script.onload?.(new dom.window.Event('load'))
     })
@@ -322,8 +324,8 @@ describe('fileProtocolStandalone generated worker runtime', () => {
     const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
 
     const [first, second] = await Promise.all([
-      harness.api.createFileProtocolWorker({ name: 'first-worker' }),
-      harness.api.createFileProtocolWorker({ name: undefined }),
+      harness.api.createFileProtocolStandaloneWorker({ name: 'first-worker' }),
+      harness.api.createFileProtocolStandaloneWorker({ name: undefined }),
     ])
 
     expect(harness.scriptLoadCount()).toBe(1)
@@ -336,7 +338,7 @@ describe('fileProtocolStandalone generated worker runtime', () => {
     first.terminate()
     first.terminate()
     second.terminate()
-    const diagnostics = harness.api.getFileProtocolWorkerDiagnostics()
+    const diagnostics = harness.api.debugGetFileProtocolStandaloneWorkerDiagnostics()
     expect(diagnostics).toMatchObject({
       registryScriptLoads: 1,
       registryScriptLoadFailures: 0,
@@ -349,19 +351,19 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       objectUrlLifetime: 'page',
       registryEntryReleased: true,
       registryEntryPresent: false,
-      blobUrlReady: true,
+      blobUrlStatus: 'ready',
       workerId,
     })
     expect(harness.workerRecords[0]?.terminateCallCount()).toBe(2)
     expect(harness.workerRecords[1]?.terminateCallCount()).toBe(1)
     expect(harness.globalObject).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_WORKER_RUNTIME__')
     expect(harness.globalObject).toHaveProperty(
-      '__FILE_PROTOCOL_STANDALONE__.internal.workerRuntime.worker-hub.objectUrlsCreated',
+      '__FILE_PROTOCOL_STANDALONE__.internal.debug.workerRuntime.worker-hub.objectUrlsCreated',
       1,
     )
     expect(harness.globalObject).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_WORKER_BLOBS__')
     expect(harness.globalObject).toHaveProperty(
-      '__FILE_PROTOCOL_STANDALONE__.internal.workerBlobRegistry',
+      '__FILE_PROTOCOL_STANDALONE__.internal.core.workerBlobRegistry',
       {},
     )
     expect(harness.registryScriptElementCount()).toBe(0)
@@ -387,13 +389,13 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       workerConstructorFailureCount: 0,
     })
 
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('Failed to load worker registry')
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).rejects.toThrow('Failed to load worker registry')
     expect(harness.registryScriptElementCount()).toBe(0)
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).resolves.toBeDefined()
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).resolves.toBeDefined()
 
     expect(harness.scriptLoadCount()).toBe(2)
     expect(harness.registryScriptElementCount()).toBe(0)
-    expect(harness.api.getFileProtocolWorkerDiagnostics()).toMatchObject({
+    expect(harness.api.debugGetFileProtocolStandaloneWorkerDiagnostics()).toMatchObject({
       registryScriptLoads: 1,
       registryScriptLoadFailures: 1,
       objectUrlsCreated: 1,
@@ -420,9 +422,9 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       workerConstructorFailureCount: 0,
     })
 
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('metadata mismatch')
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).rejects.toThrow('metadata mismatch')
     expect(harness.objectUrlBlobs).toHaveLength(0)
-    expect(harness.api.getFileProtocolWorkerDiagnostics()).toMatchObject({
+    expect(harness.api.debugGetFileProtocolStandaloneWorkerDiagnostics()).toMatchObject({
       runtimeDigestCalls: 0,
       objectUrlsCreated: 0,
       workersCreated: 0,
@@ -448,7 +450,7 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       workerConstructorFailureCount: 0,
     })
 
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('byte length mismatch')
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).rejects.toThrow('byte length mismatch')
     expect(harness.objectUrlBlobs).toHaveLength(0)
   })
 
@@ -470,7 +472,7 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       workerConstructorFailureCount: 0,
     })
 
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('must be a local file:// URL')
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).rejects.toThrow('must be a local file:// URL')
     expect(harness.scriptLoadCount()).toBe(0)
     expect(harness.objectUrlBlobs).toHaveLength(0)
   })
@@ -478,7 +480,7 @@ describe('fileProtocolStandalone generated worker runtime', () => {
   it('uses the timeout fallback to warm the shared asset without creating a Worker', async () => {
     const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
 
-    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()
     expect(harness.scheduledCallbacks).toHaveLength(1)
     harness.scheduledCallbacks[0]?.()
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -486,8 +488,8 @@ describe('fileProtocolStandalone generated worker runtime', () => {
     expect(harness.scriptLoadCount()).toBe(1)
     expect(harness.objectUrlBlobs).toHaveLength(1)
     expect(harness.workerRecords).toHaveLength(0)
-    expect(harness.api.getFileProtocolWorkerDiagnostics()).toMatchObject({
-      blobUrlReady: true,
+    expect(harness.api.debugGetFileProtocolStandaloneWorkerDiagnostics()).toMatchObject({
+      blobUrlStatus: 'ready',
       objectUrlsCreated: 1,
       workersCreated: 0,
     })
@@ -496,7 +498,7 @@ describe('fileProtocolStandalone generated worker runtime', () => {
   it('uses requestIdleCallback with an explicit timeout when it is available', async () => {
     const harness = createSuccessfulHarness({ idleCallbackMode: 'available' })
 
-    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()
 
     expect(harness.scheduledCallbacks).toEqual([])
     expect(harness.idleCallbacks).toHaveLength(1)
@@ -514,14 +516,14 @@ describe('fileProtocolStandalone generated worker runtime', () => {
   it('coalesces repeated warmup requests before and after the shared Blob URL is ready', async () => {
     const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
 
-    harness.api.warmFileProtocolWorkerAssetAtIdle()
-    harness.api.warmFileProtocolWorkerAssetAtIdle()
-    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()
+    harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()
+    harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()
     expect(harness.scheduledCallbacks).toHaveLength(1)
 
     harness.scheduledCallbacks[0]?.()
     await new Promise((resolve) => setTimeout(resolve, 0))
-    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()
 
     expect(harness.scheduledCallbacks).toHaveLength(1)
     expect(harness.scriptLoadCount()).toBe(1)
@@ -531,9 +533,9 @@ describe('fileProtocolStandalone generated worker runtime', () => {
   it('shares one physical load when idle warming and first Worker creation overlap', async () => {
     const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
 
-    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()
     harness.scheduledCallbacks[0]?.()
-    const worker = await harness.api.createFileProtocolWorker({ name: 'first-worker' })
+    const worker = await harness.api.createFileProtocolStandaloneWorker({ name: 'first-worker' })
 
     expect(worker).toBeDefined()
     expect(harness.scriptLoadCount()).toBe(1)
@@ -560,13 +562,13 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       workerConstructorFailureCount: 0,
     })
 
-    harness.api.warmFileProtocolWorkerAssetAtIdle()
+    harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()
     harness.scheduledCallbacks[0]?.()
     await new Promise((resolve) => setTimeout(resolve, 0))
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).resolves.toBeDefined()
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).resolves.toBeDefined()
 
     expect(harness.scriptLoadCount()).toBe(2)
-    expect(harness.api.getFileProtocolWorkerDiagnostics()).toMatchObject({
+    expect(harness.api.debugGetFileProtocolStandaloneWorkerDiagnostics()).toMatchObject({
       registryScriptLoadFailures: 1,
       registryScriptLoads: 1,
       workersCreated: 1,
@@ -592,17 +594,17 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       workerConstructorFailureCount: 0,
     })
 
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('synthetic createObjectURL failure')
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).rejects.toThrow('synthetic createObjectURL failure')
     expect(harness.globalObject).toHaveProperty(
-      `__FILE_PROTOCOL_STANDALONE__.internal.workerBlobRegistry.${workerId}`,
+      `__FILE_PROTOCOL_STANDALONE__.internal.core.workerBlobRegistry.${workerId}`,
     )
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).resolves.toBeDefined()
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).resolves.toBeDefined()
 
     expect(harness.scriptLoadCount()).toBe(1)
     expect(harness.objectUrlBlobs).toHaveLength(1)
     expect(harness.globalObject).not.toHaveProperty('__FILE_PROTOCOL_STANDALONE_WORKER_BLOBS__')
     expect(harness.globalObject).toHaveProperty(
-      '__FILE_PROTOCOL_STANDALONE__.internal.workerBlobRegistry',
+      '__FILE_PROTOCOL_STANDALONE__.internal.core.workerBlobRegistry',
       {},
     )
   })
@@ -626,8 +628,8 @@ describe('fileProtocolStandalone generated worker runtime', () => {
       workerConstructorFailureCount: 1,
     })
 
-    await expect(harness.api.createFileProtocolWorker({ name: undefined })).rejects.toThrow('synthetic Worker constructor failure')
-    await expect(harness.api.createFileProtocolWorker({ name: 'retry-worker' })).resolves.toBeDefined()
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: undefined })).rejects.toThrow('synthetic Worker constructor failure')
+    await expect(harness.api.createFileProtocolStandaloneWorker({ name: 'retry-worker' })).resolves.toBeDefined()
 
     expect(harness.scriptLoadCount()).toBe(1)
     expect(harness.objectUrlBlobs).toHaveLength(1)

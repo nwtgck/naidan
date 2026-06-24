@@ -1,12 +1,12 @@
-import type { FileProtocolWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-compatible-standalone-worker-hub'
+import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub'
 
 type WorkerFactory = ({ name }: { name: string | undefined }) => Promise<Worker>
 
 let workerFactory: WorkerFactory = async () => {
   throw new Error('Test worker factory is not configured.')
 }
-let diagnostics: FileProtocolWorkerDiagnostics = {
-  workerId: 'file-protocol-compatible-standalone-worker-hub',
+let diagnostics: DebugFileProtocolStandaloneWorkerDiagnostics = {
+  workerId: 'file-protocol-standalone-worker-hub',
   registryScriptLoads: 0,
   registryScriptLoadFailures: 0,
   blobRegistrations: 0,
@@ -14,12 +14,13 @@ let diagnostics: FileProtocolWorkerDiagnostics = {
   workersCreated: 0,
   workersTerminated: 0,
   activeWorkers: 0,
+  terminateInstrumentationFailures: 0,
   runtimeDigestCalls: 0,
   sourceStoredAsGlobalString: false,
   objectUrlLifetime: 'page',
   registryEntryReleased: false,
   registryEntryPresent: false,
-  blobUrlReady: false,
+  blobUrlStatus: 'idle',
   timingsMs: {},
 }
 let warmCallCount = 0
@@ -29,7 +30,7 @@ export function configureFileProtocolStandaloneWorkerMock({
   nextDiagnostics,
 }: {
   factory: WorkerFactory
-  nextDiagnostics: FileProtocolWorkerDiagnostics
+  nextDiagnostics: DebugFileProtocolStandaloneWorkerDiagnostics
 }): void {
   workerFactory = factory
   diagnostics = nextDiagnostics
@@ -42,16 +43,16 @@ export function getFileProtocolStandaloneWorkerMockState(): Readonly<{
   return { warmCallCount }
 }
 
-export async function createFileProtocolWorker({ name }: {
+export async function createFileProtocolStandaloneWorker({ name }: {
   name: string | undefined
 }): Promise<Worker> {
   return workerFactory({ name })
 }
 
-export function getFileProtocolWorkerDiagnostics(): FileProtocolWorkerDiagnostics {
+export function debugGetFileProtocolStandaloneWorkerDiagnostics(): DebugFileProtocolStandaloneWorkerDiagnostics {
   return diagnostics
 }
 
-export function warmFileProtocolWorkerAssetAtIdle(): void {
+export function scheduleFileProtocolStandaloneWorkerAssetWarmup(): void {
   warmCallCount += 1
 }

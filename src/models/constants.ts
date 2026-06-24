@@ -28,7 +28,7 @@ export const OPFS_TMP_PENDING_OWNER_CLEANUPS_KEY = `${STORAGE_KEY_PREFIX}opfs_tm
 export const OPFS_TMP_CLEANUP_LOCK_KEY = `${STORAGE_KEY_PREFIX}sync:lock:opfs_tmp_cleanup`;
 export const FILE_PROTOCOL_COMPATIBLE_WESH_WORKER_NAME = 'file-protocol-compatible-wesh-worker';
 
-export const FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID = 'file-protocol-compatible-standalone-worker-hub';
-export const FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_NAME = 'file-protocol-compatible-standalone-worker-hub';
+export const FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID = 'file-protocol-standalone-worker-hub';
+export const FILE_PROTOCOL_STANDALONE_WORKER_HUB_NAME = 'file-protocol-standalone-worker-hub';
 
 export const GLOBAL_SEARCH_WORKER_NAME = 'global-search-worker';

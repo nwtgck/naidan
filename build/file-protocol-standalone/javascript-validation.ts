@@ -6,53 +6,65 @@ import path from 'node:path'
 
 const pluginName = 'file-protocol-standalone'
 
-function sha256({ source }: { source: string | Uint8Array }): string {
+function computeSha256Hex({ source }: { source: string | Uint8Array }): string {
   return createHash('sha256').update(source).digest('hex')
 }
 
+function isWindowsAbsolutePath({ value }: { value: string }): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || /^\\\\/.test(value)
+}
+
 /** @internal Exported for focused plugin tests. */
-export function normalizeModuleId({ root, moduleId }: {
+export function debugSanitizeFileProtocolStandaloneModuleId({ root, moduleId }: {
   root: string
   moduleId: string
 }): string {
+  if (moduleId.startsWith('\0')) {
+    return moduleId.slice(1)
+  }
+
   const normalized = moduleId.replaceAll('\\', '/')
   const normalizedRoot = root.replaceAll('\\', '/').replace(/\/$/, '')
-  if (normalized.startsWith(`${normalizedRoot}/`)) {
+  const windowsPath = isWindowsAbsolutePath({ value: moduleId })
+  const windowsRoot = isWindowsAbsolutePath({ value: root })
+  const comparableModuleId = windowsPath ? normalized.toLowerCase() : normalized
+  const comparableRoot = windowsRoot ? normalizedRoot.toLowerCase() : normalizedRoot
+  if (
+    windowsPath === windowsRoot
+    && comparableModuleId.startsWith(`${comparableRoot}/`)
+  ) {
     return `/${normalized.slice(normalizedRoot.length + 1)}`
-  }
-  if (normalized.startsWith('\0')) {
-    return normalized.slice(1)
   }
   if (normalized.includes('/node_modules/')) {
     return `/node_modules/${normalized.split('/node_modules/')[1]}`
   }
-  if (path.posix.isAbsolute(normalized)) {
+  if (path.posix.isAbsolute(normalized) || windowsPath) {
     // Root-external modules are legitimate in monorepos, but exposing the host
     // filesystem path makes diagnostic reports machine-specific and may leak a
     // developer's home directory. Keep a deterministic, useful basename while
     // replacing the private prefix with a short digest.
-    return `/outside-root/${sha256({ source: normalized }).slice(0, 12)}-${path.posix.basename(normalized)}`
+    return `/outside-root/${computeSha256Hex({ source: normalized }).slice(0, 12)}-${path.posix.basename(normalized)}`
   }
   return normalized
 }
 
 
-type ClassicJavaScriptValidationMode = 'application-chunk' | 'support-script' | 'worker'
+type FileProtocolStandaloneScriptRole = 'application-chunk' | 'support-script' | 'worker'
 
-export type RuntimeDynamicImportReport = Readonly<{
+export type FileProtocolStandaloneRuntimeDynamicImportOccurrence = Readonly<{
   kind: 'static-specifier' | 'dynamic-specifier'
   line: number
   column: number
   specifier: string | undefined
 }>
 
-type ClassicJavaScriptValidation = Readonly<{
-  runtimeDynamicImports: readonly RuntimeDynamicImportReport[]
+type FileProtocolStandaloneScriptValidation = Readonly<{
+  runtimeDynamicImports: readonly FileProtocolStandaloneRuntimeDynamicImportOccurrence[]
   systemRegisterCallCount: number
   hostedWorkerUrlCount: number
 }>
 
-function readStaticImportSpecifier({ node }: { node: ImportExpression }): string | undefined {
+function readStaticallyKnownImportSpecifier({ node }: { node: ImportExpression }): string | undefined {
   const source = node.source
   if (source.type === 'Literal' && typeof source.value === 'string') {
     return source.value
@@ -64,22 +76,22 @@ function readStaticImportSpecifier({ node }: { node: ImportExpression }): string
 }
 
 /** @internal Exported for focused plugin tests. */
-export function validateClassicJavaScriptSource({
+export function assertFileProtocolStandaloneClassicScript({
   source,
   label,
   mode,
 }: {
   source: string
   label: string
-  mode: ClassicJavaScriptValidationMode
-}): ClassicJavaScriptValidation {
+  mode: FileProtocolStandaloneScriptRole
+}): FileProtocolStandaloneScriptValidation {
   const ast = parse(source, {
     ecmaVersion: 'latest',
     sourceType: 'script',
     allowHashBang: true,
     locations: true,
   })
-  const runtimeDynamicImports: RuntimeDynamicImportReport[] = []
+  const runtimeDynamicImports: FileProtocolStandaloneRuntimeDynamicImportOccurrence[] = []
   let importMetaFound = false
   let systemRegisterCallCount = 0
   let hostedWorkerUrlCount = 0
@@ -111,7 +123,7 @@ export function validateClassicJavaScriptSource({
       }
     },
     ImportExpression(node) {
-      const specifier = readStaticImportSpecifier({ node })
+      const specifier = readStaticallyKnownImportSpecifier({ node })
       runtimeDynamicImports.push({
         kind: specifier === undefined ? 'dynamic-specifier' : 'static-specifier',
         line: node.loc?.start.line ?? 0,

@@ -5,12 +5,13 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import { routes } from 'vue-router/auto-routes'
 import { useSettings } from './composables/useSettings'
 import { useChatBootstrap } from './composables/chat/ui/useChatBootstrap'
-import { warmFileProtocolCompatibleStandaloneWorkerHubAssetAtIdle } from './services/worker-hub-standalone-loader'
+import { scheduleFileProtocolStandaloneWorkerHubWarmup } from './services/worker-hub-standalone-loader'
+import { scheduleAppStartup } from './services/app-startup'
 import {
-  recordFileProtocolStandaloneStartupPhase,
-  reportAppStartupFailure,
-  scheduleAppStartup,
-} from './services/app-startup'
+  debugInstallVueErrorHandler,
+  debugRecordFileProtocolStandaloneStartupCheckpoint,
+  debugReportFileProtocolStandaloneAppStartupFailure,
+} from './services/debug-file-protocol-standalone/startup'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -18,24 +19,13 @@ const router = createRouter({
 })
 
 const app = createApp(App)
-
-/**
- * Global Vue error handler.
- * This is essential for catching and logging rendering errors that might otherwise
- * fail silently, particularly in the restrictive 'file:///' environment.
- * It helps identify which component and lifecycle hook caused the issue.
- */
-app.config.errorHandler = (err, instance, info) => {
-  console.error('Vue Error:', err)
-  console.error('Vue Instance:', instance)
-  console.error('Error Info:', info)
-}
+debugInstallVueErrorHandler({ app })
 
 app.use(router)
 
 async function bootstrapApp(): Promise<void> {
-  recordFileProtocolStandaloneStartupPhase({
-    phase: 'bootstrapping',
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'bootstrapping',
     details: undefined,
   })
 
@@ -49,8 +39,8 @@ async function bootstrapApp(): Promise<void> {
   const settingsStore = useSettings()
   const chatBootstrap = useChatBootstrap()
 
-  recordFileProtocolStandaloneStartupPhase({
-    phase: 'waiting-router',
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'waiting-router',
     details: undefined,
   })
   await router.isReady()
@@ -72,8 +62,8 @@ async function bootstrapApp(): Promise<void> {
       void router.replace({ query: newQuery })
     }
 
-    recordFileProtocolStandaloneStartupPhase({
-      phase: 'initializing-settings',
+    debugRecordFileProtocolStandaloneStartupCheckpoint({
+      checkpoint: 'initializing-settings',
       details: {
         hasStorageTypeOverride: storageTypeOverride !== undefined,
         hasDataZip: dataZipBase64 !== undefined,
@@ -85,35 +75,41 @@ async function bootstrapApp(): Promise<void> {
     })
   }
 
-  recordFileProtocolStandaloneStartupPhase({
-    phase: 'loading-chats',
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'loading-chats',
     details: undefined,
   })
   await chatBootstrap.loadChats()
 
-  recordFileProtocolStandaloneStartupPhase({
-    phase: 'mounting-vue',
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'mounting-vue',
     details: undefined,
   })
   app.mount(appElement)
-  recordFileProtocolStandaloneStartupPhase({
-    phase: 'mounted',
+  debugRecordFileProtocolStandaloneStartupCheckpoint({
+    checkpoint: 'mounted',
     details: undefined,
   })
 
   if (__BUILD_MODE_IS_STANDALONE__) {
-    warmFileProtocolCompatibleStandaloneWorkerHubAssetAtIdle()
+    scheduleFileProtocolStandaloneWorkerHubWarmup()
   }
 }
 
-recordFileProtocolStandaloneStartupPhase({
-  phase: 'entry-evaluated',
+debugRecordFileProtocolStandaloneStartupCheckpoint({
+  checkpoint: 'entry-evaluated',
   details: undefined,
 })
 scheduleAppStartup({
   document,
   bootstrap: bootstrapApp,
+  onWaitingForDom: () => {
+    debugRecordFileProtocolStandaloneStartupCheckpoint({
+      checkpoint: 'waiting-dom',
+      details: undefined,
+    })
+  },
   onFailure: ({ error }) => {
-    reportAppStartupFailure({ document, error })
+    debugReportFileProtocolStandaloneAppStartupFailure({ document, error })
   },
 })

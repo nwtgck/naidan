@@ -4,85 +4,119 @@ import { useRoute, useRouter } from 'vue-router'
 import { ClipboardCheckIcon, FlaskConicalIcon } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import {
-  runStandaloneVerification,
-  serializeStandaloneVerificationReportForCopy,
-  type StandaloneVerificationReport,
-} from '@/services/standalone-verification/report'
-import { runStandaloneWorkerFactoryVerification } from '@/services/standalone-verification/worker-probe'
+  debugRunFileProtocolStandaloneVerification,
+  debugSerializeFileProtocolStandaloneVerificationReportForCopy,
+  type DebugFileProtocolStandaloneVerificationReport,
+} from '@/services/debug-file-protocol-standalone/verification/report'
+import { debugVerifyFileProtocolStandaloneWorkerFactory } from '@/services/debug-file-protocol-standalone/verification/worker-probe'
 
 const route = useRoute()
 const router = useRouter()
 const { addToast } = useToast()
-const isStandaloneBuild = __BUILD_MODE_IS_STANDALONE__
+const isStandaloneBuild = computed(() => __BUILD_MODE_IS_STANDALONE__)
 
-const running = ref(false)
-const report = ref<StandaloneVerificationReport>()
-const tailwindProbe = ref<HTMLElement>()
-const scopedProbe = ref<HTMLElement>()
-const lazyStyleProbe = ref<HTMLElement>()
+const isRunning = ref(false)
+const verificationReport = ref<DebugFileProtocolStandaloneVerificationReport>()
+const tailwindStyleProbeElement = ref<HTMLElement>()
+const scopedStyleProbeElement = ref<HTMLElement>()
+const lazyStyleProbeElement = ref<HTMLElement>()
+const lazyStyleInitialOutlineWidth = ref<string>()
 
-const reportJson = computed(() => report.value === undefined
+const verificationReportJson = computed(() => verificationReport.value === undefined
   ? ''
-  : serializeStandaloneVerificationReportForCopy({ report: report.value }))
+  : debugSerializeFileProtocolStandaloneVerificationReportForCopy({ report: verificationReport.value }))
 
-async function loadLazyStyleProbe(): Promise<Readonly<{ marker: string }>> {
-  const loaded = await import('@/services/standalone-verification/lazy-style-probe')
+async function debugLoadFileProtocolStandaloneLazyStyleProbeModule({ signal }: { signal: AbortSignal }): Promise<Readonly<{ marker: string }>> {
+  signal.throwIfAborted()
+  const loaded = await import('@/services/debug-file-protocol-standalone/verification/lazy-style-probe')
+  signal.throwIfAborted()
   return { marker: loaded.STANDALONE_VERIFICATION_LAZY_STYLE_MARKER }
 }
 
-async function exerciseRouteTransition(): Promise<Readonly<{
-  before: string
-  transitioned: string
-  restored: string
+async function debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal }: { signal: AbortSignal }): Promise<Readonly<{
+  beforePath: string
+  transitionedPath: string
+  restoredPath: string
 }>> {
+  signal.throwIfAborted()
   const before = route.fullPath
   const probeQueryKey = '__standalone-verification-route-probe'
-  await router.replace({
-    path: route.path,
-    hash: route.hash,
-    query: {
-      ...route.query,
-      [probeQueryKey]: '1',
-    },
-  })
-  await nextTick()
-  const transitioned = route.fullPath
-  await router.replace(before)
-  await nextTick()
+  let transitioned: string | undefined
+  let transitionError: unknown | undefined
+  try {
+    await router.replace({
+      path: route.path,
+      hash: route.hash,
+      query: {
+        ...route.query,
+        [probeQueryKey]: '1',
+      },
+    })
+    await nextTick()
+    signal.throwIfAborted()
+    transitioned = route.fullPath
+  } catch (error) {
+    transitionError = error
+  }
+
+  let restoreError: unknown | undefined
+  try {
+    await router.replace(before)
+    await nextTick()
+  } catch (error) {
+    restoreError = error
+  }
+
+  if (transitionError !== undefined) throw transitionError
+  if (restoreError !== undefined) throw restoreError
+  if (transitioned === undefined) {
+    throw new Error('Standalone verification route transition produced no transitioned route.')
+  }
+
   return {
-    before,
-    transitioned,
-    restored: route.fullPath,
+    beforePath: before,
+    transitionedPath: transitioned,
+    restoredPath: route.fullPath,
   }
 }
 
-async function runVerification(): Promise<void> {
+async function debugRunVerification(): Promise<void> {
   if (
-    running.value
-    || tailwindProbe.value === undefined
-    || scopedProbe.value === undefined
-    || lazyStyleProbe.value === undefined
+    !isStandaloneBuild.value
+    ||
+    isRunning.value
+    || tailwindStyleProbeElement.value === undefined
+    || scopedStyleProbeElement.value === undefined
+    || lazyStyleProbeElement.value === undefined
   ) {
     return
   }
 
-  running.value = true
-  report.value = undefined
+  isRunning.value = true
+  verificationReport.value = undefined
   try {
+    lazyStyleInitialOutlineWidth.value ??= getComputedStyle(lazyStyleProbeElement.value).outlineWidth
     const resolved = router.resolve(route.fullPath)
-    report.value = await runStandaloneVerification({
+    verificationReport.value = await debugRunFileProtocolStandaloneVerification({
       route: {
         fullPath: route.fullPath,
         name: typeof route.name === 'string' ? route.name : undefined,
         matchedPaths: route.matched.map((record) => record.path),
         resolvedHref: resolved.href,
       },
-      tailwindProbe: tailwindProbe.value,
-      scopedProbe: scopedProbe.value,
-      lazyStyleProbe: lazyStyleProbe.value,
-      loadLazyStyleProbe,
-      exerciseRouteTransition,
-      runWorkerProbe: runStandaloneWorkerFactoryVerification,
+      tailwindStyleProbeElement: tailwindStyleProbeElement.value,
+      scopedStyleProbeElement: scopedStyleProbeElement.value,
+      lazyStyleProbeElement: lazyStyleProbeElement.value,
+      lazyStyleInitialOutlineWidth: lazyStyleInitialOutlineWidth.value,
+      debugLoadFileProtocolStandaloneLazyStyleProbeModule,
+      debugExerciseFileProtocolStandaloneRouteRoundTrip,
+      debugRunWorkerProbe: async ({ signal }) => {
+        signal.throwIfAborted()
+        const result = await debugVerifyFileProtocolStandaloneWorkerFactory()
+        signal.throwIfAborted()
+        return result
+      },
+      checkTimeoutMs: 60_000,
     })
   } catch (error) {
     addToast({
@@ -90,7 +124,7 @@ async function runVerification(): Promise<void> {
       duration: 8000,
     })
   } finally {
-    running.value = false
+    isRunning.value = false
   }
 }
 
@@ -110,8 +144,8 @@ function copyWithSelectionFallback({ text }: { text: string }): boolean {
   }
 }
 
-async function copyReportJson(): Promise<void> {
-  if (reportJson.value.length === 0) {
+async function copyVerificationReportJson(): Promise<void> {
+  if (verificationReportJson.value.length === 0) {
     return
   }
 
@@ -119,7 +153,7 @@ async function copyReportJson(): Promise<void> {
     let copied = false
     if (navigator.clipboard?.writeText !== undefined) {
       try {
-        await navigator.clipboard.writeText(reportJson.value)
+        await navigator.clipboard.writeText(verificationReportJson.value)
         copied = true
       } catch {
         // file:// clipboard permissions differ by browser. Fall back to an
@@ -127,7 +161,7 @@ async function copyReportJson(): Promise<void> {
       }
     }
     if (!copied) {
-      copied = copyWithSelectionFallback({ text: reportJson.value })
+      copied = copyWithSelectionFallback({ text: verificationReportJson.value })
     }
     if (!copied) {
       throw new Error('The browser rejected both clipboard methods.')
@@ -166,17 +200,17 @@ defineExpose({
           <button
             class="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
             data-testid="run-standalone-verification-button"
-            :disabled="running"
-            @click="runVerification"
+            :disabled="isRunning || !isStandaloneBuild"
+            @click="debugRunVerification"
           >
             <FlaskConicalIcon class="h-4 w-4" />
-            {{ running ? 'Running…' : 'Run standalone verification' }}
+            {{ isRunning ? 'Running…' : 'Run standalone verification' }}
           </button>
           <button
-            v-if="report"
+            v-if="verificationReport"
             class="inline-flex items-center gap-2 rounded-xl border border-cyan-300 bg-white px-4 py-2.5 text-xs font-bold text-cyan-900 shadow-sm transition hover:bg-cyan-50 dark:border-cyan-800 dark:bg-gray-950 dark:text-cyan-200"
             data-testid="copy-standalone-verification-json-button"
-            @click="copyReportJson"
+            @click="copyVerificationReportJson"
           >
             <ClipboardCheckIcon class="h-4 w-4" />
             Copy JSON
@@ -197,25 +231,25 @@ defineExpose({
       </p>
 
       <div class="sr-only" aria-hidden="true">
-        <div ref="tailwindProbe" class="h-[13px] w-[43px]" data-testid="standalone-tailwind-probe"></div>
-        <div ref="scopedProbe" class="standalone-verification-scoped-probe" data-testid="standalone-scoped-probe"></div>
-        <div ref="lazyStyleProbe" class="standalone-verification-lazy-style-probe" data-testid="standalone-lazy-style-probe"></div>
+        <div ref="tailwindStyleProbeElement" class="h-[13px] w-[43px]" data-testid="standalone-tailwind-probe"></div>
+        <div ref="scopedStyleProbeElement" class="standalone-verification-scoped-probe" data-testid="standalone-scoped-probe"></div>
+        <div ref="lazyStyleProbeElement" class="standalone-verification-lazy-style-probe" data-testid="standalone-lazy-style-probe"></div>
       </div>
 
-      <div v-if="report" class="space-y-3">
+      <div v-if="verificationReport" class="space-y-3">
         <p
           class="inline-flex rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide"
-          :class="report.status === 'pass'
+          :class="verificationReport.status === 'pass'
             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
             : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'"
           data-testid="standalone-verification-status"
         >
-          {{ report.status }} — {{ report.summary.passed }} passed / {{ report.summary.failed }} failed
+          {{ verificationReport.status }} — {{ verificationReport.summary.passed }} passed / {{ verificationReport.summary.failed }} failed
         </p>
         <pre
           class="max-h-[36rem] overflow-auto rounded-xl bg-gray-950 p-4 text-left text-[11px] leading-5 text-gray-100"
           data-testid="standalone-verification-json"
-        >{{ reportJson }}</pre>
+        >{{ verificationReportJson }}</pre>
       </div>
     </section>
   </main>
