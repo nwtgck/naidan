@@ -4,14 +4,14 @@ import { createRequire } from 'node:module'
 import type { Plugin, ResolvedConfig } from 'vite'
 import type { OutputAsset, OutputChunk } from 'rolldown'
 
-import { assertFileProtocolStandaloneClassicScript } from './file-protocol-standalone/javascript-validation'
+import { assertFileProtocolStandaloneClassicScript } from './javascript-validation'
 import {
   assertMatchingSystemJsSourceMap,
   assertSupportedSystemJsRuntime,
   createSystemJsFileScriptLoaderPatchSource,
   createSystemJsPhysicalLoadRecoverySource,
   readSystemJsLicenseDependency,
-} from './file-protocol-standalone/systemjs'
+} from './systemjs'
 import {
   assertValidFileProtocolStandaloneWorkerId,
   buildFileProtocolStandaloneWorkerArtifact,
@@ -20,36 +20,36 @@ import {
   deduplicateLicenseDependencies,
   resolvedVirtualWorkerPrefix,
   virtualWorkerPrefix,
-} from './file-protocol-standalone/worker'
-import type { BuiltFileProtocolStandaloneWorkerArtifact } from './file-protocol-standalone/worker'
+} from './worker'
+import type { BuiltFileProtocolStandaloneWorkerArtifact } from './worker'
 import {
   assertValidFileProtocolStandaloneHtml,
   replaceLegacyBootstrapWithFileProtocolStandaloneScripts,
-} from './file-protocol-standalone/html-output'
+} from './html-output'
 import {
   collectFileProtocolStandaloneBuildBudgetFailures,
   createFileProtocolStandaloneBuildMetricsPlan,
   measureFileProtocolStandaloneBuildMetrics,
-} from './file-protocol-standalone/build-metrics'
-import type { FileProtocolStandaloneBuildMetricsPlan } from './file-protocol-standalone/types'
+} from './build-metrics'
+import type { FileProtocolStandaloneBuildMetricsPlan } from './types'
 import {
   debugCreateFileProtocolStandaloneBuildReport,
   debugRefreshFileProtocolStandaloneBuildReportFromDisk,
-} from './file-protocol-standalone/debug-build-report'
-import type { DebugFileProtocolStandaloneBuildReport } from './file-protocol-standalone/debug-build-report'
+} from './debug-build-report'
+import type { DebugFileProtocolStandaloneBuildReport } from './debug-build-report'
 import {
   assertNonNegativeFileProtocolStandaloneBudget,
   assertSupportedFileProtocolStandaloneConfig,
   assertValidFileProtocolStandaloneWorkerTarget,
-} from './file-protocol-standalone/configuration'
-import type { FileProtocolStandaloneOptions } from './file-protocol-standalone/types'
+} from './configuration'
+import type { FileProtocolStandaloneOptions } from './types'
 
 export type {
   FileProtocolStandaloneBudgets,
   FileProtocolStandaloneLicenseDependency,
   FileProtocolStandaloneOptions,
   FileProtocolStandaloneWorker,
-} from './file-protocol-standalone/types'
+} from './types'
 
 const pluginName = 'file-protocol-standalone'
 const require = createRequire(import.meta.url)
@@ -113,6 +113,7 @@ export function fileProtocolStandalone({
   let finalizedWorkers: readonly BuiltFileProtocolStandaloneWorkerArtifact[] = []
   let buildMetricsPlan: FileProtocolStandaloneBuildMetricsPlan | undefined
   let debugBuildReport: DebugFileProtocolStandaloneBuildReport | undefined
+  let debugBuildReportWritten = false
   let runtimeReferenceId = ''
   let sourceMapReferenceId = ''
   let patchReferenceId = ''
@@ -147,10 +148,20 @@ export function fileProtocolStandalone({
       return undefined
     },
     async buildStart() {
+      debugBuildReport = undefined
+      debugBuildReportWritten = false
+      buildMetricsPlan = undefined
       if (resolvedConfig === undefined) {
         throw new Error(`[${pluginName}] Vite config was not resolved.`)
       }
       const config = resolvedConfig
+      if (debugBuildReportFile !== undefined) {
+        try {
+          await fs.promises.rm(path.resolve(config.root, debugBuildReportFile), { force: true })
+        } catch (error) {
+          this.warn(`[${pluginName}] Stale Debug build report cleanup failed: ${readErrorMessage({ error })}`)
+        }
+      }
       workerBuilds = await Promise.all(workers.map((worker) => buildFileProtocolStandaloneWorkerArtifact({
         root: config.root,
         resolvedConfig: config,
@@ -305,12 +316,13 @@ export function fileProtocolStandalone({
           const reportPath = path.resolve(resolvedConfig.root, debugBuildReportFile)
           await fs.promises.mkdir(path.dirname(reportPath), { recursive: true })
           await fs.promises.writeFile(reportPath, `${JSON.stringify(debugBuildReport, undefined, 2)}\n`)
+          debugBuildReportWritten = true
         } catch (error) {
           this.warn(`[${pluginName}] Debug build report write failed: ${readErrorMessage({ error })}`)
         }
       }
       if (failures.length > 0) {
-        const reportHint = debugBuildReportFile === undefined ? '' : ` See ${debugBuildReportFile}.`
+        const reportHint = debugBuildReportWritten ? ` See ${debugBuildReportFile}.` : ''
         throw new Error(`[${pluginName}] Build budget exceeded: ${failures.join('; ')}.${reportHint}`)
       }
     },

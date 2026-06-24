@@ -7,10 +7,9 @@ import { useSettings } from './composables/useSettings'
 import { useChatBootstrap } from './composables/chat/ui/useChatBootstrap'
 import { scheduleFileProtocolStandaloneWorkerHubWarmup } from './services/worker-hub-standalone-loader'
 import { scheduleAppStartup } from './services/app-startup'
+import { reportAppStartupFailure } from './services/app-startup-failure'
 import {
-  debugInstallVueErrorHandler,
   debugRecordFileProtocolStandaloneStartupCheckpoint,
-  debugReportFileProtocolStandaloneAppStartupFailure,
 } from './services/debug-file-protocol-standalone/startup'
 
 const router = createRouter({
@@ -19,7 +18,13 @@ const router = createRouter({
 })
 
 const app = createApp(App)
-debugInstallVueErrorHandler({ app })
+// Keep this assignment visible: it reports unhandled Vue rendering and
+// lifecycle errors in both hosted and standalone builds.
+app.config.errorHandler = (error, instance, info) => {
+  console.error('Vue Error:', error)
+  console.error('Vue Instance:', instance)
+  console.error('Error Info:', info)
+}
 
 app.use(router)
 
@@ -110,6 +115,6 @@ scheduleAppStartup({
     })
   },
   onFailure: ({ error }) => {
-    debugReportFileProtocolStandaloneAppStartupFailure({ document, error })
+    reportAppStartupFailure({ document, error })
   },
 })

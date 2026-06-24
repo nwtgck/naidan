@@ -5,9 +5,8 @@ import type {
   FileProtocolStandaloneInternalState,
 } from './runtime-state'
 import {
-  debugInstallVueErrorHandler,
   debugRecordFileProtocolStandaloneStartupCheckpoint,
-  debugReportFileProtocolStandaloneAppStartupFailure,
+  debugRecordFileProtocolStandaloneAppStartupFailure,
 } from './startup'
 
 type MutableNamespace = {
@@ -68,28 +67,6 @@ describe('file-protocol standalone startup Debug state', () => {
     vi.restoreAllMocks()
   })
 
-
-  it('fails open when installing the Debug Vue error handler is rejected', () => {
-    const app = {
-      config: {},
-    }
-    Object.defineProperty(app.config, 'errorHandler', {
-      configurable: true,
-      set() {
-        throw new Error('read-only error handler')
-      },
-    })
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    expect(() => {
-      debugInstallVueErrorHandler({ app: app as never })
-    }).not.toThrow()
-    expect(warn).toHaveBeenCalledWith(
-      '[naidan] Failed to install the Debug Vue error handler:',
-      expect.objectContaining({ message: 'read-only error handler' }),
-    )
-  })
-
   it('records Naidan app checkpoints in the loader-created Debug timeline', () => {
     debugRecordFileProtocolStandaloneStartupCheckpoint({
       checkpoint: 'waiting-router',
@@ -110,12 +87,13 @@ describe('file-protocol standalone startup Debug state', () => {
     })
   })
 
-  it('renders a pre-Vue failure panel and keeps a serializable error in Debug state', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    debugReportFileProtocolStandaloneAppStartupFailure({
-      document,
-      error: new TypeError('bootstrap exploded'),
+  it('records a serialized application bootstrap failure in Debug state', () => {
+    debugRecordFileProtocolStandaloneAppStartupFailure({
+      error: {
+        name: 'TypeError',
+        message: 'bootstrap exploded',
+        stack: undefined,
+      },
     })
 
     const namespace = globalThis.__FILE_PROTOCOL_STANDALONE__ as unknown as MutableNamespace
@@ -126,10 +104,6 @@ describe('file-protocol standalone startup Debug state', () => {
         message: 'bootstrap exploded',
       },
     })
-    expect(document.querySelectorAll('[data-testid="file-protocol-standalone-startup-failure"]')).toHaveLength(1)
-    expect(document.querySelector('#app')?.textContent).toContain('Naidan failed to start.')
-    expect(document.querySelector('#app')?.textContent).toContain('__FILE_PROTOCOL_STANDALONE__')
-    expect(document.querySelector('#app')?.textContent).toContain('getDiagnostics()')
   })
 
   it('fails open when the Debug namespace is unavailable', () => {

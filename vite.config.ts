@@ -17,7 +17,7 @@ import { createStandaloneFacadeAliases } from './build/standalone-facades.js'
 import {
   fileProtocolStandalone,
   type FileProtocolStandaloneLicenseDependency,
-} from './build/file-protocol-standalone.js'
+} from './build/file-protocol-standalone/index.js'
 import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/models/constants'
 import license from 'rollup-plugin-license'
 import { viteStaticCopy } from 'vite-plugin-static-copy'

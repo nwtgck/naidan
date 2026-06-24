@@ -7,6 +7,7 @@ import type {
   FileProtocolStandaloneInternalState,
 } from '@/services/debug-file-protocol-standalone/runtime-state'
 import {
+  DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
   debugRunFileProtocolStandaloneVerification,
   debugSerializeFileProtocolStandaloneVerificationReportForCopy,
 } from './report'
@@ -185,10 +186,10 @@ function createBaseArguments() {
   const probes = createStyleProbes()
   return {
     route: {
-      fullPath: '/standalone-verification',
-      name: '/standalone-verification',
-      matchedPaths: ['/standalone-verification'],
-      resolvedHref: '#/standalone-verification',
+      fullPath: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
+      name: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
+      matchedPaths: [DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH],
+      resolvedHref: '#/debug/standalone',
     },
     ...probes,
     lazyStyleInitialOutlineWidth: '',
@@ -201,9 +202,9 @@ function createBaseArguments() {
     debugExerciseFileProtocolStandaloneRouteRoundTrip: async ({ signal }: { signal: AbortSignal }) => {
       signal.throwIfAborted()
       return {
-        beforePath: '/standalone-verification',
-        transitionedPath: '/standalone-verification?__standalone-verification-route-probe=1',
-        restoredPath: '/standalone-verification',
+        beforePath: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
+        transitionedPath: '/debug/standalone?__standalone-verification-route-probe=1',
+        restoredPath: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
       }
     },
     debugRunWorkerProbe: async ({ signal }: { signal: AbortSignal }) => {
@@ -220,7 +221,7 @@ beforeEach(() => {
   document.body.style.margin = '0px'
   vi.stubGlobal('location', {
     protocol: 'file:',
-    href: 'file:///__nonexistent_file_protocol_test_root__/index.html#/standalone-verification',
+    href: 'file:///__nonexistent_file_protocol_test_root__/index.html#/debug/standalone',
     origin: 'null',
   })
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
@@ -283,7 +284,7 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
     ])
     expect(debugRunWorkerProbe).toHaveBeenCalledOnce()
     expect(report.environment).toMatchObject({
-      href: 'file:///__nonexistent_file_protocol_test_root__/index.html#/standalone-verification',
+      href: 'file:///__nonexistent_file_protocol_test_root__/index.html#/debug/standalone',
       protocol: 'file:',
       origin: 'null',
       performanceMemory: {

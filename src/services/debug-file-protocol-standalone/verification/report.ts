@@ -1,6 +1,8 @@
 import { FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS } from '@/file-protocol-standalone-protocol'
 import type { DebugFileProtocolStandaloneWorkerVerificationResult } from './worker-probe'
 
+export const DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH = '/debug/standalone'
+
 export type DebugFileProtocolStandaloneVerificationStatus = 'pass' | 'fail'
 
 export type DebugFileProtocolStandaloneVerificationCheck = Readonly<{
@@ -480,9 +482,9 @@ export async function debugRunFileProtocolStandaloneVerification({
     id: 'router.current-route',
     category: 'router',
     action: () => {
-      assertCondition({ condition: route.fullPath.startsWith('/standalone-verification'), message: `Current route is invalid: ${route.fullPath}` })
+      assertCondition({ condition: route.fullPath.startsWith(DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH), message: `Current route is invalid: ${route.fullPath}` })
       assertCondition({ condition: route.resolvedHref.length > 0, message: 'Router did not resolve the current route.' })
-      assertCondition({ condition: route.matchedPaths.includes('/standalone-verification'), message: 'Verification route is not matched.' })
+      assertCondition({ condition: route.matchedPaths.includes(DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH), message: 'Verification route is not matched.' })
       return route
     },
   })

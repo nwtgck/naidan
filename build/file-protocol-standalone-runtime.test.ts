@@ -1,6 +1,6 @@
 import { JSDOM } from 'jsdom'
 import { describe, expect, it } from 'vitest'
-import { fileProtocolStandalone } from './file-protocol-standalone'
+import { fileProtocolStandalone } from './file-protocol-standalone/index'
 
 type WorkerDiagnostics = Readonly<{
   registryScriptLoads: number

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { JSDOM } from 'jsdom'
 
-import type { FileProtocolStandaloneLicenseDependency } from '../file-protocol-standalone'
+import type { FileProtocolStandaloneLicenseDependency } from './types'
 import {
   DEBUG_FILE_PROTOCOL_STANDALONE_DIAGNOSTICS_FORMAT,
   DEBUG_FILE_PROTOCOL_STANDALONE_STARTUP_FORMAT,

@@ -24,8 +24,11 @@ vi.mock('@/services/debug-file-protocol-standalone/verification/worker-probe', (
   debugVerifyFileProtocolStandaloneWorkerFactory: mocks.debugVerifyFileProtocolStandaloneWorkerFactory,
 }))
 
-import type { DebugFileProtocolStandaloneVerificationReport } from '@/services/debug-file-protocol-standalone/verification/report'
-import StandaloneVerificationPage from './standalone-verification.vue'
+import {
+  DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
+  type DebugFileProtocolStandaloneVerificationReport,
+} from '@/services/debug-file-protocol-standalone/verification/report'
+import StandaloneVerificationPage from './standalone.vue'
 
 function createDebugVerificationReport({
   passed = 12,
@@ -44,7 +47,7 @@ function createDebugVerificationReport({
       durationMs: 12,
     },
     environment: {
-      href: 'file:///__nonexistent_file_protocol_test_root__/index.html#/standalone-verification',
+      href: `file:///__nonexistent_file_protocol_test_root__/index.html#${DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH}`,
       protocol: 'file:',
       origin: 'null',
       userAgent: 'test-agent',
@@ -77,12 +80,12 @@ async function mountPage() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{
-      path: '/standalone-verification',
-      name: '/standalone-verification',
+      path: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
+      name: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
       component: StandaloneVerificationPage,
     }],
   })
-  await router.push('/standalone-verification')
+  await router.push(DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH)
   await router.isReady()
 
   return {
@@ -104,6 +107,8 @@ describe('standalone verification page', () => {
       value: undefined,
     })
     Reflect.deleteProperty(document, 'execCommand')
+    document.documentElement.removeAttribute('data-debug-file-protocol-standalone-lazy-style-initial-outline-width')
+    document.querySelectorAll('[data-testid="standalone-lazy-style-test-style"]').forEach((element) => element.remove())
   })
 
   afterEach(() => {
@@ -141,10 +146,10 @@ describe('standalone verification page', () => {
       debugRunWorkerProbe: ({ signal }: { signal: AbortSignal }) => Promise<unknown>
     }
     expect(call.route).toMatchObject({
-      fullPath: '/standalone-verification',
-      name: '/standalone-verification',
-      matchedPaths: ['/standalone-verification'],
-      resolvedHref: '/standalone-verification',
+      fullPath: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
+      name: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
+      matchedPaths: [DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH],
+      resolvedHref: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
     })
     expect(call.tailwindStyleProbeElement.dataset.testid).toBe('standalone-tailwind-probe')
     expect(call.scopedStyleProbeElement.dataset.testid).toBe('standalone-scoped-probe')
@@ -156,9 +161,9 @@ describe('standalone verification page', () => {
       marker: 'standalone-verification-lazy-style-probe-v1',
     })
     await expect(call.debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal: new AbortController().signal })).resolves.toEqual({
-      beforePath: '/standalone-verification',
-      transitionedPath: '/standalone-verification?__standalone-verification-route-probe=1',
-      restoredPath: '/standalone-verification',
+      beforePath: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
+      transitionedPath: '/debug/standalone?__standalone-verification-route-probe=1',
+      restoredPath: DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
     })
     expect(wrapper.get('[data-testid="standalone-verification-status"]').text()).toContain('12 passed')
   })
@@ -236,6 +241,31 @@ describe('standalone verification page', () => {
     expect(wrapper.get('[data-testid="standalone-verification-status"]').text()).toContain('10 passed / 2 failed')
   })
 
+  it('preserves the first lazy-style observation across route remounts', async () => {
+    const first = await mountPage()
+    await first.wrapper.get('[data-testid="run-standalone-verification-button"]').trigger('click')
+    await flushPromises()
+    const firstInitialOutlineWidth = mocks.debugRunFileProtocolStandaloneVerification.mock.calls[0]?.[0]
+      .lazyStyleInitialOutlineWidth as string
+    expect(firstInitialOutlineWidth).not.toBe('3px')
+    first.wrapper.unmount()
+
+    const style = document.createElement('style')
+    style.dataset.testid = 'standalone-lazy-style-test-style'
+    style.textContent = '.standalone-verification-lazy-style-probe { outline-width: 3px; outline-style: solid; }'
+    document.head.appendChild(style)
+
+    const second = await mountPage()
+    await second.wrapper.get('[data-testid="run-standalone-verification-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.debugRunFileProtocolStandaloneVerification).toHaveBeenCalledTimes(2)
+    expect(mocks.debugRunFileProtocolStandaloneVerification.mock.calls[1]?.[0]).toHaveProperty(
+      'lazyStyleInitialOutlineWidth',
+      firstInitialOutlineWidth,
+    )
+  })
+
   it('attempts to restore the original route when the probe transition fails', async () => {
     const { router, wrapper } = await mountPage()
     const replace = vi.spyOn(router, 'replace')
@@ -250,7 +280,7 @@ describe('standalone verification page', () => {
 
     await expect(call.debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal: new AbortController().signal })).rejects.toThrow('synthetic transition failure')
     expect(replace).toHaveBeenCalledTimes(2)
-    expect(replace).toHaveBeenNthCalledWith(2, '/standalone-verification')
+    expect(replace).toHaveBeenNthCalledWith(2, DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH)
   })
 
   it('copies report JSON through the Clipboard API when available', async () => {

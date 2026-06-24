@@ -52,6 +52,13 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/debug/standalone': RouteRecordInfo<
+      '/debug/standalone',
+      '/debug/standalone',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/settings/': RouteRecordInfo<
       '/settings/',
       '/settings',
@@ -64,13 +71,6 @@ declare module 'vue-router/auto-routes' {
       '/settings/:tab',
       { tab: ParamValue<true> },
       { tab: ParamValue<false> },
-      | never
-    >,
-    '/standalone-verification': RouteRecordInfo<
-      '/standalone-verification',
-      '/standalone-verification',
-      Record<never, never>,
-      Record<never, never>,
       | never
     >,
   }
@@ -110,6 +110,14 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | 'id'
     }
+    'src/pages/debug/standalone.vue': {
+      routes:
+        | '/debug/standalone'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/settings/index.vue': {
       routes:
         | '/settings/'
@@ -125,14 +133,6 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'tab'
-    }
-    'src/pages/standalone-verification.vue': {
-      routes:
-        | '/standalone-verification'
-      views:
-        | never
-      pathParamNames:
-        | never
     }
   }
 

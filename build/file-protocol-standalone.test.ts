@@ -11,7 +11,7 @@ import {
   fileProtocolStandalone,
   type FileProtocolStandaloneLicenseDependency,
   type FileProtocolStandaloneOptions,
-} from './file-protocol-standalone'
+} from './file-protocol-standalone/index'
 import {
   assertFileProtocolStandaloneClassicScript,
   debugSanitizeFileProtocolStandaloneModuleId,
@@ -555,6 +555,28 @@ self.onmessage = () => self.postMessage('ok')
     await expect(buildFixture({ root, budgets: undefined })).rejects.toThrow('must produce exactly one JavaScript chunk and no assets')
   })
 
+  it('removes a stale Debug report before a build that fails early', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'src/worker-hub.worker.ts': `\
+import './worker.css'
+self.onmessage = () => self.postMessage('ok')
+`,
+        'src/worker.css': `\
+.worker { color: red; }
+`,
+      },
+    })
+    const reportPath = path.join(root, 'dist/debug-file-protocol-standalone-build-report.json')
+    await fs.mkdir(path.dirname(reportPath), { recursive: true })
+    await fs.writeFile(reportPath, '{"stale":true}\n')
+
+    await expect(buildFixture({ root, budgets: undefined }))
+      .rejects.toThrow('must produce exactly one JavaScript chunk and no assets')
+    await expect(fs.access(reportPath)).rejects.toThrow()
+  })
+
   it('writes the report before failing an exceeded startup budget', async () => {
     const root = await createFixture({ files: basicFixtureFiles() })
 
@@ -609,6 +631,38 @@ self.onmessage = () => self.postMessage('ok')
 
     expect(warnings.some((warning) => warning.includes('Debug build report write failed'))).toBe(true)
     expect(await fs.readFile(path.join(root, 'dist/standalone/index.html'), 'utf8')).toContain('file-protocol-standalone-entry')
+  })
+
+  it('does not point to a Debug report that could not be written', async () => {
+    const root = await createFixture({
+      files: {
+        ...basicFixtureFiles(),
+        'debug-report-parent': 'not a directory',
+      },
+    })
+    const warnings: string[] = []
+    const logger = createLogger('silent')
+    logger.warn = (message) => warnings.push(message)
+
+    let buildError: unknown
+    try {
+      await buildBasicFixtureWithPluginOptions({
+        root,
+        debugBuildReportFile: 'debug-report-parent/report.json',
+        budgets: {
+          maxInitialEntryBytes: 1,
+          maxInitialRequestBytes: 1,
+        },
+        customLogger: logger,
+      })
+    } catch (error) {
+      buildError = error
+    }
+
+    expect(warnings.some((warning) => warning.includes('Debug build report write failed'))).toBe(true)
+    expect(buildError).toBeInstanceOf(Error)
+    expect((buildError as Error).message).toContain('Build budget exceeded')
+    expect((buildError as Error).message).not.toContain('See debug-report-parent/report.json')
   })
 
   it('supports standalone output with no configured workers', async () => {

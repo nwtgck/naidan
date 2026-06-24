@@ -7,7 +7,6 @@ import { CpuIcon, FlaskConicalIcon, AlertTriangleIcon, Trash2Icon, RefreshCwIcon
 import FeatureFlagsSettings from './FeatureFlagsSettings.vue';
 import DeveloperOpenStateLinks from './DeveloperOpenStateLinks.vue';
 
-
 defineProps<{
   storageType: string;
 }>();
@@ -103,7 +102,6 @@ defineExpose({
         </div>
 
         <DeveloperOpenStateLinks />
-
 
         <div class="space-y-2">
           <button

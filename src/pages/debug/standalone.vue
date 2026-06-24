@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ClipboardCheckIcon, FlaskConicalIcon } from 'lucide-vue-next'
 import { useToast } from '@/composables/useToast'
 import {
+  DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
   debugRunFileProtocolStandaloneVerification,
   debugSerializeFileProtocolStandaloneVerificationReportForCopy,
   type DebugFileProtocolStandaloneVerificationReport,
@@ -20,11 +21,22 @@ const verificationReport = ref<DebugFileProtocolStandaloneVerificationReport>()
 const tailwindStyleProbeElement = ref<HTMLElement>()
 const scopedStyleProbeElement = ref<HTMLElement>()
 const lazyStyleProbeElement = ref<HTMLElement>()
-const lazyStyleInitialOutlineWidth = ref<string>()
 
 const verificationReportJson = computed(() => verificationReport.value === undefined
   ? ''
   : debugSerializeFileProtocolStandaloneVerificationReportForCopy({ report: verificationReport.value }))
+
+const lazyStyleInitialOutlineWidthAttribute = 'data-debug-file-protocol-standalone-lazy-style-initial-outline-width'
+
+function debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialOutlineWidth({ element }: { element: HTMLElement }): string {
+  const root = document.documentElement
+  const existing = root.getAttribute(lazyStyleInitialOutlineWidthAttribute)
+  if (existing !== null) return existing
+
+  const measured = getComputedStyle(element).outlineWidth
+  root.setAttribute(lazyStyleInitialOutlineWidthAttribute, measured)
+  return measured
+}
 
 async function debugLoadFileProtocolStandaloneLazyStyleProbeModule({ signal }: { signal: AbortSignal }): Promise<Readonly<{ marker: string }>> {
   signal.throwIfAborted()
@@ -39,6 +51,9 @@ async function debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal }: { s
   restoredPath: string
 }>> {
   signal.throwIfAborted()
+  if (!route.fullPath.startsWith(DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH)) {
+    throw new Error(`Unexpected standalone debug route: ${route.fullPath}`)
+  }
   const before = route.fullPath
   const probeQueryKey = '__standalone-verification-route-probe'
   let transitioned: string | undefined
@@ -95,7 +110,9 @@ async function debugRunVerification(): Promise<void> {
   isRunning.value = true
   verificationReport.value = undefined
   try {
-    lazyStyleInitialOutlineWidth.value ??= getComputedStyle(lazyStyleProbeElement.value).outlineWidth
+    const lazyStyleInitialOutlineWidth = debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialOutlineWidth({
+      element: lazyStyleProbeElement.value,
+    })
     const resolved = router.resolve(route.fullPath)
     verificationReport.value = await debugRunFileProtocolStandaloneVerification({
       route: {
@@ -107,7 +124,7 @@ async function debugRunVerification(): Promise<void> {
       tailwindStyleProbeElement: tailwindStyleProbeElement.value,
       scopedStyleProbeElement: scopedStyleProbeElement.value,
       lazyStyleProbeElement: lazyStyleProbeElement.value,
-      lazyStyleInitialOutlineWidth: lazyStyleInitialOutlineWidth.value,
+      lazyStyleInitialOutlineWidth,
       debugLoadFileProtocolStandaloneLazyStyleProbeModule,
       debugExerciseFileProtocolStandaloneRouteRoundTrip,
       debugRunWorkerProbe: async ({ signal }) => {
