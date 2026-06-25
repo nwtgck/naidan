@@ -6,9 +6,9 @@ export function useFileExplorerDragDrop({
   currentDirectoryPath,
   isReadOnly,
 }: {
-  moveEntries: ({ entries, targetPath }: { entries: FileExplorerEntry[]; targetPath: string }) => Promise<void>;
-  currentDirectoryPath: { readonly value: string };
-  isReadOnly: () => boolean;
+  moveEntries: ({ entries, targetPath }: { entries: FileExplorerEntry[], targetPath: string }) => Promise<void>,
+  currentDirectoryPath: { readonly value: string },
+  isReadOnly: () => boolean,
 }) {
   const dragState = ref<DragState>({ status: 'idle' });
 
@@ -20,8 +20,8 @@ export function useFileExplorerDragDrop({
     event,
     entries,
   }: {
-    event: DragEvent;
-    entries: FileExplorerEntry[];
+    event: DragEvent,
+    entries: FileExplorerEntry[],
   }): void {
     if (isReadOnly()) return;
     if (!event.dataTransfer) return;
@@ -39,8 +39,8 @@ export function useFileExplorerDragDrop({
     event,
     entry,
   }: {
-    event: DragEvent;
-    entry: FileExplorerEntry;
+    event: DragEvent,
+    entry: FileExplorerEntry,
   }): void {
     switch (dragState.value.status) {
     case 'dragging':

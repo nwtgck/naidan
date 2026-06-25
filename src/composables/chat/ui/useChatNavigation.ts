@@ -14,25 +14,25 @@ export type ChatNavigationAdapter = {
     chatId,
     leafId,
   }: {
-    chatId: ChatId;
-    leafId?: MessageId;
-  }): Promise<import('@/models/types').Chat | null>;
+    chatId: ChatId,
+    leafId?: MessageId,
+  }): Promise<import('@/models/types').Chat | null>,
 
   openChatAtMessage({
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-  }): Promise<import('@/models/types').Chat | null>;
+    chatId: ChatId,
+    messageId: MessageId,
+  }): Promise<import('@/models/types').Chat | null>,
 
   openChatGroup({
     groupId,
   }: {
-    groupId: ChatGroupId | null;
-  }): void;
+    groupId: ChatGroupId | null,
+  }): void,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatNavigation(): ChatNavigationAdapter {
@@ -48,8 +48,8 @@ export function useChatNavigation(): ChatNavigationAdapter {
     chatId,
     leafId,
   }: {
-    chatId: ChatId;
-    leafId?: MessageId;
+    chatId: ChatId,
+    leafId?: MessageId,
   }) {
     setCurrentChatId({ chatId });
     const chat = await chatDataStore.openChat({ id: chatId, leafId });
@@ -68,8 +68,8 @@ export function useChatNavigation(): ChatNavigationAdapter {
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
+    chatId: ChatId,
+    messageId: MessageId,
   }) {
     setCurrentChatId({ chatId });
     const chat = await chatDataStore.openChatAtMessage({ chatId, messageId });
@@ -87,7 +87,7 @@ export function useChatNavigation(): ChatNavigationAdapter {
   function openChatGroup({
     groupId,
   }: {
-    groupId: ChatGroupId | null;
+    groupId: ChatGroupId | null,
   }) {
     chatDataStore.openChatGroup({ id: groupId });
   }

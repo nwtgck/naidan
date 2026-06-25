@@ -24,9 +24,9 @@ const mockSettings = ref({
   providerProfiles: [],
   mounts: [],
   experimental: undefined as {
-    fakeLm?: 'disabled' | 'enabled';
-    toolConfigPersistence?: 'disabled' | 'enabled';
-    sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat';
+    fakeLm?: 'disabled' | 'enabled',
+    toolConfigPersistence?: 'disabled' | 'enabled',
+    sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat',
   } | undefined,
 });
 

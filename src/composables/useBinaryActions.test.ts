@@ -22,7 +22,7 @@ const mockClosePreview = vi.fn();
 vi.mock('./useImagePreview', () => ({
   useImagePreview: vi.fn(() => ({
     closePreview: mockClosePreview,
-    state: { value: null }
+    state: { value: null },
   })),
 }));
 
@@ -40,7 +40,7 @@ describe('useBinaryActions', () => {
   it('deletes object after confirmation', async () => {
     const { deleteBinaryObject } = useBinaryActions();
     vi.mocked(storageService.getBinaryObject).mockResolvedValue({
-      id: toBinaryObjectId({ raw: 'bin-1' }), name: 'test.png', mimeType: 'image/png', size: 100, createdAt: 1000
+      id: toBinaryObjectId({ raw: 'bin-1' }), name: 'test.png', mimeType: 'image/png', size: 100, createdAt: 1000,
     });
     mockShowConfirm.mockResolvedValue(true);
 

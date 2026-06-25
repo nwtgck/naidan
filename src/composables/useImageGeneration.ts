@@ -14,7 +14,7 @@ import {
   IMAGE_BLOCK_LANG,
   getDisplayDimensions,
   type GeneratedImageBlock,
-  type ImageRequestParams
+  type ImageRequestParams,
 } from '@/utils/image-generation';
 import { reencodeImage } from '@/utils/image-processing';
 import { naturalSort, sanitizeFilename } from '@/utils/string';
@@ -48,7 +48,7 @@ export function useImageGeneration() {
   const updateResolution = ({ chatId, width, height }: {
     chatId: ChatId,
     width: number,
-    height: number
+    height: number,
   }) => {
     imageResolutionMap.value.set(chatId, { width, height });
   };
@@ -59,7 +59,7 @@ export function useImageGeneration() {
 
   const updateCount = ({ chatId, count }: {
     chatId: ChatId,
-    count: number
+    count: number,
   }) => {
     imageCountMap.value.set(chatId, count);
   };
@@ -70,7 +70,7 @@ export function useImageGeneration() {
 
   const updateSteps = ({ chatId, steps }: {
     chatId: ChatId,
-    steps: number | undefined
+    steps: number | undefined,
   }) => {
     imageStepsMap.value.set(chatId, steps);
   };
@@ -85,7 +85,7 @@ export function useImageGeneration() {
 
   const updateSeed = ({ chatId, seed }: {
     chatId: ChatId,
-    seed: number | 'browser_random' | undefined
+    seed: number | 'browser_random' | undefined,
   }) => {
     imageSeedMap.value.set(chatId, seed);
   };
@@ -96,14 +96,14 @@ export function useImageGeneration() {
 
   const updatePersistAs = ({ chatId, format }: {
     chatId: ChatId,
-    format: ImageRequestParams['persistAs']
+    format: ImageRequestParams['persistAs'],
   }) => {
     imagePersistAsMap.value.set(chatId, format);
   };
 
   const setImageModel = ({ chatId, modelId }: {
     chatId: ChatId,
-    modelId: string | undefined
+    modelId: string | undefined,
   }) => {
     if (modelId === undefined) {
       imageModelOverrideMap.value.delete(chatId);
@@ -114,7 +114,7 @@ export function useImageGeneration() {
 
   const getSelectedImageModel = ({ chatId, availableModels }: {
     chatId: ChatId,
-    availableModels: string[]
+    availableModels: string[],
   }) => {
     const allImageModels = getImageGenerationModels({ models: availableModels });
     const overridden = imageModelOverrideMap.value.get(chatId);
@@ -125,7 +125,7 @@ export function useImageGeneration() {
   };
 
   const getSortedImageModels = ({ availableModels }: {
-    availableModels: string[]
+    availableModels: string[],
   }) => {
     return naturalSort({ values: getImageGenerationModels({ models: availableModels }) });
   };
@@ -141,7 +141,7 @@ export function useImageGeneration() {
     endpointUrl: string,
     endpointHttpHeaders: [string, string][] | undefined,
     onProgress: ({ currentStep, totalSteps }: { currentStep: number, totalSteps: number }) => void,
-    signal: AbortSignal | undefined
+    signal: AbortSignal | undefined,
   }): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> => {
     const provider = new OllamaProvider({
       endpoint: endpointUrl,
@@ -161,7 +161,7 @@ export function useImageGeneration() {
       seed,
       images,
       onProgress,
-      signal
+      signal,
     });
   };
 
@@ -186,7 +186,7 @@ export function useImageGeneration() {
     updateChatContent,
     triggerChatRef,
     incTask,
-    decTask
+    decTask,
   }: {
     chatId: ChatId,
     assistantId: MessageId,
@@ -209,7 +209,7 @@ export function useImageGeneration() {
     updateChatContent: ({ chatId, updater }: { chatId: ChatId, updater: ({ current }: { current: ChatContent }) => ChatContent }) => Promise<void>,
     triggerChatRef: ({ chatId }: { chatId: ChatId }) => void,
     incTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void,
-    decTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void
+    decTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void,
   }) => {
     const target = getLiveChat({ chat: { id: chatId } as Chat });
     if (!target) return;
@@ -254,7 +254,7 @@ export function useImageGeneration() {
       await updateChatContent({
         chatId: mutableChat.id,
 
-        updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
+        updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
       });
 
       const blocks: GeneratedImageBlock[] = [];
@@ -286,7 +286,7 @@ export function useImageGeneration() {
           onProgress: ({ currentStep, totalSteps }) => {
             imageProgressMap.value.set(chatId, { currentStep, totalSteps });
           },
-          signal
+          signal,
         });
         if (!blob) throw new Error('Failed to generate image');
 
@@ -303,7 +303,7 @@ export function useImageGeneration() {
             addErrorEvent({
               source: 'useImageGeneration:handleImageGeneration',
               message: `Failed to re-encode image to ${persistAs}, falling back to original`,
-              details: e instanceof Error ? e : String(e)
+              details: e instanceof Error ? e : String(e),
             });
           }
         }
@@ -315,7 +315,7 @@ export function useImageGeneration() {
           const fileName = sanitizeFilename({
             base: prompt,
             suffix: extension,
-            fallback: `generated-${Date.now()}-${i}`
+            fallback: `generated-${Date.now()}-${i}`,
           });
           await storageService.saveFile({ blob: finalBlob, binaryObjectId, name: fileName });
 
@@ -329,7 +329,7 @@ export function useImageGeneration() {
             height,
             prompt, // Use original prompt without (seed: ...)
             steps: totalSteps === UNKNOWN_STEPS ? undefined : totalSteps,
-            seed: activeSeed
+            seed: activeSeed,
           });
 
           const blocksContent = blocks.map(b => `\`\`\`${IMAGE_BLOCK_LANG}\n${JSON.stringify(b, null, 2)}\n\`\`\``).join('\n\n');
@@ -358,7 +358,7 @@ export function useImageGeneration() {
         await updateChatContent({
           chatId: mutableChat.id,
 
-          updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
+          updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
         });
       }
       // Finalize: replace PENDING with PROCESSED
@@ -376,7 +376,7 @@ export function useImageGeneration() {
       await updateChatContent({
         chatId: mutableChat.id,
 
-        updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId })
+        updater: ({ current }) => ({ ...current, root: mutableChat.root, currentLeafId: mutableChat.currentLeafId }),
       });
       triggerChatRef({ chatId });
     }
@@ -394,7 +394,7 @@ export function useImageGeneration() {
     chatId,
     attachments,
     availableModels,
-    sendMessage
+    sendMessage,
   }: {
     prompt: string,
     width: number,
@@ -406,7 +406,7 @@ export function useImageGeneration() {
     chatId: ChatId,
     attachments: Attachment[],
     availableModels: string[],
-    sendMessage: ({ content, parentId, attachments }: { content: string, parentId: MessageId | undefined, attachments: Attachment[] }) => Promise<boolean>
+    sendMessage: ({ content, parentId, attachments }: { content: string, parentId: MessageId | undefined, attachments: Attachment[] }) => Promise<boolean>,
   }): Promise<boolean> => {
     const prevMode = !!imageModeMap.value.get(chatId);
     const prevRes = imageResolutionMap.value.get(chatId);

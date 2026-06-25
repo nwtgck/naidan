@@ -6,8 +6,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -18,7 +18,7 @@ function resolvePath({
 function basename({
   path,
 }: {
-  path: string;
+  path: string,
 }): string {
   const normalized = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
   const parts = normalized.split('/').filter(Boolean);

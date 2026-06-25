@@ -12,7 +12,7 @@ import { setupScrollToMock } from '@/utils/test-utils';
 const mockCurrentChat = ref({
   id: toChatId({ raw: 'chat-1' }),
   title: 'Test Chat',
-  root: { items: [] }
+  root: { items: [] },
 });
 const mockActiveMessages = ref<any[]>([]);
 const mockChatGroups = ref<any[]>([]);
@@ -76,7 +76,7 @@ vi.mock('../composables/useChat', () => ({
       flow: { position: 'standalone', nesting: 'none' },
       isFirstInNode: true,
       isLastInNode: true,
-      isFirstInTurn: true
+      isFirstInTurn: true,
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(() => false),
@@ -103,12 +103,12 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: ChatId;
-    autoSendPrompt?: string;
-    targetMessageId?: MessageId;
-  };
-  attachTo?: Element | string;
-  global?: Record<string, unknown>;
+    chatId?: ChatId,
+    autoSendPrompt?: string,
+    targetMessageId?: MessageId,
+  },
+  attachTo?: Element | string,
+  global?: Record<string, unknown>,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -129,11 +129,11 @@ vi.mock('../composables/chat/useChatConversation', () => ({
       attachments,
       lmParameters,
     }: {
-      chatId: string;
-      content: string;
-      parentId: string | null | undefined;
-      attachments: unknown[] | undefined;
-      lmParameters: unknown;
+      chatId: string,
+      content: string,
+      parentId: string | null | undefined,
+      attachments: unknown[] | undefined,
+      lmParameters: unknown,
     }) => mockSendMessage({
       content,
       parentId,
@@ -181,10 +181,10 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
       attachments,
       lmParameters,
     }: {
-      content: string;
-      parentId: string | null | undefined;
-      attachments: unknown[] | undefined;
-      lmParameters: unknown;
+      content: string,
+      parentId: string | null | undefined,
+      attachments: unknown[] | undefined,
+      lmParameters: unknown,
     }) => mockSendMessage({
       content,
       parentId,
@@ -239,11 +239,11 @@ vi.mock('../composables/chat/useChatImageProgress', () => ({
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: vi.fn(),
-    currentRoute: { value: { params: { id: toChatId({ raw: 'chat-1' }) } } }
+    currentRoute: { value: { params: { id: toChatId({ raw: 'chat-1' }) } } },
   }),
   useRoute: () => ({
-    params: { id: toChatId({ raw: 'chat-1' }) }
-  })
+    params: { id: toChatId({ raw: 'chat-1' }) },
+  }),
 }));
 
 vi.mock('../composables/useSettings', () => ({
@@ -252,16 +252,16 @@ vi.mock('../composables/useSettings', () => ({
       provider: 'ollama',
       ollama: {
         baseUrl: 'http://localhost:11434',
-        model: 'llama3'
-      }
-    })
-  })
+        model: 'llama3',
+      },
+    }),
+  }),
 }));
 
 vi.mock('../composables/useToast', () => ({
   useToast: () => ({
-    addToast: vi.fn()
-  })
+    addToast: vi.fn(),
+  }),
 }));
 
 vi.mock('../services/storage', () => ({
@@ -271,7 +271,7 @@ vi.mock('../services/storage', () => ({
     canPersistBinary: true,
     saveFile: vi.fn().mockResolvedValue(undefined),
     notify: vi.fn(),
-  }
+  },
 }));
 
 describe('ChatPane - Attachment UI', () => {
@@ -285,7 +285,7 @@ describe('ChatPane - Attachment UI', () => {
     mockCurrentChat.value = {
       id: toChatId({ raw: 'chat-1' }),
       title: 'Test Chat',
-      root: { items: [] }
+      root: { items: [] },
     } as any;
     mockActiveMessages.value = [];
 
@@ -294,9 +294,9 @@ describe('ChatPane - Attachment UI', () => {
         stubs: {
           'router-link': true,
           'router-view': true,
-          'LmParametersEditor': true
-        }
-      }
+          'LmParametersEditor': true,
+        },
+      },
     });
 
     // Directly set the internal attachments ref
@@ -314,7 +314,7 @@ describe('ChatPane - Attachment UI', () => {
       size: 5,
       uploadedAt: Date.now(),
       status: 'memory',
-      blob: testFile
+      blob: testFile,
     };
 
     if (isRef(attachments)) {
@@ -337,9 +337,9 @@ describe('ChatPane - Attachment UI', () => {
         stubs: {
           'router-link': true,
           'router-view': true,
-          'LmParametersEditor': true
-        }
-      }
+          'LmParametersEditor': true,
+        },
+      },
     });
 
     const chatInput = wrapper.findComponent(ChatInput);
@@ -353,7 +353,7 @@ describe('ChatPane - Attachment UI', () => {
       size: 5,
       uploadedAt: Date.now(),
       status: 'memory',
-      blob: testFile
+      blob: testFile,
     };
 
     if (isRef(attachments)) {
@@ -379,9 +379,9 @@ describe('ChatPane - Attachment UI', () => {
         stubs: {
           'router-link': true,
           'router-view': true,
-          'LmParametersEditor': true
-        }
-      }
+          'LmParametersEditor': true,
+        },
+      },
     });
 
     const chatInput = wrapper.findComponent(ChatInput);
@@ -393,7 +393,7 @@ describe('ChatPane - Attachment UI', () => {
       size: 5,
       uploadedAt: Date.now(),
       status: 'memory',
-      blob: new File([''], 'hello.png')
+      blob: new File([''], 'hello.png'),
     };
 
     if (isRef(attachments)) {
@@ -417,9 +417,9 @@ describe('ChatPane - Attachment UI', () => {
         stubs: {
           'router-link': true,
           'router-view': true,
-          'LmParametersEditor': true
-        }
-      }
+          'LmParametersEditor': true,
+        },
+      },
     });
 
     const testFile = new File(['hello'], 'hello.png', { type: 'image/png' });
@@ -454,16 +454,16 @@ describe('ChatPane - Attachment UI', () => {
         stubs: {
           'router-link': true,
           'router-view': true,
-          'LmParametersEditor': true
-        }
-      }
+          'LmParametersEditor': true,
+        },
+      },
     });
 
     expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
 
     await wrapper.trigger('dragover', {
       preventDefault: vi.fn(),
-      currentTarget: wrapper.element
+      currentTarget: wrapper.element,
     });
 
     expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(true);
@@ -471,7 +471,7 @@ describe('ChatPane - Attachment UI', () => {
     await wrapper.trigger('dragleave', {
       clientX: -10, // Outside
       clientY: -10,
-      currentTarget: wrapper.element
+      currentTarget: wrapper.element,
     });
 
     expect(wrapper.find('[data-testid="drag-overlay"]').exists()).toBe(false);
@@ -483,9 +483,9 @@ describe('ChatPane - Attachment UI', () => {
         stubs: {
           'router-link': true,
           'router-view': true,
-          'LmParametersEditor': true
-        }
-      }
+          'LmParametersEditor': true,
+        },
+      },
     });
 
     const textarea = wrapper.find('[data-testid="chat-input"]');
@@ -497,10 +497,10 @@ describe('ChatPane - Attachment UI', () => {
         items: [
           {
             type: 'image/png',
-            getAsFile: () => testFile
-          }
-        ]
-      }
+            getAsFile: () => testFile,
+          },
+        ],
+      },
     };
 
     await textarea.trigger('paste', pasteEvent);

@@ -1,14 +1,14 @@
-import { JSDOM } from 'jsdom'
+import { JSDOM } from 'jsdom';
 
-import { createFileProtocolStandaloneEntryBootstrapSource, debugSlowStartupNoticeDelayMs } from './systemjs'
+import { createFileProtocolStandaloneEntryBootstrapSource, debugSlowStartupNoticeDelayMs } from './systemjs';
 import {
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS,
-} from '../../src/file-protocol-standalone-protocol'
-import type { BuiltFileProtocolStandaloneWorkerArtifact } from './worker'
+} from '../../src/file-protocol-standalone-protocol';
+import type { BuiltFileProtocolStandaloneWorkerArtifact } from './worker';
 
-const pluginName = 'file-protocol-standalone'
+const pluginName = 'file-protocol-standalone';
 
 const executableScriptTypes = new Set([
   'application/ecmascript',
@@ -28,31 +28,31 @@ const executableScriptTypes = new Set([
   'text/livescript',
   'text/x-ecmascript',
   'text/x-javascript',
-])
+]);
 
 function isExecutableScriptType({ type }: { type: string | null }): boolean {
   if (type === null || type.trim() === '') {
-    return true
+    return true;
   }
-  const normalized = type.split(';', 1)[0]?.trim().toLowerCase() ?? ''
-  return executableScriptTypes.has(normalized)
+  const normalized = type.split(';', 1)[0]?.trim().toLowerCase() ?? '';
+  return executableScriptTypes.has(normalized);
 }
 
 export function parseRelativeOutputFileName({ value, attribute }: {
-  value: string
-  attribute: string
+  value: string,
+  attribute: string,
 }): string {
-  const trimmed = value.trim()
+  const trimmed = value.trim();
   if (trimmed === '' || trimmed.startsWith('/') || trimmed.startsWith('\\')) {
-    throw new Error(`[${pluginName}] ${attribute} must be a relative local output URL: ${value}`)
+    throw new Error(`[${pluginName}] ${attribute} must be a relative local output URL: ${value}`);
   }
 
-  const baseUrl = new URL('https://file-protocol-standalone.invalid/__output__/')
-  let resolved: URL
+  const baseUrl = new URL('https://file-protocol-standalone.invalid/__output__/');
+  let resolved: URL;
   try {
-    resolved = new URL(trimmed, baseUrl)
+    resolved = new URL(trimmed, baseUrl);
   } catch {
-    throw new Error(`[${pluginName}] ${attribute} is not a valid URL: ${value}`)
+    throw new Error(`[${pluginName}] ${attribute} is not a valid URL: ${value}`);
   }
   if (
     resolved.origin !== baseUrl.origin
@@ -60,31 +60,31 @@ export function parseRelativeOutputFileName({ value, attribute }: {
     || resolved.search !== ''
     || resolved.hash !== ''
   ) {
-    throw new Error(`[${pluginName}] ${attribute} must identify one local output file without a query or fragment: ${value}`)
+    throw new Error(`[${pluginName}] ${attribute} must identify one local output file without a query or fragment: ${value}`);
   }
 
   if (/%(?:2f|5c)/i.test(resolved.pathname)) {
-    throw new Error(`[${pluginName}] ${attribute} must not contain an encoded path separator: ${value}`)
+    throw new Error(`[${pluginName}] ${attribute} must not contain an encoded path separator: ${value}`);
   }
 
-  let decodedPath: string
+  let decodedPath: string;
   try {
-    decodedPath = decodeURIComponent(resolved.pathname)
+    decodedPath = decodeURIComponent(resolved.pathname);
   } catch {
-    throw new Error(`[${pluginName}] ${attribute} contains invalid percent encoding: ${value}`)
+    throw new Error(`[${pluginName}] ${attribute} contains invalid percent encoding: ${value}`);
   }
-  const outputPrefix = decodeURIComponent(baseUrl.pathname)
-  const fileName = decodedPath.slice(outputPrefix.length)
-  const segments = fileName.split('/')
+  const outputPrefix = decodeURIComponent(baseUrl.pathname);
+  const fileName = decodedPath.slice(outputPrefix.length);
+  const segments = fileName.split('/');
   if (
     fileName.includes('\\')
     || fileName.includes('\0')
     || /^[A-Za-z]:/.test(fileName)
     || segments.some((segment) => segment === '' || segment === '.' || segment === '..')
   ) {
-    throw new Error(`[${pluginName}] ${attribute} must remain a normalized relative output path: ${value}`)
+    throw new Error(`[${pluginName}] ${attribute} must remain a normalized relative output path: ${value}`);
   }
-  return fileName
+  return fileName;
 }
 
 export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
@@ -95,20 +95,20 @@ export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
   retryFileName,
   workers,
 }: {
-  html: string
-  entryFileName: string
-  runtimeFileName: string
-  patchFileName: string
-  retryFileName: string
-  workers: readonly BuiltFileProtocolStandaloneWorkerArtifact[]
+  html: string,
+  entryFileName: string,
+  runtimeFileName: string,
+  patchFileName: string,
+  retryFileName: string,
+  workers: readonly BuiltFileProtocolStandaloneWorkerArtifact[],
 }): string {
-  const dom = new JSDOM(html)
-  const { document } = dom.window
+  const dom = new JSDOM(html);
+  const { document } = dom.window;
 
   for (const id of FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS) {
-    const collisions = Array.from(document.querySelectorAll('[id]')).filter((element) => element.id === id)
+    const collisions = Array.from(document.querySelectorAll('[id]')).filter((element) => element.id === id);
     if (collisions.length > 0) {
-      throw new Error(`[${pluginName}] index.html already contains reserved standalone element id ${JSON.stringify(id)}.`)
+      throw new Error(`[${pluginName}] index.html already contains reserved standalone element id ${JSON.stringify(id)}.`);
     }
   }
 
@@ -116,94 +116,94 @@ export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
     (link.getAttribute('rel') ?? '')
       .split(/\s+/)
       .some((token) => token.toLowerCase() === 'modulepreload')
-  ))
+  ));
   if (modulePreloads.length > 0) {
     throw new Error(
       `[${pluginName}] Expected @vitejs/plugin-legacy to remove modulepreload links; found ${modulePreloads.length}.`,
-    )
+    );
   }
 
   const executableScripts = Array.from(document.querySelectorAll('script'))
-    .filter((script) => isExecutableScriptType({ type: script.getAttribute('type') }))
-  const legacyEntries = executableScripts.filter((script) => script.id === 'vite-legacy-entry')
+    .filter((script) => isExecutableScriptType({ type: script.getAttribute('type') }));
+  const legacyEntries = executableScripts.filter((script) => script.id === 'vite-legacy-entry');
   if (legacyEntries.length !== 1) {
-    throw new Error(`[${pluginName}] Expected exactly one @vitejs/plugin-legacy entry script; found ${legacyEntries.length}.`)
+    throw new Error(`[${pluginName}] Expected exactly one @vitejs/plugin-legacy entry script; found ${legacyEntries.length}.`);
   }
-  const legacyPolyfills = executableScripts.filter((script) => script.id === 'vite-legacy-polyfill')
+  const legacyPolyfills = executableScripts.filter((script) => script.id === 'vite-legacy-polyfill');
   if (legacyPolyfills.length > 0) {
-    throw new Error(`[${pluginName}] Legacy polyfill scripts are unsupported when externalSystemJS and polyfills are disabled.`)
+    throw new Error(`[${pluginName}] Legacy polyfill scripts are unsupported when externalSystemJS and polyfills are disabled.`);
   }
 
-  const legacyEntry = legacyEntries[0]
+  const legacyEntry = legacyEntries[0];
   if (legacyEntry.hasAttribute('src')) {
-    throw new Error(`[${pluginName}] The @vitejs/plugin-legacy entry must be an inline bootstrap script.`)
+    throw new Error(`[${pluginName}] The @vitejs/plugin-legacy entry must be an inline bootstrap script.`);
   }
-  const dataSrc = legacyEntry.getAttribute('data-src')
+  const dataSrc = legacyEntry.getAttribute('data-src');
   if (dataSrc === null) {
-    throw new Error(`[${pluginName}] The @vitejs/plugin-legacy entry is missing data-src.`)
+    throw new Error(`[${pluginName}] The @vitejs/plugin-legacy entry is missing data-src.`);
   }
-  const legacyEntryFileName = parseRelativeOutputFileName({ value: dataSrc, attribute: 'legacy entry data-src' })
+  const legacyEntryFileName = parseRelativeOutputFileName({ value: dataSrc, attribute: 'legacy entry data-src' });
   if (legacyEntryFileName !== entryFileName) {
     throw new Error(
       `[${pluginName}] Legacy entry data-src does not match the generated entry chunk: ${legacyEntryFileName} !== ${entryFileName}.`,
-    )
+    );
   }
 
-  const unexpectedScripts = executableScripts.filter((script) => script !== legacyEntry)
+  const unexpectedScripts = executableScripts.filter((script) => script !== legacyEntry);
   if (unexpectedScripts.length > 0) {
     const descriptions = unexpectedScripts.map((script) => {
-      const id = script.id === '' ? '(no id)' : script.id
-      const src = script.getAttribute('src') ?? '(inline)'
-      return `${id}:${src}`
-    })
+      const id = script.id === '' ? '(no id)' : script.id;
+      const src = script.getAttribute('src') ?? '(inline)';
+      return `${id}:${src}`;
+    });
     throw new Error(
       `[${pluginName}] Unexpected executable script(s) in index.html; refusing to remove them: ${descriptions.join(', ')}.`,
-    )
+    );
   }
-  legacyEntry.remove()
+  legacyEntry.remove();
 
   const appendClassicScript = ({ id, src, source }: {
-    id: string
-    src: string | undefined
-    source: string | undefined
+    id: string,
+    src: string | undefined,
+    source: string | undefined,
   }): void => {
-    const script = document.createElement('script')
-    script.id = id
+    const script = document.createElement('script');
+    script.id = id;
     if (src !== undefined) {
-      script.setAttribute('src', src)
+      script.setAttribute('src', src);
     }
     if (source !== undefined) {
-      script.textContent = source
+      script.textContent = source;
     }
-    document.body.appendChild(script)
-  }
+    document.body.appendChild(script);
+  };
 
   appendClassicScript({
     id: FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRuntime,
     src: `./${runtimeFileName}`,
     source: undefined,
-  })
+  });
   appendClassicScript({
     id: FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsFilePatch,
     src: `./${patchFileName}`,
     source: undefined,
-  })
+  });
   appendClassicScript({
     id: FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.systemJsRetryHook,
     src: `./${retryFileName}`,
     source: undefined,
-  })
+  });
 
-  const manifestScript = document.createElement('script')
-  manifestScript.id = FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.workerManifest
-  manifestScript.type = 'application/json'
+  const manifestScript = document.createElement('script');
+  manifestScript.id = FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.workerManifest;
+  manifestScript.type = 'application/json';
   manifestScript.textContent = JSON.stringify(Object.fromEntries(workers.map((worker) => [worker.id, {
     registryScript: `./${worker.registryFileName}`,
     sourceBytes: worker.sourceBytes,
     sourcePartCount: worker.sourcePartCount,
     sha256: worker.sha256,
-  }])))
-  document.body.appendChild(manifestScript)
+  }])));
+  document.body.appendChild(manifestScript);
 
   appendClassicScript({
     id: FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap,
@@ -212,47 +212,47 @@ export function replaceLegacyBootstrapWithFileProtocolStandaloneScripts({
       entryFileName,
       debugSlowStartupNoticeDelayMs,
     }),
-  })
+  });
 
-  return dom.serialize()
+  return dom.serialize();
 }
 
 export function assertValidFileProtocolStandaloneHtml({ html }: { html: string }): void {
-  const dom = new JSDOM(html)
+  const dom = new JSDOM(html);
   const executableScripts = Array.from(dom.window.document.querySelectorAll('script'))
-    .filter((script) => isExecutableScriptType({ type: script.getAttribute('type') }))
-  const expectedIds = FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS
-  const actualIds = executableScripts.map((script) => script.id)
+    .filter((script) => isExecutableScriptType({ type: script.getAttribute('type') }));
+  const expectedIds = FILE_PROTOCOL_STANDALONE_EXECUTABLE_ELEMENT_IDS;
+  const actualIds = executableScripts.map((script) => script.id);
   if (JSON.stringify(actualIds) !== JSON.stringify(expectedIds)) {
-    throw new Error(`[${pluginName}] Final executable script order is invalid: ${actualIds.join(', ')}.`)
+    throw new Error(`[${pluginName}] Final executable script order is invalid: ${actualIds.join(', ')}.`);
   }
   for (const id of FILE_PROTOCOL_STANDALONE_GENERATED_ELEMENT_IDS) {
-    const matches = Array.from(dom.window.document.querySelectorAll('[id]')).filter((element) => element.id === id)
+    const matches = Array.from(dom.window.document.querySelectorAll('[id]')).filter((element) => element.id === id);
     if (matches.length !== 1) {
-      throw new Error(`[${pluginName}] Expected exactly one generated element with id ${JSON.stringify(id)}; found ${matches.length}.`)
+      throw new Error(`[${pluginName}] Expected exactly one generated element with id ${JSON.stringify(id)}; found ${matches.length}.`);
     }
     if (matches[0]?.tagName !== 'SCRIPT') {
-      throw new Error(`[${pluginName}] Generated standalone element ${JSON.stringify(id)} must be a script.`)
+      throw new Error(`[${pluginName}] Generated standalone element ${JSON.stringify(id)} must be a script.`);
     }
   }
-  const manifest = dom.window.document.getElementById(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.workerManifest)
+  const manifest = dom.window.document.getElementById(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.workerManifest);
   if (manifest === null || manifest.getAttribute('type') !== 'application/json') {
-    throw new Error(`[${pluginName}] Worker manifest script is missing or has an unexpected type.`)
+    throw new Error(`[${pluginName}] Worker manifest script is missing or has an unexpected type.`);
   }
-  const entryScript = dom.window.document.getElementById(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap)
+  const entryScript = dom.window.document.getElementById(FILE_PROTOCOL_STANDALONE_ELEMENT_IDS.entryBootstrap);
   if (entryScript === null || (manifest.compareDocumentPosition(entryScript) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
-    throw new Error(`[${pluginName}] Worker manifest must appear before the standalone entry bootstrap.`)
+    throw new Error(`[${pluginName}] Worker manifest must appear before the standalone entry bootstrap.`);
   }
   for (const script of executableScripts) {
     if (script.getAttribute('type') === 'module') {
-      throw new Error(`[${pluginName}] Native module script remains in index.html.`)
+      throw new Error(`[${pluginName}] Native module script remains in index.html.`);
     }
     if (script.hasAttribute('crossorigin')) {
-      throw new Error(`[${pluginName}] Executable script still has crossorigin in index.html.`)
+      throw new Error(`[${pluginName}] Executable script still has crossorigin in index.html.`);
     }
-    const src = script.getAttribute('src')
+    const src = script.getAttribute('src');
     if (src !== null) {
-      parseRelativeOutputFileName({ value: src, attribute: `script#${script.id} src` })
+      parseRelativeOutputFileName({ value: src, attribute: `script#${script.id} src` });
     }
   }
 }

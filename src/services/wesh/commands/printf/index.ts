@@ -3,8 +3,8 @@ import type { WeshCommandContext, WeshCommandDefinition, WeshCommandResult } fro
 import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/commands/_shared/usage';
 
 type PrintfToken =
-  | { kind: 'literal'; text: string }
-  | { kind: 'conversion'; spec: 's' | 'd' | 'b' };
+  | { kind: 'literal', text: string }
+  | { kind: 'conversion', spec: 's' | 'd' | 'b' };
 
 const printfArgvSpec: StandardArgvParserSpec = {
   options: [
@@ -20,9 +20,9 @@ function decodePrintfEscapes({
   text,
   stopOnControlC,
 }: {
-  text: string;
-  stopOnControlC: boolean;
-}): { text: string; stopped: boolean } {
+  text: string,
+  stopOnControlC: boolean,
+}): { text: string, stopped: boolean } {
   let output = '';
 
   for (let index = 0; index < text.length; index++) {
@@ -136,8 +136,8 @@ function decodePrintfEscapes({
 function parsePrintfFormat({
   format,
 }: {
-  format: string;
-}): { ok: true; tokens: PrintfToken[] } | { ok: false; message: string } {
+  format: string,
+}): { ok: true, tokens: PrintfToken[] } | { ok: false, message: string } {
   const tokens: PrintfToken[] = [];
   let literal = '';
 
@@ -185,7 +185,7 @@ function parsePrintfFormat({
 function formatPrintfInteger({
   value,
 }: {
-  value: string | undefined;
+  value: string | undefined,
 }): string {
   if (value === undefined) {
     return '0';
@@ -203,9 +203,9 @@ function formatPrintfToken({
   token,
   value,
 }: {
-  token: PrintfToken;
-  value: string | undefined;
-}): { text: string; stopped: boolean } {
+  token: PrintfToken,
+  value: string | undefined,
+}): { text: string, stopped: boolean } {
   switch (token.kind) {
   case 'literal': {
     return decodePrintfEscapes({ text: token.text, stopOnControlC: true });
@@ -235,8 +235,8 @@ async function writeFormattedText({
   context,
   text,
 }: {
-  context: WeshCommandContext;
-  text: string;
+  context: WeshCommandContext,
+  text: string,
 }): Promise<void> {
   await context.text().print({ text });
 }

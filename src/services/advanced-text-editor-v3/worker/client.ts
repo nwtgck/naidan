@@ -1,1 +1,1 @@
-export { createAdvancedTextEditorV3WorkerClient } from './client-hosted'
+export { createAdvancedTextEditorV3WorkerClient } from './client-hosted';

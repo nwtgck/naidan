@@ -14,12 +14,12 @@ import type { ViewMode, PreviewVisibility } from './types';
 import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
 
 const props = defineProps<{
-  root: FileExplorerRootDescriptor;
-  initialViewMode: ViewMode;
-  initialPreviewVisibility: PreviewVisibility;
-  initialPath: string[] | undefined;
+  root: FileExplorerRootDescriptor,
+  initialViewMode: ViewMode,
+  initialPreviewVisibility: PreviewVisibility,
+  initialPath: string[] | undefined,
   /** When true, the explorer starts in locked mode (write operations disabled). */
-  initialLocked: boolean;
+  initialLocked: boolean,
 }>();
 
 defineExpose({

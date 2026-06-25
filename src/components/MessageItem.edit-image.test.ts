@@ -30,7 +30,7 @@ vi.mock('../services/storage', () => ({
     subscribeToChanges: vi.fn(),
     loadSettings: vi.fn().mockResolvedValue({}),
     saveSettings: vi.fn(),
-  }
+  },
 }));
 
 // Mock speech service
@@ -41,8 +41,8 @@ vi.mock('../services/web-speech', () => ({
     speak: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
-    stop: vi.fn()
-  }
+    stop: vi.fn(),
+  },
 }));
 
 describe('MessageItem Edit Image Generation', () => {
@@ -51,7 +51,7 @@ describe('MessageItem Edit Image Generation', () => {
     role,
     content,
     timestamp: Date.now(),
-    replies: { items: [] }
+    replies: { items: [] },
   });
 
   const stubs = {
@@ -59,7 +59,7 @@ describe('MessageItem Edit Image Generation', () => {
       name: 'ImageGenerationSettings',
       template: '<div data-testid="mock-image-settings"></div>',
       props: ['canGenerateImage', 'isProcessing', 'isImageMode', 'selectedWidth', 'selectedHeight', 'selectedCount', 'selectedPersistAs', 'availableImageModels', 'selectedImageModel', 'showHeader'],
-    }
+    },
   };
 
   beforeEach(() => {
@@ -72,7 +72,7 @@ describe('MessageItem Edit Image Generation', () => {
       height: 1024,
       model: 'x/z-image-turbo:v1',
       count: 3,
-      persistAs: 'webp' as const
+      persistAs: 'webp' as const,
     };
     const marker = createImageRequestMarker(params);
     const content = 'A majestic mountain range';
@@ -82,9 +82,9 @@ describe('MessageItem Edit Image Generation', () => {
       props: {
         message,
         canGenerateImage: true,
-        availableImageModels: ['x/z-image-turbo:v1', 'x/other-model:v1']
+        availableImageModels: ['x/z-image-turbo:v1', 'x/other-model:v1'],
       },
-      global: { stubs }
+      global: { stubs },
     });
 
     // Enter edit mode
@@ -120,9 +120,9 @@ describe('MessageItem Edit Image Generation', () => {
       props: {
         message,
         canGenerateImage: true,
-        availableImageModels: ['x/z-image-turbo:v1']
+        availableImageModels: ['x/z-image-turbo:v1'],
       },
-      global: { stubs }
+      global: { stubs },
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -159,9 +159,9 @@ describe('MessageItem Edit Image Generation', () => {
       props: {
         message,
         canGenerateImage: true,
-        availableImageModels: ['x/z-image-turbo:v1']
+        availableImageModels: ['x/z-image-turbo:v1'],
       },
-      global: { stubs }
+      global: { stubs },
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -198,9 +198,9 @@ describe('MessageItem Edit Image Generation', () => {
       props: {
         message,
         canGenerateImage: true,
-        availableImageModels: ['x/z-image-turbo:v1']
+        availableImageModels: ['x/z-image-turbo:v1'],
       },
-      global: { stubs }
+      global: { stubs },
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -226,7 +226,7 @@ describe('MessageItem Edit Image Generation', () => {
     const message = createMessage('Some text');
     const wrapper = mount(MessageItem, {
       props: { message, canGenerateImage: true },
-      global: { stubs }
+      global: { stubs },
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -264,10 +264,10 @@ describe('MessageItem Edit Image Generation', () => {
                 <div v-else data-testid="mock-full-settings">Full Settings</div>
               </div>
             `,
-            props: ['isImageMode']
-          }
-        }
-      }
+            props: ['isImageMode'],
+          },
+        },
+      },
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');
@@ -294,7 +294,7 @@ describe('MessageItem Edit Image Generation', () => {
     const message = createMessage(content);
 
     const wrapper = mount(MessageItem, {
-      props: { message, canGenerateImage: false }
+      props: { message, canGenerateImage: false },
     });
 
     await wrapper.find('[data-testid="edit-message-button"]').trigger('click');

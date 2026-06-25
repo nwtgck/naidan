@@ -12,7 +12,7 @@ import {
 function jsonObject({
   entries,
 }: {
-  entries: readonly (readonly [string, JsonValue])[];
+  entries: readonly (readonly [string, JsonValue])[],
 }): { [key: string]: JsonValue } {
   const object = createJsonObject();
   for (const [key, value] of entries) {

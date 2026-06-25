@@ -4,7 +4,7 @@ import { ref } from 'vue';
 import type { ToolCallRecord } from '@/services/tools/types';
 
 const props = defineProps<{
-  toolCall: ToolCallRecord;
+  toolCall: ToolCallRecord,
 }>();
 
 const isExpanded = ref(true);
@@ -24,8 +24,8 @@ const formatArgs = ({ args }: { args: unknown }): string => {
 defineExpose({
   TEST_ONLY: {
     isExpanded,
-    toggleExpand
-  }
+    toggleExpand,
+  },
 });
 </script>
 

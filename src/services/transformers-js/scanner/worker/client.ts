@@ -1,1 +1,1 @@
-export { createTransformersJsScannerWorkerClient } from './client-hosted'
+export { createTransformersJsScannerWorkerClient } from './client-hosted';

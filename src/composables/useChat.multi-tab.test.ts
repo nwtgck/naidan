@@ -15,7 +15,7 @@ const { mocks } = vi.hoisted(() => ({
   mocks: {
     mockChatStorage: new Map<string, any>(),
     mockHierarchy: { items: [] } as Hierarchy,
-  }
+  },
 }));
 
 vi.mock('../services/storage', () => ({
@@ -114,9 +114,9 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
       id: toChatId({ raw: 'c1' }), title: 'C1',
       root: { items: [{
         id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Hi', timestamp: 0,
-        replies: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'assistant', content: 'Hello', replies: { items: [] }, timestamp: 0 }] }
+        replies: { items: [{ id: toMessageId({ raw: 'm2' }), role: 'assistant', content: 'Hello', replies: { items: [] }, timestamp: 0 }] },
       }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'm2' })
+      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'm2' }),
     };
     mocks.mockChatStorage.set('c1', chat1);
 
@@ -150,7 +150,7 @@ describe('useChat Multi-Tab Integration Scenarios (BUG FINDING)', () => {
     const chat1: Chat = {
       id: toChatId({ raw: 'c1' }), title: 'Original Title',
       root: { items: [{ id: toMessageId({ raw: 'm1' }), role: 'user', content: 'Hi', replies: { items: [] }, timestamp: 0 }] },
-      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'm1' })
+      createdAt: 0, updatedAt: 0, debugEnabled: false, currentLeafId: toMessageId({ raw: 'm1' }),
     };
     mocks.mockChatStorage.set('c1', chat1);
 

@@ -63,12 +63,12 @@ export function createMemoryZipCentralDirectoryStore(): ZipCentralDirectoryStore
 export function createReadableZipOutput({
   highWaterMarkBytes,
 }: {
-  highWaterMarkBytes: number;
+  highWaterMarkBytes: number,
 }): {
-  sink: ZipByteSink;
-  stream: ReadableStream<Uint8Array>;
-  close(): Promise<void>;
-  abort({ reason }: { reason: unknown }): Promise<void>;
+  sink: ZipByteSink,
+  stream: ReadableStream<Uint8Array>,
+  close(): Promise<void>,
+  abort({ reason }: { reason: unknown }): Promise<void>,
 } {
   const transform = new TransformStream<Uint8Array, Uint8Array>(
     undefined,

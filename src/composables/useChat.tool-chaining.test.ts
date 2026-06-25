@@ -82,7 +82,7 @@ vi.mock('../services/tools/registry', () => ({
       description: 'Calculator',
       parametersSchema: { strict: () => ({ parse: (args: any) => args }) },
       execute: vi.fn().mockResolvedValue({ status: 'success', content: '42' }),
-    }
+    },
   ],
 }));
 
@@ -103,7 +103,7 @@ vi.mock('./useChatWeshPreferences', () => ({
 describe('useChat Tool Chaining', () => {
   const chatStore = useChat();
   const {
-    activeMessages, sendMessage, TEST_ONLY
+    activeMessages, sendMessage, TEST_ONLY,
   } = chatStore;
   const { __testOnlySetCurrentChat } = TEST_ONLY;
 
@@ -180,7 +180,7 @@ describe('useChat Tool Chaining', () => {
     const { useChatDisplayFlow } = await import('./useChatDisplayFlow');
     const { chatFlow } = useChatDisplayFlow({
       chat: computed(() => chat),
-      isProcessing: () => false
+      isProcessing: () => false,
     });
     const displayMessages = chatFlow.value;
     console.log('Display messages types:', displayMessages.map(d => d.type));

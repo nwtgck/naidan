@@ -27,8 +27,8 @@ const hasWritableTmp = computed(() => shouldIncludeWritableTmpMount({ storageTyp
 function handleShellToolToggle() {
   const enablingShellExecute = !isToolEnabled({ name: 'shell_execute' });
   if (!enablingShellExecute) {
-    disableShellToolForCurrentChat()
-    return
+    disableShellToolForCurrentChat();
+    return;
   }
 
   toggleTool({ name: 'shell_execute' });
@@ -39,8 +39,8 @@ function handleShellToolToggle() {
 
 function handleNaidanSysfsToggle() {
   if (isNaidanSysfsMounted.value) {
-    disableNaidanSysfsForCurrentChat()
-    return
+    disableNaidanSysfsForCurrentChat();
+    return;
   }
   setNaidanSysfsAccessScope({
     chatId: currentChat.value?.id,

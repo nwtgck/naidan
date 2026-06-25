@@ -4,13 +4,13 @@ import { onClickOutside } from '@vueuse/core';
 import { PlusIcon, FilesIcon, FolderSymlinkIcon, FolderDownIcon, InfoIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
-  hasFileSystemAccess: boolean;
+  hasFileSystemAccess: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'files-selected', files: File[]): void;
-  (e: 'folder-copy', folderName: string, files: File[]): void;
-  (e: 'folder-link'): void;
+  (e: 'files-selected', files: File[]): void,
+  (e: 'folder-copy', folderName: string, files: File[]): void,
+  (e: 'folder-link'): void,
 }>();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);

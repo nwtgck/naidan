@@ -1,164 +1,164 @@
-import { describe, it, expect, vi } from 'vitest'
-import FailedOnlyReporter from './FailedOnlyReporter'
+import { describe, it, expect, vi } from 'vitest';
+import FailedOnlyReporter from './FailedOnlyReporter';
 
 describe('FailedOnlyReporter', () => {
   it('should collect and log failed tests', async () => {
-    const reporter = new FailedOnlyReporter()
-    const logSpy = vi.fn()
+    const reporter = new FailedOnlyReporter();
+    const logSpy = vi.fn();
     const mockVitest = {
       logger: {
         log: logSpy,
-      }
-    } as any
+      },
+    } as any;
 
-    reporter.onInit(mockVitest)
+    reporter.onInit(mockVitest);
 
     const mockTestCasePass = {
       result: () => ({ state: 'passed' }),
       module: { relativeModuleId: 'test.ts' },
       fullName: 'pass test',
-    } as any
+    } as any;
 
     const mockTestCaseFail = {
       result: () => ({
         state: 'failed',
-        errors: [{ message: 'Assertion Error', expected: 2, actual: 1, showDiff: true }]
+        errors: [{ message: 'Assertion Error', expected: 2, actual: 1, showDiff: true }],
       }),
       module: { relativeModuleId: 'test.ts' },
       fullName: 'fail test',
-    } as any
+    } as any;
 
-    await reporter.onTestCaseResult(mockTestCasePass)
-    await reporter.onTestCaseResult(mockTestCaseFail)
+    await reporter.onTestCaseResult(mockTestCasePass);
+    await reporter.onTestCaseResult(mockTestCaseFail);
 
-    await reporter.onFinished([], [])
+    await reporter.onFinished([], []);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('test.ts > fail test'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('- Expected: 2'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('+ Received: 1'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('1 passed, 1 failed, 2 total'))
-  })
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('test.ts > fail test'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('- Expected: 2'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('+ Received: 1'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('1 passed, 1 failed, 2 total'));
+  });
 
   it('should not log anything if no failures', async () => {
-    const reporter = new FailedOnlyReporter()
-    const logSpy = vi.fn()
+    const reporter = new FailedOnlyReporter();
+    const logSpy = vi.fn();
     const mockVitest = {
       logger: {
         log: logSpy,
-      }
-    } as any
+      },
+    } as any;
 
-    reporter.onInit(mockVitest)
+    reporter.onInit(mockVitest);
 
     const mockTestCasePass = {
       result: () => ({ state: 'passed' }),
       module: { relativeModuleId: 'test.ts' },
       fullName: 'pass test',
-    } as any
+    } as any;
 
-    await reporter.onTestCaseResult(mockTestCasePass)
+    await reporter.onTestCaseResult(mockTestCasePass);
 
-    await reporter.onFinished([], [])
+    await reporter.onFinished([], []);
 
-    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('1 passed, 0 failed, 1 total'))
-  })
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('1 passed, 0 failed, 1 total'));
+  });
 
   it('should log build errors (file-level errors) via file.result', async () => {
-    const reporter = new FailedOnlyReporter()
-    const logSpy = vi.fn()
+    const reporter = new FailedOnlyReporter();
+    const logSpy = vi.fn();
     const mockVitest = {
       logger: {
         log: logSpy,
-      }
-    } as any
+      },
+    } as any;
 
-    reporter.onInit(mockVitest)
+    reporter.onInit(mockVitest);
 
     const mockFileError = {
       name: 'broken.test.ts',
       result: {
         state: 'failed',
-        errors: [{ message: 'SyntaxError: Unexpected token', stack: 'at broken.test.ts:1:1' }]
-      }
-    } as any
+        errors: [{ message: 'SyntaxError: Unexpected token', stack: 'at broken.test.ts:1:1' }],
+      },
+    } as any;
 
-    await reporter.onFinished([mockFileError], [])
+    await reporter.onFinished([mockFileError], []);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('broken.test.ts'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('SyntaxError: Unexpected token'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('0 passed, 1 failed, 1 total'))
-  })
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('broken.test.ts'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('SyntaxError: Unexpected token'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('0 passed, 1 failed, 1 total'));
+  });
 
   it('should log syntax errors via file.task.result', async () => {
-    const reporter = new FailedOnlyReporter()
-    const logSpy = vi.fn()
+    const reporter = new FailedOnlyReporter();
+    const logSpy = vi.fn();
     const mockVitest = {
       logger: {
         log: logSpy,
-      }
-    } as any
+      },
+    } as any;
 
-    reporter.onInit(mockVitest)
+    reporter.onInit(mockVitest);
 
     const mockFileError = {
       moduleId: 'syntax.test.ts',
       task: {
         result: {
           state: 'fail',
-          errors: [{ message: 'Transform failed', stack: 'at syntax.test.ts:1:1' }]
-        }
-      }
-    } as any
+          errors: [{ message: 'Transform failed', stack: 'at syntax.test.ts:1:1' }],
+        },
+      },
+    } as any;
 
-    await reporter.onFinished([mockFileError], [])
+    await reporter.onFinished([mockFileError], []);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('syntax.test.ts'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Transform failed'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('0 passed, 1 failed, 1 total'))
-  })
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('syntax.test.ts'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Transform failed'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('0 passed, 1 failed, 1 total'));
+  });
 
   it('should log a message when no test files are found', async () => {
-    const reporter = new FailedOnlyReporter()
-    const logSpy = vi.fn()
+    const reporter = new FailedOnlyReporter();
+    const logSpy = vi.fn();
     const mockVitest = {
       logger: {
         log: logSpy,
-      }
-    } as any
+      },
+    } as any;
 
-    reporter.onInit(mockVitest)
+    reporter.onInit(mockVitest);
 
-    await reporter.onFinished([], [])
+    await reporter.onFinished([], []);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No test files found. Please check if the file paths are correct.'))
-  })
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No test files found. Please check if the file paths are correct.'));
+  });
 
   it('should log unhandled errors in the summary', async () => {
-    const reporter = new FailedOnlyReporter()
-    const logSpy = vi.fn()
+    const reporter = new FailedOnlyReporter();
+    const logSpy = vi.fn();
     const mockVitest = {
       logger: {
         log: logSpy,
-      }
-    } as any
+      },
+    } as any;
 
-    reporter.onInit(mockVitest)
+    reporter.onInit(mockVitest);
 
     const mockUnhandledError = {
       message: 'Unhandled Rejection',
-      stack: 'at some-file.ts:1:1'
-    } as any
+      stack: 'at some-file.ts:1:1',
+    } as any;
 
-    await reporter.onFinished([], [mockUnhandledError])
+    await reporter.onFinished([], [mockUnhandledError]);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Global Error'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Unhandled Rejection'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Tests: 0 passed, 0 failed, 0 total'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Errors: 1 errors'))
-  })
-})
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAILED TESTS:'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Global Error'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Unhandled Rejection'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Tests: 0 passed, 0 failed, 0 total'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Errors: 1 errors'));
+  });
+});

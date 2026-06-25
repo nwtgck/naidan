@@ -15,8 +15,8 @@ import BlockMarkdownItem from './BlockMarkdownItem.vue';
 // BlockMarkdownItem is available here.
 
 const props = defineProps<{
-  token: Token;
-  trailingInline?: Component;
+  token: Token,
+  trailingInline?: Component,
 }>();
 
 const isTaskList = computed(() => {
@@ -41,7 +41,7 @@ function lastRenderableIdx({ tokens }: { tokens: Array<{ type: string }> | undef
 function renderMarkedBlockHtml({
   raw,
 }: {
-  raw: string;
+  raw: string,
 }) {
   return sanitizeMarkdownHtml({ html: marked.parse(raw) as string });
 }
@@ -49,7 +49,7 @@ function renderMarkedBlockHtml({
 function renderMarkedInlineHtml({
   raw,
 }: {
-  raw: string;
+  raw: string,
 }) {
   return sanitizeMarkdownHtml({ html: marked.parseInline(raw) as string });
 }
@@ -65,7 +65,7 @@ function lastNonEmptyCellIdx({ row }: { row: Tokens.TableCell[] }): number {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

@@ -110,7 +110,7 @@ describe('StorageService Migration', () => {
     });
 
     // Force reset the singleton state and inject our mock
-    const service = storageService as unknown as { currentType: string; provider: unknown };
+    const service = storageService as unknown as { currentType: string, provider: unknown };
     service.currentType = 'local';
     service.provider = mockLocalProvider;
 
@@ -118,7 +118,7 @@ describe('StorageService Migration', () => {
     mockOpfsProvider.init.mockResolvedValue(undefined);
     mockLocalProvider.dump.mockResolvedValue({
       structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
-      contentStream: (async function* () {})()
+      contentStream: (async function* () {})(),
     });
     mockOpfsProvider.restore.mockImplementation(async ({ snapshot }, _options) => {
       for await (const _chunk of snapshot.contentStream) {
@@ -197,18 +197,18 @@ describe('StorageService Migration', () => {
             originalName: 'test.png',
             mimeType: 'image/png',
             size: 4,
-            uploadedAt: Date.now()
+            uploadedAt: Date.now(),
           }],
-          replies: { items: [] }
-        }]
-      }
+          replies: { items: [] },
+        }],
+      },
     };
 
     mockLocalProvider.dump.mockResolvedValue({
       structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
       contentStream: (async function* () {
         yield { type: 'chat', data: { id: 'chat-1' } as any };
-      })()
+      })(),
     });
     mockLocalProvider.loadChat.mockResolvedValue(chat);
     // OPFS supports binary
@@ -258,20 +258,20 @@ describe('StorageService Migration', () => {
                 originalName: 'nested.png',
                 mimeType: 'image/png',
                 size: 6,
-                uploadedAt: Date.now()
+                uploadedAt: Date.now(),
               }],
-              replies: { items: [] }
-            }]
-          }
-        }]
-      }
+              replies: { items: [] },
+            }],
+          },
+        }],
+      },
     };
 
     mockLocalProvider.dump.mockResolvedValue({
       structure: { settings: {} as any, hierarchy: { items: [] }, chatMetas: [], chatGroups: [] },
       contentStream: (async function* () {
         yield { type: 'chat', data: { id: 'chat-recursive' } as any };
-      })()
+      })(),
     });
     mockLocalProvider.loadChat.mockResolvedValue(chat);
     (mockOpfsProvider as any).canPersistBinary = true;

@@ -3,7 +3,7 @@ import { randomInt, type SeededNonCryptoPseudoRandom } from '@/services/fake-lm/
 import { pickWeighted } from '@/services/fake-lm/core/weighted';
 
 export function makeMarkdownPlan({ random }: {
-  random: SeededNonCryptoPseudoRandom;
+  random: SeededNonCryptoPseudoRandom,
 }): BlockPlan[] {
   const bodyBlockCount = pickWeighted({
     random,
@@ -49,10 +49,10 @@ export function makeMarkdownPlan({ random }: {
 }
 
 function makeBlockPlanAt({ random, index, blockCount, tableCount }: {
-  random: SeededNonCryptoPseudoRandom;
-  index: number;
-  blockCount: number;
-  tableCount: number;
+  random: SeededNonCryptoPseudoRandom,
+  index: number,
+  blockCount: number,
+  tableCount: number,
 }): BlockPlan {
   if (index === 0) {
     return { kind: 'openingParagraph', sentenceCount: randomInt({ random, min: 2, max: 3 }) };
@@ -74,7 +74,7 @@ function makeBlockPlanAt({ random, index, blockCount, tableCount }: {
 }
 
 function normalizeBlockPlan({ plans }: {
-  plans: BlockPlan[];
+  plans: BlockPlan[],
 }): BlockPlan[] {
   const normalized: BlockPlan[] = [];
   let tableCount = 0;
@@ -123,7 +123,7 @@ function normalizeBlockPlan({ plans }: {
 }
 
 function removeDuplicateParagraphsBeforeClosing({ plans }: {
-  plans: BlockPlan[];
+  plans: BlockPlan[],
 }): BlockPlan[] {
   if (plans.length < 3) {
     return plans;

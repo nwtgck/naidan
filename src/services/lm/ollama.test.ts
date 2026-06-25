@@ -11,10 +11,10 @@ describe('OllamaProvider Integration Tests', () => {
   const { errorCount, clearEvents } = useGlobalEvents();
 
   let capturedRequests: {
-    url?: string;
-    method?: string;
-    headers: http.IncomingHttpHeaders;
-    body?: any;
+    url?: string,
+    method?: string,
+    headers: http.IncomingHttpHeaders,
+    body?: any,
   }[] = [];
 
   // Helper to start a mock server
@@ -80,7 +80,7 @@ describe('OllamaProvider Integration Tests', () => {
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('<think>Let me see...</think>The answer is 42');
@@ -97,7 +97,7 @@ describe('OllamaProvider Integration Tests', () => {
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: () => {}
+        onChunk: () => {},
       });
       expect(capturedRequests[0]!.url).toBe('/api/chat');
     });
@@ -119,7 +119,7 @@ describe('OllamaProvider Integration Tests', () => {
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('Partial');
@@ -142,7 +142,7 @@ describe('OllamaProvider Integration Tests', () => {
           model: 'llama3',
           onChunk: ({ chunk: chunk }) => {
             result += chunk;
-          }
+          },
         });
       } catch (e) {
         // Expected
@@ -162,11 +162,11 @@ describe('OllamaProvider Integration Tests', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Analyze this image:' },
-            { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BfAQJAAgtOXYgAAAAASUVORK5CYII=' } }
-          ]
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BfAQJAAgtOXYgAAAAASUVORK5CYII=' } },
+          ],
         }],
         model: 'llava',
-        onChunk: () => {}
+        onChunk: () => {},
       });
 
       expect(capturedRequests[0]!.body.messages[0].content).toBe('Analyze this image:');
@@ -186,11 +186,11 @@ describe('OllamaProvider Integration Tests', () => {
           role: 'user',
           content: [
             { type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } },
-            { type: 'image_url', image_url: { url: 'data:image/png;base64,BBB' } }
-          ]
+            { type: 'image_url', image_url: { url: 'data:image/png;base64,BBB' } },
+          ],
         }],
         model: 'multimodal',
-        onChunk: () => {}
+        onChunk: () => {},
       });
 
       expect(capturedRequests[0]!.body.messages[0].images).toEqual(['AAA', 'BBB']);
@@ -208,11 +208,11 @@ describe('OllamaProvider Integration Tests', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Part 1. ' },
-            { type: 'text', text: 'Part 2.' }
-          ]
+            { type: 'text', text: 'Part 2.' },
+          ],
         }],
         model: 'llama3',
-        onChunk: () => {}
+        onChunk: () => {},
       });
 
       expect(capturedRequests[0]!.body.messages[0].content).toBe('Part 1. Part 2.');
@@ -236,8 +236,8 @@ describe('OllamaProvider Integration Tests', () => {
           presencePenalty: 0.1,
           frequencyPenalty: 0.2,
           stop: ['END'],
-          reasoning: { effort: 'none' }
-        }
+          reasoning: { effort: 'none' },
+        },
       });
 
       expect(capturedRequests[0]!.body.options).toEqual({
@@ -246,7 +246,7 @@ describe('OllamaProvider Integration Tests', () => {
         num_predict: 50,
         presence_penalty: 0.1,
         frequency_penalty: 0.2,
-        stop: ['END']
+        stop: ['END'],
       });
       expect(capturedRequests[0]!.body.think).toBe(false);
     });
@@ -274,8 +274,8 @@ describe('OllamaProvider Integration Tests', () => {
         },
         parameters: {
           ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'high' }
-        }
+          reasoning: { effort: 'high' },
+        },
       });
 
       expect(callCount).toBe(2);
@@ -300,8 +300,8 @@ describe('OllamaProvider Integration Tests', () => {
         onChunk: () => {},
         parameters: {
           ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'high' }
-        }
+          reasoning: { effort: 'high' },
+        },
       })).rejects.toThrow(/Some other bad request/);
 
       expect(callCount).toBe(1);
@@ -329,12 +329,12 @@ describe('OllamaProvider Integration Tests', () => {
         onProgress: (p) => {
           progress.push(p);
         },
-        signal: undefined
+        signal: undefined,
       });
 
       expect(progress).toEqual([
         { currentStep: 1, totalSteps: 10 },
-        { currentStep: 5, totalSteps: 10 }
+        { currentStep: 5, totalSteps: 10 },
       ]);
       expect(result.image).toBeInstanceOf(Blob);
       expect(result.totalSteps).toBe(10);
@@ -359,7 +359,7 @@ describe('OllamaProvider Integration Tests', () => {
         seed: 1,
         images: [],
         onProgress: () => {},
-        signal: undefined
+        signal: undefined,
       });
 
       expect(result.image).toBeInstanceOf(Blob);
@@ -385,7 +385,7 @@ describe('OllamaProvider Integration Tests', () => {
         onProgress: () => {
           controller.abort();
         },
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       await expect(promise).rejects.toThrow();
@@ -408,7 +408,7 @@ describe('OllamaProvider Integration Tests', () => {
         seed: 1,
         images: [],
         onProgress: () => {},
-        signal: undefined
+        signal: undefined,
       })).rejects.toThrow('Could not find image data in Ollama response.');
     });
 
@@ -428,7 +428,7 @@ describe('OllamaProvider Integration Tests', () => {
         seed: 1,
         images: [],
         onProgress: () => {},
-        signal: undefined
+        signal: undefined,
       })).rejects.toThrow('Ollama Image Generation Error (/api/generate, 403): Access denied to this model');
 
       expect(errorCount.value).toBe(1);
@@ -440,8 +440,8 @@ describe('OllamaProvider Integration Tests', () => {
         res.end(JSON.stringify({
           models: [
             { name: 'llama3:latest' },
-            { name: 'mistral:latest' }
-          ]
+            { name: 'mistral:latest' },
+          ],
         }));
       });
 
@@ -458,7 +458,7 @@ describe('OllamaProvider Integration Tests', () => {
 
       const provider = new OllamaProvider({
         endpoint: baseUrl,
-        headers: [['X-Test', 'Ollama']]
+        headers: [['X-Test', 'Ollama']],
       });
 
       await provider.chat({ messages: [], model: 'm', onChunk: () => {} });
@@ -468,7 +468,7 @@ describe('OllamaProvider Integration Tests', () => {
       expect(capturedRequests[1]!.headers['x-test']).toBe('Ollama');
 
       await provider.generateImage({
-        prompt: 'p', model: 'm', width: 1, height: 1, steps: 1, seed: 1, images: [], onProgress: () => {}, signal: undefined
+        prompt: 'p', model: 'm', width: 1, height: 1, steps: 1, seed: 1, images: [], onProgress: () => {}, signal: undefined,
       });
       expect(capturedRequests[2]!.headers['x-test']).toBe('Ollama');
     });
@@ -530,7 +530,7 @@ describe('OllamaProvider Integration Tests', () => {
         model: 'llama3',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('Valid');
@@ -561,8 +561,8 @@ describe('OllamaProvider Integration Tests', () => {
           ...EMPTY_LM_PARAMETERS,
           temperature: 0.1,
           stop: ['QED'],
-          reasoning: { effort: 'high' }
-        }
+          reasoning: { effort: 'high' },
+        },
       });
 
       expect(capturedRequests).toHaveLength(2);

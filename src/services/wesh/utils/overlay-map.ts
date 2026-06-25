@@ -6,7 +6,7 @@ export class WeshOverlayMap<K, V> implements Map<K, V> {
   constructor({
     source,
   }: {
-    source: ReadonlyMap<K, V>;
+    source: ReadonlyMap<K, V>,
   }) {
     this.source = source;
   }

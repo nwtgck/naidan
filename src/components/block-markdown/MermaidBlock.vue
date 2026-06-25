@@ -4,7 +4,7 @@ import mermaid from 'mermaid';
 import { CheckIcon, CopyIcon, CodeIcon, LayoutIcon, ColumnsIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
-  code: string;
+  code: string,
 }>();
 
 const containerRef = ref<HTMLElement | null>(null);
@@ -96,7 +96,7 @@ async function copyCode() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

@@ -10,18 +10,18 @@ export type ChatTitleCommandsAdapter = {
     titleModelIdOverride,
     signal,
   }: {
-    chatId: ChatId;
-    titleModelIdOverride: string | undefined;
-    signal: AbortSignal | undefined;
-  }): Promise<string | null | undefined>;
+    chatId: ChatId,
+    titleModelIdOverride: string | undefined,
+    signal: AbortSignal | undefined,
+  }): Promise<string | null | undefined>,
 
   abortTitleGeneration({
     chatId,
   }: {
-    chatId: ChatId;
-  }): void;
+    chatId: ChatId,
+  }): void,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatTitle(): ChatTitleCommandsAdapter {
@@ -30,9 +30,9 @@ export function useChatTitle(): ChatTitleCommandsAdapter {
     titleModelIdOverride,
     signal,
   }: {
-    chatId: ChatId;
-    titleModelIdOverride: string | undefined;
-    signal: AbortSignal | undefined;
+    chatId: ChatId,
+    titleModelIdOverride: string | undefined,
+    signal: AbortSignal | undefined,
   }): Promise<string | null | undefined> {
     return await generateChatTitleForChat({
       chatId,
@@ -44,7 +44,7 @@ export function useChatTitle(): ChatTitleCommandsAdapter {
   function abortTitleGeneration({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }): void {
     abortTitleGenerationForChat({ chatId });
   }

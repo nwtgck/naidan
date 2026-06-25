@@ -53,9 +53,9 @@ describe('useChatTools', () => {
     toolConfigs,
     groupId,
   }: {
-    id: ChatId;
-    toolConfigs?: Chat['toolConfigs'];
-    groupId?: Chat['groupId'];
+    id: ChatId,
+    toolConfigs?: Chat['toolConfigs'],
+    groupId?: Chat['groupId'],
   }): Chat {
     return reactive({
       id,

@@ -9,37 +9,37 @@ import { iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 type CutMode = 'bytes' | 'characters' | 'fields';
 
 interface CutRange {
-  start: number | undefined;
-  end: number | undefined;
+  start: number | undefined,
+  end: number | undefined,
 }
 
 interface CutTextLine {
-  text: string;
-  hadNewline: boolean;
+  text: string,
+  hadNewline: boolean,
 }
 
 interface CutByteLine {
-  bytes: Uint8Array;
-  hadNewline: boolean;
+  bytes: Uint8Array,
+  hadNewline: boolean,
 }
 
 interface CutInterval {
-  start: number;
-  end: number | undefined;
+  start: number,
+  end: number | undefined,
 }
 
 interface CutSegment {
-  start: number;
-  end: number;
+  start: number,
+  end: number,
 }
 
 function parsePositiveInteger({
   value,
   label,
 }: {
-  value: string;
-  label: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+  label: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   if (!/^[1-9]\d*$/.test(value)) {
     return { ok: false, message: `invalid ${label}: '${value}'` };
   }
@@ -50,8 +50,8 @@ function parsePositiveInteger({
 function parseCutRange({
   token,
 }: {
-  token: string;
-}): { ok: true; value: CutRange } | { ok: false; message: string } {
+  token: string,
+}): { ok: true, value: CutRange } | { ok: false, message: string } {
   if (token === '') {
     return { ok: false, message: 'empty list is not allowed' };
   }
@@ -112,8 +112,8 @@ function parseCutRange({
 function parseCutList({
   value,
 }: {
-  value: string;
-}): { ok: true; value: CutRange[] } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, value: CutRange[] } | { ok: false, message: string } {
   if (value.trim().length === 0) {
     return { ok: false, message: 'empty list is not allowed' };
   }
@@ -131,7 +131,7 @@ function parseCutList({
 function normalizeCutIntervals({
   ranges,
 }: {
-  ranges: CutRange[];
+  ranges: CutRange[],
 }): CutInterval[] {
   const sorted = ranges
     .map((range) => ({
@@ -176,8 +176,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   return path.startsWith('/') ? path : `${cwd}/${path}`;
 }
@@ -187,9 +187,9 @@ function buildSelectedSegments({
   length,
   complement,
 }: {
-  intervals: CutInterval[];
-  length: number;
-  complement: boolean;
+  intervals: CutInterval[],
+  length: number,
+  complement: boolean,
 }): CutSegment[] {
   const selected: CutSegment[] = [];
 
@@ -236,8 +236,8 @@ function createCutRangeTracker({
   intervals,
   complement,
 }: {
-  intervals: CutInterval[];
-  complement: boolean;
+  intervals: CutInterval[],
+  complement: boolean,
 }) {
   let intervalIndex = 0;
 
@@ -259,7 +259,7 @@ function createCutRangeTracker({
       }
 
       return complement;
-    }
+    },
   };
 }
 
@@ -268,9 +268,9 @@ function selectBytes({
   intervals,
   complement,
 }: {
-  line: Uint8Array;
-  intervals: CutInterval[];
-  complement: boolean;
+  line: Uint8Array,
+  intervals: CutInterval[],
+  complement: boolean,
 }): Uint8Array {
   const segments = buildSelectedSegments({
     intervals,
@@ -295,9 +295,9 @@ function selectCharacters({
   intervals,
   complement,
 }: {
-  line: string;
-  intervals: CutInterval[];
-  complement: boolean;
+  line: string,
+  intervals: CutInterval[],
+  complement: boolean,
 }): string {
   const characters = Array.from(line);
   const segments = buildSelectedSegments({
@@ -322,12 +322,12 @@ function selectFields({
   complement,
   suppressNoDelimiterLines,
 }: {
-  line: string;
-  delimiter: string;
-  outputDelimiter: string;
-  intervals: CutInterval[];
-  complement: boolean;
-  suppressNoDelimiterLines: boolean;
+  line: string,
+  delimiter: string,
+  outputDelimiter: string,
+  intervals: CutInterval[],
+  complement: boolean,
+  suppressNoDelimiterLines: boolean,
 }): string | undefined {
   if (!line.includes(delimiter)) {
     return suppressNoDelimiterLines ? undefined : line;
@@ -366,13 +366,13 @@ function selectLine({
   complement,
   suppressNoDelimiterLines,
 }: {
-  line: string;
-  mode: CutMode;
-  intervals: CutInterval[];
-  fieldDelimiter: string | undefined;
-  outputDelimiter: string | undefined;
-  complement: boolean;
-  suppressNoDelimiterLines: boolean;
+  line: string,
+  mode: CutMode,
+  intervals: CutInterval[],
+  fieldDelimiter: string | undefined,
+  outputDelimiter: string | undefined,
+  complement: boolean,
+  suppressNoDelimiterLines: boolean,
 }): string | undefined {
   switch (mode) {
   case 'bytes':
@@ -398,7 +398,7 @@ function selectLine({
 function createStdinStream({
   handle,
 }: {
-  handle: WeshFileHandle;
+  handle: WeshFileHandle,
 }): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async pull(controller) {
@@ -417,8 +417,8 @@ async function writeAll({
   handle,
   buffer,
 }: {
-  handle: WeshFileHandle;
-  buffer: Uint8Array;
+  handle: WeshFileHandle,
+  buffer: Uint8Array,
 }): Promise<void> {
   let offset = 0;
   while (offset < buffer.length) {
@@ -438,8 +438,8 @@ async function openCutInputStream({
   context,
   file,
 }: {
-  context: WeshCommandContext;
-  file: string;
+  context: WeshCommandContext,
+  file: string,
 }): Promise<ReadableStream<Uint8Array>> {
   if (file === '-') {
     return createStdinStream({
@@ -460,7 +460,7 @@ async function openCutInputStream({
 async function *readTextLines({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): AsyncGenerator<CutTextLine> {
   for await (const record of iterateUtf8LineRecords({
     chunks: iterateReadableStreamChunks({ stream }),
@@ -475,7 +475,7 @@ async function *readTextLines({
 async function *readByteLines({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): AsyncGenerator<CutByteLine> {
   const reader = stream.getReader();
   let lineChunks: Uint8Array[] = [];

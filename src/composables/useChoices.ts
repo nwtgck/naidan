@@ -9,12 +9,12 @@ import type {
 } from '@/services/choices';
 
 type ChoicesRuntimeState = {
-  activeRequestsByChatId: Map<ChatId, ChoicesActiveRequest>;
+  activeRequestsByChatId: Map<ChatId, ChoicesActiveRequest>,
 };
 
 type PendingSelection = {
-  request: ChoicesActiveRequest;
-  resolve: ({ selection }: { selection: ChoicesSelection }) => void;
+  request: ChoicesActiveRequest,
+  resolve: ({ selection }: { selection: ChoicesSelection }) => void,
 };
 
 const choicesRuntimeState = reactive<ChoicesRuntimeState>({
@@ -27,7 +27,7 @@ const pendingSelections = new Map<string, PendingSelection>();
 function getChatChoiceLock({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): Semaphore {
   const existing = chatChoiceLocks.get(chatId);
   if (existing !== undefined) {
@@ -43,8 +43,8 @@ function waitForChoiceSelection({
   request,
   signal,
 }: {
-  request: ChoicesActiveRequest;
-  signal: AbortSignal | undefined;
+  request: ChoicesActiveRequest,
+  signal: AbortSignal | undefined,
 }): Promise<ChoicesSelection> {
   choicesRuntimeState.activeRequestsByChatId.set(request.chatId, request);
 
@@ -74,8 +74,8 @@ function clearActiveChoiceRequest({
   chatId,
   requestId,
 }: {
-  chatId: ChatId;
-  requestId: string;
+  chatId: ChatId,
+  requestId: string,
 }): void {
   const activeRequest = choicesRuntimeState.activeRequestsByChatId.get(chatId);
   if (activeRequest?.requestId !== requestId) {
@@ -88,8 +88,8 @@ async function runWithChatChoiceLock<TResult>({
   chatId,
   run,
 }: {
-  chatId: ChatId;
-  run: () => Promise<TResult>;
+  chatId: ChatId,
+  run: () => Promise<TResult>,
 }): Promise<TResult> {
   const lock = getChatChoiceLock({ chatId });
   return await lock.run({ task: run });
@@ -132,27 +132,27 @@ export const requestChoice: RequestChoice = async ({
 };
 
 export function useChoices(): {
-  requestChoice: RequestChoice;
+  requestChoice: RequestChoice,
   getActiveChoiceRequest: ({
     chatId,
   }: {
-    chatId: ChatId;
-  }) => ComputedRef<ChoicesActiveRequest | undefined>;
+    chatId: ChatId,
+  }) => ComputedRef<ChoicesActiveRequest | undefined>,
   resolveChoiceRequest: ({
     requestId,
     index,
   }: {
-    requestId: string;
-    index: number;
-  }) => void;
+    requestId: string,
+    index: number,
+  }) => void,
   TEST_ONLY: {
-    clearAll: () => void;
-  };
+    clearAll: () => void,
+  },
   } {
   function getActiveChoiceRequest({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }): ComputedRef<ChoicesActiveRequest | undefined> {
     return computed(() => choicesRuntimeState.activeRequestsByChatId.get(chatId));
   }
@@ -161,8 +161,8 @@ export function useChoices(): {
     requestId,
     index,
   }: {
-    requestId: string;
-    index: number;
+    requestId: string,
+    index: number,
   }): void {
     const pending = pendingSelections.get(requestId);
     if (pending === undefined) {

@@ -11,50 +11,50 @@ type SortOrder = 'forward' | 'reverse';
 type SortCheckMode = 'none' | 'strict' | 'silent';
 
 interface SortEntry {
-  value: string;
-  index: number;
+  value: string,
+  index: number,
 }
 
 interface SortKeySpec {
-  startField: number;
-  startChar: number | undefined;
-  endField: number | undefined;
-  endChar: number | undefined;
-  mode: SortMode | undefined;
-  reverse: boolean;
-  ignoreLeadingBlanks: boolean;
-  foldCase: boolean;
-  dictionaryOrder: boolean;
-  ignoreNonprinting: boolean;
+  startField: number,
+  startChar: number | undefined,
+  endField: number | undefined,
+  endChar: number | undefined,
+  mode: SortMode | undefined,
+  reverse: boolean,
+  ignoreLeadingBlanks: boolean,
+  foldCase: boolean,
+  dictionaryOrder: boolean,
+  ignoreNonprinting: boolean,
 }
 
 interface SortResolvedKeySpec extends SortKeySpec {
-  fieldSeparator: string | undefined;
+  fieldSeparator: string | undefined,
 }
 
 interface SortResolvedOptions {
-  mode: SortMode;
-  order: SortOrder;
-  uniqueness: 'all' | 'unique';
-  stable: boolean;
-  foldCase: boolean;
-  ignoreLeadingBlanks: boolean;
-  dictionaryOrder: boolean;
-  ignoreNonprinting: boolean;
-  checkMode: SortCheckMode;
-  merge: boolean;
-  zeroTerminated: boolean;
-  outputPath: string | undefined;
-  fieldSeparator: string | undefined;
-  keySpecs: SortResolvedKeySpec[];
+  mode: SortMode,
+  order: SortOrder,
+  uniqueness: 'all' | 'unique',
+  stable: boolean,
+  foldCase: boolean,
+  ignoreLeadingBlanks: boolean,
+  dictionaryOrder: boolean,
+  ignoreNonprinting: boolean,
+  checkMode: SortCheckMode,
+  merge: boolean,
+  zeroTerminated: boolean,
+  outputPath: string | undefined,
+  fieldSeparator: string | undefined,
+  keySpecs: SortResolvedKeySpec[],
 }
 
 function resolveInputPath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -63,8 +63,8 @@ function resolveInputPath({
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
 }
 
-type SortKeyParseResult = { ok: true; value: SortKeySpec } | { ok: false; message: string };
-type SortResolvedOptionsResult = { ok: true; value: SortResolvedOptions } | { ok: false; message: string };
+type SortKeyParseResult = { ok: true, value: SortKeySpec } | { ok: false, message: string };
+type SortResolvedOptionsResult = { ok: true, value: SortResolvedOptions } | { ok: false, message: string };
 
 function trimLeadingBlanks({ value }: { value: string }): string {
   return value.replace(/^[ \t]+/, '');
@@ -89,16 +89,16 @@ function getNormalization({
   options,
 }: {
   options: {
-    foldCase: boolean;
-    ignoreLeadingBlanks: boolean;
-    dictionaryOrder: boolean;
-    ignoreNonprinting: boolean;
-  };
+    foldCase: boolean,
+    ignoreLeadingBlanks: boolean,
+    dictionaryOrder: boolean,
+    ignoreNonprinting: boolean,
+  },
 }): {
-  foldCase: boolean;
-  ignoreLeadingBlanks: boolean;
-  dictionaryOrder: boolean;
-  ignoreNonprinting: boolean;
+  foldCase: boolean,
+  ignoreLeadingBlanks: boolean,
+  dictionaryOrder: boolean,
+  ignoreNonprinting: boolean,
 } {
   return options;
 }
@@ -107,13 +107,13 @@ function normalizeText({
   value,
   normalization,
 }: {
-  value: string;
+  value: string,
   normalization: {
-    foldCase: boolean;
-    ignoreLeadingBlanks: boolean;
-    dictionaryOrder: boolean;
-    ignoreNonprinting: boolean;
-  };
+    foldCase: boolean,
+    ignoreLeadingBlanks: boolean,
+    dictionaryOrder: boolean,
+    ignoreNonprinting: boolean,
+  },
 }): string {
   let result = value;
 
@@ -144,9 +144,9 @@ function compareLexical({
   right,
   normalization,
 }: {
-  left: string;
-  right: string;
-  normalization: ReturnType<typeof getNormalization>;
+  left: string,
+  right: string,
+  normalization: ReturnType<typeof getNormalization>,
 }): number {
   const leftValue = normalizeText({ value: left, normalization });
   const rightValue = normalizeText({ value: right, normalization });
@@ -167,9 +167,9 @@ function compareNumeric({
   right,
   normalization,
 }: {
-  left: string;
-  right: string;
-  normalization: ReturnType<typeof getNormalization>;
+  left: string,
+  right: string,
+  normalization: ReturnType<typeof getNormalization>,
 }): number {
   const leftValue = parseLeadingNumericPrefix({ value: normalizeText({ value: left, normalization }) });
   const rightValue = parseLeadingNumericPrefix({ value: normalizeText({ value: right, normalization }) });
@@ -183,9 +183,9 @@ function compareGeneralNumeric({
   right,
   normalization,
 }: {
-  left: string;
-  right: string;
-  normalization: ReturnType<typeof getNormalization>;
+  left: string,
+  right: string,
+  normalization: ReturnType<typeof getNormalization>,
 }): number {
   const leftValue = Number.parseFloat(normalizeText({ value: left, normalization }));
   const rightValue = Number.parseFloat(normalizeText({ value: right, normalization }));
@@ -232,9 +232,9 @@ function compareHumanNumeric({
   right,
   normalization,
 }: {
-  left: string;
-  right: string;
-  normalization: ReturnType<typeof getNormalization>;
+  left: string,
+  right: string,
+  normalization: ReturnType<typeof getNormalization>,
 }): number {
   const leftValue = parseHumanNumericValue({ value: normalizeText({ value: left, normalization }) });
   const rightValue = parseHumanNumericValue({ value: normalizeText({ value: right, normalization }) });
@@ -248,9 +248,9 @@ function compareMonth({
   right,
   normalization,
 }: {
-  left: string;
-  right: string;
-  normalization: ReturnType<typeof getNormalization>;
+  left: string,
+  right: string,
+  normalization: ReturnType<typeof getNormalization>,
 }): number {
   const monthOrder = new Map<string, number>([
     ['jan', 1], ['feb', 2], ['mar', 3], ['apr', 4], ['may', 5], ['jun', 6],
@@ -275,8 +275,8 @@ function compareVersionChunks({
   left,
   right,
 }: {
-  left: string;
-  right: string;
+  left: string,
+  right: string,
 }): number {
   const leftChunks = left.match(/(\d+|\D+)/g) ?? [''];
   const rightChunks = right.match(/(\d+|\D+)/g) ?? [''];
@@ -313,9 +313,9 @@ function compareVersion({
   right,
   normalization,
 }: {
-  left: string;
-  right: string;
-  normalization: ReturnType<typeof getNormalization>;
+  left: string,
+  right: string,
+  normalization: ReturnType<typeof getNormalization>,
 }): number {
   return compareVersionChunks({
     left: normalizeText({ value: left, normalization }),
@@ -329,10 +329,10 @@ function compareValues({
   mode,
   normalization,
 }: {
-  left: string;
-  right: string;
-  mode: SortMode;
-  normalization: ReturnType<typeof getNormalization>;
+  left: string,
+  right: string,
+  mode: SortMode,
+  normalization: ReturnType<typeof getNormalization>,
 }): number {
   switch (mode) {
   case 'lexical':
@@ -358,13 +358,13 @@ function splitFields({
   line,
   separator,
 }: {
-  line: string;
-  separator: string | undefined;
-}): Array<{ start: number; end: number }> {
+  line: string,
+  separator: string | undefined,
+}): Array<{ start: number, end: number }> {
   if (line.length === 0) return [];
 
   if (separator === undefined) {
-    const spans: Array<{ start: number; end: number }> = [];
+    const spans: Array<{ start: number, end: number }> = [];
     let index = 0;
     while (index < line.length) {
       while (index < line.length && (line[index] === ' ' || line[index] === '\t')) {
@@ -385,7 +385,7 @@ function splitFields({
     return [{ start: 0, end: line.length }];
   }
 
-  const spans: Array<{ start: number; end: number }> = [];
+  const spans: Array<{ start: number, end: number }> = [];
   let start = 0;
 
   while (start <= line.length) {
@@ -412,9 +412,9 @@ function getSpanBase({
   span,
   ignoreLeadingBlanks,
 }: {
-  line: string;
-  span: { start: number; end: number };
-  ignoreLeadingBlanks: boolean;
+  line: string,
+  span: { start: number, end: number },
+  ignoreLeadingBlanks: boolean,
 }): number {
   if (!ignoreLeadingBlanks) return span.start;
 
@@ -432,11 +432,11 @@ function getSpanPosition({
   ignoreLeadingBlanks,
   kind,
 }: {
-  line: string;
-  span: { start: number; end: number };
-  char: number | undefined;
-  ignoreLeadingBlanks: boolean;
-  kind: 'start' | 'end';
+  line: string,
+  span: { start: number, end: number },
+  char: number | undefined,
+  ignoreLeadingBlanks: boolean,
+  kind: 'start' | 'end',
 }): number {
   const base = getSpanBase({ line, span, ignoreLeadingBlanks });
   if (char === undefined) {
@@ -469,8 +469,8 @@ function applySortOrder({
   value,
   order,
 }: {
-  value: number;
-  order: SortOrder;
+  value: number,
+  order: SortOrder,
 }): number {
   switch (order) {
   case 'forward':
@@ -488,8 +488,8 @@ function shouldTreatAsUnique({
   stable,
   uniqueness,
 }: {
-  stable: boolean;
-  uniqueness: SortResolvedOptions['uniqueness'];
+  stable: boolean,
+  uniqueness: SortResolvedOptions['uniqueness'],
 }): boolean {
   switch (uniqueness) {
   case 'all':
@@ -506,7 +506,7 @@ function shouldTreatAsUnique({
 function parseKeyToken({
   token,
 }: {
-  token: string;
+  token: string,
 }): SortKeyParseResult {
   if (token.trim().length === 0) {
     return { ok: false, message: 'empty key definition is not allowed' };
@@ -520,8 +520,8 @@ function parseKeyToken({
   const parsePart = ({
     part,
   }: {
-    part: string;
-  }): { ok: true; value: { field: number; char: number | undefined; modifiers: string } } | { ok: false; message: string } => {
+    part: string,
+  }): { ok: true, value: { field: number, char: number | undefined, modifiers: string } } | { ok: false, message: string } => {
     const match = part.match(/^([1-9]\d*)(?:\.([1-9]\d*))?([A-Za-z]*)$/);
     if (match === null) {
       return { ok: false, message: `invalid key definition: '${token}'` };
@@ -628,7 +628,7 @@ function parseKeyToken({
 function collectKeySpecs({
   occurrences,
 }: {
-  occurrences: ReturnType<typeof parseStandardArgv>['occurrences'];
+  occurrences: ReturnType<typeof parseStandardArgv>['occurrences'],
 }): SortKeyParseResult[] {
   const results: SortKeyParseResult[] = [];
   for (const occurrence of occurrences) {
@@ -657,7 +657,7 @@ function collectKeySpecs({
 function resolveSortOptions({
   parsed,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>;
+  parsed: ReturnType<typeof parseStandardArgv>,
 }): SortResolvedOptionsResult {
   const keySpecsResult = collectKeySpecs({ occurrences: parsed.occurrences });
   for (const result of keySpecsResult) {
@@ -665,7 +665,7 @@ function resolveSortOptions({
   }
 
   const keySpecs = keySpecsResult
-    .filter((result): result is { ok: true; value: SortKeySpec } => result.ok)
+    .filter((result): result is { ok: true, value: SortKeySpec } => result.ok)
     .map((result) => result.value);
 
   const fieldSeparatorValue = typeof parsed.optionValues.fieldSeparator === 'string'
@@ -726,8 +726,8 @@ function resolveKeyText({
   line,
   keySpec,
 }: {
-  line: string;
-  keySpec: SortResolvedKeySpec;
+  line: string,
+  keySpec: SortResolvedKeySpec,
 }): string {
   const fields = splitFields({ line, separator: keySpec.fieldSeparator });
   const startSpan = fields[keySpec.startField - 1];
@@ -767,9 +767,9 @@ function compareEntries({
   right,
   options,
 }: {
-  left: SortEntry;
-  right: SortEntry;
-  options: SortResolvedOptions;
+  left: SortEntry,
+  right: SortEntry,
+  options: SortResolvedOptions,
 }): number {
   const compareWholeLines = (): number => compareLexical({
     left: left.value,
@@ -851,10 +851,10 @@ async function openSortRecordIterator({
   zeroTerminated,
   stdinAvailable,
 }: {
-  context: WeshCommandContext;
-  file: string | undefined;
-  zeroTerminated: boolean;
-  stdinAvailable: { value: boolean };
+  context: WeshCommandContext,
+  file: string | undefined,
+  zeroTerminated: boolean,
+  stdinAvailable: { value: boolean },
 }): Promise<AsyncIterator<string>> {
   const usesStdin = file === undefined || file === '-';
   if (usesStdin && !stdinAvailable.value) {
@@ -880,7 +880,7 @@ async function openSortRecordIterator({
 async function closeIterator({
   iterator,
 }: {
-  iterator: AsyncIterator<string> | undefined;
+  iterator: AsyncIterator<string> | undefined,
 }): Promise<void> {
   await iterator?.return?.();
 }
@@ -888,7 +888,7 @@ async function closeIterator({
 function estimateSortEntryBytes({
   value,
 }: {
-  value: string;
+  value: string,
 }): number {
   return 64 + value.length * 2;
 }
@@ -897,8 +897,8 @@ function createTemporaryName({
   prefix,
   pid,
 }: {
-  prefix: string;
-  pid: number;
+  prefix: string,
+  pid: number,
 }): string {
   const random = Math.random().toString(36).slice(2, 14);
   return `${prefix}-${pid}-${random}`;
@@ -910,10 +910,10 @@ async function writeRun({
   entries,
   zeroTerminated,
 }: {
-  context: WeshCommandContext;
-  path: string;
-  entries: readonly SortEntry[];
-  zeroTerminated: boolean;
+  context: WeshCommandContext,
+  path: string,
+  entries: readonly SortEntry[],
+  zeroTerminated: boolean,
 }): Promise<void> {
   const handle = await context.files.open({
     path,
@@ -945,9 +945,9 @@ async function openRunIterator({
   path,
   zeroTerminated,
 }: {
-  context: WeshCommandContext;
-  path: string;
-  zeroTerminated: boolean;
+  context: WeshCommandContext,
+  path: string,
+  zeroTerminated: boolean,
 }): Promise<AsyncIterator<string>> {
   const stream = await openFileReadStream({
     files: context.files,
@@ -961,19 +961,19 @@ async function openRunIterator({
 }
 
 interface SortOutput {
-  readonly handle: WeshFileHandle;
-  readonly writer: ReturnType<typeof createBufferedTextWriter>;
-  readonly temporaryPath: string | undefined;
-  readonly outputPath: string | undefined;
-  readonly recoveryPath: string | undefined;
+  readonly handle: WeshFileHandle,
+  readonly writer: ReturnType<typeof createBufferedTextWriter>,
+  readonly temporaryPath: string | undefined,
+  readonly outputPath: string | undefined,
+  readonly recoveryPath: string | undefined,
 }
 
 async function createSortOutput({
   context,
   outputPath,
 }: {
-  context: WeshCommandContext;
-  outputPath: string | undefined;
+  context: WeshCommandContext,
+  outputPath: string | undefined,
 }): Promise<SortOutput> {
   if (outputPath === undefined) {
     return {
@@ -1039,9 +1039,9 @@ async function finalizeSortOutput({
   output,
   status,
 }: {
-  context: WeshCommandContext;
-  output: SortOutput;
-  status: 'commit' | 'abort';
+  context: WeshCommandContext,
+  output: SortOutput,
+  status: 'commit' | 'abort',
 }): Promise<void> {
   if (
     output.temporaryPath === undefined
@@ -1135,7 +1135,7 @@ async function finalizeSortOutput({
 }
 
 interface SortWriter {
-  readonly writer: ReturnType<typeof createBufferedTextWriter>;
+  readonly writer: ReturnType<typeof createBufferedTextWriter>,
 }
 
 async function emitMergedIterators({
@@ -1143,9 +1143,9 @@ async function emitMergedIterators({
   options,
   output,
 }: {
-  iterators: readonly AsyncIterator<string>[];
-  options: SortResolvedOptions;
-  output: SortWriter;
+  iterators: readonly AsyncIterator<string>[],
+  options: SortResolvedOptions,
+  output: SortWriter,
 }): Promise<void> {
   const current = await Promise.all(iterators.map(async (iterator) => iterator.next()));
   const delimiter = options.zeroTerminated ? '\0' : '\n';
@@ -1198,10 +1198,10 @@ async function mergeRunPaths({
   outputPath,
   options,
 }: {
-  context: WeshCommandContext;
-  paths: readonly string[];
-  outputPath: string;
-  options: SortResolvedOptions;
+  context: WeshCommandContext,
+  paths: readonly string[],
+  outputPath: string,
+  options: SortResolvedOptions,
 }): Promise<void> {
   const handle = await context.files.open({
     path: outputPath,
@@ -1248,18 +1248,18 @@ async function mergeRunPaths({
 
 
 interface SortRunStore {
-  readonly directory: string;
-  readonly livePaths: Set<string>;
-  readonly levels: string[][];
-  readonly inputOrderByPath: Map<string, number>;
-  nextRunIndex: number;
-  nextInputOrder: number;
+  readonly directory: string,
+  readonly livePaths: Set<string>,
+  readonly levels: string[][],
+  readonly inputOrderByPath: Map<string, number>,
+  nextRunIndex: number,
+  nextInputOrder: number,
 }
 
 async function createSortRunStore({
   context,
 }: {
-  context: WeshCommandContext;
+  context: WeshCommandContext,
 }): Promise<SortRunStore> {
   const baseDirectory = (context.env.get('TMPDIR') || '/tmp').replace(/\/$/u, '');
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -1293,7 +1293,7 @@ async function createSortRunStore({
 function allocateSortRunPath({
   store,
 }: {
-  store: SortRunStore;
+  store: SortRunStore,
 }): string {
   const path = `${store.directory}/run-${store.nextRunIndex}`;
   store.nextRunIndex += 1;
@@ -1304,8 +1304,8 @@ function registerInitialSortRun({
   store,
   path,
 }: {
-  store: SortRunStore;
-  path: string;
+  store: SortRunStore,
+  path: string,
 }): void {
   store.livePaths.add(path);
   store.inputOrderByPath.set(path, store.nextInputOrder);
@@ -1317,9 +1317,9 @@ function registerMergedSortRun({
   path,
   inputPaths,
 }: {
-  store: SortRunStore;
-  path: string;
-  inputPaths: readonly string[];
+  store: SortRunStore,
+  path: string,
+  inputPaths: readonly string[],
 }): void {
   const inputOrders = inputPaths.map((inputPath) => {
     const order = store.inputOrderByPath.get(inputPath);
@@ -1337,9 +1337,9 @@ async function deleteSortRun({
   store,
   path,
 }: {
-  context: WeshCommandContext;
-  store: SortRunStore;
-  path: string;
+  context: WeshCommandContext,
+  store: SortRunStore,
+  path: string,
 }): Promise<void> {
   if (!store.livePaths.has(path)) {
     return;
@@ -1354,9 +1354,9 @@ async function tryDeleteSortRun({
   store,
   path,
 }: {
-  context: WeshCommandContext;
-  store: SortRunStore;
-  path: string;
+  context: WeshCommandContext,
+  store: SortRunStore,
+  path: string,
 }): Promise<void> {
   try {
     await deleteSortRun({ context, store, path });
@@ -1372,11 +1372,11 @@ async function addSortRunAtLevel({
   level,
   options,
 }: {
-  context: WeshCommandContext;
-  store: SortRunStore;
-  path: string;
-  level: number;
-  options: SortResolvedOptions;
+  context: WeshCommandContext,
+  store: SortRunStore,
+  path: string,
+  level: number,
+  options: SortResolvedOptions,
 }): Promise<void> {
   const levelPaths = store.levels[level] ?? [];
   if (store.levels[level] === undefined) {
@@ -1412,8 +1412,8 @@ export function orderSortRunPaths({
   paths,
   inputOrderByPath,
 }: {
-  paths: readonly string[];
-  inputOrderByPath: ReadonlyMap<string, number>;
+  paths: readonly string[],
+  inputOrderByPath: ReadonlyMap<string, number>,
 }): string[] {
   return paths
     .map((path) => {
@@ -1430,7 +1430,7 @@ export function orderSortRunPaths({
 function collectSortRunPaths({
   store,
 }: {
-  store: SortRunStore;
+  store: SortRunStore,
 }): string[] {
   return orderSortRunPaths({
     paths: store.levels.flatMap((paths) => paths),
@@ -1444,10 +1444,10 @@ async function reduceSortRunsToFanIn({
   paths,
   options,
 }: {
-  context: WeshCommandContext;
-  store: SortRunStore;
-  paths: readonly string[];
-  options: SortResolvedOptions;
+  context: WeshCommandContext,
+  store: SortRunStore,
+  paths: readonly string[],
+  options: SortResolvedOptions,
 }): Promise<string[]> {
   let currentPaths = [...paths];
   while (currentPaths.length > SORT_MERGE_FAN_IN) {
@@ -1482,10 +1482,10 @@ async function emitRunPaths({
   options,
   output,
 }: {
-  context: WeshCommandContext;
-  paths: readonly string[];
-  options: SortResolvedOptions;
-  output: SortWriter;
+  context: WeshCommandContext,
+  paths: readonly string[],
+  options: SortResolvedOptions,
+  output: SortWriter,
 }): Promise<void> {
   const iterators: AsyncIterator<string>[] = [];
   try {
@@ -1511,11 +1511,11 @@ async function mergeInputFilesToRun({
   outputPath,
   options,
 }: {
-  context: WeshCommandContext;
-  files: readonly (string | undefined)[];
-  stdinAvailable: { value: boolean };
-  outputPath: string;
-  options: SortResolvedOptions;
+  context: WeshCommandContext,
+  files: readonly (string | undefined)[],
+  stdinAvailable: { value: boolean },
+  outputPath: string,
+  options: SortResolvedOptions,
 }): Promise<void> {
   const handle = await context.files.open({
     path: outputPath,
@@ -1565,8 +1565,8 @@ async function cleanupSortRunStore({
   context,
   store,
 }: {
-  context: WeshCommandContext;
-  store: SortRunStore | undefined;
+  context: WeshCommandContext,
+  store: SortRunStore | undefined,
 }): Promise<void> {
   if (store === undefined) {
     return;
@@ -1591,10 +1591,10 @@ async function checkSortedInputs({
   options,
   checkMode,
 }: {
-  context: WeshCommandContext;
-  files: readonly (string | undefined)[];
-  options: SortResolvedOptions;
-  checkMode: 'strict' | 'silent';
+  context: WeshCommandContext,
+  files: readonly (string | undefined)[],
+  options: SortResolvedOptions,
+  checkMode: 'strict' | 'silent',
 }): Promise<WeshCommandResult> {
   const stdinAvailable = { value: true };
   let previous: SortEntry | undefined;

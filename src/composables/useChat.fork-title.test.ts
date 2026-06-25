@@ -29,14 +29,14 @@ vi.mock('../services/storage', () => ({
     getSidebarStructure: vi.fn().mockResolvedValue([]),
     loadChatMeta: vi.fn(),
     loadChatContent: vi.fn(),
-  }
+  },
 }));
 
 // Mock useToast to avoid issues with dynamic imports/mocking
 vi.mock('./useToast', () => ({
   useToast: () => ({
-    addToast: vi.fn()
-  })
+    addToast: vi.fn(),
+  }),
 }));
 
 describe('useChat fork title fix', () => {

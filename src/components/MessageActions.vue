@@ -11,23 +11,23 @@ import MessageActionsMenu from './MessageActionsMenu.vue';
 import SpeechLanguageSelector from './SpeechLanguageSelector.vue';
 
 const props = defineProps<{
-  chatId?: ChatId;
-  message: MessageNode;
-  isImageResponse: boolean;
-  isUser: boolean;
-  isGenerating: boolean;
-  speechText: string;
-  displayContent: string;
-  showExtensions: boolean;
+  chatId?: ChatId,
+  message: MessageNode,
+  isImageResponse: boolean,
+  isUser: boolean,
+  isGenerating: boolean,
+  speechText: string,
+  displayContent: string,
+  showExtensions: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'regenerate', messageId: MessageId): void;
-  (e: 'edit', messageId: MessageId, content: string, lmParameters: LmParameters | undefined): void;
-  (e: 'fork', messageId: MessageId): void;
-  (e: 'enter-edit-mode'): void;
-  (e: 'show-diff'): void;
-  (e: 'update:showExtensions', val: boolean): void;
+  (e: 'regenerate', messageId: MessageId): void,
+  (e: 'edit', messageId: MessageId, content: string, lmParameters: LmParameters | undefined): void,
+  (e: 'fork', messageId: MessageId): void,
+  (e: 'enter-edit-mode'): void,
+  (e: 'show-diff'): void,
+  (e: 'update:showExtensions', val: boolean): void,
 }>();
 
 const copied = ref(false);
@@ -79,7 +79,7 @@ async function handleCopyLink() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

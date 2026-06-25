@@ -3,15 +3,15 @@ import { computed, ref, type CSSProperties } from 'vue';
 import { useElementBounding, useWindowSize, onClickOutside } from '@vueuse/core';
 
 const props = withDefaults(defineProps<{
-  isOpen: boolean;
-  triggerEl: HTMLElement | null;
-  width?: number;
+  isOpen: boolean,
+  triggerEl: HTMLElement | null,
+  width?: number,
 }>(), {
-  width: 192 // Standard w-48 to ensure text like "Compare Versions" doesn't wrap
+  width: 192, // Standard w-48 to ensure text like "Compare Versions" doesn't wrap
 });
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: 'close'): void,
 }>();
 
 const dropdownRef = ref<HTMLElement | null>(null);
@@ -50,7 +50,7 @@ const floatingStyle = computed((): CSSProperties => {
     ...(openUp
       ? { bottom: `${windowHeight.value - rect.top.value + margin}px` }
       : { top: `${rect.bottom.value + margin}px` }
-    )
+    ),
   };
 });
 
@@ -63,7 +63,7 @@ onClickOutside(dropdownRef, (event) => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

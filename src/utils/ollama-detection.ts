@@ -3,8 +3,8 @@
  * Ollama returns "Ollama is running" on its base URL.
  */
 export async function detectOllama({ url, headers }: {
-  url: string;
-  headers?: [string, string][];
+  url: string,
+  headers?: [string, string][],
 }): Promise<boolean> {
   if (!url) return false;
 

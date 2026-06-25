@@ -2,7 +2,7 @@ export type FakeLmSeed = number;
 export type SeededNonCryptoPseudoRandom = () => number;
 
 export function createSeededNonCryptoPseudoRandom({ seed }: {
-  seed: FakeLmSeed;
+  seed: FakeLmSeed,
 }): SeededNonCryptoPseudoRandom {
   return createMulberry32({ seed: seed >>> 0 });
 }
@@ -20,8 +20,8 @@ function createMulberry32({ seed }: { seed: number }): SeededNonCryptoPseudoRand
 }
 
 export function mixSeed({ seed, salt }: {
-  seed: FakeLmSeed;
-  salt: string;
+  seed: FakeLmSeed,
+  salt: string,
 }): FakeLmSeed {
   let h = seed >>> 0;
 
@@ -34,9 +34,9 @@ export function mixSeed({ seed, salt }: {
 }
 
 export function randomInt({ random, min, max }: {
-  random: SeededNonCryptoPseudoRandom;
-  min: number;
-  max: number;
+  random: SeededNonCryptoPseudoRandom,
+  min: number,
+  max: number,
 }): number {
   return min + Math.floor(random() * (max - min + 1));
 }

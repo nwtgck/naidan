@@ -90,8 +90,8 @@ describe('Sidebar Glitch Reproduction', () => {
     'ModelSelector': true,
     'draggable': {
       template: '<div><slot name="item" v-for="item in modelValue" :element="item" :index="0"></slot></div>',
-      props: ['modelValue']
-    }
+      props: ['modelValue'],
+    },
   };
 
   beforeEach(() => {

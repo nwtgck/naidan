@@ -71,7 +71,7 @@ describe('require-define-expose-test-only rule', () => {
 </script>`;
     const result = await lint(code);
     expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only' && m.messageId === 'missingDefineExpose')).toBe(true);
-    
+
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('defineExpose({');
     expect(fixedResult.output).toContain('TEST_ONLY: {');
@@ -85,7 +85,7 @@ describe('require-define-expose-test-only rule', () => {
 </script>`;
     const result = await lint(code);
     expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only' && m.messageId === 'missingTestOnly')).toBe(true);
-    
+
     const fixedResult = await fix(code);
     expect(fixedResult.output).toMatch(/a: 1,\s+TEST_ONLY: {/);
     expect(fixedResult.output).toContain('// Export internal state and logic used only for testing here.');
@@ -122,7 +122,7 @@ describe('require-define-expose-test-only rule', () => {
 </script>`;
     const result = await lint(code);
     expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only')).toBe(true);
-    
+
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('TEST_ONLY: {');
   });
@@ -133,7 +133,7 @@ describe('require-define-expose-test-only rule', () => {
 </script>`;
     const result = await lint(code);
     expect(result.messages.some(m => m.ruleId === 'local-rules-define-expose/require-define-expose-test-only')).toBe(true);
-    
+
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('TEST_ONLY: {');
   });
@@ -142,7 +142,7 @@ describe('require-define-expose-test-only rule', () => {
     const code = `<template><div /></template>`;
     const result = await lint(code);
     expect(result.messages.some(m => m.messageId === 'missingDefineExpose')).toBe(true);
-    
+
     const fixedResult = await fix(code);
     expect(fixedResult.output).toContain('<script setup lang="ts">');
     expect(fixedResult.output).toContain('defineExpose');

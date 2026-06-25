@@ -12,8 +12,8 @@ export function normalizeArrayIndex({
   array,
   index,
 }: {
-  array: JsonValue[];
-  index: number;
+  array: JsonValue[],
+  index: number,
 }): number | undefined {
   if (!Number.isInteger(index)) return undefined;
   const normalized = index >= 0 ? index : array.length + index;
@@ -24,7 +24,7 @@ export function normalizeArrayIndex({
 export function extractJqPath({
   filter,
 }: {
-  filter: JqFilter;
+  filter: JqFilter,
 }): JqPath | undefined {
   switch (filter.kind) {
   case 'identity':
@@ -55,7 +55,7 @@ export function extractJqPath({
 function shallowCloneObject({
   value,
 }: {
-  value: { [key: string]: JsonValue };
+  value: { [key: string]: JsonValue },
 }): { [key: string]: JsonValue } {
   const clone = createJsonObject();
   for (const [key, nested] of Object.entries(value)) {
@@ -68,9 +68,9 @@ function deleteAtPath({
   value,
   segments,
 }: {
-  value: JsonValue;
-  segments: readonly JqPathSegment[];
-}): { ok: true; value: JsonValue; changed: boolean } | { ok: false; message: string } {
+  value: JsonValue,
+  segments: readonly JqPathSegment[],
+}): { ok: true, value: JsonValue, changed: boolean } | { ok: false, message: string } {
   const [head, ...tail] = segments;
   if (head === undefined) {
     return { ok: true, value: null, changed: true };
@@ -136,9 +136,9 @@ export function applyPathDeletion({
   root,
   path,
 }: {
-  root: JsonValue;
-  path: JqPath;
-}): { ok: true; value: JsonValue } | { ok: false; message: string } {
+  root: JsonValue,
+  path: JqPath,
+}): { ok: true, value: JsonValue } | { ok: false, message: string } {
   const result = deleteAtPath({ value: root, segments: path.segments });
   if (!result.ok) return result;
   return { ok: true, value: result.value };
@@ -149,12 +149,12 @@ export function applyPathUpdate({
   path,
   update,
 }: {
-  root: JsonValue;
-  path: JqPath;
+  root: JsonValue,
+  path: JqPath,
   update: ({ currentValue }: {
-    currentValue: JsonValue | undefined;
-  }) => { ok: true; value: JsonValue } | { ok: false; message: string };
-}): { ok: true; value: JsonValue } | { ok: false; message: string } {
+    currentValue: JsonValue | undefined,
+  }) => { ok: true, value: JsonValue } | { ok: false, message: string },
+}): { ok: true, value: JsonValue } | { ok: false, message: string } {
   return updateAtPath({
     value: root,
     segments: path.segments,
@@ -167,12 +167,12 @@ function updateAtPath({
   segments,
   update,
 }: {
-  value: JsonValue | undefined;
-  segments: readonly JqPathSegment[];
+  value: JsonValue | undefined,
+  segments: readonly JqPathSegment[],
   update: ({ currentValue }: {
-    currentValue: JsonValue | undefined;
-  }) => { ok: true; value: JsonValue } | { ok: false; message: string };
-}): { ok: true; value: JsonValue } | { ok: false; message: string } {
+    currentValue: JsonValue | undefined,
+  }) => { ok: true, value: JsonValue } | { ok: false, message: string },
+}): { ok: true, value: JsonValue } | { ok: false, message: string } {
   const [head, ...tail] = segments;
   if (head === undefined) {
     return update({ currentValue: value });
@@ -230,7 +230,7 @@ function updateAtPath({
 export function clonePathValue({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): JsonValue {
   return cloneJson({ value });
 }

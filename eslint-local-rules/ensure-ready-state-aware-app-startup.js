@@ -16,16 +16,16 @@ export const rule = {
     },
   },
   create(context) {
-    let bootstrapFunctionName
-    const functionStack = []
-    const functionsContainingMount = new Set()
+    let bootstrapFunctionName;
+    const functionStack = [];
+    const functionsContainingMount = new Set();
 
     return {
       FunctionDeclaration(node) {
-        functionStack.push(node.id?.name)
+        functionStack.push(node.id?.name);
       },
       'FunctionDeclaration:exit'() {
-        functionStack.pop()
+        functionStack.pop();
       },
       CallExpression(node) {
         if (
@@ -36,24 +36,24 @@ export const rule = {
           && node.callee.property.type === 'Identifier'
           && node.callee.property.name === 'mount'
         ) {
-          const currentFunctionName = functionStack.at(-1)
+          const currentFunctionName = functionStack.at(-1);
           if (currentFunctionName !== undefined) {
-            functionsContainingMount.add(currentFunctionName)
+            functionsContainingMount.add(currentFunctionName);
           }
         }
 
-        if (node.callee.type !== 'Identifier' || node.callee.name !== 'scheduleAppStartup') return
-        const argument = node.arguments[0]
-        if (argument?.type !== 'ObjectExpression') return
+        if (node.callee.type !== 'Identifier' || node.callee.name !== 'scheduleAppStartup') return;
+        const argument = node.arguments[0];
+        if (argument?.type !== 'ObjectExpression') return;
         const bootstrapProperty = argument.properties.find((property) => (
           property.type === 'Property'
           && !property.computed
           && ((property.key.type === 'Identifier' && property.key.name === 'bootstrap')
             || (property.key.type === 'Literal' && property.key.value === 'bootstrap'))
-        ))
-        if (bootstrapProperty?.type !== 'Property') return
+        ));
+        if (bootstrapProperty?.type !== 'Property') return;
         if (bootstrapProperty.value.type === 'Identifier') {
-          bootstrapFunctionName = bootstrapProperty.value.name
+          bootstrapFunctionName = bootstrapProperty.value.name;
         }
       },
       'Program:exit'(node) {
@@ -61,19 +61,19 @@ export const rule = {
           context.report({
             node,
             message: 'To support asynchronous file-protocol entry loading, main.ts must call scheduleAppStartup() with a bootstrap function.',
-          })
-          return
+          });
+          return;
         }
         if (!functionsContainingMount.has(bootstrapFunctionName)) {
           context.report({
             node,
             message: 'The bootstrap function passed to scheduleAppStartup() must contain app.mount().',
-          })
+          });
         }
       },
-    }
+    };
   },
-}
+};
 
 export default {
   files: ['src/main.ts'],
@@ -87,4 +87,4 @@ export default {
   rules: {
     'local-rules-ready-state-startup/ensure-ready-state-aware-app-startup': 'error',
   },
-}
+};

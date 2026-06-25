@@ -6,7 +6,7 @@ const updateHandler = ref<(() => Promise<void>) | undefined>(undefined);
 export function usePWAUpdate() {
   const setNeedRefresh = ({ refresh, handler }: {
     refresh: boolean,
-    handler: (() => Promise<void>) | undefined
+    handler: (() => Promise<void>) | undefined,
   }) => {
     needRefresh.value = refresh;
     updateHandler.value = handler;

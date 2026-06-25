@@ -43,11 +43,11 @@ import { useFeatureFlags } from '@/composables/useFeatureFlags';
 import { naturalSort } from '@/utils/string';
 
 const props = defineProps<{
-  isOpen: boolean;
+  isOpen: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void
+  (e: 'close'): void,
 }>();
 
 const { settings, availableModels: rawAvailableModels, isFetchingModels } = useSettings();
@@ -87,7 +87,7 @@ const hasUnsavedConnectionChanges = computed(() => {
   return JSON.stringify(current) !== JSON.stringify(initial);
 });
 
-async function handleImportRecipes({ recipes }: { recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[] }) {
+async function handleImportRecipes({ recipes }: { recipes: { newName: string, matchedModelId?: string, recipe: ChatGroupRecipe }[] }) {
   try {
     for (const item of recipes) {
       await chatOrganization.createChatGroup({ name: item.newName, options: {
@@ -96,7 +96,7 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string; ma
         lmParameters: item.recipe.lmParameters ? {
           ...EMPTY_LM_PARAMETERS,
           ...item.recipe.lmParameters,
-          reasoning: { effort: item.recipe.lmParameters.reasoning?.effort }
+          reasoning: { effort: item.recipe.lmParameters.reasoning?.effort },
         } : EMPTY_LM_PARAMETERS,
       } });
     }
@@ -146,7 +146,7 @@ const activeTab = computed({
     } else {
       router.push(`/settings/${mappedVal}`);
     }
-  }
+  },
 });
 
 async function handleCancel() {
@@ -167,12 +167,12 @@ async function handleCancel() {
 
 // Recipes State
 interface AnalyzedRecipe {
-  id: string;
-  recipe: ChatGroupRecipe;
-  selected: boolean;
-  matchedModelId?: string;
-  matchError?: string;
-  newName: string;
+  id: string,
+  recipe: ChatGroupRecipe,
+  selected: boolean,
+  matchedModelId?: string,
+  matchError?: string,
+  newName: string,
 }
 
 const recipeJsonInput = ref('');
@@ -249,7 +249,7 @@ watch(() => props.isOpen, async (open) => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

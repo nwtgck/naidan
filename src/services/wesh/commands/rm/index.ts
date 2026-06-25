@@ -6,7 +6,7 @@ import { writeCommandHelp, writeCommandUsageError } from '@/services/wesh/comman
 function asDirectoryEntryRef({
   entry,
 }: {
-  entry: WeshEntryRef;
+  entry: WeshEntryRef,
 }): WeshEntryRef<'directory'> {
   switch (entry.type) {
   case 'directory':
@@ -85,7 +85,7 @@ export const rmCommandDefinition: WeshCommandDefinition = {
     const removeRecursive = async ({
       entry,
     }: {
-      entry: WeshEntryRef;
+      entry: WeshEntryRef,
     }): Promise<void> => {
       const stat = await context.files.statEntry({ entry });
       switch (stat.type) {

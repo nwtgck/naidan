@@ -8,7 +8,7 @@ export class XargsInputError extends Error {}
 export async function* iterateReadableStreamChunks({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): AsyncIterable<Uint8Array> {
   const reader = stream.getReader();
   let completed = false;
@@ -32,7 +32,7 @@ export async function* iterateReadableStreamChunks({
 export async function* iterateUtf8TextChunks({
   chunks,
 }: {
-  chunks: AsyncIterable<Uint8Array>;
+  chunks: AsyncIterable<Uint8Array>,
 }): AsyncIterable<string> {
   const decoder = new TextDecoder();
   for await (const chunk of chunks) {
@@ -51,8 +51,8 @@ function finalizeStandardItem({
   fragments,
   tokenStarted,
 }: {
-  fragments: string[];
-  tokenStarted: boolean;
+  fragments: string[],
+  tokenStarted: boolean,
 }): string | undefined {
   if (!tokenStarted) {
     return undefined;
@@ -64,15 +64,15 @@ export async function* iterateXargsStandardItems({
   textChunks,
   eofString,
 }: {
-  textChunks: AsyncIterable<string>;
-  eofString: string | undefined;
+  textChunks: AsyncIterable<string>,
+  eofString: string | undefined,
 }): AsyncIterable<string> {
   let fragments: string[] = [];
   let tokenStarted = false;
   let quote: '"' | '\'' | undefined;
   let escaping = false;
 
-  const emitCurrent = (): { item: string | undefined; stopped: boolean } => {
+  const emitCurrent = (): { item: string | undefined, stopped: boolean } => {
     const item = finalizeStandardItem({ fragments, tokenStarted });
     fragments = [];
     tokenStarted = false;
@@ -151,8 +151,8 @@ export async function* iterateXargsDelimitedItems({
   textChunks,
   delimiter,
 }: {
-  textChunks: AsyncIterable<string>;
-  delimiter: string;
+  textChunks: AsyncIterable<string>,
+  delimiter: string,
 }): AsyncIterable<string> {
   const fragments: string[] = [];
   let endedWithDelimiter = false;
@@ -179,8 +179,8 @@ export async function* iterateXargsInsertItems({
   lines,
   eofString,
 }: {
-  lines: AsyncIterable<string>;
-  eofString: string | undefined;
+  lines: AsyncIterable<string>,
+  eofString: string | undefined,
 }): AsyncIterable<string> {
   for await (const line of lines) {
     const parsed = parseXargsInsertInput({ text: line });
@@ -199,7 +199,7 @@ export async function* iterateXargsInsertItems({
 export async function* iterateXargsLogicalLines({
   lines,
 }: {
-  lines: AsyncIterable<string>;
+  lines: AsyncIterable<string>,
 }): AsyncIterable<string[]> {
   let continuedParts: string[] = [];
 

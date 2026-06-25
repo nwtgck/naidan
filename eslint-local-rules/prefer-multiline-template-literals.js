@@ -46,7 +46,7 @@ function escapeTemplateLine(line) {
   return line
     .replace(/\\/g, '\\\\')
     .replace(/`/g, '\\`')
-    .replace(/\$\{/g, '\\${')
+    .replace(/\$\{/g, '\\${');
 }
 
 function toMultilineTemplateLiteral(value) {

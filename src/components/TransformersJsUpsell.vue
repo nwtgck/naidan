@@ -2,14 +2,14 @@
 import { BrainCircuitIcon, PlusIcon } from 'lucide-vue-next';
 
 defineProps<{
-  show?: boolean;
+  show?: boolean,
 }>();
 
 
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

@@ -3,12 +3,12 @@ import type { RawImage as TransformersRawImage, PreTrainedTokenizer } from '@hug
 import type { ChatMessage } from '@/models/types';
 
 export type Gemma4TemplateContentPart =
-  | { type: 'text'; text: string }
+  | { type: 'text', text: string }
   | { type: 'image' };
 
 export interface Gemma4TemplateMessage {
-  role: string;
-  content: string | Gemma4TemplateContentPart[];
+  role: string,
+  content: string | Gemma4TemplateContentPart[],
 }
 
 export interface Gemma4ProcessorLike {
@@ -18,18 +18,18 @@ export interface Gemma4ProcessorLike {
     images: TransformersRawImage[] | TransformersRawImage | null,
     audio: Float32Array[] | Float32Array | null,
     options: Record<string, unknown>
-  ): Promise<Record<string, unknown>>;
-  tokenizer: PreTrainedTokenizer;
+  ): Promise<Record<string, unknown>>,
+  tokenizer: PreTrainedTokenizer,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors the Transformers tokenizer apply_chat_template signature.
-  apply_chat_template(messages: Gemma4TemplateMessage[], options: Record<string, unknown>): string;
+  apply_chat_template(messages: Gemma4TemplateMessage[], options: Record<string, unknown>): string,
 }
 
 export function isGemma4Model({
   modelType,
   activeModelId,
 }: {
-  modelType: string | undefined;
-  activeModelId: string | null;
+  modelType: string | undefined,
+  activeModelId: string | null,
 }): boolean {
   if (modelType === 'gemma4') {
     return true;
@@ -42,10 +42,10 @@ export function isGemma4Model({
 export async function buildGemma4TemplateInput({
   messages,
 }: {
-  messages: ChatMessage[];
+  messages: ChatMessage[],
 }): Promise<{
-  images: TransformersRawImage[];
-  templateMessages: Gemma4TemplateMessage[];
+  images: TransformersRawImage[],
+  templateMessages: Gemma4TemplateMessage[],
 }> {
   const images: TransformersRawImage[] = [];
   const templateMessages: Gemma4TemplateMessage[] = [];
@@ -109,7 +109,7 @@ export async function buildGemma4TemplateInput({
 function normalizeGemma4Role({
   role,
 }: {
-  role: string;
+  role: string,
 }): string {
   switch (role) {
   case 'developer':
@@ -124,7 +124,7 @@ function normalizeGemma4Role({
 function buildGemma4AssistantToolSummary({
   message,
 }: {
-  message: ChatMessage;
+  message: ChatMessage,
 }): string {
   const sections: string[] = [];
   const visibleContent = flattenGemma4MessageContent({ message });
@@ -145,7 +145,7 @@ function buildGemma4AssistantToolSummary({
 function flattenGemma4MessageContent({
   message,
 }: {
-  message: ChatMessage;
+  message: ChatMessage,
 }): string {
   if (typeof message.content === 'string') {
     return message.content;
@@ -170,7 +170,7 @@ function flattenGemma4MessageContent({
 function parseGemma4ToolArguments({
   argumentsText,
 }: {
-  argumentsText: string;
+  argumentsText: string,
 }): Record<string, unknown> {
   try {
     const parsed = JSON.parse(argumentsText) as unknown;
@@ -187,7 +187,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 async function readGemma4Image({
   url,
 }: {
-  url: string;
+  url: string,
 }): Promise<TransformersRawImage> {
   const { RawImage } = await import('@huggingface/transformers');
 

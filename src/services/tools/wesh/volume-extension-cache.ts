@@ -1,4 +1,4 @@
-import type { VolumeId } from '@/models/ids'
+import type { VolumeId } from '@/models/ids';
 
 const _extensionsByVolume = new Map<VolumeId, Set<string>>();
 const _controllers = new Map<VolumeId, AbortController>();
@@ -17,17 +17,17 @@ async function _doScan({
   maxDepth,
   signal,
 }: {
-  volumeId: VolumeId;
-  handle: FileSystemDirectoryHandle;
-  maxFiles: number;
-  maxDepth: number;
-  signal: AbortSignal;
+  volumeId: VolumeId,
+  handle: FileSystemDirectoryHandle,
+  maxFiles: number,
+  maxDepth: number,
+  signal: AbortSignal,
 }): Promise<void> {
   const extensions = _extensionsByVolume.get(volumeId) ?? new Set<string>();
   _extensionsByVolume.set(volumeId, extensions);
 
   let fileCount = 0;
-  const queue: Array<{ dir: FileSystemDirectoryHandle; depth: number }> = [
+  const queue: Array<{ dir: FileSystemDirectoryHandle, depth: number }> = [
     { dir: handle, depth: 0 },
   ];
 
@@ -64,8 +64,8 @@ export function startVolumeExtensionScan({
   volumeId,
   handle,
 }: {
-  volumeId: VolumeId;
-  handle: FileSystemDirectoryHandle;
+  volumeId: VolumeId,
+  handle: FileSystemDirectoryHandle,
 }): void {
   _controllers.get(volumeId)?.abort();
   const controller = new AbortController();

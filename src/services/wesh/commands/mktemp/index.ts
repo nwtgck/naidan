@@ -18,10 +18,10 @@ function resolveMktempBaseDir({
   deprecatedTmp,
   templateProvided,
 }: {
-  context: WeshCommandContext;
-  tmpDir: string | undefined;
-  deprecatedTmp: boolean;
-  templateProvided: boolean;
+  context: WeshCommandContext,
+  tmpDir: string | undefined,
+  deprecatedTmp: boolean,
+  templateProvided: boolean,
 }): string {
   const envTmpDir = context.env.get('TMPDIR');
   const defaultTmpDir = envTmpDir === undefined || envTmpDir.length === 0 ? '/tmp' : envTmpDir;
@@ -47,9 +47,9 @@ function buildMktempTemplate({
   template,
   suffix,
 }: {
-  template: string;
-  suffix: string;
-}): { ok: true; value: string } | { ok: false; message: string } {
+  template: string,
+  suffix: string,
+}): { ok: true, value: string } | { ok: false, message: string } {
   if (suffix.includes('/')) {
     return { ok: false, message: "suffix must not contain '/'" };
   }
@@ -67,8 +67,8 @@ function createCandidatePath({
   baseDir,
   template,
 }: {
-  baseDir: string;
-  template: string;
+  baseDir: string,
+  template: string,
 }): string {
   const candidate = template.replace(/X+/gu, (match) => generateRandomToken({ length: match.length }));
   if (candidate.startsWith('/')) {

@@ -9,7 +9,7 @@ import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
 const mockCurrentChatGroup = ref<ChatGroup | null>(null);
-const mockCurrentChat = ref<{ id: string; groupId?: string | null } | null>(null);
+const mockCurrentChat = ref<{ id: string, groupId?: string | null } | null>(null);
 const mockOpenChatGroup = vi.fn(({ id }: { id: string | null }) => {
   if (id === null) {
     mockCurrentChatGroup.value = null; return;
@@ -75,7 +75,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 
 vi.mock('../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: () => ({
-    openChat: ({ chatId }: { chatId: string; leafId?: string }) => {
+    openChat: ({ chatId }: { chatId: string, leafId?: string }) => {
       void chatId;
       mockOpenChat();
     },
@@ -88,7 +88,7 @@ vi.mock('../composables/chat/ui/useChatNavigation', () => ({
 vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
   useSidebarStructure: () => ({
     persistSidebarStructure: vi.fn(),
-    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string, isCollapsed: boolean }) =>
       mockSetChatGroupCollapsed({ groupId, isCollapsed }),
     TEST_ONLY: {},
   }),
@@ -159,7 +159,7 @@ describe('Sidebar Group Overrides', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockChatGroups.value = [
-      { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] },
     ];
     mockChats.value = [];
     mockCurrentChatGroup.value = null;

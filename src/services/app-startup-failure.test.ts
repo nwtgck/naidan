@@ -1,15 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { reportAppStartupFailure } from './app-startup-failure'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { reportAppStartupFailure } from './app-startup-failure';
 import type {
   DebugFileProtocolStandaloneGlobalDiagnostics,
   DebugFileProtocolStandaloneStartupState,
   FileProtocolStandaloneInternalState,
-} from './debug-file-protocol-standalone/runtime-state'
+} from './debug-file-protocol-standalone/runtime-state';
 
 type MutableNamespace = {
-  getDiagnostics: () => DebugFileProtocolStandaloneGlobalDiagnostics
-  internal: FileProtocolStandaloneInternalState
-}
+  getDiagnostics: () => DebugFileProtocolStandaloneGlobalDiagnostics,
+  internal: FileProtocolStandaloneInternalState,
+};
 
 function installStandaloneNamespace(): DebugFileProtocolStandaloneStartupState {
   const startup: DebugFileProtocolStandaloneStartupState = {
@@ -22,7 +22,7 @@ function installStandaloneNamespace(): DebugFileProtocolStandaloneStartupState {
     checkpointHistory: [],
     error: undefined,
     slowStartupNotice: undefined,
-  }
+  };
   const namespace: MutableNamespace = {
     internal: { core: {}, debug: { startup } },
     getDiagnostics: () => ({
@@ -35,35 +35,35 @@ function installStandaloneNamespace(): DebugFileProtocolStandaloneStartupState {
       workerRuntime: undefined,
       startup,
     }),
-  }
-  globalThis.__FILE_PROTOCOL_STANDALONE__ = namespace
-  return startup
+  };
+  globalThis.__FILE_PROTOCOL_STANDALONE__ = namespace;
+  return startup;
 }
 
 describe('reportAppStartupFailure', () => {
   beforeEach(() => {
-    document.body.innerHTML = '<div id="app"></div>'
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-  })
+    document.body.innerHTML = '<div id="app"></div>';
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
 
   afterEach(() => {
-    delete globalThis.__FILE_PROTOCOL_STANDALONE__
-    vi.restoreAllMocks()
-  })
+    delete globalThis.__FILE_PROTOCOL_STANDALONE__;
+    vi.restoreAllMocks();
+  });
 
   it('renders a general startup failure panel in hosted builds', () => {
-    reportAppStartupFailure({ document, error: new TypeError('bootstrap exploded') })
+    reportAppStartupFailure({ document, error: new TypeError('bootstrap exploded') });
 
-    const panel = document.querySelector('[data-testid="app-startup-failure"]')
-    expect(panel?.textContent).toContain('Naidan failed to start.')
-    expect(panel?.textContent).toContain('TypeError: bootstrap exploded')
-    expect(panel?.textContent).not.toContain('__FILE_PROTOCOL_STANDALONE__')
-  })
+    const panel = document.querySelector('[data-testid="app-startup-failure"]');
+    expect(panel?.textContent).toContain('Naidan failed to start.');
+    expect(panel?.textContent).toContain('TypeError: bootstrap exploded');
+    expect(panel?.textContent).not.toContain('__FILE_PROTOCOL_STANDALONE__');
+  });
 
   it('records standalone Debug state and includes the diagnostics hint when available', () => {
-    const startup = installStandaloneNamespace()
+    const startup = installStandaloneNamespace();
 
-    reportAppStartupFailure({ document, error: new Error('standalone bootstrap exploded') })
+    reportAppStartupFailure({ document, error: new Error('standalone bootstrap exploded') });
 
     expect(startup).toMatchObject({
       checkpoint: 'bootstrap-failed',
@@ -71,8 +71,8 @@ describe('reportAppStartupFailure', () => {
         name: 'Error',
         message: 'standalone bootstrap exploded',
       },
-    })
+    });
     expect(document.querySelector('[data-testid="app-startup-failure"]')?.textContent)
-      .toContain('__FILE_PROTOCOL_STANDALONE__?.getDiagnostics()')
-  })
-})
+      .toContain('__FILE_PROTOCOL_STANDALONE__?.getDiagnostics()');
+  });
+});

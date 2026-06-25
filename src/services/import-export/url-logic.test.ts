@@ -61,7 +61,7 @@ describe('URLImportExportLogic', () => {
     Object.defineProperty(window, 'location', {
       value: { href: 'http://localhost:3000/#/settings' },
       writable: true,
-      configurable: true
+      configurable: true,
     });
 
     const url = await urlImportExportLogic.getExportURL({ exclude: undefined, baseUrl: window.location.href });
@@ -74,7 +74,7 @@ describe('URLImportExportLogic', () => {
     Object.defineProperty(window, 'location', {
       value: { href: originalLocation },
       writable: true,
-      configurable: true
+      configurable: true,
     });
   });
 
@@ -136,11 +136,11 @@ describe('URLImportExportLogic', () => {
             query: {
               'storage-type': 'opfs',
               'data-zip': 'large-base64-string',
-              'other': 'param'
-            }
-          }
+              'other': 'param',
+            },
+          },
         },
-        replace: mockReplace
+        replace: mockReplace,
       };
 
       // The logic from main.ts

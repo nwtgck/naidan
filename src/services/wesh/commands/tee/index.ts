@@ -25,8 +25,8 @@ async function writeAll({
   handle,
   buffer,
 }: {
-  handle: WeshFileHandle;
-  buffer: Uint8Array;
+  handle: WeshFileHandle,
+  buffer: Uint8Array,
 }): Promise<void> {
   let offset = 0;
   while (offset < buffer.length) {
@@ -45,7 +45,7 @@ async function writeAll({
 async function closeHandle({
   handle,
 }: {
-  handle: WeshFileHandle;
+  handle: WeshFileHandle,
 }): Promise<void> {
   try {
     await handle.close();
@@ -57,7 +57,7 @@ async function closeHandle({
 async function closeWriter({
   writer,
 }: {
-  writer: WeshEfficientFileWriter;
+  writer: WeshEfficientFileWriter,
 }): Promise<void> {
   try {
     await writer.close();
@@ -67,15 +67,15 @@ async function closeWriter({
 }
 
 type TeeOutput =
-  | { kind: 'handle'; path: string; handle: WeshFileHandle }
-  | { kind: 'writer'; path: string; writer: WeshEfficientFileWriter };
+  | { kind: 'handle', path: string, handle: WeshFileHandle }
+  | { kind: 'writer', path: string, writer: WeshEfficientFileWriter };
 
 async function writeTeeOutput({
   output,
   buffer,
 }: {
-  output: TeeOutput;
-  buffer: Uint8Array;
+  output: TeeOutput,
+  buffer: Uint8Array,
 }): Promise<void> {
   switch (output.kind) {
   case 'handle':

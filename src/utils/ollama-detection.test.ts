@@ -52,16 +52,16 @@ describe('detectOllama', () => {
 
     await detectOllama({
       url: 'http://localhost:11434',
-      headers: [['Authorization', 'Bearer token']]
+      headers: [['Authorization', 'Bearer token']],
     });
 
     expect(fetch).toHaveBeenCalledWith(
       'http://localhost:11434',
       expect.objectContaining({
         headers: {
-          Authorization: 'Bearer token'
-        }
-      })
+          Authorization: 'Bearer token',
+        },
+      }),
     );
   });
 });

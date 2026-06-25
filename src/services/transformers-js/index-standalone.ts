@@ -10,13 +10,13 @@ type ProgressListener = ({
   progressItems,
   loadingModelId,
 }: {
-  status: 'idle' | 'loading' | 'ready' | 'error';
-  progress: number;
-  error?: string;
-  isCached?: boolean;
-  isLoadingFromCache?: boolean;
-  progressItems?: ReadonlyMap<string, ProgressInfo>;
-  loadingModelId?: string;
+  status: 'idle' | 'loading' | 'ready' | 'error',
+  progress: number,
+  error?: string,
+  isCached?: boolean,
+  isLoadingFromCache?: boolean,
+  progressItems?: ReadonlyMap<string, ProgressInfo>,
+  loadingModelId?: string,
 }) => void;
 
 type ModelListListener = () => void;
@@ -53,14 +53,14 @@ export const transformersJsService = {
 
   async restart() {},
 
-  async listCachedModels(): Promise<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number; isComplete: boolean }>> {
+  async listCachedModels(): Promise<Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }>> {
     return [];
   },
 
   async importFile({ modelName: _modelName, fileName: _fileName, data: _data }: {
-    modelName: string;
-    fileName: string;
-    data: ArrayBuffer | ReadableStream;
+    modelName: string,
+    fileName: string,
+    data: ArrayBuffer | ReadableStream,
   }) {
     throw unsupportedError();
   },
@@ -84,12 +84,12 @@ export const transformersJsService = {
   async resetCache() {},
 
   async generateText({ messages: _messages, onChunk: _onChunk, onToolCalls: _onToolCalls, params: _params, tools: _tools, signal: _signal }: {
-    messages: ChatMessage[];
-    onChunk: TransformersJsChunkCallback;
-    onToolCalls: TransformersJsToolCallsCallback;
-    params?: LmParameters;
-    tools?: WorkerToolDefinition[];
-    signal?: AbortSignal;
+    messages: ChatMessage[],
+    onChunk: TransformersJsChunkCallback,
+    onToolCalls: TransformersJsToolCallsCallback,
+    params?: LmParameters,
+    tools?: WorkerToolDefinition[],
+    signal?: AbortSignal,
   }) {
     throw unsupportedError();
   },

@@ -1,104 +1,104 @@
-import license from 'rollup-plugin-license'
-import { createHash } from 'node:crypto'
-import path from 'node:path'
-import type { BuildOptions, ResolvedConfig } from 'vite'
-import { build as viteBuild } from 'vite'
-import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown'
+import license from 'rollup-plugin-license';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import type { BuildOptions, ResolvedConfig } from 'vite';
+import { build as viteBuild } from 'vite';
+import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown';
 
-import type { FileProtocolStandaloneWorker } from './types'
+import type { FileProtocolStandaloneWorker } from './types';
 import {
   convertRollupLicenseDependency,
   mergeBuildLicenseDependencies,
   type BuildLicenseDependency,
-} from '../license-dependencies'
-import { debugSanitizeFileProtocolStandaloneModuleId, assertFileProtocolStandaloneClassicScript } from './javascript-validation'
-import type { FileProtocolStandaloneRuntimeDynamicImportOccurrence } from './javascript-validation'
+} from '../license-dependencies';
+import { debugSanitizeFileProtocolStandaloneModuleId, assertFileProtocolStandaloneClassicScript } from './javascript-validation';
+import type { FileProtocolStandaloneRuntimeDynamicImportOccurrence } from './javascript-validation';
 import {
   FILE_PROTOCOL_STANDALONE_ELEMENT_IDS,
   FILE_PROTOCOL_STANDALONE_GLOBAL_NAME,
-} from '../../src/file-protocol-standalone-protocol'
+} from '../../src/file-protocol-standalone-protocol';
 
-const pluginName = 'file-protocol-standalone'
-export const virtualWorkerPrefix = 'virtual:file-protocol-standalone/worker/'
-export const resolvedVirtualWorkerPrefix = `\0${virtualWorkerPrefix}`
-const workerSourcePartSizeCodeUnits = 64 * 1024
+const pluginName = 'file-protocol-standalone';
+export const virtualWorkerPrefix = 'virtual:file-protocol-standalone/worker/';
+export const resolvedVirtualWorkerPrefix = `\0${virtualWorkerPrefix}`;
+const workerSourcePartSizeCodeUnits = 64 * 1024;
 
 export type BuiltFileProtocolStandaloneWorkerArtifact = Readonly<{
-  id: string
-  entry: string
-  source: string
-  sourceBytes: number
-  sha256: string
-  sourcePartCount: number
-  sourcePartSizeCodeUnits: number
-  moduleIds: readonly string[]
-  runtimeDynamicImports: readonly FileProtocolStandaloneRuntimeDynamicImportOccurrence[]
-  licenseDependencies: readonly BuildLicenseDependency[]
-  registryFileName: string
-}>
+  id: string,
+  entry: string,
+  source: string,
+  sourceBytes: number,
+  sha256: string,
+  sourcePartCount: number,
+  sourcePartSizeCodeUnits: number,
+  moduleIds: readonly string[],
+  runtimeDynamicImports: readonly FileProtocolStandaloneRuntimeDynamicImportOccurrence[],
+  licenseDependencies: readonly BuildLicenseDependency[],
+  registryFileName: string,
+}>;
 
 function computeSha256Hex({ source }: { source: string | Uint8Array }): string {
-  return createHash('sha256').update(source).digest('hex')
+  return createHash('sha256').update(source).digest('hex');
 }
 
 function utf8ByteLength({ source }: { source: string }): number {
-  return Buffer.byteLength(source, 'utf8')
+  return Buffer.byteLength(source, 'utf8');
 }
 
 export function assertValidFileProtocolStandaloneWorkerId({ workerId }: { workerId: string }): void {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(workerId)) {
-    throw new Error(`[${pluginName}] Worker id must match ^[a-z0-9][a-z0-9-]*$: ${workerId}`)
+    throw new Error(`[${pluginName}] Worker id must match ^[a-z0-9][a-z0-9-]*$: ${workerId}`);
   }
 }
 
 /** @internal Exported for focused plugin tests. */
 export function splitFileProtocolStandaloneWorkerSourceIntoBlobParts({ source, maxCodeUnits }: {
-  source: string
-  maxCodeUnits: number
+  source: string,
+  maxCodeUnits: number,
 }): string[] {
   if (!Number.isSafeInteger(maxCodeUnits) || maxCodeUnits <= 0) {
-    throw new Error(`[${pluginName}] Worker source part size must be a positive safe integer: ${maxCodeUnits}`)
+    throw new Error(`[${pluginName}] Worker source part size must be a positive safe integer: ${maxCodeUnits}`);
   }
-  const parts: string[] = []
-  let start = 0
+  const parts: string[] = [];
+  let start = 0;
 
   while (start < source.length) {
-    let end = Math.min(source.length, start + maxCodeUnits)
+    let end = Math.min(source.length, start + maxCodeUnits);
 
     // Blob converts each string part independently. Splitting a surrogate pair
     // would replace both separated halves with U+FFFD and corrupt the worker.
     if (end < source.length) {
-      const previous = source.charCodeAt(end - 1)
-      const next = source.charCodeAt(end)
-      const previousIsHighSurrogate = previous >= 0xD800 && previous <= 0xDBFF
-      const nextIsLowSurrogate = next >= 0xDC00 && next <= 0xDFFF
+      const previous = source.charCodeAt(end - 1);
+      const next = source.charCodeAt(end);
+      const previousIsHighSurrogate = previous >= 0xD800 && previous <= 0xDBFF;
+      const nextIsLowSurrogate = next >= 0xDC00 && next <= 0xDFFF;
       if (previousIsHighSurrogate && nextIsLowSurrogate) {
-        end -= 1
+        end -= 1;
       }
     }
 
-    parts.push(source.slice(start, end))
-    start = end
+    parts.push(source.slice(start, end));
+    start = end;
   }
 
-  return parts.length > 0 ? parts : ['']
+  return parts.length > 0 ? parts : [''];
 }
 
 
 function flattenBuildOutputs({ result }: {
-  result: RolldownOutput | RolldownOutput[]
+  result: RolldownOutput | RolldownOutput[],
 }): readonly (OutputChunk | OutputAsset)[] {
-  return (Array.isArray(result) ? result : [result]).flatMap((item) => item.output)
+  return (Array.isArray(result) ? result : [result]).flatMap((item) => item.output);
 }
 
 export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolvedConfig, worker, workerTarget }: {
-  root: string
-  resolvedConfig: ResolvedConfig
-  worker: FileProtocolStandaloneWorker
-  workerTarget: Exclude<BuildOptions['target'], false | undefined>
+  root: string,
+  resolvedConfig: ResolvedConfig,
+  worker: FileProtocolStandaloneWorker,
+  workerTarget: Exclude<BuildOptions['target'], false | undefined>,
 }): Promise<Omit<BuiltFileProtocolStandaloneWorkerArtifact, 'registryFileName'>> {
-  const bundleGlobalName = `FileProtocolStandaloneWorker_${computeSha256Hex({ source: worker.id }).slice(0, 12)}`
-  let licenseDependencies: readonly BuildLicenseDependency[] = []
+  const bundleGlobalName = `FileProtocolStandaloneWorker_${computeSha256Hex({ source: worker.id }).slice(0, 12)}`;
+  let licenseDependencies: readonly BuildLicenseDependency[] = [];
   const result = await viteBuild({
     root,
     configFile: false,
@@ -111,7 +111,7 @@ export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolved
           dependencyGroups: [dependencies
             .map((dependency) => convertRollupLicenseDependency({ dependency }))
             .filter((dependency): dependency is BuildLicenseDependency => dependency !== undefined)],
-        })
+        });
       },
     })],
     define: {
@@ -140,25 +140,25 @@ export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolved
         },
       },
     },
-  })
+  });
 
   if (!Array.isArray(result) && 'close' in result && typeof result.close === 'function') {
-    throw new Error(`[${pluginName}] Worker build unexpectedly returned a watcher.`)
+    throw new Error(`[${pluginName}] Worker build unexpectedly returned a watcher.`);
   }
 
-  const outputs = flattenBuildOutputs({ result: result as RolldownOutput | RolldownOutput[] })
-  const chunks = outputs.filter((item): item is OutputChunk => item.type === 'chunk')
-  const assets = outputs.filter((item): item is OutputAsset => item.type === 'asset')
+  const outputs = flattenBuildOutputs({ result: result as RolldownOutput | RolldownOutput[] });
+  const chunks = outputs.filter((item): item is OutputChunk => item.type === 'chunk');
+  const assets = outputs.filter((item): item is OutputAsset => item.type === 'asset');
 
   if (chunks.length !== 1 || assets.length !== 0) {
     throw new Error(
       `[${pluginName}] Worker ${worker.id} must produce exactly one JavaScript chunk and no assets; produced ${chunks.length} chunks and ${assets.length} assets.`,
-    )
+    );
   }
 
-  const chunk = chunks[0]
+  const chunk = chunks[0];
   if (chunk.imports.length > 0) {
-    throw new Error(`[${pluginName}] Worker ${worker.id} emitted static dependency chunks and is not a single JavaScript artifact.`)
+    throw new Error(`[${pluginName}] Worker ${worker.id} emitted static dependency chunks and is not a single JavaScript artifact.`);
   }
   const workerValidation = assertFileProtocolStandaloneClassicScript({
     source: chunk.code,
@@ -168,17 +168,17 @@ export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolved
     // rewrite application code. Static specifiers remain unsupported because
     // they identify a concrete runtime dependency outside this Blob artifact.
     mode: 'worker',
-  })
+  });
 
   const sourceParts = splitFileProtocolStandaloneWorkerSourceIntoBlobParts({
     source: chunk.code,
     maxCodeUnits: workerSourcePartSizeCodeUnits,
-  })
+  });
 
   // This digest is build-time diagnostics only. It detects mixed or unexpected
   // artifacts, but is not a signature or proof of origin and is not recomputed
   // from the large Blob at runtime.
-  const sourceSha256 = computeSha256Hex({ source: chunk.code })
+  const sourceSha256 = computeSha256Hex({ source: chunk.code });
 
   return {
     id: worker.id,
@@ -193,17 +193,17 @@ export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolved
       .sort(),
     runtimeDynamicImports: workerValidation.runtimeDynamicImports,
     licenseDependencies,
-  }
+  };
 }
 
 export function createFileProtocolStandaloneWorkerBlobRegistrationSource({ worker }: {
-  worker: Omit<BuiltFileProtocolStandaloneWorkerArtifact, 'registryFileName'>
+  worker: Omit<BuiltFileProtocolStandaloneWorkerArtifact, 'registryFileName'>,
 }): string {
   const sourceParts = splitFileProtocolStandaloneWorkerSourceIntoBlobParts({
     source: worker.source,
     maxCodeUnits: worker.sourcePartSizeCodeUnits,
-  })
-  const serializedParts = sourceParts.map((part) => JSON.stringify(part)).join(',\n      ')
+  });
+  const serializedParts = sourceParts.map((part) => JSON.stringify(part)).join(',\n      ');
 
   return `/* file-protocol-standalone worker Blob registry: ${worker.id} */
 (function () {
@@ -282,7 +282,7 @@ export function createFileProtocolStandaloneWorkerBlobRegistrationSource({ worke
     state.timingsMs.registryEvaluationAndBlobCreation = debugNow() - debugStartedAt;
   });
 })();
-`
+`;
 }
 
 export function createFileProtocolStandaloneWorkerFactoryModuleSource({ workerId }: { workerId: string }): string {
@@ -526,5 +526,5 @@ export function scheduleFileProtocolStandaloneWorkerAssetWarmup() {
     debugWarn('Failed to schedule Worker asset warmup. Worker creation will load on demand.', error);
   }
 }
-`
+`;
 }

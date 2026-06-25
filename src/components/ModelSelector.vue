@@ -6,18 +6,18 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import { useElementBounding, useWindowSize } from '@vueuse/core';
 
 const props = defineProps<{
-  modelValue: string | undefined;
-  placeholder?: string;
-  loading?: boolean;
-  allowClear?: boolean;
-  models?: readonly string[];
-  disabled?: boolean;
-  clearLabel?: string;
+  modelValue: string | undefined,
+  placeholder?: string,
+  loading?: boolean,
+  allowClear?: boolean,
+  models?: readonly string[],
+  disabled?: boolean,
+  clearLabel?: string,
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string | undefined): void;
-  (e: 'refresh'): void;
+  (e: 'update:modelValue', value: string | undefined): void,
+  (e: 'refresh'): void,
 }>();
 
 const attrs = useAttrs();
@@ -37,14 +37,14 @@ const modelNameParts = computed(() => {
   }
   return {
     prefix: name.slice(0, lastSlashIndex + 1),
-    suffix: name.slice(lastSlashIndex + 1)
+    suffix: name.slice(lastSlashIndex + 1),
   };
 });
 
 const searchableModels = computed(() => {
   return availableModels.value.map(m => ({
     original: m,
-    lower: m.toLowerCase()
+    lower: m.toLowerCase(),
   }));
 });
 
@@ -252,7 +252,7 @@ watch(windowWidth, () => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

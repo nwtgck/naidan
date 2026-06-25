@@ -6,9 +6,9 @@ import { createOllamaProvider } from '@/services/lm/providerFactory';
 import OllamaPsView from './OllamaPsView.vue';
 
 const props = defineProps<{
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
-  fakeLmDebugModeStatus: FakeLmDebugModeStatus;
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
+  fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }>();
 
 const provider = computed(() => createOllamaProvider({

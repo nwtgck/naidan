@@ -156,7 +156,7 @@ describe('GlobalSearchModal Component', () => {
     await new Promise(resolve => setTimeout(resolve, 400));
 
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
-      searchQuery: 'test'
+      searchQuery: 'test',
     }));
   });
 
@@ -202,7 +202,7 @@ describe('GlobalSearchModal Component', () => {
 
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
       searchQuery: 'stale query',
-      options: expect.objectContaining({ chatId: toChatId({ raw: 'c1' }) })
+      options: expect.objectContaining({ chatId: toChatId({ raw: 'c1' }) }),
     }));
   });
 
@@ -388,7 +388,7 @@ describe('GlobalSearchModal Component', () => {
 
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
       searchQuery: '',
-      options: expect.objectContaining({ scope: 'title_only' })
+      options: expect.objectContaining({ scope: 'title_only' }),
     }));
   });
 
@@ -554,7 +554,7 @@ describe('GlobalSearchModal Component', () => {
     // Advance time to trigger search
     vi.advanceTimersByTime(350);
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({
-      searchQuery: 'fast typing'
+      searchQuery: 'fast typing',
     }));
 
     vi.useRealTimers();
@@ -587,7 +587,7 @@ describe('GlobalSearchModal Component', () => {
       options: expect.objectContaining({
         scope: 'current_thread',
         roleFilter: 'user',
-      })
+      }),
     }));
   });
 

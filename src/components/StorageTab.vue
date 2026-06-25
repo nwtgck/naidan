@@ -9,7 +9,7 @@ import { computedAsync } from '@vueuse/core';
 import {
   ShieldCheckIcon, CheckCircle2Icon, FileArchiveIcon,
   DatabaseIcon, HardDriveIcon, InfoIcon, Trash2Icon, GhostIcon,
-  LinkIcon, Loader2Icon
+  LinkIcon, Loader2Icon,
 } from 'lucide-vue-next';
 import { useConfirm } from '@/composables/useConfirm';
 import { useToast } from '@/composables/useToast';
@@ -21,12 +21,12 @@ import { useExportExclusions } from '@/composables/useExportExclusions';
 const ImportExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ImportExportModal.vue') });
 
 const props = defineProps<{
-  storageType: 'local' | 'opfs' | 'memory';
+  storageType: 'local' | 'opfs' | 'memory',
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:storageType', value: 'local' | 'opfs' | 'memory'): void;
-  (e: 'close'): void;
+  (e: 'update:storageType', value: 'local' | 'opfs' | 'memory'): void,
+  (e: 'close'): void,
 }>();
 
 const { save } = useSettings();
@@ -180,7 +180,7 @@ async function handleCopyExportURL() {
     console.error('Failed to copy export URL:', err);
     addToast({
       message: `Failed to generate export URL: ${err instanceof Error ? err.message : String(err)}`,
-      duration: 5000
+      duration: 5000,
     });
   } finally {
     isExportingURL.value = false;
@@ -190,7 +190,7 @@ async function handleCopyExportURL() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

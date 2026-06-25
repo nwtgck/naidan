@@ -9,7 +9,7 @@ import type { AllowedHtml } from '@/lib/security/allowedHtml';
 export function useFileExplorerPreview({
   client,
 }: {
-  client: FileExplorerWorkerClient;
+  client: FileExplorerWorkerClient,
 }) {
   const previewState = ref<PreviewState>({
     visibility: 'visible',
@@ -37,19 +37,19 @@ export function useFileExplorerPreview({
     entry,
     displayText,
   }: {
-    entry: FileExplorerEntry;
-    displayText: string;
+    entry: FileExplorerEntry,
+    displayText: string,
   }): Promise<AllowedHtml | undefined> {
     try {
       const language = EXTENSION_LANGUAGE_MAP[entry.extension];
-      const client = await highlightWorkerClientPromise
+      const client = await highlightWorkerClientPromise;
       const response = await client.highlight({
         request: {
           code: displayText,
           language,
           mode: language ? 'named-language' : 'auto-detect',
         },
-      })
+      });
       return sanitizeHighlightHtml({ html: response.html });
     } catch {
       return undefined;
@@ -60,8 +60,8 @@ export function useFileExplorerPreview({
     entry,
     mode,
   }: {
-    entry: FileExplorerEntry;
-    mode: 'bounded' | 'force';
+    entry: FileExplorerEntry,
+    mode: 'bounded' | 'force',
   }): Promise<void> {
     const requestId = ++latestPreviewRequestId;
     revokeObjectUrl();

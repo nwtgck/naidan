@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest'
-import { ESLint } from 'eslint'
-import path from 'path'
-import * as parser from '@typescript-eslint/parser'
-import { rule } from './no-raw-dompurify.js'
+import { describe, it, expect, beforeAll } from 'vitest';
+import { ESLint } from 'eslint';
+import path from 'path';
+import * as parser from '@typescript-eslint/parser';
+import { rule } from './no-raw-dompurify.js';
 
 describe('no-raw-dompurify rule', () => {
-  let eslint: ESLint
-  const repoRoot = path.resolve(__dirname, '..')
+  let eslint: ESLint;
+  const repoRoot = path.resolve(__dirname, '..');
 
   beforeAll(() => {
     eslint = new ESLint({
@@ -32,33 +32,33 @@ describe('no-raw-dompurify rule', () => {
           'local-rules-raw-dompurify/no-raw-dompurify': 'error',
         },
       },
-    })
-  })
+    });
+  });
 
   async function lintText({
     code,
     filePath = 'src/components/Example.ts',
   }: {
-    code: string
-    filePath?: string
+    code: string,
+    filePath?: string,
   }) {
-    const [result] = await eslint.lintText(code, { filePath: path.resolve(repoRoot, filePath) })
-    return result.messages
+    const [result] = await eslint.lintText(code, { filePath: path.resolve(repoRoot, filePath) });
+    return result.messages;
   }
 
   it('reports DOMPurify imports outside the AllowedHtml module', async () => {
-    const messages = await lintText({ code: `import DOMPurify from 'dompurify'` })
+    const messages = await lintText({ code: `import DOMPurify from 'dompurify'` });
 
-    expect(messages).toHaveLength(1)
-    expect(messages[0]?.messageId).toBe('noRawDompurify')
-  })
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('noRawDompurify');
+  });
 
   it('allows DOMPurify imports inside allowedHtml.ts', async () => {
     const messages = await lintText({
       filePath: 'src/lib/security/allowedHtml.ts',
       code: `import DOMPurify from 'dompurify'`,
-    })
+    });
 
-    expect(messages).toHaveLength(0)
-  })
-})
+    expect(messages).toHaveLength(0);
+  });
+});

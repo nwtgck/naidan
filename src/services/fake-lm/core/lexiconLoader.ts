@@ -90,27 +90,27 @@ const LanguageJsonSchema = z.object({
 type LanguageJson = z.infer<typeof LanguageJsonSchema>;
 
 type FakeLmLanguageJsonModule = {
-  fakeLmLanguageJson: unknown;
+  fakeLmLanguageJson: unknown,
 };
 
 export type LoadedLexicons = {
-  abstractNouns: WeightedValue<string>[];
-  physicalNouns: WeightedValue<string>[];
-  livingNouns: WeightedValue<string>[];
-  timeNouns: WeightedValue<string>[];
-  normalAdjectives: WeightedValue<string>[];
-  wrongAdjectives: WeightedValue<string>[];
-  plainVerbs: WeightedValue<string>[];
-  softVerbs: WeightedValue<string>[];
-  connectors: WeightedValue<string>[];
-  headings: WeightedValue<string>[];
-  tableCells: WeightedValue<string>[];
-  listItems: WeightedValue<string>[];
-  inputReferences: WeightedValue<string>[];
-  openingPatterns: TextPattern[];
-  bodySentencePatterns: TextPattern[];
-  thinkingSentencePatterns: TextPattern[];
-  closingPatterns: TextPattern[];
+  abstractNouns: WeightedValue<string>[],
+  physicalNouns: WeightedValue<string>[],
+  livingNouns: WeightedValue<string>[],
+  timeNouns: WeightedValue<string>[],
+  normalAdjectives: WeightedValue<string>[],
+  wrongAdjectives: WeightedValue<string>[],
+  plainVerbs: WeightedValue<string>[],
+  softVerbs: WeightedValue<string>[],
+  connectors: WeightedValue<string>[],
+  headings: WeightedValue<string>[],
+  tableCells: WeightedValue<string>[],
+  listItems: WeightedValue<string>[],
+  inputReferences: WeightedValue<string>[],
+  openingPatterns: TextPattern[],
+  bodySentencePatterns: TextPattern[],
+  thinkingSentencePatterns: TextPattern[],
+  closingPatterns: TextPattern[],
 };
 
 const fakeLmLanguageJsonLoaders = {
@@ -134,7 +134,7 @@ export function preloadFakeLmLanguagePacks(): void {
 }
 
 export async function loadLanguageLexicons({ language }: {
-  language: FakeLmLanguage;
+  language: FakeLmLanguage,
 }): Promise<LoadedLexicons> {
   const cached = languagePackCache.get(language);
   if (cached !== undefined) {
@@ -150,7 +150,7 @@ export async function loadLanguageLexicons({ language }: {
 }
 
 async function loadAndParseLanguageLexicons({ language }: {
-  language: FakeLmLanguage;
+  language: FakeLmLanguage,
 }): Promise<LoadedLexicons> {
   const loader = fakeLmLanguageJsonLoaders[language];
   const module = await loader();
@@ -159,7 +159,7 @@ async function loadAndParseLanguageLexicons({ language }: {
 }
 
 function toLoadedLexicons({ languageJson }: {
-  languageJson: LanguageJson;
+  languageJson: LanguageJson,
 }): LoadedLexicons {
   return {
     abstractNouns: languageJson.lexicons.nouns.abstractNouns,
@@ -183,7 +183,7 @@ function toLoadedLexicons({ languageJson }: {
 }
 
 function scheduleIdleTask({ task }: {
-  task: () => void;
+  task: () => void,
 }): void {
   const requestIdleCallback = globalThis.requestIdleCallback;
 

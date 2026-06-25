@@ -179,7 +179,7 @@ describe('useChat Advanced Settings Resolution', () => {
           maxCompletionTokens: 500,
           frequencyPenalty: 0.5,
           reasoning: { effort: undefined },
-        }
+        },
       } });
 
       await sendMessage({ content: 'Hi' });
@@ -222,8 +222,8 @@ describe('useChat Advanced Settings Resolution', () => {
         lmParameters: {
           ...EMPTY_LM_PARAMETERS,
           temperature: 0.1,
-          reasoning: { effort: 'high' as const }
-        }
+          reasoning: { effort: 'high' as const },
+        },
       };
       __testOnlySetCurrentChat({ chat: reactive(chatAObj) as any });
 

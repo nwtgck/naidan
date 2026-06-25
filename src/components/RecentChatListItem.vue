@@ -6,15 +6,15 @@ import RelativeTime from './RelativeTime.vue';
 import type { ChatSummary } from '@/models/types';
 
 const props = defineProps<{
-  chat: ChatSummary & { accessedAt: number };
-  groupName?: string;
-  isSelected: boolean;
-  activePane: 'results' | 'preview';
+  chat: ChatSummary & { accessedAt: number },
+  groupName?: string,
+  isSelected: boolean,
+  activePane: 'results' | 'preview',
 }>();
 
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short', day: 'numeric',
-  hour: '2-digit', minute: '2-digit'
+  hour: '2-digit', minute: '2-digit',
 });
 
 function formatTime({ timestamp }: { timestamp: number }) {
@@ -42,7 +42,7 @@ const containerClasses = computed(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

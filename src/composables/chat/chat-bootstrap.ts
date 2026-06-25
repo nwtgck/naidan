@@ -4,8 +4,8 @@ export function installChatBootstrap({
   registerBeforeUnload,
   subscribeModelList,
 }: {
-  registerBeforeUnload: () => (() => void) | undefined;
-  subscribeModelList: () => (() => void) | undefined;
+  registerBeforeUnload: () => (() => void) | undefined,
+  subscribeModelList: () => (() => void) | undefined,
 }) {
   installedCleanup?.();
 

@@ -31,7 +31,7 @@ async function processRecord(id: string, retryCount: number | undefined, isSilen
 await processRecord("rec_123", 3, true);
 
 // Even single arguments should not be positional.
-// If you need to add 'force: boolean' later, you'll either have to refactor 
+// If you need to add 'force: boolean' later, you'll either have to refactor
 // all call sites or end up with a confusing positional signature.
 async function deleteUser(id: string) { ... }
 await deleteUser("user_123");
@@ -70,7 +70,7 @@ await processRecord({
 });
 
 // Even single arguments use the object-based named argument style.
-// This is future-proof: adding 'force: boolean' later won't require 
+// This is future-proof: adding 'force: boolean' later won't require
 // changing the parameter structure at existing call sites.
 async function deleteUser({ id }: { id: string }) { ... }
 await deleteUser({ id: "user_123" });

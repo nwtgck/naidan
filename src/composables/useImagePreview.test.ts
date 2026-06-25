@@ -11,7 +11,7 @@ describe('useImagePreview', () => {
       setup() {
         ({ state, openPreview, closePreview } = useImagePreview());
         return () => null;
-      }
+      },
     });
     mount(TestComp);
 
@@ -22,7 +22,7 @@ describe('useImagePreview', () => {
 
     expect(state.value).toEqual({
       objects: mockObjects,
-      initialId: '1'
+      initialId: '1',
     });
 
     closePreview();
@@ -37,19 +37,19 @@ describe('useImagePreview', () => {
       setup(_, { slots }) {
         instance1 = useImagePreview({ scoped: true }); // Provide
         return () => slots.default?.();
-      }
+      },
     });
 
     const ChildComponent = defineComponent({
       setup() {
         instance2 = useImagePreview(); // Inject
         return () => null;
-      }
+      },
     });
 
     const wrapper = mount(defineComponent({
       components: { TestComponent, ChildComponent },
-      template: '<TestComponent><ChildComponent /></TestComponent>'
+      template: '<TestComponent><ChildComponent /></TestComponent>',
     }));
 
     instance1.openPreview({ objects: [], initialId: 'test' });
@@ -66,14 +66,14 @@ describe('useImagePreview', () => {
       setup() {
         scope1 = useImagePreview({ scoped: true });
         return () => null;
-      }
+      },
     });
 
     const Comp2 = defineComponent({
       setup() {
         scope2 = useImagePreview({ scoped: true });
         return () => null;
-      }
+      },
     });
 
     mount(Comp1);

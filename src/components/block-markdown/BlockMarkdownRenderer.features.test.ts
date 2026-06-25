@@ -25,7 +25,7 @@ describe('BlockMarkdownRenderer: Interactive Features', () => {
 
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 
@@ -138,7 +138,7 @@ ${'```'}
         binaryObjectId: 'obj123',
         displayWidth: 512,
         displayHeight: 512,
-        prompt: 'a beautiful sunset'
+        prompt: 'a beautiful sunset',
       };
       const content = `\
 ${'```'}${IMAGE_BLOCK_LANG}

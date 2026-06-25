@@ -4,7 +4,7 @@ import { transformersJsService } from '@/services/transformers-js';
 import { BrainCircuitIcon, AlertTriangleIcon, ShieldCheckIcon } from 'lucide-vue-next';
 
 const props = defineProps<{
-  mode?: 'full' | 'compact';
+  mode?: 'full' | 'compact',
 }>();
 
 const status = ref(transformersJsService.getState().status);
@@ -81,7 +81,7 @@ const explanationText = computed(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

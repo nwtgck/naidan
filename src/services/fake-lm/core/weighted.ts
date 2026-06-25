@@ -1,13 +1,13 @@
 import type { SeededNonCryptoPseudoRandom } from '@/services/fake-lm/core/random';
 
 export type WeightedValue<T> = {
-  value: T;
-  weight: number;
+  value: T,
+  weight: number,
 };
 
 export function pickWeighted<T>({ items, random }: {
-  items: readonly WeightedValue<T>[];
-  random: SeededNonCryptoPseudoRandom;
+  items: readonly WeightedValue<T>[],
+  random: SeededNonCryptoPseudoRandom,
 }): T {
   if (items.length === 0) {
     throw new Error('Cannot pick from an empty weighted list.');
@@ -27,8 +27,8 @@ export function pickWeighted<T>({ items, random }: {
 }
 
 export function oneOf<T>({ factories, random }: {
-  factories: readonly WeightedValue<() => T>[];
-  random: SeededNonCryptoPseudoRandom;
+  factories: readonly WeightedValue<() => T>[],
+  random: SeededNonCryptoPseudoRandom,
 }): T {
   return pickWeighted({ items: factories, random })();
 }

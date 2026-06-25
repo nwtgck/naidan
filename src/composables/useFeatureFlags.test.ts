@@ -45,7 +45,7 @@ describe('useFeatureFlags', () => {
           compatibilityRiskAcknowledgedAt: 456,
           params: {},
         },
-      })
+      }),
     );
 
     const { useFeatureFlags } = await import('./useFeatureFlags');

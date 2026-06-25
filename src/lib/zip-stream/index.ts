@@ -24,28 +24,28 @@
 
 export interface ZipByteSink {
   /** Writes the complete chunk or rejects without reporting partial progress. */
-  write({ chunk }: { chunk: Uint8Array }): Promise<void>;
+  write({ chunk }: { chunk: Uint8Array }): Promise<void>,
 }
 
 export interface ZipCentralDirectoryStore extends ZipByteSink {
-  finalize(): Promise<void>;
-  openStream(): Promise<ReadableStream<Uint8Array>>;
-  dispose(): Promise<void>;
+  finalize(): Promise<void>,
+  openStream(): Promise<ReadableStream<Uint8Array>>,
+  dispose(): Promise<void>,
 }
 
 export interface ZipCompressionCodec {
   compress({ source }: {
-    source: ReadableStream<Uint8Array>;
-  }): ReadableStream<Uint8Array>;
+    source: ReadableStream<Uint8Array>,
+  }): ReadableStream<Uint8Array>,
   decompress({ source }: {
-    source: ReadableStream<Uint8Array>;
-  }): ReadableStream<Uint8Array>;
+    source: ReadableStream<Uint8Array>,
+  }): ReadableStream<Uint8Array>,
 }
 
 export async function* iterateZipStreamChunks({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): AsyncIterable<Uint8Array> {
   const reader = stream.getReader();
   let completed = false;
@@ -73,11 +73,11 @@ function pipeThroughBufferSourceTransform({
   source,
   transform,
 }: {
-  source: ReadableStream<Uint8Array>;
+  source: ReadableStream<Uint8Array>,
   transform: {
-    readable: ReadableStream<Uint8Array>;
-    writable: WritableStream<BufferSource>;
-  };
+    readable: ReadableStream<Uint8Array>,
+    writable: WritableStream<BufferSource>,
+  },
 }): ReadableStream<Uint8Array> {
   const byteTransform: ReadableWritablePair<Uint8Array, Uint8Array> = {
     readable: transform.readable,
@@ -125,38 +125,38 @@ const textDecoder = new TextDecoder();
 export type ZipCompression = 'store' | 'deflate';
 
 export interface ZipArchiveEntry {
-  readonly name: string;
-  readonly isDirectory: boolean;
-  readonly compression: ZipCompression;
-  readonly crc32: number;
-  readonly compressedSize: number;
-  readonly uncompressedSize: number;
-  readonly localHeaderOffset: number;
-  readonly modifiedAt: Date;
-  readonly flags: number;
+  readonly name: string,
+  readonly isDirectory: boolean,
+  readonly compression: ZipCompression,
+  readonly crc32: number,
+  readonly compressedSize: number,
+  readonly uncompressedSize: number,
+  readonly localHeaderOffset: number,
+  readonly modifiedAt: Date,
+  readonly flags: number,
 }
 
 export interface ZipRandomAccessSource {
-  readonly size: number;
+  readonly size: number,
   /**
    * Returns exactly `length` bytes, or an empty chunk when `length` is zero.
    * Environment adapters must complete any low-level partial reads internally
    * so the ZIP core does not add copies or filesystem-specific retry behavior.
    */
-  read({ offset, length }: { offset: number; length: number }): Promise<Uint8Array>;
-  close(): Promise<void>;
+  read({ offset, length }: { offset: number, length: number }): Promise<Uint8Array>,
+  close(): Promise<void>,
 }
 
 interface ZipCentralDirectoryInfo {
-  readonly entryCount: number;
-  readonly offset: number;
-  readonly size: number;
+  readonly entryCount: number,
+  readonly offset: number,
+  readonly size: number,
 }
 
 interface ZipEntryWriteResult {
-  readonly crc32: number;
-  readonly compressedSize: number;
-  readonly uncompressedSize: number;
+  readonly crc32: number,
+  readonly compressedSize: number,
+  readonly uncompressedSize: number,
 }
 
 class Crc32Accumulator {
@@ -208,14 +208,14 @@ class CountingZipWriter {
   }
 }
 
-function assertUint16({ value, field }: { value: number; field: string }): number {
+function assertUint16({ value, field }: { value: number, field: string }): number {
   if (!Number.isInteger(value) || value < 0 || value > ZIP_UINT16_MAX) {
     throw new Error(`ZIP ${field} exceeds the non-ZIP64 limit`);
   }
   return value;
 }
 
-function assertUint32({ value, field }: { value: number; field: string }): number {
+function assertUint32({ value, field }: { value: number, field: string }): number {
   if (!Number.isInteger(value) || value < 0 || value > ZIP_UINT32_MAX) {
     throw new Error(`ZIP ${field} exceeds the non-ZIP64 limit`);
   }
@@ -227,9 +227,9 @@ function assertReadRange({
   offset,
   length,
 }: {
-  size: number;
-  offset: number;
-  length: number;
+  size: number,
+  offset: number,
+  length: number,
 }): void {
   if (
     !Number.isSafeInteger(size)
@@ -250,9 +250,9 @@ async function readZipSourceRange({
   offset,
   length,
 }: {
-  source: ZipRandomAccessSource;
-  offset: number;
-  length: number;
+  source: ZipRandomAccessSource,
+  offset: number,
+  length: number,
 }): Promise<Uint8Array> {
   assertReadRange({ size: source.size, offset, length });
   const chunk = await source.read({ offset, length });
@@ -263,15 +263,15 @@ async function readZipSourceRange({
 }
 
 function createBytes({ size, write }: {
-  size: number;
-  write: ({ view }: { view: DataView }) => void;
+  size: number,
+  write: ({ view }: { view: DataView }) => void,
 }): Uint8Array {
   const bytes = new Uint8Array(size);
   write({ view: new DataView(bytes.buffer) });
   return bytes;
 }
 
-function getDosDateTime({ date }: { date: Date }): { date: number; time: number } {
+function getDosDateTime({ date }: { date: Date }): { date: number, time: number } {
   const year = Math.min(Math.max(date.getFullYear(), 1980), 2107);
   const month = date.getMonth() + 1;
   const day = date.getDate();
@@ -285,7 +285,7 @@ function getDosDateTime({ date }: { date: Date }): { date: number; time: number 
   };
 }
 
-function fromDosDateTime({ date, time }: { date: number; time: number }): Date {
+function fromDosDateTime({ date, time }: { date: number, time: number }): Date {
   const year = 1980 + ((date >>> 9) & 0x7f);
   const month = ((date >>> 5) & 0x0f) - 1;
   const day = date & 0x1f;
@@ -304,13 +304,13 @@ function createLocalHeader({
   compressedSize,
   uncompressedSize,
 }: {
-  nameBytes: Uint8Array;
-  flags: number;
-  method: number;
-  modifiedAt: Date;
-  crc32: number;
-  compressedSize: number;
-  uncompressedSize: number;
+  nameBytes: Uint8Array,
+  flags: number,
+  method: number,
+  modifiedAt: Date,
+  crc32: number,
+  compressedSize: number,
+  uncompressedSize: number,
 }): Uint8Array {
   const dos = getDosDateTime({ date: modifiedAt });
   const header = createBytes({
@@ -362,15 +362,15 @@ function createCentralDirectoryRecord({
   localHeaderOffset,
   isDirectory,
 }: {
-  nameBytes: Uint8Array;
-  flags: number;
-  method: number;
-  modifiedAt: Date;
-  crc32: number;
-  compressedSize: number;
-  uncompressedSize: number;
-  localHeaderOffset: number;
-  isDirectory: boolean;
+  nameBytes: Uint8Array,
+  flags: number,
+  method: number,
+  modifiedAt: Date,
+  crc32: number,
+  compressedSize: number,
+  uncompressedSize: number,
+  localHeaderOffset: number,
+  isDirectory: boolean,
 }): Uint8Array {
   const dos = getDosDateTime({ date: modifiedAt });
   const header = createBytes({
@@ -406,9 +406,9 @@ function createEndOfCentralDirectory({
   centralDirectorySize,
   centralDirectoryOffset,
 }: {
-  entryCount: number;
-  centralDirectorySize: number;
-  centralDirectoryOffset: number;
+  entryCount: number,
+  centralDirectorySize: number,
+  centralDirectoryOffset: number,
 }): Uint8Array {
   return createBytes({
     size: ZIP_END_RECORD_MIN_SIZE,
@@ -453,9 +453,9 @@ function createCrcTrackingStream({
   state,
 }: {
   state: {
-    accumulator: Crc32Accumulator;
-    uncompressedSize: number;
-  };
+    accumulator: Crc32Accumulator,
+    uncompressedSize: number,
+  },
 }): TransformStream<Uint8Array, Uint8Array> {
   return new TransformStream({
     transform(chunk, controller) {
@@ -470,7 +470,7 @@ function createCrcTrackingStream({
 function createValidationStream({
   entry,
 }: {
-  entry: ZipArchiveEntry;
+  entry: ZipArchiveEntry,
 }): TransformStream<Uint8Array, Uint8Array> {
   const accumulator = new Crc32Accumulator();
   let size = 0;
@@ -507,9 +507,9 @@ export class StreamingZipWriter {
     centralDirectoryStore,
     compressionCodec,
   }: {
-    output: ZipByteSink;
-    centralDirectoryStore: ZipCentralDirectoryStore;
-    compressionCodec: ZipCompressionCodec;
+    output: ZipByteSink,
+    centralDirectoryStore: ZipCentralDirectoryStore,
+    compressionCodec: ZipCompressionCodec,
   }) {
     this.output = new CountingZipWriter({ sink: output });
     this.centralDirectory = new CountingZipWriter({ sink: centralDirectoryStore });
@@ -521,8 +521,8 @@ export class StreamingZipWriter {
     name,
     modifiedAt,
   }: {
-    name: string;
-    modifiedAt: Date;
+    name: string,
+    modifiedAt: Date,
   }): Promise<void> {
     this.assertWritable();
     const normalizedName = name.endsWith('/') ? name : `${name}/`;
@@ -562,10 +562,10 @@ export class StreamingZipWriter {
     compression,
     stream,
   }: {
-    name: string;
-    modifiedAt: Date;
-    compression: ZipCompression;
-    stream: ReadableStream<Uint8Array>;
+    name: string,
+    modifiedAt: Date,
+    compression: ZipCompression,
+    stream: ReadableStream<Uint8Array>,
   }): Promise<void> {
     this.assertWritable();
     const nameBytes = textEncoder.encode(name);
@@ -679,7 +679,7 @@ class BufferedZipSource {
     this.source = source;
   }
 
-  async read({ offset, length }: { offset: number; length: number }): Promise<Uint8Array> {
+  async read({ offset, length }: { offset: number, length: number }): Promise<Uint8Array> {
     assertReadRange({ size: this.source.size, offset, length });
     if (length === 0) {
       return new Uint8Array(0);
@@ -705,7 +705,7 @@ class BufferedZipSource {
 async function findCentralDirectory({
   source,
 }: {
-  source: ZipRandomAccessSource;
+  source: ZipRandomAccessSource,
 }): Promise<ZipCentralDirectoryInfo> {
   if (source.size < ZIP_END_RECORD_MIN_SIZE) {
     throw new Error('End of central directory not found');
@@ -752,9 +752,9 @@ function createRangeStream({
   offset,
   length,
 }: {
-  source: ZipRandomAccessSource;
-  offset: number;
-  length: number;
+  source: ZipRandomAccessSource,
+  offset: number,
+  length: number,
 }): ReadableStream<Uint8Array> {
   assertReadRange({ size: source.size, offset, length });
   let currentOffset = offset;
@@ -788,8 +788,8 @@ export class StreamingZipReader {
     source,
     compressionCodec,
   }: {
-    source: ZipRandomAccessSource;
-    compressionCodec: ZipCompressionCodec;
+    source: ZipRandomAccessSource,
+    compressionCodec: ZipCompressionCodec,
   }) {
     this.source = source;
     this.bufferedSource = new BufferedZipSource({ source });

@@ -10,11 +10,11 @@ const mockSynth = {
 };
 
 interface MockUtterance {
-  text: string;
-  lang: string;
-  onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onerror: ((err: any) => void) | null;
+  text: string,
+  lang: string,
+  onstart: (() => void) | null,
+  onend: (() => void) | null,
+  onerror: ((err: any) => void) | null,
 }
 
 const mockUtterance = vi.fn().mockImplementation(function(this: MockUtterance, text: string) {

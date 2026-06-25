@@ -16,12 +16,12 @@ vi.mock('./useSettings', () => ({
       value: {
         endpointUrl: 'http://localhost:11434',
         endpointType: 'openai',
-        defaultModelId: 'test-model'
-      }
+        defaultModelId: 'test-model',
+      },
     },
     isOnboardingDismissed: { value: true },
-    onboardingDraft: { value: null }
-  })
+    onboardingDraft: { value: null },
+  }),
 }));
 
 vi.mock('../services/storage', () => ({
@@ -62,10 +62,10 @@ vi.mock('../services/storage', () => ({
       return Promise.resolve(hierarchy.items.filter(i => i.type === 'chat_group').map(i => i.chatGroup));
     }),
     getSidebarStructure: vi.fn().mockImplementation(() => {
-      return Promise.resolve((Array.from(chats.values()) as Array<{ id: string; title: string; updatedAt: number; groupId?: string | null }>).map(c => ({
+      return Promise.resolve((Array.from(chats.values()) as Array<{ id: string, title: string, updatedAt: number, groupId?: string | null }>).map(c => ({
         id: `chat:${c.id}`,
         type: 'chat',
-        chat: { id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId }
+        chat: { id: c.id, title: c.title, updatedAt: c.updatedAt, groupId: c.groupId },
       })));
     }),
     saveFile: vi.fn().mockResolvedValue(undefined),
@@ -74,7 +74,7 @@ vi.mock('../services/storage', () => ({
     notify: vi.fn(),
     canPersistBinary: false,
     getCurrentType: vi.fn().mockReturnValue('local'),
-  }
+  },
 }));
 
 vi.mock('../services/lm/openai', () => ({
@@ -94,13 +94,13 @@ vi.mock('../services/lm/ollama', () => ({
       return Promise.resolve();
     });
     listModels = vi.fn().mockResolvedValue(['test-model']);
-  }
+  },
 }));
 
 vi.mock('./useConfirm', () => ({
   useConfirm: () => ({
-    showConfirm: vi.fn().mockResolvedValue(true)
-  })
+    showConfirm: vi.fn().mockResolvedValue(true),
+  }),
 }));
 
 describe('useChat - Attachment & Migration Logic', () => {
@@ -118,7 +118,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       defaultModelId: 'test-model',
       endpointUrl: 'http://localhost:11434',
       endpointType: 'openai',
-      providerProfiles: []
+      providerProfiles: [],
     });
     (useSettings as any).mockReturnValue({
       settings,
@@ -146,7 +146,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       size: 100,
       uploadedAt: Date.now(),
       status: 'memory',
-      blob: new Blob(['fake image'], { type: 'image/png' })
+      blob: new Blob(['fake image'], { type: 'image/png' }),
     };
 
     await sendMessage({ content: 'Hello', parentId: null, attachments: [mockAttachment], chatTarget: chatObj! });
@@ -175,7 +175,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       size: 100,
       uploadedAt: Date.now(),
       status: 'memory',
-      blob: new Blob(['fake image'], { type: 'image/png' })
+      blob: new Blob(['fake image'], { type: 'image/png' }),
     };
 
     await sendMessage({ content: 'Hello', parentId: null, attachments: [mockAttachment], chatTarget: chatObj! });
@@ -200,7 +200,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       debugEnabled: false,
-      modelId: 'm1'
+      modelId: 'm1',
     }) as any;
     __testOnlySetCurrentChat({ chat: chatObj });
     registerLiveInstance({ chat: chatObj });
@@ -214,7 +214,7 @@ describe('useChat - Attachment & Migration Logic', () => {
       size: 100,
       uploadedAt: Date.now(),
       status: 'memory',
-      blob: mockBlob
+      blob: mockBlob,
     };
 
     // 1. Send in LocalStorage mode
@@ -244,7 +244,7 @@ describe('useChat - Attachment & Migration Logic', () => {
               mimeType: att.mimeType,
               size: att.size,
               uploadedAt: att.uploadedAt,
-              status: 'persisted'
+              status: 'persisted',
             };
           }
         }

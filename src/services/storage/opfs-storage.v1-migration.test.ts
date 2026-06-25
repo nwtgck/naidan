@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { toChatId } from '@/models/ids';
 
 vi.mock('../../utils/id', () => ({
-  generateId: vi.fn(() => Math.random().toString(36).substring(2))
+  generateId: vi.fn(() => Math.random().toString(36).substring(2)),
 }));
 import { OPFSStorageProvider } from './opfs-storage';
 
@@ -134,7 +134,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const cw = await (chatFile as any).createWritable();
     await cw.write(JSON.stringify({
       root: { items: [{ id: MSG_ID_1, role: 'user', content: 'txt', attachments, timestamp: Date.now(), replies: { items: [] } }] },
-      currentLeafId: MSG_ID_1
+      currentLeafId: MSG_ID_1,
     }));
     await cw.close();
 
@@ -146,7 +146,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
       title: 'T',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      debugEnabled: false
+      debugEnabled: false,
     }));
     await mw.close();
   };
@@ -291,14 +291,14 @@ describe('OPFSStorageProvider - Migration Logic', () => {
                   id: MSG_ID_3, role: 'user', content: 'Deep',
                   attachments: [{ id: VALID_UUID_2, originalName: 'img2.png', status: 'persisted', mimeType: 'image/png', size: 2, uploadedAt: 0 }],
                   timestamp: 120,
-                  replies: { items: [] }
-                }]
-              }
-            }]
-          }
-        }]
+                  replies: { items: [] },
+                }],
+              },
+            }],
+          },
+        }],
       },
-      currentLeafId: MSG_ID_3
+      currentLeafId: MSG_ID_3,
     }));
     await cw.close();
 
@@ -356,7 +356,7 @@ describe('OPFSStorageProvider - Migration Logic', () => {
     const stateFile = await naidanDir.getFileHandle('migration-state.json', { create: true });
     const sw = await (stateFile as any).createWritable();
     await sw.write(JSON.stringify({
-      completedMigrations: [{ name: 'legacy_cleanup', completedAt: 123456 }]
+      completedMigrations: [{ name: 'legacy_cleanup', completedAt: 123456 }],
     }));
     await sw.close();
 

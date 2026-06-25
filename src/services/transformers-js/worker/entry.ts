@@ -29,23 +29,23 @@ import { urlToPath, writeToOpfs } from '@/services/transformers-js/utils';
  * Internal interface for properties found on Transformers.js model instances
  */
 interface ModelInternals {
-  device?: string;
+  device?: string,
   config?: {
-    model_type?: string;
-  };
+    model_type?: string,
+  },
 }
 
 interface Qwen3_5ProcessorLike {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callable mirrors an external Transformers.js processor signature.
-  (text: string): Promise<Record<string, unknown>>;
-  tokenizer: PreTrainedTokenizer;
+  (text: string): Promise<Record<string, unknown>>,
+  tokenizer: PreTrainedTokenizer,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors an external Transformers.js tokenizer signature.
-  batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[];
+  batch_decode(sequences: unknown, options: { skip_special_tokens: boolean }): string[],
 }
 
 interface AutoModelWithSupports {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this callback mirrors an external Transformers.js model signature.
-  supports?: (modelType: string) => boolean;
+  supports?: (modelType: string) => boolean,
 }
 
 const QWEN_DEBUG_PREFIX = '[naidan-qwen-debug]';
@@ -94,7 +94,7 @@ const interceptedFetch: typeof self.fetch = async (input, init) => {
         return new Response(decompressedStream, {
           status: 200,
           statusText: 'OK',
-          headers
+          headers,
         });
       }
     } catch (e) {
@@ -184,8 +184,8 @@ const opfsCache = {
         headers: {
           'Content-Type': urlString.endsWith('.json') ? 'application/json' : 'application/octet-stream',
           'Content-Length': file.size.toString(),
-          'X-Cache-Hit': 'OPFS'
-        }
+          'X-Cache-Hit': 'OPFS',
+        },
       });
     } catch {
       console.log(`[opfsCache] CACHE MISS: ${path}`);
@@ -219,7 +219,7 @@ const opfsCache = {
       console.error(`[opfsCache] FAILED TO SAVE: ${path}:`, err);
       throw err;
     }
-  }
+  },
 };
 
 // Enable custom cache
@@ -251,8 +251,8 @@ async function withModelAccessMode<T>({
   isLocal,
   run,
 }: {
-  isLocal: boolean;
-  run: () => Promise<T>;
+  isLocal: boolean,
+  run: () => Promise<T>,
 }): Promise<T> {
   const previousAllowLocalModels = env.allowLocalModels;
   env.allowLocalModels = isLocal;
@@ -263,7 +263,7 @@ async function withModelAccessMode<T>({
   }
 }
 
-function debugLog({ event, details }: { event: string; details: Record<string, unknown> }): void {
+function debugLog({ event, details }: { event: string, details: Record<string, unknown> }): void {
   console.log(`${QWEN_DEBUG_PREFIX} ${event}`, {
     at: new Date().toISOString(),
     ...details,
@@ -289,7 +289,7 @@ function assertGemma4RuntimeSupport({ modelId }: { modelId: string }): void {
 
   throw new Error(
     'The active @huggingface/transformers runtime does not support gemma4. ' +
-    'If you just upgraded dependencies, restart the Vite dev server so it rebuilds its optimized dependency cache.'
+    'If you just upgraded dependencies, restart the Vite dev server so it rebuilds its optimized dependency cache.',
   );
 }
 
@@ -312,9 +312,9 @@ const transformersJsWorker: ITransformersJsWorker = {
         // can poison the active runtime if ORT rejects a model/operator combination.
         await AutoTokenizer.from_pretrained(cleanModelId, {
           progress_callback: progressCallback,
-          local_files_only: isLocal
+          local_files_only: isLocal,
         });
-      }
+      },
     });
     console.log('[transformersJsWorker] Download complete.');
   },
@@ -373,14 +373,14 @@ const transformersJsWorker: ITransformersJsWorker = {
               status: 'progress',
               file: url.split('/').pop(),
               loaded,
-              total
+              total,
             });
             controller.enqueue(chunk);
-          }
+          },
         });
 
         const progressResponse = new Response(response.body?.pipeThrough(transformStream), {
-          headers: response.headers
+          headers: response.headers,
         });
 
         await writeToOpfs({ path, response: progressResponse });
@@ -415,8 +415,8 @@ const transformersJsWorker: ITransformersJsWorker = {
           // 1. Load Model
           // We try several combinations of device and dtype to find what works on this hardware/model
           const tryLoad = async ({ device, dtype }: {
-            device: 'webgpu' | 'wasm'
-            dtype: 'q4f16' | 'q4' | undefined
+            device: 'webgpu' | 'wasm',
+            dtype: 'q4f16' | 'q4' | undefined,
           }) => {
             const startedAt = performance.now();
             debugLog({
@@ -520,11 +520,11 @@ const transformersJsWorker: ITransformersJsWorker = {
             console.log('[transformersJsWorker] Loading tokenizer...');
             tokenizer = await AutoTokenizer.from_pretrained(cleanModelId, {
               progress_callback: progressCallback,
-              local_files_only: isLocal
+              local_files_only: isLocal,
             });
             console.log('[transformersJsWorker] Tokenizer loaded.');
           }
-        }
+        },
       });
 
       return {
@@ -577,7 +577,7 @@ const transformersJsWorker: ITransformersJsWorker = {
     // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because Comlink proxy callbacks and remote interfaces require top-level arguments.
     onToolCalls: (toolCalls: ToolCall[]) => void,
     params?: LmParameters,
-    tools?: WorkerToolDefinition[]
+    tools?: WorkerToolDefinition[],
   ): Promise<void> {
     if (!model || !tokenizer) throw new Error('Model not loaded');
 
@@ -641,7 +641,7 @@ const transformersJsWorker: ITransformersJsWorker = {
       console.error('[transformersJsWorker] Generation error:', err);
       throw err;
     }
-  }
+  },
 };
 
 Comlink.expose(transformersJsWorker);

@@ -1,46 +1,46 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { JSDOM } from 'jsdom'
+import fs from 'node:fs';
+import path from 'node:path';
+import { JSDOM } from 'jsdom';
 
-import type { BuildLicenseDependency } from '../license-dependencies'
+import type { BuildLicenseDependency } from '../license-dependencies';
 import {
   DEBUG_FILE_PROTOCOL_STANDALONE_DIAGNOSTICS_FORMAT,
   DEBUG_FILE_PROTOCOL_STANDALONE_STARTUP_FORMAT,
   FILE_PROTOCOL_STANDALONE_GLOBAL_NAME,
-} from '../../src/file-protocol-standalone-protocol'
+} from '../../src/file-protocol-standalone-protocol';
 
-const pluginName = 'file-protocol-standalone'
-export const debugSlowStartupNoticeDelayMs = 15_000
+const pluginName = 'file-protocol-standalone';
+export const debugSlowStartupNoticeDelayMs = 15_000;
 
 export function readSystemJsLicenseDependency({ packageJsonPath }: {
-  packageJsonPath: string
+  packageJsonPath: string,
 }): BuildLicenseDependency {
-  const packageDirectory = path.dirname(packageJsonPath)
+  const packageDirectory = path.dirname(packageJsonPath);
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
-    name?: unknown
-    version?: unknown
-    license?: unknown
-  }
+    name?: unknown,
+    version?: unknown,
+    license?: unknown,
+  };
   if (typeof packageJson.name !== 'string' || typeof packageJson.version !== 'string') {
-    throw new Error(`[${pluginName}] SystemJS package metadata is incomplete.`)
+    throw new Error(`[${pluginName}] SystemJS package metadata is incomplete.`);
   }
   const licenseFileName = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE', 'LICENCE.md', 'LICENCE.txt']
-    .find((candidate) => fs.existsSync(path.join(packageDirectory, candidate)))
+    .find((candidate) => fs.existsSync(path.join(packageDirectory, candidate)));
   if (licenseFileName === undefined) {
-    throw new Error(`[${pluginName}] SystemJS license file is missing.`)
+    throw new Error(`[${pluginName}] SystemJS license file is missing.`);
   }
   return {
     name: packageJson.name,
     version: packageJson.version,
     license: typeof packageJson.license === 'string' ? packageJson.license : null,
     licenseText: fs.readFileSync(path.join(packageDirectory, licenseFileName), 'utf8'),
-  }
+  };
 }
 
 /** @internal Exported for focused plugin tests. */
 export function createFileProtocolStandaloneEntryBootstrapSource({ entryFileName, debugSlowStartupNoticeDelayMs }: {
-  entryFileName: string
-  debugSlowStartupNoticeDelayMs: number
+  entryFileName: string,
+  debugSlowStartupNoticeDelayMs: number,
 }): string {
   return `/* file-protocol-standalone: bootstrap application entry */
 (function () {
@@ -213,7 +213,7 @@ export function createFileProtocolStandaloneEntryBootstrapSource({ entryFileName
     onEntryImportFailure(error);
   }
 })();
-`
+`;
 }
 
 /** @internal Exported for focused plugin tests. */
@@ -221,25 +221,25 @@ export function assertSupportedSystemJsRuntime({ source }: { source: string }): 
   const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', {
     url: 'file:///file-protocol-standalone/runtime-validation.html',
     runScripts: 'outside-only',
-  })
+  });
 
   try {
-    dom.window.eval(source)
-    const system = (dom.window as unknown as { System?: Record<string, unknown> }).System
-    const requiredApis = ['import', 'resolve', 'instantiate', 'delete'] as const
-    const missingApis: string[] = requiredApis.filter((api) => typeof system?.[api] !== 'function')
-    const constructor = system?.constructor as { prototype?: Record<string, unknown> } | undefined
+    dom.window.eval(source);
+    const system = (dom.window as unknown as { System?: Record<string, unknown> }).System;
+    const requiredApis = ['import', 'resolve', 'instantiate', 'delete'] as const;
+    const missingApis: string[] = requiredApis.filter((api) => typeof system?.[api] !== 'function');
+    const constructor = system?.constructor as { prototype?: Record<string, unknown> } | undefined;
     if (typeof constructor?.prototype?.createScript !== 'function') {
-      missingApis.push('createScript')
+      missingApis.push('createScript');
     }
 
     if (missingApis.length > 0) {
       throw new Error(
         `[${pluginName}] SystemJS runtime is missing APIs required by the file:// patches: ${missingApis.join(', ')}.`,
-      )
+      );
     }
   } finally {
-    dom.window.close()
+    dom.window.close();
   }
 }
 
@@ -249,39 +249,39 @@ export function assertMatchingSystemJsSourceMap({
   runtimeSource,
   sourceMapSource,
 }: {
-  runtimeSource: string
-  sourceMapSource: string | Uint8Array
+  runtimeSource: string,
+  sourceMapSource: string | Uint8Array,
 }): void {
-  const trimmedRuntime = runtimeSource.trimEnd()
-  const lastLineStart = trimmedRuntime.lastIndexOf('\n') + 1
-  const lastLine = trimmedRuntime.slice(lastLineStart).replace(/\r$/, '')
+  const trimmedRuntime = runtimeSource.trimEnd();
+  const lastLineStart = trimmedRuntime.lastIndexOf('\n') + 1;
+  const lastLine = trimmedRuntime.slice(lastLineStart).replace(/\r$/, '');
   if (lastLine !== '//# sourceMappingURL=system.min.js.map') {
-    throw new Error(`[${pluginName}] SystemJS runtime must retain its exact sibling source map directive.`)
+    throw new Error(`[${pluginName}] SystemJS runtime must retain its exact sibling source map directive.`);
   }
 
-  let sourceMap: unknown
+  let sourceMap: unknown;
   try {
     sourceMap = JSON.parse(typeof sourceMapSource === 'string'
       ? sourceMapSource
-      : Buffer.from(sourceMapSource).toString('utf8'))
+      : Buffer.from(sourceMapSource).toString('utf8'));
   } catch {
-    throw new Error(`[${pluginName}] SystemJS source map is not valid JSON.`)
+    throw new Error(`[${pluginName}] SystemJS source map is not valid JSON.`);
   }
   if (typeof sourceMap !== 'object' || sourceMap === null) {
-    throw new Error(`[${pluginName}] SystemJS source map must be an object.`)
+    throw new Error(`[${pluginName}] SystemJS source map must be an object.`);
   }
   const candidate = sourceMap as {
-    version?: unknown
-    sources?: unknown
-    sourcesContent?: unknown
-  }
+    version?: unknown,
+    sources?: unknown,
+    sourcesContent?: unknown,
+  };
   if (
     candidate.version !== 3
     || !Array.isArray(candidate.sources)
     || !Array.isArray(candidate.sourcesContent)
     || candidate.sources.length !== candidate.sourcesContent.length
   ) {
-    throw new Error(`[${pluginName}] SystemJS source map is missing embedded source content.`)
+    throw new Error(`[${pluginName}] SystemJS source map is missing embedded source content.`);
   }
 }
 
@@ -333,7 +333,7 @@ export function createSystemJsFileScriptLoaderPatchSource(): string {
   fileProtocolCreateScript.__fileProtocolStandalonePatched = true;
   prototype.createScript = fileProtocolCreateScript;
 })();
-`
+`;
 }
 
 /** @internal Exported for focused plugin tests. */
@@ -511,5 +511,5 @@ export function createSystemJsPhysicalLoadRecoverySource(): string {
   fileProtocolRetryableImport.__fileProtocolStandaloneRetryPatched = true;
   System.import = fileProtocolRetryableImport;
 })();
-`
+`;
 }

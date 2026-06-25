@@ -77,8 +77,8 @@ describe('ImageEditor', () => {
     const wrapper = mount(ImageEditor, {
       props: {
         ...props,
-        originalMimeType: 'image/png'
-      }
+        originalMimeType: 'image/png',
+      },
     });
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -92,8 +92,8 @@ describe('ImageEditor', () => {
     const wrapper = mount(ImageEditor, {
       props: {
         ...props,
-        originalMimeType: 'image/png'
-      }
+        originalMimeType: 'image/png',
+      },
     });
     await nextTick();
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -280,7 +280,7 @@ describe('ImageEditor', () => {
       vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
         left: 0, top: 0, width: 100, height: 100,
         bottom: 100, right: 100, x: 0, y: 0,
-        toJSON: () => {}
+        toJSON: () => {},
       });
 
       await container.trigger('mousedown', { clientX: 10, clientY: 10 });
@@ -319,7 +319,7 @@ describe('ImageEditor', () => {
       vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
         left: 0, top: 0, width: 100, height: 100,
         bottom: 100, right: 100, x: 0, y: 0,
-        toJSON: () => {}
+        toJSON: () => {},
       });
 
       // Start selection
@@ -388,7 +388,7 @@ describe('ImageEditor', () => {
 
     it('should show confirmation dialog when closing with unsaved changes', async () => {
       const wrapper = mount(ImageEditor, {
-        props: { ...props, originalMimeType: 'image/jpeg' }
+        props: { ...props, originalMimeType: 'image/jpeg' },
       });
       await nextTick();
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -411,7 +411,7 @@ describe('ImageEditor', () => {
 
     it('should NOT show confirmation dialog when closing without changes', async () => {
       const wrapper = mount(ImageEditor, {
-        props: { ...props, originalMimeType: 'image/png' } // Default is PNG
+        props: { ...props, originalMimeType: 'image/png' }, // Default is PNG
       });
       await nextTick();
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -447,7 +447,7 @@ describe('ImageEditor', () => {
       mockContext.getImageData.mockReturnValue({
         data: new Uint8ClampedArray([255, 0, 0, 255]),
         width: 1,
-        height: 1
+        height: 1,
       } as any);
 
       const container = wrapper.find('[data-testid="image-editor-container"]');
@@ -455,7 +455,7 @@ describe('ImageEditor', () => {
       vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
         left: 0, top: 0, width: 100, height: 100,
         bottom: 100, right: 100, x: 0, y: 0,
-        toJSON: () => {}
+        toJSON: () => {},
       });
 
       // Enable picking mode
@@ -478,7 +478,7 @@ describe('ImageEditor', () => {
       mockContext.getImageData.mockReturnValue({
         data: new Uint8ClampedArray([0, 0, 0, 0]),
         width: 1,
-        height: 1
+        height: 1,
       } as any);
 
       const container = wrapper.find('[data-testid="image-editor-container"]');
@@ -486,7 +486,7 @@ describe('ImageEditor', () => {
       vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
         left: 0, top: 0, width: 100, height: 100,
         bottom: 100, right: 100, x: 0, y: 0,
-        toJSON: () => {}
+        toJSON: () => {},
       });
 
       wrapper.vm.TEST_ONLY.isPickingColor.value = true;

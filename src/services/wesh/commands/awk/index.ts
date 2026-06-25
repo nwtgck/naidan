@@ -66,8 +66,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   return path.startsWith('/') ? path : `${cwd}/${path}`;
 }
@@ -76,8 +76,8 @@ async function openAwkInputStream({
   context,
   input,
 }: {
-  context: WeshCommandContext;
-  input: string;
+  context: WeshCommandContext,
+  input: string,
 }): Promise<ReadableStream<Uint8Array>> {
   if (input === '-') {
     return openHandleReadStream({ handle: context.stdin });
@@ -92,8 +92,8 @@ async function openAwkInputStream({
 async function *readAwkRecords({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
-}): AsyncGenerator<{ text: string; fields: string[]; hadNewline: boolean }> {
+  stream: ReadableStream<Uint8Array>,
+}): AsyncGenerator<{ text: string, fields: string[], hadNewline: boolean }> {
   for await (const record of iterateUtf8LineRecords({
     chunks: iterateReadableStreamChunks({ stream }),
   })) {
@@ -108,8 +108,8 @@ async function *readAwkRecords({
 function parseAssignment({
   raw,
 }: {
-  raw: string;
-}): { ok: true; name: string; value: AwkValue } | { ok: false; message: string } {
+  raw: string,
+}): { ok: true, name: string, value: AwkValue } | { ok: false, message: string } {
   const equalsIndex = raw.indexOf('=');
   if (equalsIndex <= 0) {
     return { ok: false, message: `awk: invalid assignment '${raw}'` };

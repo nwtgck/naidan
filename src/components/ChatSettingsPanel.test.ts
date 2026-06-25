@@ -75,7 +75,7 @@ describe('ChatSettingsPanel.vue', () => {
     TransformersJsUpsell: {
       name: 'TransformersJsUpsell',
       template: '<div data-testid="upsell-stub"></div>',
-      props: ['show']
+      props: ['show'],
     },
     CheckIcon: { name: 'Check', template: '<span class="check-stub" />' },
     ModelSelector: {
@@ -132,7 +132,7 @@ describe('ChatSettingsPanel.vue', () => {
           endpointType: chat?.endpointType ? 'chat' : 'global',
           endpointUrl: chat?.endpointUrl ? 'chat' : 'global',
           modelId: chat?.modelId ? 'chat' : 'global',
-        }
+        },
       };
     });
 
@@ -260,7 +260,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockCurrentChat.value.endpointType = 'transformers_js';
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
     await nextTick();
     expect(wrapper.find('[data-testid="chat-setting-url-input"]').exists()).toBe(false);
@@ -270,7 +270,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockSettings.value.endpointType = 'transformers_js';
     const wrapper2 = mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
     await nextTick();
     expect(wrapper2.find('[data-testid="chat-setting-url-input"]').exists()).toBe(false);
@@ -280,7 +280,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockSettings.value.endpointType = 'openai';
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
     await flushPromises();
     await vi.dynamicImportSettled();
@@ -297,7 +297,7 @@ describe('ChatSettingsPanel.vue', () => {
   it('renders correctly when a chat is active', async () => {
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
     await nextTick();
     expect(wrapper.exists()).toBe(true);
@@ -309,7 +309,7 @@ describe('ChatSettingsPanel.vue', () => {
   it('applies animation classes for entrance effects', () => {
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
 
     const modalContent = wrapper.find('.modal-content-zoom');
@@ -319,7 +319,7 @@ describe('ChatSettingsPanel.vue', () => {
   it('does not render when show prop is false', () => {
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: false },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
     // Look for the overlay which should be missing
     expect(wrapper.find('.fixed.inset-0').exists()).toBe(false);
@@ -329,7 +329,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockCurrentChat.value.endpointUrl = 'http://localhost:11434';
     mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
     await nextTick();
     expect(mockFetchAvailableModels).toHaveBeenCalled();
@@ -339,7 +339,7 @@ describe('ChatSettingsPanel.vue', () => {
     mockCurrentChat.value.endpointUrl = 'http://remote-api.com';
     mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
     await nextTick();
     expect(mockFetchAvailableModels).not.toHaveBeenCalled();
@@ -349,7 +349,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('triggers fetch when switching to a localhost preset', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       mockFetchAvailableModels.mockClear();
@@ -363,7 +363,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('triggers fetch when manually entering a localhost URL', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
@@ -378,7 +378,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('triggers updateChatSettings when endpoint settings change', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
@@ -387,14 +387,14 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.trigger('blur');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://persisted-url:1234'
+        endpointUrl: 'http://persisted-url:1234',
       }) });
     });
 
     it('triggers updateChatSettings when model override changes', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
@@ -403,14 +403,14 @@ describe('ChatSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        modelId: 'model-1'
+        modelId: 'model-1',
       }) });
     });
 
     it('triggers updateChatSettings when a preset is applied', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const ollamaBtn = wrapper.findAll('button').find(b => b.text() === 'Ollama (local)');
@@ -419,14 +419,14 @@ describe('ChatSettingsPanel.vue', () => {
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'ollama',
-        endpointUrl: 'http://localhost:11434'
+        endpointUrl: 'http://localhost:11434',
       }) });
     });
 
     it('triggers updateChatSettings when a provider profile is applied', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const select = wrapper.find('select'); // First select is Profile Switcher
@@ -436,7 +436,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'ollama',
-        endpointUrl: 'http://ollama:11434'
+        endpointUrl: 'http://ollama:11434',
       }) });
     });
   });
@@ -445,7 +445,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('applies a selected profile to the current chat', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const select = wrapper.find('select'); // First select is the profile switcher
@@ -510,7 +510,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const select = wrapper.find('select');
@@ -519,7 +519,7 @@ describe('ChatSettingsPanel.vue', () => {
       await select.trigger('change');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointHttpHeaders: [['X-Header', 'Value']]
+        endpointHttpHeaders: [['X-Header', 'Value']],
       }) });
     });
   });
@@ -528,7 +528,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('supports adding and removing headers directly', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -544,7 +544,7 @@ describe('ChatSettingsPanel.vue', () => {
       await inputs[2]?.trigger('blur');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointHttpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']])
+        endpointHttpHeaders: expect.arrayContaining([['X-Manual', 'Val-Manual']]),
       }) });
 
       // Remove
@@ -553,7 +553,7 @@ describe('ChatSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointHttpHeaders: []
+        endpointHttpHeaders: [],
       }) });
     });
   });
@@ -562,7 +562,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('applies Ollama preset when clicked', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const ollamaBtn = wrapper.findAll('button').find(b => b.text() === 'Ollama (local)');
@@ -571,14 +571,14 @@ describe('ChatSettingsPanel.vue', () => {
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'ollama',
-        endpointUrl: 'http://localhost:11434'
+        endpointUrl: 'http://localhost:11434',
       }) });
     });
 
     it('applies LM Studio preset when clicked', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const lmStudioBtn = wrapper.findAll('button').find(b => b.text() === 'LM Studio (local)');
@@ -587,7 +587,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: 'openai',
-        endpointUrl: 'http://localhost:1234/v1'
+        endpointUrl: 'http://localhost:1234/v1',
       }) });
     });
   });
@@ -596,7 +596,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('updates currentChat endpointType through direct selection', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const typeSelect = wrapper.findAll('select')[1]; // Second select is Type
@@ -604,14 +604,14 @@ describe('ChatSettingsPanel.vue', () => {
       await typeSelect!.setValue('ollama');
       await typeSelect!.trigger('change');
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: 'ollama'
+        endpointType: 'ollama',
       }) });
     });
 
     it('updates currentChat endpointUrl through text input', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
@@ -619,14 +619,14 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.setValue('http://custom-api:8000');
       await urlInput.trigger('blur');
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://custom-api:8000'
+        endpointUrl: 'http://custom-api:8000',
       }) });
     });
 
     it('does not affect other chats when overriding settings', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
@@ -636,7 +636,7 @@ describe('ChatSettingsPanel.vue', () => {
       await urlInput.trigger('blur');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://changed:8888'
+        endpointUrl: 'http://changed:8888',
       }) });
     });
 
@@ -644,7 +644,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockSettings.value.endpointUrl = 'http://global:1234';
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const urlInput = wrapper.find('input[data-testid="chat-setting-url-input"]');
@@ -662,7 +662,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('saves settings to the previous chat when chat is switched while panel is open', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -679,7 +679,7 @@ describe('ChatSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://new-url-for-A'
+        endpointUrl: 'http://new-url-for-A',
       }) });
     });
 
@@ -687,7 +687,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockSettings.value.endpointType = 'ollama';
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       mockUpdateChatSettings.mockClear();
@@ -721,7 +721,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('does not write a stale model override when the hidden panel observes an external model change', async () => {
       mount(ChatSettingsPanel, {
         props: { show: false },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       mockUpdateChatSettings.mockClear();
@@ -749,7 +749,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('saves settings when the modal is closed via props even if blur hasn\'t fired yet', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -761,7 +761,7 @@ describe('ChatSettingsPanel.vue', () => {
       await nextTick();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointUrl: 'http://closing-save'
+        endpointUrl: 'http://closing-save',
       }) });
     });
 
@@ -773,7 +773,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -806,7 +806,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -838,7 +838,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const restoreBtn = wrapper.find('[data-testid="chat-setting-restore-defaults"]');
@@ -847,7 +847,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
         endpointType: undefined,
-        endpointUrl: undefined
+        endpointUrl: undefined,
       }) });
     });
 
@@ -881,7 +881,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockCurrentChat.value!.endpointType = 'ollama';
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const restoreBtn = wrapper.find('[data-testid="chat-setting-restore-defaults"]');
@@ -889,7 +889,7 @@ describe('ChatSettingsPanel.vue', () => {
       await restoreBtn.trigger('click');
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        endpointType: undefined
+        endpointType: undefined,
       }) });
     });
   });
@@ -898,7 +898,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('shows "Group/Global Default" for system prompt when not overridden', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const status = wrapper.find('[data-testid="resolution-status-system-prompt"]');
@@ -908,7 +908,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('shows "Overriding" for system prompt when overridden with override behavior', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -929,7 +929,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('shows "Appending" for system prompt when overridden with append behavior', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const appendBtn = wrapper.findAll('button').find(b => b.text() === 'Append');
@@ -944,7 +944,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockCurrentChat.value.systemPrompt = { content: 'Old prompt', behavior: 'override' };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -959,7 +959,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       // Verify updateChatSettings was called with undefined for systemPrompt
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        systemPrompt: undefined
+        systemPrompt: undefined,
       }) });
 
       // Verify UI state: textarea should be gone, and inherited notice shown
@@ -970,7 +970,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('shows "Inherited" for parameters when not overridden', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const status = wrapper.find('[data-testid="resolution-status-lm-parameters"]');
@@ -981,7 +981,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockCurrentChat.value!.lmParameters = { temperature: 0.8 };
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -995,7 +995,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockFetchAvailableModels.mockRejectedValueOnce(new Error('Fail'));
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
@@ -1017,7 +1017,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockSettings.value.endpointType = 'openai';
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 
@@ -1037,7 +1037,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('emits close event when close button is clicked', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const closeBtn = wrapper.find('[data-testid="close-button"]');
@@ -1053,7 +1053,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
@@ -1065,7 +1065,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockCurrentChat.value.endpointUrl = 'http://localhost:11434';
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       mockFetchAvailableModels.mockClear();
@@ -1081,7 +1081,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockFetchAvailableModels.mockRejectedValueOnce(new Error(errorMessage));
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
@@ -1098,7 +1098,7 @@ describe('ChatSettingsPanel.vue', () => {
 
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       const selector = wrapper.getComponent({ name: 'ModelSelector' });
@@ -1109,7 +1109,7 @@ describe('ChatSettingsPanel.vue', () => {
       mockCurrentChat.value.modelId = 'old-model';
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
       await flushPromises();
@@ -1121,7 +1121,7 @@ describe('ChatSettingsPanel.vue', () => {
       await flushPromises();
 
       expect(mockUpdateChatSettings).toHaveBeenCalledWith({ id: 'chat-1', updates: expect.objectContaining({
-        modelId: undefined
+        modelId: undefined,
       }) });
     });
   });
@@ -1130,7 +1130,7 @@ describe('ChatSettingsPanel.vue', () => {
     it('sets focus area to chat-settings when show is true, and restores to chat when false', async () => {
       const wrapper = mount(ChatSettingsPanel, {
         props: { show: false },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await nextTick();
 

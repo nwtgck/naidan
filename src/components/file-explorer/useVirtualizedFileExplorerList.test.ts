@@ -26,7 +26,7 @@ function makeEntries({ count }: { count: number }): FileExplorerEntry[] {
   return Array.from({ length: count }, (_, index) => makeEntry({ index }));
 }
 
-function setClientHeight({ element, height }: { element: HTMLElement; height: number }): void {
+function setClientHeight({ element, height }: { element: HTMLElement, height: number }): void {
   Object.defineProperty(element, 'clientHeight', {
     configurable: true,
     value: height,

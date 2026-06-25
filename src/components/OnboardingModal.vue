@@ -362,7 +362,7 @@ defineExpose({
     effectiveType,
     availableModels,
     handleConnect,
-  }
+  },
 });
 </script>
 

@@ -55,23 +55,23 @@ const zipArgvSpec: StandardArgvParserSpec = {
 };
 
 interface PendingZipEntry {
-  readonly sourcePath: string;
-  readonly archivePath: string;
-  readonly type: WeshFileType;
-  readonly entryRef: WeshEntryRef | undefined;
+  readonly sourcePath: string,
+  readonly archivePath: string,
+  readonly type: WeshFileType,
+  readonly entryRef: WeshEntryRef | undefined,
 }
 
 interface SplitZipArgsResult {
-  readonly mainArgs: string[];
-  readonly excludePatterns: string[];
+  readonly mainArgs: string[],
+  readonly excludePatterns: string[],
 }
 
 function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -134,9 +134,9 @@ function buildArchivePath({
   currentPath,
   junkPaths,
 }: {
-  operand: string;
-  currentPath: string;
-  junkPaths: boolean;
+  operand: string,
+  currentPath: string,
+  junkPaths: boolean,
 }): string {
   if (junkPaths) {
     return basename({ path: currentPath });
@@ -178,10 +178,10 @@ async function* iterateDirectoryEntries({
   directory,
   junkPaths,
 }: {
-  context: WeshCommandContext;
-  operand: string;
-  directory: WeshEntryRef<'directory'>;
-  junkPaths: boolean;
+  context: WeshCommandContext,
+  operand: string,
+  directory: WeshEntryRef<'directory'>,
+  junkPaths: boolean,
 }): AsyncIterable<PendingZipEntry> {
   for await (const child of context.files.readDirEntry({ entry: directory })) {
     const archivePath = buildArchivePath({
@@ -229,10 +229,10 @@ async function* iterateZipEntriesForOperand({
   recursive,
   junkPaths,
 }: {
-  context: WeshCommandContext;
-  operand: string;
-  recursive: boolean;
-  junkPaths: boolean;
+  context: WeshCommandContext,
+  operand: string,
+  recursive: boolean,
+  junkPaths: boolean,
 }): AsyncIterable<PendingZipEntry> {
   if (operand === '-') {
     yield {
@@ -300,8 +300,8 @@ async function removePathIfPresent({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<void> {
   try {
     await context.files.unlink({ path });
@@ -314,8 +314,8 @@ async function pathExists({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<boolean> {
   try {
     await context.files.lstat({ path });
@@ -338,8 +338,8 @@ async function openEntryStream({
   context,
   entry,
 }: {
-  context: WeshCommandContext;
-  entry: PendingZipEntry;
+  context: WeshCommandContext,
+  entry: PendingZipEntry,
 }): Promise<ReadableStream<Uint8Array>> {
   if (entry.sourcePath === '-') {
     return openHandleReadStream({ handle: context.stdin });
@@ -373,7 +373,7 @@ async function closeHandleSafely({ handle }: { handle: WeshFileHandle | undefine
 async function disposeCentralDirectoryStoreSafely({
   store,
 }: {
-  store: ZipCentralDirectoryStore | undefined;
+  store: ZipCentralDirectoryStore | undefined,
 }): Promise<void> {
   if (store === undefined) {
     return;

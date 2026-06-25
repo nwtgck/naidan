@@ -17,8 +17,8 @@ export async function fetchAvailableModelsForChat({
   chatId,
   errorSource,
 }: {
-  chatId: ChatId;
-  errorSource: string;
+  chatId: ChatId,
+  errorSource: string,
 }): Promise<string[]> {
   return await fetchModelsForChat({
     chatId,
@@ -29,7 +29,7 @@ export async function fetchAvailableModelsForChat({
 export async function fetchAvailableModelsForGlobalEndpoint({
   errorSource,
 }: {
-  errorSource: string;
+  errorSource: string,
 }): Promise<string[]> {
   return await fetchModelsForGlobalEndpoint({
     errorSource,
@@ -42,10 +42,10 @@ export async function fetchAvailableModelsForEndpoint({
   endpointHttpHeaders,
   errorSource,
 }: {
-  endpointType: EndpointType;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
-  errorSource: string;
+  endpointType: EndpointType,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
+  errorSource: string,
 }): Promise<string[]> {
   return await fetchModelsForEndpoint({
     endpointType,

@@ -6,10 +6,10 @@ import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
 
 interface TrOptions {
-  deleteMode: boolean;
-  squeezeRepeats: boolean;
-  complement: boolean;
-  truncateSet1: boolean;
+  deleteMode: boolean,
+  squeezeRepeats: boolean,
+  complement: boolean,
+  truncateSet1: boolean,
 }
 
 const TR_CHARACTER_CLASS_NAMES = [
@@ -87,8 +87,8 @@ function createAsciiRange({
   start,
   end,
 }: {
-  start: number;
-  end: number;
+  start: number,
+  end: number,
 }): string[] {
   const result: string[] = [];
   for (let code = start; code <= end; code++) {
@@ -104,7 +104,7 @@ function isTrCharacterClassName({ name }: { name: string }): boolean {
 function expandCharacterClass({
   name,
 }: {
-  name: TrCharacterClassName;
+  name: TrCharacterClassName,
 }): string[] {
   switch (name) {
   case 'alnum':
@@ -162,7 +162,7 @@ function expandCharacterClass({
 function expandCharacterClassIfPresent({
   name,
 }: {
-  name: string;
+  name: string,
 }): string[] | undefined {
   if (!isTrCharacterClassName({ name })) {
     return undefined;
@@ -175,9 +175,9 @@ function parseEscapeSequence({
   source,
   index,
 }: {
-  source: string;
-  index: number;
-}): { chars: string[]; nextIndex: number } {
+  source: string,
+  index: number,
+}): { chars: string[], nextIndex: number } {
   const next = source[index + 1];
   if (next === undefined) {
     return { chars: ['\\'], nextIndex: index };
@@ -225,7 +225,7 @@ function parseEscapeSequence({
 function expandTrSet({
   source,
 }: {
-  source: string;
+  source: string,
 }): string[] {
   if (source.length === 0) {
     return [];
@@ -282,7 +282,7 @@ function expandTrSet({
 function complementAsciiSet({
   source,
 }: {
-  source: string[];
+  source: string[],
 }): string[] {
   const excluded = new Set(source);
   const result: string[] = [];
@@ -299,9 +299,9 @@ function buildTranslationMap({
   set2,
   truncateSet1,
 }: {
-  set1: string[];
-  set2: string[];
-  truncateSet1: boolean;
+  set1: string[],
+  set2: string[],
+  truncateSet1: boolean,
 }): Map<string, string> {
   const map = new Map<string, string>();
   const effectiveSet1 = truncateSet1 ? set1.slice(0, set2.length) : set1;
@@ -323,10 +323,10 @@ async function transformInput({
   set2,
   options,
 }: {
-  context: WeshCommandContext;
-  set1: string[];
-  set2: string[];
-  options: TrOptions;
+  context: WeshCommandContext,
+  set1: string[],
+  set2: string[],
+  options: TrOptions,
 }): Promise<void> {
   const effectiveSet1 = options.complement ? complementAsciiSet({ source: set1 }) : set1;
   const deleteSet = new Set(effectiveSet1);
@@ -348,7 +348,7 @@ async function transformInput({
   const transformTextChunk = async ({
     text,
   }: {
-    text: string;
+    text: string,
   }): Promise<void> => {
     const output: string[] = [];
     for (const char of text) {
@@ -386,7 +386,7 @@ async function transformInput({
 function resolveTrOptions({
   parsed,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>;
+  parsed: ReturnType<typeof parseStandardArgv>,
 }): TrOptions {
   return {
     deleteMode: parsed.optionValues.deleteMode === true,

@@ -32,23 +32,23 @@ import {
 
 export type CompactCurrentBranchResult =
   | {
-      status: 'compacted';
-      chatId: ChatId;
-      compactNodeId: MessageId;
-      currentLeafId: MessageId;
+      status: 'compacted',
+      chatId: ChatId,
+      compactNodeId: MessageId,
+      currentLeafId: MessageId,
     }
   | {
-      status: 'skipped';
+      status: 'skipped',
       reason:
         | 'no_current_chat'
         | 'already_processing'
         | 'not_enough_messages'
         | 'empty_prefix'
         | 'missing_model_or_endpoint'
-        | 'empty_response';
+        | 'empty_response',
     }
   | {
-      status: 'aborted';
+      status: 'aborted',
     };
 
 export async function runCompactCurrentBranchForChat({
@@ -56,9 +56,9 @@ export async function runCompactCurrentBranchForChat({
   keepRecentMessages,
   instructionOverride,
 }: {
-  chatId: ChatId;
-  keepRecentMessages: number;
-  instructionOverride: string | undefined;
+  chatId: ChatId,
+  keepRecentMessages: number,
+  instructionOverride: string | undefined,
 }): Promise<CompactCurrentBranchResult> {
   const targetChat = getLiveChatById({ chatId });
   if (targetChat === null) {
@@ -297,7 +297,7 @@ export async function runCompactCurrentBranchForChat({
 export function abortContextCompactForChat({
   chatId,
 }: {
-  chatId: ChatId | undefined;
+  chatId: ChatId | undefined,
 }): void {
   if (chatId === undefined) {
     return;
@@ -309,7 +309,7 @@ export function abortContextCompactForChat({
 function resolveCompactPromptMode({
   accessScope,
 }: {
-  accessScope: ReturnType<ReturnType<typeof useChatWeshPreferences>['getNaidanSysfsAccessScope']>;
+  accessScope: ReturnType<ReturnType<typeof useChatWeshPreferences>['getNaidanSysfsAccessScope']>,
 }): ContextCompactPromptMode {
   switch (accessScope) {
   case 'none':
@@ -328,7 +328,7 @@ function resolveCompactPromptMode({
 function collectChatGroups({
   items,
 }: {
-  items: SidebarItem[];
+  items: SidebarItem[],
 }): ChatGroup[] {
   const groups: ChatGroup[] = [];
 

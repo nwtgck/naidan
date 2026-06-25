@@ -2,7 +2,7 @@ import { ESLintUtils } from '@typescript-eslint/utils';
 import * as ts from 'typescript';
 
 const createRule = ESLintUtils.RuleCreator(
-  (name) => `https://github.com/example/project/blob/main/rules/${name}.md`
+  (name) => `https://github.com/example/project/blob/main/rules/${name}.md`,
 );
 
 export const rule = createRule({
@@ -105,7 +105,7 @@ For a \`kind\` discriminant, use \`((value satisfies never) as { readonly kind: 
       },
       ConditionalExpression(node) {
         check(node.test);
-      }
+      },
     };
   },
 });
@@ -115,11 +115,11 @@ export default {
   plugins: {
     'local-rules-switch': {
       rules: {
-        'force-switch-for-union': rule
-      }
-    }
+        'force-switch-for-union': rule,
+      },
+    },
   },
   rules: {
-    'local-rules-switch/force-switch-for-union': 'error'
-  }
+    'local-rules-switch/force-switch-for-union': 'error',
+  },
 };

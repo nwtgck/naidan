@@ -16,7 +16,7 @@ import {
 function requireWeshConfig({
   config,
 }: {
-  config: ToolConfig | undefined;
+  config: ToolConfig | undefined,
 }): WeshToolConfig {
   switch (config?.key) {
   case undefined:
@@ -49,8 +49,8 @@ export function useChatWeshPreferences() {
     chatId,
     accessScope,
   }: {
-    chatId: ChatId | undefined;
-    accessScope: NaidanSysfsAccessScope;
+    chatId: ChatId | undefined,
+    accessScope: NaidanSysfsAccessScope,
   }): Promise<void> => {
     if (chatId === undefined) return;
     await updateToolConfigsForChat({

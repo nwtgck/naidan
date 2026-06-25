@@ -2,15 +2,15 @@ import type { FakeLmThinkingEffort } from '@/services/fake-lm/core/thinking';
 import type { FakeLmSeed } from '@/services/fake-lm/core/random';
 
 export function createFakeLmSeedFromRequest({ model, messages, thinkingEffort }: {
-  model: string;
-  messages: readonly unknown[];
-  thinkingEffort: FakeLmThinkingEffort;
+  model: string,
+  messages: readonly unknown[],
+  thinkingEffort: FakeLmThinkingEffort,
 }): FakeLmSeed {
   return hashToUint32({ value: stableStringify({ value: { model, messages, thinkingEffort } }) });
 }
 
 function hashToUint32({ value }: {
-  value: string;
+  value: string,
 }): FakeLmSeed {
   let h = 2166136261;
 
@@ -23,7 +23,7 @@ function hashToUint32({ value }: {
 }
 
 function stableStringify({ value }: {
-  value: unknown;
+  value: unknown,
 }): string {
   if (value === undefined) {
     return 'undefined';

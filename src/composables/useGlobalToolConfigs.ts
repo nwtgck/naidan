@@ -17,13 +17,13 @@ import {
 } from '@/services/tools/tool-config';
 
 export type GlobalToolConfigsApi = {
-  toolConfigs: ComputedRef<ToolConfig[] | undefined>;
-  effectiveToolConfigs: ComputedRef<ToolConfig[]>;
-  isEditable: ComputedRef<boolean>;
-  setToolStatus: ({ key, status }: { key: BuiltinToolKey; status: ToolConfigStatus }) => Promise<void>;
-  resetAllTools: () => Promise<void>;
-  setWeshAccessScope: ({ accessScope }: { accessScope: NaidanSysfsAccessScope }) => Promise<void>;
-  TEST_ONLY: Record<never, never>;
+  toolConfigs: ComputedRef<ToolConfig[] | undefined>,
+  effectiveToolConfigs: ComputedRef<ToolConfig[]>,
+  isEditable: ComputedRef<boolean>,
+  setToolStatus: ({ key, status }: { key: BuiltinToolKey, status: ToolConfigStatus }) => Promise<void>,
+  resetAllTools: () => Promise<void>,
+  setWeshAccessScope: ({ accessScope }: { accessScope: NaidanSysfsAccessScope }) => Promise<void>,
+  TEST_ONLY: Record<never, never>,
 };
 
 function requireWeshConfig({ config }: { config: WeshToolConfig | undefined }): WeshToolConfig {
@@ -54,7 +54,7 @@ export function useGlobalToolConfigs(): GlobalToolConfigsApi {
   async function updateToolConfigs({
     updater,
   }: {
-    updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined;
+    updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined,
   }): Promise<void> {
     if (!isEditable.value) return;
     await updateExperimental({
@@ -73,8 +73,8 @@ export function useGlobalToolConfigs(): GlobalToolConfigsApi {
     key,
     status,
   }: {
-    key: BuiltinToolKey;
-    status: ToolConfigStatus;
+    key: BuiltinToolKey,
+    status: ToolConfigStatus,
   }): Promise<void> {
     const inherited = applicationDefaults.value;
     await updateToolConfigs({
@@ -95,7 +95,7 @@ export function useGlobalToolConfigs(): GlobalToolConfigsApi {
   async function setWeshAccessScope({
     accessScope,
   }: {
-    accessScope: NaidanSysfsAccessScope;
+    accessScope: NaidanSysfsAccessScope,
   }): Promise<void> {
     const inherited = applicationDefaults.value;
     await updateToolConfigs({

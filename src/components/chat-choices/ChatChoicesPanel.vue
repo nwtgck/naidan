@@ -3,11 +3,11 @@ import { ref, watch } from 'vue';
 import type { ChoicesActiveRequest } from '@/services/choices';
 
 const props = defineProps<{
-  request: ChoicesActiveRequest;
+  request: ChoicesActiveRequest,
 }>();
 
 const emit = defineEmits<{
-  (event: 'select', index: number): void;
+  (event: 'select', index: number): void,
 }>();
 
 const selectedIndex = ref<number | undefined>(undefined);
@@ -22,7 +22,7 @@ watch(
 function selectChoice({
   index,
 }: {
-  index: number;
+  index: number,
 }): void {
   if (selectedIndex.value !== undefined) {
     return;

@@ -7,7 +7,7 @@ import { createBufferedTextWriter } from '@/services/wesh/utils/io';
 function shuffleInPlace<T>({
   items,
 }: {
-  items: T[];
+  items: T[],
 }): T[] {
   for (let index = items.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
@@ -21,8 +21,8 @@ function shuffleInPlace<T>({
 function parseCount({
   value,
 }: {
-  value: string;
-}): { ok: true; value: number } | { ok: false; message: string } {
+  value: string,
+}): { ok: true, value: number } | { ok: false, message: string } {
   if (!/^\d+$/u.test(value)) {
     return { ok: false, message: `invalid count '${value}'` };
   }

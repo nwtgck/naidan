@@ -4,8 +4,8 @@ import type { FakeLmDebugModeStatus } from '@/services/fake-lm/runtime/fakeLmDeb
 import type { LmFetch } from '@/services/lm/fetch';
 
 export function createFakeLmFetchForEndpoint({ endpointUrl, fakeLmDebugModeStatus }: {
-  endpointUrl: string | undefined;
-  fakeLmDebugModeStatus: FakeLmDebugModeStatus;
+  endpointUrl: string | undefined,
+  fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): LmFetch | undefined {
   if (!isFakeLmDebugModeEnabled({ status: fakeLmDebugModeStatus })) {
     return undefined;
@@ -19,7 +19,7 @@ export function createFakeLmFetchForEndpoint({ endpointUrl, fakeLmDebugModeStatu
 }
 
 function isFakeLmDebugModeEnabled({ status }: {
-  status: FakeLmDebugModeStatus;
+  status: FakeLmDebugModeStatus,
 }): boolean {
   switch (status) {
   case 'enabled':

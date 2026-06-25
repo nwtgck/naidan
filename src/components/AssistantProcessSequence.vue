@@ -4,12 +4,12 @@ import { Loader2Icon, EyeIcon, EyeOffIcon, BirdIcon } from 'lucide-vue-next';
 import type { ChatFlowItem, FlowMetadata, SequenceStats } from '@/composables/useChatDisplayFlow';
 
 const props = withDefaults(defineProps<{
-  items: ChatFlowItem[];
-  isProcessing: boolean;
-  flow?: FlowMetadata;
-  summary?: string;
-  stats?: SequenceStats;
-  isFirstInTurn?: boolean;
+  items: ChatFlowItem[],
+  isProcessing: boolean,
+  flow?: FlowMetadata,
+  summary?: string,
+  stats?: SequenceStats,
+  isFirstInTurn?: boolean,
 }>(), {
   flow: () => ({ position: 'standalone', nesting: 'none' }),
   summary: '',
@@ -19,9 +19,9 @@ const props = withDefaults(defineProps<{
     toolNames: [],
     isCurrentlyThinking: false,
     isCurrentlyToolRunning: false,
-    isWaiting: false
+    isWaiting: false,
   }),
-  isFirstInTurn: false
+  isFirstInTurn: false,
 });
 
 const isExpanded = ref(false);
@@ -65,8 +65,8 @@ const modelId = computed(() => {
 defineExpose({
   TEST_ONLY: {
     isExpanded,
-    toggle
-  }
+    toggle,
+  },
 });
 </script>
 

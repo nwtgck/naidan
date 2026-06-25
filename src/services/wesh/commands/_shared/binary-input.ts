@@ -7,8 +7,8 @@ export async function openCommandInputStream({
   context,
   input,
 }: {
-  context: WeshCommandContext;
-  input: string | undefined;
+  context: WeshCommandContext,
+  input: string | undefined,
 }): Promise<ReadableStream<Uint8Array>> {
   if (input === undefined || input === '-') {
     return openHandleReadStream({

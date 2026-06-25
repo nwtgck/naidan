@@ -9,9 +9,9 @@ export function useFileExplorerOperations({
   currentDirectoryPath,
   refresh,
 }: {
-  client: FileExplorerWorkerClient;
-  currentDirectoryPath: { readonly value: string };
-  refresh: () => Promise<void>;
+  client: FileExplorerWorkerClient,
+  currentDirectoryPath: { readonly value: string },
+  refresh: () => Promise<void>,
 }) {
   const { showConfirm } = useConfirm();
   const { addToast } = useToast();
@@ -76,8 +76,8 @@ export function useFileExplorerOperations({
     entry,
     newName,
   }: {
-    entry: FileExplorerEntry;
-    newName: string;
+    entry: FileExplorerEntry,
+    newName: string,
   }): Promise<void> {
     const trimmed = newName.trim();
     if (!trimmed || trimmed === entry.name) {
@@ -99,8 +99,8 @@ export function useFileExplorerOperations({
     entries,
     targetPath,
   }: {
-    entries: FileExplorerEntry[];
-    targetPath: string;
+    entries: FileExplorerEntry[],
+    targetPath: string,
   }): Promise<void> {
     try {
       await client.moveEntries({
@@ -117,8 +117,8 @@ export function useFileExplorerOperations({
     entries,
     targetPath,
   }: {
-    entries: FileExplorerEntry[];
-    targetPath: string;
+    entries: FileExplorerEntry[],
+    targetPath: string,
   }): Promise<void> {
     try {
       await client.copyEntries({

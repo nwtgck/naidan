@@ -20,7 +20,7 @@ const MockCurrentChatPane = defineComponent({
   },
   unmounted() {
     unmountSpy();
-  }
+  },
 });
 
 // Create a real router instance for the test
@@ -28,8 +28,8 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: MockCurrentChatPane },
-    { path: '/chat/:id', component: MockCurrentChatPane }
-  ]
+    { path: '/chat/:id', component: MockCurrentChatPane },
+  ],
 });
 
 // Mock Composables
@@ -148,8 +148,8 @@ vi.mock('./composables/useLayout', () => ({
 vi.mock('./components/Sidebar.vue', () => ({
   default: {
     template: '<div data-testid="sidebar"></div>',
-    emits: ['open-settings']
-  }
+    emits: ['open-settings'],
+  },
 }));
 
 vi.mock('./components/OnboardingModal.vue', () => ({ default: { template: '<div></div>' } }));
@@ -180,9 +180,9 @@ describe('App Navigation & Regression Tests', () => {
           'DebugWeshTerminalModal': true,
           'OnboardingModal': true,
           'ToastContainer': true,
-          'Sidebar': true
-        }
-      }
+          'Sidebar': true,
+        },
+      },
     });
 
     await flushPromises();

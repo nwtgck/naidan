@@ -1,16 +1,16 @@
-import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem'
-import { Wesh } from './index'
-import { NaidanSysfsProvider } from './naidan-sysfs/provider'
-import { NAIDAN_SYSFS_ROOT_PATH } from './naidan-sysfs/constants'
-import type { ChatContent, ChatGroup, ChatMeta, Hierarchy, SidebarItem } from '@/models/types'
-import { idToRaw } from '@/models/ids'
-import type { NaidanSysfsStorageReader } from './naidan-sysfs/types'
-import type { NaidanSysfsVisibility } from './types'
-import type { BinaryObjectId, ChatGroupId, ChatId } from '@/models/ids'
+import { MockFileSystemDirectoryHandle } from './mocks/InMemoryFileSystem';
+import { Wesh } from './index';
+import { NaidanSysfsProvider } from './naidan-sysfs/provider';
+import { NAIDAN_SYSFS_ROOT_PATH } from './naidan-sysfs/constants';
+import type { ChatContent, ChatGroup, ChatMeta, Hierarchy, SidebarItem } from '@/models/types';
+import { idToRaw } from '@/models/ids';
+import type { NaidanSysfsStorageReader } from './naidan-sysfs/types';
+import type { NaidanSysfsVisibility } from './types';
+import type { BinaryObjectId, ChatGroupId, ChatId } from '@/models/ids';
 import {
   createTestReadHandleFromText,
   createTestWriteCaptureHandle,
-} from './utils/test-stream'
+} from './utils/test-stream';
 import { toChatGroupId, toChatId, toMessageId, toVolumeId } from '@/models/ids';
 
 function createReaderStub({
@@ -20,18 +20,18 @@ function createReaderStub({
   sidebarItems,
   hierarchy,
 }: {
-  metadataById: Record<string, ChatMeta>;
-  contentById: Record<string, ChatContent>;
-  chatGroups: ChatGroup[];
-  sidebarItems: SidebarItem[];
-  hierarchy: Hierarchy;
+  metadataById: Record<string, ChatMeta>,
+  contentById: Record<string, ChatContent>,
+  chatGroups: ChatGroup[],
+  sidebarItems: SidebarItem[],
+  hierarchy: Hierarchy,
 }): NaidanSysfsStorageReader {
   return {
     async loadHierarchy() {
-      return hierarchy
+      return hierarchy;
     },
     async getSidebarStructure() {
-      return sidebarItems
+      return sidebarItems;
     },
     async listChats() {
       return Object.values(metadataById).map(({ id, title, updatedAt, groupId }) => ({
@@ -39,47 +39,47 @@ function createReaderStub({
         title,
         updatedAt,
         groupId,
-      }))
+      }));
     },
     async listChatGroups() {
-      return chatGroups
+      return chatGroups;
     },
     async loadChatMeta({ chatId }: { chatId: ChatId }) {
-      return metadataById[idToRaw({ id: chatId })]
+      return metadataById[idToRaw({ id: chatId })];
     },
     async loadChatContent({ chatId }: { chatId: ChatId }) {
-      return contentById[idToRaw({ id: chatId })]
+      return contentById[idToRaw({ id: chatId })];
     },
     async loadChat({ chatId }: { chatId: ChatId }) {
-      const rawChatId = idToRaw({ id: chatId })
-      const metadata = metadataById[rawChatId]
-      const content = contentById[rawChatId]
+      const rawChatId = idToRaw({ id: chatId });
+      const metadata = metadataById[rawChatId];
+      const content = contentById[rawChatId];
       if (metadata === undefined || content === undefined) {
-        return undefined
+        return undefined;
       }
       return {
         ...metadata,
         root: content.root,
         currentLeafId: content.currentLeafId ?? metadata.currentLeafId,
-      }
+      };
     },
     async loadChatGroup({ chatGroupId }: { chatGroupId: ChatGroupId }) {
-      return chatGroups.find(({ id }) => id === chatGroupId)
+      return chatGroups.find(({ id }) => id === chatGroupId);
     },
     async *listBinaryObjects() {
       for (const object of [] as never[]) {
-        yield object
+        yield object;
       }
     },
     async getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
-      void binaryObjectId
-      return undefined
+      void binaryObjectId;
+      return undefined;
     },
     async getBinaryObjectBlob({ binaryObjectId }: { binaryObjectId: BinaryObjectId }) {
-      void binaryObjectId
-      return undefined
+      void binaryObjectId;
+      return undefined;
     },
-  }
+  };
 }
 
 export const mainChatMetadata: ChatMeta = {
@@ -103,7 +103,7 @@ export const mainChatMetadata: ChatMeta = {
   systemPrompt: { behavior: 'append', content: 'Be concise.' },
   lmParameters: undefined,
   mounts: [{ type: 'volume', volumeId: toVolumeId({ raw: 'vol-1' }), mountPath: '/data', readOnly: true }],
-}
+};
 
 export const siblingChatMetadata: ChatMeta = {
   ...mainChatMetadata,
@@ -111,7 +111,7 @@ export const siblingChatMetadata: ChatMeta = {
   title: 'Sibling Chat',
   currentLeafId: toMessageId({ raw: 'Qa2sN6O7p8Q9r0S1t2U3' }),
   updatedAt: 250,
-}
+};
 
 export const individualChatMetadata: ChatMeta = {
   ...mainChatMetadata,
@@ -120,7 +120,7 @@ export const individualChatMetadata: ChatMeta = {
   groupId: null,
   currentLeafId: toMessageId({ raw: 'Ra2iS1T2u3V4w5X6y7Z8' }),
   updatedAt: 300,
-}
+};
 
 export const mainChatContent: ChatContent = {
   currentLeafId: toMessageId({ raw: 'Xa4aX1Y2z3A4b5C6d7E8' }),
@@ -238,7 +238,7 @@ export const mainChatContent: ChatContent = {
       },
     ],
   },
-}
+};
 
 function createLinearContent({
   leafId,
@@ -247,11 +247,11 @@ function createLinearContent({
   userText,
   assistantText,
 }: {
-  leafId: string;
-  userId: string;
-  assistantId: string;
-  userText: string;
-  assistantText: string;
+  leafId: string,
+  userId: string,
+  assistantId: string,
+  userText: string,
+  assistantText: string,
 }): ChatContent {
   return {
     currentLeafId: toMessageId({ raw: leafId }),
@@ -290,7 +290,7 @@ function createLinearContent({
         },
       ],
     },
-  }
+  };
 }
 
 export const siblingChatContent = createLinearContent({
@@ -299,7 +299,7 @@ export const siblingChatContent = createLinearContent({
   assistantId: 'Qa2sN6O7p8Q9r0S1t2U3',
   userText: 'Sibling user',
   assistantText: 'Sibling assistant',
-})
+});
 
 export const individualChatContent = createLinearContent({
   leafId: 'Ra2iS1T2u3V4w5X6y7Z8',
@@ -307,7 +307,7 @@ export const individualChatContent = createLinearContent({
   assistantId: 'Ra2iS1T2u3V4w5X6y7Z8',
   userText: 'Individual user',
   assistantText: 'Individual assistant',
-})
+});
 
 export const chatGroup: ChatGroup = {
   id: toChatGroupId({ raw: 'chat-group-1' }),
@@ -329,7 +329,7 @@ export const chatGroup: ChatGroup = {
     { id: 'chat:chat-1', type: 'chat', chat: { id: toChatId({ raw: 'chat-1' }), title: 'Main Chat', updatedAt: 200, groupId: toChatGroupId({ raw: 'chat-group-1' }) } },
     { id: 'chat:chat-2', type: 'chat', chat: { id: toChatId({ raw: 'chat-2' }), title: 'Sibling Chat', updatedAt: 250, groupId: toChatGroupId({ raw: 'chat-group-1' }) } },
   ],
-}
+};
 
 function createSidebarItems(): SidebarItem[] {
   return [
@@ -348,19 +348,19 @@ function createSidebarItems(): SidebarItem[] {
         groupId: null,
       },
     },
-  ]
+  ];
 }
 
 export async function createMountedNaidanSysfsWesh({
   visibility,
 }: {
-  visibility: NaidanSysfsVisibility;
+  visibility: NaidanSysfsVisibility,
 }): Promise<Wesh> {
   return createMountedNaidanSysfsWeshWithCurrentChat({
     visibility,
     currentChatId: 'chat-1',
     currentChatGroupId: 'chat-group-1',
-  })
+  });
 }
 
 export async function createMountedNaidanSysfsWeshWithCurrentChat({
@@ -368,16 +368,16 @@ export async function createMountedNaidanSysfsWeshWithCurrentChat({
   currentChatId,
   currentChatGroupId,
 }: {
-  visibility: NaidanSysfsVisibility;
-  currentChatId: string;
-  currentChatGroupId: string | undefined;
+  visibility: NaidanSysfsVisibility,
+  currentChatId: string,
+  currentChatGroupId: string | undefined,
 }): Promise<Wesh> {
-  const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' })
+  const rootHandle = new MockFileSystemDirectoryHandle({ name: 'root' });
   const wesh = new Wesh({
     rootHandle: rootHandle as unknown as FileSystemDirectoryHandle,
     initialEnv: {},
-  })
-  await wesh.init()
+  });
+  await wesh.init();
 
   wesh.vfs.mountVirtual({
     path: NAIDAN_SYSFS_ROOT_PATH,
@@ -408,27 +408,27 @@ export async function createMountedNaidanSysfsWeshWithCurrentChat({
       currentChatId,
       currentChatGroupId,
     }),
-  })
+  });
 
-  return wesh
+  return wesh;
 }
 
 export async function executeInWesh({
   wesh,
   script,
 }: {
-  wesh: Wesh;
-  script: string;
+  wesh: Wesh,
+  script: string,
 }) {
-  const stdout = createTestWriteCaptureHandle()
-  const stderr = createTestWriteCaptureHandle()
+  const stdout = createTestWriteCaptureHandle();
+  const stderr = createTestWriteCaptureHandle();
 
   const result = await wesh.execute({
     script,
     stdin: createTestReadHandleFromText({ text: '' }),
     stdout: stdout.handle,
     stderr: stderr.handle,
-  })
+  });
 
-  return { result, stdout, stderr }
+  return { result, stdout, stderr };
 }

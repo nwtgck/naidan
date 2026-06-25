@@ -15,17 +15,17 @@ import {
 } from '@/composables/chat/global/chat-core-singletons';
 
 export type CurrentChatStateAdapter = {
-  currentChat: ComputedRef<Readonly<Chat> | null>;
-  currentChatGroup: ComputedRef<Readonly<ChatGroup> | null>;
-  currentChatId: ComputedRef<ChatId | undefined>;
-  activeMessages: ComputedRef<MessageNode[]>;
-  allMessages: ComputedRef<MessageNode[]>;
-  resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
-  inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
-  chatGroups: ComputedRef<ChatGroup[]>;
-  sidebarItems: ComputedRef<SidebarItem[]>;
+  currentChat: ComputedRef<Readonly<Chat> | null>,
+  currentChatGroup: ComputedRef<Readonly<ChatGroup> | null>,
+  currentChatId: ComputedRef<ChatId | undefined>,
+  activeMessages: ComputedRef<MessageNode[]>,
+  allMessages: ComputedRef<MessageNode[]>,
+  resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
+  inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
+  chatGroups: ComputedRef<ChatGroup[]>,
+  sidebarItems: ComputedRef<SidebarItem[]>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useCurrentChatState(): CurrentChatStateAdapter {

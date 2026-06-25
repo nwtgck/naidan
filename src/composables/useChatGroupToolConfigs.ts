@@ -19,14 +19,14 @@ import {
 } from '@/services/tools/tool-config';
 
 export type ChatGroupToolConfigsApi = {
-  toolConfigs: ComputedRef<ToolConfig[] | undefined>;
-  inheritedToolConfigs: ComputedRef<ToolConfig[]>;
-  effectiveToolConfigs: ComputedRef<ToolConfig[]>;
-  isEditable: ComputedRef<boolean>;
-  setToolStatus: ({ key, status }: { key: BuiltinToolKey; status: ToolConfigStatus }) => Promise<void>;
-  resetTool: ({ key }: { key: BuiltinToolKey }) => Promise<void>;
-  setWeshAccessScope: ({ accessScope }: { accessScope: NaidanSysfsAccessScope }) => Promise<void>;
-  TEST_ONLY: Record<never, never>;
+  toolConfigs: ComputedRef<ToolConfig[] | undefined>,
+  inheritedToolConfigs: ComputedRef<ToolConfig[]>,
+  effectiveToolConfigs: ComputedRef<ToolConfig[]>,
+  isEditable: ComputedRef<boolean>,
+  setToolStatus: ({ key, status }: { key: BuiltinToolKey, status: ToolConfigStatus }) => Promise<void>,
+  resetTool: ({ key }: { key: BuiltinToolKey }) => Promise<void>,
+  setWeshAccessScope: ({ accessScope }: { accessScope: NaidanSysfsAccessScope }) => Promise<void>,
+  TEST_ONLY: Record<never, never>,
 };
 
 function requireWeshConfig({ config }: { config: WeshToolConfig | undefined }): WeshToolConfig {
@@ -59,7 +59,7 @@ export function useChatGroupToolConfigs(): ChatGroupToolConfigsApi {
   async function updateToolConfigs({
     updater,
   }: {
-    updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined;
+    updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined,
   }): Promise<void> {
     if (!isEditable.value || currentChatGroup.value === null) return;
     await chatGroups.updateToolConfigs({
@@ -72,8 +72,8 @@ export function useChatGroupToolConfigs(): ChatGroupToolConfigsApi {
     key,
     status,
   }: {
-    key: BuiltinToolKey;
-    status: ToolConfigStatus;
+    key: BuiltinToolKey,
+    status: ToolConfigStatus,
   }): Promise<void> {
     await updateToolConfigs({
       updater: ({ toolConfigs: currentToolConfigs }) => setToolStatusWithDependenciesInToolConfigs({
@@ -98,7 +98,7 @@ export function useChatGroupToolConfigs(): ChatGroupToolConfigsApi {
   async function setWeshAccessScope({
     accessScope,
   }: {
-    accessScope: NaidanSysfsAccessScope;
+    accessScope: NaidanSysfsAccessScope,
   }): Promise<void> {
     await updateToolConfigs({
       updater: ({ toolConfigs: currentToolConfigs }) => {

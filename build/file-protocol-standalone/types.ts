@@ -1,46 +1,46 @@
-import type { BuildOptions } from 'vite'
+import type { BuildOptions } from 'vite';
 
-import type { BuildLicenseDependency } from '../license-dependencies'
+import type { BuildLicenseDependency } from '../license-dependencies';
 
 export type FileProtocolStandaloneWorker = Readonly<{
-  id: string
-  entry: string
-}>
+  id: string,
+  entry: string,
+}>;
 
 export type FileProtocolStandaloneBudgets = Readonly<{
-  maxInitialEntryBytes: number | undefined
-  maxInitialRequestBytes: number | undefined
-}>
+  maxInitialEntryBytes: number | undefined,
+  maxInitialRequestBytes: number | undefined,
+}>;
 
 export type FileProtocolStandaloneOptions = Readonly<{
-  debugBuildReportFile: string | undefined
-  workerTarget: Exclude<BuildOptions['target'], false | undefined>
-  workers: readonly FileProtocolStandaloneWorker[]
-  budgets: FileProtocolStandaloneBudgets | undefined
+  debugBuildReportFile: string | undefined,
+  workerTarget: Exclude<BuildOptions['target'], false | undefined>,
+  workers: readonly FileProtocolStandaloneWorker[],
+  budgets: FileProtocolStandaloneBudgets | undefined,
   onAdditionalLicenseDependencies: (({ dependencies }: {
-    dependencies: readonly BuildLicenseDependency[]
-  }) => void) | undefined
-}>
+    dependencies: readonly BuildLicenseDependency[],
+  }) => void) | undefined,
+}>;
 
 export type FileProtocolStandaloneInitialRequestKind =
   | 'systemjs-runtime'
   | 'systemjs-file-protocol-patch'
   | 'systemjs-retry-hook'
   | 'application-chunk'
-  | 'stylesheet'
+  | 'stylesheet';
 
 export type FileProtocolStandaloneInitialRequestDescriptor = Readonly<{
-  fileName: string
-  kind: FileProtocolStandaloneInitialRequestKind
-}>
+  fileName: string,
+  kind: FileProtocolStandaloneInitialRequestKind,
+}>;
 
 export type FileProtocolStandaloneBuildMetricsPlan = Readonly<{
-  entryFileName: string
-  initialRequests: readonly FileProtocolStandaloneInitialRequestDescriptor[]
-}>
+  entryFileName: string,
+  initialRequests: readonly FileProtocolStandaloneInitialRequestDescriptor[],
+}>;
 
 export type FileProtocolStandaloneBuildMetrics = Readonly<{
-  entryBytes: number
-  initialRequests: readonly Readonly<FileProtocolStandaloneInitialRequestDescriptor & { bytes: number }>[]
-  initialRequestBytes: number
-}>
+  entryBytes: number,
+  initialRequests: readonly Readonly<FileProtocolStandaloneInitialRequestDescriptor & { bytes: number }>[],
+  initialRequestBytes: number,
+}>;

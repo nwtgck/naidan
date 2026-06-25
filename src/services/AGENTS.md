@@ -168,8 +168,8 @@ Do not use the Comlink exception merely because a function internally calls a Co
 
 ```ts
 async function generateText({ messages, onChunk }: {
-  messages: ChatMessage[];
-  onChunk: ({ chunk }: { chunk: string }) => void;
+  messages: ChatMessage[],
+  onChunk: ({ chunk }: { chunk: string }) => void,
 }) {
   return remote.generateText(
     { messages },

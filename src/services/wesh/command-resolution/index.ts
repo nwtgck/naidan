@@ -4,8 +4,8 @@ export function resolveCommand({
   context,
   name,
 }: {
-  context: WeshCommandContext;
-  name: string;
+  context: WeshCommandContext,
+  name: string,
 }): WeshResolvedCommand {
   return context.resolveCommand({ name });
 }
@@ -14,8 +14,8 @@ export function formatResolvedCommand({
   resolved,
   mode,
 }: {
-  resolved: WeshResolvedCommand;
-  mode: 'command-v' | 'command-V' | 'which';
+  resolved: WeshResolvedCommand,
+  mode: 'command-v' | 'command-V' | 'which',
 }): string | undefined {
   switch (resolved.kind) {
   case 'builtin':

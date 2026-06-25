@@ -4,14 +4,14 @@ const CARRIAGE_RETURN_BYTE = 0x0d;
 export type WeshTextRecordTermination = 'delimiter' | 'end_of_input';
 
 export interface WeshTextRecord {
-  readonly text: string;
-  readonly termination: WeshTextRecordTermination;
+  readonly text: string,
+  readonly termination: WeshTextRecordTermination,
 }
 
 export function getWeshTextRecordTerminator({
   termination,
 }: {
-  termination: WeshTextRecordTermination;
+  termination: WeshTextRecordTermination,
 }): '' | '\n' {
   switch (termination) {
   case 'delimiter':
@@ -31,10 +31,10 @@ function decodeUtf8Record({
   finalFragment,
   stripTrailingCarriageReturn,
 }: {
-  decoder: TextDecoder;
-  fragments: readonly Uint8Array[];
-  finalFragment: Uint8Array;
-  stripTrailingCarriageReturn: boolean;
+  decoder: TextDecoder,
+  fragments: readonly Uint8Array[],
+  finalFragment: Uint8Array,
+  stripTrailingCarriageReturn: boolean,
 }): string {
   const bytes = (() => {
     if (fragments.length === 0) {
@@ -69,9 +69,9 @@ export async function* iterateUtf8RecordEntries({
   delimiterByte,
   stripTrailingCarriageReturn,
 }: {
-  chunks: AsyncIterable<Uint8Array>;
-  delimiterByte: number;
-  stripTrailingCarriageReturn: boolean;
+  chunks: AsyncIterable<Uint8Array>,
+  delimiterByte: number,
+  stripTrailingCarriageReturn: boolean,
 }): AsyncIterable<WeshTextRecord> {
   const decoder = new TextDecoder();
   let fragments: Uint8Array[] = [];
@@ -119,9 +119,9 @@ export async function* iterateUtf8Records({
   delimiterByte,
   stripTrailingCarriageReturn,
 }: {
-  chunks: AsyncIterable<Uint8Array>;
-  delimiterByte: number;
-  stripTrailingCarriageReturn: boolean;
+  chunks: AsyncIterable<Uint8Array>,
+  delimiterByte: number,
+  stripTrailingCarriageReturn: boolean,
 }): AsyncIterable<string> {
   for await (const record of iterateUtf8RecordEntries({
     chunks,
@@ -135,7 +135,7 @@ export async function* iterateUtf8Records({
 export function iterateUtf8LineRecords({
   chunks,
 }: {
-  chunks: AsyncIterable<Uint8Array>;
+  chunks: AsyncIterable<Uint8Array>,
 }): AsyncIterable<WeshTextRecord> {
   return iterateUtf8RecordEntries({
     chunks,
@@ -152,7 +152,7 @@ export function iterateUtf8LineRecords({
 export function iterateUtf8Lines({
   chunks,
 }: {
-  chunks: AsyncIterable<Uint8Array>;
+  chunks: AsyncIterable<Uint8Array>,
 }): AsyncIterable<string> {
   return iterateUtf8Records({
     chunks,

@@ -7,14 +7,14 @@ import { normalizeDom } from './test-utils';
 describe('BlockMarkdownRenderer: Token Coverage', () => {
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 
   const getDom = (wrapper: any) => normalizeDom({
     element: wrapper.element,
     preserveAttributes: ['src', 'href', 'checked', 'type', 'disabled'],
-    trimWhitespaceNodes: true
+    trimWhitespaceNodes: true,
   });
 
   it('safely ignores reference definitions (def)', () => {

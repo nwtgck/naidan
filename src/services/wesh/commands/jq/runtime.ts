@@ -12,35 +12,35 @@ import {
 } from './value';
 
 export interface JqRuntimeError {
-  message: string;
-  value?: JsonValue;
+  message: string,
+  value?: JsonValue,
 }
 
 interface JqRuntimeContext {
-  variables: Readonly<Record<string, JsonValue>>;
-  depth: number;
+  variables: Readonly<Record<string, JsonValue>>,
+  depth: number,
   state: {
-    steps: number;
-  };
+    steps: number,
+  },
   limits: {
-    maxDepth: number;
-    maxSteps: number;
-    maxOutputs: number;
-  };
+    maxDepth: number,
+    maxSteps: number,
+    maxOutputs: number,
+  },
 }
 
 export type JqRuntimeFilterEvaluator = ({ filter, input }: {
-  filter: JqFilter;
-  input: JsonValue;
-}) => { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError };
+  filter: JqFilter,
+  input: JsonValue,
+}) => { ok: true, outputs: JsonValue[] } | { ok: false, error: JqRuntimeError };
 
 function runtimeError({
   message,
   value,
 }: {
-  message: string;
-  value: JsonValue | undefined;
-}): { ok: false; error: JqRuntimeError } {
+  message: string,
+  value: JsonValue | undefined,
+}): { ok: false, error: JqRuntimeError } {
   return {
     ok: false,
     error: {
@@ -53,7 +53,7 @@ function runtimeError({
 function truthy({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): boolean {
   return value !== false && value !== null;
 }
@@ -61,7 +61,7 @@ function truthy({
 function isAlternativeOperator({
   operator,
 }: {
-  operator: JqBinaryOperator;
+  operator: JqBinaryOperator,
 }): boolean {
   switch (operator) {
   case 'alternative':
@@ -94,9 +94,9 @@ function normalizeSliceBound({
   bound,
   fallback,
 }: {
-  length: number;
-  bound: number | undefined;
-  fallback: 0 | 'length';
+  length: number,
+  bound: number | undefined,
+  fallback: 0 | 'length',
 }): number {
   const raw = bound ?? (fallback === 'length' ? length : 0);
   const normalized = raw < 0 ? length + raw : raw;
@@ -106,7 +106,7 @@ function normalizeSliceBound({
 function stringifyInterpolationValue({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): string {
   return typeof value === 'string'
     ? value
@@ -122,8 +122,8 @@ function recursiveMerge({
   left,
   right,
 }: {
-  left: { [key: string]: JsonValue };
-  right: { [key: string]: JsonValue };
+  left: { [key: string]: JsonValue },
+  right: { [key: string]: JsonValue },
 }): { [key: string]: JsonValue } {
   const merged = mergeJsonObjects({ left, right });
   for (const [key, rightValue] of Object.entries(right)) {
@@ -144,10 +144,10 @@ function evaluateBinaryPair({
   left,
   right,
 }: {
-  operator: JqBinaryOperator;
-  left: JsonValue;
-  right: JsonValue;
-}): { ok: true; value: JsonValue } | { ok: false; error: JqRuntimeError } {
+  operator: JqBinaryOperator,
+  left: JsonValue,
+  right: JsonValue,
+}): { ok: true, value: JsonValue } | { ok: false, error: JqRuntimeError } {
   switch (operator) {
   case 'pipe':
   case 'comma':
@@ -239,8 +239,8 @@ function evaluateBinaryPair({
 function checkLimits({
   context,
 }: {
-  context: JqRuntimeContext;
-}): { ok: true } | { ok: false; error: JqRuntimeError } {
+  context: JqRuntimeContext,
+}): { ok: true } | { ok: false, error: JqRuntimeError } {
   context.state.steps += 1;
   if (context.depth > context.limits.maxDepth) {
     return runtimeError({ message: 'maximum jq evaluation depth exceeded', value: undefined });
@@ -255,9 +255,9 @@ function checkOutputLimit({
   outputs,
   context,
 }: {
-  outputs: JsonValue[];
-  context: JqRuntimeContext;
-}): { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError } {
+  outputs: JsonValue[],
+  context: JqRuntimeContext,
+}): { ok: true, outputs: JsonValue[] } | { ok: false, error: JqRuntimeError } {
   if (outputs.length > context.limits.maxOutputs) {
     return runtimeError({ message: 'maximum jq output count exceeded', value: undefined });
   }
@@ -269,10 +269,10 @@ export function evaluateJqFilter({
   input,
   variables,
 }: {
-  filter: JqFilter;
-  input: JsonValue;
-  variables?: Readonly<Record<string, JsonValue>>;
-}): { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError } {
+  filter: JqFilter,
+  input: JsonValue,
+  variables?: Readonly<Record<string, JsonValue>>,
+}): { ok: true, outputs: JsonValue[] } | { ok: false, error: JqRuntimeError } {
   return evaluateJqFilterWithContext({
     filter,
     input,
@@ -294,10 +294,10 @@ function evaluateJqFilterWithContext({
   input,
   context,
 }: {
-  filter: JqFilter;
-  input: JsonValue;
-  context: JqRuntimeContext;
-}): { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError } {
+  filter: JqFilter,
+  input: JsonValue,
+  context: JqRuntimeContext,
+}): { ok: true, outputs: JsonValue[] } | { ok: false, error: JqRuntimeError } {
   const limit = checkLimits({ context });
   if (!limit.ok) return limit;
 
@@ -308,7 +308,7 @@ function evaluateJqFilterWithContext({
   const evaluate: JqRuntimeFilterEvaluator = ({ filter: nestedFilter, input: nestedInput }) =>
     evaluateJqFilterWithContext({ filter: nestedFilter, input: nestedInput, context: nestedContext });
 
-  let result: { ok: true; outputs: JsonValue[] } | { ok: false; error: JqRuntimeError };
+  let result: { ok: true, outputs: JsonValue[] } | { ok: false, error: JqRuntimeError };
 
   switch (filter.kind) {
   case 'identity':

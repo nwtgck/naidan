@@ -3,7 +3,7 @@ import { ref, computed, onUnmounted, watch, nextTick } from 'vue';
 import {
   XIcon, InfoIcon, ExternalLinkIcon, CopyIcon, CheckIcon,
   ImageIcon, HashIcon, ZapIcon, CpuIcon,
-  SortAscIcon, SortDescIcon
+  SortAscIcon, SortDescIcon,
 } from 'lucide-vue-next';
 import type { MessageNode, BinaryObject } from '@/models/types';
 import { storageService } from '@/services/storage';
@@ -17,13 +17,13 @@ import { idToRaw, toBinaryObjectId } from '@/models/ids';
 import type { BinaryObjectId, ChatId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
-  chatId: ChatId;
-  messages: MessageNode[];
+  chatId: ChatId,
+  messages: MessageNode[],
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'jump-to-message', messageId: MessageId): void;
+  (e: 'close'): void,
+  (e: 'jump-to-message', messageId: MessageId): void,
 }>();
 
 const { downloadBinaryObject } = useBinaryActions();
@@ -34,27 +34,27 @@ type MediaOrder = 'forward' | 'reverse';
 const mediaOrder = ref<MediaOrder>('forward');
 
 interface MediaItem {
-  id: string;
-  messageId: MessageId;
-  binaryObjectId: BinaryObjectId;
-  mimeType: string;
-  size: number;
-  name?: string;
-  prompt?: string;
-  steps?: number;
-  seed?: number;
-  model?: string;
-  width?: number;
-  height?: number;
-  index: number;
-  total: number;
+  id: string,
+  messageId: MessageId,
+  binaryObjectId: BinaryObjectId,
+  mimeType: string,
+  size: number,
+  name?: string,
+  prompt?: string,
+  steps?: number,
+  seed?: number,
+  model?: string,
+  width?: number,
+  height?: number,
+  index: number,
+  total: number,
 }
 
 interface MediaGroup {
-  messageId: MessageId;
-  prompt?: string;
-  items: MediaItem[];
-  timestamp: number;
+  messageId: MessageId,
+  prompt?: string,
+  items: MediaItem[],
+  timestamp: number,
 }
 
 const mediaGroups = computed(() => {
@@ -76,7 +76,7 @@ const mediaGroups = computed(() => {
             size: att.size,
             name: att.originalName,
             index: 0,
-            total: 0
+            total: 0,
           });
         }
       });
@@ -106,7 +106,7 @@ const mediaGroups = computed(() => {
             width: data.width,
             height: data.height,
             index: 0,
-            total: 0
+            total: 0,
           });
         }
       } catch (e) { /* ignore parse errors */ }
@@ -137,7 +137,7 @@ const mediaGroups = computed(() => {
         messageId: msg.id,
         prompt: sharedPrompt || undefined,
         items,
-        timestamp: msg.timestamp
+        timestamp: msg.timestamp,
       });
     }
   });
@@ -181,7 +181,7 @@ const setupObserver = () => {
     });
   }, {
     root: scrollContainer.value,
-    rootMargin: '600px 200px'
+    rootMargin: '600px 200px',
   });
 };
 
@@ -206,16 +206,16 @@ const handlePreview = ({ item }: { item: MediaItem }) => {
     mimeType: i.mimeType,
     size: i.size,
     createdAt: 0,
-    name: i.name || i.prompt || 'Generated Image'
+    name: i.name || i.prompt || 'Generated Image',
   }));
 
   openPreview({
     objects,
-    initialId: item.binaryObjectId
+    initialId: item.binaryObjectId,
   });
 };
 
-const handleDownload = async ({ item, withMetadata }: { item: MediaItem; withMetadata: boolean }) => {
+const handleDownload = async ({ item, withMetadata }: { item: MediaItem, withMetadata: boolean }) => {
   if (withMetadata) {
     await ImageDownloadHydrator.download({
       id: item.binaryObjectId,
@@ -230,7 +230,7 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem; withMet
         message: 'Failed to embed metadata in image.',
 
         details: error instanceof Error ? error.message : String(error),
-      })
+      }),
     });
   } else {
     const obj: BinaryObject = {
@@ -238,14 +238,14 @@ const handleDownload = async ({ item, withMetadata }: { item: MediaItem; withMet
       mimeType: item.mimeType,
       size: item.size,
       createdAt: 0,
-      name: item.name || (item.prompt ? item.prompt.slice(0, 30) : 'generated-image')
+      name: item.name || (item.prompt ? item.prompt.slice(0, 30) : 'generated-image'),
     };
     await downloadBinaryObject({ obj });
   }
 };
 
 const copiedPromptId = ref<MessageId | null>(null);
-const copyPrompt = async ({ prompt, messageId }: { prompt: string; messageId: MessageId }) => {
+const copyPrompt = async ({ prompt, messageId }: { prompt: string, messageId: MessageId }) => {
   try {
     await navigator.clipboard.writeText(prompt);
     copiedPromptId.value = messageId;
@@ -260,7 +260,7 @@ const copyPrompt = async ({ prompt, messageId }: { prompt: string; messageId: Me
 const showingInfoId = ref<string | null>(null);
 const copiedField = ref<string | null>(null);
 
-const copyField = async ({ text, field }: { text: string | number | undefined; field: string }) => {
+const copyField = async ({ text, field }: { text: string | number | undefined, field: string }) => {
   if (text === undefined) return;
   try {
     await navigator.clipboard.writeText(String(text));
@@ -276,7 +276,7 @@ const copyField = async ({ text, field }: { text: string | number | undefined; f
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

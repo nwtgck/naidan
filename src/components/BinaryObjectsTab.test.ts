@@ -296,7 +296,7 @@ describe('BinaryObjectsTab.vue', () => {
 
     expect(mockOpenPreview).toHaveBeenCalledWith({
       objects: expect.any(Array),
-      initialId: '150'
+      initialId: '150',
     });
   });
 

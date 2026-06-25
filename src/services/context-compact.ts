@@ -10,42 +10,42 @@ import type { MessageId } from '@/models/ids';
 export type ContextCompactProgress =
   | { phase: 'idle' }
   | {
-      phase: 'preparing';
-      compactedMessageCount: number;
-      suffixMessageCount: number;
+      phase: 'preparing',
+      compactedMessageCount: number,
+      suffixMessageCount: number,
     }
   | {
-      phase: 'building_request';
-      compactedMessageCount: number;
-      suffixMessageCount: number;
-      requestPreview: string | undefined;
+      phase: 'building_request',
+      compactedMessageCount: number,
+      suffixMessageCount: number,
+      requestPreview: string | undefined,
     }
   | {
-      phase: 'requesting_model';
-      compactedMessageCount: number;
-      suffixMessageCount: number;
-      requestPreview: string | undefined;
+      phase: 'requesting_model',
+      compactedMessageCount: number,
+      suffixMessageCount: number,
+      requestPreview: string | undefined,
     }
   | {
-      phase: 'receiving_compact';
-      compactedMessageCount: number;
-      suffixMessageCount: number;
-      outputChars: number;
-      requestPreview: string | undefined;
-      outputPreview: string;
+      phase: 'receiving_compact',
+      compactedMessageCount: number,
+      suffixMessageCount: number,
+      outputChars: number,
+      requestPreview: string | undefined,
+      outputPreview: string,
     }
   | {
-      phase: 'applying_branch';
-      outputChars: number;
-      requestPreview: string | undefined;
-      outputPreview: string;
+      phase: 'applying_branch',
+      outputChars: number,
+      requestPreview: string | undefined,
+      outputPreview: string,
     }
   | {
-      phase: 'complete';
-      requestPreview: string | undefined;
-      outputPreview: string;
+      phase: 'complete',
+      requestPreview: string | undefined,
+      outputPreview: string,
     }
-  | { phase: 'failed'; message: string }
+  | { phase: 'failed', message: string }
   | { phase: 'aborted' };
 
 export type ContextCompactPromptMode =
@@ -53,15 +53,15 @@ export type ContextCompactPromptMode =
   | 'without_message_ids';
 
 export type ContextCompactSplit = {
-  prefix: MessageNode[];
-  suffix: MessageNode[];
-  boundaryMessageId: MessageId;
+  prefix: MessageNode[],
+  suffix: MessageNode[],
+  boundaryMessageId: MessageId,
 };
 
 export type ContextCompactBranchResult = {
-  compactNode: AssistantMessageNode;
-  copiedSuffixHead: MessageNode | undefined;
-  currentLeafId: MessageId;
+  compactNode: AssistantMessageNode,
+  copiedSuffixHead: MessageNode | undefined,
+  currentLeafId: MessageId,
 };
 
 export type ChatPaneHeaderMoreAction =
@@ -80,8 +80,8 @@ export function getHeaderCompactBoundary({
   path,
   keepRecentMessages,
 }: {
-  path: readonly MessageNode[];
-  keepRecentMessages: number;
+  path: readonly MessageNode[],
+  keepRecentMessages: number,
 }): MessageId | undefined {
   if (path.length <= keepRecentMessages) {
     return undefined;
@@ -95,8 +95,8 @@ export function splitCompactPath({
   path,
   boundaryMessageId,
 }: {
-  path: readonly MessageNode[];
-  boundaryMessageId: MessageId;
+  path: readonly MessageNode[],
+  boundaryMessageId: MessageId,
 }): ContextCompactSplit | undefined {
   const boundaryIndex = path.findIndex(({ id }) => id === boundaryMessageId);
   if (boundaryIndex === -1) {
@@ -113,7 +113,7 @@ export function splitCompactPath({
 export function createCompactInstruction({
   promptMode,
 }: {
-  promptMode: ContextCompactPromptMode;
+  promptMode: ContextCompactPromptMode,
 }): string {
   const lookupPointerInstruction = (() => {
     switch (promptMode) {
@@ -164,8 +164,8 @@ export function createCompactConversationMessageContent({
   node,
   promptMode,
 }: {
-  node: MessageNode;
-  promptMode: ContextCompactPromptMode;
+  node: MessageNode,
+  promptMode: ContextCompactPromptMode,
 }): string {
   const content = node.content ?? '';
   switch (promptMode) {
@@ -187,9 +187,9 @@ export function buildCompactRequestMessages({
   promptMode,
   instructionContent,
 }: {
-  prefix: readonly ChatMessage[];
-  promptMode: ContextCompactPromptMode;
-  instructionContent: string | undefined;
+  prefix: readonly ChatMessage[],
+  promptMode: ContextCompactPromptMode,
+  instructionContent: string | undefined,
 }): ChatMessage[] {
   return [
     ...prefix,
@@ -207,9 +207,9 @@ export async function createProviderForCompact({
   endpointUrl,
   endpointHttpHeaders,
 }: {
-  endpointType: EndpointType;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
+  endpointType: EndpointType,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
 }): Promise<LmProvider> {
   switch (endpointType) {
   case 'openai':
@@ -241,8 +241,8 @@ export async function createCompactChatMessagesFromPrefix({
   prefix,
   promptMode,
 }: {
-  prefix: readonly MessageNode[];
-  promptMode: ContextCompactPromptMode;
+  prefix: readonly MessageNode[],
+  promptMode: ContextCompactPromptMode,
 }): Promise<ChatMessage[]> {
   const result: ChatMessage[] = [];
 
@@ -381,7 +381,7 @@ export async function createCompactChatMessagesFromPrefix({
 export function createCompactRequestPreview({
   messages,
 }: {
-  messages: readonly ChatMessage[];
+  messages: readonly ChatMessage[],
 }): string {
   return messages.map((message) => {
     const content = (() => {
@@ -410,7 +410,7 @@ export function createCompactRequestPreview({
 function cloneToolCalls({
   toolCalls,
 }: {
-  toolCalls: ToolCall[] | undefined;
+  toolCalls: ToolCall[] | undefined,
 }): ToolCall[] | undefined {
   return toolCalls?.map(({ id, type, function: fn }) => ({
     id,
@@ -425,7 +425,7 @@ function cloneToolCalls({
 function cloneResults({
   results,
 }: {
-  results: ToolExecutionResult[] | undefined;
+  results: ToolExecutionResult[] | undefined,
 }): ToolExecutionResult[] | undefined {
   return results?.map((result) => {
     const resultStatus = result.status;
@@ -483,7 +483,7 @@ function cloneResults({
 function cloneAttachments({
   attachments,
 }: {
-  attachments: Attachment[] | undefined;
+  attachments: Attachment[] | undefined,
 }): Attachment[] | undefined {
   return attachments?.map((attachment) => {
     switch (attachment.status) {
@@ -504,7 +504,7 @@ function cloneAttachments({
 function cloneLmParameters({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined;
+  lmParameters: LmParameters | undefined,
 }): LmParameters | undefined {
   return lmParameters
     ? JSON.parse(JSON.stringify(lmParameters)) as LmParameters
@@ -516,9 +516,9 @@ function cloneLinearMessageNode({
   id,
   timestamp,
 }: {
-  node: MessageNode;
-  id: MessageId;
-  timestamp: number;
+  node: MessageNode,
+  id: MessageId,
+  timestamp: number,
 }): MessageNode {
   switch (node.role) {
   case 'user':
@@ -593,12 +593,12 @@ export function deepCopyCompactSuffix({
   createMessageId,
   now,
 }: {
-  suffix: readonly MessageNode[];
-  createMessageId: () => MessageId;
-  now: () => number;
+  suffix: readonly MessageNode[],
+  createMessageId: () => MessageId,
+  now: () => number,
 }): {
-  copiedHead: MessageNode | undefined;
-  copiedLeafId: MessageId | undefined;
+  copiedHead: MessageNode | undefined,
+  copiedLeafId: MessageId | undefined,
 } {
   if (suffix.length === 0) {
     return {
@@ -631,11 +631,11 @@ export function createCompactBranchFromResponse({
   createMessageId,
   now,
 }: {
-  compactContent: string;
-  suffix: readonly MessageNode[];
-  compactModelId: string | undefined;
-  createMessageId: () => MessageId;
-  now: () => number;
+  compactContent: string,
+  suffix: readonly MessageNode[],
+  compactModelId: string | undefined,
+  createMessageId: () => MessageId,
+  now: () => number,
 }): ContextCompactBranchResult {
   const compactNode: AssistantMessageNode = {
     id: createMessageId(),
@@ -673,13 +673,13 @@ export function toContextCompactDisplayProgress({
   progress,
   nowMs,
 }: {
-  progress: ContextCompactProgress;
-  nowMs: number;
+  progress: ContextCompactProgress,
+  nowMs: number,
 }): {
-  percent: number;
-  title: string;
-  detail: string;
-  isRunning: boolean;
+  percent: number,
+  title: string,
+  detail: string,
+  isRunning: boolean,
 } {
   void nowMs;
 
@@ -761,9 +761,9 @@ export function createCompactToolMessageContent({
   content,
   promptMode,
 }: {
-  messageId: MessageId;
-  content: string;
-  promptMode: ContextCompactPromptMode;
+  messageId: MessageId,
+  content: string,
+  promptMode: ContextCompactPromptMode,
 }): string {
   switch (promptMode) {
   case 'with_message_ids':
@@ -781,8 +781,8 @@ export function createCompactMultimodalContent({
   text,
   images,
 }: {
-  text: string;
-  images: string[];
+  text: string,
+  images: string[],
 }): MultimodalContent[] {
   return [
     { type: 'text', text },
@@ -797,8 +797,8 @@ export function createContextCompactBranch({
   compactContent,
   suffix,
 }: {
-  compactContent: string;
-  suffix: readonly MessageNode[];
+  compactContent: string,
+  suffix: readonly MessageNode[],
 }): ContextCompactBranchResult {
   return createCompactBranchFromResponse({
     compactContent,

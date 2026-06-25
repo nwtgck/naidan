@@ -104,7 +104,7 @@ vi.mock('../composables/chat/ui/useChatPaneState', async () => {
 function mountChatPane({
   global,
 }: {
-  global?: Record<string, unknown>;
+  global?: Record<string, unknown>,
 }) {
   return mount(ChatPane, {
     props: {
@@ -128,7 +128,7 @@ describe('ChatPane Streaming DOM Test', () => {
     await createNewChat({
       groupId: undefined,
       modelId: undefined,
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
 
     const wrapper = mountChatPane({

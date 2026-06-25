@@ -2,60 +2,60 @@ export type JsonPrimitive = null | boolean | number | string;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
 export interface JqProgram {
-  filter: JqFilter;
+  filter: JqFilter,
 }
 
 export type JqStringPart =
-  | { kind: 'text'; value: string }
-  | { kind: 'interpolation'; filter: JqFilter };
+  | { kind: 'text', value: string }
+  | { kind: 'interpolation', filter: JqFilter };
 
 export type JqObjectKey =
-  | { kind: 'static'; value: string }
-  | { kind: 'dynamic'; filter: JqFilter };
+  | { kind: 'static', value: string }
+  | { kind: 'dynamic', filter: JqFilter };
 
 export type JqFilter =
   | { kind: 'identity' }
-  | { kind: 'variable'; name: string }
-  | { kind: 'literal'; value: JsonValue }
-  | { kind: 'string'; parts: JqStringPart[] }
-  | { kind: 'array'; items: JqFilter[] }
-  | { kind: 'object'; entries: JqObjectEntry[] }
-  | { kind: 'field'; input: JqFilter; key: string; optional: boolean }
-  | { kind: 'index'; input: JqFilter; index: number; optional: boolean }
-  | { kind: 'dynamic_index'; input: JqFilter; index: JqFilter; optional: boolean }
+  | { kind: 'variable', name: string }
+  | { kind: 'literal', value: JsonValue }
+  | { kind: 'string', parts: JqStringPart[] }
+  | { kind: 'array', items: JqFilter[] }
+  | { kind: 'object', entries: JqObjectEntry[] }
+  | { kind: 'field', input: JqFilter, key: string, optional: boolean }
+  | { kind: 'index', input: JqFilter, index: number, optional: boolean }
+  | { kind: 'dynamic_index', input: JqFilter, index: JqFilter, optional: boolean }
   | {
-    kind: 'slice';
-    input: JqFilter;
-    start: JqFilter | undefined;
-    end: JqFilter | undefined;
-    optional: boolean;
+    kind: 'slice',
+    input: JqFilter,
+    start: JqFilter | undefined,
+    end: JqFilter | undefined,
+    optional: boolean,
   }
-  | { kind: 'iterate'; input: JqFilter; optional: boolean }
-  | { kind: 'recursive_descent'; input: JqFilter }
-  | { kind: 'optional'; body: JqFilter }
-  | { kind: 'pipe'; left: JqFilter; right: JqFilter }
-  | { kind: 'comma'; left: JqFilter; right: JqFilter }
-  | { kind: 'conditional'; condition: JqFilter; thenBranch: JqFilter; elseBranch: JqFilter }
-  | { kind: 'trycatch'; body: JqFilter; catchBranch: JqFilter }
-  | { kind: 'call'; name: JqBuiltinName; args: JqFilter[] }
-  | { kind: 'binary'; operator: JqBinaryOperator; left: JqFilter; right: JqFilter }
-  | { kind: 'unary'; operator: JqUnaryOperator; value: JqFilter }
-  | { kind: 'bind'; binding: JqFilter; name: string; body: JqFilter }
-  | { kind: 'assign'; path: JqPath; value: JqFilter }
-  | { kind: 'update'; path: JqPath; value: JqFilter };
+  | { kind: 'iterate', input: JqFilter, optional: boolean }
+  | { kind: 'recursive_descent', input: JqFilter }
+  | { kind: 'optional', body: JqFilter }
+  | { kind: 'pipe', left: JqFilter, right: JqFilter }
+  | { kind: 'comma', left: JqFilter, right: JqFilter }
+  | { kind: 'conditional', condition: JqFilter, thenBranch: JqFilter, elseBranch: JqFilter }
+  | { kind: 'trycatch', body: JqFilter, catchBranch: JqFilter }
+  | { kind: 'call', name: JqBuiltinName, args: JqFilter[] }
+  | { kind: 'binary', operator: JqBinaryOperator, left: JqFilter, right: JqFilter }
+  | { kind: 'unary', operator: JqUnaryOperator, value: JqFilter }
+  | { kind: 'bind', binding: JqFilter, name: string, body: JqFilter }
+  | { kind: 'assign', path: JqPath, value: JqFilter }
+  | { kind: 'update', path: JqPath, value: JqFilter };
 
 export interface JqObjectEntry {
-  key: JqObjectKey;
-  value: JqFilter;
+  key: JqObjectKey,
+  value: JqFilter,
 }
 
 export interface JqPath {
-  segments: JqPathSegment[];
+  segments: JqPathSegment[],
 }
 
 export type JqPathSegment =
-  | { kind: 'field'; key: string }
-  | { kind: 'index'; index: number };
+  | { kind: 'field', key: string }
+  | { kind: 'index', index: number };
 
 export type JqBuiltinName =
   | 'abs'
@@ -162,18 +162,18 @@ export type JqBinaryOperator =
 export type JqUnaryOperator = 'not' | 'neg';
 
 export type JqStringTokenPart =
-  | { kind: 'text'; value: string }
-  | { kind: 'interpolation'; source: string };
+  | { kind: 'text', value: string }
+  | { kind: 'interpolation', source: string };
 
 export type JqToken =
   | { kind: 'dot' }
   | { kind: 'recursive_descent' }
-  | { kind: 'identifier'; value: string }
-  | { kind: 'variable'; value: string }
-  | { kind: 'number'; value: number }
-  | { kind: 'string'; parts: JqStringTokenPart[] }
+  | { kind: 'identifier', value: string }
+  | { kind: 'variable', value: string }
+  | { kind: 'number', value: number }
+  | { kind: 'string', parts: JqStringTokenPart[] }
   | {
-    kind: 'keyword';
+    kind: 'keyword',
     value:
       | 'true'
       | 'false'
@@ -188,10 +188,10 @@ export type JqToken =
       | 'end'
       | 'try'
       | 'catch'
-      | 'as';
+      | 'as',
   }
   | {
-    kind: 'operator';
+    kind: 'operator',
     value:
       | '|'
       | '//'
@@ -216,7 +216,7 @@ export type JqToken =
       | '/'
       | '%'
       | ':'
-      | '?';
+      | '?',
   }
-  | { kind: 'punctuation'; value: '[' | ']' | '{' | '}' | '(' | ')' | ';' }
+  | { kind: 'punctuation', value: '[' | ']' | '{' | '}' | '(' | ')' | ';' }
   | { kind: 'eof' };

@@ -7,15 +7,15 @@ import {
 export type JqInjectedArgumentKind = 'string' | 'json' | 'rawfile' | 'slurpfile';
 
 export interface JqInjectedArgument {
-  kind: JqInjectedArgumentKind;
-  name: string;
-  value: string;
+  kind: JqInjectedArgumentKind,
+  name: string,
+  value: string,
 }
 
 export interface ParsedJqArgv {
-  standard: ParsedStandardArgv;
-  injectedArguments: JqInjectedArgument[];
-  grammarDiagnostic: string | undefined;
+  standard: ParsedStandardArgv,
+  injectedArguments: JqInjectedArgument[],
+  grammarDiagnostic: string | undefined,
 }
 
 function flag({
@@ -24,10 +24,10 @@ function flag({
   key,
   summary,
 }: {
-  short: string | undefined;
-  long: string | undefined;
-  key: string;
-  summary: string;
+  short: string | undefined,
+  long: string | undefined,
+  key: string,
+  summary: string,
 }) {
   return {
     kind: 'flag' as const,
@@ -130,7 +130,7 @@ export const jqArgvSpec: StandardArgvParserSpec = {
 function injectedArgumentKind({
   token,
 }: {
-  token: string;
+  token: string,
 }): JqInjectedArgumentKind | undefined {
   switch (token) {
   case '--arg':
@@ -149,7 +149,7 @@ function injectedArgumentKind({
 export function parseJqArgv({
   args,
 }: {
-  args: string[];
+  args: string[],
 }): ParsedJqArgv {
   const standardArgs: string[] = [];
   const injectedArguments: JqInjectedArgument[] = [];

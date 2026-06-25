@@ -21,8 +21,8 @@ export type ToolConfigSource =
   | 'chat';
 
 export type ResolvedToolConfig = {
-  config: ToolConfig;
-  source: ToolConfigSource;
+  config: ToolConfig,
+  source: ToolConfigSource,
 };
 
 export function lmToolNamesForBuiltinToolKey({ key }: { key: 'builtin.calculator' }): readonly ['calculator'];
@@ -33,7 +33,7 @@ export function lmToolNamesForBuiltinToolKey({ key }: { key: BuiltinToolKey }): 
 export function lmToolNamesForBuiltinToolKey({
   key,
 }: {
-  key: BuiltinToolKey;
+  key: BuiltinToolKey,
 }): readonly LmToolName[] {
   switch (key) {
   case 'builtin.calculator':
@@ -54,7 +54,7 @@ export function lmToolNamesForBuiltinToolKey({
 export function builtinToolKeyForLmToolName({
   name,
 }: {
-  name: LmToolName;
+  name: LmToolName,
 }): BuiltinToolKey {
   switch (name) {
   case 'calculator':
@@ -90,8 +90,8 @@ export function createDefaultWeshToolConfig({
   accessScope,
   status,
 }: {
-  accessScope: NaidanSysfsAccessScope;
-  status: ToolConfigStatus;
+  accessScope: NaidanSysfsAccessScope,
+  status: ToolConfigStatus,
 }): WeshToolConfig {
   return {
     key: 'builtin.wesh',
@@ -106,8 +106,8 @@ export function createDefaultToolConfigForBuiltinToolKey({
   key,
   status,
 }: {
-  key: BuiltinToolKey;
-  status: ToolConfigStatus;
+  key: BuiltinToolKey,
+  status: ToolConfigStatus,
 }): ToolConfig {
   switch (key) {
   case 'builtin.calculator':
@@ -131,7 +131,7 @@ export function createDefaultToolConfigForBuiltinToolKey({
 export function createApplicationDefaultToolConfigForBuiltinToolKey({
   key,
 }: {
-  key: BuiltinToolKey;
+  key: BuiltinToolKey,
 }): ToolConfig {
   return createDefaultToolConfigForBuiltinToolKey({
     key,
@@ -143,8 +143,8 @@ export function findLastToolConfigByKey<TKey extends BuiltinToolKey>({
   toolConfigs,
   key,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  key: TKey;
+  toolConfigs: ToolConfig[] | undefined,
+  key: TKey,
 }): Extract<ToolConfig, { key: TKey }> | undefined {
   return (toolConfigs ?? [])
     .filter((config): config is Extract<ToolConfig, { key: TKey }> => config.key === key)
@@ -155,8 +155,8 @@ export function upsertSingletonToolConfig({
   toolConfigs,
   config,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  config: ToolConfig;
+  toolConfigs: ToolConfig[] | undefined,
+  config: ToolConfig,
 }): ToolConfig[] {
   return [
     ...(toolConfigs ?? []).filter((toolConfig) => toolConfig.key !== config.key),
@@ -167,7 +167,7 @@ export function upsertSingletonToolConfig({
 export function cloneToolConfigs({
   toolConfigs,
 }: {
-  toolConfigs: readonly ToolConfig[] | undefined;
+  toolConfigs: readonly ToolConfig[] | undefined,
 }): ToolConfig[] | undefined {
   return toolConfigs?.map((config) => {
     switch (config.key) {
@@ -194,8 +194,8 @@ export function removeSingletonToolConfig({
   toolConfigs,
   key,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  key: BuiltinToolKey;
+  toolConfigs: ToolConfig[] | undefined,
+  key: BuiltinToolKey,
 }): ToolConfig[] | undefined {
   const next = (toolConfigs ?? []).filter((toolConfig) => toolConfig.key !== key);
   return next.length === 0 ? undefined : next;
@@ -207,10 +207,10 @@ export function resolveToolConfigForChat({
   chatGroupToolConfigs,
   chatToolConfigs,
 }: {
-  key: BuiltinToolKey;
-  globalToolConfigs: ToolConfig[] | undefined;
-  chatGroupToolConfigs: ToolConfig[] | undefined;
-  chatToolConfigs: ToolConfig[] | undefined;
+  key: BuiltinToolKey,
+  globalToolConfigs: ToolConfig[] | undefined,
+  chatGroupToolConfigs: ToolConfig[] | undefined,
+  chatToolConfigs: ToolConfig[] | undefined,
 }): ResolvedToolConfig {
   const chatConfig = findLastToolConfigByKey({ toolConfigs: chatToolConfigs, key });
   if (chatConfig !== undefined) {
@@ -238,9 +238,9 @@ export function resolveToolConfigsForChat({
   chatGroupToolConfigs,
   chatToolConfigs,
 }: {
-  globalToolConfigs: ToolConfig[] | undefined;
-  chatGroupToolConfigs: ToolConfig[] | undefined;
-  chatToolConfigs: ToolConfig[] | undefined;
+  globalToolConfigs: ToolConfig[] | undefined,
+  chatGroupToolConfigs: ToolConfig[] | undefined,
+  chatToolConfigs: ToolConfig[] | undefined,
 }): ToolConfig[] {
   return BUILTIN_TOOL_KEYS.map((key) => resolveToolConfigForChat({
     key,
@@ -256,10 +256,10 @@ export function setBuiltinToolStatusInToolConfigs({
   status,
   inheritedConfig,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  key: BuiltinToolKey;
-  status: ToolConfigStatus;
-  inheritedConfig: ToolConfig | undefined;
+  toolConfigs: ToolConfig[] | undefined,
+  key: BuiltinToolKey,
+  status: ToolConfigStatus,
+  inheritedConfig: ToolConfig | undefined,
 }): ToolConfig[] {
   const existing = findLastToolConfigByKey({ toolConfigs, key });
   const baseConfig = existing
@@ -281,10 +281,10 @@ export function setLmToolStatusInToolConfigs({
   status,
   inheritedConfig,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  name: LmToolName;
-  status: ToolConfigStatus;
-  inheritedConfig: ToolConfig | undefined;
+  toolConfigs: ToolConfig[] | undefined,
+  name: LmToolName,
+  status: ToolConfigStatus,
+  inheritedConfig: ToolConfig | undefined,
 }): ToolConfig[] {
   return setBuiltinToolStatusInToolConfigs({
     toolConfigs,
@@ -300,10 +300,10 @@ export function setWeshNaidanSysfsAccessScopeInToolConfigs({
   inheritedConfig,
   status,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  accessScope: NaidanSysfsAccessScope;
-  inheritedConfig: WeshToolConfig | undefined;
-  status: ToolConfigStatus;
+  toolConfigs: ToolConfig[] | undefined,
+  accessScope: NaidanSysfsAccessScope,
+  inheritedConfig: WeshToolConfig | undefined,
+  status: ToolConfigStatus,
 }): ToolConfig[] {
   const existing = findLastToolConfigByKey({ toolConfigs, key: 'builtin.wesh' });
   const baseConfig = existing
@@ -328,7 +328,7 @@ export function setWeshNaidanSysfsAccessScopeInToolConfigs({
 function isWeshMountedAndEnabled({
   config,
 }: {
-  config: WeshToolConfig | undefined;
+  config: WeshToolConfig | undefined,
 }): boolean {
   switch (config) {
   case undefined:
@@ -366,8 +366,8 @@ export function toolConfigStatusForWeshAccessScope({
   accessScope,
   currentStatus,
 }: {
-  accessScope: NaidanSysfsAccessScope;
-  currentStatus: ToolConfigStatus;
+  accessScope: NaidanSysfsAccessScope,
+  currentStatus: ToolConfigStatus,
 }): ToolConfigStatus {
   switch (accessScope) {
   case 'none':
@@ -389,10 +389,10 @@ export function setToolStatusWithDependenciesInToolConfigs({
   status,
   inheritedToolConfigs,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  key: BuiltinToolKey;
-  status: ToolConfigStatus;
-  inheritedToolConfigs: ToolConfig[];
+  toolConfigs: ToolConfig[] | undefined,
+  key: BuiltinToolKey,
+  status: ToolConfigStatus,
+  inheritedToolConfigs: ToolConfig[],
 }): ToolConfig[] {
   const inheritedConfig = findLastToolConfigByKey({
     toolConfigs: inheritedToolConfigs,
@@ -489,10 +489,10 @@ export function setWeshAccessScopeWithDependenciesInToolConfigs({
   inheritedToolConfigs,
   status,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  accessScope: NaidanSysfsAccessScope;
-  inheritedToolConfigs: ToolConfig[];
-  status: ToolConfigStatus;
+  toolConfigs: ToolConfig[] | undefined,
+  accessScope: NaidanSysfsAccessScope,
+  inheritedToolConfigs: ToolConfig[],
+  status: ToolConfigStatus,
 }): ToolConfig[] {
   const inheritedWesh = findLastToolConfigByKey({
     toolConfigs: inheritedToolConfigs,
@@ -535,8 +535,8 @@ export function isBuiltinToolEnabledInToolConfigs({
   toolConfigs,
   key,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  key: BuiltinToolKey;
+  toolConfigs: ToolConfig[] | undefined,
+  key: BuiltinToolKey,
 }): boolean {
   const config = findLastToolConfigByKey({ toolConfigs, key });
   const status = config?.status;
@@ -575,8 +575,8 @@ export function isLmToolEnabledInToolConfigs({
   toolConfigs,
   name,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-  name: LmToolName;
+  toolConfigs: ToolConfig[] | undefined,
+  name: LmToolName,
 }): boolean {
   return isBuiltinToolEnabledInToolConfigs({
     toolConfigs,
@@ -587,7 +587,7 @@ export function isLmToolEnabledInToolConfigs({
 export function lmToolNamesFromToolConfigs({
   toolConfigs,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
+  toolConfigs: ToolConfig[] | undefined,
 }): LmToolName[] {
   const names: LmToolName[] = [];
   for (const key of BUILTIN_TOOL_KEYS) {

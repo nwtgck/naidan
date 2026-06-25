@@ -10,33 +10,33 @@ import { WeshHandleCloseSignal } from './closeSignal';
 
 class StreamReadHandle implements WeshFileHandle {
   private readonly state: {
-    reader: ReadableStreamDefaultReader<Uint8Array>;
-    currentChunk: Uint8Array | undefined;
-    currentOffset: number;
-    isDone: boolean;
-    refCount: number;
-    closed: boolean;
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    currentChunk: Uint8Array | undefined,
+    currentOffset: number,
+    isDone: boolean,
+    refCount: number,
+    closed: boolean,
   };
   private readonly closeSignal = new WeshHandleCloseSignal();
 
   constructor({ state }: {
     state: {
-      reader: ReadableStreamDefaultReader<Uint8Array>;
-      currentChunk: Uint8Array | undefined;
-      currentOffset: number;
-      isDone: boolean;
-      refCount: number;
-      closed: boolean;
-    };
+      reader: ReadableStreamDefaultReader<Uint8Array>,
+      currentChunk: Uint8Array | undefined,
+      currentOffset: number,
+      isDone: boolean,
+      refCount: number,
+      closed: boolean,
+    },
   }) {
     this.state = state;
   }
 
   async read({ buffer, offset, length, position: _position }: {
-    buffer: Uint8Array;
-    offset?: number;
-    length?: number;
-    position?: number;
+    buffer: Uint8Array,
+    offset?: number,
+    length?: number,
+    position?: number,
   }): Promise<WeshIOResult> {
     if (this.closeSignal.closed || (this.state.isDone && this.state.currentChunk === undefined)) {
       return { bytesRead: 0 };
@@ -138,18 +138,18 @@ class StreamReadHandle implements WeshFileHandle {
 
 class StreamWriteHandle implements WeshFileHandle {
   private readonly state: {
-    writer: WritableStreamDefaultWriter<Uint8Array>;
-    refCount: number;
-    closed: boolean;
+    writer: WritableStreamDefaultWriter<Uint8Array>,
+    refCount: number,
+    closed: boolean,
   };
   private readonly closeSignal = new WeshHandleCloseSignal();
 
   constructor({ state }: {
     state: {
-      writer: WritableStreamDefaultWriter<Uint8Array>;
-      refCount: number;
-      closed: boolean;
-    };
+      writer: WritableStreamDefaultWriter<Uint8Array>,
+      refCount: number,
+      closed: boolean,
+    },
   }) {
     this.state = state;
   }
@@ -163,10 +163,10 @@ class StreamWriteHandle implements WeshFileHandle {
     offset,
     length,
   }: {
-    buffer: Uint8Array;
-    offset: number | undefined;
-    length: number | undefined;
-    position?: number | undefined;
+    buffer: Uint8Array,
+    offset: number | undefined,
+    length: number | undefined,
+    position?: number | undefined,
   }): Promise<WeshWriteResult> {
     if (this.closeSignal.closed) {
       return { bytesWritten: 0 };
@@ -248,7 +248,7 @@ class StreamWriteHandle implements WeshFileHandle {
 export function createReadHandleFromStream({
   source,
 }: {
-  source: ReadableStream<Uint8Array>;
+  source: ReadableStream<Uint8Array>,
 }): WeshFileHandle {
   return new StreamReadHandle({
     state: {
@@ -269,7 +269,7 @@ export function createReadHandleFromStream({
 export function createWriteHandleFromStream({
   target,
 }: {
-  target: WritableStream<Uint8Array>;
+  target: WritableStream<Uint8Array>,
 }): WeshFileHandle {
   return new StreamWriteHandle({
     state: {
@@ -284,7 +284,7 @@ export function createWriteHandleFromStream({
 export async function* iterateReadableStreamChunks({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): AsyncIterable<Uint8Array> {
   const reader = stream.getReader();
   let completed = false;
@@ -310,11 +310,11 @@ export function pipeThroughBufferSourceTransform({
   source,
   transform,
 }: {
-  source: ReadableStream<Uint8Array>;
+  source: ReadableStream<Uint8Array>,
   transform: {
-    readable: ReadableStream<Uint8Array>;
-    writable: WritableStream<BufferSource>;
-  };
+    readable: ReadableStream<Uint8Array>,
+    writable: WritableStream<BufferSource>,
+  },
 }): ReadableStream<Uint8Array> {
   const byteTransform: ReadableWritablePair<Uint8Array, Uint8Array> = {
     readable: transform.readable,

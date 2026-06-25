@@ -11,35 +11,35 @@ export function scheduleAppStartup({
   onWaitingForDom,
   onFailure,
 }: {
-  document: Document
-  bootstrap: () => Promise<void>
-  onWaitingForDom: () => void
-  onFailure: ({ error }: { error: unknown }) => void
+  document: Document,
+  bootstrap: () => Promise<void>,
+  onWaitingForDom: () => void,
+  onFailure: ({ error }: { error: unknown }) => void,
 }): void {
-  let started = false
+  let started = false;
   const startOnce = (): void => {
-    if (started) return
-    started = true
+    if (started) return;
+    started = true;
     void Promise.resolve()
       .then(bootstrap)
       .catch((error: unknown) => {
-        onFailure({ error })
-      })
-  }
+        onFailure({ error });
+      });
+  };
 
-  const readyState = document.readyState
+  const readyState = document.readyState;
   switch (readyState) {
   case 'loading':
-    onWaitingForDom()
-    document.addEventListener('DOMContentLoaded', startOnce, { once: true })
-    return
+    onWaitingForDom();
+    document.addEventListener('DOMContentLoaded', startOnce, { once: true });
+    return;
   case 'interactive':
   case 'complete':
-    startOnce()
-    return
+    startOnce();
+    return;
   default: {
-    const _ex: never = readyState
-    throw new Error(`Unhandled document ready state: ${_ex}`)
+    const _ex: never = readyState;
+    throw new Error(`Unhandled document ready state: ${_ex}`);
   }
   }
 }

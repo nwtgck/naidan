@@ -66,14 +66,14 @@ describe('useChat Delete Undo Logic', () => {
     // 1. Mock an active generation
     activeGenerations.set(chatId, {
       controller: { abort: mockAbort } as any,
-      chat: { id: chatId } as any
+      chat: { id: chatId } as any,
     });
 
     // 2. Mock chat data in storage
     vi.mocked(storageService.loadChat).mockResolvedValue({
       id: chatId,
       title: 'Test Chat',
-      root: { items: [] }
+      root: { items: [] },
     } as any);
 
     // 3. Trigger delete
@@ -103,13 +103,13 @@ describe('useChat Delete Undo Logic', () => {
 
     activeGenerations.set(chatId, {
       controller: { abort: mockAbort } as any,
-      chat: { id: chatId } as any
+      chat: { id: chatId } as any,
     });
 
     vi.mocked(storageService.loadChat).mockResolvedValue({
       id: chatId,
       title: 'Test Chat',
-      root: { items: [] }
+      root: { items: [] },
     } as any);
 
     await deleteChat({ id: idToRaw({ id: chatId }) });

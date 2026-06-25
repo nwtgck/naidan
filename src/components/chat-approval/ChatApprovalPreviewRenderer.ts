@@ -6,7 +6,7 @@ import WikipediaSearchApprovalPreview from './previews/WikipediaSearchApprovalPr
 export default function ChatApprovalPreviewRenderer({
   preview,
 }: {
-  preview: ApprovalPreview;
+  preview: ApprovalPreview,
 }): VNode {
   switch (preview.type) {
   case 'wikipedia_search':

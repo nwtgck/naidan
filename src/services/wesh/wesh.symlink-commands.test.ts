@@ -20,8 +20,8 @@ describe('wesh symlink commands', () => {
     path,
     data,
   }: {
-    path: string;
-    data: string;
+    path: string,
+    data: string,
   }) {
     const handle = await rootHandle.getFileHandle(path, { create: true });
     const writable = await handle.createWritable();
@@ -32,7 +32,7 @@ describe('wesh symlink commands', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

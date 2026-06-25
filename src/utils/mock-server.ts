@@ -3,10 +3,10 @@ import type { AddressInfo } from 'net';
 import type { RequestListener } from 'http';
 
 export interface CapturedRequest {
-  url?: string;
-  method?: string;
-  headers: http.IncomingHttpHeaders;
-  body?: unknown;
+  url?: string,
+  method?: string,
+  headers: http.IncomingHttpHeaders,
+  body?: unknown,
 }
 
 /**
@@ -14,7 +14,7 @@ export interface CapturedRequest {
  * Returns the base URL and a way to close the server and access captured requests.
  */
 export async function startMockServer({ handler }: {
-  handler: RequestListener
+  handler: RequestListener,
 }) {
   const capturedRequests: CapturedRequest[] = [];
   let server: http.Server | null = null;

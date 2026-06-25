@@ -67,12 +67,12 @@ describe('useChat System Prompt Clear Policy', () => {
     // 1. Initial State: Global Default
     await sendMessage({ content: 'Hello' });
     expect(mockOpenAIChat).toHaveBeenLastCalledWith(expect.objectContaining({
-      messages: expect.arrayContaining([{ role: 'system', content: 'Global System Prompt' }])
+      messages: expect.arrayContaining([{ role: 'system', content: 'Global System Prompt' }]),
     }));
 
     // 2. Chat-level Clear (behavior: override, content: null)
     await updateChatSettings({ id: idToRaw({ id }), updates: {
-      systemPrompt: { behavior: 'override', content: null }
+      systemPrompt: { behavior: 'override', content: null },
     } });
     await sendMessage({ content: 'Hello again' });
 
@@ -89,7 +89,7 @@ describe('useChat System Prompt Clear Policy', () => {
 
     // Chat-level override with empty string
     await updateChatSettings({ id: idToRaw({ id }), updates: {
-      systemPrompt: { behavior: 'override', content: '' }
+      systemPrompt: { behavior: 'override', content: '' },
     } });
     await sendMessage({ content: 'Empty string override' });
 
@@ -106,7 +106,7 @@ describe('useChat System Prompt Clear Policy', () => {
     // Create a group that Clears system prompt
     const group = reactive({
       id: toChatGroupId({ raw: 'g-clear' }), name: 'Clear Group', items: [], updatedAt: Date.now(), isCollapsed: false,
-      systemPrompt: { behavior: 'override', content: null }
+      systemPrompt: { behavior: 'override', content: null },
     }) as any;
     chatStore.rootItems.value = [{ id: 'chat_group:g-clear', type: 'chat_group', chatGroup: group }];
 
@@ -127,14 +127,14 @@ describe('useChat System Prompt Clear Policy', () => {
 
     const group = reactive({
       id: toChatGroupId({ raw: 'g-clear' }), name: 'Clear Group', items: [], updatedAt: Date.now(), isCollapsed: false,
-      systemPrompt: { behavior: 'override', content: null }
+      systemPrompt: { behavior: 'override', content: null },
     }) as any;
     chatStore.rootItems.value = [{ id: 'chat_group:g-clear', type: 'chat_group', chatGroup: group }];
     await updateChatGroupOverride({ id: idToRaw({ id }), groupId: 'g-clear' });
 
     // Chat overrides with its own prompt
     await updateChatSettings({ id: idToRaw({ id }), updates: {
-      systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' }
+      systemPrompt: { behavior: 'override', content: 'Chat Specific Prompt' },
     } });
 
     await sendMessage({ content: 'Override' });

@@ -4,8 +4,8 @@ export function formatSettingsSourceLabel({
   value,
   source,
 }: {
-  value: string | undefined;
-  source: SettingsSource | undefined;
+  value: string | undefined,
+  source: SettingsSource | undefined,
 }) {
   if (!value) return 'Default';
   switch (source) {

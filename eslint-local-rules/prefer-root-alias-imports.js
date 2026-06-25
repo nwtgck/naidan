@@ -1,89 +1,89 @@
-import path from 'node:path'
-import process from 'node:process'
+import path from 'node:path';
+import process from 'node:process';
 
 // Naidan-local import policy: keep same-folder ./ imports local, but
 // rewrite parent-folder imports that stay inside src to the @/... root alias.
 
 function normalizePath(filePath) {
-  return filePath.replace(/\\/g, '/')
+  return filePath.replace(/\\/g, '/');
 }
 
 function isPathInside({ parentDir, childPath }) {
-  const relativePath = path.relative(parentDir, childPath)
-  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+  const relativePath = path.relative(parentDir, childPath);
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
 }
 
 function splitImportSuffix(importPath) {
-  const suffixIndex = importPath.search(/[?#]/)
+  const suffixIndex = importPath.search(/[?#]/);
   if (suffixIndex === -1) {
-    return { pathPart: importPath, suffix: '' }
+    return { pathPart: importPath, suffix: '' };
   }
 
   return {
     pathPart: importPath.slice(0, suffixIndex),
     suffix: importPath.slice(suffixIndex),
-  }
+  };
 }
 
 function getStringLiteralValue(node) {
   if (!node || typeof node.value !== 'string') {
-    return undefined
+    return undefined;
   }
 
-  return node.value
+  return node.value;
 }
 
 function buildReplacement({ context, importPath, filename }) {
   if (!importPath.startsWith('../')) {
-    return undefined
+    return undefined;
   }
 
-  const [rawOptions = {}] = context.options
-  const rootDirOption = rawOptions.rootDir ?? 'src'
-  const aliasPrefix = rawOptions.aliasPrefix ?? '@'
+  const [rawOptions = {}] = context.options;
+  const rootDirOption = rawOptions.rootDir ?? 'src';
+  const aliasPrefix = rawOptions.aliasPrefix ?? '@';
 
-  const cwd = context.cwd ?? process.cwd()
-  const rootDir = path.resolve(cwd, rootDirOption)
-  const absoluteFilename = path.resolve(filename)
+  const cwd = context.cwd ?? process.cwd();
+  const rootDir = path.resolve(cwd, rootDirOption);
+  const absoluteFilename = path.resolve(filename);
   if (!isPathInside({ parentDir: rootDir, childPath: absoluteFilename })) {
-    return undefined
+    return undefined;
   }
 
-  const currentDir = path.dirname(absoluteFilename)
-  const { pathPart, suffix } = splitImportSuffix(importPath)
-  const resolvedImportPath = path.resolve(currentDir, pathPart)
+  const currentDir = path.dirname(absoluteFilename);
+  const { pathPart, suffix } = splitImportSuffix(importPath);
+  const resolvedImportPath = path.resolve(currentDir, pathPart);
 
   if (!isPathInside({ parentDir: rootDir, childPath: resolvedImportPath })) {
-    return undefined
+    return undefined;
   }
 
-  const rootRelativePath = normalizePath(path.relative(rootDir, resolvedImportPath))
+  const rootRelativePath = normalizePath(path.relative(rootDir, resolvedImportPath));
   const aliasPath = rootRelativePath === ''
     ? aliasPrefix
-    : `${aliasPrefix}/${rootRelativePath}`
+    : `${aliasPrefix}/${rootRelativePath}`;
 
-  return `${aliasPath}${suffix}`
+  return `${aliasPath}${suffix}`;
 }
 
 function quoteReplacement({ sourceCode, sourceNode, replacement }) {
-  const sourceText = sourceCode.getText(sourceNode)
-  const quote = sourceText.startsWith('"') ? '"' : sourceText.startsWith('`') ? '`' : '\''
-  return `${quote}${replacement}${quote}`
+  const sourceText = sourceCode.getText(sourceNode);
+  const quote = sourceText.startsWith('"') ? '"' : sourceText.startsWith('`') ? '`' : '\'';
+  return `${quote}${replacement}${quote}`;
 }
 
 function createImportPathReporter(context) {
-  const sourceCode = context.sourceCode ?? context.getSourceCode()
-  const filename = context.filename ?? context.getFilename?.() ?? ''
+  const sourceCode = context.sourceCode ?? context.getSourceCode();
+  const filename = context.filename ?? context.getFilename?.() ?? '';
 
   function checkSourceNode(sourceNode) {
-    const importPath = getStringLiteralValue(sourceNode)
+    const importPath = getStringLiteralValue(sourceNode);
     if (importPath === undefined) {
-      return
+      return;
     }
 
-    const replacement = buildReplacement({ context, importPath, filename })
+    const replacement = buildReplacement({ context, importPath, filename });
     if (replacement === undefined) {
-      return
+      return;
     }
 
     context.report({
@@ -97,12 +97,12 @@ function createImportPathReporter(context) {
         return fixer.replaceText(
           sourceNode,
           quoteReplacement({ sourceCode, sourceNode, replacement }),
-        )
+        );
       },
-    })
+    });
   }
 
-  return checkSourceNode
+  return checkSourceNode;
 }
 
 export const rule = {
@@ -127,27 +127,27 @@ export const rule = {
     ],
   },
   create(context) {
-    const checkSourceNode = createImportPathReporter(context)
+    const checkSourceNode = createImportPathReporter(context);
 
     return {
       ImportDeclaration(node) {
-        checkSourceNode(node.source)
+        checkSourceNode(node.source);
       },
       ExportNamedDeclaration(node) {
-        checkSourceNode(node.source)
+        checkSourceNode(node.source);
       },
       ExportAllDeclaration(node) {
-        checkSourceNode(node.source)
+        checkSourceNode(node.source);
       },
       ImportExpression(node) {
-        checkSourceNode(node.source)
+        checkSourceNode(node.source);
       },
       TSImportType(node) {
-        checkSourceNode(node.source ?? node.argument)
+        checkSourceNode(node.source ?? node.argument);
       },
-    }
+    };
   },
-}
+};
 
 export default {
   files: ['src/**/*.ts', 'src/**/*.vue'],
@@ -164,4 +164,4 @@ export default {
       { rootDir: 'src', aliasPrefix: '@' },
     ],
   },
-}
+};

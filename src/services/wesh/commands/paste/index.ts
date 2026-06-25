@@ -8,8 +8,8 @@ function delimiterForIndex({
   delimiters,
   index,
 }: {
-  delimiters: string;
-  index: number;
+  delimiters: string,
+  index: number,
 }): string {
   if (delimiters.length === 0) {
     return '';
@@ -21,8 +21,8 @@ function formatRow({
   values,
   delimiters,
 }: {
-  values: string[];
-  delimiters: string;
+  values: string[],
+  delimiters: string,
 }): string {
   if (values.length === 0) {
     return '';

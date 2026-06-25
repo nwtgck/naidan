@@ -1,1 +1,1 @@
-export { createTransformersJsWorkerClient } from './client-hosted'
+export { createTransformersJsWorkerClient } from './client-hosted';

@@ -8,9 +8,9 @@ async function writeAllTextToHandle({
   text,
   encoder,
 }: {
-  handle: WeshFileHandle;
-  text: string;
-  encoder: TextEncoder;
+  handle: WeshFileHandle,
+  text: string,
+  encoder: TextEncoder,
 }): Promise<void> {
   const data = encoder.encode(text);
   let totalWritten = 0;
@@ -32,8 +32,8 @@ export function createBufferedTextWriter({
   handle,
   maxBufferLength,
 }: {
-  handle: WeshFileHandle;
-  maxBufferLength: number;
+  handle: WeshFileHandle,
+  maxBufferLength: number,
 }) {
   const encoder = new TextEncoder();
   let chunks: string[] = [];
@@ -58,7 +58,7 @@ export function createBufferedTextWriter({
     async write({
       text,
     }: {
-      text: string;
+      text: string,
     }): Promise<void> {
       chunks.push(text);
       bufferedLength += text.length;
@@ -77,9 +77,9 @@ export function createTextIoHelpers({
   stdout,
   stderr,
 }: {
-  stdin: WeshFileHandle;
-  stdout: WeshFileHandle;
-  stderr: WeshFileHandle;
+  stdin: WeshFileHandle,
+  stdout: WeshFileHandle,
+  stderr: WeshFileHandle,
 }) {
   const encoder = new TextEncoder();
 

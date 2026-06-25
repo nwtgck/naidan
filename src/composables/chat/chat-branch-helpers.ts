@@ -7,9 +7,9 @@ export function getSiblingsInChatBranch({
   messageId,
 }: {
     root: {
-      items: MessageNode[];
-    };
-  messageId: MessageId;
+      items: MessageNode[],
+    },
+  messageId: MessageId,
 }): readonly MessageNode[] {
   const parent = findParentInBranch({
     items: root.items,

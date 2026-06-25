@@ -22,8 +22,8 @@ export async function fetchModelsForChat({
   chatId,
   errorSource,
 }: {
-  chatId: ChatId;
-  errorSource: string;
+  chatId: ChatId,
+  errorSource: string,
 }): Promise<string[]> {
   const { settings } = useSettings();
   const mutableChat = getLiveChatById({ chatId });
@@ -64,7 +64,7 @@ export async function fetchModelsForChat({
 export async function fetchModelsForGlobalEndpoint({
   errorSource,
 }: {
-  errorSource: string;
+  errorSource: string,
 }): Promise<string[]> {
   const { settings } = useSettings();
   chatRuntimeStore.startTask({ key: { kind: 'fetch', chatId: undefined } });
@@ -91,10 +91,10 @@ export async function fetchModelsForEndpoint({
   endpointHttpHeaders,
   errorSource,
 }: {
-  endpointType: EndpointType;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
-  errorSource: string;
+  endpointType: EndpointType,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
+  errorSource: string,
 }): Promise<string[]> {
   if (!endpointUrl && endpointType !== 'transformers_js') {
     return [];
@@ -123,7 +123,7 @@ export async function fetchModelsForEndpoint({
 function collectChatGroups({
   items,
 }: {
-  items: typeof rootItems.value;
+  items: typeof rootItems.value,
 }): ChatGroup[] {
   return items.flatMap((item) => {
     switch (item.type) {
@@ -144,9 +144,9 @@ function createProviderForEndpoint({
   endpointUrl,
   endpointHttpHeaders,
 }: {
-  endpointType: EndpointType;
-  endpointUrl: string | undefined;
-  endpointHttpHeaders: [string, string][] | undefined;
+  endpointType: EndpointType,
+  endpointUrl: string | undefined,
+  endpointHttpHeaders: [string, string][] | undefined,
 }): LmProvider {
   const { settings } = useSettings();
   return createLmProvider({

@@ -6,8 +6,8 @@ describe('PrintView component', () => {
   it('should render slot content and root classes', () => {
     const wrapper = mount(PrintView, {
       slots: {
-        default: '<div class="test-content">Slot Content</div>'
-      }
+        default: '<div class="test-content">Slot Content</div>',
+      },
     });
 
     // Find the container explicitly to bypass any fragment issues

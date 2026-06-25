@@ -18,7 +18,7 @@ import {
   PencilIcon, FolderIcon, FolderPlusIcon,
   ChevronDownIcon, ChevronUpIcon, ChevronRightIcon, CheckIcon, XIcon,
   BotIcon, PanelLeftIcon, SquarePenIcon, Loader2Icon, MoreHorizontalIcon,
-  SearchIcon, GhostIcon, MessageSquarePlusIcon
+  SearchIcon, GhostIcon, MessageSquarePlusIcon,
 } from 'lucide-vue-next';
 import { idToRaw } from '@/models/ids';
 import type { ChatGroupId, ChatId } from '@/models/ids';
@@ -52,7 +52,7 @@ const chatGroups = currentChatState.chatGroups;
 function isProcessing({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }) {
   return isChatProcessing({ chatId });
 }
@@ -63,8 +63,8 @@ function setChatGroupCollapsed({
   groupId,
   isCollapsed,
 }: {
-  groupId: ChatGroupId;
-  isCollapsed: boolean;
+  groupId: ChatGroupId,
+  isCollapsed: boolean,
 }) {
   void sidebarStructure.setChatGroupCollapsed({
     groupId,
@@ -75,7 +75,7 @@ function setChatGroupCollapsed({
 function createChatGroup({
   name,
 }: {
-  name: string;
+  name: string,
 }) {
   return chatOrganization.createChatGroup({
     name,
@@ -86,7 +86,7 @@ function createChatGroup({
 function deleteChatGroup({
   id,
 }: {
-  id: ChatGroupId;
+  id: ChatGroupId,
 }) {
   return chatOrganization.deleteChatGroup({
     id,
@@ -98,9 +98,9 @@ function createNewChat({
   modelId,
   systemPrompt,
 }: {
-  groupId: ChatGroupId | undefined;
-  modelId: string | undefined;
-  systemPrompt: ChatGroup['systemPrompt'];
+  groupId: ChatGroupId | undefined,
+  modelId: string | undefined,
+  systemPrompt: ChatGroup['systemPrompt'],
 }) {
   return chatLifecycle.createNewChat({
     groupId,
@@ -112,7 +112,7 @@ function createNewChat({
 function openChat({
   id,
 }: {
-  id: ChatId;
+  id: ChatId,
 }) {
   return chatNavigation.openChat({
     chatId: id,
@@ -123,7 +123,7 @@ function openChat({
 function openChatGroup({
   id,
 }: {
-  id: ChatGroupId;
+  id: ChatGroupId,
 }) {
   chatNavigation.openChatGroup({
     groupId: id,
@@ -133,7 +133,7 @@ function openChatGroup({
 function deleteChat({
   id,
 }: {
-  id: ChatId;
+  id: ChatId,
 }) {
   return chatLifecycle.deleteChat({
     id,
@@ -145,8 +145,8 @@ function renameChat({
   id,
   newTitle,
 }: {
-  id: ChatId;
-  newTitle: string;
+  id: ChatId,
+  newTitle: string,
 }) {
   return chatMetadata.rename({
     chatId: id,
@@ -168,7 +168,7 @@ const router = useRouter();
 const route = useRoute();
 
 defineEmits<{
-  (e: 'open-settings'): void
+  (e: 'open-settings'): void,
 }>();
 
 const sidebarItemsLocal = ref<SidebarItem[]>([]);
@@ -196,9 +196,9 @@ const navContainer = ref<HTMLElement | null>(null);
 
 const visibleItems = computed(() => {
   const result: (
-    | { type: 'chat'; id: ChatId }
-    | { type: 'chat_group'; id: ChatGroupId }
-    | { type: 'expand_button'; id: string; groupId: ChatGroupId }
+    | { type: 'chat', id: ChatId }
+    | { type: 'chat_group', id: ChatGroupId }
+    | { type: 'expand_button', id: string, groupId: ChatGroupId }
   )[] = [];
   function collect({ list }: { list: SidebarItem[] }) {
     for (const item of list) {
@@ -221,7 +221,7 @@ const visibleItems = computed(() => {
             result.push({
               type: 'expand_button',
               id: `expand-${idToRaw({ id: item.chatGroup.id })}`,
-              groupId: item.chatGroup.id
+              groupId: item.chatGroup.id,
             });
           }
         }
@@ -260,8 +260,8 @@ function isSidebarItemVisible({
   container,
   element,
 }: {
-  container: HTMLElement;
-  element: HTMLElement;
+  container: HTMLElement,
+  element: HTMLElement,
 }) {
   const containerRect = container.getBoundingClientRect();
   const elementRect = element.getBoundingClientRect();
@@ -276,7 +276,7 @@ function isSidebarItemVisible({
 function ensureChatVisibleInCompactGroup({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }) {
   for (const item of sidebarItemsLocal.value) {
     switch (item.type) {
@@ -284,7 +284,7 @@ function ensureChatVisibleInCompactGroup({
       continue;
     case 'chat_group': {
       const hiddenItemIndex = item.chatGroup.items.findIndex((chatItem, index) =>
-        index >= COMPACT_THRESHOLD && chatItem.chat.id === chatId
+        index >= COMPACT_THRESHOLD && chatItem.chat.id === chatId,
       );
 
       if (hiddenItemIndex === -1) continue;
@@ -307,13 +307,13 @@ async function scheduleSidebarItemScroll({
   id,
   onlyWhenOutOfView,
 }: {
-  itemType: 'chat';
-  id: ChatId | undefined;
-  onlyWhenOutOfView: boolean;
+  itemType: 'chat',
+  id: ChatId | undefined,
+  onlyWhenOutOfView: boolean,
 } | {
-  itemType: 'chat_group';
-  id: ChatGroupId | undefined;
-  onlyWhenOutOfView: boolean;
+  itemType: 'chat_group',
+  id: ChatGroupId | undefined,
+  onlyWhenOutOfView: boolean,
 }) {
   if (!id || typeof document === 'undefined' || !navContainer.value) return;
 
@@ -363,7 +363,7 @@ async function scheduleSidebarItemScroll({
         container: navContainer.value,
         element: el,
         behavior: 'smooth',
-        block: 'nearest'
+        block: 'nearest',
       });
       resolve();
     }, 100);
@@ -374,7 +374,7 @@ watch(() => currentChat.value?.id, (id) => {
   void scheduleSidebarItemScroll({
     itemType: 'chat',
     id,
-    onlyWhenOutOfView: true
+    onlyWhenOutOfView: true,
   });
 }, { immediate: true });
 
@@ -382,7 +382,7 @@ watch(() => currentChatGroup.value?.id, (id) => {
   void scheduleSidebarItemScroll({
     itemType: 'chat_group',
     id,
-    onlyWhenOutOfView: true
+    onlyWhenOutOfView: true,
   });
 }, { immediate: true });
 
@@ -409,7 +409,7 @@ watch(activeFocusAreaVersion, () => {
     void scheduleSidebarItemScroll({
       itemType: 'chat',
       id: currentChat.value.id,
-      onlyWhenOutOfView: true
+      onlyWhenOutOfView: true,
     });
     return;
   }
@@ -417,7 +417,7 @@ watch(activeFocusAreaVersion, () => {
   void scheduleSidebarItemScroll({
     itemType: 'chat_group',
     id: currentChatGroup.value?.id,
-    onlyWhenOutOfView: true
+    onlyWhenOutOfView: true,
   });
 });
 
@@ -461,7 +461,7 @@ onMounted(() => {
     void scheduleSidebarItemScroll({
       itemType: 'chat',
       id: currentChat.value.id,
-      onlyWhenOutOfView: true
+      onlyWhenOutOfView: true,
     });
     return;
   }
@@ -469,7 +469,7 @@ onMounted(() => {
   void scheduleSidebarItemScroll({
     itemType: 'chat_group',
     id: currentChatGroup.value?.id,
-    onlyWhenOutOfView: true
+    onlyWhenOutOfView: true,
   });
 });
 
@@ -499,7 +499,7 @@ function animateSidebarItemMoves({ previousRects }: { previousRects: Map<string,
   void nextTick(() => {
     if (!navContainer.value || isDragging.value) return;
 
-    const applyMove = ({ key, element }: { key: string; element: HTMLElement }) => {
+    const applyMove = ({ key, element }: { key: string, element: HTMLElement }) => {
       const previous = previousRects.get(key);
       if (!previous) return;
 
@@ -603,7 +603,7 @@ function onDragLeaveGroup() {
  * Move callback to prevent invalid nesting.
  * Only chats can be moved into chat groups. Chat groups cannot be nested.
  */
-function checkMove({ evt }: { evt: { draggedContext: { element: SidebarItem }; to: HTMLElement } }) {
+function checkMove({ evt }: { evt: { draggedContext: { element: SidebarItem }, to: HTMLElement } }) {
   const draggedItem = evt.draggedContext.element;
   // If dragging into a nested list (a chat group's items)
   if (evt.to.classList.contains('nested-draggable')) {
@@ -676,7 +676,7 @@ async function handleNewChat({ groupId }: { groupId: ChatGroupId | undefined }) 
   await createNewChat({
     groupId,
     modelId: undefined,
-    systemPrompt: undefined
+    systemPrompt: undefined,
   });
   if (currentChat.value) {
     router.push(`/chat/${idToRaw({ id: currentChat.value.id })}`);
@@ -706,7 +706,7 @@ async function handleDeleteChat({ id }: { id: ChatId }) {
   if (isCurrent) router.push('/');
 }
 
-function startEditing({ id, title }: { id: ChatId; title: string | null }) {
+function startEditing({ id, title }: { id: ChatId, title: string | null }) {
   editingId.value = id;
   editingTitle.value = title || '';
 }
@@ -746,7 +746,7 @@ function getGroupItems({ groupId }: { groupId: ChatGroupId }) {
   return items.slice(0, COMPACT_THRESHOLD);
 }
 
-function updateGroupItems({ groupId, newItems }: { groupId: ChatGroupId; newItems: ChatSidebarItem[] }) {
+function updateGroupItems({ groupId, newItems }: { groupId: ChatGroupId, newItems: ChatSidebarItem[] }) {
   const groupIndex = sidebarItemsLocal.value.findIndex(item => item.type === 'chat_group' && item.chatGroup.id === groupId);
   if (groupIndex === -1) return;
 
@@ -765,7 +765,7 @@ function updateGroupItems({ groupId, newItems }: { groupId: ChatGroupId; newItem
 function useGroupItemsModel({ groupId }: { groupId: ChatGroupId }) {
   return computed({
     get: () => getGroupItems({ groupId }),
-    set: (val) => updateGroupItems({ groupId, newItems: val })
+    set: (val) => updateGroupItems({ groupId, newItems: val }),
   });
 }
 
@@ -781,7 +781,7 @@ function handleToggleChatGroupCollapse({ chatGroup }: { chatGroup: ChatGroup }) 
   // Persist to store
   setChatGroupCollapsed({
     groupId: chatGroup.id,
-    isCollapsed: chatGroup.isCollapsed
+    isCollapsed: chatGroup.isCollapsed,
   });
 }
 
@@ -953,7 +953,7 @@ defineExpose({
     scheduleSidebarItemScroll,
     syncLocalItems,
     toggleGroupCompactExpansion,
-  }
+  },
 });
 </script>
 

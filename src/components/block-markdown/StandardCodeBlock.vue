@@ -7,8 +7,8 @@ import { CheckIcon, CopyIcon, TerminalIcon, WrapTextIcon } from 'lucide-vue-next
 import { useCodeBlockSettings } from '@/composables/useCodeBlockSettings';
 
 const props = defineProps<{
-  code: string;
-  lang: string;
+  code: string,
+  lang: string,
 }>();
 
 const { isLineWrapEnabled, toggleLineWrap } = useCodeBlockSettings();
@@ -26,36 +26,36 @@ async function syncHighlightedCodeFromWorker({
   code,
   lang,
 }: {
-  code: string
-  lang: string
+  code: string,
+  lang: string,
 }): Promise<void> {
   const requestId = ++latestHighlightRequestId;
 
   try {
-    highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient()
-    const client = await highlightWorkerClientPromise
+    highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient();
+    const client = await highlightWorkerClientPromise;
     const response = await client.highlight({
       request: {
         code,
         language: lang || undefined,
         mode: 'named-language',
       },
-    })
+    });
 
     if (isDisposed || requestId !== latestHighlightRequestId) {
-      return
+      return;
     }
 
-    renderedCodeHtml.value = sanitizeHighlightHtml({ html: response.html })
+    renderedCodeHtml.value = sanitizeHighlightHtml({ html: response.html });
   } catch (error) {
     if (isDisposed || requestId !== latestHighlightRequestId) {
-      return
+      return;
     }
 
-    console.error('Failed to highlight code in worker:', error)
+    console.error('Failed to highlight code in worker:', error);
     renderedCodeHtml.value = escapeTextAsHtml({
       text: code,
-    })
+    });
   }
 }
 
@@ -64,7 +64,7 @@ onBeforeUpdate(() => {
   if (preRef.value) {
     scrollState.value = {
       top: preRef.value.scrollTop,
-      left: preRef.value.scrollLeft
+      left: preRef.value.scrollLeft,
     };
   }
 });
@@ -77,11 +77,11 @@ onUpdated(() => {
 });
 
 onMounted(() => {
-  highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient()
+  highlightWorkerClientPromise ??= acquireSharedHighlightWorkerClient();
   void syncHighlightedCodeFromWorker({
     code: props.code,
     lang: props.lang,
-  })
+  });
 });
 
 watch(() => [props.code, props.lang] as const, async ([code, lang], [previousCode, previousLang]) => {
@@ -116,7 +116,7 @@ async function copyCode() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

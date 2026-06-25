@@ -13,8 +13,8 @@ const FakeLmOllamaUnloadRequestSchema = z.object({
 });
 
 export async function handleFakeLmOllamaRequest({ url, init }: {
-  url: URL;
-  init: RequestInit | undefined;
+  url: URL,
+  init: RequestInit | undefined,
 }): Promise<Response | undefined> {
   if ((init?.method === undefined || init.method === 'GET') && url.pathname.endsWith('/api/tags')) {
     return Response.json({
@@ -78,7 +78,7 @@ export async function handleFakeLmOllamaRequest({ url, init }: {
 }
 
 function createOllamaNdjsonResponse({ chunks }: {
-  chunks: AsyncIterable<FakeLmStreamItem>;
+  chunks: AsyncIterable<FakeLmStreamItem>,
 }): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
@@ -111,8 +111,8 @@ function createOllamaNdjsonResponse({ chunks }: {
 }
 
 function makeOllamaMessage({ item }: {
-  item: FakeLmStreamItem;
-}): { role: 'assistant'; thinking: string } | { role: 'assistant'; content: string } {
+  item: FakeLmStreamItem,
+}): { role: 'assistant', thinking: string } | { role: 'assistant', content: string } {
   switch (item.type) {
   case 'thinking':
     return { role: 'assistant', thinking: item.chunk };
@@ -126,7 +126,7 @@ function makeOllamaMessage({ item }: {
 }
 
 function parseJsonBody({ body }: {
-  body: BodyInit | null | undefined;
+  body: BodyInit | null | undefined,
 }): unknown {
   if (typeof body !== 'string') {
     return undefined;

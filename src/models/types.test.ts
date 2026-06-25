@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { ChatSchemaDto } from './dto';
 
 vi.mock('../utils/id', () => ({
-  generateOpaqueId: vi.fn(() => 'test-id')
+  generateOpaqueId: vi.fn(() => 'test-id'),
 }));
 
 describe('Zod Schemas', () => {

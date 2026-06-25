@@ -57,7 +57,7 @@ const mockFetchAvailableModels = vi.fn().mockResolvedValue(['model-a', 'model-b'
 function expectLatestGroupUpdate({
   partial,
 }: {
-  partial: Partial<ChatGroup>;
+  partial: Partial<ChatGroup>,
 }) {
   const calls = mockUpdateChatGroupMetadata.mock.calls;
   expect(calls.length).toBeGreaterThan(0);
@@ -117,12 +117,12 @@ const globalStubs = {
   'TransformersJsUpsell': {
     name: 'TransformersJsUpsell',
     template: '<div data-testid="upsell-stub"></div>',
-    props: ['show']
+    props: ['show'],
   },
   'ModelSelector': {
     name: 'ModelSelector',
     template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
-    props: ['modelValue', 'models']
+    props: ['modelValue', 'models'],
   },
   'ChatGroupToolsSettings': {
     name: 'ChatGroupToolsSettings',
@@ -145,7 +145,7 @@ vi.mock('../composables/useGlobalSearch', () => ({
 describe('ChatGroupSettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.updateChatGroup.mockImplementation(async ({ id, updater }: { id: string; updater: ({ current }: { current: ChatGroup | null }) => ChatGroup }) => {
+    mocks.updateChatGroup.mockImplementation(async ({ id, updater }: { id: string, updater: ({ current }: { current: ChatGroup | null }) => ChatGroup }) => {
       if (idToRaw({ id: mockGroup.id }) === id) {
         const next = updater({ current: mockGroup });
         mockUpdateChatGroupMetadata({ id, updates: next });

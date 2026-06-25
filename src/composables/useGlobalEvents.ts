@@ -14,18 +14,18 @@ export type ErrorDetailValue =
   | unknown[];
 
 export interface GlobalEvent {
-  id: string;
-  type: EventType;
-  timestamp: number;
-  message: string;
-  details?: ErrorDetailValue;
-  source: string;
+  id: string,
+  type: EventType,
+  timestamp: number,
+  message: string,
+  details?: ErrorDetailValue,
+  source: string,
 }
 
 const events = ref<GlobalEvent[]>([]);
 
 export function useGlobalEvents() {
-  const addEvent = ({ type, source, message, details }: { type: EventType; source: string; message: string; details?: ErrorDetailValue }) => {
+  const addEvent = ({ type, source, message, details }: { type: EventType, source: string, message: string, details?: ErrorDetailValue }) => {
     events.value.push({
       id: generateOpaqueId(),
       timestamp: Date.now(),
@@ -39,14 +39,14 @@ export function useGlobalEvents() {
   /**
    * Specialized helper for errors.
    */
-  const addErrorEvent = ({ source, message, details }: { source: string; message: string; details?: ErrorDetailValue }) => {
+  const addErrorEvent = ({ source, message, details }: { source: string, message: string, details?: ErrorDetailValue }) => {
     addEvent({ type: 'error', source, message, details });
   };
 
   /**
    * Specialized helper for info logs.
    */
-  const addInfoEvent = ({ source, message, details }: { source: string; message: string; details?: ErrorDetailValue }) => {
+  const addInfoEvent = ({ source, message, details }: { source: string, message: string, details?: ErrorDetailValue }) => {
     addEvent({ type: 'info', source, message, details });
   };
 

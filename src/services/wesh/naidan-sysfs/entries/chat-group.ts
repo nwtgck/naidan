@@ -1,53 +1,53 @@
-import type { ChatGroup } from '@/models/types'
-import { idToRaw } from '@/models/ids'
-import type { ChatId } from '@/models/ids'
+import type { ChatGroup } from '@/models/types';
+import { idToRaw } from '@/models/ids';
+import type { ChatId } from '@/models/ids';
 import {
   NAIDAN_SYSFS_CHATS_DIRECTORY_NAME,
   NAIDAN_SYSFS_METADATA_JSON_FILE_NAME,
   NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME,
   NAIDAN_SYSFS_ROOT_PATH,
-} from '@/services/wesh/naidan-sysfs/constants'
-import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle'
-import { renderChatGroupMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/chat-group-metadata-markdown'
-import { renderChatGroupMetadataJson } from '@/services/wesh/naidan-sysfs/render/chat-group-metadata-json'
-import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsRestrictedDirectoryEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types'
-import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types'
+} from '@/services/wesh/naidan-sysfs/constants';
+import { GeneratedTextFileHandle } from '@/services/wesh/naidan-sysfs/generated-text-file-handle';
+import { renderChatGroupMetadataMarkdown } from '@/services/wesh/naidan-sysfs/render/chat-group-metadata-markdown';
+import { renderChatGroupMetadataJson } from '@/services/wesh/naidan-sysfs/render/chat-group-metadata-json';
+import type { NaidanSysfsContext, NaidanSysfsDirectoryEntry, NaidanSysfsEntry, NaidanSysfsFileEntry, NaidanSysfsRestrictedDirectoryEntry, NaidanSysfsSymlinkEntry } from '@/services/wesh/naidan-sysfs/types';
+import type { WeshDirEntry, WeshOpenFlags, WeshStat } from '@/services/wesh/types';
 
 function createDirectoryStat(): WeshStat {
-  return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
+  return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 };
 }
 
 function createFileStat({ size }: { size: number }): WeshStat {
-  return { size, mode: 0o444, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 }
+  return { size, mode: 0o444, type: 'file', mtime: 0, ino: 0, uid: 0, gid: 0 };
 }
 
 function createRestrictedDirectoryStat(): WeshStat {
-  return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 }
+  return { size: 0, mode: 0o555, type: 'directory', mtime: 0, ino: 0, uid: 0, gid: 0 };
 }
 
 function createChatGroupMetadataFileEntry({
   chatGroup,
   format,
 }: {
-  chatGroup: ChatGroup;
-  format: 'markdown' | 'json';
+  chatGroup: ChatGroup,
+  format: 'markdown' | 'json',
 }): NaidanSysfsFileEntry {
   return {
     kind: 'file',
     async stat({ path }: { path: string }) {
-      void path
-      return createFileStat({ size: 2048 })
+      void path;
+      return createFileStat({ size: 2048 });
     },
-    async open({ flags }: { path: string; flags: WeshOpenFlags }) {
+    async open({ flags }: { path: string, flags: WeshOpenFlags }) {
       switch (flags.access) {
       case 'read':
-        break
+        break;
       case 'write':
       case 'read-write':
-        throw new Error('File is read-only')
+        throw new Error('File is read-only');
       default: {
-        const _ex: never = flags.access
-        throw new Error(`Unhandled access mode: ${String(_ex)}`)
+        const _ex: never = flags.access;
+        throw new Error(`Unhandled access mode: ${String(_ex)}`);
       }
       }
 
@@ -56,118 +56,118 @@ function createChatGroupMetadataFileEntry({
         readText: async () => {
           switch (format) {
           case 'markdown':
-            return renderChatGroupMetadataMarkdown({ chatGroup })
+            return renderChatGroupMetadataMarkdown({ chatGroup });
           case 'json':
-            return `${renderChatGroupMetadataJson({ chatGroup })}\n`
+            return `${renderChatGroupMetadataJson({ chatGroup })}\n`;
           default: {
-            const _ex: never = format
-            throw new Error(`Unhandled metadata format: ${String(_ex)}`)
+            const _ex: never = format;
+            throw new Error(`Unhandled metadata format: ${String(_ex)}`);
           }
           }
         },
-      })
+      });
     },
-  }
+  };
 }
 
 function createRestrictedChatsDirectoryEntry(): NaidanSysfsRestrictedDirectoryEntry {
   return {
     kind: 'restricted_directory',
     async stat({ path }: { path: string }) {
-      void path
-      return createRestrictedDirectoryStat()
+      void path;
+      return createRestrictedDirectoryStat();
     },
     async *readDir({ path }: { path: string }): AsyncIterable<WeshDirEntry> {
-      yield* []
-      throw new Error(`Permission denied: ${path}`)
+      yield* [];
+      throw new Error(`Permission denied: ${path}`);
     },
-  }
+  };
 }
 
 function createChatGroupChatSymlinkEntry({ chatId }: { chatId: ChatId }): NaidanSysfsSymlinkEntry {
   return {
     kind: 'symlink',
     async stat({ path }: { path: string }) {
-      void path
-      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 }
+      void path;
+      return { size: `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`.length, mode: 0o777, type: 'symlink', mtime: 0, ino: 0, uid: 0, gid: 0 };
     },
     async readlink({ path }: { path: string }) {
-      void path
-      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`
+      void path;
+      return `${NAIDAN_SYSFS_ROOT_PATH}/chats/${idToRaw({ id: chatId })}`;
     },
-  }
+  };
 }
 
 function createChatGroupChatSymlinkName({
   index,
   chatId,
 }: {
-  index: number;
-  chatId: ChatId;
+  index: number,
+  chatId: ChatId,
 }): string {
-  return `${index}-chat-${idToRaw({ id: chatId })}`
+  return `${index}-chat-${idToRaw({ id: chatId })}`;
 }
 
 function createChatGroupChatsDirectoryEntry({
   context,
   chatGroup,
 }: {
-  context: NaidanSysfsContext;
-  chatGroup: ChatGroup;
+  context: NaidanSysfsContext,
+  chatGroup: ChatGroup,
 }): NaidanSysfsDirectoryEntry | NaidanSysfsRestrictedDirectoryEntry {
   switch (context.visibility) {
   case 'current_chat_only':
-    return createRestrictedChatsDirectoryEntry()
+    return createRestrictedChatsDirectoryEntry();
   case 'current_chat_with_chat_group':
   case 'main_chats':
     return {
       kind: 'directory',
       async stat({ path }: { path: string }) {
-        void path
-        return createDirectoryStat()
+        void path;
+        return createDirectoryStat();
       },
       async *readDir({
         path,
       }: {
-        path: string;
-        context: NaidanSysfsContext;
+        path: string,
+        context: NaidanSysfsContext,
       }): AsyncIterable<WeshDirEntry> {
         for (const [index, item] of chatGroup.items.entries()) {
           const name = createChatGroupChatSymlinkName({
             index: index + 1,
             chatId: item.chat.id,
-          })
+          });
           yield {
             name,
             type: 'symlink',
             fullPath: `${path}/${name}`,
-          }
+          };
         }
       },
       async getChild({
         name,
         parentPath,
       }: {
-        name: string;
-        parentPath: string;
-        context: NaidanSysfsContext;
+        name: string,
+        parentPath: string,
+        context: NaidanSysfsContext,
       }): Promise<NaidanSysfsEntry | undefined> {
-        void parentPath
+        void parentPath;
         for (const [index, item] of chatGroup.items.entries()) {
           const expectedName = createChatGroupChatSymlinkName({
             index: index + 1,
             chatId: item.chat.id,
-          })
+          });
           if (expectedName === name) {
-            return createChatGroupChatSymlinkEntry({ chatId: item.chat.id })
+            return createChatGroupChatSymlinkEntry({ chatId: item.chat.id });
           }
         }
-        return undefined
+        return undefined;
       },
-    }
+    };
   default: {
-    const _ex: never = context.visibility
-    throw new Error(`Unhandled visibility: ${String(_ex)}`)
+    const _ex: never = context.visibility;
+    throw new Error(`Unhandled visibility: ${String(_ex)}`);
   }
   }
 }
@@ -176,39 +176,39 @@ export function createChatGroupDirectoryEntry({
   context,
   chatGroup,
 }: {
-  context: NaidanSysfsContext;
-  chatGroup: ChatGroup;
+  context: NaidanSysfsContext,
+  chatGroup: ChatGroup,
 }): NaidanSysfsDirectoryEntry {
   return {
     kind: 'directory',
     async stat({ path }: { path: string }) {
-      void path
-      return createDirectoryStat()
+      void path;
+      return createDirectoryStat();
     },
-    async *readDir({ path }: { path: string; context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
-      yield { name: NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME}` }
-      yield { name: NAIDAN_SYSFS_METADATA_JSON_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_JSON_FILE_NAME}` }
-      yield { name: NAIDAN_SYSFS_CHATS_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_CHATS_DIRECTORY_NAME}` }
+    async *readDir({ path }: { path: string, context: NaidanSysfsContext }): AsyncIterable<WeshDirEntry> {
+      yield { name: NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME}` };
+      yield { name: NAIDAN_SYSFS_METADATA_JSON_FILE_NAME, type: 'file', fullPath: `${path}/${NAIDAN_SYSFS_METADATA_JSON_FILE_NAME}` };
+      yield { name: NAIDAN_SYSFS_CHATS_DIRECTORY_NAME, type: 'directory', fullPath: `${path}/${NAIDAN_SYSFS_CHATS_DIRECTORY_NAME}` };
     },
     async getChild({
       name,
       parentPath,
     }: {
-      name: string;
-      parentPath: string;
-      context: NaidanSysfsContext;
+      name: string,
+      parentPath: string,
+      context: NaidanSysfsContext,
     }): Promise<NaidanSysfsEntry | undefined> {
-      void parentPath
+      void parentPath;
       switch (name) {
       case NAIDAN_SYSFS_METADATA_MARKDOWN_FILE_NAME:
-        return createChatGroupMetadataFileEntry({ chatGroup, format: 'markdown' })
+        return createChatGroupMetadataFileEntry({ chatGroup, format: 'markdown' });
       case NAIDAN_SYSFS_METADATA_JSON_FILE_NAME:
-        return createChatGroupMetadataFileEntry({ chatGroup, format: 'json' })
+        return createChatGroupMetadataFileEntry({ chatGroup, format: 'json' });
       case NAIDAN_SYSFS_CHATS_DIRECTORY_NAME:
-        return createChatGroupChatsDirectoryEntry({ context, chatGroup })
+        return createChatGroupChatsDirectoryEntry({ context, chatGroup });
       default:
-        return undefined
+        return undefined;
       }
     },
-  }
+  };
 }

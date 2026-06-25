@@ -3,12 +3,12 @@ import { ref, onMounted } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 
 const props = defineProps<{
-  currentName: string;
+  currentName: string,
 }>();
 
 const emit = defineEmits<{
-  (e: 'confirm', value: string): void;
-  (e: 'cancel'): void;
+  (e: 'confirm', value: string): void,
+  (e: 'cancel'): void,
 }>();
 
 const inputRef = ref<HTMLInputElement | null>(null);
@@ -44,7 +44,7 @@ function onKeyDown({ event }: { event: KeyboardEvent }): void {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

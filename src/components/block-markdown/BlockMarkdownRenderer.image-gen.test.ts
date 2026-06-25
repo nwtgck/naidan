@@ -7,7 +7,7 @@ import { IMAGE_BLOCK_LANG } from '@/utils/image-generation';
 describe('BlockMarkdownRenderer: Image Generation Blocks', () => {
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 
@@ -16,7 +16,7 @@ describe('BlockMarkdownRenderer: Image Generation Blocks', () => {
       binaryObjectId: 'obj123',
       displayWidth: 512,
       displayHeight: 512,
-      prompt: 'a prompt'
+      prompt: 'a prompt',
     };
     const content = `\
 ${'```'}${IMAGE_BLOCK_LANG}
@@ -29,7 +29,7 @@ ${'```'}
       preserveAttributes: undefined,
       preserveClasses: ['naidan-generated-image'],
       trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     // Should render the GeneratedImageBlock component
     expect(dom).toContain('class="naidan-generated-image"');

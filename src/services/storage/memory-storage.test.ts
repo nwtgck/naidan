@@ -84,8 +84,8 @@ describe('MemoryStorageProvider', () => {
       const mockHierarchy = {
         items: [
           { type: 'chat' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb1' },
-          { type: 'chat_group' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb2', chat_ids: ['019bd241-2d57-716b-a9fd-1efbba88cfb3'] }
-        ]
+          { type: 'chat_group' as const, id: '019bd241-2d57-716b-a9fd-1efbba88cfb2', chat_ids: ['019bd241-2d57-716b-a9fd-1efbba88cfb3'] },
+        ],
       };
 
       await provider.saveHierarchy({ hierarchy: mockHierarchy });
@@ -130,8 +130,8 @@ describe('MemoryStorageProvider', () => {
 
       await provider.saveHierarchy({ hierarchy: {
         items: [
-          { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] }
-        ]
+          { type: 'chat_group', id: idToRaw({ id: mockGroup.id }), chat_ids: [idToRaw({ id: mockChat.id })] },
+        ],
       } });
 
       const visibleChats = await provider.listChats();

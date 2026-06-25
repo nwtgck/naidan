@@ -6,7 +6,7 @@ import {
   XIcon, SaveIcon, PlusIcon, Trash2Icon,
   UserIcon, BotIcon, HammerIcon, CpuIcon,
   PaperclipIcon, ImageIcon, HistoryIcon,
-  CopyIcon, GripVerticalIcon, MessageSquareQuoteIcon, InfoIcon
+  CopyIcon, GripVerticalIcon, MessageSquareQuoteIcon, InfoIcon,
 } from 'lucide-vue-next';
 import type { HistoryItem } from '@/utils/chat-tree';
 import { useLayout } from '@/composables/useLayout';
@@ -18,18 +18,18 @@ import { idToRaw } from '@/models/ids';
 import type { AttachmentId, BinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
-  isOpen: boolean;
+  isOpen: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void
+  (e: 'close'): void,
 }>();
 
 const { currentChat, activeMessages, inheritedSettings } = useCurrentChatState();
 const { setActiveFocusArea } = useLayout();
 
 interface EditableHistoryItem extends HistoryItem {
-  localId: string;
+  localId: string,
 }
 
 const editableMessages = ref<EditableHistoryItem[]>([]);
@@ -39,7 +39,7 @@ const isDragging = ref(false);
 
 const localSystemPrompt = ref<SystemPrompt | undefined>(undefined);
 
-function setFileInputRef({ el, index }: { el: unknown; index: number }) {
+function setFileInputRef({ el, index }: { el: unknown, index: number }) {
   fileInputs.value[index] = el as HTMLInputElement | null;
 }
 
@@ -63,7 +63,7 @@ watch(() => props.isOpen, async (open) => {
         content: m.content || '',
         modelId: m.modelId,
         thinking: m.thinking,
-        attachments: m.attachments ? [...m.attachments] : undefined
+        attachments: m.attachments ? [...m.attachments] : undefined,
       }));
 
     // Generate preview URLs for existing attachments
@@ -138,7 +138,7 @@ function addMessage({ index }: { index: number }) {
   editableMessages.value.splice(index + 1, 0, {
     localId: generateOpaqueId(),
     role,
-    content: ''
+    content: '',
   });
 }
 
@@ -153,7 +153,7 @@ function duplicateMessage({ index }: { index: number }) {
   editableMessages.value.splice(index + 1, 0, {
     ...msg,
     localId: generateOpaqueId(),
-    attachments: msg.attachments ? [...msg.attachments] : undefined
+    attachments: msg.attachments ? [...msg.attachments] : undefined,
   });
 }
 
@@ -161,7 +161,7 @@ function triggerFileInput({ index }: { index: number }) {
   fileInputs.value[index]?.click();
 }
 
-async function handleFileSelect({ event, index }: { event: Event; index: number }) {
+async function handleFileSelect({ event, index }: { event: Event, index: number }) {
   const target = event.target as HTMLInputElement;
   if (!target.files || !editableMessages.value[index]) return;
 
@@ -188,7 +188,7 @@ async function handleFileSelect({ event, index }: { event: Event; index: number 
   target.value = '';
 }
 
-async function handlePaste({ event, index }: { event: ClipboardEvent; index: number }) {
+async function handlePaste({ event, index }: { event: ClipboardEvent, index: number }) {
   const items = event.clipboardData?.items;
   if (!items || !editableMessages.value[index]) return;
 
@@ -223,7 +223,7 @@ async function handlePaste({ event, index }: { event: ClipboardEvent; index: num
   }
 }
 
-function removeAttachment({ msgIndex, attId }: { msgIndex: number; attId: AttachmentId }) {
+function removeAttachment({ msgIndex, attId }: { msgIndex: number, attId: AttachmentId }) {
   const msg = editableMessages.value[msgIndex];
   if (msg && msg.attachments) {
     msg.attachments = msg.attachments.filter(attachment => attachment.id !== attId);
@@ -264,7 +264,7 @@ const systemPromptBehavior = computed({
       throw new Error(`Unhandled behavior: ${_ex}`);
     }
     }
-  }
+  },
 });
 
 async function handleSave() {
@@ -290,7 +290,7 @@ function capitalize({ s }: { s: string }) {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

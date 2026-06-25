@@ -9,7 +9,7 @@ import { idToRaw, toChatGroupId, toChatId } from '@/models/ids';
 
 const mockChatGroups = ref<ChatGroup[]>([]);
 const mockChats = ref<ChatSummary[]>([]);
-const mockCurrentChat = ref<{ id: string; groupId?: string | null } | null>(null);
+const mockCurrentChat = ref<{ id: string, groupId?: string | null } | null>(null);
 const mockCurrentChatGroup = ref<ChatGroup | { id: string } | null>(null);
 const mockOpenChat = vi.fn();
 const mockOpenChatGroup = vi.fn();
@@ -69,7 +69,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 
 vi.mock('../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: () => ({
-    openChat: ({ chatId }: { chatId: string; leafId?: string }) => mockOpenChat({ id: chatId }),
+    openChat: ({ chatId }: { chatId: string, leafId?: string }) => mockOpenChat({ id: chatId }),
     openChatAtMessage: vi.fn(),
     openChatGroup: ({ groupId }: { groupId: string | null }) => mockOpenChatGroup({ id: groupId }),
     TEST_ONLY: {},
@@ -79,7 +79,7 @@ vi.mock('../composables/chat/ui/useChatNavigation', () => ({
 vi.mock('../composables/chat/ui/useSidebarStructure', () => ({
   useSidebarStructure: () => ({
     persistSidebarStructure: mockPersistSidebarStructure,
-    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string; isCollapsed: boolean }) =>
+    setChatGroupCollapsed: ({ groupId, isCollapsed }: { groupId: string, isCollapsed: boolean }) =>
       mockSetChatGroupCollapsed({ groupId, isCollapsed }),
     TEST_ONLY: {},
   }),
@@ -155,7 +155,7 @@ describe('Sidebar Keyboard Navigation', () => {
       if (typeof options.top === 'number') this.scrollTop = options.top;
     });
     HTMLElement.prototype.getBoundingClientRect = vi.fn().mockReturnValue({
-      top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0
+      top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0,
     });
 
     mockActiveFocusArea.value = 'sidebar';
@@ -258,7 +258,7 @@ describe('Sidebar Keyboard Navigation', () => {
   it('jumps to parent group on ArrowLeft from a grouped chat', async () => {
     const group1: ChatGroup = {
       id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0,
-      items: [{ id: 'chat:1', type: 'chat', chat: { id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } }]
+      items: [{ id: 'chat:1', type: 'chat', chat: { id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } }],
     };
     mockChatGroups.value = [group1];
     mockChats.value = [{ id: toChatId({ raw: '1' }), title: 'Chat 1', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) }];
@@ -277,7 +277,7 @@ describe('Sidebar Keyboard Navigation', () => {
     const chat1: ChatSummary = { id: toChatId({ raw: 'c1' }), title: 'C1', updatedAt: 0 };
     mockChatGroups.value = [
       { id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: true, updatedAt: 0, items: [] },
-      { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: true, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: true, updatedAt: 0, items: [] },
     ];
     mockChats.value = [chat1];
     mockCurrentChatGroup.value = { id: 'g1' };
@@ -299,9 +299,9 @@ describe('Sidebar Keyboard Navigation', () => {
     mockChatGroups.value = [
       {
         id: toChatGroupId({ raw: 'g1' }), name: 'G1', isCollapsed: true, updatedAt: 0,
-        items: [{ id: 'chat:hidden', type: 'chat', chat: { id: toChatId({ raw: 'hidden' }), title: 'Hidden', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } }]
+        items: [{ id: 'chat:hidden', type: 'chat', chat: { id: toChatId({ raw: 'hidden' }), title: 'Hidden', updatedAt: 0, groupId: toChatGroupId({ raw: 'g1' }) } }],
       },
-      { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: true, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g2' }), name: 'G2', isCollapsed: true, updatedAt: 0, items: [] },
     ];
     mockCurrentChat.value = { id: 'hidden', groupId: 'g1' };
     mockCurrentChatGroup.value = null;

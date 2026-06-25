@@ -18,7 +18,7 @@ function renderVisibleAscii({ char }: { char: string }): string {
   return char;
 }
 
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   return path.startsWith('/') ? path : `${cwd}/${path}`;
 }
 

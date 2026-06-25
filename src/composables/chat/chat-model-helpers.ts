@@ -5,17 +5,17 @@ export function resolveChatEndpointForChat({
   chatGroups,
   settings,
 }: {
-  chat: Pick<Chat, 'groupId' | 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders'>;
-  chatGroups: readonly ChatGroup[];
+  chat: Pick<Chat, 'groupId' | 'endpointType' | 'endpointUrl' | 'endpointHttpHeaders'>,
+  chatGroups: readonly ChatGroup[],
   settings: {
-    endpointType: Settings['endpointType'];
-    endpointUrl?: Settings['endpointUrl'];
-    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined;
-  };
+    endpointType: Settings['endpointType'],
+    endpointUrl?: Settings['endpointUrl'],
+    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined,
+  },
 }): {
-  type: EndpointType;
-  url: string | undefined;
-  headers: [string, string][] | undefined;
+  type: EndpointType,
+  url: string | undefined,
+  headers: [string, string][] | undefined,
 } {
   const group = chat.groupId ? chatGroups.find(({ id }) => id === chat.groupId) : undefined;
   return {
@@ -31,14 +31,14 @@ export function resolveGlobalEndpoint({
   settings,
 }: {
   settings: {
-    endpointType: Settings['endpointType'];
-    endpointUrl?: Settings['endpointUrl'];
-    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined;
-  };
+    endpointType: Settings['endpointType'],
+    endpointUrl?: Settings['endpointUrl'],
+    endpointHttpHeaders?: readonly (readonly [string, string])[] | undefined,
+  },
 }): {
-  type: EndpointType;
-  url: string | undefined;
-  headers: [string, string][] | undefined;
+  type: EndpointType,
+  url: string | undefined,
+  headers: [string, string][] | undefined,
 } {
   return {
     type: settings.endpointType,
@@ -52,7 +52,7 @@ export function resolveGlobalEndpoint({
 function cloneHeaders({
   headers,
 }: {
-  headers: readonly (readonly [string, string])[] | undefined;
+  headers: readonly (readonly [string, string])[] | undefined,
 }): [string, string][] | undefined {
   return headers ? headers.map(([name, value]) => [name, value]) : undefined;
 }

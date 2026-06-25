@@ -2,18 +2,18 @@
 import type { ApprovalUiDecision } from '@/services/approval';
 
 const props = defineProps<{
-  actionLabel: string;
+  actionLabel: string,
 }>();
 
 const emit = defineEmits<{
-  (event: 'decide', decision: ApprovalUiDecision): void;
+  (event: 'decide', decision: ApprovalUiDecision): void,
 }>();
 
 type ApprovalDecisionOption = {
-  decision: ApprovalUiDecision;
-  label: string;
-  targetLabel: string | undefined;
-  testId: string;
+  decision: ApprovalUiDecision,
+  label: string,
+  targetLabel: string | undefined,
+  testId: string,
 };
 
 const options: ApprovalDecisionOption[] = [
@@ -46,7 +46,7 @@ const options: ApprovalDecisionOption[] = [
 function decide({
   decision,
 }: {
-  decision: ApprovalUiDecision;
+  decision: ApprovalUiDecision,
 }): void {
   emit('decide', decision);
 }
@@ -55,7 +55,7 @@ defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
     // ESLint-required for defineExpose.
-  }
+  },
 });
 </script>
 

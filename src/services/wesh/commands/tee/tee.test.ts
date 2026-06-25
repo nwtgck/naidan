@@ -16,7 +16,7 @@ describe('tee command', () => {
   async function mkdir({
     path,
   }: {
-    path: string;
+    path: string,
   }) {
     const segments = path.split('/').filter(Boolean);
     let dir = rootHandle;
@@ -28,7 +28,7 @@ describe('tee command', () => {
   async function readTextFile({
     path,
   }: {
-    path: string;
+    path: string,
   }): Promise<string> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -49,7 +49,7 @@ describe('tee command', () => {
   async function execute({
     script,
   }: {
-    script: string;
+    script: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

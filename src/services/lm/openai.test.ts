@@ -10,10 +10,10 @@ describe('OpenAIProvider Integration Tests', () => {
   const { errorCount, clearEvents, events } = useGlobalEvents();
 
   let capturedRequests: {
-    url?: string;
-    method?: string;
-    headers: http.IncomingHttpHeaders;
-    body?: any;
+    url?: string,
+    method?: string,
+    headers: http.IncomingHttpHeaders,
+    body?: any,
   }[] = [];
 
   // Helper to start a mock server
@@ -78,7 +78,7 @@ describe('OpenAIProvider Integration Tests', () => {
         model: 'gpt-4',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('Hello world');
@@ -102,7 +102,7 @@ data: [DONE]
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: () => {}
+        onChunk: () => {},
       });
       expect(capturedRequests[0]!.url).toBe('/chat/completions');
     });
@@ -117,7 +117,7 @@ data: [DONE]
       await expect(provider.chat({
         messages: [],
         model: 'invalid',
-        onChunk: () => {}
+        onChunk: () => {},
       })).rejects.toThrow('OpenAI API Error (400): Invalid model');
 
       expect(errorCount.value).toBe(1);
@@ -129,7 +129,7 @@ data: [DONE]
       await expect(provider.chat({
         messages: [],
         model: 'any',
-        onChunk: () => {}
+        onChunk: () => {},
       })).rejects.toThrow();
 
       expect(errorCount.value).toBe(1);
@@ -141,8 +141,8 @@ data: [DONE]
         res.end(JSON.stringify({
           data: [
             { id: 'gpt-4' },
-            { id: 'gpt-3.5-turbo' }
-          ]
+            { id: 'gpt-3.5-turbo' },
+          ],
         }));
       });
 
@@ -159,12 +159,12 @@ data: [DONE]
 
       const provider = new OpenAIProvider({
         endpoint: baseUrl,
-        headers: [['Authorization', 'Bearer test-token']]
+        headers: [['Authorization', 'Bearer test-token']],
       });
       await provider.chat({
         messages: [],
         model: 'any',
-        onChunk: () => {}
+        onChunk: () => {},
       });
       expect(capturedRequests[0]!.headers['authorization']).toBe('Bearer test-token');
     });
@@ -224,7 +224,7 @@ data: [DONE]
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('A');
@@ -246,7 +246,7 @@ data: [DONE]
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('Valid');
@@ -264,7 +264,7 @@ data: [DONE]
       // Array version
       await provider.chat({
         messages: [], model: 'm', onChunk: () => {},
-        parameters: { ...EMPTY_LM_PARAMETERS, stop: ['A', 'B'] }
+        parameters: { ...EMPTY_LM_PARAMETERS, stop: ['A', 'B'] },
       });
       expect(capturedRequests[0]!.body.stop).toEqual(['A', 'B']);
     });
@@ -291,8 +291,8 @@ data: [DONE]
           presencePenalty: 0.5,
           frequencyPenalty: 0.3,
           stop: ['STOP'],
-          reasoning: { effort: 'medium' }
-        }
+          reasoning: { effort: 'medium' },
+        },
       });
 
       expect(capturedRequests[0]!.body).toEqual({
@@ -305,7 +305,7 @@ data: [DONE]
         presence_penalty: 0.5,
         frequency_penalty: 0.3,
         stop: ['STOP'],
-        reasoning_effort: 'medium'
+        reasoning_effort: 'medium',
       });
     });
 
@@ -324,7 +324,7 @@ data: [DONE]
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('Valid');
@@ -348,7 +348,7 @@ data: [DONE]
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('AB');
@@ -373,7 +373,7 @@ data: [DONE]
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('Cleaner');
@@ -397,7 +397,7 @@ data: [DONE]
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('Fragmented');
@@ -421,7 +421,7 @@ data: [DONE]
         model: 'any',
         onChunk: ({ chunk: chunk }) => {
           result += chunk;
-        }
+        },
       });
 
       expect(result).toBe('Split Fractured');
@@ -444,7 +444,7 @@ data: [DONE]
           model: 'any',
           onChunk: ({ chunk: chunk }) => {
             result += chunk;
-          }
+          },
         });
       } catch (e) {
         // Expected
@@ -468,7 +468,7 @@ data: [DONE]
         onChunk: ({ chunk: chunk }) => {
           if (chunk === 'A') controller.abort();
         },
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       await expect(chatPromise).rejects.toThrow();

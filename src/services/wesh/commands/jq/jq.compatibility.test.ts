@@ -20,8 +20,8 @@ describe('wesh jq compatibility', () => {
     script,
     stdinText,
   }: {
-    script: string;
-    stdinText?: string;
+    script: string,
+    stdinText?: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();
@@ -38,8 +38,8 @@ describe('wesh jq compatibility', () => {
     path,
     data,
   }: {
-    path: string;
-    data: string;
+    path: string,
+    data: string,
   }): Promise<void> {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();

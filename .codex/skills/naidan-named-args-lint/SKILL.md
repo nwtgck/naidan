@@ -102,15 +102,15 @@ This rule is based on the shape, not on the identifier name. These are all candi
 
 ```ts
 params: { id: string }
-options: { buffer: Uint8Array; offset?: number }
-config: { endpoint: string; headers?: [string, string][] }
-request: { url: string; signal?: AbortSignal }
+options: { buffer: Uint8Array, offset?: number }
+config: { endpoint: string, headers?: [string, string][] }
+request: { url: string, signal?: AbortSignal }
 ```
 
 When the original function stores the whole object, preserve behavior by rebuilding the object.
 
 ```ts
-constructor({ endpoint, headers }: { endpoint: string; headers?: [string, string][] }) {
+constructor({ endpoint, headers }: { endpoint: string, headers?: [string, string][] }) {
   this.config = { endpoint, headers };
 }
 ```
@@ -148,7 +148,7 @@ type ProgressListener = (status: string, progress: number) => void;
 Fix:
 
 ```ts
-type ProgressListener = ({ status, progress }: { status: string; progress: number }) => void;
+type ProgressListener = ({ status, progress }: { status: string, progress: number }) => void;
 ```
 
 Do not suppress a callback type just because the parameter type is external.
@@ -213,7 +213,7 @@ type PendingRequest = Pick<
   ReturnType<typeof Promise.withResolvers<PrivacyFetchResponse>>,
   'resolve' | 'reject'
 > & {
-  cleanup: () => void;
+  cleanup: () => void,
 };
 ```
 
@@ -454,7 +454,7 @@ interface LocalEventTarget extends EventTarget {
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
-  ): void;
+  ): void,
 }
 ```
 
@@ -464,7 +464,7 @@ Do not use this as a blanket exception for new Naidan methods.
 
 ```ts
 interface LocalEventTarget extends EventTarget {
-  naidanMethod(value: string): void; // should use named args
+  naidanMethod(value: string): void, // should use named args
 }
 ```
 
@@ -472,7 +472,7 @@ Fix:
 
 ```ts
 interface LocalEventTarget extends EventTarget {
-  naidanMethod({ value }: { value: string }): void;
+  naidanMethod({ value }: { value: string }): void,
 }
 ```
 
@@ -485,7 +485,7 @@ In that case, keep a precise disable comment.
 ```ts
 interface JSZipObjectWithInternalStream extends JSZip.JSZipObject {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this method mirrors JSZip's runtime internalStream API, which is not declared in the public JSZipObject type.
-  internalStream(type: 'uint8array'): JSZip.JSZipStreamHelper<Uint8Array>;
+  internalStream(type: 'uint8array'): JSZip.JSZipStreamHelper<Uint8Array>,
 }
 ```
 
@@ -510,7 +510,7 @@ interface WorkerApi {
   run(
     request: RunRequest,
     progressCallback: (progress: ProgressInfo) => void,
-  ): Promise<void>;
+  ): Promise<void>,
 }
 ```
 
@@ -521,8 +521,8 @@ async function run({
   request,
   onProgress,
 }: {
-  request: RunRequest;
-  onProgress: ({ progress }: { progress: ProgressInfo }) => void;
+  request: RunRequest,
+  onProgress: ({ progress }: { progress: ProgressInfo }) => void,
 }) {
   await remote.run(
     request,

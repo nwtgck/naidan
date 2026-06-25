@@ -24,7 +24,7 @@ const hasClipboard = computed(() =>
 );
 
 type MenuItem =
-  | { type: 'action'; action: ContextMenuAction; label: string; icon: unknown; danger?: boolean; disabled?: boolean; disabledReason?: string }
+  | { type: 'action', action: ContextMenuAction, label: string, icon: unknown, danger?: boolean, disabled?: boolean, disabledReason?: string }
   | { type: 'divider' };
 
 const menuItems = computed<MenuItem[]>(() => {
@@ -90,7 +90,7 @@ const menuItems = computed<MenuItem[]>(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

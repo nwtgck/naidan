@@ -6,7 +6,7 @@ import type { ToolCallRecord } from '@/services/tools/types';
 import LmToolCall from './LmToolCall.vue';
 
 defineProps<{
-  toolCalls: ToolCallRecord[];
+  toolCalls: ToolCallRecord[],
 }>();
 
 const isExpanded = ref(false); // Default collapsed
@@ -18,8 +18,8 @@ const toggleExpand = () => {
 defineExpose({
   TEST_ONLY: {
     isExpanded,
-    toggleExpand
-  }
+    toggleExpand,
+  },
 });
 </script>
 

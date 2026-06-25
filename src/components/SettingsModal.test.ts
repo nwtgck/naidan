@@ -823,7 +823,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         props: { isOpen: true },
         global: {
           stubs: globalStubs,
-        }
+        },
       });
       await flushPromises();
 
@@ -1232,7 +1232,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await flushPromises();
 
@@ -1240,12 +1240,12 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
         {
           newName: 'Recipe 1',
           matchedModelId: 'm1',
-          recipe: { systemPrompt: { content: 'p1', behavior: 'override' as const }, lmParameters: { temperature: 0.5 } } as any
+          recipe: { systemPrompt: { content: 'p1', behavior: 'override' as const }, lmParameters: { temperature: 0.5 } } as any,
         },
         {
           newName: 'Recipe 2',
-          recipe: { systemPrompt: undefined, lmParameters: undefined } as any
-        }
+          recipe: { systemPrompt: undefined, lmParameters: undefined } as any,
+        },
       ];
 
       // Access handleImportRecipes via vm
@@ -1256,16 +1256,16 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 1', options: expect.objectContaining({
         modelId: 'm1',
         systemPrompt: { content: 'p1', behavior: 'override' },
-        lmParameters: expect.objectContaining({ temperature: 0.5, reasoning: { effort: undefined } })
+        lmParameters: expect.objectContaining({ temperature: 0.5, reasoning: { effort: undefined } }),
       }) });
       expect(mockCreateChatGroup).toHaveBeenCalledWith({ name: 'Recipe 2', options: expect.objectContaining({
         modelId: undefined,
         systemPrompt: undefined,
-        lmParameters: expect.objectContaining({ reasoning: { effort: undefined } })
+        lmParameters: expect.objectContaining({ reasoning: { effort: undefined } }),
       }) });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
-        message: 'Successfully imported 2 recipes as chat groups'
+        message: 'Successfully imported 2 recipes as chat groups',
       }));
     });
 
@@ -1284,7 +1284,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
 
       const wrapper = mount(SettingsModal, {
         props: { isOpen: true },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
       await flushPromises();
 
@@ -1292,7 +1292,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
       await vm.handleImportRecipes({ recipes: [{ newName: 'Fail', recipe: {} as any }] });
 
       expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({
-        message: expect.stringContaining('Failed to import recipes: Import failed')
+        message: expect.stringContaining('Failed to import recipes: Import failed'),
       }));
     });
   });
@@ -1301,7 +1301,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     it('sets focus area to settings when opened, and restores to chat when closed', async () => {
       const wrapper = mount(SettingsModal, {
         props: { isOpen: false },
-        global: { stubs: globalStubs }
+        global: { stubs: globalStubs },
       });
 
       await wrapper.setProps({ isOpen: true });

@@ -16,9 +16,9 @@ describe('LM Providers - Multimodal Requests', () => {
         getReader: () => ({
           read: vi.fn()
             .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n') })
-            .mockResolvedValueOnce({ done: true })
-        })
-      }
+            .mockResolvedValueOnce({ done: true }),
+        }),
+      },
     });
 
     const messages = [
@@ -26,15 +26,15 @@ describe('LM Providers - Multimodal Requests', () => {
         role: 'user',
         content: [
           { type: 'text', text: 'Analyze this:' },
-          { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } }
-        ]
-      }
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+        ],
+      },
     ];
 
     await provider.chat({
       messages: messages as any,
       model: 'gpt-4-vision',
-      onChunk: () => {}
+      onChunk: () => {},
     });
 
     const fetchCall = (global.fetch as any).mock.calls[0];
@@ -44,7 +44,7 @@ describe('LM Providers - Multimodal Requests', () => {
     expect(body.messages[0].content).toHaveLength(2);
     expect(body.messages[0].content[1]).toEqual({
       type: 'image_url',
-      image_url: { url: 'data:image/png;base64,abc' }
+      image_url: { url: 'data:image/png;base64,abc' },
     });
   });
 
@@ -56,9 +56,9 @@ describe('LM Providers - Multimodal Requests', () => {
         getReader: () => ({
           read: vi.fn()
             .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"message":{"content":"Hi"},"done":true}\n') })
-            .mockResolvedValueOnce({ done: true })
-        })
-      }
+            .mockResolvedValueOnce({ done: true }),
+        }),
+      },
     });
 
     const messages = [
@@ -66,15 +66,15 @@ describe('LM Providers - Multimodal Requests', () => {
         role: 'user',
         content: [
           { type: 'text', text: 'See this' },
-          { type: 'image_url', image_url: { url: 'data:image/png;base64,xyz' } }
-        ]
-      }
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,xyz' } },
+        ],
+      },
     ];
 
     await provider.chat({
       messages: messages as any,
       model: 'llava',
-      onChunk: () => {}
+      onChunk: () => {},
     });
 
     const fetchCall = (global.fetch as any).mock.calls[0];

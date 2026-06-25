@@ -6,24 +6,24 @@ export type PrivacyFetchRuntimeErrorCode =
   | 'duplicate_request_id'
   | 'fetch_failed'
   | 'rejected'
-  | 'unknown'
+  | 'unknown';
 
 export class PrivacyFetchError extends Error {
-  code: PrivacyFetchRuntimeErrorCode
+  code: PrivacyFetchRuntimeErrorCode;
 
   constructor({
     code,
     message,
   }: {
-    code: PrivacyFetchRuntimeErrorCode;
-    message: string;
+    code: PrivacyFetchRuntimeErrorCode,
+    message: string,
   }) {
-    super(message)
-    this.code = code
+    super(message);
+    this.code = code;
     this.name = (() => {
       switch (code) {
       case 'aborted':
-        return 'AbortError'
+        return 'AbortError';
       case 'broker_disposed':
       case 'broker_not_ready':
       case 'broker_unavailable':
@@ -31,13 +31,13 @@ export class PrivacyFetchError extends Error {
       case 'fetch_failed':
       case 'rejected':
       case 'unknown':
-        return 'PrivacyFetchError'
+        return 'PrivacyFetchError';
       default: {
-        const neverCode: never = code
-        throw new Error(`Unhandled privacy fetch runtime error code: ${String(neverCode)}`)
+        const neverCode: never = code;
+        throw new Error(`Unhandled privacy fetch runtime error code: ${String(neverCode)}`);
       }
       }
-    })()
+    })();
   }
 }
 
@@ -45,15 +45,15 @@ export function createPrivacyFetchError({
   code,
   message,
 }: {
-  code: PrivacyFetchRuntimeErrorCode;
-  message: string;
+  code: PrivacyFetchRuntimeErrorCode,
+  message: string,
 }): PrivacyFetchError {
   return new PrivacyFetchError({
     code,
     message,
-  })
+  });
 }
 
 export function isPrivacyFetchError(error: unknown): error is PrivacyFetchError {
-  return error instanceof PrivacyFetchError
+  return error instanceof PrivacyFetchError;
 }

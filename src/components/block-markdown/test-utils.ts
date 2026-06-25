@@ -16,11 +16,11 @@ export function normalizeDom({
   trimWhitespaceNodes = false,
   whitespaceSensitiveTags = ['pre', 'code'],
 }: {
-  element: Element;
-  preserveAttributes?: string[];
-  preserveClasses?: string[];
-  trimWhitespaceNodes?: boolean;
-  whitespaceSensitiveTags?: string[];
+  element: Element,
+  preserveAttributes?: string[],
+  preserveClasses?: string[],
+  trimWhitespaceNodes?: boolean,
+  whitespaceSensitiveTags?: string[],
 }): string {
   function createCleanNode({ source, parentIsSensitive }: { source: Node, parentIsSensitive: boolean }): Node | null {
     if (source.nodeType === Node.TEXT_NODE) {
@@ -50,7 +50,7 @@ export function normalizeDom({
       for (const child of Array.from(source.childNodes)) {
         const cleanChild = createCleanNode({
           source: child,
-          parentIsSensitive: currentIsSensitive
+          parentIsSensitive: currentIsSensitive,
         });
         if (cleanChild) cleanEl.appendChild(cleanChild);
       }
@@ -63,7 +63,7 @@ export function normalizeDom({
 
   const result = createCleanNode({
     source: element,
-    parentIsSensitive: false
+    parentIsSensitive: false,
   });
 
   return (result as Element)?.outerHTML || '';

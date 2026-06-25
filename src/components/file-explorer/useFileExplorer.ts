@@ -36,9 +36,9 @@ export async function useFileExplorer({
   initialPath,
   initialLocked,
 }: {
-  root: FileExplorerRootDescriptor;
-  initialPath: string[] | undefined;
-  initialLocked: boolean;
+  root: FileExplorerRootDescriptor,
+  initialPath: string[] | undefined,
+  initialLocked: boolean,
 }) {
   const client = await createFileExplorerWorkerClient({ root });
   const { addToast } = useToast();

@@ -15,8 +15,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -93,9 +93,9 @@ export const lsCommandDefinition: WeshCommandDefinition = {
       entry,
       isCommandLineArgument,
     }: {
-      path: string;
-      entry: WeshEntryRef | undefined;
-      isCommandLineArgument: boolean;
+      path: string,
+      entry: WeshEntryRef | undefined,
+      isCommandLineArgument: boolean,
     }): Promise<WeshEntryRef> => {
       const shouldFollow = (() => {
         switch (symlinkMode) {
@@ -127,11 +127,11 @@ export const lsCommandDefinition: WeshCommandDefinition = {
       isCommandLineArgument,
       printHeader,
     }: {
-      displayPath: string;
-      fullPath: string;
-      entry: WeshEntryRef | undefined;
-      isCommandLineArgument: boolean;
-      printHeader: boolean;
+      displayPath: string,
+      fullPath: string,
+      entry: WeshEntryRef | undefined,
+      isCommandLineArgument: boolean,
+      printHeader: boolean,
     }): Promise<void> {
       try {
         const entry = await resolveListingEntry({
@@ -277,15 +277,15 @@ async function formatEntry({
   stat,
   getStat,
 }: {
-  context: WeshCommandContext;
-  displayName: string;
-  fullPath: string;
-  type: WeshFileType;
-  longFormat: boolean;
-  humanReadable: boolean;
-  classify: boolean;
-  stat: WeshStat | undefined;
-  getStat: () => Promise<WeshStat>;
+  context: WeshCommandContext,
+  displayName: string,
+  fullPath: string,
+  type: WeshFileType,
+  longFormat: boolean,
+  humanReadable: boolean,
+  classify: boolean,
+  stat: WeshStat | undefined,
+  getStat: () => Promise<WeshStat>,
 }): Promise<string> {
   let line = displayName;
   if (classify) {

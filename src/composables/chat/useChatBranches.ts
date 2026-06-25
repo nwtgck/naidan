@@ -13,29 +13,29 @@ export type ChatBranchesAdapter = {
     newContent,
     lmParameters,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-    newContent: string;
-    lmParameters: LmParameters | undefined;
-  }): Promise<void>;
+    chatId: ChatId,
+    messageId: MessageId,
+    newContent: string,
+    lmParameters: LmParameters | undefined,
+  }): Promise<void>,
 
   switchVersion({
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-  }): Promise<void>;
+    chatId: ChatId,
+    messageId: MessageId,
+  }): Promise<void>,
 
   forkChat({
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-  }): Promise<ChatId | null>;
+    chatId: ChatId,
+    messageId: MessageId,
+  }): Promise<ChatId | null>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatBranches(): ChatBranchesAdapter {
@@ -45,10 +45,10 @@ export function useChatBranches(): ChatBranchesAdapter {
     newContent,
     lmParameters,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-    newContent: string;
-    lmParameters: LmParameters | undefined;
+    chatId: ChatId,
+    messageId: MessageId,
+    newContent: string,
+    lmParameters: LmParameters | undefined,
   }): Promise<void> {
     await editMessageForChat({
       chatId,
@@ -62,8 +62,8 @@ export function useChatBranches(): ChatBranchesAdapter {
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
+    chatId: ChatId,
+    messageId: MessageId,
   }): Promise<void> {
     await switchVersionForChat({
       chatId,
@@ -75,8 +75,8 @@ export function useChatBranches(): ChatBranchesAdapter {
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
+    chatId: ChatId,
+    messageId: MessageId,
   }): Promise<ChatId | null> {
     return await forkChatForChat({
       chatId,

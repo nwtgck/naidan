@@ -9,7 +9,7 @@ const route = useRoute();
 const chatNavigation = useChatNavigation();
 
 interface RouteParams {
-  id: string;
+  id: string,
 }
 
 async function syncGroup() {
@@ -27,7 +27,7 @@ watch(() => (route.params as unknown as RouteParams).id, syncGroup);
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

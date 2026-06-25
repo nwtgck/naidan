@@ -1,13 +1,13 @@
 function normalizePath(filePath) {
-  return filePath.replace(/\\/g, '/')
+  return filePath.replace(/\\/g, '/');
 }
 
 function isAllowedHtmlImplementationFile({ filePath }) {
-  return normalizePath(filePath).endsWith('/src/lib/security/allowedHtml.ts')
+  return normalizePath(filePath).endsWith('/src/lib/security/allowedHtml.ts');
 }
 
 function isAllowedHtmlType({ node, sourceCode }) {
-  return /\bAllowedHtml\b/u.test(sourceCode.getText(node.typeAnnotation))
+  return /\bAllowedHtml\b/u.test(sourceCode.getText(node.typeAnnotation));
 }
 
 export const rule = {
@@ -23,24 +23,24 @@ export const rule = {
   },
   create(context) {
     if (isAllowedHtmlImplementationFile({ filePath: context.filename ?? context.getFilename?.() ?? '' })) {
-      return {}
+      return {};
     }
 
-    const sourceCode = context.sourceCode
+    const sourceCode = context.sourceCode;
     return {
       TSAsExpression(node) {
         if (isAllowedHtmlType({ node, sourceCode })) {
-          context.report({ node, messageId: 'noAllowedHtmlCast' })
+          context.report({ node, messageId: 'noAllowedHtmlCast' });
         }
       },
       TSTypeAssertion(node) {
         if (isAllowedHtmlType({ node, sourceCode })) {
-          context.report({ node, messageId: 'noAllowedHtmlCast' })
+          context.report({ node, messageId: 'noAllowedHtmlCast' });
         }
       },
-    }
+    };
   },
-}
+};
 
 export default {
   files: ['src/**/*.ts', 'src/**/*.vue'],
@@ -55,4 +55,4 @@ export default {
   rules: {
     'local-rules-allowed-html-cast/no-allowed-html-cast': 'error',
   },
-}
+};

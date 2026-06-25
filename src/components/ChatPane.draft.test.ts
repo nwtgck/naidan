@@ -96,7 +96,7 @@ vi.mock('../composables/useChat', () => ({
       flow: { position: 'standalone', nesting: 'none' },
       isFirstInNode: true,
       isLastInNode: true,
-      isFirstInTurn: true
+      isFirstInTurn: true,
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(() => false),
@@ -123,12 +123,12 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: ChatId;
-    autoSendPrompt?: string;
-    targetMessageId?: MessageId;
-  };
-  attachTo?: Element | string;
-  global?: Record<string, unknown>;
+    chatId?: ChatId,
+    autoSendPrompt?: string,
+    targetMessageId?: MessageId,
+  },
+  attachTo?: Element | string,
+  global?: Record<string, unknown>,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -149,11 +149,11 @@ vi.mock('../composables/chat/useChatConversation', () => ({
       attachments,
       lmParameters,
     }: {
-      chatId: string;
-      content: string;
-      parentId: string | null | undefined;
-      attachments: unknown[] | undefined;
-      lmParameters: unknown;
+      chatId: string,
+      content: string,
+      parentId: string | null | undefined,
+      attachments: unknown[] | undefined,
+      lmParameters: unknown,
     }) => mockSendMessage({
       content,
       parentId,
@@ -201,10 +201,10 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
       attachments,
       lmParameters,
     }: {
-      content: string;
-      parentId: string | null | undefined;
-      attachments: unknown[] | undefined;
-      lmParameters: unknown;
+      content: string,
+      parentId: string | null | undefined,
+      attachments: unknown[] | undefined,
+      lmParameters: unknown,
     }) => mockSendMessage({
       content,
       parentId,
@@ -280,11 +280,11 @@ describe('ChatPane Draft Maintenance', () => {
     };
     mockResolvedSettings.value = {
       modelId: 'm1',
-      sources: { modelId: 'global' }
+      sources: { modelId: 'global' },
     };
     mockInheritedSettings.value = {
       modelId: 'm1',
-      sources: { modelId: 'global' }
+      sources: { modelId: 'global' },
     };
   });
 
@@ -379,7 +379,7 @@ describe('ChatPane Draft Maintenance', () => {
       size: 5,
       uploadedAt: Date.now(),
       status: 'memory' as const,
-      blob: new Blob([''], { type: 'image/png' })
+      blob: new Blob([''], { type: 'image/png' }),
     };
     const chatInput = wrapper.findComponent(ChatInput);
     (chatInput.vm as any).attachments.push(attachment);

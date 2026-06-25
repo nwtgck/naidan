@@ -13,20 +13,20 @@ const OUTPUT_BUFFER_LIMIT = 16 * 1024;
 const JQ_WESH_VERSION = 'jq-wesh-1.7-compatible';
 
 interface JqOutputOptions {
-  compact: boolean;
-  raw: boolean;
-  join: boolean;
-  asciiOnly: boolean;
-  sortKeys: boolean;
-  indentation: number | '\t';
-  nullSeparator: boolean;
-  unbuffered: boolean;
+  compact: boolean,
+  raw: boolean,
+  join: boolean,
+  asciiOnly: boolean,
+  sortKeys: boolean,
+  indentation: number | '\t',
+  nullSeparator: boolean,
+  unbuffered: boolean,
 }
 
 interface JqInputOptions {
-  nullInput: boolean;
-  rawInput: boolean;
-  slurp: boolean;
+  nullInput: boolean,
+  rawInput: boolean,
+  slurp: boolean,
 }
 
 class BufferedStdout {
@@ -36,7 +36,7 @@ class BufferedStdout {
   public constructor({
     context,
   }: {
-    context: WeshCommandContext;
+    context: WeshCommandContext,
   }) {
     this.context = context;
   }
@@ -45,8 +45,8 @@ class BufferedStdout {
     text,
     flush,
   }: {
-    text: string;
-    flush: boolean;
+    text: string,
+    flush: boolean,
   }): Promise<void> {
     if (text.length >= OUTPUT_BUFFER_LIMIT && this.pending.length === 0) {
       await this.context.text().print({ text });
@@ -71,8 +71,8 @@ function optionBoolean({
   optionValues,
   key,
 }: {
-  optionValues: Record<string, boolean | string | number>;
-  key: string;
+  optionValues: Record<string, boolean | string | number>,
+  key: string,
 }): boolean {
   return optionValues[key] === true;
 }
@@ -81,8 +81,8 @@ function optionString({
   optionValues,
   key,
 }: {
-  optionValues: Record<string, boolean | string | number>;
-  key: string;
+  optionValues: Record<string, boolean | string | number>,
+  key: string,
 }): string | undefined {
   const value = optionValues[key];
   return typeof value === 'string' ? value : undefined;
@@ -92,8 +92,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) return path;
   return cwd === '/' ? `/${path}` : `${cwd}/${path}`;
@@ -102,7 +102,7 @@ function resolvePath({
 async function readTextStream({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -126,9 +126,9 @@ async function readPathText({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
-}): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  context: WeshCommandContext,
+  path: string,
+}): Promise<{ ok: true, text: string } | { ok: false, message: string }> {
   try {
     return {
       ok: true,
@@ -148,10 +148,10 @@ async function readInputText({
   path,
   stdinState,
 }: {
-  context: WeshCommandContext;
-  path: string;
-  stdinState: { consumed: boolean };
-}): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  context: WeshCommandContext,
+  path: string,
+  stdinState: { consumed: boolean },
+}): Promise<{ ok: true, text: string } | { ok: false, message: string }> {
   if (path !== '-') return readPathText({ context, path });
   if (stdinState.consumed) return { ok: true, text: '' };
 
@@ -172,7 +172,7 @@ async function readInputText({
 function rawInputLines({
   text,
 }: {
-  text: string;
+  text: string,
 }): string[] {
   if (text.length === 0) return [];
   const lines = text.split('\n');
@@ -184,9 +184,9 @@ function parseSingleJson({
   source,
   label,
 }: {
-  source: string;
-  label: string;
-}): { ok: true; value: JsonValue } | { ok: false; message: string } {
+  source: string,
+  label: string,
+}): { ok: true, value: JsonValue } | { ok: false, message: string } {
   const parsed = parseJsonSequence({ text: source });
   if (!parsed.ok) return { ok: false, message: `${label}: ${parsed.message}` };
   if (parsed.values.length !== 1) {
@@ -199,8 +199,8 @@ function createArgsVariable({
   named,
   positional,
 }: {
-  named: { [key: string]: JsonValue };
-  positional: JsonValue[];
+  named: { [key: string]: JsonValue },
+  positional: JsonValue[],
 }): JsonValue {
   const args = createJsonObject();
   defineJsonProperty({ object: args, key: 'positional', value: positional });
@@ -214,13 +214,13 @@ async function resolveVariables({
   positionalArguments,
   jsonArguments,
 }: {
-  context: WeshCommandContext;
-  injectedArguments: readonly JqInjectedArgument[];
-  positionalArguments: readonly string[];
-  jsonArguments: boolean;
+  context: WeshCommandContext,
+  injectedArguments: readonly JqInjectedArgument[],
+  positionalArguments: readonly string[],
+  jsonArguments: boolean,
 }): Promise<
-  | { ok: true; variables: Readonly<Record<string, JsonValue>> }
-  | { ok: false; message: string }
+  | { ok: true, variables: Readonly<Record<string, JsonValue>> }
+  | { ok: false, message: string }
 > {
   const variables = createJsonObject();
   const named = createJsonObject();
@@ -293,8 +293,8 @@ function resolveOutputIndentation({
   occurrences,
   indentValue,
 }: {
-  occurrences: readonly { option: string }[];
-  indentValue: boolean | string | number | undefined;
+  occurrences: readonly { option: string }[],
+  indentValue: boolean | string | number | undefined,
 }): number | '\t' {
   let indentation: number | '\t' = 2;
   for (const occurrence of occurrences) {
@@ -309,7 +309,7 @@ type JqArgumentMode = 'files' | 'strings' | 'json';
 function resolveArgumentMode({
   occurrences,
 }: {
-  occurrences: readonly { option: string }[];
+  occurrences: readonly { option: string }[],
 }): JqArgumentMode {
   let mode: JqArgumentMode = 'files';
   for (const occurrence of occurrences) {
@@ -323,12 +323,12 @@ function resolveArgumentConfiguration({
   mode,
   operands,
 }: {
-  mode: JqArgumentMode;
-  operands: string[];
+  mode: JqArgumentMode,
+  operands: string[],
 }): {
-  positionalArguments: string[];
-  jsonArguments: boolean;
-  inputPaths: string[];
+  positionalArguments: string[],
+  jsonArguments: boolean,
+  inputPaths: string[],
 } {
   switch (mode) {
   case 'files':
@@ -361,9 +361,9 @@ async function writeRuntimeError({
   stdout,
   message,
 }: {
-  context: WeshCommandContext;
-  stdout: BufferedStdout;
-  message: string;
+  context: WeshCommandContext,
+  stdout: BufferedStdout,
+  message: string,
 }): Promise<WeshCommandResult> {
   await stdout.flush();
   await context.text().error({ text: `jq: error: ${message}\n` });
@@ -488,7 +488,7 @@ export const jqCommandDefinition: WeshCommandDefinition = {
     const evaluateInput = async ({
       value,
     }: {
-      value: JsonValue;
+      value: JsonValue,
     }): Promise<WeshCommandResult | undefined> => {
       const result = evaluateJqFilter({
         filter: program.program.filter,

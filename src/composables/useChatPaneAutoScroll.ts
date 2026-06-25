@@ -6,44 +6,44 @@ import type { ChatFlowItem } from './useChatDisplayFlow';
 
 type MaybeReadonlyRef<T> = Ref<T> | ComputedRef<T>;
 type ChatPaneContext = {
-  id: ChatId;
-  currentLeafId?: MessageId;
+  id: ChatId,
+  currentLeafId?: MessageId,
 };
 type ChatPaneProcessingStatus = 'idle' | 'processing';
 
 export type ChatPaneScrollTarget =
-  | { kind: 'message'; anchorId: string; messageId: MessageId }
-  | { kind: 'process_sequence'; anchorId: string; sequenceId: string }
-  | { kind: 'tool_group'; anchorId: string; toolGroupId: string };
+  | { kind: 'message', anchorId: string, messageId: MessageId }
+  | { kind: 'process_sequence', anchorId: string, sequenceId: string }
+  | { kind: 'tool_group', anchorId: string, toolGroupId: string };
 
 export type ChatPaneInitialOpenTarget =
   | ChatPaneScrollTarget
   | { kind: 'bottom' };
 
 export interface ChatPaneAutoScrollSnapshot {
-  chatId: ChatId | undefined;
-  navigationKey: string | undefined;
-  processingStatus: ChatPaneProcessingStatus;
-  latestUserTurnId: MessageId | undefined;
-  initialOpenTarget: ChatPaneInitialOpenTarget;
-  firstAssistantVisibleTarget: ChatPaneScrollTarget | undefined;
+  chatId: ChatId | undefined,
+  navigationKey: string | undefined,
+  processingStatus: ChatPaneProcessingStatus,
+  latestUserTurnId: MessageId | undefined,
+  initialOpenTarget: ChatPaneInitialOpenTarget,
+  firstAssistantVisibleTarget: ChatPaneScrollTarget | undefined,
 }
 
 type ChatPaneAutoScrollState =
   | { kind: 'uninitialized' }
   | {
-      kind: 'tracking';
-      chatId: ChatId;
-      navigationKey: string;
+      kind: 'tracking',
+      chatId: ChatId,
+      navigationKey: string,
       response:
         | { kind: 'awaiting_user_turn' }
-        | { kind: 'ready_for_assistant'; userTurnId: MessageId }
-        | { kind: 'assistant_scrolled'; userTurnId: MessageId };
+        | { kind: 'ready_for_assistant', userTurnId: MessageId }
+        | { kind: 'assistant_scrolled', userTurnId: MessageId },
     };
 
 export type ChatPaneAutoScrollAction =
-  | { kind: 'initial_open'; target: ChatPaneInitialOpenTarget }
-  | { kind: 'assistant'; target: ChatPaneScrollTarget; userTurnId: MessageId };
+  | { kind: 'initial_open', target: ChatPaneInitialOpenTarget }
+  | { kind: 'assistant', target: ChatPaneScrollTarget, userTurnId: MessageId };
 
 function getLatestUserTurnId({ activeMessages }: { activeMessages: MessageNode[] }): MessageId | undefined {
   for (let index = activeMessages.length - 1; index >= 0; index--) {
@@ -123,8 +123,8 @@ function getFirstAssistantVisibleTarget({
   chatFlow,
   latestUserTurnId,
 }: {
-  chatFlow: ChatFlowItem[];
-  latestUserTurnId: MessageId | undefined;
+  chatFlow: ChatFlowItem[],
+  latestUserTurnId: MessageId | undefined,
 }): ChatPaneScrollTarget | undefined {
   if (!latestUserTurnId) return undefined;
 
@@ -155,7 +155,7 @@ function getNavigationKey({ chat }: { chat: ChatPaneContext }): string {
 function getOpenedResponseState({
   latestUserTurnId,
 }: {
-  latestUserTurnId: MessageId | undefined;
+  latestUserTurnId: MessageId | undefined,
 }): Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'] {
   if (!latestUserTurnId) {
     return { kind: 'awaiting_user_turn' };
@@ -170,8 +170,8 @@ function getResponseStateAfterContentChange({
   currentResponse,
   latestUserTurnId,
 }: {
-  currentResponse: Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'];
-  latestUserTurnId: MessageId | undefined;
+  currentResponse: Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'],
+  latestUserTurnId: MessageId | undefined,
 }): Extract<ChatPaneAutoScrollState, { kind: 'tracking' }>['response'] {
   if (!latestUserTurnId) {
     return { kind: 'awaiting_user_turn' };
@@ -205,17 +205,17 @@ export function useChatPaneAutoScroll({
   chatFlow,
   processingStatus,
 }: {
-  chat: MaybeReadonlyRef<ChatPaneContext | null>;
-  activeMessages: MaybeReadonlyRef<readonly MessageNode[]>;
-  chatFlow: MaybeReadonlyRef<readonly ChatFlowItem[]>;
-  processingStatus: MaybeReadonlyRef<ChatPaneProcessingStatus>;
+  chat: MaybeReadonlyRef<ChatPaneContext | null>,
+  activeMessages: MaybeReadonlyRef<readonly MessageNode[]>,
+  chatFlow: MaybeReadonlyRef<readonly ChatFlowItem[]>,
+  processingStatus: MaybeReadonlyRef<ChatPaneProcessingStatus>,
 }): {
-  snapshot: Readonly<Ref<ChatPaneAutoScrollSnapshot>>;
-  consumeScrollAction: () => ChatPaneAutoScrollAction | undefined;
-  markAssistantAutoScrolled: ({ chatId, navigationKey, userTurnId }: { chatId: ChatId; navigationKey: string; userTurnId: MessageId }) => void;
+  snapshot: Readonly<Ref<ChatPaneAutoScrollSnapshot>>,
+  consumeScrollAction: () => ChatPaneAutoScrollAction | undefined,
+  markAssistantAutoScrolled: ({ chatId, navigationKey, userTurnId }: { chatId: ChatId, navigationKey: string, userTurnId: MessageId }) => void,
   TEST_ONLY: {
-    state: Ref<ChatPaneAutoScrollState>;
-  };
+    state: Ref<ChatPaneAutoScrollState>,
+  },
 } {
   const state = ref<ChatPaneAutoScrollState>({ kind: 'uninitialized' });
 
@@ -305,9 +305,9 @@ export function useChatPaneAutoScroll({
     navigationKey,
     userTurnId,
   }: {
-    chatId: ChatId;
-    navigationKey: string;
-    userTurnId: MessageId;
+    chatId: ChatId,
+    navigationKey: string,
+    userTurnId: MessageId,
   }): void {
     state.value = {
       kind: 'tracking',

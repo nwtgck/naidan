@@ -2,121 +2,121 @@ import type { Endpoint, Reasoning } from '@/models/types';
 
 export type ScopedSettingChange =
   | Readonly<{
-      field: 'endpoint';
-      behavior: 'inherit';
+      field: 'endpoint',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'endpoint';
-      behavior: 'override';
-      value: Endpoint;
+      field: 'endpoint',
+      behavior: 'override',
+      value: Endpoint,
     }>
   | Readonly<{
-      field: 'model_id';
-      behavior: 'inherit';
+      field: 'model_id',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'model_id';
-      behavior: 'override';
-      value: string;
+      field: 'model_id',
+      behavior: 'override',
+      value: string,
     }>
   | Readonly<{
-      field: 'auto_title_enabled';
-      behavior: 'inherit';
+      field: 'auto_title_enabled',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'auto_title_enabled';
-      behavior: 'override';
-      value: boolean;
+      field: 'auto_title_enabled',
+      behavior: 'override',
+      value: boolean,
     }>
   | Readonly<{
-      field: 'title_model_id';
-      behavior: 'inherit';
+      field: 'title_model_id',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'title_model_id';
-      behavior: 'override';
-      value: string;
+      field: 'title_model_id',
+      behavior: 'override',
+      value: string,
     }>
   | Readonly<{
-      field: 'system_prompt';
-      behavior: 'inherit';
+      field: 'system_prompt',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'system_prompt';
-      behavior: 'clear';
+      field: 'system_prompt',
+      behavior: 'clear',
     }>
   | Readonly<{
-      field: 'system_prompt';
-      behavior: 'replace';
-      content: string;
+      field: 'system_prompt',
+      behavior: 'replace',
+      content: string,
     }>
   | Readonly<{
-      field: 'system_prompt';
-      behavior: 'append';
-      content: string;
+      field: 'system_prompt',
+      behavior: 'append',
+      content: string,
     }>
   | Readonly<{
-      field: 'lm_param_temperature';
-      behavior: 'inherit';
+      field: 'lm_param_temperature',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'lm_param_temperature';
-      behavior: 'override';
-      value: number;
+      field: 'lm_param_temperature',
+      behavior: 'override',
+      value: number,
     }>
   | Readonly<{
-      field: 'lm_param_top_p';
-      behavior: 'inherit';
+      field: 'lm_param_top_p',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'lm_param_top_p';
-      behavior: 'override';
-      value: number;
+      field: 'lm_param_top_p',
+      behavior: 'override',
+      value: number,
     }>
   | Readonly<{
-      field: 'lm_param_max_completion_tokens';
-      behavior: 'inherit';
+      field: 'lm_param_max_completion_tokens',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'lm_param_max_completion_tokens';
-      behavior: 'override';
-      value: number;
+      field: 'lm_param_max_completion_tokens',
+      behavior: 'override',
+      value: number,
     }>
   | Readonly<{
-      field: 'lm_param_presence_penalty';
-      behavior: 'inherit';
+      field: 'lm_param_presence_penalty',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'lm_param_presence_penalty';
-      behavior: 'override';
-      value: number;
+      field: 'lm_param_presence_penalty',
+      behavior: 'override',
+      value: number,
     }>
   | Readonly<{
-      field: 'lm_param_frequency_penalty';
-      behavior: 'inherit';
+      field: 'lm_param_frequency_penalty',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'lm_param_frequency_penalty';
-      behavior: 'override';
-      value: number;
+      field: 'lm_param_frequency_penalty',
+      behavior: 'override',
+      value: number,
     }>
   | Readonly<{
-      field: 'lm_param_stop';
-      behavior: 'inherit';
+      field: 'lm_param_stop',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'lm_param_stop';
-      behavior: 'override';
-      value: readonly string[];
+      field: 'lm_param_stop',
+      behavior: 'override',
+      value: readonly string[],
     }>
   | Readonly<{
-      field: 'lm_param_reasoning_effort';
-      behavior: 'inherit';
+      field: 'lm_param_reasoning_effort',
+      behavior: 'inherit',
     }>
   | Readonly<{
-      field: 'lm_param_reasoning_effort';
-      behavior: 'override';
-      value: Exclude<Reasoning['effort'], undefined>;
+      field: 'lm_param_reasoning_effort',
+      behavior: 'override',
+      value: Exclude<Reasoning['effort'], undefined>,
     }>;
 
 export type LmParameterSettingChange = Extract<

@@ -98,7 +98,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
       providerProfiles: [],
       mounts: [],
       endpointType: 'openai',
-      endpointUrl: 'http://localhost'
+      endpointUrl: 'http://localhost',
     } });
 
     expect(mockOpfsRoot.entries.has('settings.json')).toBe(false);
@@ -120,7 +120,7 @@ describe('OPFSStorageProvider Directory Isolation', () => {
       providerProfiles: [],
       mounts: [],
       endpointType: 'openai',
-      endpointUrl: 'http://localhost'
+      endpointUrl: 'http://localhost',
     } });
 
     expect(storageDir.entries.size).toBeGreaterThan(0);

@@ -4,8 +4,8 @@ import type { ChatId } from '@/models/ids';
 import { getOPFSTmpManager } from '@/services/opfs-tmp-manager';
 
 export type ChatTmpDirectoryEntry = {
-  handle: FileSystemDirectoryHandle;
-  mountPath: '/tmp';
+  handle: FileSystemDirectoryHandle,
+  mountPath: '/tmp',
 };
 
 export const chatTmpDirectories = reactive(new Map<ChatId, ChatTmpDirectoryEntry>());
@@ -13,7 +13,7 @@ export const chatTmpDirectories = reactive(new Map<ChatId, ChatTmpDirectoryEntry
 export async function ensureChatTmpDirectory({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): Promise<ChatTmpDirectoryEntry> {
   const existing = chatTmpDirectories.get(chatId);
   if (existing !== undefined) {
@@ -32,7 +32,7 @@ export async function ensureChatTmpDirectory({
 export function getChatTmpDirectory({
   chatId,
 }: {
-  chatId: ChatId | undefined;
+  chatId: ChatId | undefined,
 }): ChatTmpDirectoryEntry | undefined {
   if (chatId === undefined) {
     return undefined;
@@ -48,7 +48,7 @@ export function clearChatTmpDirectories(): void {
 export function deleteChatTmpDirectory({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): void {
   chatTmpDirectories.delete(chatId);
 }

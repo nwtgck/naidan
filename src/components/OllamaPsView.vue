@@ -16,20 +16,20 @@ type PanelState = 'collapsed' | 'expanded';
 type DetailsState = 'collapsed' | 'expanded';
 type ModelActionState = 'idle' | 'unloading' | 'requested' | 'failed';
 type UnloadConfirmation =
-  | { status: 'unloaded'; models: readonly OllamaRunningModel[] }
-  | { status: 'requested'; models: readonly OllamaRunningModel[] };
+  | { status: 'unloaded', models: readonly OllamaRunningModel[] }
+  | { status: 'requested', models: readonly OllamaRunningModel[] };
 
 const UNLOAD_CONFIRMATION_ATTEMPTS = 20;
 const UNLOAD_CONFIRMATION_INTERVAL_MS = 100;
 type PsRequestState =
   | { status: 'idle' }
-  | { status: 'loading'; previousModels: readonly OllamaRunningModel[] }
-  | { status: 'ready'; models: readonly OllamaRunningModel[] }
-  | { status: 'error'; errorMessage: string; previousModels: readonly OllamaRunningModel[] };
+  | { status: 'loading', previousModels: readonly OllamaRunningModel[] }
+  | { status: 'ready', models: readonly OllamaRunningModel[] }
+  | { status: 'error', errorMessage: string, previousModels: readonly OllamaRunningModel[] };
 
 const props = defineProps<{
-  provider: OllamaProvider;
-  endpointUrl: string | undefined;
+  provider: OllamaProvider,
+  endpointUrl: string | undefined,
 }>();
 
 const { addToast } = useToast();
@@ -69,7 +69,7 @@ const statusLabel = computed(() => {
 });
 
 function getModelsFromRequestState({ state }: {
-  state: PsRequestState;
+  state: PsRequestState,
 }): readonly OllamaRunningModel[] {
   switch (state.status) {
   case 'idle':
@@ -147,7 +147,7 @@ async function loadRunningModels(): Promise<readonly OllamaRunningModel[] | unde
 }
 
 function removeStaleModelState({ nextModels }: {
-  nextModels: readonly OllamaRunningModel[];
+  nextModels: readonly OllamaRunningModel[],
 }) {
   const names = new Set(nextModels.map((model) => model.name));
   for (const name of detailsStates.keys()) {
@@ -165,7 +165,7 @@ function removeStaleModelState({ nextModels }: {
 }
 
 async function unloadModel({ model }: {
-  model: OllamaRunningModel;
+  model: OllamaRunningModel,
 }) {
   if (isRefreshing.value || isAnyModelUnloading.value) {
     return;
@@ -243,9 +243,9 @@ async function unloadModel({ model }: {
 }
 
 async function confirmModelUnload({ provider, modelIdentifier, controller }: {
-  provider: OllamaProvider;
-  modelIdentifier: string;
-  controller: AbortController;
+  provider: OllamaProvider,
+  modelIdentifier: string,
+  controller: AbortController,
 }): Promise<UnloadConfirmation | undefined> {
   let latestModels = models.value;
 
@@ -275,8 +275,8 @@ async function confirmModelUnload({ provider, modelIdentifier, controller }: {
 }
 
 function waitForAbortableDelay({ delayMs, signal }: {
-  delayMs: number;
-  signal: AbortSignal;
+  delayMs: number,
+  signal: AbortSignal,
 }): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
@@ -297,7 +297,7 @@ function waitForAbortableDelay({ delayMs, signal }: {
 }
 
 function finishModelAction({ modelName }: {
-  modelName: string;
+  modelName: string,
 }) {
   const finalActionState = modelActionStates.get(modelName) ?? 'idle';
   switch (finalActionState) {
@@ -316,7 +316,7 @@ function finishModelAction({ modelName }: {
 }
 
 function toggleModelDetails({ modelName }: {
-  modelName: string;
+  modelName: string,
 }) {
   const currentState = detailsStates.get(modelName) ?? 'collapsed';
   switch (currentState) {
@@ -334,19 +334,19 @@ function toggleModelDetails({ modelName }: {
 }
 
 function isModelDetailsExpanded({ modelName }: {
-  modelName: string;
+  modelName: string,
 }): boolean {
   return (detailsStates.get(modelName) ?? 'collapsed') === 'expanded';
 }
 
 function getModelActionState({ modelName }: {
-  modelName: string;
+  modelName: string,
 }): ModelActionState {
   return modelActionStates.get(modelName) ?? 'idle';
 }
 
 function getUnloadButtonLabel({ modelName }: {
-  modelName: string;
+  modelName: string,
 }): string {
   const actionState = getModelActionState({ modelName });
   switch (actionState) {
@@ -365,7 +365,7 @@ function getUnloadButtonLabel({ modelName }: {
 }
 
 function getModelMetadata({ model }: {
-  model: OllamaRunningModel;
+  model: OllamaRunningModel,
 }): readonly string[] {
   return [
     formatBytes({ value: model.size, label: 'memory' }),
@@ -376,8 +376,8 @@ function getModelMetadata({ model }: {
 }
 
 function getModelDetails({ model }: {
-  model: OllamaRunningModel;
-}): readonly { readonly label: string; readonly value: string }[] {
+  model: OllamaRunningModel,
+}): readonly { readonly label: string, readonly value: string }[] {
   const families = model.details.families?.filter((family) => family.length > 0).join(', ');
   return [
     model.model !== undefined && model.model !== '' && model.model !== model.name ? { label: 'Model', value: model.model } : undefined,
@@ -388,12 +388,12 @@ function getModelDetails({ model }: {
       ? undefined
       : { label: 'Parent model', value: model.details.parentModel },
     model.digest === undefined || model.digest === '' ? undefined : { label: 'Digest', value: model.digest },
-  ].filter((value): value is { readonly label: string; readonly value: string } => value !== undefined);
+  ].filter((value): value is { readonly label: string, readonly value: string } => value !== undefined);
 }
 
 function formatBytes({ value, label }: {
-  value: number | undefined;
-  label: string;
+  value: number | undefined,
+  label: string,
 }): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -408,7 +408,7 @@ function formatBytes({ value, label }: {
 }
 
 function formatExpiration({ value }: {
-  value: string | undefined;
+  value: string | undefined,
 }): string | undefined {
   if (value === undefined) {
     return undefined;

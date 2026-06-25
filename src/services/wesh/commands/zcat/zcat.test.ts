@@ -9,7 +9,7 @@ import {
 async function gzipBytes({
   text,
 }: {
-  text: string;
+  text: string,
 }): Promise<Uint8Array> {
   const inputBytes = new TextEncoder().encode(text);
   const compressedStream = new ReadableStream<Uint8Array>({
@@ -39,8 +39,8 @@ describe('wesh zcat', () => {
     path,
     data,
   }: {
-    path: string;
-    data: Uint8Array;
+    path: string,
+    data: Uint8Array,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -63,8 +63,8 @@ describe('wesh zcat', () => {
     script,
     stdinBytes,
   }: {
-    script: string;
-    stdinBytes: Uint8Array | undefined;
+    script: string,
+    stdinBytes: Uint8Array | undefined,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

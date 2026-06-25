@@ -1,7 +1,7 @@
 import type { WeshMount } from '@/services/wesh/types';
 
 export interface FileTypeHint {
-  example: string;
+  example: string,
 }
 
 export const FILE_TYPE_HINTS: Record<string, FileTypeHint> = {
@@ -20,8 +20,8 @@ export function buildShellDescription({
   mounts,
   detectedExtensions,
 }: {
-  mounts: WeshMount[];
-  detectedExtensions: Set<string>;
+  mounts: WeshMount[],
+  detectedExtensions: Set<string>,
 }): string {
   const mountList =
     mounts.length > 0

@@ -119,15 +119,15 @@ const ExperimentalUnreadableRootKey = '_root';
 type ExperimentalUnreadable = Readonly<Record<string, unknown>>;
 
 type ExperimentalOutput<TSchema extends z.ZodObject> = z.output<TSchema> & {
-  readonly unreadable?: ExperimentalUnreadable;
+  readonly unreadable?: ExperimentalUnreadable,
 };
 
 const attachUnreadable = <T extends object>({
   value,
   unreadable,
 }: {
-  value: T;
-  unreadable: ExperimentalUnreadable;
+  value: T,
+  unreadable: ExperimentalUnreadable,
 }): T => {
   Object.defineProperty(value, 'unreadable', {
     value: unreadable,
@@ -142,7 +142,7 @@ const attachUnreadable = <T extends object>({
 export const optionalExperimentalFieldSchemaDto = <TSchema extends z.ZodObject>({
   schema,
 }: {
-  schema: TSchema;
+  schema: TSchema,
 }) => {
   // Experimental fields intentionally break the normal DTO rule that new optional
   // persisted fields should materialize as `key: undefined`. This helper is used

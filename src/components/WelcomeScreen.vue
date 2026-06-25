@@ -3,11 +3,11 @@ import { ShieldCheckIcon, DownloadIcon, GhostIcon } from 'lucide-vue-next';
 import { useSettings } from '@/composables/useSettings';
 
 defineProps<{
-  hasInput?: boolean
+  hasInput?: boolean,
 }>();
 
 defineEmits<{
-  (e: 'select-suggestion', text: string): void
+  (e: 'select-suggestion', text: string): void,
 }>();
 
 const { settings } = useSettings();
@@ -45,7 +45,7 @@ const suggestions = [
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

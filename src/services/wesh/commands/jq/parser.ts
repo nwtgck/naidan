@@ -16,7 +16,7 @@ import { lexJq } from './lexer';
 function toBuiltinName({
   name,
 }: {
-  name: string;
+  name: string,
 }): JqBuiltinName | undefined {
   switch (name) {
   case 'abs':
@@ -108,8 +108,8 @@ function toBuiltinName({
 }
 
 type ParseResult =
-  | { ok: true; filter: JqFilter }
-  | { ok: false; message: string };
+  | { ok: true, filter: JqFilter }
+  | { ok: false, message: string };
 
 class JqParser {
   private readonly tokens: JqToken[];
@@ -119,12 +119,12 @@ class JqParser {
   constructor({
     tokens,
   }: {
-    tokens: JqToken[];
+    tokens: JqToken[],
   }) {
     this.tokens = tokens;
   }
 
-  parse(): { ok: true; program: JqProgram } | { ok: false; message: string } {
+  parse(): { ok: true, program: JqProgram } | { ok: false, message: string } {
     const filter = this.parseComma();
     if (!filter.ok) return filter;
     const trailing = this.peek();
@@ -779,7 +779,7 @@ class JqParser {
   private parseBracketSuffix({
     input,
   }: {
-    input: JqFilter;
+    input: JqFilter,
   }): ParseResult {
     const open = this.consumePunctuation({ value: '[' });
     if (!open.ok) return open;
@@ -938,8 +938,8 @@ class JqParser {
   }
 
   private parseObjectKey():
-    | { ok: true; key: JqObjectKey; shorthand: string | undefined }
-    | { ok: false; message: string } {
+    | { ok: true, key: JqObjectKey, shorthand: string | undefined }
+    | { ok: false, message: string } {
     const token = this.peek();
     switch (token.kind) {
     case 'identifier':
@@ -1112,7 +1112,7 @@ class JqParser {
   private matchOperator({
     value,
   }: {
-    value: Extract<JqToken, { kind: 'operator' }>['value'];
+    value: Extract<JqToken, { kind: 'operator' }>['value'],
   }): boolean {
     const token = this.peek();
     if (!(token.kind === 'operator' && token.value === value)) return false;
@@ -1123,7 +1123,7 @@ class JqParser {
   private matchKeyword({
     value,
   }: {
-    value: Extract<JqToken, { kind: 'keyword' }>['value'];
+    value: Extract<JqToken, { kind: 'keyword' }>['value'],
   }): boolean {
     const token = this.peek();
     if (!(token.kind === 'keyword' && token.value === value)) return false;
@@ -1134,7 +1134,7 @@ class JqParser {
   private matchPunctuation({
     value,
   }: {
-    value: Extract<JqToken, { kind: 'punctuation' }>['value'];
+    value: Extract<JqToken, { kind: 'punctuation' }>['value'],
   }): boolean {
     const token = this.peek();
     if (!(token.kind === 'punctuation' && token.value === value)) return false;
@@ -1145,8 +1145,8 @@ class JqParser {
   private consumePunctuation({
     value,
   }: {
-    value: Extract<JqToken, { kind: 'punctuation' }>['value'];
-  }): { ok: true } | { ok: false; message: string } {
+    value: Extract<JqToken, { kind: 'punctuation' }>['value'],
+  }): { ok: true } | { ok: false, message: string } {
     if (this.matchPunctuation({ value })) return { ok: true };
     return { ok: false, message: `expected '${value}'` };
   }
@@ -1155,7 +1155,7 @@ class JqParser {
 function comparisonOperator({
   operator,
 }: {
-  operator: Extract<JqToken, { kind: 'operator' }>['value'];
+  operator: Extract<JqToken, { kind: 'operator' }>['value'],
 }): JqBinaryOperator | undefined {
   switch (operator) {
   case '==':
@@ -1178,7 +1178,7 @@ function comparisonOperator({
 function compoundAssignmentOperator({
   operator,
 }: {
-  operator: '+=' | '-=' | '*=' | '/=' | '%=' | '//=';
+  operator: '+=' | '-=' | '*=' | '/=' | '%=' | '//=',
 }): JqBinaryOperator {
   switch (operator) {
   case '+=':
@@ -1203,8 +1203,8 @@ function compoundAssignmentOperator({
 function literalIndex({
   filter,
 }: {
-  filter: JqFilter;
-}): { kind: 'number'; value: number } | { kind: 'string'; value: string } | undefined {
+  filter: JqFilter,
+}): { kind: 'number', value: number } | { kind: 'string', value: string } | undefined {
   switch (filter.kind) {
   case 'literal':
     if (typeof filter.value === 'number') return { kind: 'number', value: filter.value };
@@ -1243,7 +1243,7 @@ function literalIndex({
 function parseStringToken({
   parts,
 }: {
-  parts: JqStringTokenPart[];
+  parts: JqStringTokenPart[],
 }): ParseResult {
   if (parts.length === 0) {
     return { ok: true, filter: { kind: 'literal', value: '' } };
@@ -1278,8 +1278,8 @@ function parseStringToken({
 export function parseJqProgram({
   source,
 }: {
-  source: string;
-}): { ok: true; program: JqProgram } | { ok: false; message: string } {
+  source: string,
+}): { ok: true, program: JqProgram } | { ok: false, message: string } {
   const lexed = lexJq({ source });
   if (!lexed.ok) return lexed;
   return new JqParser({ tokens: lexed.tokens }).parse();
@@ -1288,7 +1288,7 @@ export function parseJqProgram({
 export function extractPath({
   filter,
 }: {
-  filter: JqFilter;
+  filter: JqFilter,
 }): JqPath | undefined {
   const segments: JqPathSegment[] = [];
   let current: JqFilter = filter;

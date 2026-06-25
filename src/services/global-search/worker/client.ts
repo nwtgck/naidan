@@ -1,1 +1,1 @@
-export { createGlobalSearchWorkerClient } from './client-hosted'
+export { createGlobalSearchWorkerClient } from './client-hosted';

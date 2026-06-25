@@ -8,8 +8,8 @@ function compareLines({
   left,
   right,
 }: {
-  left: string;
-  right: string;
+  left: string,
+  right: string,
 }): number {
   if (left < right) {
     return -1;
@@ -26,10 +26,10 @@ function columnPrefix({
   suppress2,
   suppress3,
 }: {
-  column: 1 | 2 | 3;
-  suppress1: boolean;
-  suppress2: boolean;
-  suppress3: boolean;
+  column: 1 | 2 | 3,
+  suppress1: boolean,
+  suppress2: boolean,
+  suppress3: boolean,
 }): string {
   const visibleBefore = [
     !suppress1,

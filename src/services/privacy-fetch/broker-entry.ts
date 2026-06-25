@@ -1,34 +1,34 @@
 import {
   privacyFetchCancelMessageSchema,
   privacyFetchRequestMessageSchema,
-} from './schemas'
-import { PRIVACY_FETCH_PROTOCOL } from './protocol'
-import { validatePrivacyFetchUrl } from './validate-url'
+} from './schemas';
+import { PRIVACY_FETCH_PROTOCOL } from './protocol';
+import { validatePrivacyFetchUrl } from './validate-url';
 import type {
   PrivacyFetchCancelMessage,
   PrivacyFetchErrorCode,
   PrivacyFetchHeaderEntries,
   PrivacyFetchRequestMessage,
-} from './types'
+} from './types';
 
-const activeRequests = new Map<string, AbortController>()
+const activeRequests = new Map<string, AbortController>();
 
 function postMessageToParent({
   message,
   transfer,
 }: {
-  message: unknown;
-  transfer: Transferable[];
+  message: unknown,
+  transfer: Transferable[],
 }): void {
-  window.parent.postMessage(message, '*', transfer)
+  window.parent.postMessage(message, '*', transfer);
 }
 
 function createHeadersEntries({
   response,
 }: {
-  response: Response;
+  response: Response,
 }): PrivacyFetchHeaderEntries {
-  return Array.from(response.headers.entries())
+  return Array.from(response.headers.entries());
 }
 
 function sendReadyMessage(): void {
@@ -43,7 +43,7 @@ function sendReadyMessage(): void {
       },
     },
     transfer: [],
-  })
+  });
 }
 
 function sendErrorMessage({
@@ -51,9 +51,9 @@ function sendErrorMessage({
   code,
   message,
 }: {
-  requestId: string;
-  code: PrivacyFetchErrorCode;
-  message: string;
+  requestId: string,
+  code: PrivacyFetchErrorCode,
+  message: string,
 }): void {
   postMessageToParent({
     message: {
@@ -65,40 +65,40 @@ function sendErrorMessage({
       message,
     },
     transfer: [],
-  })
+  });
 }
 
 function handleCancelMessage({
   message,
 }: {
-  message: PrivacyFetchCancelMessage;
+  message: PrivacyFetchCancelMessage,
 }): void {
-  const controller = activeRequests.get(message.requestId)
+  const controller = activeRequests.get(message.requestId);
   if (controller === undefined) {
-    return
+    return;
   }
 
-  controller.abort()
-  activeRequests.delete(message.requestId)
+  controller.abort();
+  activeRequests.delete(message.requestId);
 }
 
 async function handleRequestMessage({
   message,
 }: {
-  message: PrivacyFetchRequestMessage;
+  message: PrivacyFetchRequestMessage,
 }): Promise<void> {
   if (activeRequests.has(message.requestId)) {
     sendErrorMessage({
       requestId: message.requestId,
       code: 'duplicate_request_id',
       message: `Privacy fetch requestId is already active: ${message.requestId}`,
-    })
-    return
+    });
+    return;
   }
 
   const validationResult = validatePrivacyFetchUrl({
     urlText: message.url,
-  })
+  });
 
   if (!validationResult.ok) {
     postMessageToParent({
@@ -110,12 +110,12 @@ async function handleRequestMessage({
         validationResult,
       },
       transfer: [],
-    })
-    return
+    });
+    return;
   }
 
-  const controller = new AbortController()
-  activeRequests.set(message.requestId, controller)
+  const controller = new AbortController();
+  activeRequests.set(message.requestId, controller);
 
   try {
     const response = await fetch(validationResult.normalizedUrl, {
@@ -123,8 +123,8 @@ async function handleRequestMessage({
       credentials: 'omit',
       referrerPolicy: 'no-referrer',
       signal: controller.signal,
-    })
-    const body = await response.arrayBuffer()
+    });
+    const body = await response.arrayBuffer();
     postMessageToParent({
       message: {
         protocol: PRIVACY_FETCH_PROTOCOL,
@@ -143,38 +143,38 @@ async function handleRequestMessage({
         validationResult,
       },
       transfer: [body],
-    })
+    });
   } catch (error) {
-    const code: PrivacyFetchErrorCode = controller.signal.aborted ? 'aborted' : 'fetch_failed'
+    const code: PrivacyFetchErrorCode = controller.signal.aborted ? 'aborted' : 'fetch_failed';
     sendErrorMessage({
       requestId: message.requestId,
       code,
       message: String(error),
-    })
+    });
   } finally {
-    activeRequests.delete(message.requestId)
+    activeRequests.delete(message.requestId);
   }
 }
 
 window.addEventListener('message', (event) => {
   if (event.source !== window.parent) {
-    return
+    return;
   }
 
-  const parsedRequest = privacyFetchRequestMessageSchema.safeParse(event.data)
+  const parsedRequest = privacyFetchRequestMessageSchema.safeParse(event.data);
   if (parsedRequest.success) {
     void handleRequestMessage({
       message: parsedRequest.data,
-    })
-    return
+    });
+    return;
   }
 
-  const parsedCancel = privacyFetchCancelMessageSchema.safeParse(event.data)
+  const parsedCancel = privacyFetchCancelMessageSchema.safeParse(event.data);
   if (parsedCancel.success) {
     handleCancelMessage({
       message: parsedCancel.data,
-    })
+    });
   }
-})
+});
 
-sendReadyMessage()
+sendReadyMessage();

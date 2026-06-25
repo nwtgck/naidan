@@ -30,7 +30,7 @@ function isKnownShellOption(name: string): name is WeshShellOption {
 function getShoptMode({
   parsed,
 }: {
-  parsed: ReturnType<typeof parseStandardArgv>;
+  parsed: ReturnType<typeof parseStandardArgv>,
 }): 'print' | 'query' | 'set' | 'unset' | undefined {
   const modes = [
     parsed.optionValues.print === true ? 'print' : undefined,

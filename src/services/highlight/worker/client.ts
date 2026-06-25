@@ -1,1 +1,1 @@
-export { createHighlightWorkerClient } from './client-hosted'
+export { createHighlightWorkerClient } from './client-hosted';

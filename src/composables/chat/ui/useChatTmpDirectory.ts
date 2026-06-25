@@ -6,10 +6,10 @@ export type ChatTmpDirectoryAdapter = {
   ensureChatTmpDirectory({
     chatId,
   }: {
-    chatId: ChatId;
-  }): Promise<ChatTmpDirectoryEntry>;
+    chatId: ChatId,
+  }): Promise<ChatTmpDirectoryEntry>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatTmpDirectory(): ChatTmpDirectoryAdapter {

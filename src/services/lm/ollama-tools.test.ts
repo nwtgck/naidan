@@ -38,18 +38,18 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
             message: {
               role: 'assistant',
               content: '',
-              tool_calls: [{ id: 'c1', function: { name: 'get_weather', arguments: { location: 'London' } } }]
+              tool_calls: [{ id: 'c1', function: { name: 'get_weather', arguments: { location: 'London' } } }],
             },
-            done: true
+            done: true,
           }) + '\n');
         } else {
           res.write(JSON.stringify({
             message: { role: 'assistant', content: 'It is rainy in London.' },
-            done: true
+            done: true,
           }) + '\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
@@ -78,7 +78,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
     expect(secondReqBody.messages[2]).toEqual({
       role: 'tool',
       tool_call_id: 'c1',
-      content: 'Rainy, 15C'
+      content: 'Rainy, 15C',
     });
   });
 
@@ -100,7 +100,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
           res.write(JSON.stringify({ message: { content: 'Done.' }, done: true }) + '\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
@@ -133,13 +133,13 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
         if (serverInstance?.capturedRequests.length === 1) {
           res.write(JSON.stringify({
             message: { tool_calls: [{ id: 'id1', function: { name: 'test', arguments: '{"val": 123}' } }] },
-            done: true
+            done: true,
           }) + '\n');
         } else {
           res.write(JSON.stringify({ done: true }) + '\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
@@ -167,13 +167,13 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
         if (serverInstance?.capturedRequests.length === 1) {
           res.write(JSON.stringify({
             message: { tool_calls: [{ id: 'c1', function: { name: 'strict', arguments: { hallucinated: true } } }] },
-            done: true
+            done: true,
           }) + '\n');
         } else {
           res.write(JSON.stringify({ message: { content: 'Bad args' }, done: true }) + '\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
@@ -206,7 +206,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
           res.write(JSON.stringify({ done: true }) + '\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
@@ -242,7 +242,7 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
         res.writeHead(200);
         res.write(JSON.stringify({ message: { tool_calls: [{ id: 'c1', function: { name: 'long', arguments: {} } }] }, done: true }) + '\n');
         res.end();
-      }
+      },
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });
@@ -278,15 +278,15 @@ describe('OllamaProvider Tool Calls (Integration)', () => {
           // Send arguments as a STRING from "Ollama" (common in some versions/models)
           res.write(JSON.stringify({
             message: {
-              tool_calls: [{ id: 'c1', function: { name: 't', arguments: '{"a": 123}' } }]
+              tool_calls: [{ id: 'c1', function: { name: 't', arguments: '{"a": 123}' } }],
             },
-            done: true
+            done: true,
           }) + '\n');
         } else {
           res.write(JSON.stringify({ done: true }) + '\n');
         }
         res.end();
-      }
+      },
     });
 
     const provider = new OllamaProvider({ endpoint: serverInstance.baseUrl });

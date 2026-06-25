@@ -45,8 +45,8 @@ describe('wesh sort', () => {
     path,
     data,
   }: {
-    path: string;
-    data: string;
+    path: string,
+    data: string,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -66,7 +66,7 @@ describe('wesh sort', () => {
   async function readFile({
     path,
   }: {
-    path: string;
+    path: string,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -86,8 +86,8 @@ describe('wesh sort', () => {
     script,
     stdinText,
   }: {
-    script: string;
-    stdinText?: string;
+    script: string,
+    stdinText?: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

@@ -1,7 +1,7 @@
 export function isValidAliasName({
   name,
 }: {
-  name: string;
+  name: string,
 }): boolean {
   return name.length > 0
     && !name.startsWith('-')
@@ -14,8 +14,8 @@ export function formatAliasDefinition({
   name,
   value,
 }: {
-  name: string;
-  value: string;
+  name: string,
+  value: string,
 }): string {
   return `alias ${name}='${value.replaceAll("'", "'\\''")}'\n`;
 }

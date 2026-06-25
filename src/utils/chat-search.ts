@@ -3,14 +3,14 @@ import type { ChatId, MessageId } from '@/models/ids';
 import { findDeepestLeaf } from './chat-tree';
 
 export interface ContentMatch {
-  chatId: ChatId;
-  messageId: MessageId;
-  excerpt: string;
-  fullContent: string;
-  role: string;
-  targetLeafId: MessageId;
-  timestamp: number;
-  isCurrentThread: boolean;
+  chatId: ChatId,
+  messageId: MessageId,
+  excerpt: string,
+  fullContent: string,
+  role: string,
+  targetLeafId: MessageId,
+  timestamp: number,
+  isCurrentThread: boolean,
 }
 
 export type SearchRoleFilter = 'all' | 'user' | 'assistant';
@@ -42,11 +42,11 @@ function matchesRoleFilter({ role, roleFilter }: {
  * @param params.activeBranchIds Set of message IDs that are in the active thread (optional)
  */
 export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilter }: {
-  root: MessageBranch;
-  query: string;
-  chatId: ChatId;
-  activeBranchIds?: Set<MessageId>;
-  roleFilter?: SearchRoleFilter;
+  root: MessageBranch,
+  query: string,
+  chatId: ChatId,
+  activeBranchIds?: Set<MessageId>,
+  roleFilter?: SearchRoleFilter,
 }): ContentMatch[] {
   const matches: ContentMatch[] = [];
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
@@ -73,7 +73,7 @@ export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilte
             role: node.role,
             targetLeafId: leafNode.id,
             timestamp: node.timestamp,
-            isCurrentThread: activeBranchIds ? activeBranchIds.has(node.id) : false
+            isCurrentThread: activeBranchIds ? activeBranchIds.has(node.id) : false,
           });
         }
       }
@@ -92,7 +92,7 @@ export function searchChatTree({ root, query, chatId, activeBranchIds, roleFilte
 /**
  * Extracts a relevant excerpt around the match.
  */
-function getExcerpt({ content, keywords }: { content: string; keywords: string[] }): string {
+function getExcerpt({ content, keywords }: { content: string, keywords: string[] }): string {
   const lowerContent = content.toLowerCase();
   // Use the first keyword for positioning the excerpt
   const firstKeyword = keywords[0];
@@ -116,11 +116,11 @@ function getExcerpt({ content, keywords }: { content: string; keywords: string[]
  * Does not recurse into side branches.
  */
 export function searchLinearBranch({ branch, query, chatId, targetLeafId, roleFilter }: {
-  branch: MessageNode[];
-  query: string;
-  chatId: ChatId;
-  targetLeafId?: MessageId;
-  roleFilter?: SearchRoleFilter;
+  branch: MessageNode[],
+  query: string,
+  chatId: ChatId,
+  targetLeafId?: MessageId,
+  roleFilter?: SearchRoleFilter,
 }): ContentMatch[] {
   const matches: ContentMatch[] = [];
   const keywords = query.toLowerCase().split(/[\s\u3000]+/).filter(k => k.length > 0);
@@ -142,7 +142,7 @@ export function searchLinearBranch({ branch, query, chatId, targetLeafId, roleFi
           role: node.role,
           targetLeafId: targetLeafId || node.id,
           timestamp: node.timestamp,
-          isCurrentThread: true
+          isCurrentThread: true,
         });
       }
     }

@@ -78,7 +78,7 @@ vi.mock('../composables/chat/ui/useChatOrganization', () => ({
 
 vi.mock('../composables/chat/useChatMetadata', () => ({
   useChatMetadata: () => ({
-    rename: ({ chatId, title }: { chatId: string; title: string }) => mockRenameChat({ id: chatId, newTitle: title }),
+    rename: ({ chatId, title }: { chatId: string, title: string }) => mockRenameChat({ id: chatId, newTitle: title }),
     TEST_ONLY: {},
   }),
 }));
@@ -140,7 +140,7 @@ describe('Sidebar IME handling', () => {
     // Simulate Enter keyup while composing (IME confirming candidate)
     await input.trigger('keydown', {
       key: 'Enter',
-      isComposing: true
+      isComposing: true,
     });
 
     expect(mockCreateChatGroup).not.toHaveBeenCalled();
@@ -170,7 +170,7 @@ describe('Sidebar IME handling', () => {
     // Simulate Enter keydown while composing
     await input.trigger('keydown', {
       key: 'Enter',
-      isComposing: true
+      isComposing: true,
     });
 
     expect(mockRenameChatGroup).not.toHaveBeenCalled();
@@ -200,7 +200,7 @@ describe('Sidebar IME handling', () => {
     // Simulate Enter keyup while composing
     await input.trigger('keydown', {
       key: 'Enter',
-      isComposing: true
+      isComposing: true,
     });
 
     expect(mockRenameChat).not.toHaveBeenCalled();

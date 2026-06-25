@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { renderMessageMarkdown } from './message-markdown'
-import type { ToolMessageNode, UserMessageNode } from '@/models/types'
+import { describe, expect, it } from 'vitest';
+import { renderMessageMarkdown } from './message-markdown';
+import type { ToolMessageNode, UserMessageNode } from '@/models/types';
 import { toAttachmentId, toBinaryObjectId, toMessageId, toToolCallId } from '@/models/ids';
 
 describe('renderMessageMarkdown', () => {
@@ -26,7 +26,7 @@ describe('renderMessageMarkdown', () => {
       lmParameters: undefined,
       toolCalls: undefined,
       results: undefined,
-    }
+    };
 
     expect(renderMessageMarkdown({ node })).toBe(`\
 # Message user-1
@@ -43,11 +43,11 @@ attachments:
 toolCalls: undefined
 results: []
 
-`)
-  })
+`);
+  });
 
   it('truncates long text tool results with an exact marker', () => {
-    const longText = 'x'.repeat(4001)
+    const longText = 'x'.repeat(4001);
     const node: ToolMessageNode = {
       id: toMessageId({ raw: 'tool-1' }),
       role: 'tool',
@@ -68,7 +68,7 @@ results: []
           text: longText,
         },
       }],
-    }
+    };
 
     expect(renderMessageMarkdown({ node })).toBe(`\
 # Message tool-1
@@ -85,6 +85,6 @@ toolCalls: undefined
 results:
 - call-1: success ${'x'.repeat(4000)} [truncated]
 
-`)
-  })
-})
+`);
+  });
+});

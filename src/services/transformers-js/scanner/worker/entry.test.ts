@@ -20,7 +20,7 @@ vi.mock('@huggingface/transformers', () => ({
     useBrowserCache: false,
     useCustomCache: false,
     fetch: vi.fn(),
-  }
+  },
 }));
 
 // Mock Comlink
@@ -38,7 +38,7 @@ describe('transformers-js.scanner.worker', () => {
     originalFetchMock = vi.fn();
     global.self = {
       fetch: originalFetchMock,
-      location: { origin: 'http://localhost:3000' } as any
+      location: { origin: 'http://localhost:3000' } as any,
     } as any;
     global.fetch = originalFetchMock;
   });
@@ -78,8 +78,8 @@ describe('transformers-js.scanner.worker', () => {
       tasks: [
         { type: 'processor', modelId: 'org/repo', options: {} },
         { type: 'tokenizer', modelId: 'org/repo', options: {} },
-        { type: 'causal-lm', modelId: 'org/repo', options: {} }
-      ]
+        { type: 'causal-lm', modelId: 'org/repo', options: {} },
+      ],
     });
 
     expect(result.files).toHaveLength(6);
@@ -107,7 +107,7 @@ describe('transformers-js.scanner.worker', () => {
 
     originalFetchMock.mockResolvedValue(new Response('{}', {
       status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json' },
     }));
 
     (AutoModelForImageTextToText.from_pretrained as any).mockImplementation(async (id: string) => {
@@ -116,7 +116,7 @@ describe('transformers-js.scanner.worker', () => {
     });
 
     const result = await scannerObj.scanModel({
-      tasks: [{ type: 'image-text-to-text', modelId: 'org/repo', options: {} }]
+      tasks: [{ type: 'image-text-to-text', modelId: 'org/repo', options: {} }],
     });
 
     expect(result.files.map((file: { url: string }) => file.url)).toContain('https://huggingface.co/org/repo/resolve/main/vision_encoder.onnx');
@@ -138,7 +138,7 @@ describe('transformers-js.scanner.worker', () => {
     (AutoTokenizer.from_pretrained as any).mockRejectedValue(new Error('Scan failed'));
 
     const result = await scannerObj.scanModel({
-      tasks: [{ type: 'tokenizer', modelId: 'org/repo', options: {} }]
+      tasks: [{ type: 'tokenizer', modelId: 'org/repo', options: {} }],
     });
 
     // Even if it fails, it should return what it collected so far

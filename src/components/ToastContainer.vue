@@ -4,7 +4,7 @@ import { XIcon } from 'lucide-vue-next';
 
 const { toasts, removeToast } = useToast();
 
-async function handleAction({ id, onAction }: { id: string; onAction?: () => void | Promise<void> }) {
+async function handleAction({ id, onAction }: { id: string, onAction?: () => void | Promise<void> }) {
   if (onAction) {
     await onAction();
   }
@@ -15,7 +15,7 @@ async function handleAction({ id, onAction }: { id: string; onAction?: () => voi
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

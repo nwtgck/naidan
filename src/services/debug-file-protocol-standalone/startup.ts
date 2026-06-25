@@ -2,7 +2,7 @@ import {
   debugReadFileProtocolStandaloneStartupState,
   type DebugFileProtocolStandaloneStartupCheckpointName,
   type DebugFileProtocolStandaloneStartupError,
-} from './runtime-state'
+} from './runtime-state';
 
 /**
  * Append a Naidan-owned checkpoint to the optional standalone Debug timeline.
@@ -13,41 +13,41 @@ export function debugRecordFileProtocolStandaloneStartupCheckpoint({
   checkpoint,
   details,
 }: {
-  checkpoint: DebugFileProtocolStandaloneStartupCheckpointName
-  details: Readonly<Record<string, string | number | boolean>> | undefined
+  checkpoint: DebugFileProtocolStandaloneStartupCheckpointName,
+  details: Readonly<Record<string, string | number | boolean>> | undefined,
 }): void {
   try {
-    const startupDebugState = debugReadFileProtocolStandaloneStartupState()
-    if (startupDebugState === undefined) return
+    const startupDebugState = debugReadFileProtocolStandaloneStartupState();
+    if (startupDebugState === undefined) return;
 
-    const now = performance.now()
-    startupDebugState.checkpoint = checkpoint
-    startupDebugState.updatedAt = now
-    startupDebugState.documentReadyState = document.readyState
+    const now = performance.now();
+    startupDebugState.checkpoint = checkpoint;
+    startupDebugState.updatedAt = now;
+    startupDebugState.documentReadyState = document.readyState;
     startupDebugState.checkpointHistory.push({
       source: 'naidan-app',
       name: checkpoint,
       at: now,
       documentReadyState: document.readyState,
       details,
-    })
+    });
   } catch (error) {
-    console.warn('[naidan] Failed to record standalone startup Debug checkpoint:', error)
+    console.warn('[naidan] Failed to record standalone startup Debug checkpoint:', error);
   }
 }
 
 export function debugRecordFileProtocolStandaloneAppStartupFailure({ error }: {
-  error: DebugFileProtocolStandaloneStartupError
+  error: DebugFileProtocolStandaloneStartupError,
 }): void {
   try {
-    const startupDebugState = debugReadFileProtocolStandaloneStartupState()
-    if (startupDebugState === undefined) return
-    startupDebugState.error = error
+    const startupDebugState = debugReadFileProtocolStandaloneStartupState();
+    if (startupDebugState === undefined) return;
+    startupDebugState.error = error;
     debugRecordFileProtocolStandaloneStartupCheckpoint({
       checkpoint: 'bootstrap-failed',
       details: { errorName: error.name },
-    })
+    });
   } catch (debugError) {
-    console.warn('[naidan] Failed to update standalone startup Debug state:', debugError)
+    console.warn('[naidan] Failed to update standalone startup Debug state:', debugError);
   }
 }

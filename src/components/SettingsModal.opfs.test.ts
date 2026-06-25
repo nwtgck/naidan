@@ -106,8 +106,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
         ...globalMocks,
         components: {
           StorageTab,
-        }
-      }
+        },
+      },
     });
     await flushPromises();
 
@@ -124,8 +124,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
   it('should disable OPFS option if not in secure context', async () => {
     vi.stubGlobal('navigator', {
       storage: {
-        getDirectory: vi.fn().mockRejectedValue(new Error('Security Error'))
-      }
+        getDirectory: vi.fn().mockRejectedValue(new Error('Security Error')),
+      },
     });
 
     const wrapper = mount(SettingsModal, {
@@ -134,8 +134,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
         ...globalMocks,
         components: {
           StorageTab,
-        }
-      }
+        },
+      },
     });
     await flushPromises();
 
@@ -166,8 +166,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
         ...globalMocks,
         components: {
           StorageTab,
-        }
-      }
+        },
+      },
     });
     await flushPromises();
 
@@ -216,7 +216,7 @@ describe('SettingsModal OPFS and Error Handling', () => {
       TEST_ONLY: {
         __testOnlyReset: vi.fn(),
         __testOnlySetSettings: vi.fn(),
-      }
+      },
     } as any);
 
     vi.mocked(useConfirm).mockReturnValue({
@@ -238,8 +238,8 @@ describe('SettingsModal OPFS and Error Handling', () => {
         ...globalMocks,
         components: {
           StorageTab,
-        }
-      }
+        },
+      },
     });
     await flushPromises();
 

@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest';
 import {
   privacyFetchBrokerToParentMessageSchema,
   privacyFetchHeaderEntriesSchema,
   privacyFetchParentToBrokerMessageSchema,
-} from './schemas'
-import { PRIVACY_FETCH_PROTOCOL } from './protocol'
+} from './schemas';
+import { PRIVACY_FETCH_PROTOCOL } from './protocol';
 
 describe('privacy fetch schemas', () => {
   it('accepts request messages', () => {
@@ -16,18 +16,18 @@ describe('privacy fetch schemas', () => {
     })).toMatchObject({
       type: 'request',
       requestId: 'req-1',
-    })
-  })
+    });
+  });
 
   it('accepts header entries arrays', () => {
     expect(privacyFetchHeaderEntriesSchema.parse([
       ['content-type', 'application/json'],
       ['cache-control', 'no-store'],
-    ])).toHaveLength(2)
-  })
+    ])).toHaveLength(2);
+  });
 
   it('accepts response messages with transferred array buffers', () => {
-    const body = new TextEncoder().encode('hello').buffer
+    const body = new TextEncoder().encode('hello').buffer;
     expect(privacyFetchBrokerToParentMessageSchema.parse({
       protocol: PRIVACY_FETCH_PROTOCOL,
       type: 'response',
@@ -50,6 +50,6 @@ describe('privacy fetch schemas', () => {
     })).toMatchObject({
       type: 'response',
       requestId: 'req-1',
-    })
-  })
-})
+    });
+  });
+});

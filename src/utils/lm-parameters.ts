@@ -19,7 +19,7 @@ export const REASONING_PARAMETER_KEYS: readonly (keyof Reasoning)[] = Object.fre
 function hasReasoningOverrides({
   reasoning,
 }: {
-  reasoning: LmParameterOverrides['reasoning'];
+  reasoning: LmParameterOverrides['reasoning'],
 }): boolean {
   if (reasoning === undefined) return false;
 
@@ -41,7 +41,7 @@ function hasReasoningOverrides({
 export function hasLmParameterOverrides({
   lmParameters,
 }: {
-  lmParameters: LmParameterOverrides | undefined;
+  lmParameters: LmParameterOverrides | undefined,
 }): boolean {
   if (lmParameters === undefined) return false;
 
@@ -71,7 +71,7 @@ export function hasLmParameterOverrides({
 export function cloneLmParameters({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined;
+  lmParameters: LmParameters | undefined,
 }): LmParameters | undefined {
   if (lmParameters === undefined) return undefined;
 
@@ -129,7 +129,7 @@ export function cloneLmParameters({
 export function normalizeLmParameters({
   lmParameters,
 }: {
-  lmParameters: LmParameters | undefined;
+  lmParameters: LmParameters | undefined,
 }): LmParameters | undefined {
   return hasLmParameterOverrides({ lmParameters })
     ? lmParameters

@@ -8,53 +8,53 @@ import { iterateReadableStreamChunks } from '@/services/wesh/utils/stream';
 import { iterateUtf8LineRecords } from '@/services/wesh/utils/text-records';
 
 type SedAddress =
-  | { kind: 'line'; lineNumber: number }
-  | { kind: 'regex'; regex: RegExp };
+  | { kind: 'line', lineNumber: number }
+  | { kind: 'regex', regex: RegExp };
 
 type SedCommand =
-  | { kind: 'substitute'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; regex: RegExp; replacement: string; global: boolean; print: boolean }
-  | { kind: 'translate'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; source: string; target: string }
-  | { kind: 'append'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
-  | { kind: 'insert'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
-  | { kind: 'change'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
-  | { kind: 'print'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
-  | { kind: 'delete'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
-  | { kind: 'quit'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined };
+  | { kind: 'substitute', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, regex: RegExp, replacement: string, global: boolean, print: boolean }
+  | { kind: 'translate', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, source: string, target: string }
+  | { kind: 'append', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, text: string }
+  | { kind: 'insert', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, text: string }
+  | { kind: 'change', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, text: string }
+  | { kind: 'print', address: SedAddress | undefined, rangeEnd: SedAddress | undefined }
+  | { kind: 'delete', address: SedAddress | undefined, rangeEnd: SedAddress | undefined }
+  | { kind: 'quit', address: SedAddress | undefined, rangeEnd: SedAddress | undefined };
 
 interface SedRuntimeCommand {
-  command: SedCommand;
-  inRange: boolean;
+  command: SedCommand,
+  inRange: boolean,
 }
 
 type SedRuntimeExecutableCommand =
-  | { kind: 'substitute'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; regex: RegExp; replacement: string; print: boolean }
-  | { kind: 'translate'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; lookup: Map<string, string> }
-  | { kind: 'append'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
-  | { kind: 'insert'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
-  | { kind: 'change'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined; text: string }
-  | { kind: 'print'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
-  | { kind: 'delete'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined }
-  | { kind: 'quit'; address: SedAddress | undefined; rangeEnd: SedAddress | undefined };
+  | { kind: 'substitute', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, regex: RegExp, replacement: string, print: boolean }
+  | { kind: 'translate', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, lookup: Map<string, string> }
+  | { kind: 'append', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, text: string }
+  | { kind: 'insert', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, text: string }
+  | { kind: 'change', address: SedAddress | undefined, rangeEnd: SedAddress | undefined, text: string }
+  | { kind: 'print', address: SedAddress | undefined, rangeEnd: SedAddress | undefined }
+  | { kind: 'delete', address: SedAddress | undefined, rangeEnd: SedAddress | undefined }
+  | { kind: 'quit', address: SedAddress | undefined, rangeEnd: SedAddress | undefined };
 
 interface SedExecutableRuntimeCommand {
-  command: SedRuntimeExecutableCommand;
-  inRange: boolean;
+  command: SedRuntimeExecutableCommand,
+  inRange: boolean,
 }
 
 interface SedTextLine {
-  line: string;
-  hadNewline: boolean;
+  line: string,
+  hadNewline: boolean,
 }
 
 interface SedLineResult {
-  outputs: string[];
-  shouldQuit: boolean;
+  outputs: string[],
+  shouldQuit: boolean,
 }
 
 function parseLineNumberAddress({
   value,
 }: {
-  value: string;
+  value: string,
 }): SedAddress | undefined {
   if (!/^\d+$/.test(value)) return undefined;
   return {
@@ -67,9 +67,9 @@ function parseRegexLiteral({
   script,
   index,
 }: {
-  script: string;
-  index: number;
-}): { ok: true; regex: RegExp; nextIndex: number } | { ok: false; message: string } {
+  script: string,
+  index: number,
+}): { ok: true, regex: RegExp, nextIndex: number } | { ok: false, message: string } {
   const delimiter = script[index];
   if (delimiter !== '/') {
     return { ok: false, message: `invalid regex address near '${script.slice(index)}'` };
@@ -107,9 +107,9 @@ function parseAddress({
   script,
   index,
 }: {
-  script: string;
-  index: number;
-}): { ok: true; address: SedAddress | undefined; nextIndex: number } | { ok: false; message: string } {
+  script: string,
+  index: number,
+}): { ok: true, address: SedAddress | undefined, nextIndex: number } | { ok: false, message: string } {
   const lineMatch = script.slice(index).match(/^\d+/);
   if (lineMatch?.[0] !== undefined) {
     return {
@@ -142,11 +142,11 @@ function parseSubstituteCommand({
   address,
   rangeEnd,
 }: {
-  script: string;
-  index: number;
-  address: SedAddress | undefined;
-  rangeEnd: SedAddress | undefined;
-}): { ok: true; command: SedCommand; nextIndex: number } | { ok: false; message: string } {
+  script: string,
+  index: number,
+  address: SedAddress | undefined,
+  rangeEnd: SedAddress | undefined,
+}): { ok: true, command: SedCommand, nextIndex: number } | { ok: false, message: string } {
   const delimiter = script[index + 1];
   if (delimiter === undefined) {
     return { ok: false, message: 'unterminated substitute command' };
@@ -225,10 +225,10 @@ function parseDelimitedSedText({
   index,
   label,
 }: {
-  script: string;
-  index: number;
-  label: string;
-}): { ok: true; text: string; nextIndex: number } | { ok: false; message: string } {
+  script: string,
+  index: number,
+  label: string,
+}): { ok: true, text: string, nextIndex: number } | { ok: false, message: string } {
   const delimiter = script[index];
   if (delimiter === undefined) {
     return { ok: false, message: `unterminated ${label} command` };
@@ -262,11 +262,11 @@ function parseTranslateCommand({
   address,
   rangeEnd,
 }: {
-  script: string;
-  index: number;
-  address: SedAddress | undefined;
-  rangeEnd: SedAddress | undefined;
-}): { ok: true; command: SedCommand; nextIndex: number } | { ok: false; message: string } {
+  script: string,
+  index: number,
+  address: SedAddress | undefined,
+  rangeEnd: SedAddress | undefined,
+}): { ok: true, command: SedCommand, nextIndex: number } | { ok: false, message: string } {
   const source = parseDelimitedSedText({
     script,
     index: index + 1,
@@ -305,12 +305,12 @@ function parseTextCommand({
   address,
   rangeEnd,
 }: {
-  script: string;
-  index: number;
-  label: 'append' | 'insert' | 'change';
-  address: SedAddress | undefined;
-  rangeEnd: SedAddress | undefined;
-}): { ok: true; command: SedCommand; nextIndex: number } | { ok: false; message: string } {
+  script: string,
+  index: number,
+  label: 'append' | 'insert' | 'change',
+  address: SedAddress | undefined,
+  rangeEnd: SedAddress | undefined,
+}): { ok: true, command: SedCommand, nextIndex: number } | { ok: false, message: string } {
   let cursor = index + 1;
   if (script[cursor] === '\\') {
     cursor += 1;
@@ -356,8 +356,8 @@ function skipSeparators({
   script,
   index,
 }: {
-  script: string;
-  index: number;
+  script: string,
+  index: number,
 }): number {
   let cursor = index;
   while (cursor < script.length) {
@@ -374,8 +374,8 @@ function skipSeparators({
 function parseSedScript({
   script,
 }: {
-  script: string;
-}): { ok: true; commands: SedCommand[] } | { ok: false; message: string } {
+  script: string,
+}): { ok: true, commands: SedCommand[] } | { ok: false, message: string } {
   const commands: SedCommand[] = [];
   let index = 0;
 
@@ -490,9 +490,9 @@ function matchesAddress({
   lineNumber,
   line,
 }: {
-  address: SedAddress | undefined;
-  lineNumber: number;
-  line: string;
+  address: SedAddress | undefined,
+  lineNumber: number,
+  line: string,
 }): boolean {
   if (address === undefined) return true;
 
@@ -514,9 +514,9 @@ function commandApplies({
   lineNumber,
   line,
 }: {
-  runtimeCommand: SedRuntimeCommand | SedExecutableRuntimeCommand;
-  lineNumber: number;
-  line: string;
+  runtimeCommand: SedRuntimeCommand | SedExecutableRuntimeCommand,
+  lineNumber: number,
+  line: string,
 }): boolean {
   const { command } = runtimeCommand;
   if (command.rangeEnd === undefined) {
@@ -543,8 +543,8 @@ async function openSedInputStream({
   context,
   file,
 }: {
-  context: WeshCommandContext;
-  file: string;
+  context: WeshCommandContext,
+  file: string,
 }): Promise<ReadableStream<Uint8Array>> {
   if (file === '-') {
     return openHandleReadStream({ handle: context.stdin });
@@ -560,7 +560,7 @@ async function openSedInputStream({
 async function* readTextLines({
   stream,
 }: {
-  stream: ReadableStream<Uint8Array>;
+  stream: ReadableStream<Uint8Array>,
 }): AsyncGenerator<SedTextLine> {
   for await (const record of iterateUtf8LineRecords({
     chunks: iterateReadableStreamChunks({ stream }),
@@ -573,8 +573,8 @@ async function* readTextLines({
 }
 
 interface SedOutputWriter {
-  write({ text }: { text: string }): Promise<void>;
-  flush(): Promise<void>;
+  write({ text }: { text: string }): Promise<void>,
+  flush(): Promise<void>,
 }
 
 async function processSedStream({
@@ -583,10 +583,10 @@ async function processSedStream({
   quiet,
   writer,
 }: {
-  stream: ReadableStream<Uint8Array>;
-  commands: SedCommand[];
-  quiet: boolean;
-  writer: SedOutputWriter;
+  stream: ReadableStream<Uint8Array>,
+  commands: SedCommand[],
+  quiet: boolean,
+  writer: SedOutputWriter,
 }): Promise<void> {
   const runtimeCommands = createSedRuntimeCommands({ commands });
   let lineNumber = 0;
@@ -613,12 +613,12 @@ async function createSedTemporaryFile({
   targetPath,
   mode,
 }: {
-  context: WeshCommandContext;
-  targetPath: string;
-  mode: number;
+  context: WeshCommandContext,
+  targetPath: string,
+  mode: number,
 }): Promise<{
-  path: string;
-  handle: WeshFileHandle;
+  path: string,
+  handle: WeshFileHandle,
 }> {
   const separatorIndex = targetPath.lastIndexOf('/');
   const parentPath = separatorIndex <= 0 ? '/' : targetPath.slice(0, separatorIndex);
@@ -653,7 +653,7 @@ async function createSedTemporaryFile({
 function createSedRuntimeCommands({
   commands,
 }: {
-  commands: SedCommand[];
+  commands: SedCommand[],
 }): SedExecutableRuntimeCommand[] {
   return commands.map((command) => {
     switch (command.kind) {
@@ -703,10 +703,10 @@ function executeSedLine({
   current,
   quiet,
 }: {
-  runtimeCommands: SedExecutableRuntimeCommand[];
-  lineNumber: number;
-  current: SedTextLine;
-  quiet: boolean;
+  runtimeCommands: SedExecutableRuntimeCommand[],
+  lineNumber: number,
+  current: SedTextLine,
+  quiet: boolean,
 }): SedLineResult {
   let patternSpace = current.line;
   let deleted = false;

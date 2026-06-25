@@ -149,7 +149,7 @@ defineExpose({
     handleToolConfigPersistenceToggle,
     handleSidebarSendMessageReorderToggle,
     handleFakeLmDebugModeToggle,
-  }
+  },
 });
 </script>
 

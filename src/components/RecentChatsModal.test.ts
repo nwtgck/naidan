@@ -70,16 +70,16 @@ vi.mock('./RecentChatListItem.vue', () => ({
   default: {
     name: 'RecentChatListItem',
     props: ['chat', 'isSelected'],
-    template: '<div class="recent-item" :data-selected="isSelected" @click="$emit(\'click\')">{{ chat ? chat.title : \'\' }}</div>'
-  }
+    template: '<div class="recent-item" :data-selected="isSelected" @click="$emit(\'click\')">{{ chat ? chat.title : \'\' }}</div>',
+  },
 }));
 
 vi.mock('./SearchPreview.vue', () => ({
   __esModule: true,
   default: {
     name: 'SearchPreview',
-    template: '<div>Preview</div>'
-  }
+    template: '<div>Preview</div>',
+  },
 }));
 
 // Mock scrollIntoView

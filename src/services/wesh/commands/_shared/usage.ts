@@ -8,10 +8,10 @@ export async function writeCommandUsageError({
   message,
   argvSpec,
 }: {
-  context: WeshCommandContext;
-  command: string;
-  message: string;
-  argvSpec?: StandardArgvParserSpec;
+  context: WeshCommandContext,
+  command: string,
+  message: string,
+  argvSpec?: StandardArgvParserSpec,
 }): Promise<void> {
   const meta = context.getWeshCommandMeta({ name: command });
   const usageLine = meta === undefined ? undefined : `usage: ${meta.usage}`;
@@ -25,9 +25,9 @@ export async function writeCommandHelp({
   command,
   argvSpec,
 }: {
-  context: WeshCommandContext;
-  command: string;
-  argvSpec?: StandardArgvParserSpec;
+  context: WeshCommandContext,
+  command: string,
+  argvSpec?: StandardArgvParserSpec,
 }): Promise<void> {
   const meta = context.getWeshCommandMeta({ name: command });
   const usageLine = meta === undefined ? undefined : `usage: ${meta.usage}`;
@@ -48,10 +48,10 @@ export async function maybeWriteStandaloneCommandHelp({
   argvSpec,
   mode,
 }: {
-  context: WeshCommandContext;
-  command: string;
-  argvSpec?: StandardArgvParserSpec;
-  mode: 'help-requested' | 'not-requested';
+  context: WeshCommandContext,
+  command: string,
+  argvSpec?: StandardArgvParserSpec,
+  mode: 'help-requested' | 'not-requested',
 }): Promise<'handled' | 'not-handled'> {
   switch (mode) {
   case 'help-requested':
@@ -74,8 +74,8 @@ export function isStandaloneCommandHelpRequest({
   args,
   acceptedForms,
 }: {
-  args: string[];
-  acceptedForms: string[][];
+  args: string[],
+  acceptedForms: string[][],
 }): boolean {
   return acceptedForms.some((acceptedForm) => {
     if (args.length !== acceptedForm.length) {

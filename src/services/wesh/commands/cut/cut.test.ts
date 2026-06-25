@@ -20,8 +20,8 @@ describe('wesh cut', () => {
     path,
     data,
   }: {
-    path: string;
-    data: string | Uint8Array;
+    path: string,
+    data: string | Uint8Array,
   }) {
     const segments = path.split('/').filter(Boolean);
     const fileName = segments.pop();
@@ -42,8 +42,8 @@ describe('wesh cut', () => {
     script,
     stdinText,
   }: {
-    script: string;
-    stdinText?: string;
+    script: string,
+    stdinText?: string,
   }) {
     const stdout = createTestWriteCaptureHandle();
     const stderr = createTestWriteCaptureHandle();

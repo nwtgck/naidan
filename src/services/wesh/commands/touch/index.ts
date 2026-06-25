@@ -98,7 +98,7 @@ export const touchCommandDefinition: WeshCommandDefinition = {
         } else {
           const handle = await context.files.open({
             path: fullPath,
-            flags: { access: 'write', creation: 'never', truncate: 'preserve', append: 'preserve' }
+            flags: { access: 'write', creation: 'never', truncate: 'preserve', append: 'preserve' },
           });
           try {
             const stat = await handle.stat();

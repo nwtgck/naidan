@@ -7,18 +7,18 @@ type DetailsState = 'collapsed' | 'expanded';
 type ToggleAvailability = 'available' | 'unavailable';
 
 const props = defineProps<{
-  id: string;
-  title: string;
-  summary: string;
-  details: string;
-  status: FeatureStatus;
-  toggleAvailability: ToggleAvailability;
-  toggleLabel: string;
-  toggleTestId: string;
+  id: string,
+  title: string,
+  summary: string,
+  details: string,
+  status: FeatureStatus,
+  toggleAvailability: ToggleAvailability,
+  toggleLabel: string,
+  toggleTestId: string,
 }>();
 
 const emit = defineEmits<{
-  (event: 'toggle'): void;
+  (event: 'toggle'): void,
 }>();
 
 const detailsState = ref<DetailsState>('collapsed');
@@ -43,7 +43,7 @@ defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
     // ESLint-required for defineExpose.
-  }
+  },
 });
 </script>
 

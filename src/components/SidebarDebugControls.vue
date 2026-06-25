@@ -8,7 +8,7 @@ import { TerminalIcon, MoreVerticalIcon, HistoryIcon, BoxIcon, FolderSearchIcon 
 import MessageActionsMenu from './MessageActionsMenu.vue';
 
 defineProps<{
-  isSidebarOpen: boolean;
+  isSidebarOpen: boolean,
 }>();
 
 const { isDebugOpen, toggleDebug, toggleWeshTerminal } = useLayout();
@@ -27,7 +27,7 @@ function handleOpenRecent() {
 defineExpose({
   TEST_ONLY: {
     showOpfsMenu,
-  }
+  },
 });
 </script>
 

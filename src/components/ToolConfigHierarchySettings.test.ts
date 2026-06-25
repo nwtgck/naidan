@@ -55,11 +55,11 @@ function mountSettings({
   isEditable = true,
   inheritanceLabelByKey = scope === 'chat' ? inheritanceLabels : undefined,
 }: {
-  scope?: 'global' | 'chat_group' | 'chat';
-  toolConfigs?: ToolConfig[];
-  effectiveToolConfigs?: ToolConfig[];
-  isEditable?: boolean;
-  inheritanceLabelByKey?: typeof inheritanceLabels;
+  scope?: 'global' | 'chat_group' | 'chat',
+  toolConfigs?: ToolConfig[],
+  effectiveToolConfigs?: ToolConfig[],
+  isEditable?: boolean,
+  inheritanceLabelByKey?: typeof inheritanceLabels,
 } = {}) {
   return mount(ToolConfigHierarchySettings, {
     props: {
@@ -76,8 +76,8 @@ function withToolConfig({
   key,
   config,
 }: {
-  key: ToolConfig['key'];
-  config: ToolConfig;
+  key: ToolConfig['key'],
+  config: ToolConfig,
 }): ToolConfig[] {
   return defaults.map((current) => current.key === key ? config : current);
 }

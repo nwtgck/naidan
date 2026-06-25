@@ -58,7 +58,7 @@ function createMockDir(entries: Record<string, any> = {}) {
       for (const [name, handle] of Object.entries(entries)) {
         yield [name, handle];
       }
-    })
+    }),
   };
   return dir;
 }
@@ -68,12 +68,12 @@ function createMockFile(size: number, lastModified: number) {
     kind: 'file',
     getFile: vi.fn().mockResolvedValue({
       size,
-      lastModified
+      lastModified,
     }),
     createWritable: vi.fn().mockResolvedValue({
       write: vi.fn(),
-      close: vi.fn()
-    })
+      close: vi.fn(),
+    }),
   };
 }
 
@@ -89,8 +89,8 @@ describe('transformersJsService', () => {
     // Default navigator mock
     vi.stubGlobal('navigator', {
       storage: {
-        getDirectory: vi.fn().mockRejectedValue(new Error('No storage'))
-      }
+        getDirectory: vi.fn().mockRejectedValue(new Error('No storage')),
+      },
     });
   });
 
@@ -105,29 +105,29 @@ describe('transformersJsService', () => {
       'onnx-community': createMockDir({
         'phi-3': createMockDir({
           'model.onnx': createMockFile(1000, 123456789),
-          '.model.onnx.complete': createMockFile(0, 123456789)
-        })
-      })
+          '.model.onnx.complete': createMockFile(0, 123456789),
+        }),
+      }),
     });
 
     const mockUserDir = createMockDir({
       'my-custom-model': createMockDir({
         'weights.onnx': createMockFile(2000, 987654321),
-        '.weights.onnx.complete': createMockFile(0, 987654321)
-      })
+        '.weights.onnx.complete': createMockFile(0, 987654321),
+      }),
     });
 
     const mockModelsDir = createMockDir({
       'huggingface.co': mockHuggingFaceDir,
-      'user': mockUserDir
+      'user': mockUserDir,
     });
 
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: vi.fn().mockResolvedValue(createMockDir({
-          'models': mockModelsDir
-        }))
-      }
+          'models': mockModelsDir,
+        })),
+      },
     });
 
     const { transformersJsService } = await import('./index');
@@ -137,39 +137,39 @@ describe('transformersJsService', () => {
       id: 'hf.co/onnx-community/phi-3',
       isLocal: false,
       size: 1000,
-      isComplete: true
+      isComplete: true,
     }));
     expect(models).toContainEqual(expect.objectContaining({
       id: 'user/my-custom-model',
       isLocal: true,
       size: 2000,
-      isComplete: true
+      isComplete: true,
     }));
   });
 
   it('should include models even without completion marker but as incomplete', async () => {
     const mockLocalDir = createMockDir({
       'incomplete-model': createMockDir({
-        'weights.onnx': createMockFile(2000, 987654321)
+        'weights.onnx': createMockFile(2000, 987654321),
         // missing .weights.onnx.complete
-      })
+      }),
     });
 
     vi.stubGlobal('navigator', {
       storage: {
         getDirectory: vi.fn().mockResolvedValue(createMockDir({
           'models': createMockDir({
-            'local': mockLocalDir
-          })
-        }))
-      }
+            'local': mockLocalDir,
+          }),
+        })),
+      },
     });
 
     const { transformersJsService } = await import('./index');
     const models = await transformersJsService.listCachedModels();
     expect(models).toContainEqual(expect.objectContaining({
       id: 'user/incomplete-model',
-      isComplete: false
+      isComplete: false,
     }));
   });
 
@@ -179,15 +179,15 @@ describe('transformersJsService', () => {
         cb({ status: 'progress', progress: 50 });
         return { device: 'webgpu' };
       }),
-      prefetchUrls: vi.fn().mockResolvedValue(undefined)
+      prefetchUrls: vi.fn().mockResolvedValue(undefined),
     };
     (Comlink.wrap as any).mockImplementation((_worker: any) => {
       // Return a mock object that supports both engine and scanner worker interfaces
       return Object.assign(mockRemote, {
         [Comlink.releaseProxy]: vi.fn(),
         scanModel: vi.fn().mockResolvedValue({
-          files: [{ url: 'https://hf.co/m/model.onnx' }]
-        })
+          files: [{ url: 'https://hf.co/m/model.onnx' }],
+        }),
       });
     });
 
@@ -311,7 +311,7 @@ describe('transformersJsService', () => {
     const mockRemote = {
       loadModel: vi.fn().mockImplementation(() => new Promise(resolve => {
         setTimeout(() => resolve({ device: 'wasm' }), 100);
-      }))
+      })),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -337,7 +337,7 @@ describe('transformersJsService', () => {
     const mockRemote = {
       loadModel: vi.fn().mockResolvedValue({ device: 'wasm' }),
       generateText: vi.fn().mockResolvedValue(undefined),
-      interrupt: vi.fn().mockResolvedValue(undefined)
+      interrupt: vi.fn().mockResolvedValue(undefined),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });
@@ -377,7 +377,7 @@ describe('transformersJsService', () => {
     const reactiveParams = reactive({
       ...EMPTY_LM_PARAMETERS,
       stop: ['END'],
-      reasoning: { effort: 'high' as const }
+      reasoning: { effort: 'high' as const },
     });
 
     await transformersJsService.generateText({
@@ -393,7 +393,7 @@ describe('transformersJsService', () => {
     expect(workerParams).toEqual({
       ...EMPTY_LM_PARAMETERS,
       stop: ['END'],
-      reasoning: { effort: 'high' }
+      reasoning: { effort: 'high' },
     });
     expect(workerParams).not.toBe(reactiveParams);
     expect(isProxy(workerParams)).toBe(false);
@@ -421,9 +421,9 @@ describe('transformersJsService', () => {
         type: 'function' as const,
         function: {
           name: 'my_tool',
-          arguments: '{"input":"hello"}'
-        }
-      }])
+          arguments: '{"input":"hello"}',
+        },
+      }]),
     }]);
     const reactiveTools = reactive([{
       type: 'function' as const,
@@ -433,10 +433,10 @@ describe('transformersJsService', () => {
         parameters: reactive({
           type: 'object',
           properties: {
-            input: { type: 'string' }
-          }
-        })
-      }
+            input: { type: 'string' },
+          },
+        }),
+      },
     }]);
 
     await transformersJsService.generateText({
@@ -459,8 +459,8 @@ describe('transformersJsService', () => {
         type: 'function',
         function: {
           name: 'my_tool',
-          arguments: '{"input":"hello"}'
-        }
+          arguments: '{"input":"hello"}',
+        },
       }],
       tool_call_id: undefined,
     }]);
@@ -477,10 +477,10 @@ describe('transformersJsService', () => {
         parameters: {
           type: 'object',
           properties: {
-            input: { type: 'string' }
-          }
-        }
-      }
+            input: { type: 'string' },
+          },
+        },
+      },
     }]);
     expect(isProxy(workerTools)).toBe(false);
     expect(isProxy(workerTools[0])).toBe(false);
@@ -492,8 +492,8 @@ describe('transformersJsService', () => {
 
     vi.stubGlobal('navigator', {
       storage: {
-        getDirectory: vi.fn().mockResolvedValue(mockRoot)
-      }
+        getDirectory: vi.fn().mockResolvedValue(mockRoot),
+      },
     });
 
     const { transformersJsService } = await import('./index');
@@ -512,7 +512,7 @@ describe('transformersJsService', () => {
 
   it('should handle loadModel errors', async () => {
     const mockRemote = {
-      loadModel: vi.fn().mockRejectedValue(new Error('Failed to load'))
+      loadModel: vi.fn().mockRejectedValue(new Error('Failed to load')),
     };
     (Comlink.wrap as any).mockImplementation(() => {
       return Object.assign(mockRemote, { [Comlink.releaseProxy]: vi.fn() });

@@ -5,11 +5,11 @@ import type { ContextCompactProgress } from '@/services/context-compact';
 import { toContextCompactDisplayProgress } from '@/services/context-compact';
 
 const props = defineProps<{
-  progress: ContextCompactProgress;
+  progress: ContextCompactProgress,
 }>();
 
 defineEmits<{
-  (e: 'abort'): void;
+  (e: 'abort'): void,
 }>();
 
 const display = computed(() => {
@@ -42,7 +42,7 @@ function clearPercentAnimationFrame() {
 function animatePercentTo({
   percent,
 }: {
-  percent: number;
+  percent: number,
 }) {
   clearPercentAnimationFrame();
   animationFrameId.value = window.requestAnimationFrame(() => {

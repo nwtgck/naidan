@@ -11,11 +11,11 @@ export const rule = {
     },
   },
   create(context) {
-    let hasErrorHandlerAssignment = false
+    let hasErrorHandlerAssignment = false;
 
     return {
       AssignmentExpression(node) {
-        const left = node.left
+        const left = node.left;
         if (
           left.type === 'MemberExpression'
           && !left.computed
@@ -28,7 +28,7 @@ export const rule = {
           && left.property.type === 'Identifier'
           && left.property.name === 'errorHandler'
         ) {
-          hasErrorHandlerAssignment = true
+          hasErrorHandlerAssignment = true;
         }
       },
       'Program:exit'(node) {
@@ -36,12 +36,12 @@ export const rule = {
           context.report({
             node,
             message: 'main.ts must assign app.config.errorHandler directly so application-wide Vue error reporting remains visible.',
-          })
+          });
         }
       },
-    }
+    };
   },
-}
+};
 
 export default {
   files: ['src/main.ts'],
@@ -55,4 +55,4 @@ export default {
   rules: {
     'local-rules-vue-error-handler/ensure-vue-error-handler': 'error',
   },
-}
+};

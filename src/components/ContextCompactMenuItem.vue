@@ -2,7 +2,7 @@
 import { Minimize2Icon } from 'lucide-vue-next';
 
 defineEmits<{
-  (e: 'compact'): void;
+  (e: 'compact'): void,
 }>();
 
 defineExpose({

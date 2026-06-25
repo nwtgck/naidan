@@ -3,9 +3,9 @@ export type FakeLmToneKey = 'greeting' | 'question' | 'request' | 'technical';
 export type FakeLmToneScores = Record<FakeLmToneKey, number>;
 
 export type FakeLmInputKeyword = {
-  readonly text: string;
-  readonly kind: 'ascii' | 'japanese' | 'mixed';
-  readonly weight: number;
+  readonly text: string,
+  readonly kind: 'ascii' | 'japanese' | 'mixed',
+  readonly weight: number,
 };
 
 export type FakeLmInputGreeting =
@@ -17,20 +17,20 @@ export type FakeLmInputGreeting =
   | 'work';
 
 export type FakeLmInputAnalysis = {
-  readonly lastUserText: string;
-  readonly toneScores: FakeLmToneScores;
-  readonly keywords: readonly FakeLmInputKeyword[];
-  readonly greeting: FakeLmInputGreeting | undefined;
+  readonly lastUserText: string,
+  readonly toneScores: FakeLmToneScores,
+  readonly keywords: readonly FakeLmInputKeyword[],
+  readonly greeting: FakeLmInputGreeting | undefined,
 };
 
 export function analyzeFakeLmInputFromMessages({ messages }: {
-  messages: readonly unknown[];
+  messages: readonly unknown[],
 }): FakeLmInputAnalysis {
   return analyzeFakeLmInputText({ text: extractLastUserText({ messages }) });
 }
 
 export function analyzeFakeLmInputText({ text }: {
-  text: string;
+  text: string,
 }): FakeLmInputAnalysis {
   const normalized = normalizeInputText({ text });
   const rawKeywords = extractFakeLmInputKeywords({ text: normalized });
@@ -50,7 +50,7 @@ export function createEmptyFakeLmInputAnalysis(): FakeLmInputAnalysis {
 }
 
 function extractLastUserText({ messages }: {
-  messages: readonly unknown[];
+  messages: readonly unknown[],
 }): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -65,7 +65,7 @@ function extractLastUserText({ messages }: {
 }
 
 function extractMessageContentText({ content }: {
-  content: unknown;
+  content: unknown,
 }): string {
   if (typeof content === 'string') {
     return content;
@@ -82,7 +82,7 @@ function extractMessageContentText({ content }: {
 }
 
 function extractContentPartText({ part }: {
-  part: unknown;
+  part: unknown,
 }): string {
   if (typeof part === 'string') {
     return part;
@@ -100,13 +100,13 @@ function extractContentPartText({ part }: {
 }
 
 function normalizeInputText({ text }: {
-  text: string;
+  text: string,
 }): string {
   return text.replace(/\s+/gu, ' ').trim();
 }
 
 function extractFakeLmInputKeywords({ text }: {
-  text: string;
+  text: string,
 }): FakeLmInputKeyword[] {
   const matches = text.match(/[A-Za-z0-9][A-Za-z0-9_-]*(?:[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]+[A-Za-z0-9_-]*)+|[A-Za-z0-9][A-Za-z0-9_-]{1,30}|[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]{2,24}/gu) ?? [];
   const seen = new Set<string>();
@@ -141,7 +141,7 @@ function extractFakeLmInputKeywords({ text }: {
 }
 
 function expandRawKeywordCandidate({ value }: {
-  value: string;
+  value: string,
 }): string[] {
   if (!containsJapaneseScript({ value }) || isFakeLmGreetingKeyword({ value })) {
     return [value];
@@ -156,7 +156,7 @@ function expandRawKeywordCandidate({ value }: {
 }
 
 function normalizeKeywordCandidate({ value }: {
-  value: string;
+  value: string,
 }): string | undefined {
   const trimmed = value.trim().replace(/^[、。,.!?！？:：;；()[\]{}「」『』]+|[、。,.!?！？:：;；()[\]{}「」『』]+$/gu, '');
   if (trimmed.length < 2) {
@@ -172,22 +172,22 @@ function normalizeKeywordCandidate({ value }: {
 
 
 function filterGreetingKeywordNoise({ keywords }: {
-  keywords: readonly FakeLmInputKeyword[];
+  keywords: readonly FakeLmInputKeyword[],
 }): FakeLmInputKeyword[] {
   return keywords.filter((keyword) => !isFakeLmGreetingKeyword({ value: keyword.text }));
 }
 
 function isFakeLmGreetingKeyword({ value }: {
-  value: string;
+  value: string,
 }): boolean {
   const lower = value.toLowerCase();
   return jaGreetingKeywordStopwords.has(value) || enGreetingKeywordStopwords.has(lower);
 }
 
 function detectFakeLmToneScores({ text, keywords, greeting }: {
-  text: string;
-  keywords: readonly FakeLmInputKeyword[];
-  greeting: FakeLmInputGreeting | undefined;
+  text: string,
+  keywords: readonly FakeLmInputKeyword[],
+  greeting: FakeLmInputGreeting | undefined,
 }): FakeLmToneScores {
   if (text.length === 0) {
     return { greeting: 0, question: 0, request: 0, technical: 0 };
@@ -203,8 +203,8 @@ function detectFakeLmToneScores({ text, keywords, greeting }: {
 }
 
 function detectGreetingScore({ text, greeting }: {
-  text: string;
-  greeting: FakeLmInputGreeting | undefined;
+  text: string,
+  greeting: FakeLmInputGreeting | undefined,
 }): number {
   if (greeting === undefined) {
     return 0;
@@ -214,8 +214,8 @@ function detectGreetingScore({ text, greeting }: {
 }
 
 function detectFakeLmInputGreeting({ text, lower }: {
-  text: string;
-  lower: string;
+  text: string,
+  lower: string,
 }): FakeLmInputGreeting | undefined {
   if (/(?:おはよう)/u.test(text) || /^(?:good morning)\b/iu.test(lower)) {
     return 'morning';
@@ -245,8 +245,8 @@ function detectFakeLmInputGreeting({ text, lower }: {
 }
 
 function detectTechnicalScore({ lower, keywords }: {
-  lower: string;
-  keywords: readonly FakeLmInputKeyword[];
+  lower: string,
+  keywords: readonly FakeLmInputKeyword[],
 }): number {
   if (/(?:typescript|javascript|api|json|bundle|patch|diff|npm|lint|typecheck|test|fetch|provider|endpoint|stream|seed|vue|vite|zod|schema|gguf|llm|lm)/iu.test(lower)) {
     return 1;
@@ -260,7 +260,7 @@ function detectTechnicalScore({ lower, keywords }: {
 }
 
 function getKeywordKind({ value }: {
-  value: string;
+  value: string,
 }): FakeLmInputKeyword['kind'] {
   const hasJapanese = containsJapaneseScript({ value });
   const hasAscii = /[A-Za-z0-9]/u.test(value);
@@ -277,7 +277,7 @@ function getKeywordKind({ value }: {
 }
 
 function getKeywordWeight({ value }: {
-  value: string;
+  value: string,
 }): number {
   if (/^[A-Z0-9_-]{2,}$/u.test(value)) {
     return 12;
@@ -295,20 +295,20 @@ function getKeywordWeight({ value }: {
 }
 
 function containsJapaneseScript({ value }: {
-  value: string;
+  value: string,
 }): boolean {
   return /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(value);
 }
 
 function isFakeLmStopword({ value }: {
-  value: string;
+  value: string,
 }): boolean {
   const lower = value.toLowerCase();
   return jaStopwords.has(value) || enStopwords.has(lower);
 }
 
 function clampScore({ value }: {
-  value: number;
+  value: number,
 }): number {
   return Math.max(0, Math.min(1, value));
 }

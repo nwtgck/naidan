@@ -68,7 +68,7 @@ vi.mock('../composables/chat/ui/useCurrentChatState', () => ({
 
 vi.mock('../composables/chat/ui/useChatNavigation', () => ({
   useChatNavigation: () => ({
-    openChat: ({ chatId }: { chatId: string; leafId?: string }) => {
+    openChat: ({ chatId }: { chatId: string, leafId?: string }) => {
       mockCurrentChatGroup.value = null;
       mockCurrentChat.value = mockChats.value.find(c => idToRaw({ id: c.id }) === chatId) ?? null;
     },
@@ -137,10 +137,10 @@ describe('Sidebar Selection State', () => {
 
   beforeEach(() => {
     mockChatGroups.value = [
-      { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] }
+      { id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', isCollapsed: false, updatedAt: 0, items: [] },
     ];
     mockChats.value = [
-      { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 }
+      { id: toChatId({ raw: 'c1' }), title: 'Chat 1', updatedAt: 0 },
     ];
     mockCurrentChat.value = null;
     mockCurrentChatGroup.value = null;

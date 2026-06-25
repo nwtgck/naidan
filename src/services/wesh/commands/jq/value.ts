@@ -11,9 +11,9 @@ export function defineJsonProperty({
   key,
   value,
 }: {
-  object: JsonObject;
-  key: string;
-  value: JsonValue;
+  object: JsonObject,
+  key: string,
+  value: JsonValue,
 }): void {
   Object.defineProperty(object, key, {
     configurable: true,
@@ -30,7 +30,7 @@ export function isJsonObject(value: JsonValue): value is JsonObject {
 export function cloneJson({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): JsonValue {
   if (value === null) return null;
   if (Array.isArray(value)) {
@@ -63,7 +63,7 @@ export function cloneJson({
 export function normalizeJsonValue({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): JsonValue {
   return cloneJson({ value });
 }
@@ -72,8 +72,8 @@ export function mergeJsonObjects({
   left,
   right,
 }: {
-  left: JsonObject;
-  right: JsonObject;
+  left: JsonObject,
+  right: JsonObject,
 }): JsonObject {
   const merged = createJsonObject();
   for (const [key, value] of Object.entries(left)) {
@@ -89,8 +89,8 @@ function compareStrings({
   left,
   right,
 }: {
-  left: string;
-  right: string;
+  left: string,
+  right: string,
 }): number {
   if (left === right) return 0;
 
@@ -111,7 +111,7 @@ function compareStrings({
 function typeRank({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): number {
   if (value === null) return 0;
   if (value === false) return 1;
@@ -126,8 +126,8 @@ export function compareJsonValues({
   left,
   right,
 }: {
-  left: JsonValue;
-  right: JsonValue;
+  left: JsonValue,
+  right: JsonValue,
 }): number {
   const leftRank = typeRank({ value: left });
   const rightRank = typeRank({ value: right });
@@ -188,8 +188,8 @@ export function jsonValuesEqual({
   left,
   right,
 }: {
-  left: JsonValue;
-  right: JsonValue;
+  left: JsonValue,
+  right: JsonValue,
 }): boolean {
   return compareJsonValues({ left, right }) === 0;
 }
@@ -197,7 +197,7 @@ export function jsonValuesEqual({
 function sortJsonObjectKeys({
   value,
 }: {
-  value: JsonValue;
+  value: JsonValue,
 }): JsonValue {
   if (Array.isArray(value)) {
     return value.map((item) => sortJsonObjectKeys({ value: item }));
@@ -219,7 +219,7 @@ function sortJsonObjectKeys({
 function escapeNonAscii({
   text,
 }: {
-  text: string;
+  text: string,
 }): string {
   let output = '';
   for (const char of text) {
@@ -246,10 +246,10 @@ export function stringifyJson({
   sortKeys,
   asciiOnly,
 }: {
-  value: JsonValue;
-  indentation: number | '\t' | undefined;
-  sortKeys: boolean;
-  asciiOnly: boolean;
+  value: JsonValue,
+  indentation: number | '\t' | undefined,
+  sortKeys: boolean,
+  asciiOnly: boolean,
 }): string {
   const normalized = sortKeys ? sortJsonObjectKeys({ value }) : value;
   const text = JSON.stringify(normalized, undefined, indentation);

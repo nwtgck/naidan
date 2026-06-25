@@ -6,7 +6,7 @@ import type {
   ImportPreviewItem,
   PreviewChatGroup,
   PreviewChat,
-  ImportFieldStrategy
+  ImportFieldStrategy,
 } from './types';
 import {
   ChatGroupSchemaDto,
@@ -23,7 +23,7 @@ import {
   type ChatGroupDto,
   type BinaryObjectDto,
   type BinaryShardIndexDto,
-  BinaryShardIndexSchemaDto
+  BinaryShardIndexSchemaDto,
 } from '@/models/dto';
 import {
   settingsToDomain,
@@ -31,7 +31,7 @@ import {
   chatMetaToDomain,
   hierarchyToDomain,
   chatToDomain,
-  chatToDto
+  chatToDto,
 } from '@/models/mappers';
 import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import type { ChatSummary, Settings, ChatGroup, Hierarchy, HierarchyNode, StorageSnapshot, Chat } from '@/models/types';
@@ -81,8 +81,8 @@ function getCurrentThreadMessageDtos({ chatDto }: { chatDto: ChatDto }): Message
   const targetId = chatDto.currentLeafId;
 
   function findPath({ nodes, target }: {
-    nodes: MessageNodeDto[];
-    target: string;
+    nodes: MessageNodeDto[],
+    target: string,
   }): boolean {
     for (const node of nodes) {
       path.push(node);
@@ -113,8 +113,8 @@ function addGeneratedImageBinaryObjectIds({
   content,
   binaryObjectIds,
 }: {
-  content: string;
-  binaryObjectIds: Set<string>;
+  content: string,
+  binaryObjectIds: Set<string>,
 }) {
   const codeBlockRegex = new RegExp(
     '```' + IMAGE_BLOCK_LANG + '[^\\n]*\\n([\\s\\S]*?)\\n```',
@@ -140,8 +140,8 @@ function addMessageBinaryObjectIds({
   node,
   binaryObjectIds,
 }: {
-  node: MessageNodeDto;
-  binaryObjectIds: Set<string>;
+  node: MessageNodeDto,
+  binaryObjectIds: Set<string>,
 }) {
   if (node.content !== undefined) {
     addGeneratedImageBinaryObjectIds({ content: node.content, binaryObjectIds });
@@ -206,8 +206,8 @@ function addMessageBinaryObjectIds({
 }
 
 function createCurrentThreadChatDto({ chatDto }: { chatDto: ChatDto }): {
-  chatDto: ChatDto;
-  binaryObjectIds: Set<string>;
+  chatDto: ChatDto,
+  binaryObjectIds: Set<string>,
 } {
   const normalizedChatDto = normalizeChatDtoTree({ chatDto });
   const currentThread = getCurrentThreadMessageDtos({ chatDto: normalizedChatDto });
@@ -243,9 +243,9 @@ function createCurrentThreadChatDto({ chatDto }: { chatDto: ChatDto }): {
 }
 
 interface ExportExclusionFlags {
-  chat: boolean;
-  chatHistory: boolean;
-  binaryObject: boolean;
+  chat: boolean,
+  chatHistory: boolean,
+  binaryObject: boolean,
 }
 
 function parseExportExclusions({ exclude }: Pick<ExportOptions, 'exclude'>): ExportExclusionFlags {
@@ -284,15 +284,15 @@ function parseExportExclusions({ exclude }: Pick<ExportOptions, 'exclude'>): Exp
  * Interface for the storage dependency of ImportExportService.
  */
 export interface IImportExportStorage {
-  loadSettings(): Promise<Settings | null>;
-  updateSettings({ updater }: { updater: ({ current }: { current: Settings | null }) => Settings | Promise<Settings> }): Promise<void>;
-  listChats(): Promise<ChatSummary[]>;
-  listChatGroups(): Promise<ChatGroup[]>;
-  loadChat({ id }: { id: ChatId }): Promise<Chat | null>;
-  loadHierarchy(): Promise<Hierarchy | null>;
-  clearAll(): Promise<void>;
-  dumpWithoutLock(): Promise<StorageSnapshot>;
-  restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void>;
+  loadSettings(): Promise<Settings | null>,
+  updateSettings({ updater }: { updater: ({ current }: { current: Settings | null }) => Settings | Promise<Settings> }): Promise<void>,
+  listChats(): Promise<ChatSummary[]>,
+  listChatGroups(): Promise<ChatGroup[]>,
+  loadChat({ id }: { id: ChatId }): Promise<Chat | null>,
+  loadHierarchy(): Promise<Hierarchy | null>,
+  clearAll(): Promise<void>,
+  dumpWithoutLock(): Promise<StorageSnapshot>,
+  restore({ snapshot }: { snapshot: StorageSnapshot }): Promise<void>,
 }
 
 export class ImportExportService {
@@ -377,8 +377,8 @@ export class ImportExportService {
       path,
       stream,
     }: {
-      path: string;
-      stream: ReadableStream<Uint8Array>;
+      path: string,
+      stream: ReadableStream<Uint8Array>,
     }): Promise<void> => {
       const slashIndex = path.lastIndexOf('/');
       if (slashIndex >= 0) {
@@ -392,7 +392,7 @@ export class ImportExportService {
       });
     };
 
-    const addTextFile = async ({ path, text }: { path: string; text: string }): Promise<void> => {
+    const addTextFile = async ({ path, text }: { path: string, text: string }): Promise<void> => {
       await addFile({ path, stream: createByteStream({ bytes: encoder.encode(text) }) });
     };
 
@@ -466,7 +466,7 @@ export class ImportExportService {
         const addBinaryObjectToZip = async ({
           chunk,
         }: {
-          chunk: Extract<MigrationChunkDto, { type: 'binary_object' }>;
+          chunk: Extract<MigrationChunkDto, { type: 'binary_object' }>,
         }): Promise<void> => {
           const shard = getShard({ id: chunk.id });
           const fileName = `${chunk.id}.bin`;
@@ -599,7 +599,7 @@ export class ImportExportService {
       stats.attachmentsCount = zip.fileNames.filter(f =>
         f.startsWith(binPrefix) &&
         f.endsWith('.bin') &&
-        !f.includes('/.') // Ignore markers
+        !f.includes('/.'), // Ignore markers
       ).length;
 
       // 3. Chat Groups
@@ -642,7 +642,7 @@ export class ImportExportService {
                   updatedAt: dto.updatedAt,
                   messageCount,
                   _groupId: (meta as { groupId?: string | null }).groupId ?? null,
-                  _order: 0
+                  _order: 0,
                 });
               }
             }
@@ -712,11 +712,11 @@ export class ImportExportService {
   private assembleLegacyHierarchy({
     chatsMap,
     chatGroupsMap,
-    items
+    items,
   }: {
     chatsMap: Map<string, PreviewChat & { _groupId?: string | null }>,
     chatGroupsMap: Map<string, PreviewChatGroup>,
-    items: ImportPreviewItem[]
+    items: ImportPreviewItem[],
   }) {
     let order = 0;
     for (const chat of chatsMap.values()) {
@@ -737,7 +737,7 @@ export class ImportExportService {
   /**
    * Verify that the ZIP content is valid by dry-running the restoration snapshots.
    */
-  async verify({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
+  async verify({ zipFile, config }: { zipFile: Blob, config: ImportConfig }): Promise<void> {
     const zip = await this.loadZip({ blob: zipFile });
     try {
       const rootPath = this.findRootPath({ zip });
@@ -765,7 +765,7 @@ export class ImportExportService {
   /**
    * Execute Import.
    */
-  async executeImport({ zipFile, config }: { zipFile: Blob; config: ImportConfig }): Promise<void> {
+  async executeImport({ zipFile, config }: { zipFile: Blob, config: ImportConfig }): Promise<void> {
     const zip = await this.loadZip({ blob: zipFile });
     try {
       const rootPath = this.findRootPath({ zip });
@@ -822,12 +822,12 @@ export class ImportExportService {
     return lastSlash !== -1 ? manifestPath.substring(0, lastSlash + 1) : '';
   }
 
-  private async applySettingsImport({ zipSettings, strategies }: { zipSettings: SettingsDto; strategies: ImportConfig['settings'] }) {
+  private async applySettingsImport({ zipSettings, strategies }: { zipSettings: SettingsDto, strategies: ImportConfig['settings'] }) {
     await this.storage.updateSettings({ updater: ({ current: currentSettings }) => {
       const newSettingsDomain = settingsToDomain({ dto: zipSettings });
       const finalSettings: Settings = currentSettings ? { ...currentSettings } : { ...newSettingsDomain };
 
-      const applyField = <K extends keyof Settings>({ strategy, newValue, targetKey }: { strategy: ImportFieldStrategy; newValue: Settings[K]; targetKey: K }) => {
+      const applyField = <K extends keyof Settings>({ strategy, newValue, targetKey }: { strategy: ImportFieldStrategy, newValue: Settings[K], targetKey: K }) => {
         if (strategy === 'replace' && newValue !== undefined) {
           finalSettings[targetKey] = newValue;
         }
@@ -869,7 +869,7 @@ export class ImportExportService {
     } });
   }
 
-  private async createRestoreSnapshot({ zip, rootPath }: { zip: IndexedZipArchive; rootPath: string }): Promise<StorageSnapshot> {
+  private async createRestoreSnapshot({ zip, rootPath }: { zip: IndexedZipArchive, rootPath: string }): Promise<StorageSnapshot> {
     const hierarchyFile = zip.file({ name: rootPath + 'hierarchy.json' });
     const hierarchyDto: HierarchyDto = hierarchyFile
       ? HierarchySchemaDto.parse(JSON.parse(await hierarchyFile.readText()))
@@ -948,7 +948,7 @@ export class ImportExportService {
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,
-                blob
+                blob,
               };
             }
           }
@@ -974,7 +974,7 @@ export class ImportExportService {
     };
   }
 
-  private async createAppendSnapshot({ zip, rootPath, config }: { zip: IndexedZipArchive; rootPath: string; config: ImportConfig }): Promise<StorageSnapshot> {
+  private async createAppendSnapshot({ zip, rootPath, config }: { zip: IndexedZipArchive, rootPath: string, config: ImportConfig }): Promise<StorageSnapshot> {
     const groupIdMap = new Map<string, string>();
     const chatIdMap = new Map<string, string>();
 
@@ -1043,7 +1043,7 @@ export class ImportExportService {
     if (importedHierarchyItems.length === 0) {
       importedHierarchyItems = [
         ...importedGroupsDto.map(g => ({ type: 'chat_group' as const, id: toChatGroupId({ raw: g.id }), chat_ids: [] })),
-        ...importedMetas.map(m => ({ type: 'chat' as const, id: toChatId({ raw: m.dto.id }) }))
+        ...importedMetas.map(m => ({ type: 'chat' as const, id: toChatId({ raw: m.dto.id }) })),
       ];
     }
 
@@ -1163,7 +1163,7 @@ export class ImportExportService {
                 mimeType: meta.mimeType,
                 size: meta.size,
                 createdAt: meta.createdAt,
-                blob
+                blob,
               };
             }
           }
@@ -1184,7 +1184,7 @@ export class ImportExportService {
         } as Settings,
         hierarchy: mergedHierarchy,
         chatMetas,
-        chatGroups
+        chatGroups,
       },
       contentStream: contentStream(),
     };

@@ -18,25 +18,25 @@ export async function sendImageRequestForChat({
   availableModels,
   sendMessage,
 }: {
-  chatId: ChatId;
-  prompt: string;
-  width: number;
-  height: number;
-  count: number;
-  steps: number | undefined;
-  seed: number | 'browser_random' | undefined;
-  persistAs: ImageRequestParams['persistAs'];
-  attachments: Attachment[];
-  availableModels: string[];
+  chatId: ChatId,
+  prompt: string,
+  width: number,
+  height: number,
+  count: number,
+  steps: number | undefined,
+  seed: number | 'browser_random' | undefined,
+  persistAs: ImageRequestParams['persistAs'],
+  attachments: Attachment[],
+  availableModels: string[],
   sendMessage: ({
     content,
     parentId,
     attachments,
   }: {
-    content: string;
-    parentId: MessageId | undefined;
-    attachments: Attachment[];
-  }) => Promise<boolean>;
+    content: string,
+    parentId: MessageId | undefined,
+    attachments: Attachment[],
+  }) => Promise<boolean>,
 }): Promise<boolean> {
   const imageGeneration = useImageGeneration();
   return await imageGeneration.sendImageRequest({
@@ -77,33 +77,33 @@ export async function handleImageGenerationForChat({
   incTask,
   decTask,
 }: {
-  chatId: ChatId;
-  assistantId: MessageId;
-  prompt: string;
-  width: number;
-  height: number;
-  count: number;
-  steps: number | undefined;
-  seed: number | 'browser_random' | undefined;
-  persistAs: ImageRequestParams['persistAs'] | undefined;
-  images: { blob: Blob }[];
-  model: string | undefined;
-  availableModels: string[];
-  endpointUrl: string;
-  endpointHttpHeaders: [string, string][] | undefined;
-  storageType: 'opfs' | 'local' | 'memory';
-  signal: AbortSignal | undefined;
-  getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined;
+  chatId: ChatId,
+  assistantId: MessageId,
+  prompt: string,
+  width: number,
+  height: number,
+  count: number,
+  steps: number | undefined,
+  seed: number | 'browser_random' | undefined,
+  persistAs: ImageRequestParams['persistAs'] | undefined,
+  images: { blob: Blob }[],
+  model: string | undefined,
+  availableModels: string[],
+  endpointUrl: string,
+  endpointHttpHeaders: [string, string][] | undefined,
+  storageType: 'opfs' | 'local' | 'memory',
+  signal: AbortSignal | undefined,
+  getLiveChat: ({ chat }: { chat: Chat }) => Chat | undefined,
   updateChatContent: ({
     chatId,
     updater,
   }: {
-    chatId: ChatId;
-    updater: ({ current }: { current: import('@/models/types').ChatContent }) => import('@/models/types').ChatContent;
-  }) => Promise<void>;
-  triggerChatRef: ({ chatId }: { chatId: ChatId }) => void;
-  incTask: ({ chatId, type }: { chatId: ChatId; type: 'process' }) => void;
-  decTask: ({ chatId, type }: { chatId: ChatId; type: 'process' }) => void;
+    chatId: ChatId,
+    updater: ({ current }: { current: import('@/models/types').ChatContent }) => import('@/models/types').ChatContent,
+  }) => Promise<void>,
+  triggerChatRef: ({ chatId }: { chatId: ChatId }) => void,
+  incTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void,
+  decTask: ({ chatId, type }: { chatId: ChatId, type: 'process' }) => void,
 }): Promise<void> {
   const imageGeneration = useImageGeneration();
   await imageGeneration.handleImageGeneration({
@@ -144,18 +144,18 @@ export async function generateImageForChat({
   settings,
   signal,
 }: {
-  prompt: string;
-  model: string;
-  width: number;
-  height: number;
-  steps: number | undefined;
-  seed: number | undefined;
-  images: { blob: Blob }[];
-  chat: Chat;
-  chatGroups: import('@/models/types').ChatGroup[];
-  settings: import('@/models/types').Settings;
-  signal: AbortSignal | undefined;
-}): Promise<{ image: Blob; totalSteps: number | typeof UNKNOWN_STEPS }> {
+  prompt: string,
+  model: string,
+  width: number,
+  height: number,
+  steps: number | undefined,
+  seed: number | undefined,
+  images: { blob: Blob }[],
+  chat: Chat,
+  chatGroups: import('@/models/types').ChatGroup[],
+  settings: import('@/models/types').Settings,
+  signal: AbortSignal | undefined,
+}): Promise<{ image: Blob, totalSteps: number | typeof UNKNOWN_STEPS }> {
   const imageGeneration = useImageGeneration();
   const resolved = resolveChatSettings({
     chat,

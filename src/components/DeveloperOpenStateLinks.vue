@@ -6,16 +6,16 @@ import { useToast } from '@/composables/useToast';
 import { useExportExclusions } from '@/composables/useExportExclusions';
 
 type DeploymentTarget = {
-  readonly kind: 'Standard' | 'Local only' | 'Curated';
-  readonly host: string;
-  readonly baseUrl: string;
+  readonly kind: 'Standard' | 'Local only' | 'Curated',
+  readonly host: string,
+  readonly baseUrl: string,
 };
 
 type DeploymentGroup = {
-  readonly id: 'production' | 'develop';
-  readonly label: 'Production' | 'develop branch';
-  readonly dotClass: string;
-  readonly targets: readonly DeploymentTarget[];
+  readonly id: 'production' | 'develop',
+  readonly label: 'Production' | 'develop branch',
+  readonly dotClass: string,
+  readonly targets: readonly DeploymentTarget[],
 };
 
 const DEPLOYMENT_GROUPS = [
@@ -46,7 +46,7 @@ const DEPLOYMENT_TARGETS: readonly DeploymentTarget[] = DEPLOYMENT_GROUPS.flatMa
 );
 
 const { addToast } = useToast();
-const activeAction = ref<{ type: 'copy' | 'open'; host: string } | null>(null);
+const activeAction = ref<{ type: 'copy' | 'open', host: string } | null>(null);
 const {
   excludeChats,
   excludeChatHistory,

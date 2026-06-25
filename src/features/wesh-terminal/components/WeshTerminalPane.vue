@@ -1,233 +1,233 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { PlusIcon, XIcon } from 'lucide-vue-next'
-import { createWeshTerminalHistory } from '@/features/wesh-terminal/composables/useWeshTerminalHistory'
-import { formatWeshTerminalPrompt } from '@/features/wesh-terminal/utils/terminalPrompt'
-import type { WeshTerminalCompletionCandidate, WeshTerminalCompletionResult } from '@/features/wesh-terminal/utils/terminalCompletion'
-import type { WeshTerminalSession, WeshTerminalLineKind, WeshTerminalSessionState } from '@/features/wesh-terminal/composables/useWeshTerminalSessions'
+import { computed, nextTick, ref, watch } from 'vue';
+import { PlusIcon, XIcon } from 'lucide-vue-next';
+import { createWeshTerminalHistory } from '@/features/wesh-terminal/composables/useWeshTerminalHistory';
+import { formatWeshTerminalPrompt } from '@/features/wesh-terminal/utils/terminalPrompt';
+import type { WeshTerminalCompletionCandidate, WeshTerminalCompletionResult } from '@/features/wesh-terminal/utils/terminalCompletion';
+import type { WeshTerminalSession, WeshTerminalLineKind, WeshTerminalSessionState } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
 
 const props = defineProps<{
-  sessions: WeshTerminalSession[]
-  activeSessionId: string | undefined
+  sessions: WeshTerminalSession[],
+  activeSessionId: string | undefined,
   completeInput?: ({ sessionId, line, cursor }: {
-    sessionId: string
-    line: string
-    cursor: number
-  }) => Promise<WeshTerminalCompletionResult>
-}>()
+    sessionId: string,
+    line: string,
+    cursor: number,
+  }) => Promise<WeshTerminalCompletionResult>,
+}>();
 
 const emit = defineEmits<{
-  'update:activeSessionId': [string | undefined]
-  run: [{ script: string }]
-  'create-session': []
-  'close-session': [{ sessionId: string }]
-  cancel: [{ sessionId: string }]
-}>()
+  'update:activeSessionId': [string | undefined],
+  run: [{ script: string }],
+  'create-session': [],
+  'close-session': [{ sessionId: string }],
+  cancel: [{ sessionId: string }],
+}>();
 
-const outputRef = ref<HTMLElement | null>(null)
-const inputRef = ref<HTMLTextAreaElement | null>(null)
+const outputRef = ref<HTMLElement | null>(null);
+const inputRef = ref<HTMLTextAreaElement | null>(null);
 
 // Per-session input drafts; cleared after submit.
-const drafts = new Map<string, string>()
-const histories = new Map<string, ReturnType<typeof createWeshTerminalHistory>>()
-const inputDraft = ref('')
-const completionCandidates = ref<WeshTerminalCompletionCandidate[]>([])
+const drafts = new Map<string, string>();
+const histories = new Map<string, ReturnType<typeof createWeshTerminalHistory>>();
+const inputDraft = ref('');
+const completionCandidates = ref<WeshTerminalCompletionCandidate[]>([]);
 
 const activeSession = computed(() =>
-  props.sessions.find(s => s.id === props.activeSessionId)
-)
+  props.sessions.find(s => s.id === props.activeSessionId),
+);
 
-const isRunning = computed(() => activeSession.value?.state === 'running')
+const isRunning = computed(() => activeSession.value?.state === 'running');
 const isDisabled = computed(() => {
-  const s = activeSession.value?.state
-  return !s || s === 'initializing' || s === 'error'
-})
-const promptText = computed(() => formatWeshTerminalPrompt({ shellState: activeSession.value?.shellState }))
+  const s = activeSession.value?.state;
+  return !s || s === 'initializing' || s === 'error';
+});
+const promptText = computed(() => formatWeshTerminalPrompt({ shellState: activeSession.value?.shellState }));
 
 function getHistory({ sessionId }: { sessionId: string }) {
-  const existing = histories.get(sessionId)
-  if (existing !== undefined) return existing
-  const created = createWeshTerminalHistory()
-  histories.set(sessionId, created)
-  return created
+  const existing = histories.get(sessionId);
+  if (existing !== undefined) return existing;
+  const created = createWeshTerminalHistory();
+  histories.set(sessionId, created);
+  return created;
 }
 
 // Save/restore draft on session switch.
 watch(() => props.activeSessionId, (newId, oldId) => {
-  if (oldId) drafts.set(oldId, inputDraft.value)
-  inputDraft.value = newId ? (drafts.get(newId) ?? '') : ''
-  completionCandidates.value = []
+  if (oldId) drafts.set(oldId, inputDraft.value);
+  inputDraft.value = newId ? (drafts.get(newId) ?? '') : '';
+  completionCandidates.value = [];
   nextTick(() => {
-    focusInput()
-    scrollToBottom()
-  })
-})
+    focusInput();
+    scrollToBottom();
+  });
+});
 
 // Auto-scroll on new output or when typing.
 watch(
   () => activeSession.value?.lines.length,
   () => {
-    nextTick(scrollToBottom)
-  }
-)
+    nextTick(scrollToBottom);
+  },
+);
 watch(inputDraft, () => {
-  completionCandidates.value = []
-  nextTick(scrollToBottom)
-})
+  completionCandidates.value = [];
+  nextTick(scrollToBottom);
+});
 
 // Focus input once session becomes ready.
 watch(
   () => activeSession.value?.state,
   (state) => {
-    if (state === undefined) return
+    if (state === undefined) return;
     switch (state) {
-    case 'ready': nextTick(focusInput); break
+    case 'ready': nextTick(focusInput); break;
     case 'initializing':
     case 'running':
     case 'error':
-      break
+      break;
     default: {
-      const _ex: never = state
-      return _ex
+      const _ex: never = state;
+      return _ex;
     }
     }
-  }
-)
+  },
+);
 
 function scrollToBottom() {
   if (outputRef.value) {
-    outputRef.value.scrollTop = outputRef.value.scrollHeight
+    outputRef.value.scrollTop = outputRef.value.scrollHeight;
   }
 }
 
 function focusInput() {
-  inputRef.value?.focus()
+  inputRef.value?.focus();
 }
 
 function resetTextareaHeight() {
   if (inputRef.value) {
-    inputRef.value.style.height = 'auto'
+    inputRef.value.style.height = 'auto';
   }
 }
 
 function autoResize({ event }: { event: Event }) {
-  const ta = event.target as HTMLTextAreaElement
-  ta.style.height = 'auto'
-  ta.style.height = `${ta.scrollHeight}px`
+  const ta = event.target as HTMLTextAreaElement;
+  ta.style.height = 'auto';
+  ta.style.height = `${ta.scrollHeight}px`;
 }
 
 async function applyCompletion() {
-  const sessionId = props.activeSessionId
-  const completeInput = props.completeInput
-  const input = inputRef.value
-  if (sessionId === undefined || completeInput === undefined || input === null) return
+  const sessionId = props.activeSessionId;
+  const completeInput = props.completeInput;
+  const input = inputRef.value;
+  if (sessionId === undefined || completeInput === undefined || input === null) return;
 
-  const cursor = input.selectionStart
+  const cursor = input.selectionStart;
   const result = await completeInput({
     sessionId,
     line: inputDraft.value,
     cursor,
-  })
-  completionCandidates.value = result.candidates
+  });
+  completionCandidates.value = result.candidates;
 
-  if (result.replacement === undefined) return
+  if (result.replacement === undefined) return;
 
-  const before = inputDraft.value.slice(0, result.replacement.start)
-  const after = inputDraft.value.slice(result.replacement.end)
-  inputDraft.value = `${before}${result.replacement.text}${after}`
-  const newCursor = before.length + result.replacement.text.length
-  await nextTick()
-  inputRef.value?.setSelectionRange(newCursor, newCursor)
+  const before = inputDraft.value.slice(0, result.replacement.start);
+  const after = inputDraft.value.slice(result.replacement.end);
+  inputDraft.value = `${before}${result.replacement.text}${after}`;
+  const newCursor = before.length + result.replacement.text.length;
+  await nextTick();
+  inputRef.value?.setSelectionRange(newCursor, newCursor);
 }
 
 async function handleKeyDown({ event }: { event: KeyboardEvent }) {
   if (event.ctrlKey && event.key === 'l') {
-    event.preventDefault()
-    const session = activeSession.value
+    event.preventDefault();
+    const session = activeSession.value;
     if (session !== undefined) {
-      session.lines.splice(0, session.lines.length)
+      session.lines.splice(0, session.lines.length);
     }
-    return
+    return;
   }
 
   if (event.ctrlKey && event.key === 'c') {
-    event.preventDefault()
+    event.preventDefault();
     if (isRunning.value && props.activeSessionId) {
-      emit('cancel', { sessionId: props.activeSessionId })
+      emit('cancel', { sessionId: props.activeSessionId });
     } else {
-      inputDraft.value = ''
-      resetTextareaHeight()
+      inputDraft.value = '';
+      resetTextareaHeight();
     }
-    return
+    return;
   }
 
   if (event.key === 'Tab') {
-    event.preventDefault()
+    event.preventDefault();
     if (!isRunning.value && !isDisabled.value) {
-      await applyCompletion()
+      await applyCompletion();
     }
-    return
+    return;
   }
 
   if (event.key === 'ArrowUp' && props.activeSessionId !== undefined) {
-    event.preventDefault()
-    const previous = getHistory({ sessionId: props.activeSessionId }).previous({ draft: inputDraft.value })
+    event.preventDefault();
+    const previous = getHistory({ sessionId: props.activeSessionId }).previous({ draft: inputDraft.value });
     if (previous !== undefined) {
-      inputDraft.value = previous
-      await nextTick()
-      inputRef.value?.setSelectionRange(inputDraft.value.length, inputDraft.value.length)
+      inputDraft.value = previous;
+      await nextTick();
+      inputRef.value?.setSelectionRange(inputDraft.value.length, inputDraft.value.length);
     }
-    return
+    return;
   }
 
   if (event.key === 'ArrowDown' && props.activeSessionId !== undefined) {
-    event.preventDefault()
-    const next = getHistory({ sessionId: props.activeSessionId }).next()
+    event.preventDefault();
+    const next = getHistory({ sessionId: props.activeSessionId }).next();
     if (next !== undefined) {
-      inputDraft.value = next
-      await nextTick()
-      inputRef.value?.setSelectionRange(inputDraft.value.length, inputDraft.value.length)
+      inputDraft.value = next;
+      await nextTick();
+      inputRef.value?.setSelectionRange(inputDraft.value.length, inputDraft.value.length);
     }
-    return
+    return;
   }
 
   if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault()
+    event.preventDefault();
     if (!isRunning.value && !isDisabled.value && inputDraft.value.trim()) {
-      const script = inputDraft.value
+      const script = inputDraft.value;
       if (props.activeSessionId !== undefined) {
-        getHistory({ sessionId: props.activeSessionId }).record({ script })
+        getHistory({ sessionId: props.activeSessionId }).record({ script });
       }
-      inputDraft.value = ''
-      resetTextareaHeight()
-      emit('run', { script })
+      inputDraft.value = '';
+      resetTextareaHeight();
+      emit('run', { script });
     }
   }
 }
 
 function lineClass({ kind }: { kind: WeshTerminalLineKind }): string {
   switch (kind) {
-  case 'command': return 'text-gray-100'
-  case 'stdout': return 'text-gray-300'
-  case 'stderr': return 'text-yellow-400'
-  case 'error': return 'text-red-400'
-  case 'system': return 'text-gray-600 italic'
+  case 'command': return 'text-gray-100';
+  case 'stdout': return 'text-gray-300';
+  case 'stderr': return 'text-yellow-400';
+  case 'error': return 'text-red-400';
+  case 'system': return 'text-gray-600 italic';
   default: {
-    const _ex: never = kind
-    return _ex
+    const _ex: never = kind;
+    return _ex;
   }
   }
 }
 
 function stateDotClass({ state }: { state: WeshTerminalSessionState }): string {
   switch (state) {
-  case 'initializing': return 'bg-yellow-500 animate-pulse'
-  case 'ready': return 'bg-blue-500'
-  case 'running': return 'bg-blue-400 animate-pulse'
-  case 'error': return 'bg-red-500'
+  case 'initializing': return 'bg-yellow-500 animate-pulse';
+  case 'ready': return 'bg-blue-500';
+  case 'running': return 'bg-blue-400 animate-pulse';
+  case 'error': return 'bg-red-500';
   default: {
-    const _ex: never = state
-    return _ex
+    const _ex: never = state;
+    return _ex;
   }
   }
 }
@@ -237,7 +237,7 @@ defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
   },
-})
+});
 </script>
 
 <template>

@@ -6,24 +6,24 @@ import { openHandleReadStream, openFileReadStream } from '@/services/wesh/utils/
 type WcField = 'lines' | 'words' | 'bytes' | 'chars' | 'maxLineLength';
 
 interface WcCounts {
-  lines: number;
-  words: number;
-  bytes: number;
-  chars: number;
-  maxLineLength: number;
+  lines: number,
+  words: number,
+  bytes: number,
+  chars: number,
+  maxLineLength: number,
 }
 
 interface WcEntry {
-  name: string | undefined;
-  counts: WcCounts;
+  name: string | undefined,
+  counts: WcCounts,
 }
 
 function resolveInputPath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -54,7 +54,7 @@ function isWhitespace({ char }: { char: string }): boolean {
 function getSelectedFields({
   optionValues,
 }: {
-  optionValues: Record<string, boolean | string | number>;
+  optionValues: Record<string, boolean | string | number>,
 }): WcField[] {
   const fields: WcField[] = [];
   if (optionValues.lines === true) fields.push('lines');
@@ -74,8 +74,8 @@ function getFieldValue({
   counts,
   field,
 }: {
-  counts: WcCounts;
-  field: WcField;
+  counts: WcCounts,
+  field: WcField,
 }): number {
   switch (field) {
   case 'lines':
@@ -98,7 +98,7 @@ function getFieldValue({
 function sumCounts({
   entries,
 }: {
-  entries: WcEntry[];
+  entries: WcEntry[],
 }): WcCounts {
   return entries.reduce<WcCounts>((acc, entry) => ({
     lines: acc.lines + entry.counts.lines,
@@ -120,9 +120,9 @@ function computeFieldWidths({
   total,
   fields,
 }: {
-  entries: WcEntry[];
-  total: WcCounts | undefined;
-  fields: WcField[];
+  entries: WcEntry[],
+  total: WcCounts | undefined,
+  fields: WcField[],
 }): Record<WcField, number> {
   const widths: Record<WcField, number> = {
     lines: 8,
@@ -150,10 +150,10 @@ function formatCountsLine({
   widths,
   name,
 }: {
-  counts: WcCounts;
-  fields: WcField[];
-  widths: Record<WcField, number>;
-  name: string | undefined;
+  counts: WcCounts,
+  fields: WcField[],
+  widths: Record<WcField, number>,
+  name: string | undefined,
 }): string {
   let line = '';
   for (const field of fields) {
@@ -169,8 +169,8 @@ async function readCountsFromStream({
   stream,
   fields,
 }: {
-  stream: ReadableStream<Uint8Array>;
-  fields: WcField[];
+  stream: ReadableStream<Uint8Array>,
+  fields: WcField[],
 }): Promise<WcCounts> {
   const reader = stream.getReader();
   const needsDecodedText = fields.includes('words') || fields.includes('chars') || fields.includes('maxLineLength');
@@ -191,7 +191,7 @@ async function readCountsFromStream({
   const consumeChunk = ({
     chunk,
   }: {
-    chunk: string;
+    chunk: string,
   }): void => {
     for (const char of chunk) {
       if (needsCharCount) {

@@ -19,10 +19,10 @@ export type ImageFormat = SupportedFormat | typeof UNSUPPORTED;
  * Metadata structure for image embedding.
  */
 export interface ImageMetadata {
-  prompt: string | undefined;
-  model: string | undefined;
-  steps: number | undefined;
-  seed: number | undefined;
+  prompt: string | undefined,
+  model: string | undefined,
+  steps: number | undefined,
+  seed: number | undefined,
 }
 
 /**
@@ -57,7 +57,7 @@ export async function detectFormat({ blob }: { blob: Blob }): Promise<ImageForma
  */
 export async function embedMetadataInPng({ blob, metadata }: {
   blob: Blob,
-  metadata: ImageMetadata
+  metadata: ImageMetadata,
 }): Promise<Blob> {
   const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
     const reader = new FileReader();
@@ -95,7 +95,7 @@ export async function embedMetadataInPng({ blob, metadata }: {
  */
 export async function embedMetadataInWebp({ blob, metadata }: {
   blob: Blob,
-  metadata: ImageMetadata
+  metadata: ImageMetadata,
 }): Promise<Blob> {
   const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
     const reader = new FileReader();

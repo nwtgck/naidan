@@ -19,8 +19,8 @@ describe('ImageConjuringLoader', () => {
     const wrapper = mount(ImageConjuringLoader, {
       props: {
         remainingCount: 1,
-        totalCount: 3
-      }
+        totalCount: 3,
+      },
     });
     // currentNumber = totalCount - remainingCount + 1 = 3 - 1 + 1 = 3
     expect(wrapper.find('[data-testid="image-count-label"]').text()).toBe('Image 3 / 3');
@@ -30,8 +30,8 @@ describe('ImageConjuringLoader', () => {
     const wrapper = mount(ImageConjuringLoader, {
       props: {
         currentStep: 5,
-        totalSteps: 20
-      }
+        totalSteps: 20,
+      },
     });
     expect(wrapper.find('[data-testid="step-display"]').text()).toContain('5/ 20');
     expect(wrapper.find('[data-testid="step-display"]').text()).toContain('steps');
@@ -43,8 +43,8 @@ describe('ImageConjuringLoader', () => {
         remainingCount: 2,
         totalCount: 3,
         currentStep: 10,
-        totalSteps: 50
-      }
+        totalSteps: 50,
+      },
     });
     // currentNumber = 3 - 2 + 1 = 2
     expect(wrapper.find('[data-testid="image-count-label"]').text()).toBe('Image 2 / 3');
@@ -58,8 +58,8 @@ describe('ImageConjuringLoader', () => {
         remainingCount: 3,
         totalCount: 3,
         currentStep: 10,
-        totalSteps: 50
-      }
+        totalSteps: 50,
+      },
     });
 
     // currentNumber = 3 - 3 + 1 = 1

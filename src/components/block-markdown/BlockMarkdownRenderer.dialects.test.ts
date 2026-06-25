@@ -6,7 +6,7 @@ import { normalizeDom } from './test-utils';
 describe('BlockMarkdownRenderer: Markdown Dialects (GFM etc)', () => {
   const mountRenderer = ({ content }: { content: string }) => {
     return mount(BlockMarkdownRenderer, {
-      props: { content }
+      props: { content },
     });
   };
 
@@ -19,7 +19,7 @@ describe('BlockMarkdownRenderer: Markdown Dialects (GFM etc)', () => {
       element: wrapper.element,
       preserveAttributes: undefined,
       trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     expect(dom).toBe('<div><p><span><del>deleted text</del></span></p></div>');
   });
@@ -33,7 +33,7 @@ Check https://google.com for info.
       element: wrapper.element,
       preserveAttributes: ['href'],
       trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     expect(dom).toContain('<a href="https://google.com">https://google.com</a>');
 
@@ -55,7 +55,7 @@ Check https://google.com for info.
       element: wrapper.element,
       preserveAttributes: undefined,
       trimWhitespaceNodes: true,
-      whitespaceSensitiveTags: undefined
+      whitespaceSensitiveTags: undefined,
     });
     expect(dom).toContain('<table><thead><tr><th><span>Column A</span></th><th><span>Column B</span></th></tr></thead><tbody><tr><td><span>Row 1</span></td><td><span>Row 2</span></td></tr></tbody></table>');
   });

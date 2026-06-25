@@ -24,7 +24,7 @@ vi.mock('@/composables/usePrompt', () => ({
 }));
 
 function createSettings({ endpointType }: {
-  endpointType: Settings['endpointType'];
+  endpointType: Settings['endpointType'],
 }): Settings {
   return {
     endpointType,

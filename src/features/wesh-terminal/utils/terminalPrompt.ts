@@ -1,18 +1,18 @@
-import type { WeshWorkerShellState } from '@/services/wesh/worker/types'
+import type { WeshWorkerShellState } from '@/services/wesh/worker/types';
 
 export function formatWeshTerminalPrompt({ shellState }: {
-  shellState: WeshWorkerShellState | undefined
+  shellState: WeshWorkerShellState | undefined,
 }): string {
   if (shellState === undefined) {
-    return '$'
+    return '$';
   }
 
-  const home = shellState.env.HOME
+  const home = shellState.env.HOME;
   const displayCwd = home !== undefined && shellState.cwd === home
     ? '~'
     : home !== undefined && shellState.cwd.startsWith(`${home}/`)
       ? `~/${shellState.cwd.slice(home.length + 1)}`
-      : shellState.cwd
+      : shellState.cwd;
 
-  return `${displayCwd} $`
+  return `${displayCwd} $`;
 }

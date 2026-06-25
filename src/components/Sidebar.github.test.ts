@@ -68,8 +68,8 @@ describe('Sidebar GitHub and Version', () => {
           ChevronDownIcon: true,
           BotIcon: true,
           draggable: true,
-        }
-      }
+        },
+      },
     });
     expect(wrapper.text()).toContain('v0.1.0-dev');
   });
@@ -87,8 +87,8 @@ describe('Sidebar GitHub and Version', () => {
           ChevronDownIcon: true,
           BotIcon: true,
           draggable: true,
-        }
-      }
+        },
+      },
     });
 
     const githubLink = wrapper.find('a[href*="github.com"]');

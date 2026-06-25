@@ -46,17 +46,17 @@ const updateQueues = new Map<ChatGroupId, Promise<void>>();
 export type ToolConfigsUpdater = ({
   toolConfigs,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
+  toolConfigs: ToolConfig[] | undefined,
 }) => ToolConfig[] | undefined;
 
 type ChatGroupToolConfigUpdate =
   | { behavior: 'preserve' }
-  | { behavior: 'update'; updater: ToolConfigsUpdater };
+  | { behavior: 'update', updater: ToolConfigsUpdater };
 
 function legacyUpdatesToChanges({
   updates,
 }: {
-  updates: ChatGroupMetadataUpdate;
+  updates: ChatGroupMetadataUpdate,
 }): ScopedSettingChange[] {
   const changes: ScopedSettingChange[] = [];
 
@@ -111,45 +111,45 @@ export type ChatGroupsAdapter = {
     chatGroupId,
     updates,
   }: {
-    chatGroupId: ChatGroupId;
-    updates: ChatGroupMetadataUpdate;
-  }): Promise<void>;
+    chatGroupId: ChatGroupId,
+    updates: ChatGroupMetadataUpdate,
+  }): Promise<void>,
 
   updateScopedSettings({
     chatGroupId,
     changes,
   }: {
-    chatGroupId: ChatGroupId;
-    changes: readonly ScopedSettingChange[];
-  }): Promise<void>;
+    chatGroupId: ChatGroupId,
+    changes: readonly ScopedSettingChange[],
+  }): Promise<void>,
 
   updateToolConfigs({
     chatGroupId,
     updater,
   }: {
-    chatGroupId: ChatGroupId;
-    updater: ToolConfigsUpdater;
-  }): Promise<void>;
+    chatGroupId: ChatGroupId,
+    updater: ToolConfigsUpdater,
+  }): Promise<void>,
 
   updateScopedSettingsAndToolConfigs({
     chatGroupId,
     changes,
     updater,
   }: {
-    chatGroupId: ChatGroupId;
-    changes: readonly ScopedSettingChange[];
-    updater: ToolConfigsUpdater;
-  }): Promise<void>;
+    chatGroupId: ChatGroupId,
+    changes: readonly ScopedSettingChange[],
+    updater: ToolConfigsUpdater,
+  }): Promise<void>,
 
   moveChatToGroup({
     chatId,
     chatGroupId,
   }: {
-    chatId: ChatId;
-    chatGroupId: ChatGroupId | undefined;
-  }): Promise<void>;
+    chatId: ChatId,
+    chatGroupId: ChatGroupId | undefined,
+  }): Promise<void>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatGroups(): ChatGroupsAdapter {
@@ -160,11 +160,11 @@ export function useChatGroups(): ChatGroupsAdapter {
     updateName,
     toolConfigUpdate,
   }: {
-    chatGroupId: ChatGroupId;
-    changes: readonly ScopedSettingChange[];
-    name: string | undefined;
-    updateName: boolean;
-    toolConfigUpdate: ChatGroupToolConfigUpdate;
+    chatGroupId: ChatGroupId,
+    changes: readonly ScopedSettingChange[],
+    name: string | undefined,
+    updateName: boolean,
+    toolConfigUpdate: ChatGroupToolConfigUpdate,
   }): Promise<void> {
     const hasToolConfigUpdate = (() => {
       switch (toolConfigUpdate.behavior) {
@@ -258,8 +258,8 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatGroupId,
     changes,
   }: {
-    chatGroupId: ChatGroupId;
-    changes: readonly ScopedSettingChange[];
+    chatGroupId: ChatGroupId,
+    changes: readonly ScopedSettingChange[],
   }): Promise<void> {
     await updateChatGroup({
       chatGroupId,
@@ -274,8 +274,8 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatGroupId,
     updater,
   }: {
-    chatGroupId: ChatGroupId;
-    updater: ToolConfigsUpdater;
+    chatGroupId: ChatGroupId,
+    updater: ToolConfigsUpdater,
   }): Promise<void> {
     await updateChatGroup({
       chatGroupId,
@@ -291,9 +291,9 @@ export function useChatGroups(): ChatGroupsAdapter {
     changes,
     updater,
   }: {
-    chatGroupId: ChatGroupId;
-    changes: readonly ScopedSettingChange[];
-    updater: ToolConfigsUpdater;
+    chatGroupId: ChatGroupId,
+    changes: readonly ScopedSettingChange[],
+    updater: ToolConfigsUpdater,
   }): Promise<void> {
     await updateChatGroup({
       chatGroupId,
@@ -308,8 +308,8 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatGroupId,
     updates,
   }: {
-    chatGroupId: ChatGroupId;
-    updates: ChatGroupMetadataUpdate;
+    chatGroupId: ChatGroupId,
+    updates: ChatGroupMetadataUpdate,
   }): Promise<void> {
     await updateChatGroup({
       chatGroupId,
@@ -324,8 +324,8 @@ export function useChatGroups(): ChatGroupsAdapter {
     chatId,
     chatGroupId,
   }: {
-    chatId: ChatId;
-    chatGroupId: ChatGroupId | undefined;
+    chatId: ChatId,
+    chatGroupId: ChatGroupId | undefined,
   }): Promise<void> {
     if (currentChatRef.value?.id === chatId) {
       currentChatRef.value.groupId = chatGroupId;

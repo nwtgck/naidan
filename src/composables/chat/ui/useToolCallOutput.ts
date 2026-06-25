@@ -7,11 +7,11 @@ export type ToolCallOutputAdapter = {
     toolCallId,
     status,
   }: {
-    toolCallId: ToolCallId;
-    status: 'executing' | 'success' | 'error';
-  }): ComputedRef<string | undefined>;
+    toolCallId: ToolCallId,
+    status: 'executing' | 'success' | 'error',
+  }): ComputedRef<string | undefined>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useToolCallOutput(): ToolCallOutputAdapter {
@@ -19,8 +19,8 @@ export function useToolCallOutput(): ToolCallOutputAdapter {
     toolCallId,
     status,
   }: {
-    toolCallId: ToolCallId;
-    status: 'executing' | 'success' | 'error';
+    toolCallId: ToolCallId,
+    status: 'executing' | 'success' | 'error',
   }) {
     return computed(() => {
       switch (status) {

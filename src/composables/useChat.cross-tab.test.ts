@@ -14,7 +14,7 @@ const { mocks } = vi.hoisted(() => ({
     mockGroupStorage: new Map<string, any>(),
     mockRootItems: [] as SidebarItem[],
     mockHierarchy: { items: [] } as Hierarchy,
-  }
+  },
 }));
 
 vi.mock('../services/storage', () => ({
@@ -73,13 +73,13 @@ vi.mock('../services/storage', () => ({
 
 vi.mock('./useSettings', () => ({
   useSettings: () => ({
-    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: false, defaultModelId: 'gpt-4', lmParameters: {}, providerProfiles: [], } },
+    settings: { value: { endpointType: 'openai', endpointUrl: 'http://localhost', storageType: 'local', autoTitleEnabled: false, defaultModelId: 'gpt-4', lmParameters: {}, providerProfiles: [] } },
     isOnboardingDismissed: { value: true },
     onboardingDraft: { value: null },
   }),
 }));
 
-vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn(), }), }));
+vi.mock('./useToast', () => ({ useToast: () => ({ addToast: vi.fn() }) }));
 
 vi.mock('../services/lm/openai', () => ({
   OpenAIProvider: vi.fn().mockImplementation(() => ({ chat: vi.fn(), listModels: vi.fn().mockResolvedValue(['gpt-4']) })),
@@ -236,8 +236,8 @@ describe('useChat Cross-Tab Synchronization', () => {
       type: 'chat_group',
       chatGroup: {
         id: toChatGroupId({ raw: 'group-x' }), name: 'X', isCollapsed: false, updatedAt: 0,
-        items: [{ id: `chat:${idToRaw({ id: chatId })}`, type: 'chat', chat: { id: chatId, title: 'T', updatedAt: 0, groupId: toChatGroupId({ raw: 'group-x' }) } }]
-      }
+        items: [{ id: `chat:${idToRaw({ id: chatId })}`, type: 'chat', chat: { id: chatId, title: 'T', updatedAt: 0, groupId: toChatGroupId({ raw: 'group-x' }) } }],
+      },
     });
 
     // Also update the meta in storage so loadChat returns the correct groupId

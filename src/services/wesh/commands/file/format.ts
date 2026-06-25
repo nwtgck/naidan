@@ -3,7 +3,7 @@ import type { FileCommandClassification } from './types';
 export function formatFileClassification({
   classification,
 }: {
-  classification: FileCommandClassification;
+  classification: FileCommandClassification,
 }): string {
   switch (classification.kind) {
   case 'directory':
@@ -44,7 +44,7 @@ export function formatFileClassification({
 export function formatFileMime({
   classification,
 }: {
-  classification: FileCommandClassification;
+  classification: FileCommandClassification,
 }): string {
   switch (classification.kind) {
   case 'directory':

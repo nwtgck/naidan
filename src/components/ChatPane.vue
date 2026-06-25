@@ -64,7 +64,7 @@ const ChatMediaShelf = defineAsyncComponentAndLoadOnMounted({ loader: () => impo
 // Lazily load modals and panels that are only shown on-demand, but prefetch them when idle.
 const ChatWeshTerminalModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatWeshTerminalModal.vue') });
 import {
-  FolderInputIcon
+  FolderInputIcon,
 } from 'lucide-vue-next';
 import { usePrint } from '@/composables/usePrint';
 import { useGlobalSearch } from '@/composables/useGlobalSearch';
@@ -107,13 +107,13 @@ const chatTitle = useChatTitle();
 const chatMetadata = useChatMetadata();
 const { getSortedImageModels } = useImageGeneration();
 const props = defineProps<{
-  chatId: ChatId
-  autoSendPrompt?: string
-  targetMessageId?: MessageId
+  chatId: ChatId,
+  autoSendPrompt?: string,
+  targetMessageId?: MessageId,
 }>();
 
 const emit = defineEmits<{
-  (e: 'auto-sent'): void
+  (e: 'auto-sent'): void,
 }>();
 
 const chatId = computed(() => props.chatId);
@@ -265,7 +265,7 @@ function getCurrentViewportMessageId() {
   const targetY = containerRect.top + Math.min(120, containerRect.height * 0.25);
   const messageElements = Array.from(scrollContainer.querySelectorAll('[id^="message-"]'));
 
-  let closest: { id: MessageId; distance: number } | undefined;
+  let closest: { id: MessageId, distance: number } | undefined;
   for (const element of messageElements) {
     if (!(element instanceof HTMLElement)) continue;
     const rect = element.getBoundingClientRect();
@@ -483,12 +483,12 @@ async function shareAsURL() {
     await navigator.clipboard.writeText(url);
     addToast({
       message: 'Share URL copied to clipboard!',
-      duration: 3000
+      duration: 3000,
     });
   } catch (err) {
     addToast({
       message: `Failed to generate share URL: ${err instanceof Error ? err.message : String(err)}`,
-      duration: 5000
+      duration: 5000,
     });
   }
 }
@@ -517,7 +517,7 @@ function handlePrint() {
   if (chat.value) {
     usePrint().print({
       title: chat.value.title || 'Chat',
-      mode: 'chat'
+      mode: 'chat',
     });
   }
 }
@@ -558,7 +558,7 @@ async function scrollAnchorToTop({ target, behavior, offset }: { target: ChatPan
     element: el,
     behavior,
     block: 'start',
-    offset
+    offset,
   });
   return true;
 }
@@ -604,7 +604,7 @@ function jumpToMessage({ messageId }: { messageId: MessageId }): boolean {
       container: container.value,
       element: el,
       behavior: 'smooth',
-      block: 'center'
+      block: 'center',
     });
     el.classList.add('bg-blue-50/50', 'dark:bg-blue-900/20');
     setTimeout(() => {
@@ -654,7 +654,7 @@ watch(
       lastJumpedTargetMessageKey.value = targetKey;
     }
   },
-  { flush: 'post', immediate: true }
+  { flush: 'post', immediate: true },
 );
 
 // Expose for testing and current chat pane forwarding.
@@ -722,10 +722,10 @@ async function updateActiveTitleModel({
   chatGroupId,
   modelId,
 }: {
-  source: SettingsSource;
-  chatId: ChatId;
-  chatGroupId: ChatGroupId | undefined;
-  modelId: string | undefined;
+  source: SettingsSource,
+  chatId: ChatId,
+  chatGroupId: ChatGroupId | undefined,
+  modelId: string | undefined,
 }) {
   switch (source) {
   case 'chat':
@@ -770,7 +770,7 @@ watch(
     if (isOpen) {
       generatedTitleHistory.value = [];
     }
-  }
+  },
 );
 
 const autoScroll = useChatPaneAutoScroll({
@@ -854,8 +854,8 @@ async function handleConfirmCompact({
   keepCount,
   instruction,
 }: {
-  keepCount: number;
-  instruction: string;
+  keepCount: number,
+  instruction: string,
 }) {
   closeCompactSettings();
   const chatValue = chat.value;
@@ -949,7 +949,7 @@ function handleRefreshModels() {
 function handleApprovalDecision({
   decision,
 }: {
-  decision: ApprovalUiDecision;
+  decision: ApprovalUiDecision,
 }): void {
   const request = activeApprovalRequest.value;
   if (request === undefined) {
@@ -964,7 +964,7 @@ function handleApprovalDecision({
 function handleChoiceSelection({
   index,
 }: {
-  index: number;
+  index: number,
 }): void {
   const request = activeChoiceRequest.value;
   if (request === undefined) {
@@ -1095,7 +1095,7 @@ watch(
     }
     }
   },
-  { flush: 'post', immediate: true }
+  { flush: 'post', immediate: true },
 );
 </script>
 

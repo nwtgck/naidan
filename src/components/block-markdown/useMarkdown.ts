@@ -15,7 +15,7 @@ marked.use({
     detailsExtension,
   ],
   renderer: {
-    image({ href, title, text }: { href: string; title: string | null; text: string }): string {
+    image({ href, title, text }: { href: string, title: string | null, text: string }): string {
       // Return a custom tag that can be parsed by MarkdownInline.
       // Use Base64 to prevent any issues with quotes or characters in JSON.
       // Use encodeURIComponent + btoa to handle potential non-ASCII characters in alt text/title.
@@ -23,8 +23,8 @@ marked.use({
         payload: { href, title, text },
       });
       return `<naidan-external-image data-payload="${payload}"></naidan-external-image>`;
-    }
-  }
+    },
+  },
 });
 
 marked.use(markedKatex({

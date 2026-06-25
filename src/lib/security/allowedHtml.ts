@@ -5,12 +5,12 @@ import { decodeExternalImagePayload, encodeExternalImagePayload } from './markdo
 declare const allowedHtmlBrand: unique symbol;
 
 export type AllowedHtml = string & {
-  readonly [allowedHtmlBrand]: true;
+  readonly [allowedHtmlBrand]: true,
 };
 
 export type MarkdownInlinePart =
-  | { type: 'html'; html: AllowedHtml }
-  | { type: 'image'; payload: ExternalImagePayload };
+  | { type: 'html', html: AllowedHtml }
+  | { type: 'image', payload: ExternalImagePayload };
 
 type MarkdownLinkKind =
   | 'external-http'
@@ -30,8 +30,8 @@ function classifyMarkdownLink({
   href,
   currentPageHref,
 }: {
-  href: string;
-  currentPageHref: string | undefined;
+  href: string,
+  currentPageHref: string | undefined,
 }): MarkdownLinkKind {
   try {
     const url = currentPageHref === undefined
@@ -144,7 +144,7 @@ markdownDOMPurify.addHook('afterSanitizeElements', (node) => {
 function brandAllowedHtml({
   html,
 }: {
-  html: string;
+  html: string,
 }): AllowedHtml {
   return html as AllowedHtml;
 }
@@ -152,7 +152,7 @@ function brandAllowedHtml({
 export function escapeTextAsHtml({
   text,
 }: {
-  text: string;
+  text: string,
 }): AllowedHtml {
   return brandAllowedHtml({
     html: text
@@ -167,7 +167,7 @@ export function escapeTextAsHtml({
 export function sanitizeMarkdownHtml({
   html,
 }: {
-  html: string;
+  html: string,
 }): AllowedHtml {
   return brandAllowedHtml({
     html: markdownDOMPurify.sanitize(html, {
@@ -189,7 +189,7 @@ export function sanitizeMarkdownHtml({
 export function sanitizeHighlightHtml({
   html,
 }: {
-  html: string;
+  html: string,
 }): AllowedHtml {
   return brandAllowedHtml({
     html: highlightDOMPurify.sanitize(html, {
@@ -204,7 +204,7 @@ export function sanitizeHighlightHtml({
 export function sanitizeJsonHighlightHtml({
   html,
 }: {
-  html: string;
+  html: string,
 }): AllowedHtml {
   return sanitizeHighlightHtml({ html });
 }
@@ -223,7 +223,7 @@ export function allowedHtml(
 export function splitMarkdownHtmlByExternalImages({
   html,
 }: {
-  html: AllowedHtml;
+  html: AllowedHtml,
 }): MarkdownInlinePart[] {
   const sanitized = String(html);
   const tagRegex = /<naidan-external-image\s+data-payload="([^"]+)">\s*<\/naidan-external-image>/g;
@@ -269,9 +269,9 @@ export function jsonToHighlightedHtml({
   highlight,
   keyStyle,
 }: {
-  json: string;
-  highlight: boolean;
-  keyStyle: 'raw' | 'tree';
+  json: string,
+  highlight: boolean,
+  keyStyle: 'raw' | 'tree',
 }): AllowedHtml {
   const escaped = json
     .replace(/&/g, '&amp;')
@@ -316,7 +316,7 @@ export function jsonToHighlightedHtml({
 function escapeRegExp({
   string,
 }: {
-  string: string;
+  string: string,
 }): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -326,9 +326,9 @@ export function highlightSearchTextAsHtml({
   query,
   color,
 }: {
-  text: string;
-  query: string;
-  color: 'indigo' | 'blue';
+  text: string,
+  query: string,
+  color: 'indigo' | 'blue',
 }): AllowedHtml {
   if (!query) {
     return escapeTextAsHtml({ text });

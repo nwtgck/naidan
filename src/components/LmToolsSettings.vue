@@ -60,7 +60,7 @@ const inheritanceLabelByKey = computed(() => ({
 async function runToolUpdate({
   update,
 }: {
-  update: () => Promise<void>;
+  update: () => Promise<void>,
 }): Promise<void> {
   saveError.value = undefined;
   try {
@@ -76,8 +76,8 @@ async function setToolStatus({
   key,
   status,
 }: {
-  key: BuiltinToolKey;
-  status: 'enabled' | 'disabled';
+  key: BuiltinToolKey,
+  status: 'enabled' | 'disabled',
 }): Promise<void> {
   await runToolUpdate({
     update: async () => await chatTools.setToolStatus({
@@ -98,7 +98,7 @@ async function resetTool({ key }: { key: BuiltinToolKey }): Promise<void> {
 async function setWeshAccessScope({
   accessScope,
 }: {
-  accessScope: Parameters<typeof setNaidanSysfsAccessScope>[0]['accessScope'];
+  accessScope: Parameters<typeof setNaidanSysfsAccessScope>[0]['accessScope'],
 }): Promise<void> {
   const chatId = currentChat.value?.id;
   await runToolUpdate({

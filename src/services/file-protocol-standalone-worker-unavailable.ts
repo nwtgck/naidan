@@ -1,6 +1,6 @@
-import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub'
+import type { DebugFileProtocolStandaloneWorkerDiagnostics } from 'virtual:file-protocol-standalone/worker/file-protocol-standalone-worker-hub';
 
-const unavailableMessage = 'The file-protocol standalone Worker asset is unavailable outside standalone builds.'
+const unavailableMessage = 'The file-protocol standalone Worker asset is unavailable outside standalone builds.';
 
 /**
  * Vite resolves static imports before compile-time dead-code elimination. Hosted
@@ -11,11 +11,11 @@ const unavailableMessage = 'The file-protocol standalone Worker asset is unavail
  * different Worker implementation in hosted mode.
  */
 export async function createFileProtocolStandaloneWorker(): Promise<Worker> {
-  throw new Error(unavailableMessage)
+  throw new Error(unavailableMessage);
 }
 
 export function debugGetFileProtocolStandaloneWorkerDiagnostics(): DebugFileProtocolStandaloneWorkerDiagnostics {
-  throw new Error(unavailableMessage)
+  throw new Error(unavailableMessage);
 }
 
 export function scheduleFileProtocolStandaloneWorkerAssetWarmup(): void {

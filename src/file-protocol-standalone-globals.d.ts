@@ -1,11 +1,11 @@
 declare global {
   type DebugFileProtocolStandaloneGlobalDiagnostics = import(
     './services/debug-file-protocol-standalone/runtime-state'
-  ).DebugFileProtocolStandaloneGlobalDiagnostics
+  ).DebugFileProtocolStandaloneGlobalDiagnostics;
 
   var __FILE_PROTOCOL_STANDALONE__: Readonly<{
-    getDiagnostics(): DebugFileProtocolStandaloneGlobalDiagnostics
-  }> | undefined
+    getDiagnostics(): DebugFileProtocolStandaloneGlobalDiagnostics,
+  }> | undefined;
 }
 
-export {}
+export {};

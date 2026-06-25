@@ -10,13 +10,13 @@ describe('ExternalImage.vue', () => {
     __testOnlyReset();
   });
 
-  const mountComponent = (props: { src: string; alt?: string; title?: string }) => {
+  const mountComponent = (props: { src: string, alt?: string, title?: string }) => {
     return mount(ExternalImage, {
       props: {
         src: props.src,
         alt: props.alt,
         title: props.title,
-      }
+      },
     });
   };
 

@@ -18,13 +18,13 @@ export class CalculatorTool implements Tool {
     onEvent: _onEvent,
     approvalContext: _approvalContext,
   }: {
-    args: unknown;
-    signal?: AbortSignal;
-    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>;
-    approvalContext?: ToolApprovalContext;
+    args: unknown,
+    signal?: AbortSignal,
+    onEvent?: ({ event }: { event: ToolExecutionEvent }) => void | Promise<void>,
+    approvalContext?: ToolApprovalContext,
   }): Promise<
-    | { status: 'success'; content: string }
-    | { status: 'error'; code: import('@/services/tools/types').ToolExecutionErrorCode; message: string }
+    | { status: 'success', content: string }
+    | { status: 'error', code: import('@/services/tools/types').ToolExecutionErrorCode, message: string }
   > {
     try {
       if (signal?.aborted) throw new Error('Generation aborted');

@@ -6,10 +6,10 @@ import type { MessageId } from '@/models/ids';
 import { isImageGenerationPending, isImageGenerationProcessed } from '@/utils/image-generation';
 
 const props = defineProps<{
-  messageId: MessageId;
-  content: string;
-  isGenerating?: boolean;
-  showFullControls?: boolean;
+  messageId: MessageId,
+  content: string,
+  isGenerating?: boolean,
+  showFullControls?: boolean,
 }>();
 
 const isSupported = webSpeechService.isSupported();
@@ -30,7 +30,7 @@ function handleToggleSpeech() {
       text: props.content,
       messageId: props.messageId,
       isFinal: !props.isGenerating,
-      lang: webSpeechService.state.preferredLang
+      lang: webSpeechService.state.preferredLang,
     });
   }
 }
@@ -44,7 +44,7 @@ function handleRestartSpeech() {
     text: props.content,
     messageId: props.messageId,
     isFinal: !props.isGenerating,
-    lang: webSpeechService.state.preferredLang
+    lang: webSpeechService.state.preferredLang,
   });
 }
 
@@ -67,7 +67,7 @@ watch(() => props.content, (newContent) => {
       text: newContent,
       messageId: props.messageId,
       isFinal: false,
-      lang: state.preferredLang
+      lang: state.preferredLang,
     });
   }
 }, { immediate: false });
@@ -83,7 +83,7 @@ watch(() => props.isGenerating, (isGenerating) => {
       text: props.content,
       messageId: props.messageId,
       isFinal: true,
-      lang: state.preferredLang
+      lang: state.preferredLang,
     });
   }
 }, { immediate: false });
@@ -92,7 +92,7 @@ watch(() => props.isGenerating, (isGenerating) => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

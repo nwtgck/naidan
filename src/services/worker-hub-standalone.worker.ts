@@ -1,4 +1,4 @@
-import * as Comlink from 'comlink'
-import { createStandaloneWorkerHub } from './worker-hub-standalone'
+import * as Comlink from 'comlink';
+import { createStandaloneWorkerHub } from './worker-hub-standalone';
 
-Comlink.expose(createStandaloneWorkerHub())
+Comlink.expose(createStandaloneWorkerHub());

@@ -2,7 +2,7 @@ export const FAKE_LM_ENDPOINT_HOSTNAME = 'fake-lm.invalid';
 export const FAKE_LM_ENDPOINT_URL = `https://${FAKE_LM_ENDPOINT_HOSTNAME}`;
 
 export function isFakeLmEndpointUrl({ endpointUrl }: {
-  endpointUrl: string | undefined;
+  endpointUrl: string | undefined,
 }): boolean {
   if (endpointUrl === undefined) {
     return false;

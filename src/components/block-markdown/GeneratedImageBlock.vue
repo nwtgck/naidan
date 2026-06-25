@@ -11,7 +11,7 @@ import { useGlobalEvents } from '@/composables/useGlobalEvents';
 import { toBinaryObjectId } from '@/models/ids';
 
 const props = defineProps<{
-  json: string;
+  json: string,
 }>();
 
 const parsed = computed(() => {
@@ -42,7 +42,7 @@ const displayDims = computed(() => {
     width: parsed.value.width,
     height: parsed.value.height,
     displayWidth: parsed.value.displayWidth,
-    displayHeight: parsed.value.displayHeight
+    displayHeight: parsed.value.displayHeight,
   });
 });
 
@@ -88,7 +88,7 @@ async function handlePreview() {
   if (obj) {
     openPreview({
       objects: [obj],
-      initialId: toBinaryObjectId({ raw: parsed.value.binaryObjectId })
+      initialId: toBinaryObjectId({ raw: parsed.value.binaryObjectId }),
     });
   }
 }
@@ -108,14 +108,14 @@ async function handleDownload({ withMetadata }: { withMetadata: boolean }) {
       source: 'GeneratedImageBlock:Download',
       message: 'Failed to embed metadata in image.',
       details: error instanceof Error ? error.message : String(error),
-    })
+    }),
   });
 }
 
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

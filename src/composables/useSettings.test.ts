@@ -125,7 +125,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     await save({ patch: {
       ...JSON.parse(JSON.stringify(settings.value)),
       endpointUrl: 'http://new-endpoint',
-      endpointType: 'ollama'
+      endpointType: 'ollama',
     } });
 
     expect(settings.value.storageType).toBe('opfs');
@@ -135,7 +135,7 @@ describe('useSettings Initialization and Bootstrap', () => {
     const updated = await updater({ current: settings.value });
     expect(updated).toEqual(expect.objectContaining({
       storageType: 'opfs',
-      endpointUrl: 'http://new-endpoint'
+      endpointUrl: 'http://new-endpoint',
     }));
   });
 
@@ -316,7 +316,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       storageType: 'local',
       endpointUrl: 'http://localhost:11434',
       endpointType: 'openai',
-      defaultModelId: 'gpt-3.5'
+      defaultModelId: 'gpt-3.5',
     });
 
     // Act
@@ -334,7 +334,7 @@ describe('useSettings Initialization and Bootstrap', () => {
       storageType: 'local',
       endpointUrl: 'http://localhost:11434',
       endpointType: 'openai',
-      defaultModelId: undefined
+      defaultModelId: undefined,
     });
 
     const { init, isOnboardingDismissed } = useSettings();
@@ -457,7 +457,7 @@ describe('useSettings Initialization and Bootstrap', () => {
 
       await updateGlobalEndpoint({
         type: 'ollama',
-        url: 'http://localhost:11434'
+        url: 'http://localhost:11434',
       });
 
       // Still false because model is missing

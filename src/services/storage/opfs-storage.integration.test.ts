@@ -139,11 +139,11 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
             id: attID,
             binaryObjectId: binaryID,
             name: 'test.png',
-            status: 'persisted'
+            status: 'persisted',
           }],
-          replies: { items: [] }
-        }]
-      }
+          replies: { items: [] },
+        }],
+      },
     }));
 
     // Binary file in sharded structure
@@ -156,9 +156,9 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
           mimeType: 'image/png',
           size: 16,
           createdAt: 0,
-          name: 'test.png'
-        }
-      }
+          name: 'test.png',
+        },
+      },
     }));
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
@@ -166,7 +166,7 @@ describe('OPFSStorageProvider & ImportExport Integration', () => {
     // 2. Import into empty storage
     await importExportService.executeImport({ zipFile: zipBlob, config: {
       data: { mode: 'replace' },
-      settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' }
+      settings: { endpoint: 'none', model: 'none', titleModel: 'none', systemPrompt: 'none', lmParameters: 'none', providerProfiles: 'none' },
     } });
 
     // 3. Verify storage is now sharded and hydrated correctly

@@ -15,12 +15,12 @@ type TestCommandName = 'test' | '[';
 type TestTruthValue = 'true' | 'false';
 
 type TestEvaluationResult =
-  | { kind: 'success'; value: TestTruthValue }
-  | { kind: 'syntax_error'; message: string };
+  | { kind: 'success', value: TestTruthValue }
+  | { kind: 'syntax_error', message: string };
 
 type TestTokenResult =
-  | { kind: 'tokens'; tokens: string[] }
-  | { kind: 'syntax_error'; message: string };
+  | { kind: 'tokens', tokens: string[] }
+  | { kind: 'syntax_error', message: string };
 
 type UnaryTestOperator =
   | '-b'
@@ -45,9 +45,9 @@ type BinaryFileOperator = '-ef' | '-nt' | '-ot';
 type BinaryTestOperator = BinaryStringOperator | BinaryIntegerOperator | BinaryFileOperator;
 
 type ParsedIntegerOperand =
-  | { kind: 'success'; value: number; nextIndex: number }
+  | { kind: 'success', value: number, nextIndex: number }
   | { kind: 'not_integer' }
-  | { kind: 'syntax_error'; message: string };
+  | { kind: 'syntax_error', message: string };
 
 const UNARY_TEST_OPERATORS = new Set<UnaryTestOperator>([
   '-b',
@@ -107,8 +107,8 @@ function resolvePath({
   cwd,
   path,
 }: {
-  cwd: string;
-  path: string;
+  cwd: string,
+  path: string,
 }): string {
   if (path.startsWith('/')) {
     return path;
@@ -120,7 +120,7 @@ function resolvePath({
 function truthy({
   value,
 }: {
-  value: boolean;
+  value: boolean,
 }): TestTruthValue {
   return value ? 'true' : 'false';
 }
@@ -130,9 +130,9 @@ async function readStat({
   path,
   followSymlinkMode,
 }: {
-  context: WeshCommandContext;
-  path: string;
-  followSymlinkMode: 'follow' | 'no-follow';
+  context: WeshCommandContext,
+  path: string,
+  followSymlinkMode: 'follow' | 'no-follow',
 }): Promise<WeshStat | undefined> {
   try {
     switch (followSymlinkMode) {
@@ -154,8 +154,8 @@ function hasAccessMode({
   stat,
   accessMode,
 }: {
-  stat: WeshStat;
-  accessMode: 'read' | 'write' | 'execute';
+  stat: WeshStat,
+  accessMode: 'read' | 'write' | 'execute',
 }): boolean {
   switch (accessMode) {
   case 'read':
@@ -174,7 +174,7 @@ function hasAccessMode({
 function isBinaryOperator({
   token,
 }: {
-  token: string | undefined;
+  token: string | undefined,
 }): boolean {
   return token !== undefined &&
     (BINARY_STRING_OPERATORS.has(token as BinaryStringOperator) ||
@@ -187,9 +187,9 @@ async function evaluateUnaryOperator({
   operator,
   operand,
 }: {
-  context: WeshCommandContext;
-  operator: UnaryTestOperator;
-  operand: string;
+  context: WeshCommandContext,
+  operator: UnaryTestOperator,
+  operand: string,
 }): Promise<TestTruthValue> {
   switch (operator) {
   case '-n':
@@ -273,8 +273,8 @@ function parseIntegerOperand({
   tokens,
   startIndex,
 }: {
-  tokens: string[];
-  startIndex: number;
+  tokens: string[],
+  startIndex: number,
 }): ParsedIntegerOperand {
   const token = tokens[startIndex];
   if (token === undefined) {
@@ -310,10 +310,10 @@ async function evaluateBinaryOperator({
   operator,
   rightOperand,
 }: {
-  context: WeshCommandContext;
-  leftOperand: string;
-  operator: BinaryTestOperator;
-  rightOperand: string;
+  context: WeshCommandContext,
+  leftOperand: string,
+  operator: BinaryTestOperator,
+  rightOperand: string,
 }): Promise<TestTruthValue> {
   switch (operator) {
   case '=':
@@ -395,8 +395,8 @@ class TestExpressionParser {
     context,
     tokens,
   }: {
-    context: WeshCommandContext;
-    tokens: string[];
+    context: WeshCommandContext,
+    tokens: string[],
   }) {
     this.context = context;
     this.tokens = tokens;
@@ -694,8 +694,8 @@ function getExpressionTokens({
   args,
   commandName,
 }: {
-  args: string[];
-  commandName: TestCommandName;
+  args: string[],
+  commandName: TestCommandName,
 }): TestTokenResult {
   switch (commandName) {
   case '[':
@@ -724,7 +724,7 @@ function getExpressionTokens({
 function createTestCommandDefinition({
   commandName,
 }: {
-  commandName: TestCommandName;
+  commandName: TestCommandName,
 }): WeshCommandDefinition {
   return {
     meta: {

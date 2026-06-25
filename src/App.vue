@@ -105,7 +105,7 @@ watch(
   [
     () => route.query['global-endpoint-type'],
     () => route.query['global-endpoint-url'],
-    () => settingsStore.initialized.value
+    () => settingsStore.initialized.value,
   ],
   async ([type, url, initialized]) => {
     if (!initialized) return;
@@ -115,19 +115,19 @@ watch(
 
       if (isEndpointType(type)) {
         await settingsStore.updateGlobalEndpoint({          type,
-          url
+          url,
         });
       }
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // Synchronize Global Model from URL Query Parameters
 watch(
   [
     () => route.query['global-model'],
-    () => settingsStore.initialized.value
+    () => settingsStore.initialized.value,
   ],
   async ([modelId, initialized]) => {
     if (!initialized) return;
@@ -135,7 +135,7 @@ watch(
       await settingsStore.updateGlobalModel({ modelId });
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // Automatically create a new chat if the list becomes empty while on the landing page
@@ -149,7 +149,7 @@ watch(
     () => router.currentRoute.value?.query?.model,
     () => router.currentRoute.value?.query?.['system-prompt'] || router.currentRoute.value?.query?.sp,
     () => settingsStore.initialized.value,
-    () => settingsStore.isOnboardingDismissed.value
+    () => settingsStore.isOnboardingDismissed.value,
   ],
   async ([len, path, q, chatGroupId, modelId, systemPromptStr, initialized, dismissed]) => {
     if (!initialized || !dismissed || path !== '/') return;
@@ -190,19 +190,19 @@ watch(
       await chatLifecycle.createNewChat({
         groupId: targetGroupId,
         modelId: targetModelId,
-        systemPrompt
+        systemPrompt,
       });
 
       if (currentChatState.currentChat.value) {
         const id = currentChatState.currentChat.value.id;
         router.push({
           path: `/chat/${idToRaw({ id })}`,
-          query: { q: q.toString() }
+          query: { q: q.toString() },
         });
       }
     }
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 // ChatGPT-style shortcut for New Chat: Ctrl+Shift+O (Cmd+Shift+O on Mac)
@@ -215,7 +215,7 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
     await chatLifecycle.createNewChat({
       groupId: undefined,
       modelId: undefined,
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
     if (currentChatState.currentChat.value) {
       router.push(`/chat/${idToRaw({ id: currentChatState.currentChat.value.id })}`);
@@ -246,7 +246,7 @@ onKeyStroke(['o', 'O', 'k', 'K', 'p', 'P'], async (e) => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

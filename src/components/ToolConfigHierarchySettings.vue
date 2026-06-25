@@ -27,28 +27,28 @@ export type ToolConfigSettingsScope = 'global' | 'chat_group' | 'chat';
 export type ToolConfigInheritanceLabel = 'Use global' | 'Use group';
 
 const props = defineProps<{
-  scope: ToolConfigSettingsScope;
-  toolConfigs: ToolConfig[] | undefined;
-  effectiveToolConfigs: ToolConfig[];
-  inheritanceLabelByKey?: Readonly<Record<BuiltinToolKey, ToolConfigInheritanceLabel>>;
-  isEditable: boolean;
+  scope: ToolConfigSettingsScope,
+  toolConfigs: ToolConfig[] | undefined,
+  effectiveToolConfigs: ToolConfig[],
+  inheritanceLabelByKey?: Readonly<Record<BuiltinToolKey, ToolConfigInheritanceLabel>>,
+  isEditable: boolean,
 }>();
 
 const emit = defineEmits<{
-  (event: 'set-status', payload: { key: BuiltinToolKey; status: ToolConfigStatus }): void;
-  (event: 'reset-tool', payload: { key: BuiltinToolKey }): void;
-  (event: 'set-wesh-access-scope', payload: { accessScope: NaidanSysfsAccessScope }): void;
-  (event: 'reset-all'): void;
+  (event: 'set-status', payload: { key: BuiltinToolKey, status: ToolConfigStatus }): void,
+  (event: 'reset-tool', payload: { key: BuiltinToolKey }): void,
+  (event: 'set-wesh-access-scope', payload: { accessScope: NaidanSysfsAccessScope }): void,
+  (event: 'reset-all'): void,
 }>();
 
 const { isFeatureEnabled } = useFeatureFlags();
 const { settings } = useSettings();
 
 const toolDefinitions: readonly {
-  key: BuiltinToolKey;
-  name: string;
-  description: string;
-  icon: Component;
+  key: BuiltinToolKey,
+  name: string,
+  description: string,
+  icon: Component,
 }[] = [
   {
     key: 'builtin.calculator',

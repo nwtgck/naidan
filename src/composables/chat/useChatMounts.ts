@@ -14,43 +14,43 @@ export type ChatMountsAdapter = {
   getMounts({
     chatId,
   }: {
-    chatId: Readonly<Ref<ChatId>>;
-  }): ComputedRef<Mount[]>;
+    chatId: Readonly<Ref<ChatId>>,
+  }): ComputedRef<Mount[]>,
 
   addMount({
     chatId,
     mount,
   }: {
-    chatId: ChatId;
-    mount: Mount;
-  }): Promise<void>;
+    chatId: ChatId,
+    mount: Mount,
+  }): Promise<void>,
 
   removeMount({
     chatId,
     volumeId,
   }: {
-    chatId: ChatId;
-    volumeId: VolumeId;
-  }): Promise<void>;
+    chatId: ChatId,
+    volumeId: VolumeId,
+  }): Promise<void>,
 
   updateMount({
     chatId,
     volumeId,
     readOnly,
   }: {
-    chatId: ChatId;
-    volumeId: VolumeId;
-    readOnly: boolean;
-  }): Promise<void>;
+    chatId: ChatId,
+    volumeId: VolumeId,
+    readOnly: boolean,
+  }): Promise<void>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatMounts(): ChatMountsAdapter {
   function getMounts({
     chatId,
   }: {
-    chatId: Readonly<Ref<ChatId>>;
+    chatId: Readonly<Ref<ChatId>>,
   }): ComputedRef<Mount[]> {
     return computed(() => getReadonlyChat({ chatId: chatId.value })?.mounts ?? []);
   }
@@ -59,8 +59,8 @@ export function useChatMounts(): ChatMountsAdapter {
     chatId,
     mount,
   }: {
-    chatId: ChatId;
-    mount: Mount;
+    chatId: ChatId,
+    mount: Mount,
   }): Promise<void> {
     await storageService.addMountToChat({
       chatId,
@@ -81,8 +81,8 @@ export function useChatMounts(): ChatMountsAdapter {
     chatId,
     volumeId,
   }: {
-    chatId: ChatId;
-    volumeId: VolumeId;
+    chatId: ChatId,
+    volumeId: VolumeId,
   }): Promise<void> {
     await storageService.removeMountFromChat({
       chatId,
@@ -103,9 +103,9 @@ export function useChatMounts(): ChatMountsAdapter {
     volumeId,
     readOnly,
   }: {
-    chatId: ChatId;
-    volumeId: VolumeId;
-    readOnly: boolean;
+    chatId: ChatId,
+    volumeId: VolumeId,
+    readOnly: boolean,
   }): Promise<void> {
     await storageService.updateChatMount({
       chatId,
@@ -116,7 +116,7 @@ export function useChatMounts(): ChatMountsAdapter {
     const chat = getLiveChatById({ chatId });
     if (chat !== undefined && chat !== null) {
       chat.mounts = (chat.mounts ?? []).map(mount =>
-        mount.type === 'volume' && mount.volumeId === volumeId ? { ...mount, readOnly } : mount
+        mount.type === 'volume' && mount.volumeId === volumeId ? { ...mount, readOnly } : mount,
       );
       if (currentChatRef.value?.id === chatId) {
         triggerCurrentChat({ chatId });

@@ -56,16 +56,16 @@ const unzipArgvSpec: StandardArgvParserSpec = {
 };
 
 interface SplitUnzipArgsResult {
-  readonly mainArgs: string[];
-  readonly excludePatterns: string[];
+  readonly mainArgs: string[],
+  readonly excludePatterns: string[],
 }
 
 interface OpenedZipArchive {
-  readonly reader: StreamingZipReader;
-  close(): Promise<void>;
+  readonly reader: StreamingZipReader,
+  close(): Promise<void>,
 }
 
-function resolvePath({ cwd, path }: { cwd: string; path: string }): string {
+function resolvePath({ cwd, path }: { cwd: string, path: string }): string {
   if (path.startsWith('/')) {
     return path;
   }
@@ -78,7 +78,7 @@ function basename({ path }: { path: string }): string {
   return segments.at(-1) ?? normalized;
 }
 
-function padLeft({ text, width }: { text: string; width: number }): string {
+function padLeft({ text, width }: { text: string, width: number }): string {
   return text.padStart(width, ' ');
 }
 
@@ -139,8 +139,8 @@ async function removePathIfPresent({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<void> {
   try {
     await context.files.unlink({ path });
@@ -153,8 +153,8 @@ async function openPathZipArchive({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<OpenedZipArchive> {
   const blobResult = await context.files.tryReadBlobEfficiently({ path });
   switch (blobResult.kind) {
@@ -199,8 +199,8 @@ async function openZipArchive({
   context,
   archivePath,
 }: {
-  context: WeshCommandContext;
-  archivePath: string;
+  context: WeshCommandContext,
+  archivePath: string,
 }): Promise<OpenedZipArchive> {
   if (archivePath !== '-') {
     return openPathZipArchive({ context, path: archivePath });
@@ -246,9 +246,9 @@ function entryMatches({
   includeMatchers,
   excludeMatchers,
 }: {
-  entry: ZipArchiveEntry;
-  includeMatchers: readonly RegExp[];
-  excludeMatchers: readonly RegExp[];
+  entry: ZipArchiveEntry,
+  includeMatchers: readonly RegExp[],
+  excludeMatchers: readonly RegExp[],
 }): boolean {
   if (excludeMatchers.some(matcher => matcher.test(entry.name))) {
     return false;
@@ -278,8 +278,8 @@ async function ensureDirectory({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<void> {
   await context.files.mkdir({ path, recursive: true });
 }
@@ -288,8 +288,8 @@ async function pathExists({
   context,
   path,
 }: {
-  context: WeshCommandContext;
-  path: string;
+  context: WeshCommandContext,
+  path: string,
 }): Promise<boolean> {
   try {
     await context.files.lstat({ path });
@@ -305,10 +305,10 @@ async function writeEntryToFile({
   entry,
   destinationPath,
 }: {
-  context: WeshCommandContext;
-  reader: StreamingZipReader;
-  entry: ZipArchiveEntry;
-  destinationPath: string;
+  context: WeshCommandContext,
+  reader: StreamingZipReader,
+  entry: ZipArchiveEntry,
+  destinationPath: string,
 }): Promise<void> {
   const slashIndex = destinationPath.lastIndexOf('/');
   const parentPath = slashIndex <= 0 ? '/' : destinationPath.slice(0, slashIndex);
@@ -328,11 +328,11 @@ async function listEntries({
   includeMatchers,
   excludeMatchers,
 }: {
-  context: WeshCommandContext;
-  archiveOperand: string;
-  reader: StreamingZipReader;
-  includeMatchers: readonly RegExp[];
-  excludeMatchers: readonly RegExp[];
+  context: WeshCommandContext,
+  archiveOperand: string,
+  reader: StreamingZipReader,
+  includeMatchers: readonly RegExp[],
+  excludeMatchers: readonly RegExp[],
 }): Promise<void> {
   const writer = createBufferedTextWriter({
     handle: context.stdout,
@@ -367,10 +367,10 @@ async function pipeEntries({
   includeMatchers,
   excludeMatchers,
 }: {
-  context: WeshCommandContext;
-  reader: StreamingZipReader;
-  includeMatchers: readonly RegExp[];
-  excludeMatchers: readonly RegExp[];
+  context: WeshCommandContext,
+  reader: StreamingZipReader,
+  includeMatchers: readonly RegExp[],
+  excludeMatchers: readonly RegExp[],
 }): Promise<void> {
   for await (const entry of reader.entries()) {
     if (entry.isDirectory || !entryMatches({ entry, includeMatchers, excludeMatchers })) {
@@ -394,14 +394,14 @@ async function extractEntries({
   neverOverwrite,
   overwrite,
 }: {
-  context: WeshCommandContext;
-  reader: StreamingZipReader;
-  includeMatchers: readonly RegExp[];
-  excludeMatchers: readonly RegExp[];
-  destinationRoot: string;
-  junkPaths: boolean;
-  neverOverwrite: boolean;
-  overwrite: boolean;
+  context: WeshCommandContext,
+  reader: StreamingZipReader,
+  includeMatchers: readonly RegExp[],
+  excludeMatchers: readonly RegExp[],
+  destinationRoot: string,
+  junkPaths: boolean,
+  neverOverwrite: boolean,
+  overwrite: boolean,
 }): Promise<boolean> {
   let hadError = false;
   for await (const entry of reader.entries()) {

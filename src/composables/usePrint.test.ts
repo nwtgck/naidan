@@ -7,7 +7,7 @@ describe('usePrint composable', () => {
       print: vi.fn(),
     });
     vi.stubGlobal('document', {
-      title: 'Original Title'
+      title: 'Original Title',
     });
     vi.clearAllMocks();
   });

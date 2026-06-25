@@ -12,7 +12,7 @@ import { idToRaw } from '@/models/ids';
 import { generateId } from '@/utils/id';
 
 interface GenerationResult {
-  past_key_values: unknown;
+  past_key_values: unknown,
 }
 
 export async function generateGptOss({
@@ -27,29 +27,29 @@ export async function generateGptOss({
   stoppingCriteria,
   generateWithModel,
 }: {
-  model: PreTrainedModel;
-  tokenizer: PreTrainedTokenizer;
-  messages: ChatMessage[];
-  onChunk: ({ chunk }: { chunk: string }) => void;
-  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void;
-  params: LmParameters | undefined;
-  tools: WorkerToolDefinition[] | undefined;
-  pastKeyValues: unknown;
+  model: PreTrainedModel,
+  tokenizer: PreTrainedTokenizer,
+  messages: ChatMessage[],
+  onChunk: ({ chunk }: { chunk: string }) => void,
+  onToolCalls: ({ toolCalls }: { toolCalls: ToolCall[] }) => void,
+  params: LmParameters | undefined,
+  tools: WorkerToolDefinition[] | undefined,
+  pastKeyValues: unknown,
   stoppingCriteria: {
-    reset(): void;
-    interrupt(): void;
-  };
+    reset(): void,
+    interrupt(): void,
+  },
   generateWithModel: ({ model, inputs, pastKeyValues, params, streamer, stoppingCriteria }: {
-    model: PreTrainedModel;
-    inputs: Record<string, unknown>;
-    pastKeyValues: unknown;
-    params: LmParameters | undefined;
-    streamer: TextStreamer;
+    model: PreTrainedModel,
+    inputs: Record<string, unknown>,
+    pastKeyValues: unknown,
+    params: LmParameters | undefined,
+    streamer: TextStreamer,
     stoppingCriteria: {
-      reset(): void;
-      interrupt(): void;
-    };
-  }) => Promise<GenerationResult>;
+      reset(): void,
+      interrupt(): void,
+    },
+  }) => Promise<GenerationResult>,
 }): Promise<unknown> {
   const isContinuation = isGptOssToolContinuationRequest({ messages });
 
@@ -216,8 +216,8 @@ function buildGptOssToolResultTokens({
   messages,
   tokenizer,
 }: {
-  messages: ChatMessage[];
-  tokenizer: PreTrainedTokenizer;
+  messages: ChatMessage[],
+  tokenizer: PreTrainedTokenizer,
 }): Record<string, unknown> {
   const idToName = new Map<ToolCallId, string>();
   for (const message of messages) {
@@ -270,13 +270,13 @@ function buildGptOssPromptMessages({
   messages,
   tools,
 }: {
-  messages: ChatMessage[];
-  tools: WorkerToolDefinition[] | undefined;
+  messages: ChatMessage[],
+  tools: WorkerToolDefinition[] | undefined,
 }): Array<{
-  role: string;
-  content: string;
-  tool_calls: ChatMessage['tool_calls'];
-  tool_call_id: string | undefined;
+  role: string,
+  content: string,
+  tool_calls: ChatMessage['tool_calls'],
+  tool_call_id: string | undefined,
 }> {
   const formattedMessages = messages.map(message => ({
     role: message.role,
@@ -310,7 +310,7 @@ function buildGptOssPromptMessages({
 function tryParseGptOssToolArguments({
   content,
 }: {
-  content: string;
+  content: string,
 }): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(content) as unknown;

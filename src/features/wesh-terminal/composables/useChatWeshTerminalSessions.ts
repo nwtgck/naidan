@@ -1,8 +1,8 @@
-import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions'
-import type { ChatGroupId, ChatId } from '@/models/ids'
-import type { Mount } from '@/models/types'
-import { buildWorkerMountsForChat } from '@/services/wesh/chat-worker-mounts'
-import type { NaidanSysfsAccessScope } from '@/services/wesh/types'
+import { createWeshTerminalSessions } from '@/features/wesh-terminal/composables/useWeshTerminalSessions';
+import type { ChatGroupId, ChatId } from '@/models/ids';
+import type { Mount } from '@/models/types';
+import { buildWorkerMountsForChat } from '@/services/wesh/chat-worker-mounts';
+import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 
 const store = createWeshTerminalSessions({
   opfsRootName: 'naidan-chat-wesh',
@@ -11,15 +11,15 @@ const store = createWeshTerminalSessions({
   initialCwd: '/home/user',
   homeDirectory: '/home/user',
   tmpDirectory: '/tmp',
-})
+});
 
 type SessionArgs = {
-  chatMounts: readonly Mount[]
-  chatGroupMounts: readonly Mount[] | undefined
-  chatId: ChatId | undefined
-  chatGroupId: ChatGroupId | undefined
-  naidanSysfsAccessScope: NaidanSysfsAccessScope
-}
+  chatMounts: readonly Mount[],
+  chatGroupMounts: readonly Mount[] | undefined,
+  chatId: ChatId | undefined,
+  chatGroupId: ChatGroupId | undefined,
+  naidanSysfsAccessScope: NaidanSysfsAccessScope,
+};
 
 function buildMountsForSession({
   chatMounts,
@@ -34,7 +34,7 @@ function buildMountsForSession({
     chatId,
     chatGroupId,
     naidanSysfsAccessScope,
-  })
+  });
 }
 
 export function useChatWeshTerminalSessions() {
@@ -49,5 +49,5 @@ export function useChatWeshTerminalSessions() {
     TEST_ONLY: {
       buildWorkerMountsForChat,
     },
-  }
+  };
 }

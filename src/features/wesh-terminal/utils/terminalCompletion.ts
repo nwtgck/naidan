@@ -1,27 +1,27 @@
-import type { WeshWorkerCommandEntry, WeshWorkerDirectoryEntry } from '@/services/wesh/worker/types'
+import type { WeshWorkerCommandEntry, WeshWorkerDirectoryEntry } from '@/services/wesh/worker/types';
 
-export type WeshTerminalCompletionCandidateKind = 'command' | 'file' | 'directory'
+export type WeshTerminalCompletionCandidateKind = 'command' | 'file' | 'directory';
 
 export interface WeshTerminalCompletionCandidate {
-  value: string
-  display: string
-  kind: WeshTerminalCompletionCandidateKind
+  value: string,
+  display: string,
+  kind: WeshTerminalCompletionCandidateKind,
 }
 
 export interface WeshTerminalCompletionResult {
   replacement: {
-    start: number
-    end: number
-    text: string
-  } | undefined
-  candidates: WeshTerminalCompletionCandidate[]
+    start: number,
+    end: number,
+    text: string,
+  } | undefined,
+  candidates: WeshTerminalCompletionCandidate[],
 }
 
 export interface WeshTerminalCompletionToken {
-  start: number
-  end: number
-  text: string
-  role: 'command' | 'path'
+  start: number,
+  end: number,
+  text: string,
+  role: 'command' | 'path',
 }
 
 // Terminal completion intentionally lives outside Wesh core. Wesh is primarily
@@ -34,30 +34,30 @@ export function getTerminalCompletionToken({
   line,
   cursor,
 }: {
-  line: string
-  cursor: number
+  line: string,
+  cursor: number,
 }): WeshTerminalCompletionToken {
-  const boundedCursor = Math.max(0, Math.min(cursor, line.length))
-  let start = boundedCursor
+  const boundedCursor = Math.max(0, Math.min(cursor, line.length));
+  let start = boundedCursor;
   while (start > 0 && !/\s/u.test(line[start - 1] ?? '')) {
-    start -= 1
+    start -= 1;
   }
 
-  const prefixBeforeToken = line.slice(0, start)
+  const prefixBeforeToken = line.slice(0, start);
   return {
     start,
     end: boundedCursor,
     text: line.slice(start, boundedCursor),
     role: prefixBeforeToken.trim().length === 0 ? 'command' : 'path',
-  }
+  };
 }
 
 export function completeCommandToken({
   token,
   commands,
 }: {
-  token: WeshTerminalCompletionToken
-  commands: WeshWorkerCommandEntry[]
+  token: WeshTerminalCompletionToken,
+  commands: WeshWorkerCommandEntry[],
 }): WeshTerminalCompletionResult {
   const candidates = commands
     .filter(command => command.name.startsWith(token.text))
@@ -66,21 +66,21 @@ export function completeCommandToken({
       display: formatCommandCandidateDisplay({ command }),
       kind: 'command',
     }))
-    .sort((left, right) => left.value.localeCompare(right.value))
+    .sort((left, right) => left.value.localeCompare(right.value));
 
-  return buildReplacementResult({ token, candidates, appendSpaceForSingleCommand: true })
+  return buildReplacementResult({ token, candidates, appendSpaceForSingleCommand: true });
 }
 
 
 function formatCommandCandidateDisplay({ command }: { command: WeshWorkerCommandEntry }): string {
   switch (command.kind) {
   case 'alias':
-    return `${command.name} -> ${command.usage}`
+    return `${command.name} -> ${command.usage}`;
   case 'builtin':
-    return command.name
+    return command.name;
   default: {
-    const _ex: never = command.kind
-    return _ex
+    const _ex: never = command.kind;
+    return _ex;
   }
   }
 }
@@ -89,8 +89,8 @@ function buildPathCandidate({
   prefix,
   entry,
 }: {
-  prefix: string
-  entry: WeshWorkerDirectoryEntry
+  prefix: string,
+  entry: WeshWorkerDirectoryEntry,
 }): WeshTerminalCompletionCandidate {
   switch (entry.type) {
   case 'directory':
@@ -98,7 +98,7 @@ function buildPathCandidate({
       value: `${prefix}${entry.name}/`,
       display: `${entry.name}/`,
       kind: 'directory',
-    }
+    };
   case 'file':
   case 'fifo':
   case 'chardev':
@@ -107,50 +107,50 @@ function buildPathCandidate({
       value: `${prefix}${entry.name}`,
       display: entry.name,
       kind: 'file',
-    }
+    };
   default: {
-    const _ex: never = entry.type
-    return _ex
+    const _ex: never = entry.type;
+    return _ex;
   }
   }
 }
 
 export function splitPathToken({ tokenText }: { tokenText: string }): {
-  directoryPath: string
-  prefix: string
-  basenamePrefix: string
+  directoryPath: string,
+  prefix: string,
+  basenamePrefix: string,
 } {
-  const slashIndex = tokenText.lastIndexOf('/')
+  const slashIndex = tokenText.lastIndexOf('/');
   if (slashIndex < 0) {
     return {
       directoryPath: '.',
       prefix: '',
       basenamePrefix: tokenText,
-    }
+    };
   }
 
-  const prefix = tokenText.slice(0, slashIndex + 1)
+  const prefix = tokenText.slice(0, slashIndex + 1);
   return {
     directoryPath: prefix.length === 0 ? '/' : prefix,
     prefix,
     basenamePrefix: tokenText.slice(slashIndex + 1),
-  }
+  };
 }
 
 export function completePathToken({
   token,
   entries,
 }: {
-  token: WeshTerminalCompletionToken
-  entries: WeshWorkerDirectoryEntry[]
+  token: WeshTerminalCompletionToken,
+  entries: WeshWorkerDirectoryEntry[],
 }): WeshTerminalCompletionResult {
-  const { prefix, basenamePrefix } = splitPathToken({ tokenText: token.text })
+  const { prefix, basenamePrefix } = splitPathToken({ tokenText: token.text });
   const candidates = entries
     .filter(entry => entry.name.startsWith(basenamePrefix))
     .map((entry): WeshTerminalCompletionCandidate => buildPathCandidate({ prefix, entry }))
-    .sort((left, right) => left.value.localeCompare(right.value))
+    .sort((left, right) => left.value.localeCompare(right.value));
 
-  return buildReplacementResult({ token, candidates, appendSpaceForSingleCommand: false })
+  return buildReplacementResult({ token, candidates, appendSpaceForSingleCommand: false });
 }
 
 function buildReplacementResult({
@@ -158,18 +158,18 @@ function buildReplacementResult({
   candidates,
   appendSpaceForSingleCommand,
 }: {
-  token: WeshTerminalCompletionToken
-  candidates: WeshTerminalCompletionCandidate[]
-  appendSpaceForSingleCommand: boolean
+  token: WeshTerminalCompletionToken,
+  candidates: WeshTerminalCompletionCandidate[],
+  appendSpaceForSingleCommand: boolean,
 }): WeshTerminalCompletionResult {
   if (candidates.length === 0) {
-    return { replacement: undefined, candidates }
+    return { replacement: undefined, candidates };
   }
 
   if (candidates.length === 1) {
-    const candidate = candidates[0]
+    const candidate = candidates[0];
     if (candidate === undefined) {
-      return { replacement: undefined, candidates }
+      return { replacement: undefined, candidates };
     }
     return {
       replacement: {
@@ -178,10 +178,10 @@ function buildReplacementResult({
         text: appendSpaceForSingleCommand && candidate.kind === 'command' ? `${candidate.value} ` : candidate.value,
       },
       candidates,
-    }
+    };
   }
 
-  const commonPrefix = findCommonPrefix({ values: candidates.map(candidate => candidate.value) })
+  const commonPrefix = findCommonPrefix({ values: candidates.map(candidate => candidate.value) });
   if (commonPrefix.length > token.text.length) {
     return {
       replacement: {
@@ -190,21 +190,21 @@ function buildReplacementResult({
         text: commonPrefix,
       },
       candidates,
-    }
+    };
   }
 
-  return { replacement: undefined, candidates }
+  return { replacement: undefined, candidates };
 }
 
 function findCommonPrefix({ values }: { values: string[] }): string {
-  const first = values[0]
-  if (first === undefined) return ''
+  const first = values[0];
+  if (first === undefined) return '';
 
-  let end = first.length
+  let end = first.length;
   for (const value of values.slice(1)) {
     while (end > 0 && value.slice(0, end) !== first.slice(0, end)) {
-      end -= 1
+      end -= 1;
     }
   }
-  return first.slice(0, end)
+  return first.slice(0, end);
 }

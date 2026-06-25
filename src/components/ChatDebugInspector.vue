@@ -15,15 +15,15 @@ import { idToRaw, toBinaryObjectId } from '@/models/ids';
 import type { BinaryObjectId, MessageId } from '@/models/ids';
 
 const props = defineProps<{
-  show: boolean;
+  show: boolean,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  chat: any; // Using any to avoid deep readonly incompatibility with store output
-  activeMessages: ReadonlyArray<MessageNode>;
+  chat: any, // Using any to avoid deep readonly incompatibility with store output
+  activeMessages: ReadonlyArray<MessageNode>,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'enable-fake-lm'): void;
+  (e: 'close'): void,
+  (e: 'enable-fake-lm'): void,
 }>();
 
 const router = useRouter();
@@ -65,7 +65,7 @@ const selectedPath = computed(() => {
   const targetId = selectedNode.value.id;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const findPath = ({ items, currentPath }: { items: ReadonlyArray<any>; currentPath: MessageNode[] }): boolean => {
+  const findPath = ({ items, currentPath }: { items: ReadonlyArray<any>, currentPath: MessageNode[] }): boolean => {
     for (const item of items) {
       if (item.id === targetId) {
         path.push(...currentPath, item as MessageNode);
@@ -202,7 +202,7 @@ const rawJsonOutput = computed(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

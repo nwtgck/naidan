@@ -122,7 +122,7 @@ describe('DebugWeshTerminalModal', () => {
     mocks.awaitExecution.mockImplementation(
       () => new Promise((resolve) => {
         resolveAwaitExecution = resolve;
-      })
+      }),
     );
 
     const wrapper = mount(DebugWeshTerminalModal, {

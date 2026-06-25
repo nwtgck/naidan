@@ -6,17 +6,17 @@ import { idToRaw } from '@/models/ids';
 import type { ProviderProfileId } from '@/models/ids';
 import type { ProviderProfile } from '@/models/types';
 import {
-  BookmarkPlusIcon, PencilIcon, TrashIcon, CheckIcon
+  BookmarkPlusIcon, PencilIcon, TrashIcon, CheckIcon,
 } from 'lucide-vue-next';
 import { capitalize } from '@/utils/string';
 
 const props = defineProps<{
-  profiles: ProviderProfile[];
+  profiles: ProviderProfile[],
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:profiles', value: ProviderProfile[]): void;
-  (e: 'goToConnection'): void;
+  (e: 'update:profiles', value: ProviderProfile[]): void,
+  (e: 'goToConnection'): void,
 }>();
 
 const { updateProviderProfiles } = useSettings();
@@ -75,7 +75,7 @@ async function saveRename() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

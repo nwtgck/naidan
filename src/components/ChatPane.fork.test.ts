@@ -19,13 +19,13 @@ const router = createRouter({
 // Mock dependencies
 const mockForkChat = vi.fn();
 const mockCurrentChat = ref<{
-  id: ChatId;
-  title: string;
-  root: any;
-  currentLeafId: MessageId | undefined;
-  debugEnabled: boolean;
-  originChatId: string | undefined;
-  modelId: string | undefined;
+  id: ChatId,
+  title: string,
+  root: any,
+  currentLeafId: MessageId | undefined,
+  debugEnabled: boolean,
+  originChatId: string | undefined,
+  modelId: string | undefined,
 }>({
   id: toChatId({ raw: '1' }),
   title: 'Test Chat',
@@ -96,7 +96,7 @@ vi.mock('../composables/useChat', () => ({
       flow: { position: 'standalone', nesting: 'none' },
       isFirstInNode: true,
       isLastInNode: true,
-      isFirstInTurn: true
+      isFirstInTurn: true,
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(() => false),
@@ -123,12 +123,12 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: ChatId;
-    autoSendPrompt?: string;
-    targetMessageId?: MessageId;
-  };
-  attachTo?: Element | string;
-  global?: Record<string, unknown>;
+    chatId?: ChatId,
+    autoSendPrompt?: string,
+    targetMessageId?: MessageId,
+  },
+  attachTo?: Element | string,
+  global?: Record<string, unknown>,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -169,7 +169,7 @@ vi.mock('../composables/chat/useChatBranches', () => ({
   useChatBranches: () => ({
     editMessage: vi.fn(),
     switchVersion: vi.fn(),
-    forkChat: ({ messageId }: { chatId: string; messageId: string }) => mockForkChat({ messageId }),
+    forkChat: ({ messageId }: { chatId: string, messageId: string }) => mockForkChat({ messageId }),
   }),
 }));
 
@@ -290,7 +290,7 @@ describe('ChatPane Fork Functionality', () => {
   it('should call forkChat with the last message ID when fork button is clicked', async () => {
     mockActiveMessages.value = [
       { id: 'msg-1', role: 'user', content: 'hello' },
-      { id: 'msg-2', role: 'assistant', content: 'hi' }
+      { id: 'msg-2', role: 'assistant', content: 'hi' },
     ];
     mockForkChat.mockResolvedValue('new-chat-id');
 

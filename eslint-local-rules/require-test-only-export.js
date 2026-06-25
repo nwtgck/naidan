@@ -173,7 +173,7 @@ export const rule = {
         if (node.argument && node.argument.type === 'ObjectExpression') {
           const hasTestOnly = node.argument.properties.some(prop => 
             (prop.type === 'Property' || prop.type === 'MethodDefinition') &&
-            isTestOnlyPropertyName(prop.key)
+            isTestOnlyPropertyName(prop.key),
           );
 
           if (!hasTestOnly) {
@@ -214,13 +214,13 @@ export const rule = {
                   
                   return fixer.replaceText(obj, `{\n${innerIndent}TEST_ONLY: {\n${innerIndent}  ${indentedComment}\n${innerIndent}},\n${indent}}`);
                 }
-              }
+              },
             });
           }
         }
-      }
+      },
     };
-  }
+  },
 };
 
 export default {
@@ -228,11 +228,11 @@ export default {
   plugins: {
     'local-rules-test-only': {
       rules: {
-        'require-test-only-export': rule
-      }
-    }
+        'require-test-only-export': rule,
+      },
+    },
   },
   rules: {
-    'local-rules-test-only/require-test-only-export': 'error'
-  }
+    'local-rules-test-only/require-test-only-export': 'error',
+  },
 };

@@ -2,8 +2,8 @@
 import logoUrl from '@/assets/logo.svg';
 
 interface Props {
-  size?: number;
-  className?: string;
+  size?: number,
+  className?: string,
 }
 withDefaults(defineProps<Props>(), {
   size: 32,
@@ -14,7 +14,7 @@ withDefaults(defineProps<Props>(), {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

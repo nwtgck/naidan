@@ -1,6 +1,6 @@
-import type { ChatGroupId, ChatId } from '@/models/ids'
-import type { StorageType } from '@/models/types'
-import { NAIDAN_SYSFS_MOUNT_PATH, type NaidanSysfsBinaryObjectAccess, type NaidanSysfsVisibility, type WeshMount } from '@/services/wesh/types'
+import type { ChatGroupId, ChatId } from '@/models/ids';
+import type { StorageType } from '@/models/types';
+import { NAIDAN_SYSFS_MOUNT_PATH, type NaidanSysfsBinaryObjectAccess, type NaidanSysfsVisibility, type WeshMount } from '@/services/wesh/types';
 
 export function createNaidanSysfsMount({
   storageType,
@@ -9,14 +9,14 @@ export function createNaidanSysfsMount({
   currentChatId,
   currentChatGroupId,
 }: {
-  storageType: StorageType;
-  visibility: NaidanSysfsVisibility;
-  binaryObjectAccess: NaidanSysfsBinaryObjectAccess;
-  currentChatId: ChatId | undefined;
-  currentChatGroupId: ChatGroupId | undefined;
+  storageType: StorageType,
+  visibility: NaidanSysfsVisibility,
+  binaryObjectAccess: NaidanSysfsBinaryObjectAccess,
+  currentChatId: ChatId | undefined,
+  currentChatGroupId: ChatGroupId | undefined,
 }): WeshMount | undefined {
   if (currentChatId === undefined) {
-    return undefined
+    return undefined;
   }
 
   switch (storageType) {
@@ -32,10 +32,10 @@ export function createNaidanSysfsMount({
       binaryObjectAccess,
       currentChatId,
       currentChatGroupId,
-    }
+    };
   default: {
-    const _ex: never = storageType
-    throw new Error(`Unhandled storage type: ${String(_ex)}`)
+    const _ex: never = storageType;
+    throw new Error(`Unhandled storage type: ${String(_ex)}`);
   }
   }
 }

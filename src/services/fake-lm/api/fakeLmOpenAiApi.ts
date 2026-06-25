@@ -6,8 +6,8 @@ import { streamFakeLmMarkdown, type FakeLmStreamItem } from '@/services/fake-lm/
 import { normalizeFakeLmThinkingEffort } from '@/services/fake-lm/core/thinking';
 
 export async function handleFakeLmOpenAiRequest({ url, init }: {
-  url: URL;
-  init: RequestInit | undefined;
+  url: URL,
+  init: RequestInit | undefined,
 }): Promise<Response | undefined> {
   if (init?.method === undefined || init.method === 'GET') {
     if (url.pathname.endsWith('/models')) {
@@ -56,7 +56,7 @@ export async function handleFakeLmOpenAiRequest({ url, init }: {
 }
 
 function createOpenAiSseResponse({ chunks }: {
-  chunks: AsyncIterable<FakeLmStreamItem>;
+  chunks: AsyncIterable<FakeLmStreamItem>,
 }): Response {
   const encoder = new TextEncoder();
   const body = new ReadableStream<Uint8Array>({
@@ -84,7 +84,7 @@ function createOpenAiSseResponse({ chunks }: {
 }
 
 function makeOpenAiDelta({ item }: {
-  item: FakeLmStreamItem;
+  item: FakeLmStreamItem,
 }): { reasoning_content: string } | { content: string } {
   switch (item.type) {
   case 'thinking':
@@ -99,7 +99,7 @@ function makeOpenAiDelta({ item }: {
 }
 
 function parseJsonBody({ body }: {
-  body: BodyInit | null | undefined;
+  body: BodyInit | null | undefined,
 }): unknown {
   if (typeof body !== 'string') {
     return undefined;

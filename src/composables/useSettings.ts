@@ -13,7 +13,7 @@ import { useConfirm } from './useConfirm';
 const _settings = ref<Settings>({
   ...DEFAULT_SETTINGS,
   storageType: 'local',
-  endpointType: 'openai'
+  endpointType: 'openai',
 } as Settings);
 
 const _initialized = ref(false);
@@ -27,35 +27,35 @@ const _searchPreviewMode = ref<SearchPreviewMode>('always');
 const _searchContextSize = ref(2);
 
 interface UseSettingsApi {
-  settings: Readonly<Ref<Settings>>;
-  initialized: Readonly<Ref<boolean>>;
-  isOnboardingDismissed: ComputedRef<boolean>;
-  onboardingDraft: Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>;
-  availableModels: Readonly<Ref<string[]>>;
-  isFetchingModels: Readonly<Ref<boolean>>;
-  searchPreviewMode: Readonly<Ref<SearchPreviewMode>>;
-  searchContextSize: Readonly<Ref<number>>;
-  init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>;
-  save: ({ patch }: { patch: Partial<Settings> }) => Promise<void>;
+  settings: Readonly<Ref<Settings>>,
+  initialized: Readonly<Ref<boolean>>,
+  isOnboardingDismissed: ComputedRef<boolean>,
+  onboardingDraft: Readonly<Ref<{ url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null>>,
+  availableModels: Readonly<Ref<string[]>>,
+  isFetchingModels: Readonly<Ref<boolean>>,
+  searchPreviewMode: Readonly<Ref<SearchPreviewMode>>,
+  searchContextSize: Readonly<Ref<number>>,
+  init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>,
+  save: ({ patch }: { patch: Partial<Settings> }) => Promise<void>,
   updateExperimental: ({ updater }: {
-    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'];
-  }) => Promise<void>;
-  fetchModels: ({ overrides }: { overrides?: { url: string; type: EndpointType; headers?: [string, string][] } }) => Promise<string[]>;
-  updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>;
-  updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>;
-  updateGlobalEndpoint: ({ type, url, headers }: { type: EndpointType, url: string, headers?: [string, string][] }) => Promise<void>;
-  updateSystemPrompt: ({ prompt }: { prompt: string }) => Promise<void>;
-  updateStorageType: ({ type }: { type: StorageType }) => Promise<void>;
-  setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => void;
-  setOnboardingDraft: ({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) => void;
-  setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => void;
-  setFakeLmDebugModeStatus: ({ status }: { status: FakeLmDebugModeStatus }) => Promise<void>;
-  setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => void;
-  setSearchContextSize: ({ size }: { size: number }) => void;
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
+  }) => Promise<void>,
+  fetchModels: ({ overrides }: { overrides?: { url: string, type: EndpointType, headers?: [string, string][] } }) => Promise<string[]>,
+  updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>,
+  updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>,
+  updateGlobalEndpoint: ({ type, url, headers }: { type: EndpointType, url: string, headers?: [string, string][] }) => Promise<void>,
+  updateSystemPrompt: ({ prompt }: { prompt: string }) => Promise<void>,
+  updateStorageType: ({ type }: { type: StorageType }) => Promise<void>,
+  setIsOnboardingDismissed: ({ dismissed }: { dismissed: boolean }) => void,
+  setOnboardingDraft: ({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) => void,
+  setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => void,
+  setFakeLmDebugModeStatus: ({ status }: { status: FakeLmDebugModeStatus }) => Promise<void>,
+  setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => void,
+  setSearchContextSize: ({ size }: { size: number }) => void,
   TEST_ONLY: {
-    __testOnlyReset: () => void;
-    __testOnlySetSettings: ({ newSettings }: { newSettings: Settings }) => void;
-  };
+    __testOnlyReset: () => void,
+    __testOnlySetSettings: ({ newSettings }: { newSettings: Settings }) => void,
+  },
 }
 
 let initPromise: Promise<void> | null = null;
@@ -91,7 +91,7 @@ transformersJsService.subscribeModelList({ listener: async () => {
 } });
 
 function preloadFakeLmIfEnabled({ status }: {
-  status: FakeLmDebugModeStatus;
+  status: FakeLmDebugModeStatus,
 }): void {
   switch (status) {
   case 'enabled':
@@ -230,7 +230,7 @@ export function useSettings(): UseSettingsApi {
     return initPromise;
   }
 
-  async function fetchModels({ overrides }: { overrides?: { url: string; type: EndpointType; headers?: [string, string][] } }): Promise<string[]> {
+  async function fetchModels({ overrides }: { overrides?: { url: string, type: EndpointType, headers?: [string, string][] } }): Promise<string[]> {
     const url = overrides?.url ?? _settings.value.endpointUrl;
     const type = overrides?.type ?? _settings.value.endpointType;
     const headers = overrides?.headers ?? _settings.value.endpointHttpHeaders;
@@ -294,7 +294,7 @@ export function useSettings(): UseSettingsApi {
   async function updateExperimental({
     updater,
   }: {
-    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'];
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'],
   }): Promise<void> {
     let savedSettings: Settings | undefined;
     await storageService.updateSettings({
@@ -338,7 +338,7 @@ export function useSettings(): UseSettingsApi {
       ...(curr || _settings.value),
       endpointType: type,
       endpointUrl: url,
-      endpointHttpHeaders: headers
+      endpointHttpHeaders: headers,
     }) });
 
     if (url !== oldUrl || type !== oldType) {
@@ -373,7 +373,7 @@ export function useSettings(): UseSettingsApi {
   }
 
   async function setFakeLmDebugModeStatus({ status }: {
-    status: FakeLmDebugModeStatus;
+    status: FakeLmDebugModeStatus,
   }): Promise<void> {
     _settings.value.experimental = {
       ..._settings.value.experimental,
@@ -413,7 +413,7 @@ export function useSettings(): UseSettingsApi {
     _settings.value = {
       ...DEFAULT_SETTINGS,
       storageType: 'local',
-      endpointType: 'openai'
+      endpointType: 'openai',
     } as Settings;
     availableModels.value = [];
     isFetchingModels.value = false;

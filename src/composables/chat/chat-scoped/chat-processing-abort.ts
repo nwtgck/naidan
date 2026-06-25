@@ -12,7 +12,7 @@ import {
 export function abortProcessingForChat({
   chatId,
 }: {
-  chatId: ChatId;
+  chatId: ChatId,
 }): void {
   const activeGeneration = chatRuntimeStore.getActiveGeneration({ chatId });
   if (activeGeneration !== undefined) {

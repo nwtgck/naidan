@@ -24,7 +24,7 @@ vi.mock('@vueuse/core', async () => {
         state.value = res;
       }
       return state;
-    }
+    },
   };
 });
 
@@ -40,7 +40,7 @@ vi.mock('../services/transformers-js', () => ({
     downloadModel: vi.fn(),
     deleteModel: vi.fn(),
     importFile: vi.fn(),
-  }
+  },
 }));
 
 const mockAddToast = vi.fn();
@@ -123,7 +123,7 @@ describe('TransformersJsManager.vue', () => {
 
   it('renders cached models', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
-      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true }
+      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
     const wrapper = mount(TransformersJsManager);
@@ -145,7 +145,7 @@ describe('TransformersJsManager.vue', () => {
 
   it('renders incomplete models with Resume label', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
-      { id: 'hf.co/org/incomplete', size: 500, fileCount: 2, lastModified: Date.now(), isComplete: false }
+      { id: 'hf.co/org/incomplete', size: 500, fileCount: 2, lastModified: Date.now(), isComplete: false },
     ]);
 
     const wrapper = mount(TransformersJsManager);
@@ -158,7 +158,7 @@ describe('TransformersJsManager.vue', () => {
 
   it('calls loadModel when Load button is clicked', async () => {
     (transformersJsService.listCachedModels as any).mockResolvedValue([
-      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true }
+      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
     const wrapper = mount(TransformersJsManager);
@@ -174,7 +174,7 @@ describe('TransformersJsManager.vue', () => {
     (transformersJsService.getState as any).mockReturnValue({
       ...mockState,
       status: 'ready',
-      activeModelId: 'some-model'
+      activeModelId: 'some-model',
     });
 
     const wrapper = mount(TransformersJsManager);
@@ -190,7 +190,7 @@ describe('TransformersJsManager.vue', () => {
     mockShowConfirm.mockResolvedValue(true);
 
     (transformersJsService.listCachedModels as any).mockResolvedValue([
-      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true }
+      { id: 'hf.co/org/model1', size: 1024, fileCount: 5, lastModified: Date.now(), isComplete: true },
     ]);
 
     const wrapper = mount(TransformersJsManager);
@@ -207,7 +207,7 @@ describe('TransformersJsManager.vue', () => {
     (transformersJsService.getState as any).mockReturnValue({
       ...mockState,
       status: 'loading',
-      progress: 45
+      progress: 45,
     });
 
     const wrapper = mount(TransformersJsManager);
@@ -292,7 +292,7 @@ describe('TransformersJsManager.vue', () => {
       (transformersJsService.getState as any).mockReturnValue({
         ...mockState,
         status: 'error',
-        error: errorMessage
+        error: errorMessage,
       });
 
       const wrapper = mount(TransformersJsManager);

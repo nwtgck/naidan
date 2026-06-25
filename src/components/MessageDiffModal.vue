@@ -7,13 +7,13 @@ import type { MessageNode } from '@/models/types';
 import { computeWordDiff, type DiffPart } from '@/utils/diff';
 
 const props = defineProps<{
-  isOpen: boolean;
-  siblings: MessageNode[];
-  currentMessageId: MessageId;
+  isOpen: boolean,
+  siblings: MessageNode[],
+  currentMessageId: MessageId,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: 'close'): void,
 }>();
 
 type DiffVisibility = 'visible' | 'hidden';
@@ -60,11 +60,11 @@ onUnmounted(() => {
 });
 
 interface VersionItem {
-  id: MessageId;
-  versionNumber: number;
-  content: string;
-  modelId: string | undefined;
-  timestamp: number;
+  id: MessageId,
+  versionNumber: number,
+  content: string,
+  modelId: string | undefined,
+  timestamp: number,
 }
 
 const versionItems = computed((): VersionItem[] => {
@@ -86,19 +86,19 @@ const customDiff = computed(() => {
   return {
     base,
     target,
-    parts: computeWordDiff({ oldText: base.content, newText: target.content })
+    parts: computeWordDiff({ oldText: base.content, newText: target.content }),
   };
 });
 
 interface SequentialDiff {
-  id: MessageId;
-  versionNumber: number;
-  timestamp: number;
-  modelId: string | undefined;
-  content: string;
-  diffParts: DiffPart[];
-  isCurrent: boolean;
-  isSkipped: boolean;
+  id: MessageId,
+  versionNumber: number,
+  timestamp: number,
+  modelId: string | undefined,
+  content: string,
+  diffParts: DiffPart[],
+  isCurrent: boolean,
+  isSkipped: boolean,
 }
 
 const copiedId = ref<MessageId | undefined>(undefined);
@@ -187,7 +187,7 @@ function clearSelection() {
 }
 
 defineExpose({
-  TEST_ONLY: {}
+  TEST_ONLY: {},
 });
 </script>
 

@@ -6,25 +6,25 @@ import { mapWeshMountsToWorkerMounts } from '@/services/wesh/worker/types';
 export type FileExplorerModalOptions =
   | { kind: 'opfs-root' }
   | {
-    kind: 'native-directory';
-    title: string;
-    rootName: string;
-    handle: FileSystemDirectoryHandle;
-    readOnly: boolean;
-    initialPath: string[] | undefined;
+    kind: 'native-directory',
+    title: string,
+    rootName: string,
+    handle: FileSystemDirectoryHandle,
+    readOnly: boolean,
+    initialPath: string[] | undefined,
   }
   | {
-    kind: 'wesh-mounts';
-    title: string;
-    rootName: string;
-    mounts: WeshMount[];
-    initialPath: string[] | undefined;
+    kind: 'wesh-mounts',
+    title: string,
+    rootName: string,
+    mounts: WeshMount[],
+    initialPath: string[] | undefined,
   };
 
 export function mapFileExplorerModalOptionsToRootDescriptor({
   options,
 }: {
-  options: FileExplorerModalOptions;
+  options: FileExplorerModalOptions,
 }): FileExplorerRootDescriptor {
   switch (options.kind) {
   case 'opfs-root':

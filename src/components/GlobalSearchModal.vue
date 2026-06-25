@@ -36,9 +36,9 @@ const {
 
 const searchInput = ref<HTMLInputElement | null>(null);
 const groupPreviewRef = ref<{
-  navigate: ({ direction }: { direction: 'up' | 'down' }) => void;
-  handleEnter: () => void;
-  selectedChatId: string | null;
+  navigate: ({ direction }: { direction: 'up' | 'down' }) => void,
+  handleEnter: () => void,
+  selectedChatId: string | null,
     } | null>(null);
 const selectedIndex = ref(0);
 const scrollContainer = ref<HTMLElement | null>(null);
@@ -159,7 +159,7 @@ function toggleGroupFilter({ groupId }: { groupId: string }) {
 // Performance Optimization: Cache DateTimeFormat to avoid expensive re-initialization during list rendering.
 const timeFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short', day: 'numeric',
-  hour: '2-digit', minute: '2-digit'
+  hour: '2-digit', minute: '2-digit',
 });
 
 function formatTime({ timestamp }: { timestamp: number }) {
@@ -202,8 +202,8 @@ const performSearch = ({ val }: { val: string }) => {
       scope: searchScope.value,
       roleFilter: searchRoleFilter.value,
       chatGroupIds: chatGroupIds.value,
-      chatId: chatId.value
-    }
+      chatId: chatId.value,
+    },
   });
   selectedIndex.value = 0;
 };
@@ -355,7 +355,7 @@ function scrollToSelected() {
         container: scrollContainer.value,
         element: el,
         block: 'nearest',
-        behavior: 'instant'
+        behavior: 'instant',
       });
     }
   });
@@ -383,7 +383,7 @@ async function selectItem({ index }: { index: number }) {
     });
     router.push({
       path: `/chat/${parentChat.chatId}`,
-      query: { 'message-id': matchItem.messageId }
+      query: { 'message-id': matchItem.messageId },
     });
     closeSearch();
     break;
@@ -430,7 +430,7 @@ watch(isSearchOpen, (isOpen) => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

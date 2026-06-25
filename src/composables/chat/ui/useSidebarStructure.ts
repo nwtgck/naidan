@@ -11,25 +11,25 @@ export type SidebarStructureAdapter = {
   persistSidebarStructure({
     topLevelItems,
   }: {
-    topLevelItems: SidebarItem[];
-  }): Promise<void>;
+    topLevelItems: SidebarItem[],
+  }): Promise<void>,
 
   setChatGroupCollapsed({
     groupId,
     isCollapsed,
   }: {
-    groupId: ChatGroupId;
-    isCollapsed: boolean;
-  }): Promise<void>;
+    groupId: ChatGroupId,
+    isCollapsed: boolean,
+  }): Promise<void>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useSidebarStructure(): SidebarStructureAdapter {
   async function persistSidebarStructure({
     topLevelItems,
   }: {
-    topLevelItems: SidebarItem[];
+    topLevelItems: SidebarItem[],
   }): Promise<void> {
     rootItems.value = topLevelItems;
     const newHierarchy: Hierarchy = {
@@ -57,8 +57,8 @@ export function useSidebarStructure(): SidebarStructureAdapter {
     groupId,
     isCollapsed,
   }: {
-    groupId: ChatGroupId;
-    isCollapsed: boolean;
+    groupId: ChatGroupId,
+    isCollapsed: boolean,
   }): Promise<void> {
     const item = rootItems.value.find((entry) => entry.type === 'chat_group' && entry.chatGroup.id === groupId);
     if (item !== undefined && item.type === 'chat_group') {

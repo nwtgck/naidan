@@ -48,7 +48,7 @@ const filteredRecentChats = computed(() => {
   const q = filterQuery.value.trim().toLowerCase();
   if (!q) return recentChats.value;
   return recentChats.value.filter(chat =>
-    (chat.title || UNTITLED_CHAT_TITLE).toLowerCase().includes(q)
+    (chat.title || UNTITLED_CHAT_TITLE).toLowerCase().includes(q),
   );
 });
 
@@ -165,7 +165,7 @@ function scrollToSelected() {
         container: scrollContainer.value,
         element: el,
         block: 'nearest',
-        behavior: 'instant'
+        behavior: 'instant',
       });
     }
   });
@@ -219,7 +219,7 @@ const mappedDeferredItem = computed(() => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

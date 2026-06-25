@@ -3,15 +3,15 @@ import type { BinaryObject } from '@/models/types';
 import type { BinaryObjectId } from '@/models/ids';
 
 interface PreviewState {
-  objects: BinaryObject[];
-  initialId: BinaryObjectId;
+  objects: BinaryObject[],
+  initialId: BinaryObjectId,
 }
 
 interface ImagePreviewApi {
-  state: Ref<PreviewState | null>;
-  openPreview: ({ objects, initialId }: PreviewState) => void;
-  closePreview: () => void;
-  TEST_ONLY: Record<never, never>;
+  state: Ref<PreviewState | null>,
+  openPreview: ({ objects, initialId }: PreviewState) => void,
+  closePreview: () => void,
+  TEST_ONLY: Record<never, never>,
 }
 
 export type ContextualPreviewHandler = ({ id }: { id: BinaryObjectId }) => Promise<void>;
@@ -19,9 +19,9 @@ export type ContextualPreviewHandler = ({ id }: { id: BinaryObjectId }) => Promi
 export const MESSAGE_CONTEXTUAL_PREVIEW_KEY: InjectionKey<ContextualPreviewHandler> = Symbol('MessageContextualPreview');
 
 const PREVIEW_KEY: InjectionKey<{
-  state: Ref<PreviewState | null>;
-  openPreview: ({ objects, initialId }: PreviewState) => void;
-  closePreview: () => void;
+  state: Ref<PreviewState | null>,
+  openPreview: ({ objects, initialId }: PreviewState) => void,
+  closePreview: () => void,
 }> = Symbol('ImagePreview');
 
 /**

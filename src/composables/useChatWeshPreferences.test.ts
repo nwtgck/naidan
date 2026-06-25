@@ -50,8 +50,8 @@ describe('useChatWeshPreferences', () => {
     id,
     toolConfigs,
   }: {
-    id: ChatId;
-    toolConfigs?: Chat['toolConfigs'];
+    id: ChatId,
+    toolConfigs?: Chat['toolConfigs'],
   }): Chat {
     return reactive({
       id,

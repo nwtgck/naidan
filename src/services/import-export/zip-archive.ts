@@ -19,16 +19,16 @@ import {
  */
 
 export interface IndexedZipFile {
-  readonly name: string;
-  readonly isDirectory: boolean;
-  readText(): Promise<string>;
-  readBlob(): Promise<Blob>;
+  readonly name: string,
+  readonly isDirectory: boolean,
+  readText(): Promise<string>,
+  readBlob(): Promise<Blob>,
 }
 
 export interface IndexedZipArchive {
-  readonly fileNames: readonly string[];
-  file({ name }: { name: string }): IndexedZipFile | undefined;
-  close(): Promise<void>;
+  readonly fileNames: readonly string[],
+  file({ name }: { name: string }): IndexedZipFile | undefined,
+  close(): Promise<void>,
 }
 
 function createBlobPart({ chunk }: { chunk: Uint8Array }): BlobPart {
@@ -45,8 +45,8 @@ function createIndexedZipFile({
   reader,
   entry,
 }: {
-  reader: StreamingZipReader;
-  entry: ZipArchiveEntry;
+  reader: StreamingZipReader,
+  entry: ZipArchiveEntry,
 }): IndexedZipFile {
   return {
     name: entry.name,
@@ -75,7 +75,7 @@ function createIndexedZipFile({
 export async function openIndexedZipArchive({
   blob,
 }: {
-  blob: Blob;
+  blob: Blob,
 }): Promise<IndexedZipArchive> {
   const reader = new StreamingZipReader({
     source: createBlobZipSource({ blob }),

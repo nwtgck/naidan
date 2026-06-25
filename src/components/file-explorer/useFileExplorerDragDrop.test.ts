@@ -39,7 +39,7 @@ function makeDragEvent(opts: { dataTransfer?: boolean } = {}): DragEvent {
 const fakeDir = '/';
 
 describe('useFileExplorerDragDrop', () => {
-  let moveEntries: ({ entries, targetPath }: { entries: FileExplorerEntry[]; targetPath: string }) => Promise<void>;
+  let moveEntries: ({ entries, targetPath }: { entries: FileExplorerEntry[], targetPath: string }) => Promise<void>;
   let currentDirectoryPath: { readonly value: string };
 
   beforeEach(() => {

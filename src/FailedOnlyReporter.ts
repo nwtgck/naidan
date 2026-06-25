@@ -1,182 +1,182 @@
-import type { Reporter } from 'vitest/reporters'
-import type { TestCase, Vitest } from 'vitest/node'
+import type { Reporter } from 'vitest/reporters';
+import type { TestCase, Vitest } from 'vitest/node';
 
 interface LogAny {
-  type: string
-  content: string
+  type: string,
+  content: string,
 }
 
 type UserConsoleLog = LogAny;
 
 interface VitestError {
-  message: string
-  stack?: string
-  stackStr?: string
-  expected?: string
-  actual?: string
-  showDiff?: boolean
+  message: string,
+  stack?: string,
+  stackStr?: string,
+  expected?: string,
+  actual?: string,
+  showDiff?: boolean,
 }
 
 interface ExtendedTestModule {
-  name: string
-  relativeModuleId?: string
+  name: string,
+  relativeModuleId?: string,
 }
 
 interface ExtendedLogger {
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
-  log: (msg: string) => void
+  log: (msg: string) => void,
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because these signatures follow the Vitest reporter contract.
-  printCustomError?: (error: VitestError) => Promise<void>
+  printCustomError?: (error: VitestError) => Promise<void>,
 }
 
 interface TaskResult {
-  state: 'run' | 'pass' | 'fail' | 'skipped' | 'todo' | 'pending' | 'only' | 'bench' | 'failed' | 'passed'
-  errors?: VitestError[]
+  state: 'run' | 'pass' | 'fail' | 'skipped' | 'todo' | 'pending' | 'only' | 'bench' | 'failed' | 'passed',
+  errors?: VitestError[],
 }
 
 interface VitestTask {
-  name?: string
-  moduleId?: string
-  relativeModuleId?: string
-  result?: TaskResult
+  name?: string,
+  moduleId?: string,
+  relativeModuleId?: string,
+  result?: TaskResult,
   task?: {
-    result?: TaskResult
-  }
+    result?: TaskResult,
+  },
 }
 
 export default class FailedOnlyReporter implements Reporter {
-  private total = 0
-  private passed = 0
-  private failed = 0
-  private vitest!: Vitest
-  private headerPrinted = false
-  private logs: UserConsoleLog[] = []
-  private endReported = false
+  private total = 0;
+  private passed = 0;
+  private failed = 0;
+  private vitest!: Vitest;
+  private headerPrinted = false;
+  private logs: UserConsoleLog[] = [];
+  private endReported = false;
 
   onInit(vitest: Vitest) {
-    this.vitest = vitest
+    this.vitest = vitest;
   }
 
   onUserConsoleLog(log: UserConsoleLog) {
-    this.logs.push(log)
+    this.logs.push(log);
   }
 
   async onTestCaseResult(testCase: TestCase) {
-    this.total++
-    const result = testCase.result()
+    this.total++;
+    const result = testCase.result();
     if (!result) {
-      return
+      return;
     }
 
-    const state = result.state
+    const state = result.state;
     switch (state) {
     case 'failed': {
-      this.failed++
+      this.failed++;
       if (!this.headerPrinted) {
-        this.vitest.logger.log('\nFAILED TESTS:')
-        this.headerPrinted = true
+        this.vitest.logger.log('\nFAILED TESTS:');
+        this.headerPrinted = true;
       }
 
-      const mod = testCase.module as unknown as ExtendedTestModule
-      const filename = mod.relativeModuleId || mod.name || 'unknown'
-      const name = `${filename} > ${testCase.fullName}`
-      const errors = (result.errors || []) as unknown as VitestError[]
+      const mod = testCase.module as unknown as ExtendedTestModule;
+      const filename = mod.relativeModuleId || mod.name || 'unknown';
+      const name = `${filename} > ${testCase.fullName}`;
+      const errors = (result.errors || []) as unknown as VitestError[];
 
       // Filter logs for this specific test case if possible,
       // but Vitest doesn't easily map logs to test cases in this hook.
       // We'll show all logs accumulated so far and then clear them.
       if (this.logs.length > 0) {
-        this.vitest.logger.log(`\n  --- Logs for ${name} ---`)
+        this.vitest.logger.log(`\n  --- Logs for ${name} ---`);
         for (const log of this.logs) {
-          this.vitest.logger.log(`  [${log.type}] ${log.content}`)
+          this.vitest.logger.log(`  [${log.type}] ${log.content}`);
         }
-        this.logs = []
+        this.logs = [];
       }
 
-      await this.printFailure({ name, errors })
-      break
+      await this.printFailure({ name, errors });
+      break;
     }
     case 'passed': {
-      this.passed++
-      this.logs = [] // Clear logs for passed tests to keep it clean
-      break
+      this.passed++;
+      this.logs = []; // Clear logs for passed tests to keep it clean
+      break;
     }
     case 'skipped':
     case 'pending': {
-      break
+      break;
     }
     default: {
-      const _ex: never = state
-      throw new Error(`Unhandled state: ${_ex}`)
+      const _ex: never = state;
+      throw new Error(`Unhandled state: ${_ex}`);
     }
     }
   }
 
-  private async printFailure({ name, errors }: { name: string; errors: VitestError[] }) {
-    this.vitest.logger.log(`\n\u276f ${name}`)
+  private async printFailure({ name, errors }: { name: string, errors: VitestError[] }) {
+    this.vitest.logger.log(`\n\u276f ${name}`);
     for (const error of errors) {
-      const logger = this.vitest.logger as unknown as ExtendedLogger
+      const logger = this.vitest.logger as unknown as ExtendedLogger;
       if (logger.printCustomError) {
-        await logger.printCustomError(error)
+        await logger.printCustomError(error);
       } else {
-        this.vitest.logger.log(`\n${error.message}`)
+        this.vitest.logger.log(`\n${error.message}`);
         if (error.showDiff) {
-          this.vitest.logger.log(`\n- Expected: ${error.expected}`)
-          this.vitest.logger.log(`+ Received: ${error.actual}\n`)
+          this.vitest.logger.log(`\n- Expected: ${error.expected}`);
+          this.vitest.logger.log(`+ Received: ${error.actual}\n`);
         }
-        this.vitest.logger.log(error.stackStr || error.stack || '')
+        this.vitest.logger.log(error.stackStr || error.stack || '');
       }
     }
   }
 
   // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this signature follows the Vitest reporter contract.
   async onFinished(files: readonly VitestTask[] = [], errors: readonly VitestError[] = []) {
-    await this.reportEnd({ files, errors })
+    await this.reportEnd({ files, errors });
   }
 
   async onTestRunEnd(testModules: readonly VitestTask[] = [], unhandledErrors: readonly VitestError[] = []) {
     await this.reportEnd({
       files: testModules,
       errors: unhandledErrors,
-    })
+    });
   }
 
   private async reportEnd({ files, errors }: {
-    files: readonly VitestTask[];
-    errors: readonly VitestError[];
+    files: readonly VitestTask[],
+    errors: readonly VitestError[],
   }) {
     if (this.endReported) {
-      return
+      return;
     }
-    this.endReported = true
+    this.endReported = true;
 
     if (files.length === 0 && this.total === 0 && errors.length === 0) {
-      this.vitest.logger.log('\nNo test files found. Please check if the file paths are correct.')
-      return
+      this.vitest.logger.log('\nNo test files found. Please check if the file paths are correct.');
+      return;
     }
 
     for (const file of files) {
-      const result = file.result || file.task?.result
+      const result = file.result || file.task?.result;
       if (!result) {
-        continue
+        continue;
       }
 
-      const state = result.state
+      const state = result.state;
       switch (state) {
       case 'fail':
       case 'failed': {
-        const fileErrors = result.errors || []
+        const fileErrors = result.errors || [];
         if (fileErrors.length > 0) {
-          this.failed++
-          this.total++
+          this.failed++;
+          this.total++;
           if (!this.headerPrinted) {
-            this.vitest.logger.log('\nFAILED TESTS:')
-            this.headerPrinted = true
+            this.vitest.logger.log('\nFAILED TESTS:');
+            this.headerPrinted = true;
           }
-          const name = file.name || file.relativeModuleId || file.moduleId || 'unknown'
-          await this.printFailure({ name, errors: fileErrors })
+          const name = file.name || file.relativeModuleId || file.moduleId || 'unknown';
+          await this.printFailure({ name, errors: fileErrors });
         }
-        break
+        break;
       }
       case 'run':
       case 'pass':
@@ -186,33 +186,33 @@ export default class FailedOnlyReporter implements Reporter {
       case 'pending':
       case 'only':
       case 'bench': {
-        break
+        break;
       }
       default: {
-        const _ex: never = state
-        throw new Error(`Unhandled state: ${_ex}`)
+        const _ex: never = state;
+        throw new Error(`Unhandled state: ${_ex}`);
       }
       }
     }
 
-    let unhandledErrorsCount = 0
+    let unhandledErrorsCount = 0;
     for (const error of errors) {
-      unhandledErrorsCount++
+      unhandledErrorsCount++;
       if (!this.headerPrinted) {
-        this.vitest.logger.log('\nFAILED TESTS:')
-        this.headerPrinted = true
+        this.vitest.logger.log('\nFAILED TESTS:');
+        this.headerPrinted = true;
       }
-      await this.printFailure({ name: 'Global Error', errors: [error] })
+      await this.printFailure({ name: 'Global Error', errors: [error] });
     }
 
     if (this.total === 0 && this.passed === 0 && this.failed === 0 && unhandledErrorsCount === 0) {
-      this.vitest.logger.log('\nNo tests found')
+      this.vitest.logger.log('\nNo tests found');
     } else {
-      let summary = `\nTests: ${this.passed} passed, ${this.failed} failed, ${this.total} total`
+      let summary = `\nTests: ${this.passed} passed, ${this.failed} failed, ${this.total} total`;
       if (unhandledErrorsCount > 0) {
-        summary += `\nErrors: ${unhandledErrorsCount} errors`
+        summary += `\nErrors: ${unhandledErrorsCount} errors`;
       }
-      this.vitest.logger.log(summary)
+      this.vitest.logger.log(summary);
     }
   }
 }

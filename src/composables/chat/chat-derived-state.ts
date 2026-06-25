@@ -4,18 +4,18 @@ import { getAllMessages, getChatBranchIterator } from '@/utils/chat-tree';
 import { resolveChatSettings } from '@/utils/chat-settings-resolver';
 
 export type ChatDerivedState = {
-  sidebarItems: ComputedRef<SidebarItem[]>;
-  chats: ComputedRef<ChatSummary[]>;
-  chatGroups: ComputedRef<ChatGroup[]>;
-  resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
-  inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
-  activeMessages: ComputedRef<MessageNode[]>;
-  allMessages: ComputedRef<MessageNode[]>;
+  sidebarItems: ComputedRef<SidebarItem[]>,
+  chats: ComputedRef<ChatSummary[]>,
+  chatGroups: ComputedRef<ChatGroup[]>,
+  resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
+  inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
+  activeMessages: ComputedRef<MessageNode[]>,
+  allMessages: ComputedRef<MessageNode[]>,
   hasMountsForChat({
     chat,
   }: {
-    chat: Pick<Chat, 'mounts' | 'groupId'>;
-  }): boolean;
+    chat: Pick<Chat, 'mounts' | 'groupId'>,
+  }): boolean,
 };
 
 export function createChatDerivedState({
@@ -23,9 +23,9 @@ export function createChatDerivedState({
   rootItems,
   getSettings,
 }: {
-  currentChatRef: Ref<Chat | null>;
-  rootItems: Ref<SidebarItem[]>;
-  getSettings: () => Settings | Readonly<Settings>;
+  currentChatRef: Ref<Chat | null>,
+  rootItems: Ref<SidebarItem[]>,
+  getSettings: () => Settings | Readonly<Settings>,
 }): ChatDerivedState {
   const sidebarItems = computed(() => rootItems.value);
 
@@ -34,7 +34,7 @@ export function createChatDerivedState({
     const collect = ({
       items,
     }: {
-      items: SidebarItem[];
+      items: SidebarItem[],
     }) => {
       items.forEach(item => {
         switch (item.type) {
@@ -114,7 +114,7 @@ export function createChatDerivedState({
   function hasMountsForChat({
     chat,
   }: {
-    chat: Pick<Chat, 'mounts' | 'groupId'>;
+    chat: Pick<Chat, 'mounts' | 'groupId'>,
   }) {
     const settings = getSettings();
     if (settings.mounts && settings.mounts.length > 0) return true;

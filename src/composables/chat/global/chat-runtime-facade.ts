@@ -6,44 +6,44 @@ import type { ContextCompactRuntime } from './context-compact-runtime';
 import type { ChatRuntimeStore } from './chat-runtime-store';
 
 export type ChatRuntimeFacade = {
-  streaming: ComputedRef<boolean>;
-  generatingTitle: ComputedRef<boolean>;
-  fetchingModels: ComputedRef<boolean>;
-  contextCompactProgress: ComputedRef<ContextCompactProgress>;
+  streaming: ComputedRef<boolean>,
+  generatingTitle: ComputedRef<boolean>,
+  fetchingModels: ComputedRef<boolean>,
+  contextCompactProgress: ComputedRef<ContextCompactProgress>,
 
   isGeneratingTitle({
     chatId,
   }: {
-    chatId: ChatId;
-  }): boolean;
+    chatId: ChatId,
+  }): boolean,
 
   isTaskRunning({
     chatId,
   }: {
-    chatId: ChatId;
-  }): boolean;
+    chatId: ChatId,
+  }): boolean,
 
   isProcessing({
     chatId,
   }: {
-    chatId: ChatId;
-  }): boolean;
+    chatId: ChatId,
+  }): boolean,
 
   setContextCompactProgress({
     chatId,
     progress,
   }: {
-    chatId: ChatId;
-    progress: ContextCompactProgress;
-  }): void;
+    chatId: ChatId,
+    progress: ContextCompactProgress,
+  }): void,
 
   getContextCompactProgress({
     chatId,
   }: {
-    chatId: ChatId | undefined;
-  }): ContextCompactProgress;
+    chatId: ChatId | undefined,
+  }): ContextCompactProgress,
 
-  clearActiveTaskCounts(): void;
+  clearActiveTaskCounts(): void,
 };
 
 export function createChatRuntimeFacade({
@@ -51,16 +51,16 @@ export function createChatRuntimeFacade({
   runtimeStore,
   contextCompactRuntime,
 }: {
-  currentChatRef: Ref<Chat | null>;
-  runtimeStore: ChatRuntimeStore;
-  contextCompactRuntime: ContextCompactRuntime;
+  currentChatRef: Ref<Chat | null>,
+  runtimeStore: ChatRuntimeStore,
+  contextCompactRuntime: ContextCompactRuntime,
 }): ChatRuntimeFacade {
   const streaming = computed(() => runtimeStore.activeGenerations.size > 0 || runtimeStore.externalGenerations.size > 0);
 
   function isGeneratingTitle({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     return runtimeStore.isGeneratingTitle({ chatId });
   }
@@ -73,7 +73,7 @@ export function createChatRuntimeFacade({
   function getContextCompactProgress({
     chatId,
   }: {
-    chatId: ChatId | undefined;
+    chatId: ChatId | undefined,
   }) {
     return contextCompactRuntime.getProgress({ chatId });
   }
@@ -98,7 +98,7 @@ export function createChatRuntimeFacade({
   function isTaskRunning({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     return runtimeStore.isTaskRunning({ chatId });
   }
@@ -106,7 +106,7 @@ export function createChatRuntimeFacade({
   function isProcessing({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     return runtimeStore.isProcessing({ chatId });
   }
@@ -115,8 +115,8 @@ export function createChatRuntimeFacade({
     chatId,
     progress,
   }: {
-    chatId: ChatId;
-    progress: ContextCompactProgress;
+    chatId: ChatId,
+    progress: ContextCompactProgress,
   }) {
     contextCompactRuntime.setProgress({ chatId, progress });
   }

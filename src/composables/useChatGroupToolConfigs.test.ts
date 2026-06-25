@@ -29,7 +29,7 @@ const currentChatGroup = ref<ChatGroup | null>({
 function applyLatestToolConfigUpdater({
   toolConfigs,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
+  toolConfigs: ToolConfig[] | undefined,
 }): ToolConfig[] | undefined {
   const call = mocks.updateToolConfigs.mock.calls.at(-1)?.[0];
   if (call === undefined) {

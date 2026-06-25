@@ -1,11 +1,11 @@
-import { useChatTmpDirectory } from '@/composables/chat/ui/useChatTmpDirectory'
-import { useSettings } from '@/composables/useSettings'
-import type { ChatGroupId, ChatId } from '@/models/ids'
-import type { Mount } from '@/models/types'
-import { storageService } from '@/services/storage'
-import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy'
-import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount'
-import type { NaidanSysfsAccessScope, WeshMount } from '@/services/wesh/types'
+import { useChatTmpDirectory } from '@/composables/chat/ui/useChatTmpDirectory';
+import { useSettings } from '@/composables/useSettings';
+import type { ChatGroupId, ChatId } from '@/models/ids';
+import type { Mount } from '@/models/types';
+import { storageService } from '@/services/storage';
+import { shouldIncludeWritableTmpMount } from '@/services/wesh/mount-policy';
+import { createNaidanSysfsMount } from '@/services/wesh/naidan-sysfs/mount';
+import type { NaidanSysfsAccessScope, WeshMount } from '@/services/wesh/types';
 
 export async function buildWorkerMountsForChat({
   chatMounts,
@@ -14,25 +14,25 @@ export async function buildWorkerMountsForChat({
   chatGroupId,
   naidanSysfsAccessScope,
 }: {
-  chatMounts: readonly Mount[]
-  chatGroupMounts: readonly Mount[] | undefined
-  chatId: ChatId | undefined
-  chatGroupId: ChatGroupId | undefined
-  naidanSysfsAccessScope: NaidanSysfsAccessScope
+  chatMounts: readonly Mount[],
+  chatGroupMounts: readonly Mount[] | undefined,
+  chatId: ChatId | undefined,
+  chatGroupId: ChatGroupId | undefined,
+  naidanSysfsAccessScope: NaidanSysfsAccessScope,
 }): Promise<WeshMount[]> {
-  const { settings } = useSettings()
-  const { ensureChatTmpDirectory } = useChatTmpDirectory()
-  const result: WeshMount[] = []
+  const { settings } = useSettings();
+  const { ensureChatTmpDirectory } = useChatTmpDirectory();
+  const result: WeshMount[] = [];
 
   // /tmp first (same order as shell_execute tool), only for OPFS-backed chats.
   if (chatId && shouldIncludeWritableTmpMount({ storageType: settings.value.storageType })) {
-    const tmp = await ensureChatTmpDirectory({ chatId })
-    result.push({ type: 'directory', path: '/tmp', handle: tmp.handle, readOnly: false })
+    const tmp = await ensureChatTmpDirectory({ chatId });
+    result.push({ type: 'directory', path: '/tmp', handle: tmp.handle, readOnly: false });
   }
 
   switch (naidanSysfsAccessScope) {
   case 'none':
-    break
+    break;
   case 'current_chat_only':
   case 'current_chat_with_chat_group':
   case 'main_chats': {
@@ -42,53 +42,53 @@ export async function buildWorkerMountsForChat({
       binaryObjectAccess: 'data',
       currentChatId: chatId,
       currentChatGroupId: chatGroupId,
-    })
+    });
     if (naidanSysfsMount !== undefined) {
-      result.push(naidanSysfsMount)
+      result.push(naidanSysfsMount);
     }
-    break
+    break;
   }
   default: {
-    const _ex: never = naidanSysfsAccessScope
-    throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`)
+    const _ex: never = naidanSysfsAccessScope;
+    throw new Error(`Unhandled naidan sysfs access scope: ${String(_ex)}`);
   }
   }
 
   // Global settings mounts.
   for (const mount of settings.value.mounts) {
-    if (mount.type !== 'volume') continue
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId })
-    if (!handle) continue
-    result.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly })
+    if (mount.type !== 'volume') continue;
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+    if (!handle) continue;
+    result.push({ type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly });
   }
 
   // Chat group mounts override any global mount sharing the same path.
   for (const mount of chatGroupMounts ?? []) {
-    if (mount.type !== 'volume') continue
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId })
-    if (!handle) continue
-    const existing = result.findIndex(m => m.path === mount.mountPath)
-    const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly }
+    if (mount.type !== 'volume') continue;
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+    if (!handle) continue;
+    const existing = result.findIndex(m => m.path === mount.mountPath);
+    const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly };
     if (existing >= 0) {
-      result[existing] = entry
+      result[existing] = entry;
     } else {
-      result.push(entry)
+      result.push(entry);
     }
   }
 
   // Chat mounts override any global or chat group mount sharing the same path.
   for (const mount of chatMounts) {
-    if (mount.type !== 'volume') continue
-    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId })
-    if (!handle) continue
-    const existing = result.findIndex(m => m.path === mount.mountPath)
-    const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly }
+    if (mount.type !== 'volume') continue;
+    const handle = await storageService.getVolumeDirectoryHandle({ volumeId: mount.volumeId });
+    if (!handle) continue;
+    const existing = result.findIndex(m => m.path === mount.mountPath);
+    const entry: WeshMount = { type: 'directory', path: mount.mountPath, handle, readOnly: mount.readOnly };
     if (existing >= 0) {
-      result[existing] = entry
+      result[existing] = entry;
     } else {
-      result.push(entry)
+      result.push(entry);
     }
   }
 
-  return result
+  return result;
 }

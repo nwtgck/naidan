@@ -6,7 +6,7 @@ describe('useSettings - Search Volatile State', () => {
     searchPreviewMode,
     searchContextSize,
     setSearchPreviewMode,
-    setSearchContextSize
+    setSearchContextSize,
   } = useSettings();
 
   beforeEach(() => {

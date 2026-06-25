@@ -8,7 +8,7 @@ import { z } from 'zod';
  * ```ts
  * resolveMissingAsUndefined(z.object({
  *   a: missingAsUndefined(z.string()),
- * })).parse({})
+ * })).parse({});
  * // { a: undefined }
  * ```
  *
@@ -53,7 +53,7 @@ const missingAsUndefinedSentinelSchema = z.custom<symbol>(
  * A simple cast like this looks tempting:
  *
  * ```ts
- * result as typeof result & z.ZodType<Output, Input>
+ * result as typeof result & z.ZodType<Output, Input>;
  * ```
  *
  * But Zod object inference also observes the internal `_zod.input` /
@@ -78,9 +78,9 @@ type WithZodIO<Schema extends z.ZodType, Output, Input> =
   Omit<Schema, '_zod'> &
     z.ZodType<Output, Input> & {
       _zod: Omit<Schema['_zod'], 'output' | 'input'> & {
-        output: Output;
-        input: Input;
-      };
+        output: Output,
+        input: Input,
+      },
     };
 
 /**
@@ -90,7 +90,7 @@ type WithZodIO<Schema extends z.ZodType, Output, Input> =
  * `.optional()` accepts a missing key but keeps it missing:
  *
  * ```ts
- * z.object({ a: z.string().optional() }).parse({})
+ * z.object({ a: z.string().optional() }).parse({});
  * // {}
  * ```
  *
@@ -152,7 +152,7 @@ const resolveMissingAsUndefinedValue = <T extends object>(
 
 // eslint-disable-next-line local-rules-named-args/require-named-args -- Zod .overwrite callback types are positional by Zod API design.
 type ZodOverwriteCallback<T extends z.ZodType<object, unknown>> = (
-  value: z.output<T>
+  value: z.output<T>,
 ) => z.output<T>;
 
 /**
@@ -191,7 +191,7 @@ type ZodOverwriteCallback<T extends z.ZodType<object, unknown>> = (
  */
 // eslint-disable-next-line local-rules-named-args/require-named-args -- Kept positional because this local Zod helper intentionally mirrors Zod's schema-first helper style.
 export const resolveMissingAsUndefined = <
-  T extends z.ZodType<object, unknown>
+  T extends z.ZodType<object, unknown>,
 >(
     schema: T,
   ): T =>

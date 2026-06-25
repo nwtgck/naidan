@@ -1,9 +1,9 @@
 function normalizePath(filePath) {
-  return filePath.replace(/\\/g, '/')
+  return filePath.replace(/\\/g, '/');
 }
 
 function isAllowedHtmlImplementationFile({ filePath }) {
-  return normalizePath(filePath).endsWith('/src/lib/security/allowedHtml.ts')
+  return normalizePath(filePath).endsWith('/src/lib/security/allowedHtml.ts');
 }
 
 export const rule = {
@@ -19,18 +19,18 @@ export const rule = {
   },
   create(context) {
     if (isAllowedHtmlImplementationFile({ filePath: context.filename ?? context.getFilename?.() ?? '' })) {
-      return {}
+      return {};
     }
 
     return {
       ImportDeclaration(node) {
         if (node.source.value === 'dompurify') {
-          context.report({ node, messageId: 'noRawDompurify' })
+          context.report({ node, messageId: 'noRawDompurify' });
         }
       },
-    }
+    };
   },
-}
+};
 
 export default {
   files: ['src/**/*.ts', 'src/**/*.vue'],
@@ -45,4 +45,4 @@ export default {
   rules: {
     'local-rules-raw-dompurify/no-raw-dompurify': 'error',
   },
-}
+};

@@ -1,11 +1,11 @@
-import { FILE_PROTOCOL_STANDALONE_GLOBAL_NAME } from '@/file-protocol-standalone-protocol'
-import { debugRecordFileProtocolStandaloneAppStartupFailure } from '@/services/debug-file-protocol-standalone/startup'
+import { FILE_PROTOCOL_STANDALONE_GLOBAL_NAME } from '@/file-protocol-standalone-protocol';
+import { debugRecordFileProtocolStandaloneAppStartupFailure } from '@/services/debug-file-protocol-standalone/startup';
 
 type AppStartupErrorDetails = Readonly<{
-  name: string
-  message: string
-  stack: string | undefined
-}>
+  name: string,
+  message: string,
+  stack: string | undefined,
+}>;
 
 function serializeAppStartupError({ error }: { error: unknown }): AppStartupErrorDetails {
   if (error instanceof Error) {
@@ -13,26 +13,26 @@ function serializeAppStartupError({ error }: { error: unknown }): AppStartupErro
       name: error.name,
       message: error.message,
       stack: error.stack,
-    }
+    };
   }
   return {
     name: 'NonErrorThrownValue',
     message: String(error),
     stack: undefined,
-  }
+  };
 }
 
 function renderAppStartupFailurePanel({ document, error }: {
-  document: Document
-  error: AppStartupErrorDetails
+  document: Document,
+  error: AppStartupErrorDetails,
 }): void {
-  const panelId = 'app-startup-failure'
-  document.getElementById(panelId)?.remove()
+  const panelId = 'app-startup-failure';
+  document.getElementById(panelId)?.remove();
 
-  const panel = document.createElement('section')
-  panel.id = panelId
-  panel.setAttribute('role', 'alert')
-  panel.setAttribute('data-testid', 'app-startup-failure')
+  const panel = document.createElement('section');
+  panel.id = panelId;
+  panel.setAttribute('role', 'alert');
+  panel.setAttribute('data-testid', 'app-startup-failure');
   panel.style.cssText = [
     'box-sizing:border-box',
     'margin:24px',
@@ -44,25 +44,25 @@ function renderAppStartupFailurePanel({ document, error }: {
     'font:14px/1.5 system-ui,sans-serif',
     'white-space:pre-wrap',
     'overflow-wrap:anywhere',
-  ].join(';')
+  ].join(';');
 
-  const title = document.createElement('strong')
-  title.textContent = 'Naidan failed to start.'
-  const message = document.createElement('div')
-  message.textContent = `${error.name}: ${error.message}`
-  panel.append(title, message)
+  const title = document.createElement('strong');
+  title.textContent = 'Naidan failed to start.';
+  const message = document.createElement('div');
+  message.textContent = `${error.name}: ${error.message}`;
+  panel.append(title, message);
 
   if (typeof globalThis.__FILE_PROTOCOL_STANDALONE__?.getDiagnostics === 'function') {
-    const hint = document.createElement('div')
-    hint.textContent = `Open DevTools and run: globalThis.${FILE_PROTOCOL_STANDALONE_GLOBAL_NAME}?.getDiagnostics()`
-    panel.appendChild(hint)
+    const hint = document.createElement('div');
+    hint.textContent = `Open DevTools and run: globalThis.${FILE_PROTOCOL_STANDALONE_GLOBAL_NAME}?.getDiagnostics()`;
+    panel.appendChild(hint);
   }
 
-  const appElement = document.querySelector('#app')
+  const appElement = document.querySelector('#app');
   if (appElement !== null) {
-    appElement.replaceChildren(panel)
+    appElement.replaceChildren(panel);
   } else {
-    document.body.appendChild(panel)
+    document.body.appendChild(panel);
   }
 }
 
@@ -72,30 +72,30 @@ function renderAppStartupFailurePanel({ document, error }: {
  * failure panel is a normal application responsibility rather than Debug UI.
  */
 export function reportAppStartupFailure({ document, error }: {
-  document: Document
-  error: unknown
+  document: Document,
+  error: unknown,
 }): void {
-  let serialized: AppStartupErrorDetails
+  let serialized: AppStartupErrorDetails;
   try {
-    serialized = serializeAppStartupError({ error })
+    serialized = serializeAppStartupError({ error });
   } catch (serializationError) {
     serialized = {
       name: 'UnserializableStartupError',
       message: 'The startup error could not be serialized.',
       stack: undefined,
-    }
-    console.warn('[naidan] Failed to serialize the application startup error:', serializationError)
+    };
+    console.warn('[naidan] Failed to serialize the application startup error:', serializationError);
   }
 
-  debugRecordFileProtocolStandaloneAppStartupFailure({ error: serialized })
+  debugRecordFileProtocolStandaloneAppStartupFailure({ error: serialized });
   try {
-    console.error('[naidan] Application startup failed:', error)
+    console.error('[naidan] Application startup failed:', error);
   } catch {
     // Failure reporting must not create another unhandled rejection.
   }
   try {
-    renderAppStartupFailurePanel({ document, error: serialized })
+    renderAppStartupFailurePanel({ document, error: serialized });
   } catch (renderError) {
-    console.warn('[naidan] Failed to render the application startup failure panel:', renderError)
+    console.warn('[naidan] Failed to render the application startup failure panel:', renderError);
   }
 }

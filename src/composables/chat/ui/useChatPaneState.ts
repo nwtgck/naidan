@@ -7,20 +7,20 @@ import { getReadonlyChat, rootItems } from '@/composables/chat/global/chat-core-
 import type { ChatId } from '@/models/ids';
 
 export type ChatPaneStateAdapter = {
-  chat: ComputedRef<Readonly<Chat> | null>;
-  chatGroup: ComputedRef<Readonly<ChatGroup> | null>;
-  activeMessages: ComputedRef<MessageNode[]>;
-  allMessages: ComputedRef<MessageNode[]>;
-  resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
-  inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>;
-  chatGroups: ComputedRef<ChatGroup[]>;
-  TEST_ONLY: Record<never, never>;
+  chat: ComputedRef<Readonly<Chat> | null>,
+  chatGroup: ComputedRef<Readonly<ChatGroup> | null>,
+  activeMessages: ComputedRef<MessageNode[]>,
+  allMessages: ComputedRef<MessageNode[]>,
+  resolvedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
+  inheritedSettings: ComputedRef<ReturnType<typeof resolveChatSettings> | null>,
+  chatGroups: ComputedRef<ChatGroup[]>,
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatPaneState({
   chatId,
 }: {
-  chatId: Readonly<Ref<ChatId>>;
+  chatId: Readonly<Ref<ChatId>>,
 }): ChatPaneStateAdapter {
   const { settings } = useSettings();
 

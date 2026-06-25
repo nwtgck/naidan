@@ -1,38 +1,38 @@
 /// <reference types="vitest" />
-import VueRouter from 'vue-router/vite'
-import { defineConfig } from 'vitest/config'
-import type { Alias } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import legacy from '@vitejs/plugin-legacy'
-import VueDevTools from 'vite-plugin-vue-devtools'
-import fs from 'node:fs'
-import path from 'node:path'
-import { createGzip } from 'node:zlib'
-import { pipeline } from 'node:stream'
-import { promisify } from 'node:util'
-import { JSDOM } from 'jsdom'
-import JSZip from 'jszip'
-import pkg from './package.json'
-import { createStandaloneFacadeAliases } from './build/standalone-facades.js'
-import { fileProtocolStandalone } from './build/file-protocol-standalone/index.js'
-import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/models/constants'
-import { createLicenseModulePlugins } from './build/license-module'
-import { omitBuildOutputFilesPlugin } from './build/omit-build-output-files'
-import type { BuildLicenseDependency } from './build/license-dependencies'
-import { viteStaticCopy } from 'vite-plugin-static-copy'
-import { VitePWA } from 'vite-plugin-pwa'
+import VueRouter from 'vue-router/vite';
+import { defineConfig } from 'vitest/config';
+import type { Alias } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import legacy from '@vitejs/plugin-legacy';
+import VueDevTools from 'vite-plugin-vue-devtools';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createGzip } from 'node:zlib';
+import { pipeline } from 'node:stream';
+import { promisify } from 'node:util';
+import { JSDOM } from 'jsdom';
+import JSZip from 'jszip';
+import pkg from './package.json';
+import { createStandaloneFacadeAliases } from './build/standalone-facades.js';
+import { fileProtocolStandalone } from './build/file-protocol-standalone/index.js';
+import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/models/constants';
+import { createLicenseModulePlugins } from './build/license-module';
+import { omitBuildOutputFilesPlugin } from './build/omit-build-output-files';
+import type { BuildLicenseDependency } from './build/license-dependencies';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+import { VitePWA } from 'vite-plugin-pwa';
 
 function setCrossOriginResourcePolicy({ res }: {
   res: import('node:http').ServerResponse,
 }): void {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 }
 
 function setCrossOriginModuleHeaders({ res }: {
   res: import('node:http').ServerResponse,
 }): void {
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Access-Control-Allow-Origin', '*');
 }
 
 const standaloneBrowserSupport = {
@@ -41,7 +41,7 @@ const standaloneBrowserSupport = {
   // to each other so one compatibility decision cannot silently drift.
   legacy: ['Firefox >= 140', 'Chrome >= 140'],
   worker: ['firefox140', 'chrome140'],
-} as const
+} as const;
 
 const standaloneBuildBudgets = {
   // The attached baseline report measured 631,232 entry bytes and 1,033,893
@@ -49,40 +49,40 @@ const standaloneBuildBudgets = {
   // still failing on a meaningful initial-load regression.
   maxInitialEntryBytes: 750_000,
   maxInitialRequestBytes: 1_200_000,
-} as const
+} as const;
 
-const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch'
-const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/services/privacy-fetch/'
-const ZOD_MODULE_PATH_SEGMENT = '/node_modules/zod/'
-const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker'
+const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch';
+const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/services/privacy-fetch/';
+const ZOD_MODULE_PATH_SEGMENT = '/node_modules/zod/';
+const PRIVACY_FETCH_BROKER_ASSET_DIR = 'assets/privacy-fetch-broker';
 
 function normalizeModulePathForChunkRouting(modulePath: string): string {
-  return modulePath.replaceAll('\\', '/')
+  return modulePath.replaceAll('\\', '/');
 }
 
 function isPrivacyFetchBrokerChunk(chunkInfo: {
-  name: string
-  facadeModuleId?: string | null
-  moduleIds?: string[]
+  name: string,
+  facadeModuleId?: string | null,
+  moduleIds?: string[],
 }): boolean {
   if (chunkInfo.name.includes(PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER)) {
-    return true
+    return true;
   }
 
   if (chunkInfo.facadeModuleId !== undefined && chunkInfo.facadeModuleId !== null) {
-    const normalizedFacadeModuleId = normalizeModulePathForChunkRouting(chunkInfo.facadeModuleId)
+    const normalizedFacadeModuleId = normalizeModulePathForChunkRouting(chunkInfo.facadeModuleId);
     if (normalizedFacadeModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)) {
-      return true
+      return true;
     }
   }
 
   // Keep zod-backed validation chunks alongside the broker bundle so shared
   // dependencies still stay inside the broker asset subtree for auditing.
   return chunkInfo.moduleIds?.some((moduleId) => {
-    const normalizedModuleId = normalizeModulePathForChunkRouting(moduleId)
+    const normalizedModuleId = normalizeModulePathForChunkRouting(moduleId);
     return normalizedModuleId.includes(PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT)
-      || normalizedModuleId.includes(ZOD_MODULE_PATH_SEGMENT)
-  }) ?? false
+      || normalizedModuleId.includes(ZOD_MODULE_PATH_SEGMENT);
+  }) ?? false;
 }
 
 // Dev-server-only HTML cleanup for the privacy fetch broker page.
@@ -100,43 +100,43 @@ function stripPrivacyFetchBrokerDevInjectedScriptsPlugin(): import('vite').Plugi
     enforce: 'post',
     transformIndexHtml(html, context) {
       if (context.path !== '/privacy-fetch-broker.html') {
-        return html
+        return html;
       }
 
-      const dom = new JSDOM(html)
-      const { document } = dom.window
+      const dom = new JSDOM(html);
+      const { document } = dom.window;
       const devInjectedScriptSourceMarkers = [
         '/@vite/client',
         'virtual:vue-devtools-path',
         'virtual:vue-inspector-path',
         '/@id/virtual:vue-devtools-path',
         '/@id/virtual:vue-inspector-path',
-      ]
+      ];
 
       for (const script of document.querySelectorAll('script[src]')) {
-        const src = script.getAttribute('src') ?? ''
+        const src = script.getAttribute('src') ?? '';
         if (devInjectedScriptSourceMarkers.some((marker) => src.includes(marker))) {
-          script.remove()
+          script.remove();
         }
       }
 
       if (!html.includes('privacy-fetch-dev-injected-scripts-stripped') && document.body) {
-        document.body.appendChild(document.createComment(' privacy-fetch-dev-injected-scripts-stripped '))
+        document.body.appendChild(document.createComment(' privacy-fetch-dev-injected-scripts-stripped '));
       }
 
-      return dom.serialize()
+      return dom.serialize();
     },
-  }
+  };
 }
 
 const privacyFetchBrokerDevHeadersPlugin = () => ({
   name: 'privacy-fetch-broker-dev-headers',
   configureServer(server: import('vite').ViteDevServer) {
     server.middlewares.use((req, res, next) => {
-      const url = req.url ?? ''
+      const url = req.url ?? '';
 
       if (url === '/privacy-fetch-broker.html') {
-        setCrossOriginResourcePolicy({ res })
+        setCrossOriginResourcePolicy({ res });
       }
 
       if (
@@ -145,20 +145,20 @@ const privacyFetchBrokerDevHeadersPlugin = () => ({
         || url.startsWith('/@vite/')
         || url.startsWith('/@id/')
       ) {
-        setCrossOriginModuleHeaders({ res })
+        setCrossOriginModuleHeaders({ res });
       }
 
-      next()
-    })
+      next();
+    });
   },
-})
+});
 
 function ensureExistingPath(relativePath: string): string {
-  const absolutePath = path.resolve(__dirname, relativePath)
+  const absolutePath = path.resolve(__dirname, relativePath);
   if (!fs.existsSync(absolutePath)) {
-    throw new Error(`Alias target does not exist: ${relativePath}`)
+    throw new Error(`Alias target does not exist: ${relativePath}`);
   }
-  return absolutePath
+  return absolutePath;
 }
 
 /**
@@ -203,15 +203,15 @@ const manualGzipWasmPlugin = ({ outDir }: { outDir: string }) => ({
 
     await processDirectory(distDir);
     console.log('  \u2713 WASM compression complete.');
-  }
+  },
 });
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const isStandalone = mode === 'standalone'
-  const isHosted = mode === 'hosted'
+  const isStandalone = mode === 'standalone';
+  const isHosted = mode === 'hosted';
   // Use nested directories in dist/ to keep things organized
-  const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted'
+  const outDir = isStandalone ? 'dist/standalone' : 'dist/hosted';
   const rollupInput: Record<string, string> = isStandalone
     ? {
       index: path.resolve(__dirname, 'index.html'),
@@ -219,13 +219,13 @@ export default defineConfig(({ mode }) => {
     : {
       app: path.resolve(__dirname, 'index.html'),
       privacyFetchBroker: path.resolve(__dirname, 'privacy-fetch-broker.html'),
-    }
+    };
   const standaloneAliases: Alias[] = isStandalone
     ? createStandaloneFacadeAliases({
       resolvePath: ensureExistingPath,
     })
-    : []
-  let standaloneAdditionalLicenseDependencies: readonly BuildLicenseDependency[] = []
+    : [];
+  let standaloneAdditionalLicenseDependencies: readonly BuildLicenseDependency[] = [];
   return {
     base: './',
     server: {
@@ -286,13 +286,13 @@ export default defineConfig(({ mode }) => {
         targets: [
           {
             src: 'node_modules/@huggingface/transformers/dist/ort-wasm*',
-            dest: 'transformers'
+            dest: 'transformers',
           },
           {
             src: 'node_modules/onnxruntime-web/dist/ort-wasm*',
-            dest: 'transformers'
-          }
-        ]
+            dest: 'transformers',
+          },
+        ],
       }),
       ...createLicenseModulePlugins({
         getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
@@ -307,7 +307,7 @@ export default defineConfig(({ mode }) => {
         }],
         budgets: standaloneBuildBudgets,
         onAdditionalLicenseDependencies({ dependencies }) {
-          standaloneAdditionalLicenseDependencies = dependencies
+          standaloneAdditionalLicenseDependencies = dependencies;
         },
       }),
       // Vite copies publicDir for every mode, but robots.txt has no meaning in
@@ -343,9 +343,9 @@ export default defineConfig(({ mode }) => {
               src: 'favicon.svg',
               sizes: 'any',
               type: 'image/svg+xml',
-              purpose: 'any maskable'
-            }
-          ]
+              purpose: 'any maskable',
+            },
+          ],
         },
         workbox: {
           // Cache all assets to ensure offline support for future extensions (onnx, gguf, zstd, etc.)
@@ -354,7 +354,7 @@ export default defineConfig(({ mode }) => {
           // Exclude source maps to save user bandwidth and storage.
           globIgnores: ['**/*.map'],
           maximumFileSizeToCacheInBytes: 100 * 1024 * 1024,
-        }
+        },
       }),
     ].filter((p): p is import('vite').PluginOption => !!p),
     build: {
@@ -371,15 +371,15 @@ export default defineConfig(({ mode }) => {
         output: {
           entryFileNames: (chunkInfo) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
-              return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`
+              return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
-            return 'assets/[name]-[hash].js'
+            return 'assets/[name]-[hash].js';
           },
           chunkFileNames: (chunkInfo) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
-              return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`
+              return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`;
             }
-            return 'assets/[name]-[hash].js'
+            return 'assets/[name]-[hash].js';
           },
         },
       },
@@ -388,26 +388,26 @@ export default defineConfig(({ mode }) => {
       environment: 'jsdom',
       setupFiles: ['./src/test-setup.ts'],
     },
-  }
-})
+  };
+});
 
 /**
  * Recursive helper to add directory contents to JSZip
  */
 function addDirectoryToZip(zip: JSZip, basePath: string, relativePath = '') {
-  const fullPath = path.join(basePath, relativePath)
-  const items = fs.readdirSync(fullPath)
+  const fullPath = path.join(basePath, relativePath);
+  const items = fs.readdirSync(fullPath);
 
   for (const item of items) {
-    const itemPath = path.join(fullPath, item)
-    const itemRelativePath = path.join(relativePath, item)
-    const stat = fs.statSync(itemPath)
+    const itemPath = path.join(fullPath, item);
+    const itemRelativePath = path.join(relativePath, item);
+    const stat = fs.statSync(itemPath);
 
     if (stat.isDirectory()) {
-      addDirectoryToZip(zip, basePath, itemRelativePath)
+      addDirectoryToZip(zip, basePath, itemRelativePath);
     } else {
-      const content = fs.readFileSync(itemPath)
-      zip.file(itemRelativePath, content)
+      const content = fs.readFileSync(itemPath);
+      zip.file(itemRelativePath, content);
     }
   }
 }
@@ -422,9 +422,9 @@ const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
 }) => ({
   name: `zip-packager-plugin-${zipFileName}`,
   async closeBundle() {
-    await createZipPackage({ outDir, zipFileName, folderName })
+    await createZipPackage({ outDir, zipFileName, folderName });
   },
-})
+});
 
 /**
  * Plugin to copy the standalone zip to the hosted build output
@@ -432,47 +432,47 @@ const zipPackagerPlugin = ({ outDir, zipFileName, folderName }: {
 const copyZipPlugin = () => ({
   name: 'copy-zip-plugin',
   async closeBundle() {
-    const zipSourcePath = path.resolve(__dirname, 'dist/naidan-standalone.zip')
-    const hostedDistDir = path.resolve(__dirname, 'dist/hosted')
-    const zipDestPath = path.join(hostedDistDir, 'naidan-standalone.zip')
+    const zipSourcePath = path.resolve(__dirname, 'dist/naidan-standalone.zip');
+    const hostedDistDir = path.resolve(__dirname, 'dist/hosted');
+    const zipDestPath = path.join(hostedDistDir, 'naidan-standalone.zip');
 
     if (fs.existsSync(zipSourcePath)) {
-      if (!fs.existsSync(hostedDistDir)) fs.mkdirSync(hostedDistDir, { recursive: true })
-      fs.copyFileSync(zipSourcePath, zipDestPath)
-      console.log(`  \u2713 Copied standalone zip to hosted output: ${zipDestPath}`)
+      if (!fs.existsSync(hostedDistDir)) fs.mkdirSync(hostedDistDir, { recursive: true });
+      fs.copyFileSync(zipSourcePath, zipDestPath);
+      console.log(`  \u2713 Copied standalone zip to hosted output: ${zipDestPath}`);
     } else {
-      console.warn('  ! Standalone zip not found. Run "npm run build:standalone" first if you want to include the offline version.')
+      console.warn('  ! Standalone zip not found. Run "npm run build:standalone" first if you want to include the offline version.');
     }
   },
-})
+});
 
 async function createZipPackage({ outDir, zipFileName, folderName }: {
-  outDir: string
-  zipFileName: string
-  folderName: string
+  outDir: string,
+  zipFileName: string,
+  folderName: string,
 }): Promise<void> {
-  console.log(`  \u231B Creating ${zipFileName} package...`)
-  const distDir = path.resolve(__dirname, outDir)
-  const zipPath = path.resolve(__dirname, `dist/${zipFileName}`)
+  console.log(`  \u231B Creating ${zipFileName} package...`);
+  const distDir = path.resolve(__dirname, outDir);
+  const zipPath = path.resolve(__dirname, `dist/${zipFileName}`);
 
-  if (!fs.existsSync(distDir)) return
+  if (!fs.existsSync(distDir)) return;
 
-  const zip = new JSZip()
-  const folder = zip.folder(folderName)
+  const zip = new JSZip();
+  const folder = zip.folder(folderName);
   if (folder) {
-    addDirectoryToZip(folder, distDir)
-    folder.file('VERSION.txt', pkg.version)
+    addDirectoryToZip(folder, distDir);
+    folder.file('VERSION.txt', pkg.version);
   }
 
   const content = await zip.generateAsync({
     type: 'nodebuffer',
     compression: 'DEFLATE',
     compressionOptions: { level: 9 },
-  })
+  });
 
-  const zipDir = path.dirname(zipPath)
-  if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true })
+  const zipDir = path.dirname(zipPath);
+  if (!fs.existsSync(zipDir)) fs.mkdirSync(zipDir, { recursive: true });
 
-  fs.writeFileSync(zipPath, content)
-  console.log(`  \u2713 Created package: ${zipPath}`)
+  fs.writeFileSync(zipPath, content);
+  console.log(`  \u2713 Created package: ${zipPath}`);
 }

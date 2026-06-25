@@ -6,32 +6,32 @@ import type { FileExplorerEntry } from './types';
 import { formatSize, formatDate } from './utils';
 
 const props = defineProps<{
-  entry: FileExplorerEntry;
-  isSelected: boolean;
-  isFocused: boolean;
-  isRenaming: boolean;
-  isCut: boolean;
-  isDragTarget: boolean;
-  displayMode: 'icon' | 'list' | 'column';
+  entry: FileExplorerEntry,
+  isSelected: boolean,
+  isFocused: boolean,
+  isRenaming: boolean,
+  isCut: boolean,
+  isDragTarget: boolean,
+  displayMode: 'icon' | 'list' | 'column',
 }>();
 
 const emit = defineEmits<{
-  (e: 'click', payload: { event: MouseEvent }): void;
-  (e: 'dblclick'): void;
-  (e: 'contextmenu', payload: { event: MouseEvent }): void;
-  (e: 'rename-confirm', payload: { newName: string }): void;
-  (e: 'rename-cancel'): void;
-  (e: 'dragstart', payload: { event: DragEvent }): void;
-  (e: 'dragover', payload: { event: DragEvent }): void;
-  (e: 'dragleave'): void;
-  (e: 'drop', payload: { event: DragEvent }): void;
+  (e: 'click', payload: { event: MouseEvent }): void,
+  (e: 'dblclick'): void,
+  (e: 'contextmenu', payload: { event: MouseEvent }): void,
+  (e: 'rename-confirm', payload: { newName: string }): void,
+  (e: 'rename-cancel'): void,
+  (e: 'dragstart', payload: { event: DragEvent }): void,
+  (e: 'dragover', payload: { event: DragEvent }): void,
+  (e: 'dragleave'): void,
+  (e: 'drop', payload: { event: DragEvent }): void,
 }>();
 
 
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

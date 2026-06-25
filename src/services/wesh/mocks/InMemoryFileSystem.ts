@@ -4,7 +4,7 @@ export class MockFileSystemHandle<TKind extends FileSystemHandleKind = FileSyste
   public kind: TKind;
   public name: string;
 
-  constructor({ kind, name }: { kind: TKind; name: string }) {
+  constructor({ kind, name }: { kind: TKind, name: string }) {
     this.kind = kind;
     this.name = name;
   }
@@ -21,7 +21,7 @@ export class MockFile implements File {
   public readonly type = '';
   public readonly webkitRelativePath = '';
 
-  constructor({ content, name, lastModified }: { content: Uint8Array; name: string; lastModified: number }) {
+  constructor({ content, name, lastModified }: { content: Uint8Array, name: string, lastModified: number }) {
     this.content = content;
     this.name = name;
     this.lastModified = lastModified;
@@ -43,7 +43,7 @@ export class MockFile implements File {
       start(controller) {
         controller.enqueue(content);
         controller.close();
-      }
+      },
     });
   }
 
@@ -64,14 +64,14 @@ export class MockFileSystemWritableFileStream extends WritableStream<FileSystemW
   public fileHandle: MockFileSystemFileHandle;
   private cursor: number = 0;
 
-  constructor({ fileHandle, options }: { fileHandle: MockFileSystemFileHandle; options?: FileSystemCreateWritableOptions }) {
+  constructor({ fileHandle, options }: { fileHandle: MockFileSystemFileHandle, options?: FileSystemCreateWritableOptions }) {
     super({
       write: async (chunk) => {
         await this.write(chunk);
       },
       close: async () => {
         // Content is already updated in fileHandle during write
-      }
+      },
     });
     this.fileHandle = fileHandle;
     if (!options?.keepExistingData) {
@@ -147,7 +147,7 @@ export class MockFileSystemFileHandle extends MockFileSystemHandle<'file'> imple
   public content: Uint8Array;
   public lastModified: number;
 
-  constructor({ name, content = new Uint8Array(0) }: { name: string; content?: Uint8Array }) {
+  constructor({ name, content = new Uint8Array(0) }: { name: string, content?: Uint8Array }) {
     super({ kind: 'file', name });
     this.content = content;
     this.lastModified = Date.now();

@@ -1,14 +1,14 @@
 import type { ChatId } from '@/models/ids';
 
 export type ChoicesSelection = {
-  index: number;
+  index: number,
 };
 
 export type ChoicesActiveRequest = {
-  requestId: string;
-  chatId: ChatId;
-  prompt: string;
-  choices: readonly string[];
+  requestId: string,
+  chatId: ChatId,
+  prompt: string,
+  choices: readonly string[],
 };
 
 export type RequestChoice = ({
@@ -17,8 +17,8 @@ export type RequestChoice = ({
   choices,
   signal,
 }: {
-  chatId: ChatId;
-  prompt: string;
-  choices: readonly string[];
-  signal: AbortSignal | undefined;
+  chatId: ChatId,
+  prompt: string,
+  choices: readonly string[],
+  signal: AbortSignal | undefined,
 }) => Promise<ChoicesSelection>;

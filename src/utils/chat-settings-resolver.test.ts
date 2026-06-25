@@ -23,7 +23,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('should clear global prompt when override content is null (Explicit Clear)', () => {
       const chat: Chat = {
         ...baseChat,
-        systemPrompt: { behavior: 'override', content: null }
+        systemPrompt: { behavior: 'override', content: null },
       };
       const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.systemPromptMessages).toEqual([]);
@@ -32,7 +32,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('should clear global prompt when override content is empty string ("")', () => {
       const chat: Chat = {
         ...baseChat,
-        systemPrompt: { behavior: 'override', content: '' }
+        systemPrompt: { behavior: 'override', content: '' },
       };
       const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.systemPromptMessages).toEqual([]);
@@ -41,7 +41,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('should replace global prompt when override content is non-empty', () => {
       const chat: Chat = {
         ...baseChat,
-        systemPrompt: { behavior: 'override', content: 'Chat Prompt' }
+        systemPrompt: { behavior: 'override', content: 'Chat Prompt' },
       };
       const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.systemPromptMessages).toEqual(['Chat Prompt']);
@@ -52,7 +52,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('should NOT add anything when append content is empty string ("")', () => {
       const chat: Chat = {
         ...baseChat,
-        systemPrompt: { behavior: 'append', content: '' }
+        systemPrompt: { behavior: 'append', content: '' },
       };
       const result = resolveChatSettings({ chat, groups: [], globalSettings });
       // Global remains, but nothing added
@@ -62,7 +62,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('should append to global prompt when append content is non-empty', () => {
       const chat: Chat = {
         ...baseChat,
-        systemPrompt: { behavior: 'append', content: 'Extra' }
+        systemPrompt: { behavior: 'append', content: 'Extra' },
       };
       const result = resolveChatSettings({ chat, groups: [], globalSettings });
       expect(result.systemPromptMessages).toEqual(['Global Prompt', 'Extra']);
@@ -76,14 +76,14 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       isCollapsed: false,
       updatedAt: Date.now(),
       items: [],
-      systemPrompt: { behavior: 'override', content: 'Group Prompt' }
+      systemPrompt: { behavior: 'override', content: 'Group Prompt' },
     };
 
     it('Chat override:null should clear both Group and Global prompts', () => {
       const chat: Chat = {
         ...baseChat,
         groupId: toChatGroupId({ raw: 'group-1' }),
-        systemPrompt: { behavior: 'override', content: null }
+        systemPrompt: { behavior: 'override', content: null },
       };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.systemPromptMessages).toEqual([]);
@@ -93,7 +93,7 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       const chat: Chat = {
         ...baseChat,
         groupId: toChatGroupId({ raw: 'group-1' }),
-        systemPrompt: { behavior: 'append', content: 'Chat Append' }
+        systemPrompt: { behavior: 'append', content: 'Chat Append' },
       };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       // Group overrides Global, then Chat appends to Group
@@ -103,12 +103,12 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('Group override:null should clear Global, allowing Chat append to start from empty', () => {
       const clearGroup: ChatGroup = {
         ...group,
-        systemPrompt: { behavior: 'override', content: null }
+        systemPrompt: { behavior: 'override', content: null },
       };
       const chat: Chat = {
         ...baseChat,
         groupId: toChatGroupId({ raw: 'group-1' }),
-        systemPrompt: { behavior: 'append', content: 'Chat Append' }
+        systemPrompt: { behavior: 'append', content: 'Chat Append' },
       };
       const result = resolveChatSettings({ chat, groups: [clearGroup], globalSettings });
       // Global is cleared by Group, result contains only Chat's contribution
@@ -118,12 +118,12 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
     it('Group override:"" should also clear Global', () => {
       const emptyGroup: ChatGroup = {
         ...group,
-        systemPrompt: { behavior: 'override', content: '' }
+        systemPrompt: { behavior: 'override', content: '' },
       };
       const chat: Chat = {
         ...baseChat,
         groupId: toChatGroupId({ raw: 'group-1' }),
-        systemPrompt: { behavior: 'append', content: 'Chat Append' }
+        systemPrompt: { behavior: 'append', content: 'Chat Append' },
       };
       const result = resolveChatSettings({ chat, groups: [emptyGroup], globalSettings });
       expect(result.systemPromptMessages).toEqual(['Chat Append']);
@@ -201,8 +201,8 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       lmParameters: {
         ...EMPTY_LM_PARAMETERS,
         temperature: 0.7,
-        reasoning: { effort: undefined }
-      }
+        reasoning: { effort: undefined },
+      },
     };
 
     const group: ChatGroup = {
@@ -213,8 +213,8 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
       items: [],
       lmParameters: {
         ...EMPTY_LM_PARAMETERS,
-        reasoning: { effort: 'high' }
-      }
+        reasoning: { effort: 'high' },
+      },
     };
 
     it('should inherit reasoning effort from group when not specified in chat', () => {
@@ -230,8 +230,8 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         lmParameters: {
           ...EMPTY_LM_PARAMETERS,
           temperature: 0.5,
-          reasoning: { effort: undefined } // Inherit from parent
-        }
+          reasoning: { effort: undefined }, // Inherit from parent
+        },
       };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       // BUG: Currently this fails because reasoning object in chat overwrites group's reasoning
@@ -245,8 +245,8 @@ describe('resolveChatSettings - System Prompt Edge Cases', () => {
         groupId: toChatGroupId({ raw: 'group-1' }),
         lmParameters: {
           ...EMPTY_LM_PARAMETERS,
-          reasoning: { effort: 'low' }
-        }
+          reasoning: { effort: 'low' },
+        },
       };
       const result = resolveChatSettings({ chat, groups: [group], globalSettings });
       expect(result.lmParameters.reasoning.effort).toBe('low');

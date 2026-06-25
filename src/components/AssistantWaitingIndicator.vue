@@ -1,16 +1,16 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
-  isNested?: boolean;
-  noPadding?: boolean;
+  isNested?: boolean,
+  noPadding?: boolean,
 }>(), {
   isNested: false,
-  noPadding: false
+  noPadding: false,
 });
 
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

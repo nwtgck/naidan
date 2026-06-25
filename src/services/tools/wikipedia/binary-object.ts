@@ -1,35 +1,35 @@
-import { NAIDAN_SYSFS_MOUNT_PATH } from '@/services/wesh/types'
-import { storageService } from '@/services/storage'
-import { generateId } from '@/utils/id'
-import { idToRaw } from '@/models/ids'
-import type { BinaryObjectId } from '@/models/ids'
+import { NAIDAN_SYSFS_MOUNT_PATH } from '@/services/wesh/types';
+import { storageService } from '@/services/storage';
+import { generateId } from '@/utils/id';
+import { idToRaw } from '@/models/ids';
+import type { BinaryObjectId } from '@/models/ids';
 
-export const WIKIPEDIA_INLINE_CONTENT_MAX_LINES = 80
+export const WIKIPEDIA_INLINE_CONTENT_MAX_LINES = 80;
 
 export type SavedWikipediaPageBinaryObject = {
-  lineCount: number;
-  byteLength: number;
-  sysfsNaidanDataFilePath: string;
+  lineCount: number,
+  byteLength: number,
+  sysfsNaidanDataFilePath: string,
 };
 
 export function countLines({
   text,
 }: {
-  text: string;
+  text: string,
 }): number {
   // Avoid split('\n') here because it allocates a full array of lines for large page text.
   if (text.length === 0) {
-    return 0
+    return 0;
   }
 
-  let lineCount = 1
+  let lineCount = 1;
   for (let index = 0; index < text.length; index += 1) {
     if (text.charCodeAt(index) === 10) {
-      lineCount += 1
+      lineCount += 1;
     }
   }
 
-  return lineCount
+  return lineCount;
 }
 
 export function buildWikipediaBinaryObjectName({
@@ -37,28 +37,28 @@ export function buildWikipediaBinaryObjectName({
   lang,
   pageId,
 }: {
-  title: string;
-  lang: string;
-  pageId: number;
+  title: string,
+  lang: string,
+  pageId: number,
 }): string {
   const safeTitle = title
     .replace(/[\\/:*?"<>|]/g, '_')
     .replace(/\s+/g, '_')
     .replace(/_+/g, '_')
     .slice(0, 80)
-    .replace(/^_+|_+$/g, '')
+    .replace(/^_+|_+$/g, '');
 
-  const titlePart = safeTitle.length > 0 ? safeTitle : 'wikipedia'
+  const titlePart = safeTitle.length > 0 ? safeTitle : 'wikipedia';
 
-  return `${titlePart}_${lang}_${pageId}.txt`
+  return `${titlePart}_${lang}_${pageId}.txt`;
 }
 
 export function buildSysfsNaidanBinaryObjectDataFilePath({
   binaryObjectId,
 }: {
-  binaryObjectId: BinaryObjectId;
+  binaryObjectId: BinaryObjectId,
 }): string {
-  return `${NAIDAN_SYSFS_MOUNT_PATH}/binary-objects/by-id/${idToRaw({ id: binaryObjectId })}/data`
+  return `${NAIDAN_SYSFS_MOUNT_PATH}/binary-objects/by-id/${idToRaw({ id: binaryObjectId })}/data`;
 }
 
 export async function saveWikipediaPageTextAsBinaryObject({
@@ -68,24 +68,24 @@ export async function saveWikipediaPageTextAsBinaryObject({
   content,
   lineCount,
 }: {
-  lang: string;
-  pageId: number;
-  title: string;
-  content: string;
-  lineCount: number;
+  lang: string,
+  pageId: number,
+  title: string,
+  content: string,
+  lineCount: number,
 }): Promise<SavedWikipediaPageBinaryObject> {
-  const binaryObjectId = generateId<BinaryObjectId>()
+  const binaryObjectId = generateId<BinaryObjectId>();
   const name = buildWikipediaBinaryObjectName({
     title,
     lang,
     pageId,
-  })
+  });
   const blob = new Blob([content], {
     type: 'text/plain;charset=utf-8',
-  })
-  const byteLength = blob.size
+  });
+  const byteLength = blob.size;
 
-  await storageService.saveFile({ blob, binaryObjectId, name })
+  await storageService.saveFile({ blob, binaryObjectId, name });
 
   return {
     lineCount,
@@ -93,5 +93,5 @@ export async function saveWikipediaPageTextAsBinaryObject({
     sysfsNaidanDataFilePath: buildSysfsNaidanBinaryObjectDataFilePath({
       binaryObjectId,
     }),
-  }
+  };
 }

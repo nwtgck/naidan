@@ -75,7 +75,7 @@ describe('generateChatShareURL', () => {
                 mimeType: 'image/png',
                 size: 100,
                 uploadedAt: Date.now(),
-                status: 'persisted' as const
+                status: 'persisted' as const,
               },
             ],
             replies: { items: [] },
@@ -96,7 +96,7 @@ describe('generateChatShareURL', () => {
       name: 'image.png',
       mimeType: 'image/png',
       size: 100,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     });
     (storageService.loadSettings as any).mockResolvedValue(validSettings);
 

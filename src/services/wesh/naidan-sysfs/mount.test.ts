@@ -1,6 +1,6 @@
 import { toChatGroupId, toChatId } from '@/models/ids';
-import { describe, expect, it } from 'vitest'
-import { createNaidanSysfsMount } from './mount'
+import { describe, expect, it } from 'vitest';
+import { createNaidanSysfsMount } from './mount';
 
 describe('createNaidanSysfsMount', () => {
   it('returns a naidan sysfs mount for opfs storage', () => {
@@ -19,8 +19,8 @@ describe('createNaidanSysfsMount', () => {
       binaryObjectAccess: 'data',
       currentChatId: toChatId({ raw: 'chat-1' }),
       currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
-    })
-  })
+    });
+  });
 
   it('returns undefined when current chat id is missing', () => {
     expect(createNaidanSysfsMount({
@@ -29,8 +29,8 @@ describe('createNaidanSysfsMount', () => {
       binaryObjectAccess: 'data',
       currentChatId: undefined,
       currentChatGroupId: toChatGroupId({ raw: 'chat-group-1' }),
-    })).toBeUndefined()
-  })
+    })).toBeUndefined();
+  });
 
   it('returns a naidan sysfs mount for local storage', () => {
     expect(createNaidanSysfsMount({
@@ -48,8 +48,8 @@ describe('createNaidanSysfsMount', () => {
       binaryObjectAccess: 'data',
       currentChatId: toChatId({ raw: 'chat-1' }),
       currentChatGroupId: undefined,
-    })
-  })
+    });
+  });
 
   it('returns a naidan sysfs mount for memory storage', () => {
     expect(createNaidanSysfsMount({
@@ -67,6 +67,6 @@ describe('createNaidanSysfsMount', () => {
       binaryObjectAccess: 'data',
       currentChatId: toChatId({ raw: 'chat-1' }),
       currentChatGroupId: undefined,
-    })
-  })
-})
+    });
+  });
+});

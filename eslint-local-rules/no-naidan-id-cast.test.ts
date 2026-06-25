@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest'
-import { ESLint } from 'eslint'
-import path from 'path'
-import * as parser from '@typescript-eslint/parser'
-import { rule } from './no-naidan-id-cast.js'
+import { describe, it, expect, beforeAll } from 'vitest';
+import { ESLint } from 'eslint';
+import path from 'path';
+import * as parser from '@typescript-eslint/parser';
+import { rule } from './no-naidan-id-cast.js';
 
 describe('no-naidan-id-cast rule', () => {
-  let eslint: ESLint
-  const repoRoot = path.resolve(__dirname, '..')
+  let eslint: ESLint;
+  const repoRoot = path.resolve(__dirname, '..');
 
   beforeAll(() => {
     eslint = new ESLint({
@@ -32,44 +32,44 @@ describe('no-naidan-id-cast rule', () => {
           'local-rules-naidan-id-cast/no-naidan-id-cast': 'error',
         },
       },
-    })
-  })
+    });
+  });
 
   async function lintText({
     code,
     filePath = 'src/components/Example.ts',
   }: {
-    code: string
-    filePath?: string
+    code: string,
+    filePath?: string,
   }) {
-    const [result] = await eslint.lintText(code, { filePath: path.resolve(repoRoot, filePath) })
-    return result.messages
+    const [result] = await eslint.lintText(code, { filePath: path.resolve(repoRoot, filePath) });
+    return result.messages;
   }
 
   it('reports direct assertions to a Naidan ID type outside ids.ts', async () => {
     const messages = await lintText({
       code: `import type { ChatId } from '@/models/ids'; const chatId = raw as ChatId`,
-    })
+    });
 
-    expect(messages).toHaveLength(1)
-    expect(messages[0]?.messageId).toBe('noNaidanIdCast')
-  })
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('noNaidanIdCast');
+  });
 
   it('reports angle-bracket assertions to a Naidan ID type outside ids.ts', async () => {
     const messages = await lintText({
       code: `import type { MessageId } from '@/models/ids'; const messageId = <MessageId>raw`,
-    })
+    });
 
-    expect(messages).toHaveLength(1)
-    expect(messages[0]?.messageId).toBe('noNaidanIdCast')
-  })
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.messageId).toBe('noNaidanIdCast');
+  });
 
   it('allows branding inside ids.ts', async () => {
     const messages = await lintText({
       filePath: 'src/models/ids.ts',
       code: `export type ChatId = string & { readonly __brand: true }; const chatId = raw as ChatId`,
-    })
+    });
 
-    expect(messages).toHaveLength(0)
-  })
-})
+    expect(messages).toHaveLength(0);
+  });
+});

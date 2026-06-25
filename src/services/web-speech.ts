@@ -12,10 +12,10 @@ export type WebSpeechStatus = 'inactive' | 'playing' | 'paused' | 'waiting';
 export type SpeechLanguage = 'auto' | 'en-US' | 'ja-JP' | 'ko-KR' | 'zh-CN' | 'ru-RU' | 'es-ES' | 'fr-FR' | 'de-DE';
 
 export interface WebSpeechState {
-  status: WebSpeechStatus;
-  activeMessageId: MessageId | null;
-  detectedLang: string | null;
-  preferredLang: SpeechLanguage;
+  status: WebSpeechStatus,
+  activeMessageId: MessageId | null,
+  detectedLang: string | null,
+  preferredLang: SpeechLanguage,
 }
 
 class WebSpeechService {
@@ -46,7 +46,7 @@ class WebSpeechService {
     return !!this.synth;
   }
 
-  private updateState({ status, messageId = null }: { status: WebSpeechStatus; messageId?: MessageId | null }) {
+  private updateState({ status, messageId = null }: { status: WebSpeechStatus, messageId?: MessageId | null }) {
     this.state.status = status;
     switch (status) {
     case 'playing':
@@ -64,7 +64,7 @@ class WebSpeechService {
     }
   }
 
-  private detectLanguage({ text, messageId }: { text: string; messageId: MessageId }): string {
+  private detectLanguage({ text, messageId }: { text: string, messageId: MessageId }): string {
     // If we already detected the language for this message, reuse it
     if (this.lastDetectedMessageId === messageId && this.state.detectedLang) {
       return this.state.detectedLang;
@@ -88,7 +88,7 @@ class WebSpeechService {
   /**
    * Manually trigger a fresh detection for a message, bypassing cache.
    */
-  public redetectLanguage({ text, messageId }: { text: string; messageId: MessageId }): string {
+  public redetectLanguage({ text, messageId }: { text: string, messageId: MessageId }): string {
     this.lastDetectedMessageId = null;
     this.state.detectedLang = null;
     return this.detectLanguage({ text, messageId });
@@ -113,7 +113,7 @@ class WebSpeechService {
   /**
    * Main entry point for speaking. Handles both new messages and streaming updates.
    */
-  public speak({ text, messageId, isFinal, lang }: { text: string; messageId: MessageId; isFinal: boolean; lang: SpeechLanguage }) {
+  public speak({ text, messageId, isFinal, lang }: { text: string, messageId: MessageId, isFinal: boolean, lang: SpeechLanguage }) {
     if (!this.synth) return;
     this.isExpectingMore = !isFinal;
 
@@ -175,7 +175,7 @@ class WebSpeechService {
   /**
    * Returns true if an utterance was actually queued.
    */
-  private enqueueStreamingPart({ text, messageId, isFinal, resolvedLang }: { text: string; messageId: MessageId; isFinal: boolean; resolvedLang: string }): boolean {
+  private enqueueStreamingPart({ text, messageId, isFinal, resolvedLang }: { text: string, messageId: MessageId, isFinal: boolean, resolvedLang: string }): boolean {
     if (!this.synth) return false;
 
     const fullCleanedText = this.prepareText({ text });

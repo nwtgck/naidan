@@ -80,9 +80,9 @@ async function handleVolumeCreated({
   mountPath,
   readOnly,
 }: {
-  volumeId: VolumeId;
-  mountPath: string;
-  readOnly: boolean;
+  volumeId: VolumeId,
+  mountPath: string,
+  readOnly: boolean,
 }): Promise<void> {
   const chatGroupId = currentChatGroup.value?.id;
   if (chatGroupId === undefined) return;
@@ -102,8 +102,8 @@ async function handleChatGroupMountToggleReadOnly({
   volumeId,
   readOnly,
 }: {
-  volumeId: VolumeId;
-  readOnly: boolean;
+  volumeId: VolumeId,
+  readOnly: boolean,
 }): Promise<void> {
   const chatGroupId = currentChatGroup.value?.id;
   if (chatGroupId === undefined) return;
@@ -148,12 +148,12 @@ function handleCreateRecipe(): void {
 }
 
 type GroupSettingsDraft = {
-  endpoint: Endpoint | undefined;
-  modelId: string | undefined;
-  autoTitleEnabled: boolean | undefined;
-  titleModelId: string | undefined;
-  systemPrompt: SystemPrompt | undefined;
-  lmParameters: LmParameters | undefined;
+  endpoint: Endpoint | undefined,
+  modelId: string | undefined,
+  autoTitleEnabled: boolean | undefined,
+  titleModelId: string | undefined,
+  systemPrompt: SystemPrompt | undefined,
+  lmParameters: LmParameters | undefined,
 };
 
 function emptyDraft(): GroupSettingsDraft {
@@ -204,8 +204,8 @@ function areHeadersEqual({
   left,
   right,
 }: {
-  left: [string, string][] | undefined;
-  right: [string, string][] | undefined;
+  left: [string, string][] | undefined,
+  right: [string, string][] | undefined,
 }): boolean {
   if (left === right) return true;
   if (left === undefined || right === undefined || left.length !== right.length) return false;
@@ -216,8 +216,8 @@ function areEndpointsEqual({
   left,
   right,
 }: {
-  left: Endpoint | undefined;
-  right: Endpoint | undefined;
+  left: Endpoint | undefined,
+  right: Endpoint | undefined,
 }): boolean {
   return left?.type === right?.type
     && left?.url === right?.url
@@ -228,8 +228,8 @@ function areSystemPromptsEqual({
   left,
   right,
 }: {
-  left: SystemPrompt | undefined;
-  right: SystemPrompt | undefined;
+  left: SystemPrompt | undefined,
+  right: SystemPrompt | undefined,
 }): boolean {
   return left?.behavior === right?.behavior && left?.content === right?.content;
 }
@@ -267,8 +267,8 @@ function createChanges({
   previous,
   next,
 }: {
-  previous: GroupSettingsDraft;
-  next: GroupSettingsDraft;
+  previous: GroupSettingsDraft,
+  next: GroupSettingsDraft,
 }): ScopedSettingChange[] {
   const changes: ScopedSettingChange[] = [];
   const lmChanges = new Map(
@@ -355,9 +355,9 @@ function applyLmParameterFieldFromDraft({
   target,
   source,
 }: {
-  field: LmParameterSettingField;
-  target: GroupSettingsDraft;
-  source: GroupSettingsDraft;
+  field: LmParameterSettingField,
+  target: GroupSettingsDraft,
+  source: GroupSettingsDraft,
 }): void {
   const lmParameters: LmParameters = {
     temperature: target.lmParameters?.temperature,
@@ -411,9 +411,9 @@ function applyFieldFromDraft({
   target,
   source,
 }: {
-  field: ScopedSettingChange['field'];
-  target: GroupSettingsDraft;
-  source: GroupSettingsDraft;
+  field: ScopedSettingChange['field'],
+  target: GroupSettingsDraft,
+  source: GroupSettingsDraft,
 }): void {
   switch (field) {
   case 'endpoint':
@@ -477,14 +477,14 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
 
 type SaveToolConfigUpdate =
   | { behavior: 'preserve' }
-  | { behavior: 'update'; updater: ToolConfigsUpdater };
+  | { behavior: 'update', updater: ToolConfigsUpdater };
 
 function saveChangesForGroup({
   chatGroupId,
   toolConfigUpdate,
 }: {
-  chatGroupId: ChatGroupId | undefined;
-  toolConfigUpdate: SaveToolConfigUpdate;
+  chatGroupId: ChatGroupId | undefined,
+  toolConfigUpdate: SaveToolConfigUpdate,
 }): Promise<void> {
   if (chatGroupId === undefined) return Promise.resolve();
 
@@ -651,7 +651,7 @@ function isLocalhost({ url }: { url: string | undefined }) {
 async function updateEndpointType({
   endpointType,
 }: {
-  endpointType: EndpointType | undefined;
+  endpointType: EndpointType | undefined,
 }): Promise<void> {
   switch (endpointType) {
   case undefined:
@@ -770,7 +770,7 @@ watch([
 async function updateSystemPromptBehavior({
   behavior,
 }: {
-  behavior: 'inherit' | 'clear' | 'replace' | 'append';
+  behavior: 'inherit' | 'clear' | 'replace' | 'append',
 }) {
   switch (behavior) {
   case 'inherit':

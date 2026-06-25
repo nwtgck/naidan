@@ -1,40 +1,40 @@
-import { createPrivacyFetchError } from './errors'
-import { validatePrivacyFetchUrl } from './validate-url'
+import { createPrivacyFetchError } from './errors';
+import { validatePrivacyFetchUrl } from './validate-url';
 import type {
   PrivacyFetchHeaderEntries,
   PrivacyFetchRequest,
   PrivacyFetchResponse,
-} from './types'
+} from './types';
 
 function createHeadersEntries({
   response,
 }: {
-  response: Response;
+  response: Response,
 }): PrivacyFetchHeaderEntries {
-  return Array.from(response.headers.entries())
+  return Array.from(response.headers.entries());
 }
 
 export async function privacyFetch({
   request,
 }: {
-  request: PrivacyFetchRequest;
+  request: PrivacyFetchRequest,
 }): Promise<PrivacyFetchResponse> {
   if (request.signal?.aborted) {
     throw createPrivacyFetchError({
       code: 'aborted',
       message: 'Privacy fetch was aborted',
-    })
+    });
   }
 
   const validationResult = validatePrivacyFetchUrl({
     urlText: request.url,
-  })
+  });
 
   if (!validationResult.ok) {
     throw createPrivacyFetchError({
       code: 'rejected',
       message: `Privacy fetch rejected [${validationResult.code}]: ${validationResult.message}`,
-    })
+    });
   }
 
   try {
@@ -43,8 +43,8 @@ export async function privacyFetch({
       credentials: 'omit',
       referrerPolicy: 'no-referrer',
       signal: request.signal,
-    })
-    const body = await response.arrayBuffer()
+    });
+    const body = await response.arrayBuffer();
 
     return {
       url: response.url,
@@ -57,11 +57,11 @@ export async function privacyFetch({
       body,
       bodyByteLength: body.byteLength,
       policyName: validationResult.policyName,
-    }
+    };
   } catch (error) {
     throw createPrivacyFetchError({
       code: request.signal?.aborted ? 'aborted' : 'fetch_failed',
       message: String(error),
-    })
+    });
   }
 }

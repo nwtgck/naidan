@@ -4,7 +4,7 @@ import { transformersJsService } from '@/services/transformers-js';
 import type { ProgressInfo } from '@/services/transformers-js/types';
 import {
   Loader2Icon, CheckCircle2Icon, AlertCircleIcon, DownloadIcon, FolderOpenIcon, RefreshCcwIcon, Trash2Icon,
-  ChevronDownIcon, PlusIcon, HardDriveDownloadIcon, XIcon, BrainCircuitIcon, PowerOffIcon, ExternalLinkIcon, SearchIcon, FileCodeIcon, RotateCcwIcon
+  ChevronDownIcon, PlusIcon, HardDriveDownloadIcon, XIcon, BrainCircuitIcon, PowerOffIcon, ExternalLinkIcon, SearchIcon, FileCodeIcon, RotateCcwIcon,
 } from 'lucide-vue-next';
 import { useToast } from '@/composables/useToast';
 import { useConfirm } from '@/composables/useConfirm';
@@ -16,7 +16,7 @@ const { addToast } = useToast();
 const { showConfirm } = useConfirm();
 
 const emit = defineEmits<{
-  (e: 'modelLoaded', modelId: string): void;
+  (e: 'modelLoaded', modelId: string): void,
 }>();
 
 const status = ref(transformersJsService.getState().status);
@@ -36,7 +36,7 @@ const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 
 const isOpfsSupported = computedAsync(
   () => checkOPFSSupport(),
-  true // Assume supported initially
+  true, // Assume supported initially
 );
 
 const defaultModels = [
@@ -53,7 +53,7 @@ const defaultModels = [
   'onnx-community/gpt-oss-20b-ONNX',
 ];
 
-const cachedModels = ref<Array<{ id: string; isLocal: boolean; size: number; fileCount: number; lastModified: number; isComplete: boolean }>>([]);
+const cachedModels = ref<Array<{ id: string, isLocal: boolean, size: number, fileCount: number, lastModified: number, isComplete: boolean }>>([]);
 const searchQuery = ref('');
 const listSearchQuery = ref('');
 const isDropdownOpen = ref(false);
@@ -84,7 +84,7 @@ const formatDate = ({ timestamp }: { timestamp: number }) => {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   });
 };
 
@@ -100,7 +100,7 @@ const filteredPresets = computed(() => {
 
   return {
     recommended: availablePresets.filter(m => m.toLowerCase().includes(query)),
-    showCustom: query.length > 0 && !defaultModels.some(m => m.toLowerCase() === query)
+    showCustom: query.length > 0 && !defaultModels.some(m => m.toLowerCase() === query),
   };
 });
 
@@ -287,7 +287,7 @@ const handleImportLocalModel = async ({ event }: { event: Event }) => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

@@ -1,65 +1,65 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ClipboardCheckIcon, FlaskConicalIcon } from 'lucide-vue-next'
-import { useToast } from '@/composables/useToast'
+import { computed, nextTick, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { ClipboardCheckIcon, FlaskConicalIcon } from 'lucide-vue-next';
+import { useToast } from '@/composables/useToast';
 import {
   DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH,
   debugRunFileProtocolStandaloneVerification,
   debugSerializeFileProtocolStandaloneVerificationReportForCopy,
   type DebugFileProtocolStandaloneVerificationReport,
-} from '@/services/debug-file-protocol-standalone/verification/report'
-import { debugVerifyFileProtocolStandaloneWorkerFactory } from '@/services/debug-file-protocol-standalone/verification/worker-probe'
+} from '@/services/debug-file-protocol-standalone/verification/report';
+import { debugVerifyFileProtocolStandaloneWorkerFactory } from '@/services/debug-file-protocol-standalone/verification/worker-probe';
 
-const route = useRoute()
-const router = useRouter()
-const { addToast } = useToast()
-const isStandaloneBuild = computed(() => __BUILD_MODE_IS_STANDALONE__)
+const route = useRoute();
+const router = useRouter();
+const { addToast } = useToast();
+const isStandaloneBuild = computed(() => __BUILD_MODE_IS_STANDALONE__);
 
-const isRunning = ref(false)
-const verificationReport = ref<DebugFileProtocolStandaloneVerificationReport>()
-const tailwindStyleProbeElement = ref<HTMLElement>()
-const scopedStyleProbeElement = ref<HTMLElement>()
-const lazyStyleProbeElement = ref<HTMLElement>()
+const isRunning = ref(false);
+const verificationReport = ref<DebugFileProtocolStandaloneVerificationReport>();
+const tailwindStyleProbeElement = ref<HTMLElement>();
+const scopedStyleProbeElement = ref<HTMLElement>();
+const lazyStyleProbeElement = ref<HTMLElement>();
 
 const verificationReportJson = computed(() => verificationReport.value === undefined
   ? ''
-  : debugSerializeFileProtocolStandaloneVerificationReportForCopy({ report: verificationReport.value }))
+  : debugSerializeFileProtocolStandaloneVerificationReportForCopy({ report: verificationReport.value }));
 
-const lazyStyleInitialMarkerAttribute = 'data-debug-file-protocol-standalone-lazy-style-initial-marker'
+const lazyStyleInitialMarkerAttribute = 'data-debug-file-protocol-standalone-lazy-style-initial-marker';
 
 function debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialMarker({ element }: { element: HTMLElement }): string {
-  const root = document.documentElement
-  const existing = root.getAttribute(lazyStyleInitialMarkerAttribute)
-  if (existing !== null) return existing
+  const root = document.documentElement;
+  const existing = root.getAttribute(lazyStyleInitialMarkerAttribute);
+  if (existing !== null) return existing;
 
   const measured = getComputedStyle(element)
     .getPropertyValue('--debug-file-protocol-standalone-lazy-style-marker')
-    .trim()
-  root.setAttribute(lazyStyleInitialMarkerAttribute, measured)
-  return measured
+    .trim();
+  root.setAttribute(lazyStyleInitialMarkerAttribute, measured);
+  return measured;
 }
 
 async function debugLoadFileProtocolStandaloneLazyStyleProbeModule({ signal }: { signal: AbortSignal }): Promise<Readonly<{ marker: string }>> {
-  signal.throwIfAborted()
-  const loaded = await import('@/services/debug-file-protocol-standalone/verification/lazy-style-probe')
-  signal.throwIfAborted()
-  return { marker: loaded.STANDALONE_VERIFICATION_LAZY_STYLE_MARKER }
+  signal.throwIfAborted();
+  const loaded = await import('@/services/debug-file-protocol-standalone/verification/lazy-style-probe');
+  signal.throwIfAborted();
+  return { marker: loaded.STANDALONE_VERIFICATION_LAZY_STYLE_MARKER };
 }
 
 async function debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal }: { signal: AbortSignal }): Promise<Readonly<{
-  beforePath: string
-  transitionedPath: string
-  restoredPath: string
+  beforePath: string,
+  transitionedPath: string,
+  restoredPath: string,
 }>> {
-  signal.throwIfAborted()
+  signal.throwIfAborted();
   if (!route.fullPath.startsWith(DEBUG_FILE_PROTOCOL_STANDALONE_VERIFICATION_ROUTE_PATH)) {
-    throw new Error(`Unexpected standalone debug route: ${route.fullPath}`)
+    throw new Error(`Unexpected standalone debug route: ${route.fullPath}`);
   }
-  const before = route.fullPath
-  const probeQueryKey = '__standalone-verification-route-probe'
-  let transitioned: string | undefined
-  let transitionError: unknown | undefined
+  const before = route.fullPath;
+  const probeQueryKey = '__standalone-verification-route-probe';
+  let transitioned: string | undefined;
+  let transitionError: unknown | undefined;
   try {
     await router.replace({
       path: route.path,
@@ -68,33 +68,33 @@ async function debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal }: { s
         ...route.query,
         [probeQueryKey]: route.query[probeQueryKey] === '1' ? '2' : '1',
       },
-    })
-    await nextTick()
-    signal.throwIfAborted()
-    transitioned = route.fullPath
+    });
+    await nextTick();
+    signal.throwIfAborted();
+    transitioned = route.fullPath;
   } catch (error) {
-    transitionError = error
+    transitionError = error;
   }
 
-  let restoreError: unknown | undefined
+  let restoreError: unknown | undefined;
   try {
-    await router.replace(before)
-    await nextTick()
+    await router.replace(before);
+    await nextTick();
   } catch (error) {
-    restoreError = error
+    restoreError = error;
   }
 
-  if (transitionError !== undefined) throw transitionError
-  if (restoreError !== undefined) throw restoreError
+  if (transitionError !== undefined) throw transitionError;
+  if (restoreError !== undefined) throw restoreError;
   if (transitioned === undefined) {
-    throw new Error('Standalone verification route transition produced no transitioned route.')
+    throw new Error('Standalone verification route transition produced no transitioned route.');
   }
 
   return {
     beforePath: before,
     transitionedPath: transitioned,
     restoredPath: route.fullPath,
-  }
+  };
 }
 
 async function debugRunVerification(): Promise<void> {
@@ -106,16 +106,16 @@ async function debugRunVerification(): Promise<void> {
     || scopedStyleProbeElement.value === undefined
     || lazyStyleProbeElement.value === undefined
   ) {
-    return
+    return;
   }
 
-  isRunning.value = true
-  verificationReport.value = undefined
+  isRunning.value = true;
+  verificationReport.value = undefined;
   try {
     const lazyStyleInitialMarker = debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialMarker({
       element: lazyStyleProbeElement.value,
-    })
-    const resolved = router.resolve(route.fullPath)
+    });
+    const resolved = router.resolve(route.fullPath);
     verificationReport.value = await debugRunFileProtocolStandaloneVerification({
       route: {
         fullPath: route.fullPath,
@@ -130,70 +130,70 @@ async function debugRunVerification(): Promise<void> {
       debugLoadFileProtocolStandaloneLazyStyleProbeModule,
       debugExerciseFileProtocolStandaloneRouteRoundTrip,
       debugRunWorkerProbe: async ({ signal }) => {
-        signal.throwIfAborted()
-        const result = await debugVerifyFileProtocolStandaloneWorkerFactory()
-        signal.throwIfAborted()
-        return result
+        signal.throwIfAborted();
+        const result = await debugVerifyFileProtocolStandaloneWorkerFactory();
+        signal.throwIfAborted();
+        return result;
       },
       checkTimeoutMs: 60_000,
-    })
+    });
   } catch (error) {
     addToast({
       message: `Standalone verification failed to run: ${error instanceof Error ? error.message : String(error)}`,
       duration: 8000,
-    })
+    });
   } finally {
-    isRunning.value = false
+    isRunning.value = false;
   }
 }
 
 function copyWithSelectionFallback({ text }: { text: string }): boolean {
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.setAttribute('readonly', '')
-  textarea.style.position = 'fixed'
-  textarea.style.opacity = '0'
-  document.body.appendChild(textarea)
-  textarea.select()
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
 
   try {
-    return document.execCommand('copy')
+    return document.execCommand('copy');
   } finally {
-    textarea.remove()
+    textarea.remove();
   }
 }
 
 async function copyVerificationReportJson(): Promise<void> {
   if (verificationReportJson.value.length === 0) {
-    return
+    return;
   }
 
   try {
-    let copied = false
+    let copied = false;
     if (navigator.clipboard?.writeText !== undefined) {
       try {
-        await navigator.clipboard.writeText(verificationReportJson.value)
-        copied = true
+        await navigator.clipboard.writeText(verificationReportJson.value);
+        copied = true;
       } catch {
         // file:// clipboard permissions differ by browser. Fall back to an
         // explicit selection copy before reporting failure to the user.
       }
     }
     if (!copied) {
-      copied = copyWithSelectionFallback({ text: verificationReportJson.value })
+      copied = copyWithSelectionFallback({ text: verificationReportJson.value });
     }
     if (!copied) {
-      throw new Error('The browser rejected both clipboard methods.')
+      throw new Error('The browser rejected both clipboard methods.');
     }
     addToast({
       message: 'Standalone verification JSON copied',
       duration: 4000,
-    })
+    });
   } catch (error) {
     addToast({
       message: `Failed to copy standalone verification JSON: ${error instanceof Error ? error.message : String(error)}`,
       duration: 8000,
-    })
+    });
   }
 }
 
@@ -202,7 +202,7 @@ defineExpose({
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
     // ESLint-required for defineExpose.
   },
-})
+});
 </script>
 
 <template>

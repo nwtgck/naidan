@@ -7,24 +7,24 @@ export type ChatTestSupport = {
   __testOnlySetCurrentChat({
     chat,
   }: {
-    chat: Chat | null;
-  }): void;
+    chat: Chat | null,
+  }): void,
 
   __testOnlySetCurrentChatGroup({
     group,
   }: {
-    group: ChatGroup | null;
-  }): void;
+    group: ChatGroup | null,
+  }): void,
 
   __testOnlySetContextCompactProgress({
     chatId,
     progress,
   }: {
-    chatId: ChatId;
-    progress: ContextCompactProgress;
-  }): void;
+    chatId: ChatId,
+    progress: ContextCompactProgress,
+  }): void,
 
-  clearLiveChatRegistry(): void;
+  clearLiveChatRegistry(): void,
 };
 
 export function createChatTestSupport({
@@ -34,22 +34,22 @@ export function createChatTestSupport({
   setContextCompactProgress,
   clearLiveChatRegistryImpl,
 }: {
-  currentChatRef: Ref<Chat | null>;
-  currentChatGroupRef: Ref<ChatGroup | null>;
-  registerLiveInstance: ({ chat }: { chat: Chat }) => void;
+  currentChatRef: Ref<Chat | null>,
+  currentChatGroupRef: Ref<ChatGroup | null>,
+  registerLiveInstance: ({ chat }: { chat: Chat }) => void,
   setContextCompactProgress: ({
     chatId,
     progress,
   }: {
-    chatId: ChatId;
-    progress: ContextCompactProgress;
-  }) => void;
-  clearLiveChatRegistryImpl: () => void;
+    chatId: ChatId,
+    progress: ContextCompactProgress,
+  }) => void,
+  clearLiveChatRegistryImpl: () => void,
 }): ChatTestSupport {
   function __testOnlySetCurrentChat({
     chat,
   }: {
-    chat: Chat | null;
+    chat: Chat | null,
   }) {
     currentChatRef.value = chat;
     if (chat) {
@@ -60,7 +60,7 @@ export function createChatTestSupport({
   function __testOnlySetCurrentChatGroup({
     group,
   }: {
-    group: ChatGroup | null;
+    group: ChatGroup | null,
   }) {
     currentChatGroupRef.value = group;
   }
@@ -69,8 +69,8 @@ export function createChatTestSupport({
     chatId,
     progress,
   }: {
-    chatId: ChatId;
-    progress: ContextCompactProgress;
+    chatId: ChatId,
+    progress: ContextCompactProgress,
   }) {
     setContextCompactProgress({
       chatId,

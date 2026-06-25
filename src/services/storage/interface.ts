@@ -22,29 +22,29 @@ export abstract class IStorageProvider {
   abstract listVolumes(): AsyncIterable<Volume>;
 
   abstract createVolume({ name, type, sourceHandle }: {
-    name: string;
-    type: VolumeType;
-    sourceHandle: FileSystemDirectoryHandle;
+    name: string,
+    type: VolumeType,
+    sourceHandle: FileSystemDirectoryHandle,
   }): Promise<Volume>;
 
   abstract createVolumeFromFiles({ name, entries, onProgress, signal }: {
-    name: string;
-    entries: Array<{ file: File; relativePath: string }>;
-    onProgress?: ({ processed, total }: { processed: number; total: number }) => void;
-    signal?: AbortSignal;
+    name: string,
+    entries: Array<{ file: File, relativePath: string }>,
+    onProgress?: ({ processed, total }: { processed: number, total: number }) => void,
+    signal?: AbortSignal,
   }): Promise<Volume>;
 
   abstract getVolumeDirectoryHandle({ volumeId }: {
-    volumeId: VolumeId;
+    volumeId: VolumeId,
   }): Promise<FileSystemDirectoryHandle | null>;
 
   abstract deleteVolume({ volumeId }: {
-    volumeId: VolumeId;
+    volumeId: VolumeId,
   }): Promise<void>;
 
   abstract renameVolume({ volumeId, name }: {
-    volumeId: VolumeId;
-    name: string;
+    volumeId: VolumeId,
+    name: string,
   }): Promise<void>;
 
   // --- Data Access Methods ---
@@ -112,7 +112,7 @@ export abstract class IStorageProvider {
   /**
    * Saves only the chat content (message tree) to a dedicated file.
    */
-  abstract saveChatContent({ id, content }: { id: ChatId; content: ChatContent }): Promise<void>;
+  abstract saveChatContent({ id, content }: { id: ChatId, content: ChatContent }): Promise<void>;
 
   abstract loadChat({ id }: { id: ChatId }): Promise<Chat | null>;
   abstract loadChatMeta({ id }: { id: ChatId }): Promise<ChatMeta | null>;
@@ -129,10 +129,10 @@ export abstract class IStorageProvider {
 
   // --- File Storage ---
   abstract saveFile({ blob, binaryObjectId, name, mimeType }: {
-    blob: Blob;
-    binaryObjectId: BinaryObjectId;
-    name: string;
-    mimeType?: string;
+    blob: Blob,
+    binaryObjectId: BinaryObjectId,
+    name: string,
+    mimeType?: string,
   }): Promise<void>;
   abstract getFile({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<Blob | null>;
   abstract getBinaryObject({ binaryObjectId }: { binaryObjectId: BinaryObjectId }): Promise<BinaryObject | null>;

@@ -199,7 +199,7 @@ export const HierarchyChatGroupNodeSchemaDto = z.object({
 export const HierarchySchemaDto = z.object({
   items: z.array(z.union([
     HierarchyChatNodeSchemaDto,
-    HierarchyChatGroupNodeSchemaDto
+    HierarchyChatGroupNodeSchemaDto,
   ])),
   experimental: optionalExperimentalFieldSchemaDto({ schema: ExperimentalHierarchySchemaDto }),
 });
@@ -352,7 +352,7 @@ export const MessageNodeSchemaDto: z.ZodType<MessageNodeDto> = z.lazy(() =>
       results: z.array(ToolExecutionResultSchemaDto),
       replies: MessageBranchSchemaDto,
     }),
-  ]))
+  ])),
 );
 
 export const MessageBranchSchemaDto = z.object({
@@ -361,54 +361,54 @@ export const MessageBranchSchemaDto = z.object({
 });
 
 type MessageNodeCommonDto = {
-  id: string;
-  content: string | undefined;
-  timestamp: number;
+  id: string,
+  content: string | undefined,
+  timestamp: number,
   replies: {
-    items: MessageNodeDto[];
-  };
+    items: MessageNodeDto[],
+  },
 };
 
 export type MessageNodeDto =
   | (MessageNodeCommonDto & {
-      role: 'user';
-      content: string;
-      attachments: AttachmentDto[] | undefined;
-      thinking: undefined;
-      modelId: undefined;
-      lmParameters: LmParametersDto | undefined;
-      toolCalls: undefined;
-      results: undefined;
+      role: 'user',
+      content: string,
+      attachments: AttachmentDto[] | undefined,
+      thinking: undefined,
+      modelId: undefined,
+      lmParameters: LmParametersDto | undefined,
+      toolCalls: undefined,
+      results: undefined,
     })
   | (MessageNodeCommonDto & {
-      role: 'assistant';
-      content: string;
-      attachments: undefined;
-      thinking: string | undefined;
-      modelId: string | undefined;
-      lmParameters: LmParametersDto | undefined;
-      toolCalls: z.infer<typeof ToolCallSchemaDto>[] | undefined;
-      results: undefined;
+      role: 'assistant',
+      content: string,
+      attachments: undefined,
+      thinking: string | undefined,
+      modelId: string | undefined,
+      lmParameters: LmParametersDto | undefined,
+      toolCalls: z.infer<typeof ToolCallSchemaDto>[] | undefined,
+      results: undefined,
     })
   | (MessageNodeCommonDto & {
-      role: 'system';
-      content: string;
-      attachments: undefined;
-      thinking: undefined;
-      modelId: undefined;
-      lmParameters: undefined;
-      toolCalls: undefined;
-      results: undefined;
+      role: 'system',
+      content: string,
+      attachments: undefined,
+      thinking: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      toolCalls: undefined,
+      results: undefined,
     })
   | (MessageNodeCommonDto & {
-      role: 'tool';
-      content: undefined;
-      attachments: undefined;
-      thinking: undefined;
-      modelId: undefined;
-      lmParameters: undefined;
-      toolCalls: undefined;
-      results: z.infer<typeof ToolExecutionResultSchemaDto>[];
+      role: 'tool',
+      content: undefined,
+      attachments: undefined,
+      thinking: undefined,
+      modelId: undefined,
+      lmParameters: undefined,
+      toolCalls: undefined,
+      results: z.infer<typeof ToolExecutionResultSchemaDto>[],
     });
 
 /**
@@ -512,15 +512,15 @@ export type SettingsDto = z.infer<typeof SettingsSchemaDto>;
  * complete domain objects during the restoration process.
  */
 export type MigrationChunkDto =
-  | { type: 'chat'; data: ChatDto }
+  | { type: 'chat', data: ChatDto }
   | {
-      type: 'binary_object';
-      id: string; // The binaryObjectId
-      name: string;
-      mimeType: string;
-      size: number;
-      createdAt: number;
-      blob: Blob
+      type: 'binary_object',
+      id: string, // The binaryObjectId
+      name: string,
+      mimeType: string,
+      size: number,
+      createdAt: number,
+      blob: Blob,
     };
 
 /**

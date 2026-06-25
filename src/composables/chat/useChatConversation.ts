@@ -14,28 +14,28 @@ export type ChatConversationAdapter = {
     attachments,
     lmParameters,
   }: {
-    chatId: ChatId;
-    content: string;
-    parentId: MessageId | null | undefined;
-    attachments: Attachment[] | undefined;
-    lmParameters: LmParameters | undefined;
-  }): Promise<boolean>;
+    chatId: ChatId,
+    content: string,
+    parentId: MessageId | null | undefined,
+    attachments: Attachment[] | undefined,
+    lmParameters: LmParameters | undefined,
+  }): Promise<boolean>,
 
   regenerateMessage({
     chatId,
     failedMessageId,
   }: {
-    chatId: ChatId;
-    failedMessageId: MessageId;
-  }): Promise<void>;
+    chatId: ChatId,
+    failedMessageId: MessageId,
+  }): Promise<void>,
 
   abort({
     chatId,
   }: {
-    chatId: ChatId;
-  }): void;
+    chatId: ChatId,
+  }): void,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatConversation(): ChatConversationAdapter {
@@ -46,11 +46,11 @@ export function useChatConversation(): ChatConversationAdapter {
     attachments,
     lmParameters,
   }: {
-    chatId: ChatId;
-    content: string;
-    parentId: MessageId | null | undefined;
-    attachments: Attachment[] | undefined;
-    lmParameters: LmParameters | undefined;
+    chatId: ChatId,
+    content: string,
+    parentId: MessageId | null | undefined,
+    attachments: Attachment[] | undefined,
+    lmParameters: LmParameters | undefined,
   }): Promise<boolean> {
     return await sendMessageForChat({
       chatId,
@@ -65,8 +65,8 @@ export function useChatConversation(): ChatConversationAdapter {
     chatId,
     failedMessageId,
   }: {
-    chatId: ChatId;
-    failedMessageId: MessageId;
+    chatId: ChatId,
+    failedMessageId: MessageId,
   }): Promise<void> {
     await regenerateMessageForChat({
       chatId,
@@ -77,7 +77,7 @@ export function useChatConversation(): ChatConversationAdapter {
   function abort({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     abortProcessingForChat({
       chatId,

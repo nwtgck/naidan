@@ -8,7 +8,7 @@ import { capitalize, naturalSort } from '@/utils/string';
 import {
   Loader2Icon, Trash2Icon, GlobeIcon, BotIcon, TypeIcon, SaveIcon,
   CheckCircle2Icon, BookmarkPlusIcon,
-  CheckIcon, ActivityIcon, MessageSquareQuoteIcon, PlusIcon, LinkIcon
+  CheckIcon, ActivityIcon, MessageSquareQuoteIcon, PlusIcon, LinkIcon,
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
@@ -30,17 +30,17 @@ import { idToRaw } from '@/models/ids';
 import type { ProviderProfileId } from '@/models/ids';
 
 const props = defineProps<{
-  modelValue: Settings;
-  availableModels: readonly string[];
-  isFetchingModels: boolean;
-  hasUnsavedChanges: boolean;
+  modelValue: Settings,
+  availableModels: readonly string[],
+  isFetchingModels: boolean,
+  hasUnsavedChanges: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: Settings): void;
-  (e: 'save'): void;
-  (e: 'goToProfiles'): void;
-  (e: 'goToTransformersJs'): void;
+  (e: 'update:modelValue', value: Settings): void,
+  (e: 'save'): void,
+  (e: 'goToProfiles'): void,
+  (e: 'goToTransformersJs'): void,
 }>();
 
 const sortedModels = computed(() => naturalSort({ values: Array.isArray(props.availableModels) ? props.availableModels : [] }));
@@ -54,7 +54,7 @@ const isStandalone = __BUILD_MODE_IS_STANDALONE__;
 
 const form = computed({
   get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val)
+  set: (val) => emit('update:modelValue', val),
 });
 
 const connectionSuccess = ref(false);
@@ -113,7 +113,7 @@ function applyPreset({ preset }: { preset: typeof ENDPOINT_PRESETS[number] }) {
   form.value = {
     ...form.value,
     endpointType: preset.type,
-    endpointUrl: preset.url
+    endpointUrl: preset.url,
   };
 }
 
@@ -129,7 +129,7 @@ async function fetchModels() {
     const models = await fetchModelsGlobal({ overrides: {
       url,
       type: form.value.endpointType,
-      headers: form.value.endpointHttpHeaders
+      headers: form.value.endpointHttpHeaders,
     } });
 
     if (models.length === 0 && form.value.endpointType !== 'transformers_js') {
@@ -197,7 +197,7 @@ async function handleCreateProviderProfile() {
     message: 'Give this configuration a name:',
     defaultValue: `${capitalize({ value: form.value.endpointType })} - ${form.value.defaultModelId || 'Default'}`,
     confirmButtonText: 'Create',
-    bodyComponent: h(ProviderProfilePreview, { form: form.value })
+    bodyComponent: h(ProviderProfilePreview, { form: form.value }),
   });
 
   if (!name) return;

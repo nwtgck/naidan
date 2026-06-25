@@ -2,7 +2,7 @@
 import { generateOpaqueId } from '@/utils/id';
 import { ref, watch } from 'vue';
 import {
-  ChefHatIcon, SaveIcon, AlertTriangleIcon
+  ChefHatIcon, SaveIcon, AlertTriangleIcon,
 } from 'lucide-vue-next';
 import { parseConcatenatedJson } from '@/utils/json-stream-parser';
 import { matchRecipeModels } from '@/utils/recipe-matcher';
@@ -12,20 +12,20 @@ import ModelSelector from './ModelSelector.vue';
 import { naturalSort } from '@/utils/string';
 
 const props = defineProps<{
-  availableModels: readonly string[];
+  availableModels: readonly string[],
 }>();
 
 const emit = defineEmits<{
-  (e: 'import', recipes: { newName: string; matchedModelId?: string; recipe: ChatGroupRecipe }[]): void;
+  (e: 'import', recipes: { newName: string, matchedModelId?: string, recipe: ChatGroupRecipe }[]): void,
 }>();
 
 interface AnalyzedRecipe {
-  id: string;
-  recipe: ChatGroupRecipe;
-  selected: boolean;
-  matchedModelId?: string;
-  matchError?: string;
-  newName: string;
+  id: string,
+  recipe: ChatGroupRecipe,
+  selected: boolean,
+  matchedModelId?: string,
+  matchError?: string,
+  newName: string,
 }
 
 const recipeJsonInput = ref('');
@@ -112,7 +112,7 @@ function handleImportRecipes() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

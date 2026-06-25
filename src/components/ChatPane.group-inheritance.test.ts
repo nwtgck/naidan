@@ -76,7 +76,7 @@ vi.mock('../composables/useChat', () => ({
       flow: { position: 'standalone', nesting: 'none' },
       isFirstInNode: true,
       isLastInNode: true,
-      isFirstInTurn: true
+      isFirstInTurn: true,
     }))),
     isThinkingActive: vi.fn(() => false),
     isWaitingResponse: vi.fn(() => false),
@@ -103,12 +103,12 @@ function mountChatPane({
   global,
 }: {
   props?: {
-    chatId?: ChatId;
-    autoSendPrompt?: string;
-    targetMessageId?: MessageId;
-  };
-  attachTo?: Element | string;
-  global?: Record<string, unknown>;
+    chatId?: ChatId,
+    autoSendPrompt?: string,
+    targetMessageId?: MessageId,
+  },
+  attachTo?: Element | string,
+  global?: Record<string, unknown>,
 } = {}) {
   return mount(ChatPane, {
     props: {
@@ -145,11 +145,11 @@ vi.mock('../composables/chat/useChatConversation', () => ({
       attachments,
       lmParameters,
     }: {
-      chatId: string;
-      content: string;
-      parentId: string | null | undefined;
-      attachments: Attachment[] | undefined;
-      lmParameters: LmParameters | undefined;
+      chatId: string,
+      content: string,
+      parentId: string | null | undefined,
+      attachments: Attachment[] | undefined,
+      lmParameters: LmParameters | undefined,
     }) => useChat().sendMessage({
       content,
       parentId,
@@ -197,10 +197,10 @@ vi.mock('../composables/chat/chat-scoped/useChatGeneration', () => ({
       attachments,
       lmParameters,
     }: {
-      content: string;
-      parentId: string | null | undefined;
-      attachments: Attachment[] | undefined;
-      lmParameters: LmParameters | undefined;
+      content: string,
+      parentId: string | null | undefined,
+      attachments: Attachment[] | undefined,
+      lmParameters: LmParameters | undefined,
     }) => useChat().sendMessage({
       content,
       parentId,
@@ -278,17 +278,17 @@ describe('ChatPane Group Inheritance UI', () => {
     // Default resolution (Global)
     mockResolvedSettings.value = {
       modelId: 'global-model',
-      sources: { modelId: 'global' }
+      sources: { modelId: 'global' },
     };
     mockInheritedSettings.value = {
       modelId: 'global-model',
-      sources: { modelId: 'global' }
+      sources: { modelId: 'global' },
     };
   });
 
   it('displays "Model (Global)" when inheriting from global settings', async () => {
     const wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
+      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
     });
     await nextTick();
 
@@ -303,15 +303,15 @@ describe('ChatPane Group Inheritance UI', () => {
     mockCurrentChat.value.groupId = 'group-1';
     mockResolvedSettings.value = {
       modelId: 'group-model',
-      sources: { modelId: 'chat_group' }
+      sources: { modelId: 'chat_group' },
     };
     mockInheritedSettings.value = {
       modelId: 'group-model',
-      sources: { modelId: 'chat_group' }
+      sources: { modelId: 'chat_group' },
     };
 
     const wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
+      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
     });
     await nextTick();
 
@@ -323,16 +323,16 @@ describe('ChatPane Group Inheritance UI', () => {
     mockCurrentChat.value.modelId = 'specific-model';
     mockResolvedSettings.value = {
       modelId: 'specific-model',
-      sources: { modelId: 'chat' }
+      sources: { modelId: 'chat' },
     };
     // Inherited would still be global-model
     mockInheritedSettings.value = {
       modelId: 'global-model',
-      sources: { modelId: 'global' }
+      sources: { modelId: 'global' },
     };
 
     const wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
+      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
     });
     await nextTick();
 
@@ -349,7 +349,7 @@ describe('ChatPane Group Inheritance UI', () => {
 
   it('updates labels immediately when inherited settings change (e.g. moving between groups)', async () => {
     const wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
+      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
     });
     await nextTick();
 
@@ -359,11 +359,11 @@ describe('ChatPane Group Inheritance UI', () => {
     // 2. Simulate moving to a group with a different model
     mockResolvedSettings.value = {
       modelId: 'new-group-model',
-      sources: { modelId: 'chat_group' }
+      sources: { modelId: 'chat_group' },
     };
     mockInheritedSettings.value = {
       modelId: 'new-group-model',
-      sources: { modelId: 'chat_group' }
+      sources: { modelId: 'chat_group' },
     };
 
     await nextTick();
@@ -409,11 +409,11 @@ describe('ChatPane Group Inheritance UI', () => {
     mockResolvedSettings.value = {
       modelId: 'm',
       lmParameters: { reasoning: { effort: 'medium' } },
-      sources: { modelId: 'global' }
+      sources: { modelId: 'global' },
     };
 
     const wrapper = mountChatPane( {
-      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } }
+      global: { plugins: [router], stubs: { Logo: true, MessageItem: true, WelcomeScreen: true, ChatSettingsPanel: true } },
     });
     await nextTick();
 
@@ -430,8 +430,8 @@ describe('ChatPane Group Inheritance UI', () => {
       attachments: [],
       chatTarget: undefined,
       lmParameters: expect.objectContaining({
-        reasoning: { effort: 'medium' }
-      })
+        reasoning: { effort: 'medium' },
+      }),
     });
   });
 });

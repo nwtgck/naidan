@@ -17,7 +17,7 @@ export const ImageDownloadHydrator = {
    * Extract all necessary data from the placeholder element to prepare for hydration.
    * If a blob is already available, it can be passed to avoid redundant storage reads.
    */
-  async prepareContext({ el, storageService, blob }: { el: HTMLElement; storageService: StorageService; blob?: Blob }) {
+  async prepareContext({ el, storageService, blob }: { el: HTMLElement, storageService: StorageService, blob?: Blob }) {
     const id = el.dataset.id;
     if (!id) return null;
 
@@ -63,7 +63,7 @@ export const ImageDownloadHydrator = {
     url: string,
     width: string | undefined,
     height: string | undefined,
-    onPreview: () => void
+    onPreview: () => void,
   }): HTMLImageElement {
     const imgEl = document.createElement('img');
     imgEl.src = url;
@@ -89,7 +89,7 @@ export const ImageDownloadHydrator = {
     model: string | undefined,
     withMetadata: boolean,
     storageService: StorageService,
-    onError: ({ error }: { error: unknown }) => void
+    onError: ({ error }: { error: unknown }) => void,
   }) {
     try {
       const obj = await storageService.getBinaryObject({ binaryObjectId: id });
@@ -148,12 +148,12 @@ export const ImageDownloadHydrator = {
     portal: HTMLElement,
     isSupported: boolean,
     align?: 'left' | 'right',
-    onDownload: ({ withMetadata }: { withMetadata: boolean }) => void
+    onDownload: ({ withMetadata }: { withMetadata: boolean }) => void,
   }): () => void {
     const vnode = vueH(ImageDownloadButton, {
       isSupported,
       align,
-      onDownload
+      onDownload,
     });
 
     render(vnode, portal);
@@ -174,7 +174,7 @@ export const ImageDownloadHydrator = {
     seed: number | undefined,
     width: number | string | undefined,
     height: number | string | undefined,
-    align?: 'left' | 'right'
+    align?: 'left' | 'right',
   }): () => void {
     const vnode = vueH(ImageInfoDisplay, {
       prompt,
@@ -182,7 +182,7 @@ export const ImageDownloadHydrator = {
       seed,
       width,
       height,
-      align
+      align,
     });
 
     render(vnode, portal);
@@ -199,11 +199,11 @@ export const ImageDownloadHydrator = {
   mountBadge({ portal, index, total }: {
     portal: HTMLElement,
     index: number,
-    total?: number
+    total?: number,
   }): () => void {
     const vnode = vueH(ImageIndexBadge, {
       index,
-      total
+      total,
     });
 
     render(vnode, portal);
@@ -211,5 +211,5 @@ export const ImageDownloadHydrator = {
     return () => {
       render(null, portal);
     };
-  }
-}
+  },
+};

@@ -4,9 +4,9 @@ import { ImageIcon, EyeIcon, GlobeIcon } from 'lucide-vue-next';
 import { useExternalResourceSettings } from '@/composables/useExternalResourceSettings';
 
 const props = defineProps<{
-  src: string;
-  alt: string | undefined;
-  title: string | undefined;
+  src: string,
+  alt: string | undefined,
+  title: string | undefined,
 }>();
 
 const { allowAllExternalImages, setAllowAllExternalImages } = useExternalResourceSettings();
@@ -41,7 +41,7 @@ defineExpose({
     showThisImage,
     isExternal,
     shouldShow,
-  }
+  },
 });
 </script>
 

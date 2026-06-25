@@ -12,95 +12,95 @@ import {
 } from '@/utils/scoped-setting-changes';
 
 export type ChatDataStore = {
-  rootItems: Ref<SidebarItem[]>;
-  currentChatRef: Ref<Chat | null>;
-  currentChatGroupRef: Ref<ChatGroup | null>;
-  liveChatRegistry: Map<ChatId, Chat>;
+  rootItems: Ref<SidebarItem[]>,
+  currentChatRef: Ref<Chat | null>,
+  currentChatGroupRef: Ref<ChatGroup | null>,
+  liveChatRegistry: Map<ChatId, Chat>,
 
-  loadData(): Promise<void>;
+  loadData(): Promise<void>,
   replaceSidebarItems({
     items,
   }: {
-    items: SidebarItem[];
-  }): void;
+    items: SidebarItem[],
+  }): void,
 
   registerLiveInstance({
     chat,
   }: {
-    chat: Chat;
-  }): void;
+    chat: Chat,
+  }): void,
 
   unregisterLiveInstance({
     chatId,
   }: {
-    chatId: ChatId;
-  }): void;
+    chatId: ChatId,
+  }): void,
 
   getLiveChat({
     chat,
   }: {
-    chat: Chat | Readonly<Chat>;
-  }): Chat;
+    chat: Chat | Readonly<Chat>,
+  }): Chat,
 
   getLiveChatById({
     chatId,
   }: {
-    chatId: ChatId;
-  }): Chat | null;
+    chatId: ChatId,
+  }): Chat | null,
 
   getReadonlyChat({
     chatId,
   }: {
-    chatId: ChatId;
-  }): Readonly<Chat> | null;
+    chatId: ChatId,
+  }): Readonly<Chat> | null,
 
   openChat({
     id,
     leafId,
   }: {
-    id: ChatId;
-    leafId: MessageId | undefined;
-  }): Promise<Chat | null>;
+    id: ChatId,
+    leafId: MessageId | undefined,
+  }): Promise<Chat | null>,
 
   openChatAtMessage({
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
-  }): Promise<Chat | null>;
+    chatId: ChatId,
+    messageId: MessageId,
+  }): Promise<Chat | null>,
 
   openChatGroup({
     id,
   }: {
-    id: ChatGroupId | null;
-  }): void;
+    id: ChatGroupId | null,
+  }): void,
 
   updateChatContent({
     id,
     updater,
   }: {
-    id: ChatId;
+    id: ChatId,
 
-    updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>;
-  }): Promise<void>;
+    updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>,
+  }): Promise<void>,
 
   updateChatMeta({
     id,
     updater,
   }: {
-    id: ChatId;
+    id: ChatId,
 
-    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
-  }): Promise<void>;
+    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>,
+  }): Promise<void>,
 
   updateChatScopedSettings({
     chatId,
     changes,
   }: {
-    chatId: ChatId;
-    changes: readonly ScopedSettingChange[];
-  }): Promise<void>;
+    chatId: ChatId,
+    changes: readonly ScopedSettingChange[],
+  }): Promise<void>,
 };
 
 export function createChatDataStore({
@@ -112,13 +112,13 @@ export function createChatDataStore({
   onExternalGenerationAbortRequest,
   onMigration,
 }: {
-  applyVolatileAssistantErrorsToChat: ({ chat }: { chat: Chat }) => void;
-  hasActiveGeneration: ({ chatId }: { chatId: ChatId }) => boolean;
-  isTaskRunning: ({ chatId }: { chatId: ChatId }) => boolean;
-  onExternalGenerationStarted: ({ chatId }: { chatId: ChatId }) => void;
-  onExternalGenerationStopped: ({ chatId }: { chatId: ChatId }) => void;
-  onExternalGenerationAbortRequest: ({ chatId }: { chatId: ChatId }) => void;
-  onMigration: () => void;
+  applyVolatileAssistantErrorsToChat: ({ chat }: { chat: Chat }) => void,
+  hasActiveGeneration: ({ chatId }: { chatId: ChatId }) => boolean,
+  isTaskRunning: ({ chatId }: { chatId: ChatId }) => boolean,
+  onExternalGenerationStarted: ({ chatId }: { chatId: ChatId }) => void,
+  onExternalGenerationStopped: ({ chatId }: { chatId: ChatId }) => void,
+  onExternalGenerationAbortRequest: ({ chatId }: { chatId: ChatId }) => void,
+  onMigration: () => void,
 }): ChatDataStore {
   const rootItems = ref<SidebarItem[]>([]);
   const currentChatRef = ref<Chat | null>(null);
@@ -129,7 +129,7 @@ export function createChatDataStore({
   function registerLiveInstance({
     chat,
   }: {
-    chat: Chat;
+    chat: Chat,
   }) {
     const raw = toRaw(chat);
     if (!raw || !raw.id) return;
@@ -148,7 +148,7 @@ export function createChatDataStore({
   function unregisterLiveInstance({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }) {
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) return;
     if (!isTaskRunning({ chatId })) {
@@ -166,8 +166,8 @@ export function createChatDataStore({
       items,
       parentGroupId,
     }: {
-      items: SidebarItem[];
-      parentGroupId: ChatGroupId | null;
+      items: SidebarItem[],
+      parentGroupId: ChatGroupId | null,
     }) => {
       for (const item of items) {
         switch (item.type) {
@@ -207,7 +207,7 @@ export function createChatDataStore({
   function replaceSidebarItems({
     items,
   }: {
-    items: SidebarItem[];
+    items: SidebarItem[],
   }) {
     rootItems.value = items;
     syncLiveInstancesWithSidebar();
@@ -242,7 +242,7 @@ export function createChatDataStore({
   function getLiveChat({
     chat,
   }: {
-    chat: Chat | Readonly<Chat>;
+    chat: Chat | Readonly<Chat>,
   }): Chat {
     const raw = toRaw(chat) as Chat;
     const chatId = raw.id;
@@ -264,7 +264,7 @@ export function createChatDataStore({
   function getLiveChatById({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }): Chat | null {
     if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
       return currentChatRef.value;
@@ -276,7 +276,7 @@ export function createChatDataStore({
   function getReadonlyChat({
     chatId,
   }: {
-    chatId: ChatId;
+    chatId: ChatId,
   }): Readonly<Chat> | null {
     const liveChat = getLiveChatById({ chatId });
     return liveChat;
@@ -286,9 +286,9 @@ export function createChatDataStore({
     id,
     updater,
   }: {
-    id: ChatId;
+    id: ChatId,
 
-    updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>;
+    updater: ({ current }: { current: ChatContent | null }) => ChatContent | Promise<ChatContent>,
   }) {
     const existing = liveChatRegistry.get(id);
     if (existing) {
@@ -307,9 +307,9 @@ export function createChatDataStore({
     id,
     updater,
   }: {
-    id: ChatId;
+    id: ChatId,
 
-    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>;
+    updater: ({ current }: { current: Chat | null }) => Chat | Promise<Chat>,
   }) {
     const existing = liveChatRegistry.get(id);
     if (existing) {
@@ -342,8 +342,8 @@ export function createChatDataStore({
     chatId,
     changes,
   }: {
-    chatId: ChatId;
-    changes: readonly ScopedSettingChange[];
+    chatId: ChatId,
+    changes: readonly ScopedSettingChange[],
   }): Promise<void> {
     if (changes.length === 0) return;
 
@@ -410,8 +410,8 @@ export function createChatDataStore({
     id,
     leafId,
   }: {
-    id: ChatId;
-    leafId: MessageId | undefined;
+    id: ChatId,
+    leafId: MessageId | undefined,
   }) {
     if (liveChatRegistry.has(id)) {
       const chat = liveChatRegistry.get(id)!;
@@ -453,8 +453,8 @@ export function createChatDataStore({
     chatId,
     messageId,
   }: {
-    chatId: ChatId;
-    messageId: MessageId;
+    chatId: ChatId,
+    messageId: MessageId,
   }) {
     const chat = await openChat({ id: chatId, leafId: undefined });
     if (!chat) return null;
@@ -473,7 +473,7 @@ export function createChatDataStore({
   function openChatGroup({
     id,
   }: {
-    id: ChatGroupId | null;
+    id: ChatGroupId | null,
   }) {
     if (id === null) {
       currentChatGroupRef.value = null;

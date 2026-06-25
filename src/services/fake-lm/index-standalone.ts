@@ -11,7 +11,7 @@ export type FakeLmDebugModeStatus = 'enabled' | 'disabled';
 const fakeLmDebugModeAvailability = ref<FakeLmDebugModeAvailability>('unavailable_in_standalone');
 
 export function isFakeLmEndpointUrl({ endpointUrl }: {
-  endpointUrl: string | undefined;
+  endpointUrl: string | undefined,
 }): boolean {
   if (endpointUrl === undefined) {
     return false;
@@ -39,8 +39,8 @@ export function useFakeLmDebugMode() {
 }
 
 export function createFakeLmFetchForEndpoint({ endpointUrl: _endpointUrl, fakeLmDebugModeStatus: _fakeLmDebugModeStatus }: {
-  endpointUrl: string | undefined;
-  fakeLmDebugModeStatus: FakeLmDebugModeStatus;
+  endpointUrl: string | undefined,
+  fakeLmDebugModeStatus: FakeLmDebugModeStatus,
 }): LmFetch | undefined {
   return undefined;
 }

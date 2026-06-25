@@ -7,31 +7,31 @@ import { makeEnClosingParagraph, makeEnHeading, makeEnListItem, makeEnOpeningPar
 import { makeJaClosingParagraph, makeJaHeading, makeJaListItem, makeJaOpeningParagraph, makeJaNounPhrase, makeJaParagraph, makeJaPredicatePhrase, makeJaSentence, makeJaTableCell, makeJaThinkingText } from '@/services/fake-lm/languages/ja/languagePack';
 
 export type FakeLmContext = {
-  random: SeededNonCryptoPseudoRandom;
-  chunkRandom: SeededNonCryptoPseudoRandom;
-  mode: FakeLmMode;
-  seed: FakeLmSeed;
-  lexicons: LoadedLexicons;
-  inputAnalysis: FakeLmInputAnalysis;
-  patternHistory: PatternHistory;
+  random: SeededNonCryptoPseudoRandom,
+  chunkRandom: SeededNonCryptoPseudoRandom,
+  mode: FakeLmMode,
+  seed: FakeLmSeed,
+  lexicons: LoadedLexicons,
+  inputAnalysis: FakeLmInputAnalysis,
+  patternHistory: PatternHistory,
 };
 
 export type LanguagePack = {
-  language: FakeLmLanguage;
-  makeHeading: ({ ctx }: { ctx: FakeLmContext }) => Inline[];
-  makeOpeningParagraph: ({ ctx, sentenceCount }: { ctx: FakeLmContext; sentenceCount: number }) => Inline[];
-  makeParagraph: ({ ctx, sentenceCount }: { ctx: FakeLmContext; sentenceCount: number }) => Inline[];
-  makeClosingParagraph: ({ ctx }: { ctx: FakeLmContext }) => Inline[];
-  makeThinkingText: ({ ctx, sentenceCount, paragraphBreakEvery }: { ctx: FakeLmContext; sentenceCount: number; paragraphBreakEvery: number | undefined }) => string;
-  makeListItem: ({ ctx }: { ctx: FakeLmContext }) => Inline[];
-  makeTableCell: ({ ctx }: { ctx: FakeLmContext }) => Inline[];
-  makeNounPhrase: ({ ctx }: { ctx: FakeLmContext }) => string;
-  makePredicatePhrase: ({ ctx }: { ctx: FakeLmContext }) => string;
-  makeSentence: ({ ctx }: { ctx: FakeLmContext }) => Inline[];
+  language: FakeLmLanguage,
+  makeHeading: ({ ctx }: { ctx: FakeLmContext }) => Inline[],
+  makeOpeningParagraph: ({ ctx, sentenceCount }: { ctx: FakeLmContext, sentenceCount: number }) => Inline[],
+  makeParagraph: ({ ctx, sentenceCount }: { ctx: FakeLmContext, sentenceCount: number }) => Inline[],
+  makeClosingParagraph: ({ ctx }: { ctx: FakeLmContext }) => Inline[],
+  makeThinkingText: ({ ctx, sentenceCount, paragraphBreakEvery }: { ctx: FakeLmContext, sentenceCount: number, paragraphBreakEvery: number | undefined }) => string,
+  makeListItem: ({ ctx }: { ctx: FakeLmContext }) => Inline[],
+  makeTableCell: ({ ctx }: { ctx: FakeLmContext }) => Inline[],
+  makeNounPhrase: ({ ctx }: { ctx: FakeLmContext }) => string,
+  makePredicatePhrase: ({ ctx }: { ctx: FakeLmContext }) => string,
+  makeSentence: ({ ctx }: { ctx: FakeLmContext }) => Inline[],
 };
 
 export function createLanguagePack({ language }: {
-  language: FakeLmLanguage;
+  language: FakeLmLanguage,
 }): LanguagePack {
   switch (language) {
   case 'ja':

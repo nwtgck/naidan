@@ -1,17 +1,17 @@
-import { mount } from '@vue/test-utils'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue'
-import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer'
-import { createHighlightWorker } from '@/services/highlight/worker/impl'
-import type { FileExplorerContext, FileExplorerEntry } from './types'
-import { sanitizeHighlightHtml } from '@/lib/security/allowedHtml'
-import type { AllowedHtml } from '@/lib/security/allowedHtml'
-import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types'
+import { mount } from '@vue/test-utils';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import FileExplorerPreviewPanel from './FileExplorerPreviewPanel.vue';
+import { FILE_EXPLORER_INJECTION_KEY } from './useFileExplorer';
+import { createHighlightWorker } from '@/services/highlight/worker/impl';
+import type { FileExplorerContext, FileExplorerEntry } from './types';
+import { sanitizeHighlightHtml } from '@/lib/security/allowedHtml';
+import type { AllowedHtml } from '@/lib/security/allowedHtml';
+import type { FileExplorerRootDescriptor } from '@/services/file-explorer/worker/types';
 
 const rootDescriptor: FileExplorerRootDescriptor = {
   kind: 'opfs-root',
   rootName: 'Root',
-}
+};
 
 function createEntry(): FileExplorerEntry {
   return {
@@ -25,15 +25,15 @@ function createEntry(): FileExplorerEntry {
     readOnly: false,
     canNavigate: false,
     canMutate: true,
-  }
+  };
 }
 
 function createContext({
   highlightedHtml,
 }: {
-  highlightedHtml: AllowedHtml
+  highlightedHtml: AllowedHtml,
 }): FileExplorerContext {
-  const entry = createEntry()
+  const entry = createEntry();
 
   return {
     root: rootDescriptor,
@@ -124,30 +124,30 @@ function createContext({
       totalSize: 0,
       selectedSize: 0,
     },
-  }
+  };
 }
 
 vi.mock('./utils', () => ({
   formatSize: vi.fn(() => '10 bytes'),
   formatDate: vi.fn(() => '1970-01-01'),
-}))
+}));
 
 describe('FileExplorerPreviewPanel security', () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
-  })
+    vi.unstubAllGlobals();
+  });
 
   it('does not materialize hostile html from highlighted preview output', async () => {
-    const worker = createHighlightWorker()
-    const probe = vi.fn()
-    vi.stubGlobal('__xssProbe', probe)
+    const worker = createHighlightWorker();
+    const probe = vi.fn();
+    vi.stubGlobal('__xssProbe', probe);
     const response = await worker.highlight({
       request: {
         code: '<img src=x onerror="globalThis.__xssProbe?.(\'img-error\')"><svg onload="globalThis.__xssProbe?.(\'svg-load\')"></svg><a href="javascript:globalThis.__xssProbe?.(\'link-click\')">click</a><script>globalThis.__xssProbe?.(\'script-run\')</script>',
         language: 'html',
         mode: 'named-language',
       },
-    })
+    });
 
     const wrapper = mount(FileExplorerPreviewPanel, {
       global: {
@@ -157,15 +157,15 @@ describe('FileExplorerPreviewPanel security', () => {
           }),
         },
       },
-    })
+    });
 
-    const pre = wrapper.find('pre').element as HTMLElement
-    expect(pre.querySelector('img')).toBeNull()
-    expect(pre.querySelector('svg')).toBeNull()
-    expect(pre.querySelector('a')).toBeNull()
-    expect(pre.querySelector('script')).toBeNull()
-    pre.dispatchEvent(new Event('error'))
-    pre.dispatchEvent(new Event('load'))
-    expect(probe).not.toHaveBeenCalled()
-  })
-})
+    const pre = wrapper.find('pre').element as HTMLElement;
+    expect(pre.querySelector('img')).toBeNull();
+    expect(pre.querySelector('svg')).toBeNull();
+    expect(pre.querySelector('a')).toBeNull();
+    expect(pre.querySelector('script')).toBeNull();
+    pre.dispatchEvent(new Event('error'));
+    pre.dispatchEvent(new Event('load'));
+    expect(probe).not.toHaveBeenCalled();
+  });
+});

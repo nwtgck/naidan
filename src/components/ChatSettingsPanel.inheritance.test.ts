@@ -77,7 +77,7 @@ describe('ChatSettingsPanel Inheritance UI', () => {
           endpointType: isGroup ? 'chat_group' : 'global',
           endpointUrl: isGroup ? 'chat_group' : 'global',
           modelId: isGroup ? 'chat_group' : 'global',
-        }
+        },
       };
     });
 
@@ -115,7 +115,7 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     mockCurrentChat.value.groupId = null;
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
 
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');
@@ -132,7 +132,7 @@ describe('ChatSettingsPanel Inheritance UI', () => {
     mockCurrentChat.value.groupId = 'group-1';
     const wrapper = mount(ChatSettingsPanel, {
       props: { show: true },
-      global: { stubs: globalStubs }
+      global: { stubs: globalStubs },
     });
 
     const urlInput = wrapper.find('[data-testid="chat-setting-url-input"]');

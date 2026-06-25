@@ -9,7 +9,7 @@ const {
   mockRemoveMountFromChatGroup,
   mockUpdateChatGroupMount,
 } = vi.hoisted(() => {
-  const mockCurrentChatGroupRef: { value: { id: ChatGroupId; mounts?: any[] } | null } = {
+  const mockCurrentChatGroupRef: { value: { id: ChatGroupId, mounts?: any[] } | null } = {
     value: null,
   };
   const mockRootItems: { value: any[] } = {

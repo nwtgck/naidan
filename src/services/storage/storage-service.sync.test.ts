@@ -25,7 +25,7 @@ vi.mock('./synchronizer', () => {
       withLock = mockWithLock;
       notify = mockNotify;
       subscribe = mockSubscribe;
-    }
+    },
   };
 });
 
@@ -191,9 +191,9 @@ describe('StorageService Synchronization Wrapper', () => {
     // Extract the callbacks passed to withLock
     await service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => meta });
     const options = mockWithLock.mock.calls.find(([options]) => options?.lockKey === LOCK_METADATA)?.[0] as {
-      onLockWait: () => void;
-      onTaskSlow: () => void;
-      onFinalize: () => void;
+      onLockWait: () => void,
+      onTaskSlow: () => void,
+      onFinalize: () => void,
     };
 
     options.onLockWait();

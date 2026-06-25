@@ -8,54 +8,54 @@ import { sendImageRequestForChat } from '@/composables/chat/chat-scoped/chat-ima
 import { sendMessageForChat } from '@/composables/chat/chat-scoped/chat-generation-flow';
 
 export type ChatImageGenerationAdapter = {
-  availableModels: Ref<string[]>;
-  isImageMode: ComputedRef<boolean>;
-  resolution: ComputedRef<{ width: number; height: number }>;
-  count: ComputedRef<number>;
-  persistAs: ComputedRef<ImageRequestParams['persistAs']>;
-  steps: ComputedRef<number | undefined>;
-  seed: ComputedRef<number | 'browser_random' | undefined>;
-  selectedImageModel: ComputedRef<string | undefined>;
+  availableModels: Ref<string[]>,
+  isImageMode: ComputedRef<boolean>,
+  resolution: ComputedRef<{ width: number, height: number }>,
+  count: ComputedRef<number>,
+  persistAs: ComputedRef<ImageRequestParams['persistAs']>,
+  steps: ComputedRef<number | undefined>,
+  seed: ComputedRef<number | 'browser_random' | undefined>,
+  selectedImageModel: ComputedRef<string | undefined>,
 
-  toggleImageMode(): void;
+  toggleImageMode(): void,
 
   updateResolution({
     width,
     height,
   }: {
-    width: number;
-    height: number;
-  }): void;
+    width: number,
+    height: number,
+  }): void,
 
   updateCount({
     count,
   }: {
-    count: number;
-  }): void;
+    count: number,
+  }): void,
 
   updatePersistAs({
     format,
   }: {
-    format: 'original' | 'webp' | 'jpeg' | 'png';
-  }): void;
+    format: 'original' | 'webp' | 'jpeg' | 'png',
+  }): void,
 
   updateSteps({
     steps,
   }: {
-    steps: number | undefined;
-  }): void;
+    steps: number | undefined,
+  }): void,
 
   updateSeed({
     seed,
   }: {
-    seed: number | 'browser_random' | undefined;
-  }): void;
+    seed: number | 'browser_random' | undefined,
+  }): void,
 
   setImageModel({
     modelId,
   }: {
-    modelId: string;
-  }): void;
+    modelId: string,
+  }): void,
 
   sendImageRequest({
     prompt,
@@ -67,23 +67,23 @@ export type ChatImageGenerationAdapter = {
     persistAs,
     attachments,
   }: {
-    prompt: string;
-    width: number;
-    height: number;
-    count: number;
-    steps: number | undefined;
-    seed: number | 'browser_random' | undefined;
-    persistAs: ImageRequestParams['persistAs'];
-    attachments: Attachment[];
-  }): Promise<boolean>;
+    prompt: string,
+    width: number,
+    height: number,
+    count: number,
+    steps: number | undefined,
+    seed: number | 'browser_random' | undefined,
+    persistAs: ImageRequestParams['persistAs'],
+    attachments: Attachment[],
+  }): Promise<boolean>,
 
-  TEST_ONLY: Record<never, never>;
+  TEST_ONLY: Record<never, never>,
 };
 
 export function useChatImageGeneration({
   chatId,
 }: {
-  chatId: Readonly<Ref<ChatId>>;
+  chatId: Readonly<Ref<ChatId>>,
 }): ChatImageGenerationAdapter {
   const imageGeneration = useImageGeneration();
 
@@ -108,8 +108,8 @@ export function useChatImageGeneration({
     width,
     height,
   }: {
-    width: number;
-    height: number;
+    width: number,
+    height: number,
   }) {
     imageGeneration.updateResolution({ chatId: chatId.value, width, height });
   }
@@ -117,7 +117,7 @@ export function useChatImageGeneration({
   function updateCount({
     count,
   }: {
-    count: number;
+    count: number,
   }) {
     imageGeneration.updateCount({ chatId: chatId.value, count });
   }
@@ -125,7 +125,7 @@ export function useChatImageGeneration({
   function updatePersistAs({
     format,
   }: {
-    format: 'original' | 'webp' | 'jpeg' | 'png';
+    format: 'original' | 'webp' | 'jpeg' | 'png',
   }) {
     imageGeneration.updatePersistAs({ chatId: chatId.value, format });
   }
@@ -133,7 +133,7 @@ export function useChatImageGeneration({
   function updateSteps({
     steps,
   }: {
-    steps: number | undefined;
+    steps: number | undefined,
   }) {
     imageGeneration.updateSteps({ chatId: chatId.value, steps });
   }
@@ -141,7 +141,7 @@ export function useChatImageGeneration({
   function updateSeed({
     seed,
   }: {
-    seed: number | 'browser_random' | undefined;
+    seed: number | 'browser_random' | undefined,
   }) {
     imageGeneration.updateSeed({ chatId: chatId.value, seed });
   }
@@ -149,7 +149,7 @@ export function useChatImageGeneration({
   function setImageModel({
     modelId,
   }: {
-    modelId: string;
+    modelId: string,
   }) {
     imageGeneration.setImageModel({ chatId: chatId.value, modelId });
   }
@@ -164,14 +164,14 @@ export function useChatImageGeneration({
     persistAs,
     attachments,
   }: {
-    prompt: string;
-    width: number;
-    height: number;
-    count: number;
-    steps: number | undefined;
-    seed: number | 'browser_random' | undefined;
-    persistAs: ImageRequestParams['persistAs'];
-    attachments: Attachment[];
+    prompt: string,
+    width: number,
+    height: number,
+    count: number,
+    steps: number | undefined,
+    seed: number | 'browser_random' | undefined,
+    persistAs: ImageRequestParams['persistAs'],
+    attachments: Attachment[],
   }): Promise<boolean> {
     const id = chatId.value;
 

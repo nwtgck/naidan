@@ -250,7 +250,7 @@ describe('useChat Settings Resolution Policy', () => {
     // 2. Add Group Default
     const group = reactive({
       id: toChatGroupId({ raw: 'g1' }), name: 'Group 1', items: [], updatedAt: Date.now(), isCollapsed: false,
-      modelId: 'group-model'
+      modelId: 'group-model',
     }) as any;
     rootItems.value = [{ id: 'chat_group:g1', type: 'chat_group', chatGroup: group }];
     await updateChatGroupOverride({ id: idToRaw({ id }), groupId: 'g1' });

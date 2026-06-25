@@ -4,7 +4,7 @@ import {
   XIcon, UploadIcon, DownloadIcon, FileArchiveIcon,
   CheckCircle2Icon, AlertTriangleIcon, Loader2Icon,
   RefreshCwIcon, CopyPlusIcon, ArrowRightIcon,
-  DatabaseIcon, Settings2Icon, FolderInputIcon
+  DatabaseIcon, Settings2Icon, FolderInputIcon,
 } from 'lucide-vue-next';
 import { ImportExportService } from '@/services/import-export/service';
 import { storageService } from '@/services/storage';
@@ -12,17 +12,17 @@ import { useToast } from '@/composables/useToast';
 import type {
   ExportOptions,
   ImportConfig,
-  ImportPreview
+  ImportPreview,
 } from '@/services/import-export/types';
 import { UNTITLED_CHAT_TITLE } from '@/models/constants';
 import { useExportExclusions } from '@/composables/useExportExclusions';
 
 const props = defineProps<{
-  isOpen: boolean;
+  isOpen: boolean,
 }>();
 
 const emit = defineEmits<{
-  (e: 'close'): void;
+  (e: 'close'): void,
 }>();
 
 const service = new ImportExportService({ storage: storageService });
@@ -251,7 +251,7 @@ async function handleImportExecute() {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

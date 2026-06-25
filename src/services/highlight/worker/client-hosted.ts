@@ -1,27 +1,27 @@
-import * as Comlink from 'comlink'
+import * as Comlink from 'comlink';
 
-import { createHighlightWorker } from './impl'
+import { createHighlightWorker } from './impl';
 import {
   highlightResponseSchema,
   type HighlightWorkerClient,
   type IHighlightWorker,
-} from './types'
+} from './types';
 
 function createMainThreadFallbackClient(): HighlightWorkerClient {
-  const worker = createHighlightWorker()
+  const worker = createHighlightWorker();
 
   return {
     async highlight({ request }) {
-      return highlightResponseSchema.parse(await worker.highlight({ request }))
+      return highlightResponseSchema.parse(await worker.highlight({ request }));
     },
     async dispose() {
     },
-  }
+  };
 }
 
 export async function createHighlightWorkerClient(): Promise<HighlightWorkerClient> {
   if (typeof Worker === 'undefined') {
-    return createMainThreadFallbackClient()
+    return createMainThreadFallbackClient();
   }
 
   const worker = new Worker(
@@ -30,19 +30,19 @@ export async function createHighlightWorkerClient(): Promise<HighlightWorkerClie
       type: 'module',
       name: 'naidan-highlight-worker',
     },
-  )
-  const remote = Comlink.wrap<IHighlightWorker>(worker)
+  );
+  const remote = Comlink.wrap<IHighlightWorker>(worker);
 
   return {
     async highlight({ request }) {
-      return highlightResponseSchema.parse(await remote.highlight({ request }))
+      return highlightResponseSchema.parse(await remote.highlight({ request }));
     },
     async dispose() {
       try {
-        await remote[Comlink.releaseProxy]()
+        await remote[Comlink.releaseProxy]();
       } finally {
-        worker.terminate()
+        worker.terminate();
       }
     },
-  }
+  };
 }

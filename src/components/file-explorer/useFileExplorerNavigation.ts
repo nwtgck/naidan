@@ -36,10 +36,10 @@ export function useFileExplorerNavigation({
   sortConfig,
   filterQuery,
 }: {
-  client: FileExplorerWorkerClient;
-  initialPath: string | undefined;
-  sortConfig: { value: SortConfig };
-  filterQuery: { value: string };
+  client: FileExplorerWorkerClient,
+  initialPath: string | undefined,
+  sortConfig: { value: SortConfig },
+  filterQuery: { value: string },
 }) {
   const currentDirectoryPath = ref<string>(normalizeExplorerPath({ path: initialPath ?? '/' }));
   const currentDirectoryName = ref<string>('root');
@@ -79,8 +79,8 @@ export function useFileExplorerNavigation({
     paneIndex,
     path,
   }: {
-    paneIndex: number;
-    path: string;
+    paneIndex: number,
+    path: string,
   }): Promise<void> {
     const panes = [...columnPanes.value];
     const pane = panes[paneIndex];
@@ -168,8 +168,8 @@ export function useFileExplorerNavigation({
     paneIndex,
     entryName,
   }: {
-    paneIndex: number;
-    entryName: string;
+    paneIndex: number,
+    entryName: string,
   }): Promise<void> {
     const panes = [...columnPanes.value];
     const pane = panes[paneIndex];

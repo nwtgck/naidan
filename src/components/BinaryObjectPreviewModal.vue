@@ -8,19 +8,19 @@ import { useEventTargetListener } from '@/composables/useEventTargetListener';
 import {
   XIcon, DownloadIcon, Trash2Icon, ChevronLeftIcon, ChevronRightIcon,
   ZoomInIcon, ZoomOutIcon,
-  CopyIcon, CheckIcon, EyeIcon, RefreshCwIcon, CalendarIcon, InfoIcon, FileIcon
+  CopyIcon, CheckIcon, EyeIcon, RefreshCwIcon, CalendarIcon, InfoIcon, FileIcon,
 } from 'lucide-vue-next';
 
 interface Props {
-  objects: BinaryObject[];
-  initialId: BinaryObjectId;
+  objects: BinaryObject[],
+  initialId: BinaryObjectId,
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<{
-  (e: 'close'): void;
-  (e: 'delete', obj: BinaryObject): void;
-  (e: 'download', obj: BinaryObject): void;
+  (e: 'close'): void,
+  (e: 'delete', obj: BinaryObject): void,
+  (e: 'download', obj: BinaryObject): void,
 }>();
 
 const currentIndex = ref(props.objects.findIndex(o => o.id === props.initialId));
@@ -151,7 +151,7 @@ const handleWheel = ({ event }: { event: WheelEvent }) => {
   const ratio = clampedZoom / oldZoom;
   position.value = {
     x: mouseX - rect.width / 2 - relativeX * ratio,
-    y: mouseY - rect.height / 2 - relativeY * ratio
+    y: mouseY - rect.height / 2 - relativeY * ratio,
   };
 
   zoom.value = clampedZoom;
@@ -179,7 +179,7 @@ const onDrag = ({ event }: { event: MouseEvent }) => {
   const dy = event.clientY - lastMousePos.value.y;
   position.value = {
     x: position.value.x + dx,
-    y: position.value.y + dy
+    y: position.value.y + dy,
   };
   lastMousePos.value = { x: event.clientX, y: event.clientY };
 };
@@ -212,7 +212,7 @@ const copyName = async () => {
 defineExpose({
   TEST_ONLY: {
     // Export internal state and logic used only for testing here. Do not reference these in production logic.
-  }
+  },
 });
 </script>
 

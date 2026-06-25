@@ -32,8 +32,8 @@ vi.mock('./MessageItem.vue', () => ({
   default: {
     name: 'MessageItem',
     props: ['message'],
-    template: '<div class="message-item">{{ message.content }}</div>'
-  }
+    template: '<div class="message-item">{{ message.content }}</div>',
+  },
 }));
 
 describe('SearchPreview Component', () => {
@@ -52,11 +52,11 @@ describe('SearchPreview Component', () => {
       root: {
         items: [
           { id: 'm1', content: 'Msg 1', role: 'user', timestamp: 1, replies: { items: [
-            { id: 'm2', content: 'Msg 2', role: 'assistant', timestamp: 2, replies: { items: [] } }
-          ] } }
-        ]
+            { id: 'm2', content: 'Msg 2', role: 'assistant', timestamp: 2, replies: { items: [] } },
+          ] } },
+        ],
       },
-      currentLeafId: 'm2'
+      currentLeafId: 'm2',
     };
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat as any);
 
@@ -70,9 +70,9 @@ describe('SearchPreview Component', () => {
           fullContent: 'Msg 1',
           role: 'user',
           timestamp: 1,
-          isCurrentThread: true
-        }
-      }
+          isCurrentThread: true,
+        },
+      },
     });
 
     // Wait for async loadContext
@@ -94,19 +94,19 @@ describe('SearchPreview Component', () => {
         items: [
           { id: 'm1', content: 'M1', role: 'u', timestamp: 1, replies: { items: [
             { id: 'm2', content: 'M2', role: 'a', timestamp: 2, replies: { items: [
-              { id: 'm3', content: 'M3', role: 'u', timestamp: 3, replies: { items: [] } }
-            ] } }
-          ] } }
-        ]
+              { id: 'm3', content: 'M3', role: 'u', timestamp: 3, replies: { items: [] } },
+            ] } },
+          ] } },
+        ],
       },
-      currentLeafId: 'm3'
+      currentLeafId: 'm3',
     };
     vi.mocked(storageService.loadChat).mockResolvedValue(mockChat as any);
 
     const wrapper = mount(SearchPreview, {
       props: {
-        match: { chatId: idToRaw({ id: toChatId({ raw: 'chat1' }) }), messageId: idToRaw({ id: toMessageId({ raw: 'm2' }) }), targetLeafId: 'm3' } as any
-      }
+        match: { chatId: idToRaw({ id: toChatId({ raw: 'chat1' }) }), messageId: idToRaw({ id: toMessageId({ raw: 'm2' }) }), targetLeafId: 'm3' } as any,
+      },
     });
 
     await new Promise(resolve => setTimeout(resolve, 0));

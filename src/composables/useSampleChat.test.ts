@@ -104,7 +104,7 @@ describe('useSampleChat', () => {
     expect(meta.title).toBe('Long Sample: Outline Stress Test');
     expect(meta.debugEnabled).toBe(false);
 
-    const messages: Array<{ id: string; role: string; content: string | undefined }> = [];
+    const messages: Array<{ id: string, role: string, content: string | undefined }> = [];
     let current = content.root.items[0];
     while (current) {
       messages.push({ id: idToRaw({ id: current.id }), role: current.role, content: current.content });

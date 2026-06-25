@@ -34,9 +34,9 @@ function assertProgress({
   progress,
   remaining,
 }: {
-  operation: string;
-  progress: number;
-  remaining: number;
+  operation: string,
+  progress: number,
+  remaining: number,
 }): void {
   if (!Number.isSafeInteger(progress) || progress <= 0 || progress > remaining) {
     throw new Error(`${operation} returned invalid progress: ${progress}`);
@@ -48,9 +48,9 @@ function assertReadRange({
   length,
   size,
 }: {
-  offset: number;
-  length: number;
-  size: number;
+  offset: number,
+  length: number,
+  size: number,
 }): void {
   if (
     !Number.isSafeInteger(offset)
@@ -67,7 +67,7 @@ function assertReadRange({
 export function createWeshZipByteSink({
   handle,
 }: {
-  handle: WeshFileHandle;
+  handle: WeshFileHandle,
 }): ZipByteSink {
   return {
     async write({ chunk }) {
@@ -94,9 +94,9 @@ export function createWeshZipCentralDirectoryStore({
   path,
   handle,
 }: {
-  files: WeshCommandContext['files'];
-  path: string;
-  handle: WeshFileHandle;
+  files: WeshCommandContext['files'],
+  path: string,
+  handle: WeshFileHandle,
 }): ZipCentralDirectoryStore {
   const sink = createWeshZipByteSink({ handle });
   let finalized = false;
@@ -155,7 +155,7 @@ export function createWeshZipCentralDirectoryStore({
 export async function createWeshZipRandomAccessSource({
   handle,
 }: {
-  handle: WeshFileHandle;
+  handle: WeshFileHandle,
 }): Promise<ZipRandomAccessSource> {
   let stat: Awaited<ReturnType<WeshFileHandle['stat']>>;
   try {

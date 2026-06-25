@@ -127,15 +127,15 @@ export class StorageSynchronizer {
     notifyTaskSlowAfterMs = 5000,
     onLockWait,
     onTaskSlow,
-    onFinalize
+    onFinalize,
   }: {
-    fn: () => Promise<T>;
-    lockKey: string;
-    notifyLockWaitAfterMs?: number;
-    notifyTaskSlowAfterMs?: number;
-    onLockWait?: () => void;
-    onTaskSlow?: () => void;
-    onFinalize?: () => void;
+    fn: () => Promise<T>,
+    lockKey: string,
+    notifyLockWaitAfterMs?: number,
+    notifyTaskSlowAfterMs?: number,
+    onLockWait?: () => void,
+    onTaskSlow?: () => void,
+    onFinalize?: () => void,
   }): Promise<T> {
     let wasSlow = false;
 

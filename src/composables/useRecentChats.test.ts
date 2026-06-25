@@ -25,7 +25,7 @@ describe('useRecentChats Composable', () => {
     closeRecent,
     toggleRecent,
     addRecentChat,
-    TEST_ONLY
+    TEST_ONLY,
   } = useRecentChats();
   const { closeOverlay } = useOverlay();
 

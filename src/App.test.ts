@@ -201,10 +201,10 @@ describe('App', () => {
         // Stub the async components
         'SettingsModal': {
           template: '<div v-if="isOpen" data-testid="settings-modal"></div>',
-          props: ['isOpen']
+          props: ['isOpen'],
         },
         'DebugPanel': {
-          template: '<div data-testid="debug-panel"></div>'
+          template: '<div data-testid="debug-panel"></div>',
         },
         CustomDialog: {
           props: ['show', 'title', 'message', 'confirmButtonText', 'cancelButtonText', 'confirmButtonVariant', 'showInput', 'inputValue'],
@@ -217,10 +217,10 @@ describe('App', () => {
               <button @click="$emit('cancel')" data-testid="dialog-cancel-button">{{ cancelButtonText }}</button>
               <button @click="$emit('confirm')" :class="confirmButtonVariant === 'danger' ? 'bg-red-600' : ''" data-testid="dialog-confirm-button">{{ confirmButtonText }}</button>
             </div>
-          `
+          `,
         },
         ChatGroupSettingsPanel: true,
-        DebugWeshTerminalModal: true
+        DebugWeshTerminalModal: true,
       },
     },
   });
@@ -335,7 +335,7 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalled();
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/q-chat-id',
-      query: { q: 'hello' }
+      query: { q: 'hello' },
     });
   });
 
@@ -361,11 +361,11 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: 'group-123',
       modelId: undefined,
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/grouped-chat-id',
-      query: { q: 'hello' }
+      query: { q: 'hello' },
     });
   });
 
@@ -391,7 +391,7 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: 'group-uuid-123',
       modelId: undefined,
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
   });
 
@@ -419,7 +419,7 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: 'new-group-uuid',
       modelId: undefined,
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
   });
 
@@ -444,11 +444,11 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: undefined,
       modelId: 'special-model',
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/model-chat-id',
-      query: { q: 'hello' }
+      query: { q: 'hello' },
     });
   });
 
@@ -473,11 +473,11 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: undefined,
       modelId: undefined,
-      systemPrompt: { behavior: 'override', content: 'You are a helpful assistant' }
+      systemPrompt: { behavior: 'override', content: 'You are a helpful assistant' },
     });
     expect(mockRouterPush).toHaveBeenCalledWith({
       path: '/chat/sp-chat-id',
-      query: { q: 'hello' }
+      query: { q: 'hello' },
     });
   });
 
@@ -512,7 +512,7 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: undefined,
       modelId: undefined,
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
   });
 
@@ -537,7 +537,7 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: undefined,
       modelId: undefined,
-      systemPrompt: { behavior: 'override', content: 'Be concise' }
+      systemPrompt: { behavior: 'override', content: 'Be concise' },
     });
   });
 
@@ -616,7 +616,7 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: undefined,
       modelId: undefined,
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/new-chat-id');
   });
@@ -644,7 +644,7 @@ describe('App', () => {
     expect(mockCreateNewChat).toHaveBeenCalledWith({
       groupId: undefined,
       modelId: undefined,
-      systemPrompt: undefined
+      systemPrompt: undefined,
     });
     expect(mockRouterPush).toHaveBeenCalledWith('/chat/mac-chat-id');
   });
