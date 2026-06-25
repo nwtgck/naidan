@@ -1,6 +1,6 @@
 import * as Comlink from 'comlink'
 
-import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
+import { createFileProtocolStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
 import { createNaidanSysfsRemoteReaderForMounts } from '@/services/wesh/naidan-sysfs/storage-reader'
 import {
   fileExplorerPrepareSessionResponseSchema,
@@ -31,7 +31,7 @@ export async function createFileExplorerWorkerClient({
     }
     }
   })()
-  const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
+  const worker = await createFileProtocolStandaloneWorkerHub()
   const remote = Comlink.wrap<IWorkerHub>(worker)
   const fileExplorer = await remote.fileExplorer as Comlink.Remote<IFileExplorerWorker>
   const requestRoot = (() => {

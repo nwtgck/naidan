@@ -2,7 +2,8 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
-import ensureFileProtocolInit from './eslint-local-rules/ensure-file-protocol-init.js';
+import ensureReadyStateAwareAppStartup from './eslint-local-rules/ensure-ready-state-aware-app-startup.js';
+import ensureVueErrorHandler from './eslint-local-rules/ensure-vue-error-handler.js';
 import forceSwitchForUnion from './eslint-local-rules/force-switch-for-union.js';
 import preferMultilineTemplateLiterals from './eslint-local-rules/prefer-multiline-template-literals.js';
 import requireTestOnlyExport from './eslint-local-rules/require-test-only-export.js';
@@ -60,7 +61,8 @@ import preferRootAliasImports from './eslint-local-rules/prefer-root-alias-impor
 //       }],
 //     },
 //   },
-//   ensureFileProtocolInit,
+//   ensureReadyStateAwareAppStartup,
+//   ensureVueErrorHandler,
 //   {
 //     files: ['**/*.test.ts'],
 //     languageOptions: {
@@ -192,7 +194,8 @@ export default tseslint.config(
       'no-restricted-imports': 'off'
     }
   },
-  ensureFileProtocolInit,
+  ensureReadyStateAwareAppStartup,
+  ensureVueErrorHandler,
   forceSwitchForUnion,
   preferMultilineTemplateLiterals,
   requireTestOnlyExport,

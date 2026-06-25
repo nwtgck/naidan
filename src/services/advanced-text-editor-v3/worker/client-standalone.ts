@@ -1,6 +1,6 @@
 import * as Comlink from 'comlink'
 
-import { createFileProtocolCompatibleStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
+import { createFileProtocolStandaloneWorkerHub } from '@/services/worker-hub-standalone-loader'
 import type { IWorkerHub } from '@/services/worker-hub.types'
 import {
   advancedTextEditorV3ApplyMultiEditResponseSchema,
@@ -12,7 +12,7 @@ import {
 } from './types'
 
 export async function createAdvancedTextEditorV3WorkerClient(): Promise<AdvancedTextEditorV3WorkerClient> {
-  const worker = await createFileProtocolCompatibleStandaloneWorkerHub()
+  const worker = await createFileProtocolStandaloneWorkerHub()
   const remote = Comlink.wrap<IWorkerHub>(worker)
   const advancedTextEditorV3 = await remote.advancedTextEditorV3
 

@@ -1,24 +1,24 @@
 /// <reference types="vitest" />
 import VueRouter from 'vue-router/vite'
 import { defineConfig } from 'vitest/config'
-import { build as viteBuild } from 'vite'
 import type { Alias } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import legacy from '@vitejs/plugin-legacy'
 import VueDevTools from 'vite-plugin-vue-devtools'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createGzip } from 'node:zlib'
 import { pipeline } from 'node:stream'
 import { promisify } from 'node:util'
-import { createHash } from 'node:crypto'
 import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js'
 import {
-  FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
-  STANDALONE_WORKER_MANIFEST_SCRIPT_ID,
-} from './src/models/constants'
+  fileProtocolStandalone,
+  type FileProtocolStandaloneLicenseDependency,
+} from './build/file-protocol-standalone/index.js'
+import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/models/constants'
 import license from 'rollup-plugin-license'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -40,23 +40,20 @@ if (!fs.existsSync(licensesPath)) {
   }]))
 }
 
-interface LicenseDependency {
-  name: string
-  version: string
-  license: string
-  licenseText: string
-}
+type LicenseDependency = FileProtocolStandaloneLicenseDependency
 
-interface EmbeddedWorkerSpec {
-  entry: string
-  globalName: string
-  scriptType: string
-  workerId: string
-}
-
-interface EmbeddedWorkerManifestEntry {
-  hash: string
-  size: number
+function mergeLicenseDependencies({ dependencies, additions }: {
+  dependencies: readonly LicenseDependency[]
+  additions: readonly LicenseDependency[]
+}): readonly LicenseDependency[] {
+  const merged = new Map<string, LicenseDependency>()
+  for (const dependency of [...dependencies, ...additions]) {
+    merged.set(`${dependency.name}\0${dependency.version}`, dependency)
+  }
+  return [...merged.values()].sort((left, right) => {
+    const nameOrder = left.name.localeCompare(right.name)
+    return nameOrder === 0 ? left.version.localeCompare(right.version) : nameOrder
+  })
 }
 
 function setCrossOriginResourcePolicy({ res }: {
@@ -71,6 +68,22 @@ function setCrossOriginModuleHeaders({ res }: {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
   res.setHeader('Access-Control-Allow-Origin', '*')
 }
+
+const standaloneBrowserSupport = {
+  // @vitejs/plugin-legacy consumes Browserslist queries, while the nested
+  // Worker build consumes Vite/esbuild targets. Keep both representations next
+  // to each other so one compatibility decision cannot silently drift.
+  legacy: ['Firefox >= 140', 'Chrome >= 140'],
+  worker: ['firefox140', 'chrome140'],
+} as const
+
+const standaloneBuildBudgets = {
+  // The attached baseline report measured 631,232 entry bytes and 1,033,893
+  // initial-request bytes. These limits leave about 19% and 16% headroom while
+  // still failing on a meaningful initial-load regression.
+  maxInitialEntryBytes: 750_000,
+  maxInitialRequestBytes: 1_200_000,
+} as const
 
 const PRIVACY_FETCH_BROKER_CHUNK_NAME_MARKER = 'privacy-fetch'
 const PRIVACY_FETCH_SERVICE_MODULE_PATH_SEGMENT = '/src/services/privacy-fetch/'
@@ -246,15 +259,7 @@ export default defineConfig(({ mode }) => {
       resolvePath: ensureExistingPath,
     })
     : []
-  const embeddedWorkers: EmbeddedWorkerSpec[] = [
-    {
-      entry: 'src/services/worker-hub-standalone.worker.ts',
-      globalName: 'NaidanFileProtocolCompatibleStandaloneWorkerHub',
-      scriptType: 'text/x-naidan-worker',
-      workerId: FILE_PROTOCOL_COMPATIBLE_STANDALONE_WORKER_HUB_ID,
-    }
-  ]
-
+  let standaloneAdditionalLicenseDependencies: readonly LicenseDependency[] = []
   return {
     base: './',
     server: {
@@ -280,6 +285,15 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: [
         ...standaloneAliases,
+        ...(!isStandalone ? [{
+          find: `virtual:file-protocol-standalone/worker/${FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID}`,
+          replacement: path.resolve(
+            __dirname,
+            mode === 'test'
+              ? 'src/test-mocks/file-protocol-standalone-worker.ts'
+              : 'src/services/file-protocol-standalone-worker-unavailable.ts',
+          ),
+        }] : []),
         {
           find: '@',
           replacement: path.resolve(__dirname, 'src'),
@@ -292,6 +306,14 @@ export default defineConfig(({ mode }) => {
       }),
       VueDevTools(),
       vue(),
+      isStandalone && legacy({
+        targets: [...standaloneBrowserSupport.legacy],
+        renderModernChunks: false,
+        renderLegacyChunks: true,
+        externalSystemJS: true,
+        modernPolyfills: false,
+        polyfills: false,
+      }),
       stripPrivacyFetchBrokerDevInjectedScriptsPlugin(),
       privacyFetchBrokerDevHeadersPlugin(),
       !isStandalone && viteStaticCopy({
@@ -313,7 +335,11 @@ export default defineConfig(({ mode }) => {
             {
               file: licensesPath,
               template(dependencies: LicenseDependency[]) {
-                return JSON.stringify(dependencies.map((dep: LicenseDependency) => ({
+                const mergedDependencies = mergeLicenseDependencies({
+                  dependencies,
+                  additions: standaloneAdditionalLicenseDependencies,
+                })
+                return JSON.stringify(mergedDependencies.map((dep: LicenseDependency) => ({
                   name: dep.name,
                   version: dep.version,
                   license: dep.license,
@@ -324,12 +350,16 @@ export default defineConfig(({ mode }) => {
             isStandalone && {
               file: path.resolve(__dirname, outDir, 'THIRD_PARTY_LICENSES.txt'),
               template(dependencies: LicenseDependency[]) {
-                return dependencies.map((dep: LicenseDependency) => (
+                const mergedDependencies = mergeLicenseDependencies({
+                  dependencies,
+                  additions: standaloneAdditionalLicenseDependencies,
+                })
+                return mergedDependencies.map((dep: LicenseDependency) => (
                   `Name: ${dep.name}\n` +
                   `Version: ${dep.version}\n` +
-                  `License: ${dep.license}\n` +
+                  `License: ${dep.license ?? 'Unknown'}\n` +
                   `--------------------------------------------------------------------------------\n` +
-                  `${dep.licenseText}\n` +
+                  `${dep.licenseText ?? 'License text unavailable.'}\n` +
                   `================================================================================\n`
                 )).join('\n');
               },
@@ -338,10 +368,22 @@ export default defineConfig(({ mode }) => {
         },
       }),
       !isStandalone && manualGzipWasmPlugin({ outDir }),
-      // Standalone: finalize index.html, embed workers, then zip in a fixed order.
-      isStandalone && standalonePostBuildPlugin({
+      isStandalone && fileProtocolStandalone({
+        workerTarget: [...standaloneBrowserSupport.worker],
+        debugBuildReportFile: 'dist/debug-file-protocol-standalone-build-report.json',
+        workers: [{
+          id: FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID,
+          entry: 'src/services/worker-hub-standalone.worker.ts',
+        }],
+        budgets: standaloneBuildBudgets,
+        onAdditionalLicenseDependencies({ dependencies }) {
+          standaloneAdditionalLicenseDependencies = dependencies
+        },
+      }),
+      // Packaging remains separate from file-protocol transformation so the
+      // plugin can be reused without assuming Naidan's ZIP layout.
+      isStandalone && zipPackagerPlugin({
         outDir,
-        workers: embeddedWorkers,
         zipFileName: 'naidan-standalone.zip',
         folderName: `naidan-standalone-${pkg.version}`,
       }),
@@ -386,14 +428,13 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       minify: true,
       sourcemap: isHosted,
-      // Using IIFE (Immediately Invoked Function Expression) format is necessary
-      // for compatibility with the file:/// protocol, as it doesn't require
-      // the complex module loading system that standard ES modules do.
-      // For standard web hosting, we use 'es' modules.
+      modulePreload: !isStandalone,
+      // The standalone legacy plugin emits System.register chunks so file:// can
+      // retain Vite's lazy boundaries without relying on native module loading.
+      // Hosted output continues to use Vite's normal ES-module pipeline.
       rollupOptions: {
         input: rollupInput,
         output: {
-          format: isStandalone ? 'iife' : 'es',
           entryFileNames: (chunkInfo) => {
             if (!isStandalone && isPrivacyFetchBrokerChunk(chunkInfo)) {
               return `${PRIVACY_FETCH_BROKER_ASSET_DIR}/[name]-[hash].js`
@@ -471,50 +512,11 @@ const copyZipPlugin = () => ({
   },
 })
 
-/**
- * Custom Vite plugin to finalize the standalone index.html.
- *
- * Standalone output is opened directly through file:// without an HTTP server:
- *
- *   naidan-standalone-<version>/
- *     index.html
- *     assets/index-<hash>.js
- *     ...
- *
- *   index.html:
- *     <link rel="icon" href="./favicon.svg">
- *     <script src="./assets/index-<hash>.js"></script>
- *     <script id="file-protocol-compatible-standalone-worker-hub"
- *             type="text/x-naidan-worker">...</script>
- *
- * The main app entry must stay a relative classic script, not an
- * HTTP-served module entry such as:
- *
- *     <script type="module" crossorigin src="/assets/index-<hash>.js"></script>
- *
- * Worker sources remain embedded because their blob/object-url flow depends
- * on in-document access to the source text.
- */
-const standalonePostBuildPlugin = ({ outDir, workers, zipFileName, folderName }: {
-  outDir: string
-  workers: EmbeddedWorkerSpec[]
-  zipFileName: string
-  folderName: string
-}) => ({
-  name: 'standalone-post-build-plugin',
-  async closeBundle() {
-    await finalizeStandaloneIndexHtml({ outDir })
-    await embedStandaloneWorkers({ outDir, workers })
-    await assertStandaloneOutput({ outDir, workers })
-    await createZipPackage({ outDir, zipFileName, folderName })
-  },
-})
-
 async function createZipPackage({ outDir, zipFileName, folderName }: {
   outDir: string
   zipFileName: string
   folderName: string
-}) {
+}): Promise<void> {
   console.log(`  \u231B Creating ${zipFileName} package...`)
   const distDir = path.resolve(__dirname, outDir)
   const zipPath = path.resolve(__dirname, `dist/${zipFileName}`)
@@ -531,7 +533,7 @@ async function createZipPackage({ outDir, zipFileName, folderName }: {
   const content = await zip.generateAsync({
     type: 'nodebuffer',
     compression: 'DEFLATE',
-    compressionOptions: { level: 9 }
+    compressionOptions: { level: 9 },
   })
 
   const zipDir = path.dirname(zipPath)
@@ -539,333 +541,4 @@ async function createZipPackage({ outDir, zipFileName, folderName }: {
 
   fs.writeFileSync(zipPath, content)
   console.log(`  \u2713 Created package: ${zipPath}`)
-}
-
-async function finalizeStandaloneIndexHtml({ outDir }: { outDir: string }) {
-  const distDir = path.resolve(__dirname, outDir)
-  const htmlPath = path.join(distDir, 'index.html')
-
-  if (!fs.existsSync(htmlPath)) return
-
-  const html = fs.readFileSync(htmlPath, 'utf8')
-  const dom = new JSDOM(html)
-  const document = dom.window.document
-
-  const scripts = Array.from(document.querySelectorAll('script')) as HTMLScriptElement[]
-  for (const script of scripts) {
-    const src = script.getAttribute('src')
-    if (src !== null && /^(\.\/)?assets\/index-[^/]+\.js$/.test(src)) {
-      script.removeAttribute('type')
-      script.removeAttribute('crossorigin')
-      if (!src.startsWith('./')) {
-        script.setAttribute('src', `./${src}`)
-      }
-    }
-  }
-
-  fs.writeFileSync(htmlPath, dom.serialize())
-  console.log(`  \u2713 Finalized index.html in ${outDir} for file:/// compatibility with an external classic main script.`)
-}
-
-async function embedStandaloneWorkers({ outDir, workers }: {
-  outDir: string
-  workers: EmbeddedWorkerSpec[]
-}) {
-  if (workers.length === 0) return
-
-  const distDir = path.resolve(__dirname, outDir)
-  const htmlPath = path.join(distDir, 'index.html')
-  if (!fs.existsSync(htmlPath)) return
-
-  const tempRootDir = path.join(distDir, '__embedded_workers__')
-  await fs.promises.rm(tempRootDir, { recursive: true, force: true })
-
-  const html = fs.readFileSync(htmlPath, 'utf8')
-  const dom = new JSDOM(html)
-  const document = dom.window.document
-  const manifest: Record<string, EmbeddedWorkerManifestEntry> = {}
-
-  try {
-    for (const worker of workers) {
-      const workerOutDir = path.join(tempRootDir, worker.workerId)
-
-      await viteBuild({
-        configFile: false,
-        define: {
-          __BUILD_MODE_IS_STANDALONE__: JSON.stringify(true),
-          __BUILD_MODE_IS_HOSTED__: JSON.stringify(false),
-          __APP_VERSION__: JSON.stringify(pkg.version),
-          'process.env.NODE_ENV': JSON.stringify('production'),
-        },
-        logLevel: 'error',
-        publicDir: false,
-        resolve: {
-          alias: {
-            '@': path.resolve(__dirname, 'src'),
-          },
-        },
-        root: __dirname,
-        build: {
-          emptyOutDir: true,
-          lib: {
-            entry: path.resolve(__dirname, worker.entry),
-            fileName: () => `${worker.workerId}.js`,
-            formats: ['iife'],
-            name: worker.globalName,
-          },
-          minify: true,
-          outDir: workerOutDir,
-          rolldownOptions: {
-            output: {
-              codeSplitting: false,
-            },
-          },
-          sourcemap: false,
-        },
-      })
-
-      const workerScriptPath = path.join(workerOutDir, `${worker.workerId}.js`)
-      if (!fs.existsSync(workerScriptPath)) {
-        throw new Error(`Embedded worker build output not found: ${worker.workerId}`)
-      }
-
-      const workerContent = fs.readFileSync(workerScriptPath, 'utf8')
-      manifest[worker.workerId] = {
-        hash: createHash('sha256').update(workerContent).digest('hex'),
-        size: Buffer.byteLength(workerContent, 'utf8'),
-      }
-      const script = document.createElement('script')
-      script.setAttribute('id', worker.workerId)
-      script.setAttribute('type', worker.scriptType)
-      script.textContent = workerContent.replace(/<\/script>/g, '<\\/script>')
-      document.body.appendChild(script)
-    }
-
-    const manifestScript = document.createElement('script')
-    manifestScript.setAttribute('id', STANDALONE_WORKER_MANIFEST_SCRIPT_ID)
-    manifestScript.setAttribute('type', 'application/json')
-    manifestScript.textContent = JSON.stringify(manifest)
-
-    const lastStructuredDataScript = Array.from(
-      document.querySelectorAll('head script[type="application/ld+json"]'),
-    ).at(-1)
-
-    if (lastStructuredDataScript?.parentNode) {
-      lastStructuredDataScript.parentNode.insertBefore(manifestScript, lastStructuredDataScript.nextSibling)
-    } else if (document.head) {
-      document.head.appendChild(manifestScript)
-    } else {
-      document.body.appendChild(manifestScript)
-    }
-
-    fs.writeFileSync(htmlPath, dom.serialize())
-    console.log(`  \u2713 Embedded ${workers.length} standalone worker(s) into index.html.`)
-  } finally {
-    await fs.promises.rm(tempRootDir, { recursive: true, force: true })
-  }
-}
-
-async function assertStandaloneOutput({ outDir, workers }: {
-  outDir: string
-  workers: EmbeddedWorkerSpec[]
-}) {
-  const distDir = path.resolve(__dirname, outDir)
-  const htmlPath = path.join(distDir, 'index.html')
-  const html = await fs.promises.readFile(htmlPath, 'utf8')
-  const dom = new JSDOM(html)
-  const { document } = dom.window
-  const failures: string[] = []
-
-  assertStandaloneHtmlStructure({
-    document,
-    workers,
-    failures,
-  })
-
-  await assertStandaloneTextOutput({
-    distDir,
-    failures,
-  })
-
-  if (failures.length > 0) {
-    throw new Error([
-      'Standalone output validation failed:',
-      ...failures.map((failure) => `- ${failure}`),
-    ].join('\n'))
-  }
-
-  console.log(`  ✓ Validated standalone output in ${outDir}.`)
-}
-
-function assertStandaloneHtmlStructure({ document, workers, failures }: {
-  document: Document
-  workers: EmbeddedWorkerSpec[]
-  failures: string[]
-}) {
-  const externalScripts = Array.from(document.querySelectorAll('script[src]'))
-
-  const mainScripts = externalScripts.filter((script) => {
-    const src = script.getAttribute('src') ?? ''
-    return /^\.\/assets\/index-[^/]+\.js$/.test(src)
-  })
-
-  if (mainScripts.length !== 1) {
-    failures.push(`expected exactly one standalone main script, found ${mainScripts.length}`)
-  }
-
-  for (const script of mainScripts) {
-    if (script.getAttribute('type') !== null) {
-      failures.push('standalone main script must not have a type attribute')
-    }
-
-    if (script.getAttribute('crossorigin') !== null) {
-      failures.push('standalone main script must not have crossorigin')
-    }
-  }
-
-  const unexpectedExternalScriptSources = externalScripts
-    .filter((script) => !mainScripts.includes(script))
-    .map((script) => script.getAttribute('src') ?? '(missing src)')
-
-  if (unexpectedExternalScriptSources.length > 0) {
-    failures.push(`unexpected external scripts: ${unexpectedExternalScriptSources.join(', ')}`)
-  }
-
-  assertStandaloneWorkerManifest({
-    document,
-    workers,
-    failures,
-  })
-}
-
-function assertStandaloneWorkerManifest({ document, workers, failures }: {
-  document: Document
-  workers: EmbeddedWorkerSpec[]
-  failures: string[]
-}) {
-  const manifestElement = document.getElementById(STANDALONE_WORKER_MANIFEST_SCRIPT_ID)
-
-  if (manifestElement === null) {
-    failures.push('missing standalone worker manifest script')
-    return
-  }
-
-  if (manifestElement.tagName.toLowerCase() !== 'script') {
-    failures.push('standalone worker manifest element must be a script')
-    return
-  }
-
-  if (manifestElement.getAttribute('type') !== 'application/json') {
-    failures.push('standalone worker manifest script must have type="application/json"')
-  }
-
-  let manifest: unknown
-  try {
-    manifest = JSON.parse(manifestElement.textContent ?? '{}')
-  } catch (error) {
-    failures.push(`standalone worker manifest is not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
-    return
-  }
-
-  if (typeof manifest !== 'object' || manifest === null) {
-    failures.push('standalone worker manifest must be a JSON object')
-    return
-  }
-
-  const manifestRecord = manifest as Record<string, unknown>
-
-  for (const worker of workers) {
-    const workerElement = document.getElementById(worker.workerId)
-    if (workerElement === null) {
-      failures.push(`missing embedded standalone worker script: ${worker.workerId}`)
-      continue
-    }
-
-    if (workerElement.tagName.toLowerCase() !== 'script') {
-      failures.push(`embedded standalone worker element must be a script: ${worker.workerId}`)
-      continue
-    }
-
-    if (workerElement.getAttribute('type') !== worker.scriptType) {
-      failures.push(`embedded standalone worker script has wrong type: ${worker.workerId}`)
-    }
-
-    const workerContent = workerElement.textContent ?? ''
-
-    if (workerContent.length === 0) {
-      failures.push(`embedded standalone worker script is empty: ${worker.workerId}`)
-    }
-
-    const entry = manifestRecord[worker.workerId]
-    if (typeof entry !== 'object' || entry === null) {
-      failures.push(`standalone worker manifest is missing entry: ${worker.workerId}`)
-      continue
-    }
-
-    const manifestEntry = entry as {
-      hash?: unknown
-      size?: unknown
-    }
-    const expectedHash = createHash('sha256').update(workerContent).digest('hex')
-    const expectedSize = Buffer.byteLength(workerContent, 'utf8')
-
-    if (manifestEntry.hash !== expectedHash) {
-      failures.push(`standalone worker manifest hash mismatch: ${worker.workerId}`)
-    }
-
-    if (manifestEntry.size !== expectedSize) {
-      failures.push(`standalone worker manifest size mismatch: ${worker.workerId}`)
-    }
-  }
-}
-
-
-async function assertStandaloneTextOutput({ distDir, failures }: {
-  distDir: string
-  failures: string[]
-}) {
-  const textFiles = await collectStandaloneTextFiles({ distDir })
-
-  for (const filePath of textFiles) {
-    const relativePath = path.relative(distDir, filePath).replaceAll('\\', '/')
-    const content = await fs.promises.readFile(filePath, 'utf8')
-
-    if (content.includes('import.meta.url')) {
-      failures.push(`${relativePath} contains import.meta.url`)
-    }
-
-    if (content.includes('new Worker(new URL(')) {
-      failures.push(`${relativePath} contains hosted-style new Worker(new URL(...))`)
-    }
-
-    if (/new Worker\([^)]*,\s*\{[^}]*type:\s*["']module["']/.test(content)) {
-      failures.push(`${relativePath} contains module worker construction`)
-    }
-  }
-}
-
-async function collectStandaloneTextFiles({ distDir }: {
-  distDir: string
-}): Promise<string[]> {
-  const results: string[] = []
-
-  async function visit({ dir }: { dir: string }) {
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true })
-
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name)
-
-      if (entry.isDirectory()) {
-        await visit({ dir: fullPath })
-        continue
-      }
-
-      if (/\.(html|js)$/.test(entry.name)) {
-        results.push(fullPath)
-      }
-    }
-  }
-
-  await visit({ dir: distDir })
-  return results
 }
