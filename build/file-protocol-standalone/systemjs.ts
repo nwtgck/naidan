@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { JSDOM } from 'jsdom'
 
-import type { FileProtocolStandaloneLicenseDependency } from './types'
+import type { BuildLicenseDependency } from '../license-dependencies'
 import {
   DEBUG_FILE_PROTOCOL_STANDALONE_DIAGNOSTICS_FORMAT,
   DEBUG_FILE_PROTOCOL_STANDALONE_STARTUP_FORMAT,
@@ -14,7 +14,7 @@ export const debugSlowStartupNoticeDelayMs = 15_000
 
 export function readSystemJsLicenseDependency({ packageJsonPath }: {
   packageJsonPath: string
-}): FileProtocolStandaloneLicenseDependency {
+}): BuildLicenseDependency {
   const packageDirectory = path.dirname(packageJsonPath)
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
     name?: unknown

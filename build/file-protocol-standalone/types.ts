@@ -1,5 +1,7 @@
 import type { BuildOptions } from 'vite'
 
+import type { BuildLicenseDependency } from '../license-dependencies'
+
 export type FileProtocolStandaloneWorker = Readonly<{
   id: string
   entry: string
@@ -10,20 +12,13 @@ export type FileProtocolStandaloneBudgets = Readonly<{
   maxInitialRequestBytes: number | undefined
 }>
 
-export type FileProtocolStandaloneLicenseDependency = Readonly<{
-  name: string
-  version: string
-  license: string | null
-  licenseText: string | null
-}>
-
 export type FileProtocolStandaloneOptions = Readonly<{
   debugBuildReportFile: string | undefined
   workerTarget: Exclude<BuildOptions['target'], false | undefined>
   workers: readonly FileProtocolStandaloneWorker[]
   budgets: FileProtocolStandaloneBudgets | undefined
   onAdditionalLicenseDependencies: (({ dependencies }: {
-    dependencies: readonly FileProtocolStandaloneLicenseDependency[]
+    dependencies: readonly BuildLicenseDependency[]
   }) => void) | undefined
 }>
 

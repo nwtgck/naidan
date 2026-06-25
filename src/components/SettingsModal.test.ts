@@ -1,6 +1,6 @@
 import { toProviderProfileId } from '@/models/ids';
 // Mock the dynamic import for licenses
-vi.mock('../assets/licenses.json', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
+vi.mock('virtual:naidan-licenses', () => ({ default: [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }] }));
 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -466,8 +466,7 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     expect(wrapper.text()).toContain('Open Source Licenses');
   });
 
-  it('displays standalone license information when in standalone mode', async () => {
-    // Mock isStandalone to true
+  it('loads and displays the shared license list in standalone mode', async () => {
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', true);
     vi.stubGlobal('__BUILD_MODE_IS_HOSTED__', false);
 
@@ -477,13 +476,13 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const navButtons = wrapper.findAll('nav button');
     await navButtons.find(b => b.text().includes('About'))?.trigger('click');
     await flushPromises();
+    await vi.dynamicImportSettled();
+    await flushPromises();
 
-    expect(wrapper.text()).toContain('Offline License Information');
-    expect(wrapper.text()).toContain('THIRD_PARTY_LICENSES.txt');
-    // In standalone mode, the list/loader should not be visible
-    expect(wrapper.find('.animate-spin').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="oss-license-list"]').text()).toContain('test-pkg');
+    expect(wrapper.text()).not.toContain('Offline License Information');
+    expect(wrapper.text()).not.toContain('THIRD_PARTY_LICENSES.txt');
 
-    // Cleanup
     vi.stubGlobal('__BUILD_MODE_IS_STANDALONE__', false);
     vi.stubGlobal('__BUILD_MODE_IS_HOSTED__', true);
   });
@@ -495,20 +494,11 @@ describe('SettingsModal.vue (Tabbed Interface)', () => {
     const navButtons = wrapper.findAll('nav button');
     await navButtons.find(b => b.text().includes('About'))?.trigger('click');
     await flushPromises();
-
-    // Find the AboutTab component
-    const aboutTab = wrapper.findComponent(AboutTab);
-    expect(aboutTab.exists()).toBe(true);
-
-    // Manually set the state to bypass unreliable dynamic import mock
-    const vm = aboutTab.vm as any;
-    vm.ossLicenses = [{ name: 'test-pkg', version: '1.0.0', license: 'MIT', licenseText: 'MIT Content' }];
-    vm.isLoadingLicenses = false;
-
+    await vi.dynamicImportSettled();
     await flushPromises();
-    await nextTick();
 
-    const text = wrapper.text();
+    expect(wrapper.findComponent(AboutTab).exists()).toBe(true);
+    const text = wrapper.get('[data-testid="oss-license-list"]').text();
     expect(text).toContain('test-pkg');
     expect(text).toContain('1.0.0');
     expect(text).toContain('MIT');
