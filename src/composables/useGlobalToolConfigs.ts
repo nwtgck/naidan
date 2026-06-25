@@ -8,6 +8,7 @@ import type {
 } from '@/services/tools/types';
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 import {
+  cloneToolConfigs,
   findLastToolConfigByKey,
   resolveToolConfigsForChat,
   setToolStatusWithDependenciesInToolConfigs,
@@ -35,7 +36,7 @@ function requireWeshConfig({ config }: { config: WeshToolConfig | undefined }): 
 }
 
 export function useGlobalToolConfigs(): GlobalToolConfigsApi {
-  const { settings, save } = useSettings();
+  const { settings, updateExperimental } = useSettings();
 
   const toolConfigs = computed(() => settings.value.experimental?.toolConfigs);
   const applicationDefaults = computed(() => resolveToolConfigsForChat({
@@ -50,17 +51,21 @@ export function useGlobalToolConfigs(): GlobalToolConfigsApi {
   }));
   const isEditable = computed(() => settings.value.experimental?.toolConfigPersistence === 'enabled');
 
-  async function updateToolConfigs({ nextToolConfigs }: {
-    nextToolConfigs: ToolConfig[] | undefined;
+  async function updateToolConfigs({
+    updater,
+  }: {
+    updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined;
   }): Promise<void> {
     if (!isEditable.value) return;
-    await save({
-      patch: {
-        experimental: {
-          ...settings.value.experimental,
-          toolConfigs: nextToolConfigs,
-        },
-      },
+    await updateExperimental({
+      updater: ({ experimental }) => ({
+        ...experimental,
+        toolConfigs: cloneToolConfigs({
+          toolConfigs: updater({
+            toolConfigs: cloneToolConfigs({ toolConfigs: experimental?.toolConfigs }),
+          }),
+        }),
+      }),
     });
   }
 
@@ -71,19 +76,20 @@ export function useGlobalToolConfigs(): GlobalToolConfigsApi {
     key: BuiltinToolKey;
     status: ToolConfigStatus;
   }): Promise<void> {
+    const inherited = applicationDefaults.value;
     await updateToolConfigs({
-      nextToolConfigs: setToolStatusWithDependenciesInToolConfigs({
-        toolConfigs: toolConfigs.value,
+      updater: ({ toolConfigs: currentToolConfigs }) => setToolStatusWithDependenciesInToolConfigs({
+        toolConfigs: currentToolConfigs,
         key,
         status,
-        inheritedToolConfigs: applicationDefaults.value,
+        inheritedToolConfigs: inherited,
       }),
     });
   }
 
 
   async function resetAllTools(): Promise<void> {
-    await updateToolConfigs({ nextToolConfigs: undefined });
+    await updateToolConfigs({ updater: () => undefined });
   }
 
   async function setWeshAccessScope({
@@ -91,22 +97,29 @@ export function useGlobalToolConfigs(): GlobalToolConfigsApi {
   }: {
     accessScope: NaidanSysfsAccessScope;
   }): Promise<void> {
-    const effectiveWesh = requireWeshConfig({
-      config: findLastToolConfigByKey({
-        toolConfigs: effectiveToolConfigs.value,
-        key: 'builtin.wesh',
-      }),
-    });
+    const inherited = applicationDefaults.value;
     await updateToolConfigs({
-      nextToolConfigs: setWeshAccessScopeWithDependenciesInToolConfigs({
-        toolConfigs: toolConfigs.value,
-        accessScope,
-        inheritedToolConfigs: applicationDefaults.value,
-        status: toolConfigStatusForWeshAccessScope({
+      updater: ({ toolConfigs: currentToolConfigs }) => {
+        const effectiveWesh = requireWeshConfig({
+          config: findLastToolConfigByKey({
+            toolConfigs: resolveToolConfigsForChat({
+              globalToolConfigs: currentToolConfigs,
+              chatGroupToolConfigs: undefined,
+              chatToolConfigs: undefined,
+            }),
+            key: 'builtin.wesh',
+          }),
+        });
+        return setWeshAccessScopeWithDependenciesInToolConfigs({
+          toolConfigs: currentToolConfigs,
           accessScope,
-          currentStatus: effectiveWesh.status,
-        }),
-      }),
+          inheritedToolConfigs: inherited,
+          status: toolConfigStatusForWeshAccessScope({
+            accessScope,
+            currentStatus: effectiveWesh.status,
+          }),
+        });
+      },
     });
   }
 

@@ -43,7 +43,7 @@ const CHAT_GROUP_METADATA_UPDATE_KEYS = Object.keys(
 
 const updateQueues = new Map<ChatGroupId, Promise<void>>();
 
-type ToolConfigsUpdater = ({
+export type ToolConfigsUpdater = ({
   toolConfigs,
 }: {
   toolConfigs: ToolConfig[] | undefined;
@@ -128,6 +128,16 @@ export type ChatGroupsAdapter = {
     updater,
   }: {
     chatGroupId: ChatGroupId;
+    updater: ToolConfigsUpdater;
+  }): Promise<void>;
+
+  updateScopedSettingsAndToolConfigs({
+    chatGroupId,
+    changes,
+    updater,
+  }: {
+    chatGroupId: ChatGroupId;
+    changes: readonly ScopedSettingChange[];
     updater: ToolConfigsUpdater;
   }): Promise<void>;
 
@@ -276,6 +286,24 @@ export function useChatGroups(): ChatGroupsAdapter {
     });
   }
 
+  async function updateScopedSettingsAndToolConfigs({
+    chatGroupId,
+    changes,
+    updater,
+  }: {
+    chatGroupId: ChatGroupId;
+    changes: readonly ScopedSettingChange[];
+    updater: ToolConfigsUpdater;
+  }): Promise<void> {
+    await updateChatGroup({
+      chatGroupId,
+      changes,
+      name: undefined,
+      updateName: false,
+      toolConfigUpdate: { behavior: 'update', updater },
+    });
+  }
+
   async function updateChatGroupMetadata({
     chatGroupId,
     updates,
@@ -353,6 +381,7 @@ export function useChatGroups(): ChatGroupsAdapter {
     updateChatGroupMetadata,
     updateScopedSettings,
     updateToolConfigs,
+    updateScopedSettingsAndToolConfigs,
     moveChatToGroup,
     TEST_ONLY: {},
   };

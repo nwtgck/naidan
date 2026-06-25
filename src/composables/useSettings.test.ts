@@ -139,6 +139,40 @@ describe('useSettings Initialization and Bootstrap', () => {
     }));
   });
 
+  it('updates one experimental field against the latest persisted settings', async () => {
+    const local = {
+      ...DEFAULT_SETTINGS,
+      endpointType: 'openai' as const,
+      storageType: 'local' as const,
+      experimental: {
+        toolConfigPersistence: 'enabled' as const,
+      },
+    };
+    const persisted = {
+      ...local,
+      experimental: {
+        ...local.experimental,
+        fakeLm: 'enabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(persisted);
+    const { updateExperimental, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: local });
+
+    await updateExperimental({
+      updater: ({ experimental }) => ({
+        ...experimental,
+        toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }],
+      }),
+    });
+
+    expect(settings.value.experimental).toEqual({
+      toolConfigPersistence: 'enabled',
+      fakeLm: 'enabled',
+      toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }],
+    });
+  });
+
   it('persists fake LM mode without overwriting other experimental settings', async () => {
     const current = {
       ...DEFAULT_SETTINGS,

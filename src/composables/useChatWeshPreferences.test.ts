@@ -20,10 +20,13 @@ vi.mock('@/services/storage', () => ({
 
 describe('useChatWeshPreferences', () => {
   beforeEach(() => {
-    useChatTools().TEST_ONLY._runtimeToolConfigsByChat.value = new Map();
+    useChatTools().TEST_ONLY._runtimeToolConfigChangesByChat.value = new Map();
     currentChatRef.value = null;
     liveChatRegistry.clear();
     vi.mocked(storageService.updateChatMeta).mockClear();
+    vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ id, updater }) => {
+      await updater({ current: liveChatRegistry.get(id) ?? null });
+    });
     useSettings().TEST_ONLY.__testOnlyReset();
   });
 
@@ -98,23 +101,28 @@ describe('useChatWeshPreferences', () => {
 
     expect(getNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }) })).toBe('current_chat_only');
     expect(chat.toolConfigs).toBeUndefined();
-    expect(useChatTools().TEST_ONLY._runtimeToolConfigsByChat.value.get(toChatId({ raw: 'chat-1' }))).toEqual([{
-      key: 'builtin.wesh',
-      status: 'enabled',
-      naidanSysfs: {
-        accessScope: 'current_chat_only',
+    expect(useChatTools().TEST_ONLY._runtimeToolConfigChangesByChat.value
+      .get(toChatId({ raw: 'chat-1' }))
+      ?.get('builtin.wesh')).toEqual({
+      behavior: 'set',
+      config: {
+        key: 'builtin.wesh',
+        status: 'enabled',
+        naidanSysfs: {
+          accessScope: 'current_chat_only',
+        },
       },
-    }]);
+    });
     expect(storageService.updateChatMeta).not.toHaveBeenCalled();
   });
 
-  it('persists access scope into chat metadata when persistence is enabled', () => {
+  it('persists access scope into chat metadata when persistence is enabled', async () => {
     setToolConfigPersistence({ persistence: 'enabled' });
     const { setNaidanSysfsAccessScope } = useChatWeshPreferences();
     const chat = createTestChat({ id: toChatId({ raw: 'chat-1' }), toolConfigs: undefined });
     liveChatRegistry.set(toChatId({ raw: 'chat-1' }), chat);
 
-    setNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }), accessScope: 'current_chat_only' });
+    await setNaidanSysfsAccessScope({ chatId: toChatId({ raw: 'chat-1' }), accessScope: 'current_chat_only' });
 
     expect(chat.toolConfigs).toEqual([{
       key: 'builtin.wesh',

@@ -1,10 +1,7 @@
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import { useChatTools } from '@/composables/useChatTools';
 import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
-import {
-  WIKIPEDIA_GET_PAGE_TOOL_NAME,
-  WIKIPEDIA_SEARCH_TOOL_NAME,
-} from '@/services/tools/wikipedia';
+import { WIKIPEDIA_SEARCH_TOOL_NAME } from '@/services/tools/wikipedia';
 
 export function useToolDependencyActions() {
   const { currentChat } = useCurrentChatState();
@@ -31,35 +28,32 @@ export function useToolDependencyActions() {
   }
 
   function isWikipediaEffectivelyEnabledForCurrentChat(): boolean {
-    return isToolEnabled({ name: 'shell_execute' })
-      && isNaidanSysfsMountedForCurrentChat()
-      && isToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME })
-      && isToolEnabled({ name: WIKIPEDIA_GET_PAGE_TOOL_NAME });
+    return isToolEnabled({ name: WIKIPEDIA_SEARCH_TOOL_NAME });
   }
 
-  function enableWikipediaToolsForCurrentChat(): void {
-    setToolStatus({
+  async function enableWikipediaToolsForCurrentChat(): Promise<void> {
+    await setToolStatus({
       name: WIKIPEDIA_SEARCH_TOOL_NAME,
       status: 'enabled',
     });
   }
 
-  function disableWikipediaToolsForCurrentChat(): void {
-    setToolStatus({
+  async function disableWikipediaToolsForCurrentChat(): Promise<void> {
+    await setToolStatus({
       name: WIKIPEDIA_SEARCH_TOOL_NAME,
       status: 'disabled',
     });
   }
 
-  function disableShellToolForCurrentChat(): void {
-    setToolStatus({
+  async function disableShellToolForCurrentChat(): Promise<void> {
+    await setToolStatus({
       name: 'shell_execute',
       status: 'disabled',
     });
   }
 
-  function disableNaidanSysfsForCurrentChat(): void {
-    setNaidanSysfsAccessScope({
+  async function disableNaidanSysfsForCurrentChat(): Promise<void> {
+    await setNaidanSysfsAccessScope({
       chatId: currentChat.value?.id,
       accessScope: 'none',
     });

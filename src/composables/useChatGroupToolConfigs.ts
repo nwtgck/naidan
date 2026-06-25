@@ -75,13 +75,12 @@ export function useChatGroupToolConfigs(): ChatGroupToolConfigsApi {
     key: BuiltinToolKey;
     status: ToolConfigStatus;
   }): Promise<void> {
-    const inherited = inheritedToolConfigs.value;
     await updateToolConfigs({
       updater: ({ toolConfigs: currentToolConfigs }) => setToolStatusWithDependenciesInToolConfigs({
         toolConfigs: currentToolConfigs,
         key,
         status,
-        inheritedToolConfigs: inherited,
+        inheritedToolConfigs: inheritedToolConfigs.value,
       }),
     });
   }
@@ -101,9 +100,9 @@ export function useChatGroupToolConfigs(): ChatGroupToolConfigsApi {
   }: {
     accessScope: NaidanSysfsAccessScope;
   }): Promise<void> {
-    const inherited = inheritedToolConfigs.value;
     await updateToolConfigs({
       updater: ({ toolConfigs: currentToolConfigs }) => {
+        const inherited = inheritedToolConfigs.value;
         const effectiveWesh = requireWeshConfig({
           config: findLastToolConfigByKey({
             toolConfigs: currentToolConfigs,

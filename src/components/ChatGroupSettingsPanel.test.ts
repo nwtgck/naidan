@@ -248,6 +248,23 @@ describe('ChatGroupSettingsPanel.vue', () => {
           updates: { toolConfigs },
         });
       },
+      updateScopedSettingsAndToolConfigs: async ({ chatGroupId, changes, updater }) => {
+        const current = mockCurrentGroup.value.id === chatGroupId
+          ? mockCurrentGroup.value
+          : { id: chatGroupId } as ChatGroup;
+        const updated = applyScopedSettingChangesToChatGroup({
+          current,
+          changes,
+          updatedAt: Date.now(),
+        });
+        mockUpdateChatGroupMetadata({
+          id: chatGroupId,
+          updates: {
+            ...updated,
+            toolConfigs: updater({ toolConfigs: current.toolConfigs }),
+          },
+        });
+      },
       moveChatToGroup: vi.fn(),
       TEST_ONLY: {},
     });
@@ -502,6 +519,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
       updateChatGroupMetadata: vi.fn(),
       updateScopedSettings: vi.fn(async () => await pendingSave),
       updateToolConfigs: vi.fn(),
+      updateScopedSettingsAndToolConfigs: vi.fn(async () => await pendingSave),
       moveChatToGroup: vi.fn(),
       TEST_ONLY: {},
     });

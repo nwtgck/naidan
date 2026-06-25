@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { InfoIcon } from 'lucide-vue-next';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import {
@@ -16,6 +16,7 @@ const { currentChat } = useCurrentChatState();
 const { settings } = useSettings();
 const chatTools = useChatTools();
 const { setNaidanSysfsAccessScope } = useChatWeshPreferences();
+const saveError = ref<string | undefined>(undefined);
 
 function lmToolNameForKey({ key }: { key: BuiltinToolKey }): LmToolName {
   switch (key) {
@@ -56,22 +57,55 @@ const inheritanceLabelByKey = computed(() => ({
   'builtin.wesh': chatTools.getToolInheritanceLabel({ name: 'shell_execute' }),
 } as const));
 
-function setToolStatus({
+async function runToolUpdate({
+  update,
+}: {
+  update: () => Promise<void>;
+}): Promise<void> {
+  saveError.value = undefined;
+  try {
+    await update();
+  } catch (cause: unknown) {
+    saveError.value = cause instanceof Error
+      ? cause.message
+      : 'Failed to save Chat tool settings.';
+  }
+}
+
+async function setToolStatus({
   key,
   status,
 }: {
   key: BuiltinToolKey;
   status: 'enabled' | 'disabled';
-}): void {
-  chatTools.setToolStatus({
-    name: lmToolNameForKey({ key }),
-    status,
+}): Promise<void> {
+  await runToolUpdate({
+    update: async () => await chatTools.setToolStatus({
+      name: lmToolNameForKey({ key }),
+      status,
+    }),
   });
 }
 
-function resetTool({ key }: { key: BuiltinToolKey }): void {
-  chatTools.resetToolToInherited({
-    name: lmToolNameForKey({ key }),
+async function resetTool({ key }: { key: BuiltinToolKey }): Promise<void> {
+  await runToolUpdate({
+    update: async () => await chatTools.resetToolToInherited({
+      name: lmToolNameForKey({ key }),
+    }),
+  });
+}
+
+async function setWeshAccessScope({
+  accessScope,
+}: {
+  accessScope: Parameters<typeof setNaidanSysfsAccessScope>[0]['accessScope'];
+}): Promise<void> {
+  const chatId = currentChat.value?.id;
+  await runToolUpdate({
+    update: async () => await setNaidanSysfsAccessScope({
+      chatId,
+      accessScope,
+    }),
   });
 }
 
@@ -92,6 +126,14 @@ defineExpose({ TEST_ONLY: {} });
       </p>
     </div>
 
+    <div
+      v-if="saveError !== undefined"
+      class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[9px] font-semibold text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+      data-testid="chat-tool-save-error"
+    >
+      {{ saveError }}
+    </div>
+
     <ToolConfigHierarchySettings
       v-if="currentChat"
       scope="chat"
@@ -101,7 +143,7 @@ defineExpose({ TEST_ONLY: {} });
       :is-editable="true"
       @set-status="setToolStatus($event)"
       @reset-tool="resetTool($event)"
-      @set-wesh-access-scope="setNaidanSysfsAccessScope({ chatId: currentChat.id, accessScope: $event.accessScope })"
+      @set-wesh-access-scope="setWeshAccessScope($event)"
     />
   </div>
 </template>

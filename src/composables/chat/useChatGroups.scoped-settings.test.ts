@@ -172,6 +172,26 @@ describe('useChatGroups scoped settings updates', () => {
     ]);
   });
 
+  it('applies scoped settings and Tool Configs in one storage update', async () => {
+    let persisted = createGroup();
+    mockUpdateChatGroup.mockImplementation(async ({ updater }) => {
+      persisted = await updater({ current: persisted });
+    });
+
+    const chatGroups = useChatGroups();
+    await chatGroups.updateScopedSettingsAndToolConfigs({
+      chatGroupId: persisted.id,
+      changes: [{ field: 'model_id', behavior: 'inherit' }],
+      updater: () => [{ key: 'builtin.calculator', status: 'enabled' }],
+    });
+
+    expect(mockUpdateChatGroup).toHaveBeenCalledTimes(1);
+    expect(persisted.modelId).toBeUndefined();
+    expect(persisted.toolConfigs).toEqual([
+      { key: 'builtin.calculator', status: 'enabled' },
+    ]);
+  });
+
   it('does not reload group state after persistence fails', async () => {
     const group = createGroup();
     mockUpdateChatGroup.mockRejectedValueOnce(new Error('storage failed'));

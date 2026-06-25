@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref } from 'vue';
 import LmToolsSettings from './LmToolsSettings.vue';
 import type { ToolConfig } from '@/services/tools/types';
@@ -104,6 +104,9 @@ describe('LmToolsSettings.vue', () => {
     mocks.getActiveChatToolConfigs.mockReturnValue(undefined);
     mocks.getEffectiveToolConfigsForChat.mockReturnValue(effectiveToolConfigs);
     mocks.getToolInheritanceLabel.mockReturnValue('Use global');
+    mocks.setToolStatus.mockResolvedValue(undefined);
+    mocks.resetToolToInherited.mockResolvedValue(undefined);
+    mocks.setNaidanSysfsAccessScope.mockResolvedValue(undefined);
   });
 
   function mountSettings() {
@@ -136,6 +139,7 @@ describe('LmToolsSettings.vue', () => {
   it('maps status changes to the chat tool API', async () => {
     const wrapper = mountSettings();
     await wrapper.get('[data-testid="enable-calculator"]').trigger('click');
+    await flushPromises();
     expect(mocks.setToolStatus).toHaveBeenCalledWith({
       name: 'calculator',
       status: 'enabled',
@@ -145,15 +149,28 @@ describe('LmToolsSettings.vue', () => {
   it('resets a tool to its available parent instead of selecting global directly', async () => {
     const wrapper = mountSettings();
     await wrapper.get('[data-testid="reset-calculator"]').trigger('click');
+    await flushPromises();
     expect(mocks.resetToolToInherited).toHaveBeenCalledWith({ name: 'calculator' });
   });
 
   it('maps Shell visibility changes to the current chat', async () => {
     const wrapper = mountSettings();
     await wrapper.get('[data-testid="set-wesh-scope"]').trigger('click');
+    await flushPromises();
     expect(mocks.setNaidanSysfsAccessScope).toHaveBeenCalledWith({
       chatId: 'chat-1',
       accessScope: 'main_chats',
     });
+  });
+
+
+  it('shows persistence failures in the Chat Tool settings UI', async () => {
+    mocks.setToolStatus.mockRejectedValueOnce(new Error('storage failed'));
+    const wrapper = mountSettings();
+
+    await wrapper.get('[data-testid="enable-calculator"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="chat-tool-save-error"]').text()).toContain('storage failed');
   });
 });

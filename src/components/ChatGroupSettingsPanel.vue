@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useSettings } from '@/composables/useSettings';
 import { useLayout } from '@/composables/useLayout';
-import { useChatGroups } from '@/composables/chat/useChatGroups';
+import { useChatGroups, type ToolConfigsUpdater } from '@/composables/chat/useChatGroups';
 import { useChatModels } from '@/composables/chat/useChatModels';
 import { useChatGroupMounts } from '@/composables/chat/useChatGroupMounts';
 import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
@@ -475,7 +475,17 @@ function syncLocalWithCurrent({ preserveDirty }: { preserveDirty: boolean }): vo
   }
 }
 
-function saveChangesForGroup({ chatGroupId }: { chatGroupId: ChatGroupId | undefined }): Promise<void> {
+type SaveToolConfigUpdate =
+  | { behavior: 'preserve' }
+  | { behavior: 'update'; updater: ToolConfigsUpdater };
+
+function saveChangesForGroup({
+  chatGroupId,
+  toolConfigUpdate,
+}: {
+  chatGroupId: ChatGroupId | undefined;
+  toolConfigUpdate: SaveToolConfigUpdate;
+}): Promise<void> {
   if (chatGroupId === undefined) return Promise.resolve();
 
   const snapshot = cloneDraft({ draft: localSettings.value });
@@ -488,7 +498,19 @@ function saveChangesForGroup({ chatGroupId }: { chatGroupId: ChatGroupId | undef
         previous: baselineSettings.value,
         next: snapshot,
       });
-      if (changes.length === 0) return;
+      const hasToolConfigUpdate = (() => {
+        switch (toolConfigUpdate.behavior) {
+        case 'preserve':
+          return false;
+        case 'update':
+          return true;
+        default: {
+          const _ex: never = toolConfigUpdate;
+          throw new Error(`Unhandled Tool Config save behavior: ${String(_ex)}`);
+        }
+        }
+      })();
+      if (changes.length === 0 && !hasToolConfigUpdate) return;
 
       const revision = ++nextSaveRevision;
       for (const change of changes) {
@@ -505,7 +527,22 @@ function saveChangesForGroup({ chatGroupId }: { chatGroupId: ChatGroupId | undef
       }
 
       try {
-        await chatGroups.updateScopedSettings({ chatGroupId, changes });
+        switch (toolConfigUpdate.behavior) {
+        case 'preserve':
+          await chatGroups.updateScopedSettings({ chatGroupId, changes });
+          break;
+        case 'update':
+          await chatGroups.updateScopedSettingsAndToolConfigs({
+            chatGroupId,
+            changes,
+            updater: toolConfigUpdate.updater,
+          });
+          break;
+        default: {
+          const _ex: never = toolConfigUpdate;
+          throw new Error(`Unhandled Tool Config save behavior: ${String(_ex)}`);
+        }
+        }
       } catch (cause: unknown) {
         for (const change of changes) {
           if (pendingFieldRevisions.get(change.field) !== revision) continue;
@@ -545,7 +582,10 @@ function saveChangesForGroup({ chatGroupId }: { chatGroupId: ChatGroupId | undef
 }
 
 function saveChanges(): Promise<void> {
-  return saveChangesForGroup({ chatGroupId: editingChatGroupId.value });
+  return saveChangesForGroup({
+    chatGroupId: editingChatGroupId.value,
+    toolConfigUpdate: { behavior: 'preserve' },
+  });
 }
 
 async function saveChangesFromUi(): Promise<void> {
@@ -574,7 +614,10 @@ watch(() => currentChatGroup.value?.id, async (newId) => {
   const oldEditingId = editingChatGroupId.value;
   if (oldEditingId !== undefined && oldEditingId !== newId) {
     try {
-      await saveChangesForGroup({ chatGroupId: oldEditingId });
+      await saveChangesForGroup({
+        chatGroupId: oldEditingId,
+        toolConfigUpdate: { behavior: 'preserve' },
+      });
     } catch {
       // The route has already moved to another group; do not attach the old
       // group's save error to the newly selected group.
@@ -756,22 +799,27 @@ async function updateSystemPromptBehavior({
 
 async function restoreDefaults(): Promise<void> {
   localSettings.value = emptyDraft();
+  const toolConfigUpdate: SaveToolConfigUpdate = (() => {
+    const persistence = settings.value.experimental?.toolConfigPersistence ?? 'disabled';
+    switch (persistence) {
+    case 'enabled':
+      return { behavior: 'update', updater: () => undefined };
+    case 'disabled':
+      return { behavior: 'preserve' };
+    default: {
+      const _ex: never = persistence;
+      throw new Error(`Unhandled Tool Config persistence status: ${_ex}`);
+    }
+    }
+  })();
 
   try {
-    await saveChanges();
-    const chatGroupId = editingChatGroupId.value;
-    if (
-      chatGroupId === undefined
-      || settings.value.experimental?.toolConfigPersistence !== 'enabled'
-    ) return;
-    await chatGroups.updateToolConfigs({
-      chatGroupId,
-      updater: () => undefined,
+    await saveChangesForGroup({
+      chatGroupId: editingChatGroupId.value,
+      toolConfigUpdate,
     });
-  } catch (cause: unknown) {
-    saveError.value = cause instanceof Error
-      ? cause.message
-      : 'Failed to restore chat group defaults.';
+  } catch {
+    // saveChangesForGroup records a user-visible error and restores its baseline.
   }
 }
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { reactive } from 'vue';
 import { getEffectiveToolConfigsForChat, useChatTools } from './useChatTools';
-import type { Chat } from '@/models/types';
+import type { Chat, ChatMeta } from '@/models/types';
 import type { ChatId } from '@/models/ids';
 import { toChatGroupId, toChatId } from '@/models/ids';
 import { currentChatRef, liveChatRegistry, rootItems } from '@/composables/chat/global/chat-core-singletons';
@@ -21,11 +21,14 @@ describe('useChatTools', () => {
   beforeEach(() => {
     const { setCurrentChatId, TEST_ONLY } = useChatTools();
     setCurrentChatId({ chatId: null });
-    TEST_ONLY._runtimeToolConfigsByChat.value = new Map();
+    TEST_ONLY._runtimeToolConfigChangesByChat.value = new Map();
     currentChatRef.value = null;
     liveChatRegistry.clear();
     rootItems.value = [];
     vi.mocked(storageService.updateChatMeta).mockClear();
+    vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ id, updater }) => {
+      await updater({ current: liveChatRegistry.get(id) ?? null });
+    });
     useSettings().TEST_ONLY.__testOnlyReset();
   });
 
@@ -106,7 +109,12 @@ describe('useChatTools', () => {
 
       expect(isToolEnabled({ name: 'calculator' })).toBe(true);
       expect(chat.toolConfigs).toBeUndefined();
-      expect(TEST_ONLY._runtimeToolConfigsByChat.value.get(toChatId({ raw: 'chat-1' }))).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
+      expect(TEST_ONLY._runtimeToolConfigChangesByChat.value
+        .get(toChatId({ raw: 'chat-1' }))
+        ?.get('builtin.calculator')).toEqual({
+        behavior: 'set',
+        config: { key: 'builtin.calculator', status: 'enabled' },
+      });
       expect(storageService.updateChatMeta).not.toHaveBeenCalled();
     });
 
@@ -122,7 +130,12 @@ describe('useChatTools', () => {
 
       expect(isToolEnabled({ name: 'calculator' })).toBe(false);
       expect(chat.toolConfigs).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
-      expect(TEST_ONLY._runtimeToolConfigsByChat.value.get(toChatId({ raw: 'chat-1' }))).toEqual([{ key: 'builtin.calculator', status: 'disabled' }]);
+      expect(TEST_ONLY._runtimeToolConfigChangesByChat.value
+        .get(toChatId({ raw: 'chat-1' }))
+        ?.get('builtin.calculator')).toEqual({
+        behavior: 'set',
+        config: { key: 'builtin.calculator', status: 'disabled' },
+      });
       expect(storageService.updateChatMeta).not.toHaveBeenCalled();
     });
 
@@ -138,24 +151,24 @@ describe('useChatTools', () => {
 
       setToolEnabled({ name: 'calculator', enabled: false });
       expect(isToolEnabled({ name: 'calculator' })).toBe(false);
-      expect(TEST_ONLY._runtimeToolConfigsByChat.value.size).toBe(1);
+      expect(TEST_ONLY._runtimeToolConfigChangesByChat.value.size).toBe(1);
 
       setToolConfigPersistence({ persistence: 'enabled' });
-      expect(TEST_ONLY._runtimeToolConfigsByChat.value.size).toBe(0);
+      expect(TEST_ONLY._runtimeToolConfigChangesByChat.value.size).toBe(0);
       expect(isToolEnabled({ name: 'calculator' })).toBe(true);
 
       setToolConfigPersistence({ persistence: 'disabled' });
       expect(isToolEnabled({ name: 'calculator' })).toBe(true);
     });
 
-    it('persists tool changes into chat metadata when persistence is enabled', () => {
+    it('persists tool changes into chat metadata when persistence is enabled', async () => {
       setToolConfigPersistence({ persistence: 'enabled' });
       const { setCurrentChatId, setToolEnabled } = useChatTools();
       const chat = createTestChat({ id: toChatId({ raw: 'chat-1' }), toolConfigs: undefined });
       liveChatRegistry.set(toChatId({ raw: 'chat-1' }), chat);
       setCurrentChatId({ chatId: toChatId({ raw: 'chat-1' }) });
 
-      setToolEnabled({ name: 'calculator', enabled: true });
+      await setToolEnabled({ name: 'calculator', enabled: true });
 
       expect(chat.toolConfigs).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
       expect(storageService.updateChatMeta).toHaveBeenCalledWith({
@@ -163,6 +176,86 @@ describe('useChatTools', () => {
         updater: expect.any(Function),
       });
     });
+  });
+
+  it('rebases runtime changes onto externally updated persisted configs', () => {
+    const { setCurrentChatId, setToolEnabled, isToolEnabled } = useChatTools();
+    const chatId = toChatId({ raw: 'chat-1' });
+    const chat = createTestChat({
+      id: chatId,
+      toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }],
+    });
+    liveChatRegistry.set(chatId, chat);
+    setCurrentChatId({ chatId });
+
+    void setToolEnabled({ name: 'calculator', enabled: false });
+    chat.toolConfigs = [
+      { key: 'builtin.calculator', status: 'enabled' },
+      { key: 'builtin.choices', status: 'enabled' },
+    ];
+
+    expect(isToolEnabled({ name: 'calculator' })).toBe(false);
+    expect(isToolEnabled({ name: 'choices' })).toBe(true);
+  });
+
+  it('rejects persistence failures without mutating live chat metadata', async () => {
+    setToolConfigPersistence({ persistence: 'enabled' });
+    const { setCurrentChatId, setToolEnabled } = useChatTools();
+    const chatId = toChatId({ raw: 'chat-1' });
+    const chat = createTestChat({ id: chatId, toolConfigs: undefined });
+    liveChatRegistry.set(chatId, chat);
+    setCurrentChatId({ chatId });
+    vi.mocked(storageService.updateChatMeta).mockRejectedValueOnce(new Error('storage failed'));
+
+    await expect(setToolEnabled({ name: 'calculator', enabled: true }))
+      .rejects.toThrow('storage failed');
+    expect(chat.toolConfigs).toBeUndefined();
+  });
+
+  it('serializes persisted updates against the latest saved tool layer', async () => {
+    setToolConfigPersistence({ persistence: 'enabled' });
+    const { setCurrentChatId, setToolEnabled } = useChatTools();
+    const chatId = toChatId({ raw: 'chat-1' });
+    const chat = createTestChat({ id: chatId, toolConfigs: undefined });
+    liveChatRegistry.set(chatId, chat);
+    setCurrentChatId({ chatId });
+    let persisted: ChatMeta = { ...chat };
+    vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ updater }) => {
+      persisted = await updater({ current: persisted });
+    });
+
+    const first = setToolEnabled({ name: 'calculator', enabled: true });
+    const second = setToolEnabled({ name: 'choices', enabled: true });
+    await Promise.all([first, second]);
+
+    expect(persisted.toolConfigs).toEqual([
+      { key: 'builtin.calculator', status: 'enabled' },
+      { key: 'builtin.choices', status: 'enabled' },
+    ]);
+    expect(chat.toolConfigs).toEqual(persisted.toolConfigs);
+  });
+
+  it('merges a saved Tool Config after an unrelated newer live-chat update', async () => {
+    setToolConfigPersistence({ persistence: 'enabled' });
+    const { setCurrentChatId, setToolEnabled } = useChatTools();
+    const chatId = toChatId({ raw: 'chat-1' });
+    const chat = createTestChat({ id: chatId, toolConfigs: undefined });
+    liveChatRegistry.set(chatId, chat);
+    setCurrentChatId({ chatId });
+    let persisted: ChatMeta = { ...chat };
+    let unrelatedUpdatedAt: number | undefined;
+    vi.mocked(storageService.updateChatMeta).mockImplementation(async ({ updater }) => {
+      persisted = await updater({ current: persisted });
+      unrelatedUpdatedAt = persisted.updatedAt + 1;
+      chat.updatedAt = unrelatedUpdatedAt;
+    });
+
+    await setToolEnabled({ name: 'calculator', enabled: true });
+
+    expect(chat.toolConfigs).toEqual([
+      { key: 'builtin.calculator', status: 'enabled' },
+    ]);
+    expect(chat.updatedAt).toBe(unrelatedUpdatedAt);
   });
 
   describe('hierarchical resolution', () => {
@@ -230,7 +323,7 @@ describe('useChatTools', () => {
       expect(getToolInheritanceLabel({ name: 'calculator' })).toBe('Use global');
     });
 
-    it('uses the Chat Group override and does not expose a direct Global inheritance choice', () => {
+    it('uses the Chat Group override and does not expose a direct Global inheritance choice', async () => {
       useSettings().TEST_ONLY.__testOnlySetSettings({
         newSettings: {
           autoTitleEnabled: true,
@@ -274,11 +367,11 @@ describe('useChatTools', () => {
       expect(isToolEnabled({ name: 'calculator' })).toBe(false);
       expect(getToolInheritanceLabel({ name: 'calculator' })).toBe('Use group');
 
-      setToolStatus({ name: 'calculator', status: 'enabled' });
+      await setToolStatus({ name: 'calculator', status: 'enabled' });
       expect(isToolEnabled({ name: 'calculator' })).toBe(true);
       expect(chat.toolConfigs).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
 
-      resetToolToInherited({ name: 'calculator' });
+      await resetToolToInherited({ name: 'calculator' });
       expect(isToolEnabled({ name: 'calculator' })).toBe(false);
       expect(chat.toolConfigs).toBeUndefined();
     });
