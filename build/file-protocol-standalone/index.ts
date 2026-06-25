@@ -62,6 +62,17 @@ function readErrorMessage({ error }: { error: unknown }): string {
  * Convert one Naidan/Vite HTML application into split classic-script output
  * that can be opened directly through file://.
  *
+ * Opening through file:// was already achievable before this plugin, and
+ * standalone Worker support was also already achievable before this plugin;
+ * see https://github.com/nwtgck/naidan/commit/089a1cd03c5c4213ee06e2f407dde509aa206831
+ * for a concrete earlier implementation. The main goal here is to let the
+ * application keep scaling across more .ts and .vue modules without forcing
+ * the standalone app back into one large .js file.
+ *
+ * Workers follow a different tradeoff. They are still built as one classic
+ * artifact per Worker so dependencies shared by multiple Workers do not end up
+ * duplicated across split Worker chunks in the final standalone package.
+ *
  * Core lifecycle, in Vite hook order:
  * 1. validate the resolved standalone configuration;
  * 2. build each registered Worker as one classic IIFE artifact;
