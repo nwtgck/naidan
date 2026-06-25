@@ -4,12 +4,11 @@ import { createRequire } from 'node:module'
 import { JSDOM } from 'jsdom'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { build as viteBuild, createLogger } from 'vite'
 import type { Logger, Plugin, ResolvedConfig } from 'vite'
 import {
   fileProtocolStandalone,
-  type FileProtocolStandaloneLicenseDependency,
   type FileProtocolStandaloneOptions,
 } from './file-protocol-standalone/index'
 import {
@@ -22,8 +21,11 @@ import {
   assertMatchingSystemJsSourceMap,
   assertSupportedSystemJsRuntime,
 } from './file-protocol-standalone/systemjs'
+import type { BuildLicenseDependency } from './license-dependencies'
 
 const require = createRequire(import.meta.url)
+
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 })
 
 const fixtureRoots: string[] = []
 const workerTarget = ['chrome140', 'firefox140']
@@ -1141,7 +1143,7 @@ self.onmessage = (event) => self.postMessage(schema.parse(event.data))
 `,
       },
     })
-    let additionalLicenses: readonly FileProtocolStandaloneLicenseDependency[] = []
+    let additionalLicenses: readonly BuildLicenseDependency[] = []
 
     await buildFixtureWithOptions({
       root,

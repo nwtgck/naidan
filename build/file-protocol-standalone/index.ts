@@ -17,7 +17,6 @@ import {
   buildFileProtocolStandaloneWorkerArtifact,
   createFileProtocolStandaloneWorkerBlobRegistrationSource,
   createFileProtocolStandaloneWorkerFactoryModuleSource,
-  deduplicateLicenseDependencies,
   resolvedVirtualWorkerPrefix,
   virtualWorkerPrefix,
 } from './worker'
@@ -43,10 +42,10 @@ import {
   assertValidFileProtocolStandaloneWorkerTarget,
 } from './configuration'
 import type { FileProtocolStandaloneOptions } from './types'
+import { mergeBuildLicenseDependencies } from '../license-dependencies'
 
 export type {
   FileProtocolStandaloneBudgets,
-  FileProtocolStandaloneLicenseDependency,
   FileProtocolStandaloneOptions,
   FileProtocolStandaloneWorker,
 } from './types'
@@ -191,11 +190,11 @@ export function fileProtocolStandalone({
         }
       }
       onAdditionalLicenseDependencies?.({
-        dependencies: deduplicateLicenseDependencies({
-          dependencies: [
+        dependencies: mergeBuildLicenseDependencies({
+          dependencyGroups: [[
             readSystemJsLicenseDependency({ packageJsonPath: systemJsPackagePath }),
             ...workerBuilds.flatMap((worker) => worker.licenseDependencies),
-          ],
+          ]],
         }),
       })
 

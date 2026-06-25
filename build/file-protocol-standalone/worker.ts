@@ -1,15 +1,16 @@
 import license from 'rollup-plugin-license'
-import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-license'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import type { BuildOptions, ResolvedConfig } from 'vite'
 import { build as viteBuild } from 'vite'
 import type { OutputAsset, OutputChunk, RolldownOutput } from 'rolldown'
 
-import type {
-  FileProtocolStandaloneLicenseDependency,
-  FileProtocolStandaloneWorker,
-} from './types'
+import type { FileProtocolStandaloneWorker } from './types'
+import {
+  convertRollupLicenseDependency,
+  mergeBuildLicenseDependencies,
+  type BuildLicenseDependency,
+} from '../license-dependencies'
 import { debugSanitizeFileProtocolStandaloneModuleId, assertFileProtocolStandaloneClassicScript } from './javascript-validation'
 import type { FileProtocolStandaloneRuntimeDynamicImportOccurrence } from './javascript-validation'
 import {
@@ -32,7 +33,7 @@ export type BuiltFileProtocolStandaloneWorkerArtifact = Readonly<{
   sourcePartSizeCodeUnits: number
   moduleIds: readonly string[]
   runtimeDynamicImports: readonly FileProtocolStandaloneRuntimeDynamicImportOccurrence[]
-  licenseDependencies: readonly FileProtocolStandaloneLicenseDependency[]
+  licenseDependencies: readonly BuildLicenseDependency[]
   registryFileName: string
 }>
 
@@ -42,33 +43,6 @@ function computeSha256Hex({ source }: { source: string | Uint8Array }): string {
 
 function utf8ByteLength({ source }: { source: string }): number {
   return Buffer.byteLength(source, 'utf8')
-}
-
-function convertRollupLicenseDependency({ dependency }: {
-  dependency: RollupLicenseDependency
-}): FileProtocolStandaloneLicenseDependency | undefined {
-  if (dependency.name === null || dependency.version === null) {
-    return undefined
-  }
-  return {
-    name: dependency.name,
-    version: dependency.version,
-    license: dependency.license,
-    licenseText: dependency.licenseText,
-  }
-}
-
-export function deduplicateLicenseDependencies({ dependencies }: {
-  dependencies: readonly FileProtocolStandaloneLicenseDependency[]
-}): readonly FileProtocolStandaloneLicenseDependency[] {
-  const merged = new Map<string, FileProtocolStandaloneLicenseDependency>()
-  for (const dependency of dependencies) {
-    merged.set(`${dependency.name}\0${dependency.version}`, dependency)
-  }
-  return [...merged.values()].sort((left, right) => {
-    const nameOrder = left.name.localeCompare(right.name)
-    return nameOrder === 0 ? left.version.localeCompare(right.version) : nameOrder
-  })
 }
 
 export function assertValidFileProtocolStandaloneWorkerId({ workerId }: { workerId: string }): void {
@@ -124,7 +98,7 @@ export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolved
   workerTarget: Exclude<BuildOptions['target'], false | undefined>
 }): Promise<Omit<BuiltFileProtocolStandaloneWorkerArtifact, 'registryFileName'>> {
   const bundleGlobalName = `FileProtocolStandaloneWorker_${computeSha256Hex({ source: worker.id }).slice(0, 12)}`
-  let licenseDependencies: readonly FileProtocolStandaloneLicenseDependency[] = []
+  let licenseDependencies: readonly BuildLicenseDependency[] = []
   const result = await viteBuild({
     root,
     configFile: false,
@@ -133,10 +107,10 @@ export async function buildFileProtocolStandaloneWorkerArtifact({ root, resolved
     plugins: [license({
       sourcemap: false,
       thirdParty(dependencies) {
-        licenseDependencies = deduplicateLicenseDependencies({
-          dependencies: dependencies
+        licenseDependencies = mergeBuildLicenseDependencies({
+          dependencyGroups: [dependencies
             .map((dependency) => convertRollupLicenseDependency({ dependency }))
-            .filter((dependency): dependency is FileProtocolStandaloneLicenseDependency => dependency !== undefined),
+            .filter((dependency): dependency is BuildLicenseDependency => dependency !== undefined)],
         })
       },
     })],

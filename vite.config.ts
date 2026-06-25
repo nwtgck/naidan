@@ -14,47 +14,12 @@ import { JSDOM } from 'jsdom'
 import JSZip from 'jszip'
 import pkg from './package.json'
 import { createStandaloneFacadeAliases } from './build/standalone-facades.js'
-import {
-  fileProtocolStandalone,
-  type FileProtocolStandaloneLicenseDependency,
-} from './build/file-protocol-standalone/index.js'
+import { fileProtocolStandalone } from './build/file-protocol-standalone/index.js'
 import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/models/constants'
-import license from 'rollup-plugin-license'
+import { createLicenseModulePlugins } from './build/license-module'
+import type { BuildLicenseDependency } from './build/license-dependencies'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import { VitePWA } from 'vite-plugin-pwa'
-
-// Ensure src/assets/licenses.json exists even in a fresh clone (it's gitignored)
-// This prevents Vite from failing during import analysis in tests.
-const licensesPath = path.resolve(__dirname, 'src/assets/licenses.json')
-if (!fs.existsSync(licensesPath)) {
-  const assetsDir = path.dirname(licensesPath)
-  if (!fs.existsSync(assetsDir)) {
-    fs.mkdirSync(assetsDir, { recursive: true })
-  }
-  // Create a dummy file because it's gitignored but needed for Vite import analysis in tests
-  fs.writeFileSync(licensesPath, JSON.stringify([{
-    name: "dummy-package-for-tests",
-    version: "0.0.0",
-    license: "DUMMY-LICENSE",
-    licenseText: "This is a placeholder for CI tests."
-  }]))
-}
-
-type LicenseDependency = FileProtocolStandaloneLicenseDependency
-
-function mergeLicenseDependencies({ dependencies, additions }: {
-  dependencies: readonly LicenseDependency[]
-  additions: readonly LicenseDependency[]
-}): readonly LicenseDependency[] {
-  const merged = new Map<string, LicenseDependency>()
-  for (const dependency of [...dependencies, ...additions]) {
-    merged.set(`${dependency.name}\0${dependency.version}`, dependency)
-  }
-  return [...merged.values()].sort((left, right) => {
-    const nameOrder = left.name.localeCompare(right.name)
-    return nameOrder === 0 ? left.version.localeCompare(right.version) : nameOrder
-  })
-}
 
 function setCrossOriginResourcePolicy({ res }: {
   res: import('node:http').ServerResponse,
@@ -259,7 +224,7 @@ export default defineConfig(({ mode }) => {
       resolvePath: ensureExistingPath,
     })
     : []
-  let standaloneAdditionalLicenseDependencies: readonly LicenseDependency[] = []
+  let standaloneAdditionalLicenseDependencies: readonly BuildLicenseDependency[] = []
   return {
     base: './',
     server: {
@@ -328,44 +293,8 @@ export default defineConfig(({ mode }) => {
           }
         ]
       }),
-      license({
-        thirdParty: {
-          includePrivate: false,
-          output: [
-            {
-              file: licensesPath,
-              template(dependencies: LicenseDependency[]) {
-                const mergedDependencies = mergeLicenseDependencies({
-                  dependencies,
-                  additions: standaloneAdditionalLicenseDependencies,
-                })
-                return JSON.stringify(mergedDependencies.map((dep: LicenseDependency) => ({
-                  name: dep.name,
-                  version: dep.version,
-                  license: dep.license,
-                  licenseText: dep.licenseText,
-                })));
-              },
-            },
-            isStandalone && {
-              file: path.resolve(__dirname, outDir, 'THIRD_PARTY_LICENSES.txt'),
-              template(dependencies: LicenseDependency[]) {
-                const mergedDependencies = mergeLicenseDependencies({
-                  dependencies,
-                  additions: standaloneAdditionalLicenseDependencies,
-                })
-                return mergedDependencies.map((dep: LicenseDependency) => (
-                  `Name: ${dep.name}\n` +
-                  `Version: ${dep.version}\n` +
-                  `License: ${dep.license ?? 'Unknown'}\n` +
-                  `--------------------------------------------------------------------------------\n` +
-                  `${dep.licenseText ?? 'License text unavailable.'}\n` +
-                  `================================================================================\n`
-                )).join('\n');
-              },
-            }
-          ].filter((x): x is Exclude<typeof x, false | null | undefined> => !!x) as unknown as never,
-        },
+      ...createLicenseModulePlugins({
+        getAdditionalDependencies: () => standaloneAdditionalLicenseDependencies,
       }),
       !isStandalone && manualGzipWasmPlugin({ outDir }),
       isStandalone && fileProtocolStandalone({
