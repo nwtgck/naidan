@@ -47,20 +47,26 @@ export type LmToolName =
   | 'wikipedia_get_page'
   | 'shell_execute';
 
+export type ToolConfigStatus = 'enabled' | 'disabled';
+
 export type CalculatorToolConfig = {
   key: 'builtin.calculator';
+  status: ToolConfigStatus;
 };
 
 export type ChoicesToolConfig = {
   key: 'builtin.choices';
+  status: ToolConfigStatus;
 };
 
 export type WikipediaToolConfig = {
   key: 'builtin.wikipedia';
+  status: ToolConfigStatus;
 };
 
 export type WeshToolConfig = {
   key: 'builtin.wesh';
+  status: ToolConfigStatus;
   naidanSysfs: {
     /**
      * Scope of Naidan chat data Wesh can access through /sys/fs/naidan.

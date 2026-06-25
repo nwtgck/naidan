@@ -146,7 +146,7 @@ describe('StorageService Migration', () => {
           },
         },
         hierarchy: { items: [] },
-        chatMetas: [{ id: 'c1', toolConfigs: [{ key: 'builtin.calculator' }] }],
+        chatMetas: [{ id: 'c1', toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }] }],
         chatGroups: [],
       },
       contentStream: (async function* () {})(),
@@ -156,7 +156,7 @@ describe('StorageService Migration', () => {
     await storageService.switchProvider({ type: 'opfs' });
 
     expect(mockOpfsProvider.restore.mock.calls[0]?.[0].snapshot.structure.chatMetas).toEqual([
-      { id: 'c1', toolConfigs: [{ key: 'builtin.calculator' }] },
+      { id: 'c1', toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }] },
     ]);
   });
 

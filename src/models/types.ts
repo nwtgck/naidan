@@ -247,6 +247,7 @@ export interface ChatGroup {
   systemPrompt?: SystemPrompt;
   lmParameters?: LmParameters;
   mounts?: Mount[];
+  toolConfigs?: ToolConfig[];
 }
 
 // Sidebar hierarchy - order is implicit by position in array
@@ -370,9 +371,11 @@ export interface Settings {
      *
      * This does not enable or disable any tool by itself. When disabled, tool
      * config changes can still affect the current runtime session, but they are
-     * not written to ChatMeta.experimental.toolConfigs.
+     * not written to persisted Settings, Chat Group, or Chat tool configs.
      */
     toolConfigPersistence?: ToolConfigPersistence;
+    /** Global tool configuration. Missing keys use application defaults. */
+    toolConfigs?: ToolConfig[];
     fakeLm?: 'disabled' | 'enabled';
     sidebarSendMessageReorder?: 'disabled' | 'move_sent_chat';
     readonly unreadable?: {

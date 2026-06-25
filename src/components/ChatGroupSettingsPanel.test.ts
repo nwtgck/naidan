@@ -124,6 +124,10 @@ const globalStubs = {
     template: '<div data-testid="model-selector-mock"><button data-testid="refresh-btn" @click="$emit(\'refresh\')">Refresh</button></div>',
     props: ['modelValue', 'models']
   },
+  'ChatGroupToolsSettings': {
+    name: 'ChatGroupToolsSettings',
+    template: '<div data-testid="chat-group-tools-settings-mock"></div>',
+  },
 };
 
 vi.mock('../composables/useLayout', () => ({
@@ -237,6 +241,13 @@ describe('ChatGroupSettingsPanel.vue', () => {
         }
         mockUpdateChatGroupMetadata({ id: chatGroupId, updates });
       },
+      updateToolConfigs: async ({ chatGroupId, updater }) => {
+        const toolConfigs = updater({ toolConfigs: mockCurrentGroup.value.toolConfigs });
+        mockUpdateChatGroupMetadata({
+          id: chatGroupId,
+          updates: { toolConfigs },
+        });
+      },
       moveChatToGroup: vi.fn(),
       TEST_ONLY: {},
     });
@@ -256,6 +267,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     mockSettings.endpointType = 'openai';
     mockSettings.endpointUrl = 'http://global-url';
     mockSettings.providerProfiles = [];
+    mockSettings.experimental = { toolConfigPersistence: 'enabled' };
   });
 
   it('shows detailed error message when refresh fails', async () => {
@@ -489,6 +501,7 @@ describe('ChatGroupSettingsPanel.vue', () => {
     vi.mocked(useChatGroups).mockReturnValue({
       updateChatGroupMetadata: vi.fn(),
       updateScopedSettings: vi.fn(async () => await pendingSave),
+      updateToolConfigs: vi.fn(),
       moveChatToGroup: vi.fn(),
       TEST_ONLY: {},
     });
@@ -594,17 +607,31 @@ describe('ChatGroupSettingsPanel.vue', () => {
   it('restores defaults when the button is clicked', async () => {
     mockGroup.modelId = 'overridden';
     mockGroup.systemPrompt = { content: 'prompt', behavior: 'override' };
+    mockGroup.toolConfigs = [{ key: 'builtin.calculator', status: 'enabled' }];
 
     const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
     await wrapper.find('[data-testid="group-setting-restore-defaults"]').trigger('click');
 
-    expectLatestGroupUpdate({
-      partial: {
-        id: toChatGroupId({ raw: 'g1' }),
-        modelId: undefined,
-        systemPrompt: undefined,
-      },
-    });
+    await flushPromises();
+    expect(mockGroup.modelId).toBeUndefined();
+    expect(mockGroup.systemPrompt).toBeUndefined();
+    expect(mockGroup.toolConfigs).toBeUndefined();
+  });
+
+  it('preserves saved tool configs when persistence is disabled during Restore defaults', async () => {
+    mockSettings.experimental = { toolConfigPersistence: 'disabled' };
+    mockGroup.modelId = 'overridden';
+    mockGroup.toolConfigs = [{ key: 'builtin.calculator', status: 'enabled' }];
+
+    const wrapper = mount(ChatGroupSettingsPanel, { global: { stubs: globalStubs } });
+    await wrapper.find('[data-testid="group-setting-restore-defaults"]').trigger('click');
+
+    await flushPromises();
+    expect(mockGroup.modelId).toBeUndefined();
+    expect(mockGroup.toolConfigs).toEqual([{
+      key: 'builtin.calculator',
+      status: 'enabled',
+    }]);
   });
 
   it('passes a naturally sorted list of models to ModelSelector', async () => {

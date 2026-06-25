@@ -1,181 +1,159 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
-import { ref } from 'vue';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { computed, defineComponent, h, ref } from 'vue';
 import LmToolsSettings from './LmToolsSettings.vue';
-import {
-  WIKIPEDIA_GET_PAGE_TOOL_NAME,
-  WIKIPEDIA_SEARCH_TOOL_NAME,
-} from '@/services/tools/wikipedia';
+import type { ToolConfig } from '@/services/tools/types';
 
-const mockIsFeatureEnabled = vi.fn();
+const mocks = vi.hoisted(() => ({
+  setToolStatus: vi.fn(),
+  resetToolToInherited: vi.fn(),
+  getToolInheritanceLabel: vi.fn(),
+  setNaidanSysfsAccessScope: vi.fn(),
+  getActiveChatToolConfigs: vi.fn(),
+  getEffectiveToolConfigsForChat: vi.fn(),
+}));
+
+const mockCurrentChat = ref({
+  id: 'chat-1',
+  title: 'Chat',
+  root: { items: [] },
+  createdAt: 1,
+  updatedAt: 1,
+  debugEnabled: false,
+  toolConfigs: undefined as ToolConfig[] | undefined,
+});
 const mockSettings = ref({
   storageType: 'opfs' as const,
   mounts: [],
+  experimental: {
+    toolConfigPersistence: 'disabled' as 'disabled' | 'enabled',
+  },
 });
-const mockIsToolEnabled = vi.fn();
-const mockToggleTool = vi.fn();
-const mockIsWikipediaEffectivelyEnabledForCurrentChat = vi.fn();
-const mockEnableWikipediaToolsForCurrentChat = vi.fn();
-const mockDisableWikipediaToolsForCurrentChat = vi.fn();
 
-vi.mock('@/composables/useFeatureFlags', () => ({
-  useFeatureFlags: () => ({
-    isFeatureEnabled: mockIsFeatureEnabled,
-  }),
-}));
-
-vi.mock('@/composables/useChatTools', () => ({
-  useChatTools: () => ({
-    isToolEnabled: mockIsToolEnabled,
-    toggleTool: mockToggleTool,
-  }),
-}));
-
-vi.mock('@/composables/useToolDependencyActions', () => ({
-  useToolDependencyActions: () => ({
-    isWikipediaEffectivelyEnabledForCurrentChat: mockIsWikipediaEffectivelyEnabledForCurrentChat,
-    enableWikipediaToolsForCurrentChat: mockEnableWikipediaToolsForCurrentChat,
-    disableWikipediaToolsForCurrentChat: mockDisableWikipediaToolsForCurrentChat,
+vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({
+  useCurrentChatState: () => ({
+    currentChat: computed(() => mockCurrentChat.value),
   }),
 }));
 
 vi.mock('@/composables/useSettings', () => ({
-  useSettings: () => ({
-    settings: mockSettings,
+  useSettings: () => ({ settings: mockSettings }),
+}));
+
+vi.mock('@/composables/useChatTools', () => ({
+  getActiveChatToolConfigs: mocks.getActiveChatToolConfigs,
+  getEffectiveToolConfigsForChat: mocks.getEffectiveToolConfigsForChat,
+  useChatTools: () => ({
+    setToolStatus: mocks.setToolStatus,
+    resetToolToInherited: mocks.resetToolToInherited,
+    getToolInheritanceLabel: mocks.getToolInheritanceLabel,
+  }),
+}));
+
+vi.mock('@/composables/useChatWeshPreferences', () => ({
+  useChatWeshPreferences: () => ({
+    setNaidanSysfsAccessScope: mocks.setNaidanSysfsAccessScope,
   }),
 }));
 
 vi.mock('lucide-vue-next', () => ({
-  CalculatorIcon: { template: '<span>Calculator</span>' },
-  ListIcon: { template: '<span>Choices</span>' },
-  BookOpenIcon: { template: '<span>Wikipedia</span>' },
-  TerminalIcon: { template: '<span>Terminal</span>' },
+  InfoIcon: { template: '<span />' },
 }));
+
+const HierarchySettingsStub = defineComponent({
+  name: 'ToolConfigHierarchySettings',
+  props: {
+    inheritanceLabelByKey: { type: Object, required: true },
+  },
+  emits: ['set-status', 'reset-tool', 'set-wesh-access-scope'],
+  setup(props, { emit }) {
+    return () => h('div', { 'data-testid': 'hierarchy-settings-stub' }, [
+      h('span', { 'data-testid': 'calculator-inheritance-label' }, String(props.inheritanceLabelByKey['builtin.calculator'])),
+      h('button', {
+        'data-testid': 'enable-calculator',
+        onClick: () => emit('set-status', { key: 'builtin.calculator', status: 'enabled' }),
+      }),
+      h('button', {
+        'data-testid': 'reset-calculator',
+        onClick: () => emit('reset-tool', { key: 'builtin.calculator' }),
+      }),
+      h('button', {
+        'data-testid': 'set-wesh-scope',
+        onClick: () => emit('set-wesh-access-scope', { accessScope: 'main_chats' }),
+      }),
+    ]);
+  },
+});
+
+const effectiveToolConfigs: ToolConfig[] = [
+  { key: 'builtin.calculator', status: 'disabled' },
+  { key: 'builtin.choices', status: 'disabled' },
+  { key: 'builtin.wikipedia', status: 'disabled' },
+  {
+    key: 'builtin.wesh',
+    status: 'disabled',
+    naidanSysfs: { accessScope: 'none' },
+  },
+];
 
 describe('LmToolsSettings.vue', () => {
   beforeEach(() => {
-    mockIsFeatureEnabled.mockReset();
-    mockIsToolEnabled.mockReset();
-    mockToggleTool.mockReset();
-    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReset();
-    mockEnableWikipediaToolsForCurrentChat.mockReset();
-    mockDisableWikipediaToolsForCurrentChat.mockReset();
-    mockSettings.value = {
-      storageType: 'opfs',
-      mounts: [],
-    };
-    mockIsToolEnabled.mockReturnValue(false);
-    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(false);
+    vi.clearAllMocks();
+    mockSettings.value.experimental.toolConfigPersistence = 'disabled';
+    mockCurrentChat.value.toolConfigs = undefined;
+    mocks.getActiveChatToolConfigs.mockReturnValue(undefined);
+    mocks.getEffectiveToolConfigsForChat.mockReturnValue(effectiveToolConfigs);
+    mocks.getToolInheritanceLabel.mockReturnValue('Use global');
   });
 
-  it('hides shell in browser when the feature flag is disabled', async () => {
-    mockIsFeatureEnabled.mockImplementation(({ feature }: { feature: string }) => feature !== 'wesh_tool');
+  function mountSettings() {
+    return mount(LmToolsSettings, {
+      global: {
+        stubs: {
+          ToolConfigHierarchySettings: HierarchySettingsStub,
+        },
+      },
+    });
+  }
 
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(false);
+  it('shows that chat changes are runtime-only while persistence is disabled', () => {
+    const wrapper = mountSettings();
+    expect(wrapper.find('[data-testid="chat-tool-runtime-note"]').exists()).toBe(true);
   });
 
-  it('shows shell in browser when the feature flag is enabled', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="tool-wesh-toggle"]').exists()).toBe(true);
+  it('hides the runtime-only note while persistence is enabled', () => {
+    mockSettings.value.experimental.toolConfigPersistence = 'enabled';
+    const wrapper = mountSettings();
+    expect(wrapper.find('[data-testid="chat-tool-runtime-note"]').exists()).toBe(false);
   });
 
-  it('shows the wikipedia toggle', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="tool-wikipedia-toggle"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="tool-wikipedia-note"]').exists()).toBe(false);
+  it('shows Use group when the chat group has an explicit tool config', () => {
+    mocks.getToolInheritanceLabel.mockReturnValue('Use group');
+    const wrapper = mountSettings();
+    expect(wrapper.get('[data-testid="calculator-inheritance-label"]').text()).toBe('Use group');
   });
 
-  it('enables wikipedia through dependency actions from the toggle', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-    await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
-
-    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
+  it('maps status changes to the chat tool API', async () => {
+    const wrapper = mountSettings();
+    await wrapper.get('[data-testid="enable-calculator"]').trigger('click');
+    expect(mocks.setToolStatus).toHaveBeenCalledWith({
+      name: 'calculator',
+      status: 'enabled',
+    });
   });
 
-  it('disables wikipedia through dependency actions from the toggle', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-    await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
-
-    expect(mockDisableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
+  it('resets a tool to its available parent instead of selecting global directly', async () => {
+    const wrapper = mountSettings();
+    await wrapper.get('[data-testid="reset-calculator"]').trigger('click');
+    expect(mocks.resetToolToInherited).toHaveBeenCalledWith({ name: 'calculator' });
   });
 
-  it('shows wikipedia as enabled only when both tools are enabled', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="tool-wikipedia-toggle"]').classes().join(' ')).toContain('bg-blue-50');
-  });
-
-  it('repairs a broken partial wikipedia state on toggle', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-    await wrapper.find('[data-testid="tool-wikipedia-toggle"]').trigger('click');
-
-    expect(mockEnableWikipediaToolsForCurrentChat).toHaveBeenCalledWith();
-  });
-
-  it('shows wikipedia as disabled when shell is off even if wikipedia tool flags remain enabled', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
-      name === WIKIPEDIA_SEARCH_TOOL_NAME || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
-    mockIsWikipediaEffectivelyEnabledForCurrentChat.mockReturnValue(false);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-
-    expect(wrapper.find('[data-testid="tool-wikipedia-toggle"]').classes().join(' ')).not.toContain('bg-blue-50');
-    expect(wrapper.find('[data-testid="tool-wikipedia-note"]').exists()).toBe(false);
-  });
-
-  it('keeps calculator toggle behavior unchanged', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-    await wrapper.find('[data-testid="tool-calculator-toggle"]').trigger('click');
-
-    expect(mockToggleTool).toHaveBeenCalledWith({ name: 'calculator' });
-  });
-
-  it('toggles choices independently', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-    await wrapper.find('[data-testid="tool-choices-toggle"]').trigger('click');
-
-    expect(mockToggleTool).toHaveBeenCalledWith({ name: 'choices' });
-  });
-
-  it('shows the sysfs usage note in the wikipedia card', async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
-
-    const wrapper = mount(LmToolsSettings);
-    await flushPromises();
-
-    expect(wrapper.text()).toContain('Uses sysfs Naidan for page text');
+  it('maps Shell visibility changes to the current chat', async () => {
+    const wrapper = mountSettings();
+    await wrapper.get('[data-testid="set-wesh-scope"]').trigger('click');
+    expect(mocks.setNaidanSysfsAccessScope).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      accessScope: 'main_chats',
+    });
   });
 });

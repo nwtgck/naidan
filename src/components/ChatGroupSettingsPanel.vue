@@ -17,6 +17,7 @@ import {
   ChefHatIcon,
   SearchIcon,
   FolderIcon,
+  WrenchIcon,
 } from 'lucide-vue-next';
 import { SCOPED_SETTING_FIELDS, type LmParameterSettingField, type ScopedSettingChange } from '@/models/scoped-setting-change';
 import type {
@@ -54,6 +55,7 @@ import type { WeshMount } from '@/services/wesh/types';
 const LmParametersEditor = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./LmParametersEditor.vue') });
 const RecipeExportModal = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./RecipeExportModal.vue') });
 const TransformersJsUpsell = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./TransformersJsUpsell.vue') });
+const ChatGroupToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./ChatGroupToolsSettings.vue') });
 
 const { currentChatGroup } = useCurrentChatState();
 const { settings } = useSettings();
@@ -343,7 +345,8 @@ const saveError = ref<string | null>(null);
 let nextSaveRevision = 0;
 
 const effectiveEndpointType = computed(() => localSettings.value.endpoint?.type || settings.value.endpointType);
-const hasActiveOverrides = computed(() => hasGroupOverrides({ group: localSettings.value }));
+const hasActiveOverrides = computed(() => hasGroupOverrides({ group: localSettings.value })
+  || (currentChatGroup.value?.toolConfigs?.length ?? 0) > 0);
 
 // Keep field synchronization exhaustive. A new LM setting command must
 // fail typechecking here until clean/dirty draft merge semantics are defined.
@@ -751,9 +754,25 @@ async function updateSystemPromptBehavior({
   await saveChangesFromUi();
 }
 
-async function restoreDefaults() {
+async function restoreDefaults(): Promise<void> {
   localSettings.value = emptyDraft();
-  await saveChangesFromUi();
+
+  try {
+    await saveChanges();
+    const chatGroupId = editingChatGroupId.value;
+    if (
+      chatGroupId === undefined
+      || settings.value.experimental?.toolConfigPersistence !== 'enabled'
+    ) return;
+    await chatGroups.updateToolConfigs({
+      chatGroupId,
+      updater: () => undefined,
+    });
+  } catch (cause: unknown) {
+    saveError.value = cause instanceof Error
+      ? cause.message
+      : 'Failed to restore chat group defaults.';
+  }
 }
 
 async function setGroupNameFromModelId() {
@@ -1104,6 +1123,20 @@ defineExpose({
             </div>
           </div>
         </div>
+
+        <!-- Tools -->
+        <section class="pt-8 border-t border-gray-200/50 dark:border-gray-800 space-y-4">
+          <div class="space-y-1">
+            <label class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+              <WrenchIcon class="w-3 h-3" />
+              Tools
+            </label>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400">
+              Inherit Global Settings or override individual tools for this chat group.
+            </p>
+          </div>
+          <ChatGroupToolsSettings />
+        </section>
 
         <!-- System Prompt and Parameters -->
         <div class="pt-8 border-t border-gray-200/50 dark:border-gray-800 space-y-8 pb-20">

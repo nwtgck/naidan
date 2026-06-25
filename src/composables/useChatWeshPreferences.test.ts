@@ -100,6 +100,7 @@ describe('useChatWeshPreferences', () => {
     expect(chat.toolConfigs).toBeUndefined();
     expect(useChatTools().TEST_ONLY._runtimeToolConfigsByChat.value.get(toChatId({ raw: 'chat-1' }))).toEqual([{
       key: 'builtin.wesh',
+      status: 'enabled',
       naidanSysfs: {
         accessScope: 'current_chat_only',
       },
@@ -117,6 +118,7 @@ describe('useChatWeshPreferences', () => {
 
     expect(chat.toolConfigs).toEqual([{
       key: 'builtin.wesh',
+      status: 'enabled',
       naidanSysfs: {
         accessScope: 'current_chat_only',
       },

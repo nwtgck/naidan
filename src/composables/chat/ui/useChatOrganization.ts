@@ -1,6 +1,7 @@
 import { toRaw } from 'vue';
 import { generateId } from '@/utils/id';
 import type { ChatGroupId, ChatId } from '@/models/ids';
+import { cloneToolConfigs } from '@/services/tools/tool-config';
 import type { ChatGroup, HierarchyChatGroupNode, HierarchyNode } from '@/models/types';
 import { storageService } from '@/services/storage';
 import { useSettings } from '@/composables/useSettings';
@@ -153,6 +154,7 @@ export function useChatOrganization(): ChatOrganizationAdapter {
       id: newId,
       name: `Copy of ${originalGroup.name}`,
       items: [],
+      toolConfigs: cloneToolConfigs({ toolConfigs: originalGroup.toolConfigs }),
       updatedAt: Date.now(),
       isCollapsed: false,
     };

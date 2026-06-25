@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toChatGroupId } from '@/models/ids';
 import type { ChatGroup } from '@/models/types';
+import type { ToolConfig } from '@/services/tools/types';
 
 const {
   mockCurrentChatGroupRef,
@@ -109,6 +110,66 @@ describe('useChatGroups scoped settings updates', () => {
     expect(persisted.name).toBe('Renamed');
     expect(persisted.updatedAt).toBe(1234);
     now.mockRestore();
+  });
+
+  it('updates tool configs through the same serialized storage queue and clones nested settings', async () => {
+    let persisted = createGroup();
+    mockUpdateChatGroup.mockImplementation(async ({ updater }) => {
+      persisted = await updater({ current: persisted });
+    });
+
+    const toolConfigs: ToolConfig[] = [{
+      key: 'builtin.wesh',
+      status: 'enabled',
+      naidanSysfs: { accessScope: 'current_chat_only' },
+    }];
+    const chatGroups = useChatGroups();
+    await chatGroups.updateToolConfigs({
+      chatGroupId: persisted.id,
+      updater: () => toolConfigs,
+    });
+
+    const sourceWesh = toolConfigs[0];
+    if (sourceWesh?.key !== 'builtin.wesh') {
+      throw new Error('Expected Wesh tool config');
+    }
+    sourceWesh.naidanSysfs.accessScope = 'main_chats';
+    expect(persisted.toolConfigs).toEqual([{
+      key: 'builtin.wesh',
+      status: 'enabled',
+      naidanSysfs: { accessScope: 'current_chat_only' },
+    }]);
+    expect(mockLoadData).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies queued Tool Config updaters to the latest saved layer', async () => {
+    let persisted = createGroup();
+    mockUpdateChatGroup.mockImplementation(async ({ updater }) => {
+      persisted = await updater({ current: persisted });
+    });
+
+    const chatGroups = useChatGroups();
+    const first = chatGroups.updateToolConfigs({
+      chatGroupId: persisted.id,
+      updater: ({ toolConfigs }) => [
+        ...(toolConfigs ?? []),
+        { key: 'builtin.calculator', status: 'enabled' },
+      ],
+    });
+    const second = chatGroups.updateToolConfigs({
+      chatGroupId: persisted.id,
+      updater: ({ toolConfigs }) => [
+        ...(toolConfigs ?? []),
+        { key: 'builtin.choices', status: 'enabled' },
+      ],
+    });
+
+    await Promise.all([first, second]);
+
+    expect(persisted.toolConfigs).toEqual([
+      { key: 'builtin.calculator', status: 'enabled' },
+      { key: 'builtin.choices', status: 'enabled' },
+    ]);
   });
 
   it('does not reload group state after persistence fails', async () => {

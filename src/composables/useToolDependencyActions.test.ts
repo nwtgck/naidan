@@ -1,51 +1,44 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { computed, ref } from 'vue'
-import { useToolDependencyActions } from './useToolDependencyActions'
-import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState'
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { computed, ref } from 'vue';
+import { useToolDependencyActions } from './useToolDependencyActions';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
 import {
   WIKIPEDIA_GET_PAGE_TOOL_NAME,
   WIKIPEDIA_SEARCH_TOOL_NAME,
-} from '@/services/tools/wikipedia'
-import { findLastToolConfigByKey, lmToolNamesFromToolConfigs } from '@/services/tools/tool-config'
-import type { ToolConfig } from '@/services/tools/types'
+} from '@/services/tools/wikipedia';
 
-const mockSetToolEnabled = vi.fn()
-const mockIsToolEnabled = vi.fn()
-const mockUpdateToolConfigsForCurrentChat = vi.fn()
-let updatedToolConfigs: ToolConfig[] | undefined
-const mockGetNaidanSysfsAccessScope = vi.fn()
-const mockSetNaidanSysfsAccessScope = vi.fn()
-const mockCurrentChat = ref<{ id: string } | null>({ id: 'chat-1' })
+const mocks = vi.hoisted(() => ({
+  setToolStatus: vi.fn(),
+  isToolEnabled: vi.fn(),
+  getNaidanSysfsAccessScope: vi.fn(),
+  setNaidanSysfsAccessScope: vi.fn(),
+}));
+const mockCurrentChat = ref<{ id: string } | null>({ id: 'chat-1' });
 
 vi.mock('@/composables/useChatTools', () => ({
   useChatTools: () => ({
-    isToolEnabled: mockIsToolEnabled,
-    setToolEnabled: mockSetToolEnabled,
-    updateToolConfigsForCurrentChat: mockUpdateToolConfigsForCurrentChat,
+    isToolEnabled: mocks.isToolEnabled,
+    setToolStatus: mocks.setToolStatus,
   }),
-}))
+}));
 
 vi.mock('@/composables/useChatWeshPreferences', () => ({
   useChatWeshPreferences: () => ({
-    getNaidanSysfsAccessScope: mockGetNaidanSysfsAccessScope,
-    setNaidanSysfsAccessScope: mockSetNaidanSysfsAccessScope,
+    getNaidanSysfsAccessScope: mocks.getNaidanSysfsAccessScope,
+    setNaidanSysfsAccessScope: mocks.setNaidanSysfsAccessScope,
   }),
-}))
+}));
 
 vi.mock('@/composables/chat/ui/useCurrentChatState', () => ({
   useCurrentChatState: vi.fn(),
-}))
+}));
 
 describe('useToolDependencyActions', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-    mockCurrentChat.value = { id: 'chat-1' }
-    mockGetNaidanSysfsAccessScope.mockReturnValue('none')
-    mockIsToolEnabled.mockReturnValue(false)
-    updatedToolConfigs = undefined
-    mockUpdateToolConfigsForCurrentChat.mockImplementation(({ updater }) => {
-      updatedToolConfigs = updater({ toolConfigs: updatedToolConfigs })
-    })
+    vi.clearAllMocks();
+    mockCurrentChat.value = { id: 'chat-1' };
+    mocks.getNaidanSysfsAccessScope.mockReturnValue('none');
+    mocks.isToolEnabled.mockReturnValue(false);
     vi.mocked(useCurrentChatState).mockReturnValue({
       currentChat: computed(() => mockCurrentChat.value),
       currentChatGroup: computed(() => null),
@@ -57,121 +50,73 @@ describe('useToolDependencyActions', () => {
       chatGroups: computed(() => []),
       sidebarItems: computed(() => []),
       TEST_ONLY: {},
-    } as unknown as ReturnType<typeof useCurrentChatState>)
-  })
+    } as unknown as ReturnType<typeof useCurrentChatState>);
+  });
 
-  it('enables shell and wikipedia tools and mounts sysfs when it was none', () => {
-    const { enableWikipediaToolsForCurrentChat } = useToolDependencyActions()
+  it('enables wikipedia through the hierarchical tool status action', () => {
+    const { enableWikipediaToolsForCurrentChat } = useToolDependencyActions();
 
-    enableWikipediaToolsForCurrentChat()
+    enableWikipediaToolsForCurrentChat();
 
-    expect(mockUpdateToolConfigsForCurrentChat).toHaveBeenCalledTimes(1)
-    const enabledToolNames = lmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })
-    expect(enabledToolNames).toHaveLength(3)
-    expect(enabledToolNames).toEqual(expect.arrayContaining([
-      'shell_execute',
-      WIKIPEDIA_SEARCH_TOOL_NAME,
-      WIKIPEDIA_GET_PAGE_TOOL_NAME,
-    ]))
-    expect(findLastToolConfigByKey({
-      toolConfigs: updatedToolConfigs,
-      key: 'builtin.wesh',
-    })?.naidanSysfs.accessScope).toBe('current_chat_only')
-    expect(mockSetNaidanSysfsAccessScope).not.toHaveBeenCalled()
-  })
-
-  it('preserves a non-none sysfs access scope when enabling wikipedia', () => {
-    mockGetNaidanSysfsAccessScope.mockReturnValue('main_chats')
-    const { enableWikipediaToolsForCurrentChat } = useToolDependencyActions()
-
-    enableWikipediaToolsForCurrentChat()
-
-    expect(findLastToolConfigByKey({
-      toolConfigs: updatedToolConfigs,
-      key: 'builtin.wesh',
-    })?.naidanSysfs.accessScope).toBe('main_chats')
-    expect(mockSetNaidanSysfsAccessScope).not.toHaveBeenCalled()
-  })
+    expect(mocks.setToolStatus).toHaveBeenCalledWith({
+      name: WIKIPEDIA_SEARCH_TOOL_NAME,
+      status: 'enabled',
+    });
+  });
 
   it('reports wikipedia as effectively enabled only when shell, sysfs, and both tools are enabled', () => {
-    mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only')
-    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
+    mocks.getNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
+    mocks.isToolEnabled.mockImplementation(({ name }: { name: string }) =>
       name === 'shell_execute'
       || name === WIKIPEDIA_SEARCH_TOOL_NAME
-      || name === WIKIPEDIA_GET_PAGE_TOOL_NAME)
+      || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
 
-    const { isWikipediaEffectivelyEnabledForCurrentChat } = useToolDependencyActions()
+    const { isWikipediaEffectivelyEnabledForCurrentChat } = useToolDependencyActions();
 
-    expect(isWikipediaEffectivelyEnabledForCurrentChat()).toBe(true)
-  })
+    expect(isWikipediaEffectivelyEnabledForCurrentChat()).toBe(true);
+  });
 
   it('reports wikipedia as effectively disabled when shell is off', () => {
-    mockGetNaidanSysfsAccessScope.mockReturnValue('current_chat_only')
-    mockIsToolEnabled.mockImplementation(({ name }: { name: string }) =>
+    mocks.getNaidanSysfsAccessScope.mockReturnValue('current_chat_only');
+    mocks.isToolEnabled.mockImplementation(({ name }: { name: string }) =>
       name === WIKIPEDIA_SEARCH_TOOL_NAME
-      || name === WIKIPEDIA_GET_PAGE_TOOL_NAME)
+      || name === WIKIPEDIA_GET_PAGE_TOOL_NAME);
 
-    const { isWikipediaEffectivelyEnabledForCurrentChat } = useToolDependencyActions()
+    const { isWikipediaEffectivelyEnabledForCurrentChat } = useToolDependencyActions();
 
-    expect(isWikipediaEffectivelyEnabledForCurrentChat()).toBe(false)
-  })
+    expect(isWikipediaEffectivelyEnabledForCurrentChat()).toBe(false);
+  });
 
-  it('disables only wikipedia tools when turning wikipedia off', () => {
-    updatedToolConfigs = [
-      {
-        key: 'builtin.wesh',
-        naidanSysfs: {
-          accessScope: 'current_chat_only',
-        },
-      },
-      { key: 'builtin.wikipedia' },
-    ]
-    const { disableWikipediaToolsForCurrentChat } = useToolDependencyActions()
+  it('disables wikipedia through the hierarchical tool status action', () => {
+    const { disableWikipediaToolsForCurrentChat } = useToolDependencyActions();
 
-    disableWikipediaToolsForCurrentChat()
+    disableWikipediaToolsForCurrentChat();
 
-    expect(lmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })).toEqual(['shell_execute'])
-    expect(mockSetToolEnabled).not.toHaveBeenCalled()
-  })
+    expect(mocks.setToolStatus).toHaveBeenCalledWith({
+      name: WIKIPEDIA_SEARCH_TOOL_NAME,
+      status: 'disabled',
+    });
+  });
 
-  it('disables shell and wikipedia tools together when shell is turned off', () => {
-    updatedToolConfigs = [
-      {
-        key: 'builtin.wesh',
-        naidanSysfs: {
-          accessScope: 'current_chat_only',
-        },
-      },
-      { key: 'builtin.wikipedia' },
-    ]
-    const { disableShellToolForCurrentChat } = useToolDependencyActions()
+  it('disables shell through the hierarchical tool status action', () => {
+    const { disableShellToolForCurrentChat } = useToolDependencyActions();
 
-    disableShellToolForCurrentChat()
+    disableShellToolForCurrentChat();
 
-    expect(updatedToolConfigs).toBeUndefined()
-    expect(mockSetToolEnabled).not.toHaveBeenCalled()
-  })
+    expect(mocks.setToolStatus).toHaveBeenCalledWith({
+      name: 'shell_execute',
+      status: 'disabled',
+    });
+  });
 
-  it('disables sysfs and wikipedia tools without disabling shell', () => {
-    updatedToolConfigs = [
-      {
-        key: 'builtin.wesh',
-        naidanSysfs: {
-          accessScope: 'current_chat_only',
-        },
-      },
-      { key: 'builtin.wikipedia' },
-    ]
-    const { disableNaidanSysfsForCurrentChat } = useToolDependencyActions()
+  it('disables sysfs for the current chat through Wesh preferences', () => {
+    const { disableNaidanSysfsForCurrentChat } = useToolDependencyActions();
 
-    disableNaidanSysfsForCurrentChat()
+    disableNaidanSysfsForCurrentChat();
 
-    expect(lmToolNamesFromToolConfigs({ toolConfigs: updatedToolConfigs })).toEqual(['shell_execute'])
-    expect(findLastToolConfigByKey({
-      toolConfigs: updatedToolConfigs,
-      key: 'builtin.wesh',
-    })?.naidanSysfs.accessScope).toBe('none')
-    expect(mockSetNaidanSysfsAccessScope).not.toHaveBeenCalled()
-    expect(mockSetToolEnabled).not.toHaveBeenCalled()
-  })
-})
+    expect(mocks.setNaidanSysfsAccessScope).toHaveBeenCalledWith({
+      chatId: 'chat-1',
+      accessScope: 'none',
+    });
+  });
+});

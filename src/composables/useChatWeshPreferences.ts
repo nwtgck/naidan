@@ -1,14 +1,34 @@
 import type { ChatId } from '@/models/ids';
 import type { NaidanSysfsAccessScope } from '@/services/wesh/types';
 import {
-  findLastToolConfigByKey,
-  setWeshNaidanSysfsAccessScopeInToolConfigs,
+  setWeshAccessScopeWithDependenciesInToolConfigs,
+  toolConfigStatusForWeshAccessScope,
 } from '@/services/tools/tool-config';
-import { getLiveChatById } from '@/composables/chat/global/chat-core-singletons';
+import type { WeshToolConfig } from '@/services/tools/types';
 import {
-  getEffectiveToolConfigsForChat,
+  getInheritedToolConfigsForChat,
+  getToolResolutionForChat,
   updateToolConfigsForChat,
 } from '@/composables/useChatTools';
+
+function requireWeshConfig({
+  config,
+}: {
+  config: ReturnType<typeof getToolResolutionForChat>['config'];
+}): WeshToolConfig {
+  switch (config.key) {
+  case 'builtin.wesh':
+    return config;
+  case 'builtin.calculator':
+  case 'builtin.choices':
+  case 'builtin.wikipedia':
+    throw new Error(`Expected Wesh tool config, received: ${config.key}`);
+  default: {
+    const _ex: never = config;
+    throw new Error(`Unhandled tool config: ${String(_ex)}`);
+  }
+  }
+}
 
 export function useChatWeshPreferences() {
   const getNaidanSysfsAccessScope = ({ chatId }: { chatId: ChatId | undefined }): NaidanSysfsAccessScope => {
@@ -16,13 +36,9 @@ export function useChatWeshPreferences() {
       return 'none';
     }
 
-    const liveChat = getLiveChatById({ chatId });
-    const toolConfigs = getEffectiveToolConfigsForChat({
-      chatId,
-      persistedToolConfigs: liveChat?.toolConfigs,
-    });
-    return findLastToolConfigByKey({ toolConfigs, key: 'builtin.wesh' })
-      ?.naidanSysfs.accessScope ?? 'none';
+    return requireWeshConfig({
+      config: getToolResolutionForChat({ chatId, key: 'builtin.wesh' }).config,
+    }).naidanSysfs.accessScope;
   };
 
   const setNaidanSysfsAccessScope = ({
@@ -33,12 +49,21 @@ export function useChatWeshPreferences() {
     accessScope: NaidanSysfsAccessScope;
   }) => {
     if (chatId === undefined) return;
+    const inheritedToolConfigs = getInheritedToolConfigsForChat({ chatId });
+    const currentConfig = requireWeshConfig({
+      config: getToolResolutionForChat({ chatId, key: 'builtin.wesh' }).config,
+    });
 
     updateToolConfigsForChat({
       chatId,
-      updater: ({ toolConfigs }) => setWeshNaidanSysfsAccessScopeInToolConfigs({
+      updater: ({ toolConfigs }) => setWeshAccessScopeWithDependenciesInToolConfigs({
         toolConfigs,
         accessScope,
+        inheritedToolConfigs,
+        status: toolConfigStatusForWeshAccessScope({
+          accessScope,
+          currentStatus: currentConfig.status,
+        }),
       }),
     });
   };

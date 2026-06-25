@@ -332,6 +332,11 @@ describe('useChat Composable Logic', () => {
       updatedAt: 0,
       debugEnabled: false,
       modelId: 'special-model',
+      toolConfigs: [{
+        key: 'builtin.wesh',
+        status: 'enabled',
+        naidanSysfs: { accessScope: 'main_chats' },
+      }],
     };
 
     __testOnlySetCurrentChat({ chat: reactive(mockChat) as any });
@@ -348,6 +353,12 @@ describe('useChat Composable Logic', () => {
     const updater = vi.mocked(storageService.updateChatMeta).mock.calls.find(call => idToRaw({ id: call[0].id }) === newId)?.[0].updater;
     const savedMeta = await (updater as any)({});
     expect(savedMeta?.modelId).toBe('special-model');
+    expect(savedMeta?.toolConfigs).toEqual(mockChat.toolConfigs);
+    expect(savedMeta?.toolConfigs).not.toBe(mockChat.toolConfigs);
+    expect(savedMeta?.toolConfigs?.[0]).not.toBe(mockChat.toolConfigs?.[0]);
+    if (savedMeta?.toolConfigs?.[0]?.key === 'builtin.wesh' && mockChat.toolConfigs?.[0]?.key === 'builtin.wesh') {
+      expect(savedMeta.toolConfigs[0].naidanSysfs).not.toBe(mockChat.toolConfigs[0].naidanSysfs);
+    }
   });
 
   it('should preserve attachments during editMessage', async () => {

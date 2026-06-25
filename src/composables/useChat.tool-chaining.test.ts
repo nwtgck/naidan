@@ -87,7 +87,7 @@ vi.mock('../services/tools/registry', () => ({
 }));
 
 vi.mock('./useChatTools', () => ({
-  getEffectiveToolConfigsForChat: ({ persistedToolConfigs }: { persistedToolConfigs: unknown }) => persistedToolConfigs ?? [{ key: 'builtin.calculator' }],
+  getEffectiveToolConfigsForChat: ({ chat }: { chat: { toolConfigs?: unknown } }) => chat.toolConfigs ?? [{ key: 'builtin.calculator', status: 'enabled' }],
   useChatTools: () => ({
     enabledToolNames: { value: ['calculator'] },
   }),

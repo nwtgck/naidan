@@ -1,128 +1,107 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BookOpenIcon, CalculatorIcon, ListIcon } from 'lucide-vue-next';
-import { useChatTools } from '@/composables/useChatTools';
-import { useToolDependencyActions } from '@/composables/useToolDependencyActions';
-import WeshToolSettings from './WeshToolSettings.vue';
+import { InfoIcon } from 'lucide-vue-next';
+import { useCurrentChatState } from '@/composables/chat/ui/useCurrentChatState';
+import {
+  getActiveChatToolConfigs,
+  getEffectiveToolConfigsForChat,
+  useChatTools,
+} from '@/composables/useChatTools';
+import { useChatWeshPreferences } from '@/composables/useChatWeshPreferences';
+import { useSettings } from '@/composables/useSettings';
+import type { BuiltinToolKey, LmToolName } from '@/services/tools/types';
+import ToolConfigHierarchySettings from './ToolConfigHierarchySettings.vue';
 
-const { isToolEnabled, toggleTool } = useChatTools();
-const {
-  isWikipediaEffectivelyEnabledForCurrentChat,
-  enableWikipediaToolsForCurrentChat,
-  disableWikipediaToolsForCurrentChat,
-} = useToolDependencyActions();
+const { currentChat } = useCurrentChatState();
+const { settings } = useSettings();
+const chatTools = useChatTools();
+const { setNaidanSysfsAccessScope } = useChatWeshPreferences();
 
-const isWikipediaEnabled = computed(() => {
-  return isWikipediaEffectivelyEnabledForCurrentChat();
-});
-
-function toggleWikipedia(): void {
-  if (isWikipediaEnabled.value) {
-    disableWikipediaToolsForCurrentChat();
-    return;
+function lmToolNameForKey({ key }: { key: BuiltinToolKey }): LmToolName {
+  switch (key) {
+  case 'builtin.calculator':
+    return 'calculator';
+  case 'builtin.choices':
+    return 'choices';
+  case 'builtin.wikipedia':
+    return 'wikipedia_search';
+  case 'builtin.wesh':
+    return 'shell_execute';
+  default: {
+    const _ex: never = key;
+    throw new Error(`Unhandled builtin tool key: ${_ex}`);
   }
-  enableWikipediaToolsForCurrentChat();
+  }
 }
 
-defineExpose({
-  TEST_ONLY: {
-    isWikipediaEnabled,
-    toggleWikipedia,
-  }
+const toolConfigs = computed(() => {
+  const chat = currentChat.value;
+  if (chat === null) return undefined;
+  return getActiveChatToolConfigs({
+    chatId: chat.id,
+    persistedToolConfigs: chat.toolConfigs,
+  });
 });
+
+const effectiveToolConfigs = computed(() => {
+  const chat = currentChat.value;
+  if (chat === null) return [];
+  return getEffectiveToolConfigsForChat({ chat });
+});
+
+const inheritanceLabelByKey = computed(() => ({
+  'builtin.calculator': chatTools.getToolInheritanceLabel({ name: 'calculator' }),
+  'builtin.choices': chatTools.getToolInheritanceLabel({ name: 'choices' }),
+  'builtin.wikipedia': chatTools.getToolInheritanceLabel({ name: 'wikipedia_search' }),
+  'builtin.wesh': chatTools.getToolInheritanceLabel({ name: 'shell_execute' }),
+} as const));
+
+function setToolStatus({
+  key,
+  status,
+}: {
+  key: BuiltinToolKey;
+  status: 'enabled' | 'disabled';
+}): void {
+  chatTools.setToolStatus({
+    name: lmToolNameForKey({ key }),
+    status,
+  });
+}
+
+function resetTool({ key }: { key: BuiltinToolKey }): void {
+  chatTools.resetToolToInherited({
+    name: lmToolNameForKey({ key }),
+  });
+}
+
+defineExpose({ TEST_ONLY: {} });
+
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-      <button
-        @click="toggleTool({ name: 'calculator' })"
-        class="relative flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 text-left border overflow-hidden group active:scale-[0.98]"
-        :class="isToolEnabled({ name: 'calculator' })
-          ? 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/30 shadow-sm'
-          : 'bg-transparent border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-700'"
-        data-testid="tool-calculator-toggle"
-      >
-        <div
-          class="p-1.5 rounded-lg transition-all duration-300 shrink-0"
-          :class="isToolEnabled({ name: 'calculator' })
-            ? 'bg-blue-600 text-white shadow-sm'
-            : 'bg-gray-50 dark:bg-gray-900 text-gray-400 opacity-60'"
-        >
-          <CalculatorIcon class="w-3.5 h-3.5" />
-        </div>
-
-        <div class="flex-1 min-w-0" :class="{ 'opacity-80': !isToolEnabled({ name: 'calculator' }) }">
-          <div class="flex items-center gap-1.5">
-            <span class="text-xs font-bold tracking-tight" :class="isToolEnabled({ name: 'calculator' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'">Calculator</span>
-            <div v-if="isToolEnabled({ name: 'calculator' })" class="w-1 h-1 bg-blue-500 rounded-full"></div>
-          </div>
-          <div class="text-[10px] font-medium leading-tight truncate mt-0.5" :class="isToolEnabled({ name: 'calculator' }) ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">
-            Solve math expressions
-          </div>
-        </div>
-      </button>
-
-      <button
-        @click="toggleTool({ name: 'choices' })"
-        class="relative flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 text-left border overflow-hidden group active:scale-[0.98]"
-        :class="isToolEnabled({ name: 'choices' })
-          ? 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/30 shadow-sm'
-          : 'bg-transparent border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-700'"
-        data-testid="tool-choices-toggle"
-      >
-        <div
-          class="p-1.5 rounded-lg transition-all duration-300 shrink-0"
-          :class="isToolEnabled({ name: 'choices' })
-            ? 'bg-blue-600 text-white shadow-sm'
-            : 'bg-gray-50 dark:bg-gray-900 text-gray-400 opacity-60'"
-        >
-          <ListIcon class="w-3.5 h-3.5" />
-        </div>
-
-        <div class="flex-1 min-w-0" :class="{ 'opacity-80': !isToolEnabled({ name: 'choices' }) }">
-          <div class="flex items-center gap-1.5">
-            <span class="text-xs font-bold tracking-tight" :class="isToolEnabled({ name: 'choices' }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'">Choices</span>
-            <div v-if="isToolEnabled({ name: 'choices' })" class="w-1 h-1 bg-blue-500 rounded-full"></div>
-          </div>
-          <div class="text-[10px] font-medium leading-tight truncate mt-0.5" :class="isToolEnabled({ name: 'choices' }) ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">
-            Choose from model-provided options
-          </div>
-        </div>
-      </button>
-
-      <button
-        @click="toggleWikipedia()"
-        class="relative flex items-center gap-2.5 p-1.5 rounded-xl transition-all duration-300 text-left border overflow-hidden group active:scale-[0.98]"
-        :class="isWikipediaEnabled
-          ? 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-200/50 dark:border-blue-500/30 shadow-sm'
-          : 'bg-transparent border-gray-100 dark:border-gray-700/50 hover:border-gray-200 dark:hover:border-gray-700'"
-        data-testid="tool-wikipedia-toggle"
-      >
-        <div
-          class="p-1.5 rounded-lg transition-all duration-300 shrink-0"
-          :class="isWikipediaEnabled
-            ? 'bg-blue-600 text-white shadow-sm'
-            : 'bg-gray-50 dark:bg-gray-900 text-gray-400 opacity-60'"
-        >
-          <BookOpenIcon class="w-3.5 h-3.5" />
-        </div>
-
-        <div class="flex-1 min-w-0" :class="{ 'opacity-80': !isWikipediaEnabled }">
-          <div class="flex items-center gap-1.5">
-            <span class="text-xs font-bold tracking-tight" :class="isWikipediaEnabled ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'">Wikipedia</span>
-            <div v-if="isWikipediaEnabled" class="w-1 h-1 bg-blue-500 rounded-full"></div>
-          </div>
-          <div class="text-[10px] font-medium leading-tight truncate mt-0.5" :class="isWikipediaEnabled ? 'text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'">
-            Access global knowledge
-          </div>
-          <div class="text-[9px] leading-tight truncate mt-1 text-gray-400 dark:text-gray-500">
-            Uses sysfs Naidan for page text
-          </div>
-        </div>
-      </button>
-
-      <WeshToolSettings />
+  <div class="space-y-3">
+    <div
+      v-if="settings.experimental?.toolConfigPersistence !== 'enabled'"
+      class="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-2 text-blue-900 dark:border-blue-500/20 dark:bg-blue-500/5 dark:text-blue-200"
+      data-testid="chat-tool-runtime-note"
+    >
+      <InfoIcon class="mt-0.5 h-3 w-3 shrink-0" />
+      <p class="text-[9px] leading-relaxed">
+        Changes apply to this browser session only while Tool config persistence is disabled.
+      </p>
     </div>
+
+    <ToolConfigHierarchySettings
+      v-if="currentChat"
+      scope="chat"
+      :tool-configs="toolConfigs"
+      :effective-tool-configs="effectiveToolConfigs"
+      :inheritance-label-by-key="inheritanceLabelByKey"
+      :is-editable="true"
+      @set-status="setToolStatus($event)"
+      @reset-tool="resetTool($event)"
+      @set-wesh-access-scope="setNaidanSysfsAccessScope({ chatId: currentChat.id, accessScope: $event.accessScope })"
+    />
   </div>
 </template>

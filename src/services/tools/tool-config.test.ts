@@ -1,13 +1,45 @@
 import { describe, expect, it } from 'vitest';
 import {
   builtinToolKeyForLmToolName,
+  cloneToolConfigs,
+  findLastToolConfigByKey,
+  isLmToolEnabledInToolConfigs,
   lmToolNamesForBuiltinToolKey,
   lmToolNamesFromToolConfigs,
-  setLmToolEnabledInToolConfigs,
+  resolveToolConfigForChat,
+  resolveToolConfigsForChat,
+  setLmToolStatusInToolConfigs,
+  setToolStatusWithDependenciesInToolConfigs,
+  setWeshAccessScopeWithDependenciesInToolConfigs,
   setWeshNaidanSysfsAccessScopeInToolConfigs,
 } from './tool-config';
+import type { ToolConfig } from './types';
+
+const applicationDefaults = resolveToolConfigsForChat({
+  globalToolConfigs: undefined,
+  chatGroupToolConfigs: undefined,
+  chatToolConfigs: undefined,
+});
 
 describe('tool config', () => {
+  it('deep-clones Wesh settings when copying a tool config layer', () => {
+    const original: ToolConfig[] = [{
+      key: 'builtin.wesh',
+      status: 'enabled',
+      naidanSysfs: { accessScope: 'main_chats' },
+    }];
+    const cloned = cloneToolConfigs({ toolConfigs: original });
+
+    expect(cloned).toEqual(original);
+    expect(cloned).not.toBe(original);
+    expect(cloned?.[0]).not.toBe(original[0]);
+    expect(cloned?.[0]?.key === 'builtin.wesh' && original[0]?.key === 'builtin.wesh'
+      ? cloned[0].naidanSysfs
+      : undefined).not.toBe(original[0]?.key === 'builtin.wesh'
+      ? original[0].naidanSysfs
+      : undefined);
+  });
+
   it('keeps Naidan keys separate from LM-visible tool names', () => {
     expect(lmToolNamesForBuiltinToolKey({ key: 'builtin.calculator' })).toEqual(['calculator']);
     expect(lmToolNamesForBuiltinToolKey({ key: 'builtin.choices' })).toEqual(['choices']);
@@ -18,51 +50,193 @@ describe('tool config', () => {
     expect(builtinToolKeyForLmToolName({ name: 'shell_execute' })).toBe('builtin.wesh');
   });
 
-  it('deduplicates LM-visible names at runtime without rejecting duplicate persisted keys', () => {
+  it('uses the last duplicate persisted key and excludes disabled tools', () => {
     expect(lmToolNamesFromToolConfigs({
       toolConfigs: [
-        { key: 'builtin.calculator' },
-        { key: 'builtin.calculator' },
-        { key: 'builtin.choices' },
-        { key: 'builtin.wikipedia' },
+        { key: 'builtin.calculator', status: 'enabled' },
+        { key: 'builtin.calculator', status: 'disabled' },
+        { key: 'builtin.choices', status: 'enabled' },
       ],
-    })).toEqual(['calculator', 'choices', 'wikipedia_search', 'wikipedia_get_page']);
+    })).toEqual(['choices']);
   });
 
-  it('uses singleton upsert semantics for current builtin tool UI writes', () => {
-    const enabled = setLmToolEnabledInToolConfigs({
-      toolConfigs: [{ key: 'builtin.calculator' }],
-      name: 'calculator',
-      enabled: true,
-    });
-    expect(enabled).toEqual([{ key: 'builtin.calculator' }]);
+  it('does not expose wikipedia when shell or sysfs does not satisfy its dependency', () => {
+    const wikipedia = { key: 'builtin.wikipedia', status: 'enabled' } as const;
+    const disabledShell: ToolConfig = {
+      key: 'builtin.wesh',
+      status: 'disabled',
+      naidanSysfs: { accessScope: 'current_chat_only' },
+    };
+    const unmountedShell: ToolConfig = {
+      key: 'builtin.wesh',
+      status: 'enabled',
+      naidanSysfs: { accessScope: 'none' },
+    };
+    const mountedShell: ToolConfig = {
+      key: 'builtin.wesh',
+      status: 'enabled',
+      naidanSysfs: { accessScope: 'main_chats' },
+    };
 
-    const disabled = setLmToolEnabledInToolConfigs({
+    expect(lmToolNamesFromToolConfigs({ toolConfigs: [wikipedia, disabledShell] })).toEqual([]);
+    expect(lmToolNamesFromToolConfigs({ toolConfigs: [wikipedia, unmountedShell] })).toEqual(['shell_execute']);
+    expect(lmToolNamesFromToolConfigs({ toolConfigs: [wikipedia, mountedShell] })).toEqual([
+      'wikipedia_search',
+      'wikipedia_get_page',
+      'shell_execute',
+    ]);
+    expect(isLmToolEnabledInToolConfigs({
+      toolConfigs: [wikipedia, mountedShell],
+      name: 'wikipedia_search',
+    })).toBe(true);
+  });
+
+  it('resolves chat, chat group, global, and application defaults in priority order', () => {
+    const globalToolConfigs: ToolConfig[] = [
+      { key: 'builtin.calculator', status: 'enabled' },
+    ];
+    const chatGroupToolConfigs: ToolConfig[] = [
+      { key: 'builtin.calculator', status: 'disabled' },
+    ];
+    const chatToolConfigs: ToolConfig[] = [
+      { key: 'builtin.calculator', status: 'enabled' },
+    ];
+
+    expect(resolveToolConfigForChat({
+      key: 'builtin.calculator',
+      globalToolConfigs,
+      chatGroupToolConfigs,
+      chatToolConfigs,
+    })).toEqual({
+      config: { key: 'builtin.calculator', status: 'enabled' },
+      source: 'chat',
+    });
+    expect(resolveToolConfigForChat({
+      key: 'builtin.calculator',
+      globalToolConfigs,
+      chatGroupToolConfigs,
+      chatToolConfigs: undefined,
+    }).source).toBe('chat_group');
+    expect(resolveToolConfigForChat({
+      key: 'builtin.calculator',
+      globalToolConfigs,
+      chatGroupToolConfigs: undefined,
+      chatToolConfigs: undefined,
+    }).source).toBe('global');
+    expect(resolveToolConfigForChat({
+      key: 'builtin.calculator',
+      globalToolConfigs: undefined,
+      chatGroupToolConfigs: undefined,
+      chatToolConfigs: undefined,
+    })).toEqual({
+      config: { key: 'builtin.calculator', status: 'disabled' },
+      source: 'application_default',
+    });
+  });
+
+  it('stores explicit enabled and disabled overrides instead of removing disabled entries', () => {
+    const enabled = setLmToolStatusInToolConfigs({
+      toolConfigs: undefined,
+      name: 'calculator',
+      status: 'enabled',
+      inheritedConfig: { key: 'builtin.calculator', status: 'disabled' },
+    });
+    expect(enabled).toEqual([{ key: 'builtin.calculator', status: 'enabled' }]);
+
+    const disabled = setLmToolStatusInToolConfigs({
       toolConfigs: enabled,
       name: 'calculator',
-      enabled: false,
+      status: 'disabled',
+      inheritedConfig: { key: 'builtin.calculator', status: 'enabled' },
     });
-    expect(disabled).toBeUndefined();
+    expect(disabled).toEqual([{ key: 'builtin.calculator', status: 'disabled' }]);
   });
 
-  it('stores Wesh sysfs preferences under the Wesh tool config', () => {
+  it('copies inherited Wesh settings when creating an override', () => {
     const toolConfigs = setWeshNaidanSysfsAccessScopeInToolConfigs({
       toolConfigs: undefined,
       accessScope: 'main_chats',
+      inheritedConfig: {
+        key: 'builtin.wesh',
+        status: 'disabled',
+        naidanSysfs: { accessScope: 'current_chat_only' },
+      },
+      status: 'disabled',
     });
 
     expect(toolConfigs).toEqual([{
       key: 'builtin.wesh',
-      naidanSysfs: {
-        accessScope: 'main_chats',
-      },
+      status: 'disabled',
+      naidanSysfs: { accessScope: 'main_chats' },
     }]);
   });
-  it('does not create a disabled Wesh config when setting sysfs to none without an existing Wesh config', () => {
-    expect(setWeshNaidanSysfsAccessScopeInToolConfigs({
+
+  it('enables wikipedia without adding a Wesh override when the parent already satisfies dependencies', () => {
+    const inheritedToolConfigs: ToolConfig[] = [
+      ...applicationDefaults.filter(config => config.key !== 'builtin.wesh'),
+      {
+        key: 'builtin.wesh',
+        status: 'enabled',
+        naidanSysfs: { accessScope: 'main_chats' },
+      },
+    ];
+    const result = setToolStatusWithDependenciesInToolConfigs({
       toolConfigs: undefined,
-      accessScope: 'none',
-    })).toBeUndefined();
+      key: 'builtin.wikipedia',
+      status: 'enabled',
+      inheritedToolConfigs,
+    });
+
+    expect(result).toEqual([{ key: 'builtin.wikipedia', status: 'enabled' }]);
   });
 
+  it('adds the required Wesh override when enabling wikipedia over disabled defaults', () => {
+    const result = setToolStatusWithDependenciesInToolConfigs({
+      toolConfigs: undefined,
+      key: 'builtin.wikipedia',
+      status: 'enabled',
+      inheritedToolConfigs: applicationDefaults,
+    });
+
+    expect(findLastToolConfigByKey({
+      toolConfigs: result,
+      key: 'builtin.wikipedia',
+    })?.status).toBe('enabled');
+    expect(findLastToolConfigByKey({
+      toolConfigs: result,
+      key: 'builtin.wesh',
+    })).toEqual({
+      key: 'builtin.wesh',
+      status: 'enabled',
+      naidanSysfs: { accessScope: 'current_chat_only' },
+    });
+  });
+
+  it('disables wikipedia in the same layer when shell or sysfs is disabled', () => {
+    const inheritedToolConfigs: ToolConfig[] = [
+      ...applicationDefaults.filter(config => config.key !== 'builtin.wikipedia'),
+      { key: 'builtin.wikipedia', status: 'enabled' },
+    ];
+    const shellDisabled = setToolStatusWithDependenciesInToolConfigs({
+      toolConfigs: undefined,
+      key: 'builtin.wesh',
+      status: 'disabled',
+      inheritedToolConfigs,
+    });
+    expect(findLastToolConfigByKey({
+      toolConfigs: shellDisabled,
+      key: 'builtin.wikipedia',
+    })?.status).toBe('disabled');
+
+    const sysfsDisabled = setWeshAccessScopeWithDependenciesInToolConfigs({
+      toolConfigs: undefined,
+      accessScope: 'none',
+      inheritedToolConfigs,
+      status: 'enabled',
+    });
+    expect(findLastToolConfigByKey({
+      toolConfigs: sysfsDisabled,
+      key: 'builtin.wikipedia',
+    })?.status).toBe('disabled');
+  });
 });
