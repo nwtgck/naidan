@@ -63,6 +63,10 @@ export function parseRelativeOutputFileName({ value, attribute }: {
     throw new Error(`[${pluginName}] ${attribute} must identify one local output file without a query or fragment: ${value}`)
   }
 
+  if (/%(?:2f|5c)/i.test(resolved.pathname)) {
+    throw new Error(`[${pluginName}] ${attribute} must not contain an encoded path separator: ${value}`)
+  }
+
   let decodedPath: string
   try {
     decodedPath = decodeURIComponent(resolved.pathname)

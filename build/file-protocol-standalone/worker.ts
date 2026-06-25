@@ -540,10 +540,16 @@ export function scheduleFileProtocolStandaloneWorkerAssetWarmup() {
     workerWarmupScheduled = false;
     void getOrCreateWorkerBlobUrl().catch(() => {});
   };
-  if ('requestIdleCallback' in globalThis) {
-    globalThis.requestIdleCallback(run, { timeout: 1000 });
-  } else {
-    setTimeout(run, 0);
+  try {
+    if (typeof globalThis.requestIdleCallback === 'function') {
+      globalThis.requestIdleCallback(run, { timeout: 1000 });
+    } else {
+      setTimeout(run, 0);
+    }
+  } catch (error) {
+    workerWarmupScheduled = false;
+    workerBlobUrlStatus = 'idle';
+    debugWarn('Failed to schedule Worker asset warmup. Worker creation will load on demand.', error);
   }
 }
 `

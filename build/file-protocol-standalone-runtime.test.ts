@@ -495,6 +495,19 @@ describe('fileProtocolStandalone generated worker runtime', () => {
     })
   })
 
+  it('keeps non-callable idle scheduling fail-open', () => {
+    const harness = createSuccessfulHarness({ idleCallbackMode: 'unavailable' })
+    harness.globalObject.requestIdleCallback = () => {
+      throw new Error('synthetic idle scheduling failure')
+    }
+
+    expect(() => harness.api.scheduleFileProtocolStandaloneWorkerAssetWarmup()).not.toThrow()
+    expect(harness.api.debugGetFileProtocolStandaloneWorkerDiagnostics()).toMatchObject({
+      blobUrlStatus: 'idle',
+      workersCreated: 0,
+    })
+  })
+
   it('uses requestIdleCallback with an explicit timeout when it is available', async () => {
     const harness = createSuccessfulHarness({ idleCallbackMode: 'available' })
 

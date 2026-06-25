@@ -26,15 +26,17 @@ const verificationReportJson = computed(() => verificationReport.value === undef
   ? ''
   : debugSerializeFileProtocolStandaloneVerificationReportForCopy({ report: verificationReport.value }))
 
-const lazyStyleInitialOutlineWidthAttribute = 'data-debug-file-protocol-standalone-lazy-style-initial-outline-width'
+const lazyStyleInitialMarkerAttribute = 'data-debug-file-protocol-standalone-lazy-style-initial-marker'
 
-function debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialOutlineWidth({ element }: { element: HTMLElement }): string {
+function debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialMarker({ element }: { element: HTMLElement }): string {
   const root = document.documentElement
-  const existing = root.getAttribute(lazyStyleInitialOutlineWidthAttribute)
+  const existing = root.getAttribute(lazyStyleInitialMarkerAttribute)
   if (existing !== null) return existing
 
-  const measured = getComputedStyle(element).outlineWidth
-  root.setAttribute(lazyStyleInitialOutlineWidthAttribute, measured)
+  const measured = getComputedStyle(element)
+    .getPropertyValue('--debug-file-protocol-standalone-lazy-style-marker')
+    .trim()
+  root.setAttribute(lazyStyleInitialMarkerAttribute, measured)
   return measured
 }
 
@@ -64,7 +66,7 @@ async function debugExerciseFileProtocolStandaloneRouteRoundTrip({ signal }: { s
       hash: route.hash,
       query: {
         ...route.query,
-        [probeQueryKey]: '1',
+        [probeQueryKey]: route.query[probeQueryKey] === '1' ? '2' : '1',
       },
     })
     await nextTick()
@@ -110,7 +112,7 @@ async function debugRunVerification(): Promise<void> {
   isRunning.value = true
   verificationReport.value = undefined
   try {
-    const lazyStyleInitialOutlineWidth = debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialOutlineWidth({
+    const lazyStyleInitialMarker = debugGetOrCaptureFileProtocolStandaloneLazyStyleInitialMarker({
       element: lazyStyleProbeElement.value,
     })
     const resolved = router.resolve(route.fullPath)
@@ -124,7 +126,7 @@ async function debugRunVerification(): Promise<void> {
       tailwindStyleProbeElement: tailwindStyleProbeElement.value,
       scopedStyleProbeElement: scopedStyleProbeElement.value,
       lazyStyleProbeElement: lazyStyleProbeElement.value,
-      lazyStyleInitialOutlineWidth,
+      lazyStyleInitialMarker,
       debugLoadFileProtocolStandaloneLazyStyleProbeModule,
       debugExerciseFileProtocolStandaloneRouteRoundTrip,
       debugRunWorkerProbe: async ({ signal }) => {

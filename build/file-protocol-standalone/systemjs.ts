@@ -354,6 +354,7 @@ export function createSystemJsPhysicalLoadRecoverySource(): string {
   var originalInstantiate = System.instantiate;
   var failedScriptAttempts = Object.create(null);
   var reverseParentUrls = Object.create(null);
+  var dependencyUrls = Object.create(null);
   var retryableLoadErrors = new WeakSet();
   var retryableLoadChains = new WeakMap();
   var namespaceName = ${JSON.stringify(FILE_PROTOCOL_STANDALONE_GLOBAL_NAME)};
@@ -422,16 +423,18 @@ export function createSystemJsPhysicalLoadRecoverySource(): string {
       return undefined;
     }
   }
-  function addReverseParent(childUrl, parentUrl) {
+  function addDependency(parentUrl, childUrl) {
     if (childUrl === parentUrl) return;
     var parents = reverseParentUrls[childUrl] || (reverseParentUrls[childUrl] = Object.create(null));
     parents[parentUrl] = true;
+    var dependencies = dependencyUrls[parentUrl] || (dependencyUrls[parentUrl] = Object.create(null));
+    dependencies[childUrl] = true;
   }
   function rememberParent(url, parentUrl) {
     var resolvedUrl = resolveFileUrl(url, parentUrl);
     var resolvedParentUrl = typeof parentUrl === 'string' ? resolveFileUrl(parentUrl, undefined) : undefined;
     if (resolvedUrl !== undefined && resolvedParentUrl !== undefined) {
-      addReverseParent(resolvedUrl, resolvedParentUrl);
+      addDependency(resolvedParentUrl, resolvedUrl);
     }
     return resolvedUrl;
   }
@@ -442,7 +445,7 @@ export function createSystemJsPhysicalLoadRecoverySource(): string {
       var dependency = registration[0][index];
       if (typeof dependency !== 'string') continue;
       var resolvedDependencyUrl = resolveFileUrl(dependency, resolvedUrl);
-      if (resolvedDependencyUrl !== undefined) addReverseParent(resolvedDependencyUrl, resolvedUrl);
+      if (resolvedDependencyUrl !== undefined) addDependency(resolvedUrl, resolvedDependencyUrl);
     }
   }
   function collectLoadGraph(url, parentUrl) {
@@ -451,7 +454,7 @@ export function createSystemJsPhysicalLoadRecoverySource(): string {
     var initialUrl = resolveFileUrl(url, parentUrl);
     var queue = initialUrl === undefined ? [] : [initialUrl];
     var explicitParent = typeof parentUrl === 'string' ? resolveFileUrl(parentUrl, undefined) : undefined;
-    if (initialUrl !== undefined && explicitParent !== undefined) addReverseParent(initialUrl, explicitParent);
+    if (initialUrl !== undefined && explicitParent !== undefined) addDependency(explicitParent, initialUrl);
     while (queue.length > 0) {
       var current = queue.shift();
       if (current === undefined || seen[current]) continue;
@@ -459,6 +462,8 @@ export function createSystemJsPhysicalLoadRecoverySource(): string {
       graph.push(current);
       var parents = reverseParentUrls[current];
       if (parents !== undefined) queue.push.apply(queue, Object.keys(parents));
+      var dependencies = dependencyUrls[current];
+      if (dependencies !== undefined) queue.push.apply(queue, Object.keys(dependencies));
     }
     return graph;
   }

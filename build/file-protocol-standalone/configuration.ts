@@ -49,7 +49,10 @@ export function assertSupportedFileProtocolStandaloneConfig({ config, debugBuild
     const outputDirectory = path.resolve(config.root, config.build.outDir)
     const reportPath = path.resolve(config.root, debugBuildReportFile)
     const relative = path.relative(outputDirectory, reportPath)
-    if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    const isOutsideOutputDirectory = relative === '..'
+      || relative.startsWith(`..${path.sep}`)
+      || path.isAbsolute(relative)
+    if (relative === '' || !isOutsideOutputDirectory) {
       throw new Error(`[${pluginName}] debugBuildReportFile must be outside build.outDir: ${debugBuildReportFile}`)
     }
   }

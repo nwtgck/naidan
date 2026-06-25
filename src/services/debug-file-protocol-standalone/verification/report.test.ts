@@ -192,9 +192,10 @@ function createBaseArguments() {
       resolvedHref: '#/debug/standalone',
     },
     ...probes,
-    lazyStyleInitialOutlineWidth: '',
+    lazyStyleInitialMarker: '',
     debugLoadFileProtocolStandaloneLazyStyleProbeModule: async ({ signal }: { signal: AbortSignal }) => {
       signal.throwIfAborted()
+      probes.lazyStyleProbeElement.style.setProperty('--debug-file-protocol-standalone-lazy-style-marker', 'applied')
       probes.lazyStyleProbeElement.style.outlineStyle = 'solid'
       probes.lazyStyleProbeElement.style.outlineWidth = '3px'
       return { marker: 'standalone-verification-lazy-style-probe-v1' }
@@ -295,7 +296,9 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
     })
     expect(report.runtime.pluginDiagnostics).toMatchObject({
       format: 'file-protocol-standalone-diagnostics-v2',
+      workerRuntime: createValidWorkerResult().diagnosticsAfter,
     })
+    expect(report.runtime.worker).toEqual(createValidWorkerResult().diagnosticsAfter)
     expect(report.runtime.resourceEntries).toEqual([{
       name: 'file:///__nonexistent_file_protocol_test_root__/assets/lazy.js',
       duration: 4,
@@ -372,6 +375,27 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
     expect(workerProbeSignal?.aborted).toBe(true)
   })
 
+  it('does not mistake a 3px default outline width for preloaded lazy CSS', async () => {
+    const args = createBaseArguments()
+    args.lazyStyleProbeElement.style.outlineWidth = '3px'
+
+    const report = await debugRunFileProtocolStandaloneVerification(args)
+
+    expect(report.status).toBe('pass')
+    expect(report.summary).toMatchObject({ passed: 12, failed: 0 })
+    expect(report.checks.find((check) => check.id === 'styles.lazy-before-import')).toMatchObject({
+      status: 'pass',
+      details: { marker: '' },
+    })
+    expect(report.checks.find((check) => check.id === 'dynamic-imports.lazy-style-probe')).toMatchObject({
+      status: 'pass',
+      details: {
+        styleMarker: 'applied',
+        outlineWidth: '3px',
+      },
+    })
+  })
+
   it('reuses the page-lifetime lazy style observation across repeated runs', async () => {
     const args = createBaseArguments()
 
@@ -380,11 +404,11 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
 
     expect(first.checks.find((check) => check.id === 'styles.lazy-before-import')).toMatchObject({
       status: 'pass',
-      details: { outlineWidth: '' },
+      details: { marker: '' },
     })
     expect(second.checks.find((check) => check.id === 'styles.lazy-before-import')).toMatchObject({
       status: 'pass',
-      details: { outlineWidth: '' },
+      details: { marker: '' },
     })
     expect(second.checks.find((check) => check.id === 'dynamic-imports.lazy-style-probe')?.status).toBe('pass')
   })
@@ -467,7 +491,7 @@ describe('debugRunFileProtocolStandaloneVerification', () => {
     expect(startupDetails).toHaveProperty('startup.checkpoint', 'mounted')
     expect(report.runtime.startup).toHaveProperty('checkpoint', 'mounted')
     expect(report.runtime.systemJsPatch).toHaveProperty('patchedScripts.length', 1)
-    expect(report.runtime.worker).toHaveProperty('worker.objectUrlsCreated', 1)
+    expect(report.runtime.worker).toHaveProperty('objectUrlsCreated', 1)
   })
 
   it('fails retry validation when its physical failure records are malformed', async () => {

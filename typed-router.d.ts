@@ -52,6 +52,13 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/debug/': RouteRecordInfo<
+      '/debug/',
+      '/debug',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/debug/standalone': RouteRecordInfo<
       '/debug/standalone',
       '/debug/standalone',
@@ -109,6 +116,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'id'
+    }
+    'src/pages/debug/index.vue': {
+      routes:
+        | '/debug/'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/debug/standalone.vue': {
       routes:

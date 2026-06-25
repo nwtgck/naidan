@@ -364,7 +364,7 @@ export async function debugRunFileProtocolStandaloneVerification({
   tailwindStyleProbeElement,
   scopedStyleProbeElement,
   lazyStyleProbeElement,
-  lazyStyleInitialOutlineWidth,
+  lazyStyleInitialMarker,
   debugLoadFileProtocolStandaloneLazyStyleProbeModule,
   debugExerciseFileProtocolStandaloneRouteRoundTrip,
   debugRunWorkerProbe,
@@ -374,7 +374,7 @@ export async function debugRunFileProtocolStandaloneVerification({
   tailwindStyleProbeElement: HTMLElement
   scopedStyleProbeElement: HTMLElement
   lazyStyleProbeElement: HTMLElement
-  lazyStyleInitialOutlineWidth: string
+  lazyStyleInitialMarker: string
   debugLoadFileProtocolStandaloneLazyStyleProbeModule: ({ signal }: { signal: AbortSignal }) => Promise<Readonly<{ marker: string }>>
   debugExerciseFileProtocolStandaloneRouteRoundTrip: ({ signal }: { signal: AbortSignal }) => Promise<DebugFileProtocolStandaloneVerificationRouteTransition>
   debugRunWorkerProbe: ({ signal }: { signal: AbortSignal }) => Promise<DebugFileProtocolStandaloneWorkerVerificationResult>
@@ -382,6 +382,7 @@ export async function debugRunFileProtocolStandaloneVerification({
 }): Promise<DebugFileProtocolStandaloneVerificationReport> {
   const startedAt = performance.now()
   const checks: DebugFileProtocolStandaloneVerificationCheck[] = []
+  let workerVerificationResult: DebugFileProtocolStandaloneWorkerVerificationResult | undefined
   let pluginDiagnosticsReadResult:
     | Readonly<{ status: 'fulfilled'; value: DebugFileProtocolStandaloneGlobalDiagnostics }>
     | Readonly<{ status: 'rejected'; reason: unknown }>
@@ -526,10 +527,10 @@ export async function debugRunFileProtocolStandaloneVerification({
     category: 'styles',
     action: () => {
       assertCondition({
-        condition: lazyStyleInitialOutlineWidth !== '3px',
+        condition: lazyStyleInitialMarker === '',
         message: 'Lazy CSS was already applied before its first dynamic import.',
       })
-      return { outlineWidth: lazyStyleInitialOutlineWidth }
+      return { marker: lazyStyleInitialMarker }
     },
   })
 
@@ -539,13 +540,17 @@ export async function debugRunFileProtocolStandaloneVerification({
     action: async ({ signal }) => {
       const loaded = await debugLoadFileProtocolStandaloneLazyStyleProbeModule({ signal })
       await waitForStyleApplication({ signal })
-      const outlineWidth = getComputedStyle(lazyStyleProbeElement).outlineWidth
+      const computedStyle = getComputedStyle(lazyStyleProbeElement)
+      const styleMarker = computedStyle
+        .getPropertyValue('--debug-file-protocol-standalone-lazy-style-marker')
+        .trim()
+      const outlineWidth = computedStyle.outlineWidth
       assertCondition({
         condition: loaded.marker === 'standalone-verification-lazy-style-probe-v1',
         message: `Unexpected lazy marker: ${loaded.marker}`,
       })
-      assertCondition({ condition: outlineWidth === '3px', message: `Lazy CSS outline is ${outlineWidth}.` })
-      return { marker: loaded.marker, outlineWidth }
+      assertCondition({ condition: styleMarker === 'applied', message: `Lazy CSS marker is ${JSON.stringify(styleMarker)}.` })
+      return { moduleMarker: loaded.marker, styleMarker, outlineWidth }
     },
   })
 
@@ -581,6 +586,7 @@ export async function debugRunFileProtocolStandaloneVerification({
       const result = await debugRunWorkerProbe({ signal })
       signal.throwIfAborted()
       debugAssertValidFileProtocolStandaloneWorkerVerificationResult({ result })
+      workerVerificationResult = result
       return result
     },
   })
@@ -599,6 +605,15 @@ export async function debugRunFileProtocolStandaloneVerification({
     }
     }
   })()
+
+  const resolvedWorkerDiagnostics = workerVerificationResult?.diagnosticsAfter
+    ?? resolvedPluginDiagnostics?.workerRuntime
+  const resolvedPluginDiagnosticsForReport = resolvedPluginDiagnostics === undefined
+    ? undefined
+    : {
+      ...resolvedPluginDiagnostics,
+      workerRuntime: resolvedWorkerDiagnostics,
+    }
 
   return {
     format: 'naidan-standalone-verification-v1',
@@ -619,11 +634,11 @@ export async function debugRunFileProtocolStandaloneVerification({
     },
     checks,
     runtime: {
-      pluginDiagnostics: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics }),
+      pluginDiagnostics: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnosticsForReport }),
       startup: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics?.startup }),
       systemJsPatch: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics?.systemJsPatch }),
       systemJsRetry: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics?.systemJsRetry }),
-      worker: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedPluginDiagnostics?.workerRuntime }),
+      worker: debugCloneFileProtocolStandaloneVerificationValue({ value: resolvedWorkerDiagnostics }),
       resourceEntries: performance.getEntriesByType('resource').map((entry) => {
         const resource = entry as PerformanceResourceTiming
         return {

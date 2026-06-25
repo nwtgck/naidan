@@ -94,8 +94,9 @@ async function captureUnhandledRejections({ action }: {
   }
 }
 
-async function createRealSystemJsHarness({ fixtureDirectory }: {
+async function createRealSystemJsHarness({ fixtureDirectory, scriptLoadDelayMs }: {
   fixtureDirectory: string
+  scriptLoadDelayMs?: ({ url }: { url: string }) => number
 }): Promise<Readonly<{
   dom: JSDOM
   system: RealSystemJs
@@ -137,7 +138,7 @@ async function createRealSystemJsHarness({ fixtureDirectory }: {
         }, () => {
           script.dispatchEvent(new dom.window.Event('error'))
         })
-      }, 0)
+      }, scriptLoadDelayMs?.({ url }) ?? 0)
       return appended
     },
   })
@@ -447,10 +448,14 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
   };
 });
 `)
-      const harness = await createRealSystemJsHarness({ fixtureDirectory })
+      const harness = await createRealSystemJsHarness({
+        fixtureDirectory,
+        scriptLoadDelayMs: ({ url }) => url.endsWith('/right.js') ? 100 : 0,
+      })
       try {
         const entryUrl = pathToFileURL(path.join(fixtureDirectory, 'entry.js')).href
         const leftUrl = pathToFileURL(path.join(fixtureDirectory, 'left.js')).href
+        const rightUrl = pathToFileURL(path.join(fixtureDirectory, 'right.js')).href
         const childUrl = pathToFileURL(path.join(fixtureDirectory, 'child.js')).href
         await captureUnhandledRejections({
           action: async () => {
@@ -463,6 +468,7 @@ describe('fileProtocolStandalone SystemJS retry hook', () => {
             expect(stateAfterFailure.deletedModuleUrls).toEqual(expect.arrayContaining([
               childUrl,
               leftUrl,
+              rightUrl,
               entryUrl,
             ]))
 

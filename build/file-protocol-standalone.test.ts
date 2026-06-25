@@ -861,6 +861,33 @@ globalThis.customClassicLoaded = true
     })).rejects.toThrow('Legacy entry data-src does not match the generated entry chunk')
   })
 
+
+  it('rejects an encoded POSIX path separator in a generated output URL', async () => {
+    const root = await createFixture({ files: basicFixtureFiles() })
+    const mutateLegacyDataSource: Plugin = {
+      name: 'mutate-legacy-entry-to-encoded-posix-separator',
+      enforce: 'post',
+      transformIndexHtml(html) {
+        const dom = new JSDOM(html)
+        const entry = dom.window.document.getElementById('vite-legacy-entry')
+        if (entry === null) throw new Error('Expected plugin-legacy entry in fixture.')
+        entry.setAttribute('data-src', './assets%2Fentry.js')
+        return dom.serialize()
+      },
+    }
+
+    await expect(buildFixtureWithOptions({
+      root,
+      budgets: undefined,
+      workers: [{ id: 'worker-hub', entry: 'src/worker-hub.worker.ts' }],
+      pluginsBeforeStandalone: [mutateLegacyDataSource],
+      input: path.join(root, 'index.html'),
+      define: undefined,
+      alias: undefined,
+      onAdditionalLicenseDependencies: undefined,
+    })).rejects.toThrow('must not contain an encoded path separator')
+  })
+
   it('rejects an encoded Windows path separator in a generated output URL', async () => {
     const root = await createFixture({ files: basicFixtureFiles() })
     const mutateLegacyDataSource: Plugin = {
@@ -884,7 +911,7 @@ globalThis.customClassicLoaded = true
       define: undefined,
       alias: undefined,
       onAdditionalLicenseDependencies: undefined,
-    })).rejects.toThrow('must remain a normalized relative output path')
+    })).rejects.toThrow('must not contain an encoded path separator')
   })
 
   it('rejects a legacy polyfill bootstrap that contradicts the standalone configuration', async () => {
@@ -1373,6 +1400,10 @@ void import('./lazy.js');
       config: validConfig,
       debugBuildReportFile: '../../explicit-outside-project/report.json',
     })).not.toThrow()
+    expect(() => assertSupportedFileProtocolStandaloneConfig({
+      config: validConfig,
+      debugBuildReportFile: 'dist/standalone/..reports/report.json',
+    })).toThrow('debugBuildReportFile must be outside build.outDir')
 
     expect(() => assertSupportedFileProtocolStandaloneConfig({
       config: resolvedConfigFixture({ ...validConfigArguments, base: '/' }),
