@@ -18,7 +18,7 @@ import {
   ChefHatIcon,
   DownloadIcon, BrainCircuitIcon,
   FolderIcon,
-  FileIcon,
+  FileIcon, WrenchIcon,
 } from 'lucide-vue-next';
 import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
@@ -31,6 +31,7 @@ const BinaryObjectsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => im
 const VolumeSettingsTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./VolumeSettingsTab.vue') });
 const DeveloperTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./DeveloperTab.vue') });
 const AboutTab = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./AboutTab.vue') });
+const GlobalToolsSettings = defineAsyncComponentAndLoadOnMounted({ loader: () => import('./GlobalToolsSettings.vue') });
 
 // IMPORTANT: ConnectionTab is the default tab, so we import it synchronously to ensure it's ready immediately when the modal opens.
 import ConnectionTab from './ConnectionTab.vue';
@@ -114,7 +115,7 @@ async function handleImportRecipes({ recipes }: { recipes: { newName: string; ma
 }
 
 // Tab State
-type Tab = 'connection' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'binary_objects' | 'volumes' | 'developer' | 'about';
+type Tab = 'connection' | 'tools' | 'recipes' | 'profiles' | 'transformers_js' | 'storage' | 'binary_objects' | 'volumes' | 'developer' | 'about';
 const isVolumesFeatureEnabled = computed(() => isFeatureEnabled({ feature: 'volume' }));
 const activeTab = computed({
   get: () => {
@@ -287,6 +288,15 @@ defineExpose({
               Connection
             </button>
             <button
+              @click="activeTab = 'tools'"
+              class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
+              :class="activeTab === 'tools' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
+              data-testid="tab-tools"
+            >
+              <WrenchIcon class="w-4 h-4" />
+              Tools
+            </button>
+            <button
               @click="activeTab = 'profiles'"
               class="flex items-center gap-2.5 md:gap-3 px-3.5 py-2.5 md:px-4 md:py-3.5 rounded-xl text-xs md:text-sm font-bold transition-colors whitespace-nowrap text-left border"
               :class="activeTab === 'profiles' ? 'bg-white dark:bg-gray-800 shadow-lg shadow-blue-500/5 text-blue-600 dark:text-blue-400 border-gray-100 dark:border-gray-700' : 'text-gray-500 dark:text-gray-400 border-transparent hover:bg-white/50 dark:hover:bg-gray-800/50 hover:text-gray-700'"
@@ -397,6 +407,9 @@ defineExpose({
           />
           <div v-else class="flex-1 overflow-y-auto min-h-0 overscroll-contain">
             <div class="p-6 md:p-12 space-y-12 max-w-4xl mx-auto">
+
+              <!-- Global Tools Tab -->
+              <GlobalToolsSettings v-if="activeTab === 'tools'" />
 
               <!-- Provider Profiles Tab -->
               <ProviderProfilesTab

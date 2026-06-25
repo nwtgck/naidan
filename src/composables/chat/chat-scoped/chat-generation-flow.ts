@@ -1123,10 +1123,7 @@ async function getEnabledToolsForChat({
 }): Promise<Tool[]> {
   const { settings } = useSettings();
   const { requestChoice } = useChoices();
-  const toolConfigs = getEffectiveToolConfigsForChat({
-    chatId: chat.id,
-    persistedToolConfigs: chat.toolConfigs,
-  });
+  const toolConfigs = getEffectiveToolConfigsForChat({ chat });
   const enabledNames = lmToolNamesFromToolConfigs({ toolConfigs });
   const shellExecuteEnabled = enabledNames.includes('shell_execute');
   const weshToolConfig = findLastToolConfigByKey({ toolConfigs, key: 'builtin.wesh' });

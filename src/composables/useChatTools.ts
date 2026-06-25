@@ -1,28 +1,92 @@
-import { ref, computed, toRaw, triggerRef, type ComputedRef, type Ref } from 'vue';
+import { ref, computed, toRaw, triggerRef, watch, type ComputedRef, type Ref } from 'vue';
 import type { Chat } from '@/models/types';
 import type { ChatId, MessageId, ToolCallId } from '@/models/ids';
-import type { LmToolName, TextOrBinaryObject, ToolCallRecord, ToolConfig } from '@/services/tools/types';
+import type {
+  BuiltinToolKey,
+  LmToolName,
+  TextOrBinaryObject,
+  ToolCallRecord,
+  ToolConfig,
+  ToolConfigStatus,
+} from '@/services/tools/types';
 import {
+  BUILTIN_TOOL_KEYS,
+  builtinToolKeyForLmToolName,
+  cloneToolConfigs,
+  findLastToolConfigByKey,
   isLmToolEnabledInToolConfigs,
   isLmToolName,
   lmToolNamesFromToolConfigs,
-  setLmToolEnabledInToolConfigs,
+  removeSingletonToolConfig,
+  resolveToolConfigForChat,
+  resolveToolConfigsForChat,
+  setToolStatusWithDependenciesInToolConfigs,
+  upsertSingletonToolConfig,
+  type ResolvedToolConfig,
 } from '@/services/tools/tool-config';
-import { currentChatRef, getLiveChatById } from '@/composables/chat/global/chat-core-singletons';
+import {
+  currentChatRef,
+  getLiveChatById,
+  rootItems,
+} from '@/composables/chat/global/chat-core-singletons';
 import { idToRaw } from '@/models/ids';
 import { storageService } from '@/services/storage';
 import { useSettings } from '@/composables/useSettings';
 
-const _runtimeToolConfigsByChat = ref<Map<ChatId, ToolConfig[]>>(new Map());
+type ToolConfigsUpdater = ({
+  toolConfigs,
+}: {
+  toolConfigs: ToolConfig[] | undefined;
+}) => ToolConfig[] | undefined;
+
+type RuntimeToolConfigChange =
+  | { behavior: 'remove' }
+  | { behavior: 'set'; config: ToolConfig };
+
+type RuntimeToolConfigChanges = Map<BuiltinToolKey, RuntimeToolConfigChange>;
+
+const _runtimeToolConfigChangesByChat = ref<Map<ChatId, RuntimeToolConfigChanges>>(new Map());
+const persistentToolConfigUpdateQueues = new Map<ChatId, Promise<void>>();
 const _messageToolCalls = ref<Map<MessageId, ToolCallRecord[]>>(new Map());
 const _currentChatId = ref<ChatId | null>(null);
 
+let isToolConfigPersistenceWatcherInstalled = false;
+
+function ensureToolConfigPersistenceWatcher(): void {
+  if (isToolConfigPersistenceWatcherInstalled) return;
+
+  const { settings } = useSettings();
+  watch(
+    () => settings.value.experimental?.toolConfigPersistence ?? 'disabled',
+    (persistence) => {
+      switch (persistence) {
+      case 'disabled':
+        break;
+      case 'enabled':
+        _runtimeToolConfigChangesByChat.value = new Map();
+        break;
+      default: {
+        const _ex: never = persistence;
+        throw new Error(`Unhandled tool config persistence setting: ${_ex}`);
+      }
+      }
+    },
+    { flush: 'sync' },
+  );
+  isToolConfigPersistenceWatcherInstalled = true;
+}
+
+export type ChatToolInheritanceLabel = 'Use group' | 'Use global';
+
 interface ChatToolsApi {
   isToolEnabled: ({ name }: { name: string }) => boolean;
-  setToolEnabled: ({ name, enabled }: { name: string; enabled: boolean }) => void;
-  toggleTool: ({ name }: { name: string }) => void;
+  setToolEnabled: ({ name, enabled }: { name: string; enabled: boolean }) => Promise<void>;
+  setToolStatus: ({ name, status }: { name: LmToolName; status: ToolConfigStatus }) => Promise<void>;
+  resetToolToInherited: ({ name }: { name: LmToolName }) => Promise<void>;
+  toggleTool: ({ name }: { name: string }) => Promise<void>;
+  getToolInheritanceLabel: ({ name }: { name: LmToolName }) => ChatToolInheritanceLabel;
   setCurrentChatId: ({ chatId }: { chatId: ChatId | null }) => void;
-  updateToolConfigsForCurrentChat: ({ updater }: { updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined }) => void;
+  updateToolConfigsForCurrentChat: ({ updater }: { updater: ToolConfigsUpdater }) => Promise<void>;
   enabledToolNames: ComputedRef<LmToolName[]>;
   getToolCallsForMessage: ({ messageId }: { messageId: MessageId }) => ToolCallRecord[];
   addToolCall: ({ messageId, toolCall }: { messageId: MessageId; toolCall: ToolCallRecord }) => void;
@@ -34,7 +98,7 @@ interface ChatToolsApi {
   clearToolCallsForMessage: ({ messageId }: { messageId: MessageId }) => void;
   TEST_ONLY: {
     _messageToolCalls: Ref<Map<MessageId, ToolCallRecord[]>>;
-    _runtimeToolConfigsByChat: Ref<Map<ChatId, ToolConfig[]>>;
+    _runtimeToolConfigChangesByChat: Ref<Map<ChatId, RuntimeToolConfigChanges>>;
     _currentChatId: Ref<ChatId | null>;
   };
 }
@@ -44,49 +108,239 @@ function getCurrentLiveChat(): Chat | null {
   return getLiveChatById({ chatId: _currentChatId.value });
 }
 
-/**
- * Resolves the tool config that should affect runtime behavior.
- *
- * `persistedToolConfigs` is the storage-backed chat metadata state.
- * `_runtimeToolConfigsByChat` is an overlay for tool changes made while tool
- * config persistence is disabled. The overlay deliberately wins over persisted
- * config so runtime-only disables can hide an already-persisted tool without
- * mutating chat metadata.
- */
-export function getEffectiveToolConfigsForChat({
+export function getChatGroupToolConfigsForChat({
+  chat,
+}: {
+  chat: Pick<Chat, 'groupId'> | null;
+}): ToolConfig[] | undefined {
+  const groupId = chat?.groupId;
+  if (groupId === undefined || groupId === null) return undefined;
+
+  for (const item of rootItems.value) {
+    switch (item.type) {
+    case 'chat_group':
+      if (item.chatGroup.id === groupId) {
+        return item.chatGroup.toolConfigs;
+      }
+      break;
+    case 'chat':
+      break;
+    default: {
+      const _ex: never = item;
+      return _ex;
+    }
+    }
+  }
+
+  return undefined;
+}
+
+function cloneToolConfig({ config }: { config: ToolConfig }): ToolConfig {
+  const cloned = cloneToolConfigs({ toolConfigs: [config] })?.[0];
+  if (cloned === undefined) {
+    throw new Error('Failed to clone Tool Config');
+  }
+  return cloned;
+}
+
+function areToolConfigsEqual({
+  first,
+  second,
+}: {
+  first: ToolConfig | undefined;
+  second: ToolConfig | undefined;
+}): boolean {
+  if (first === undefined || second === undefined) return first === second;
+  if (first.key !== second.key || first.status !== second.status) return false;
+
+  switch (first.key) {
+  case 'builtin.calculator':
+  case 'builtin.choices':
+  case 'builtin.wikipedia':
+    return true;
+  case 'builtin.wesh':
+    return second.key === 'builtin.wesh'
+      && first.naidanSysfs.accessScope === second.naidanSysfs.accessScope;
+  default: {
+    const _ex: never = first;
+    throw new Error(`Unhandled Tool Config: ${String(_ex)}`);
+  }
+  }
+}
+
+function areToolConfigLayersEqual({
+  first,
+  second,
+}: {
+  first: ToolConfig[] | undefined;
+  second: ToolConfig[] | undefined;
+}): boolean {
+  return BUILTIN_TOOL_KEYS.every(key => areToolConfigsEqual({
+    first: findLastToolConfigByKey({ toolConfigs: first, key }),
+    second: findLastToolConfigByKey({ toolConfigs: second, key }),
+  }));
+}
+
+function applyRuntimeToolConfigChanges({
+  persistedToolConfigs,
+  changes,
+}: {
+  persistedToolConfigs: ToolConfig[] | undefined;
+  changes: RuntimeToolConfigChanges;
+}): ToolConfig[] | undefined {
+  let nextToolConfigs = cloneToolConfigs({ toolConfigs: persistedToolConfigs });
+
+  for (const key of BUILTIN_TOOL_KEYS) {
+    const change = changes.get(key);
+    if (change === undefined) continue;
+
+    switch (change.behavior) {
+    case 'remove':
+      nextToolConfigs = removeSingletonToolConfig({
+        toolConfigs: nextToolConfigs,
+        key,
+      });
+      break;
+    case 'set':
+      nextToolConfigs = upsertSingletonToolConfig({
+        toolConfigs: nextToolConfigs,
+        config: cloneToolConfig({ config: change.config }),
+      });
+      break;
+    default: {
+      const _ex: never = change;
+      throw new Error(`Unhandled runtime Tool Config change: ${String(_ex)}`);
+    }
+    }
+  }
+
+  return nextToolConfigs;
+}
+
+export function getActiveChatToolConfigs({
   chatId,
   persistedToolConfigs,
 }: {
   chatId: ChatId;
   persistedToolConfigs: ToolConfig[] | undefined;
 }): ToolConfig[] | undefined {
-  if (_runtimeToolConfigsByChat.value.has(chatId)) {
-    return _runtimeToolConfigsByChat.value.get(chatId);
+  if (!isToolConfigPersistenceEnabled()) {
+    const changes = _runtimeToolConfigChangesByChat.value.get(chatId);
+    if (changes !== undefined) {
+      return applyRuntimeToolConfigChanges({ persistedToolConfigs, changes });
+    }
   }
 
   return persistedToolConfigs;
 }
 
-function setRuntimeToolConfigsForChat({
+export function getEffectiveToolConfigsForChat({
+  chat,
+}: {
+  chat: Pick<Chat, 'id' | 'groupId' | 'toolConfigs'>;
+}): ToolConfig[] {
+  const { settings } = useSettings();
+  return resolveToolConfigsForChat({
+    globalToolConfigs: settings.value.experimental?.toolConfigs,
+    chatGroupToolConfigs: getChatGroupToolConfigsForChat({ chat }),
+    chatToolConfigs: getActiveChatToolConfigs({
+      chatId: chat.id,
+      persistedToolConfigs: chat.toolConfigs,
+    }),
+  });
+}
+
+export function getInheritedToolConfigsForChat({
   chatId,
-  toolConfigs,
 }: {
   chatId: ChatId;
-  toolConfigs: ToolConfig[] | undefined;
-}) {
-  const next = new Map(_runtimeToolConfigsByChat.value);
-  next.set(chatId, [...(toolConfigs ?? [])]);
-  _runtimeToolConfigsByChat.value = next;
+}): ToolConfig[] {
+  const { settings } = useSettings();
+  const liveChat = getLiveChatById({ chatId });
+  return resolveToolConfigsForChat({
+    globalToolConfigs: settings.value.experimental?.toolConfigs,
+    chatGroupToolConfigs: getChatGroupToolConfigsForChat({ chat: liveChat }),
+    chatToolConfigs: undefined,
+  });
 }
 
-function clearRuntimeToolConfigsForChat({ chatId }: { chatId: ChatId }) {
-  if (!_runtimeToolConfigsByChat.value.has(chatId)) return;
-  const next = new Map(_runtimeToolConfigsByChat.value);
+export function getToolResolutionForChat({
+  chatId,
+  key,
+}: {
+  chatId: ChatId;
+  key: BuiltinToolKey;
+}): ResolvedToolConfig {
+  const { settings } = useSettings();
+  const liveChat = getLiveChatById({ chatId });
+  return resolveToolConfigForChat({
+    key,
+    globalToolConfigs: settings.value.experimental?.toolConfigs,
+    chatGroupToolConfigs: getChatGroupToolConfigsForChat({ chat: liveChat }),
+    chatToolConfigs: getActiveChatToolConfigs({
+      chatId,
+      persistedToolConfigs: liveChat?.toolConfigs,
+    }),
+  });
+}
+
+function setRuntimeToolConfigsForChat({
+  chatId,
+  persistedToolConfigs,
+  currentToolConfigs,
+  nextToolConfigs,
+}: {
+  chatId: ChatId;
+  persistedToolConfigs: ToolConfig[] | undefined;
+  currentToolConfigs: ToolConfig[] | undefined;
+  nextToolConfigs: ToolConfig[] | undefined;
+}): void {
+  const changes = new Map(_runtimeToolConfigChangesByChat.value.get(chatId) ?? []);
+
+  for (const key of BUILTIN_TOOL_KEYS) {
+    const currentConfig = findLastToolConfigByKey({
+      toolConfigs: currentToolConfigs,
+      key,
+    });
+    const nextConfig = findLastToolConfigByKey({
+      toolConfigs: nextToolConfigs,
+      key,
+    });
+    if (areToolConfigsEqual({ first: currentConfig, second: nextConfig })) continue;
+
+    const persistedConfig = findLastToolConfigByKey({
+      toolConfigs: persistedToolConfigs,
+      key,
+    });
+    if (areToolConfigsEqual({ first: persistedConfig, second: nextConfig })) {
+      changes.delete(key);
+    } else if (nextConfig === undefined) {
+      changes.set(key, { behavior: 'remove' });
+    } else {
+      changes.set(key, {
+        behavior: 'set',
+        config: cloneToolConfig({ config: nextConfig }),
+      });
+    }
+  }
+
+  const nextByChat = new Map(_runtimeToolConfigChangesByChat.value);
+  if (changes.size === 0) {
+    nextByChat.delete(chatId);
+  } else {
+    nextByChat.set(chatId, changes);
+  }
+  _runtimeToolConfigChangesByChat.value = nextByChat;
+}
+
+function clearRuntimeToolConfigsForChat({ chatId }: { chatId: ChatId }): void {
+  if (!_runtimeToolConfigChangesByChat.value.has(chatId)) return;
+  const next = new Map(_runtimeToolConfigChangesByChat.value);
   next.delete(chatId);
-  _runtimeToolConfigsByChat.value = next;
+  _runtimeToolConfigChangesByChat.value = next;
 }
 
-function triggerCurrentChatIfNeeded({ chatId }: { chatId: ChatId }) {
+function triggerCurrentChatIfNeeded({ chatId }: { chatId: ChatId }): void {
   if (currentChatRef.value && toRaw(currentChatRef.value).id === chatId) {
     triggerRef(currentChatRef);
   }
@@ -97,57 +351,104 @@ function isToolConfigPersistenceEnabled(): boolean {
   return settings.value.experimental?.toolConfigPersistence === 'enabled';
 }
 
-function persistToolConfigs({
-  chatId,
-  toolConfigs,
-}: {
-  chatId: ChatId;
-  toolConfigs: ToolConfig[] | undefined;
-}) {
-  if (!isToolConfigPersistenceEnabled()) {
-    return;
-  }
-
-  void storageService.updateChatMeta({
-    id: chatId,
-    updater: ({ current }) => {
-      if (current === null) {
-        throw new Error('Cannot update tool configs for missing chat: ' + idToRaw({ id: chatId }));
-      }
-      return {
-        ...current,
-        toolConfigs,
-      };
-    },
-  }).catch((error: unknown) => {
-    console.error('Failed to persist tool configs', error);
-  });
-}
-
-export function updateToolConfigsForChat({
+async function persistToolConfigUpdate({
   chatId,
   updater,
 }: {
   chatId: ChatId;
-  updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined;
-}) {
-  const liveChat = getLiveChatById({ chatId });
-  const persistedToolConfigs = liveChat?.toolConfigs;
-  const currentToolConfigs = getEffectiveToolConfigsForChat({ chatId, persistedToolConfigs });
-  const nextToolConfigs = updater({ toolConfigs: currentToolConfigs });
+  updater: ToolConfigsUpdater;
+}): Promise<void> {
+  const previous = persistentToolConfigUpdateQueues.get(chatId) ?? Promise.resolve();
+  const operation = previous
+    .catch(() => undefined)
+    .then(async () => {
+      let baseToolConfigs: ToolConfig[] | undefined;
+      let savedToolConfigs: ToolConfig[] | undefined;
+      let savedUpdatedAt: number | undefined;
+
+      await storageService.updateChatMeta({
+        id: chatId,
+        updater: ({ current }) => {
+          if (current === null) {
+            throw new Error('Cannot update tool configs for missing chat: ' + idToRaw({ id: chatId }));
+          }
+
+          baseToolConfigs = cloneToolConfigs({ toolConfigs: current.toolConfigs });
+          savedToolConfigs = cloneToolConfigs({
+            toolConfigs: updater({
+              toolConfigs: cloneToolConfigs({ toolConfigs: baseToolConfigs }),
+            }),
+          });
+          savedUpdatedAt = Math.max(Date.now(), current.updatedAt + 1);
+          return {
+            ...current,
+            toolConfigs: savedToolConfigs,
+            updatedAt: savedUpdatedAt,
+          };
+        },
+      });
+
+      clearRuntimeToolConfigsForChat({ chatId });
+      const liveChat = getLiveChatById({ chatId });
+      if (liveChat !== null && savedUpdatedAt !== undefined) {
+        const canMergeSavedToolConfigs = liveChat.updatedAt <= savedUpdatedAt
+          || areToolConfigLayersEqual({
+            first: liveChat.toolConfigs,
+            second: baseToolConfigs,
+          });
+        if (canMergeSavedToolConfigs) {
+          liveChat.toolConfigs = cloneToolConfigs({ toolConfigs: savedToolConfigs });
+          liveChat.updatedAt = Math.max(liveChat.updatedAt, savedUpdatedAt);
+          triggerCurrentChatIfNeeded({ chatId });
+        }
+      }
+    });
+
+  const queueTail = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  persistentToolConfigUpdateQueues.set(chatId, queueTail);
+
+  try {
+    await operation;
+  } finally {
+    if (persistentToolConfigUpdateQueues.get(chatId) === queueTail) {
+      persistentToolConfigUpdateQueues.delete(chatId);
+    }
+  }
+}
+
+export async function updateToolConfigsForChat({
+  chatId,
+  updater,
+}: {
+  chatId: ChatId;
+  updater: ToolConfigsUpdater;
+}): Promise<void> {
+  ensureToolConfigPersistenceWatcher();
 
   if (!isToolConfigPersistenceEnabled()) {
-    setRuntimeToolConfigsForChat({ chatId, toolConfigs: nextToolConfigs });
+    const liveChat = getLiveChatById({ chatId });
+    const persistedToolConfigs = liveChat?.toolConfigs;
+    const currentToolConfigs = getActiveChatToolConfigs({
+      chatId,
+      persistedToolConfigs,
+    });
+    const nextToolConfigs = updater({
+      toolConfigs: cloneToolConfigs({ toolConfigs: currentToolConfigs }),
+    });
+    setRuntimeToolConfigsForChat({
+      chatId,
+      persistedToolConfigs,
+      currentToolConfigs,
+      nextToolConfigs,
+    });
     triggerCurrentChatIfNeeded({ chatId });
     return;
   }
 
-  clearRuntimeToolConfigsForChat({ chatId });
-  if (liveChat !== null) {
-    liveChat.toolConfigs = nextToolConfigs;
-    triggerCurrentChatIfNeeded({ chatId });
-  }
-  persistToolConfigs({ chatId, toolConfigs: nextToolConfigs });
+  await persistToolConfigUpdate({ chatId, updater });
 }
 
 export function useChatTools(): ChatToolsApi {
@@ -157,35 +458,85 @@ export function useChatTools(): ChatToolsApi {
 
     const liveChat = getCurrentLiveChat();
     const toolConfigs = getEffectiveToolConfigsForChat({
-      chatId: _currentChatId.value,
-      persistedToolConfigs: liveChat?.toolConfigs,
+      chat: liveChat ?? {
+        id: _currentChatId.value,
+        groupId: undefined,
+        toolConfigs: undefined,
+      },
     });
     return isLmToolEnabledInToolConfigs({ toolConfigs, name });
   };
 
-  const updateToolConfigsForCurrentChat = ({
+  const updateToolConfigsForCurrentChat = async ({
     updater,
   }: {
-    updater: ({ toolConfigs }: { toolConfigs: ToolConfig[] | undefined }) => ToolConfig[] | undefined;
-  }) => {
+    updater: ToolConfigsUpdater;
+  }): Promise<void> => {
     if (_currentChatId.value === null) return;
-    updateToolConfigsForChat({ chatId: _currentChatId.value, updater });
+    await updateToolConfigsForChat({ chatId: _currentChatId.value, updater });
   };
 
-  const setToolEnabled = ({ name, enabled }: { name: string; enabled: boolean }) => {
-    if (!isLmToolName(name)) return;
+  const setToolStatus = async ({
+    name,
+    status,
+  }: {
+    name: LmToolName;
+    status: ToolConfigStatus;
+  }): Promise<void> => {
+    if (_currentChatId.value === null) return;
+    const chatId = _currentChatId.value;
+    const key = builtinToolKeyForLmToolName({ name });
 
-    updateToolConfigsForCurrentChat({
-      updater: ({ toolConfigs }) => setLmToolEnabledInToolConfigs({
+    await updateToolConfigsForCurrentChat({
+      updater: ({ toolConfigs }) => setToolStatusWithDependenciesInToolConfigs({
         toolConfigs,
-        name,
-        enabled,
+        key,
+        status,
+        inheritedToolConfigs: getInheritedToolConfigsForChat({ chatId }),
       }),
     });
   };
 
-  const toggleTool = ({ name }: { name: string }) => {
-    setToolEnabled({ name, enabled: !isToolEnabled({ name }) });
+  const setToolEnabled = async ({
+    name,
+    enabled,
+  }: {
+    name: string;
+    enabled: boolean;
+  }): Promise<void> => {
+    if (!isLmToolName(name)) return;
+    await setToolStatus({
+      name,
+      status: enabled ? 'enabled' : 'disabled',
+    });
+  };
+
+  const resetToolToInherited = async ({
+    name,
+  }: {
+    name: LmToolName;
+  }): Promise<void> => {
+    await updateToolConfigsForCurrentChat({
+      updater: ({ toolConfigs }) => removeSingletonToolConfig({
+        toolConfigs,
+        key: builtinToolKeyForLmToolName({ name }),
+      }),
+    });
+  };
+
+
+  const toggleTool = async ({ name }: { name: string }): Promise<void> => {
+    await setToolEnabled({ name, enabled: !isToolEnabled({ name }) });
+  };
+
+  const getToolInheritanceLabel = ({ name }: { name: LmToolName }): ChatToolInheritanceLabel => {
+    if (_currentChatId.value === null) return 'Use global';
+    const liveChat = getCurrentLiveChat();
+    const groupConfig = findLastToolConfigByKey({
+      toolConfigs: getChatGroupToolConfigsForChat({ chat: liveChat }),
+      key: builtinToolKeyForLmToolName({ name }),
+    });
+    return groupConfig === undefined ? 'Use global' : 'Use group';
   };
 
   const setCurrentChatId = ({ chatId }: { chatId: ChatId | null }) => {
@@ -197,8 +548,11 @@ export function useChatTools(): ChatToolsApi {
 
     const liveChat = getCurrentLiveChat();
     const toolConfigs = getEffectiveToolConfigsForChat({
-      chatId: _currentChatId.value,
-      persistedToolConfigs: liveChat?.toolConfigs,
+      chat: liveChat ?? {
+        id: _currentChatId.value,
+        groupId: undefined,
+        toolConfigs: undefined,
+      },
     });
     return lmToolNamesFromToolConfigs({ toolConfigs });
   });
@@ -244,7 +598,10 @@ export function useChatTools(): ChatToolsApi {
   return {
     isToolEnabled,
     setToolEnabled,
+    setToolStatus,
+    resetToolToInherited,
     toggleTool,
+    getToolInheritanceLabel,
     setCurrentChatId,
     updateToolConfigsForCurrentChat,
     enabledToolNames,
@@ -254,7 +611,7 @@ export function useChatTools(): ChatToolsApi {
     clearToolCallsForMessage,
     TEST_ONLY: {
       _messageToolCalls,
-      _runtimeToolConfigsByChat,
+      _runtimeToolConfigChangesByChat,
       _currentChatId,
     },
   };

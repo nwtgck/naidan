@@ -533,6 +533,7 @@ describe('StorageTab.vue Tests', () => {
       vi.mocked(useSettings).mockReturnValue({
         settings: { value: { storageType: 'local', providerProfiles: [], endpointUrl: '' } } as any,
         save: mockSaveFail,
+        updateExperimental: vi.fn(),
         updateProviderProfiles: vi.fn(),
         initialized: { value: true } as any,
         isOnboardingDismissed: { value: true } as any,

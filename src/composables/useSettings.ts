@@ -37,6 +37,9 @@ interface UseSettingsApi {
   searchContextSize: Readonly<Ref<number>>;
   init: ({ storageTypeOverride, dataZipBase64 }: { storageTypeOverride: string | undefined, dataZipBase64: string | undefined }) => Promise<void>;
   save: ({ patch }: { patch: Partial<Settings> }) => Promise<void>;
+  updateExperimental: ({ updater }: {
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'];
+  }) => Promise<void>;
   fetchModels: ({ overrides }: { overrides?: { url: string; type: EndpointType; headers?: [string, string][] } }) => Promise<string[]>;
   updateProviderProfiles: ({ profiles }: { profiles: ProviderProfile[] }) => Promise<void>;
   updateGlobalModel: ({ modelId }: { modelId: string }) => Promise<void>;
@@ -288,6 +291,28 @@ export function useSettings(): UseSettingsApi {
     }
   }
 
+  async function updateExperimental({
+    updater,
+  }: {
+    updater: ({ experimental }: { experimental: Settings['experimental'] }) => Settings['experimental'];
+  }): Promise<void> {
+    let savedSettings: Settings | undefined;
+    await storageService.updateSettings({
+      updater: ({ current }) => {
+        const base = current ?? _settings.value;
+        savedSettings = {
+          ...base,
+          experimental: updater({ experimental: base.experimental }),
+        };
+        return savedSettings;
+      },
+    });
+
+    if (savedSettings !== undefined) {
+      _settings.value = savedSettings;
+    }
+  }
+
   // --- Explicit Actions ---
 
   async function updateProviderProfiles({ profiles }: { profiles: ProviderProfile[] }) {
@@ -407,6 +432,7 @@ export function useSettings(): UseSettingsApi {
     searchContextSize: readonly(_searchContextSize),
     init,
     save,
+    updateExperimental,
     fetchModels,
     updateProviderProfiles,
     updateGlobalModel,

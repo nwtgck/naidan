@@ -248,33 +248,16 @@ describe('StorageService Synchronization Wrapper', () => {
 
 
 
-  it('should strip tool configs on ordinary chat meta updates when persistence is disabled', async () => {
+  it('should preserve saved tool configs during ordinary chat meta updates regardless of the UI persistence mode', async () => {
     const meta = {
       id: 'c1',
-      toolConfigs: [{ key: 'builtin.calculator' }],
+      toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }],
     } as any;
-
-    await service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => meta });
-
-    expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({
-      meta: { id: 'c1' },
-    });
-  });
-
-  it('should keep tool configs on ordinary chat meta updates when persistence is enabled', async () => {
-    const meta = {
-      id: 'c1',
-      toolConfigs: [{ key: 'builtin.calculator' }],
-    } as any;
-    mockProvider.loadSettings.mockResolvedValue({
-      experimental: {
-        toolConfigPersistence: 'enabled',
-      },
-    });
 
     await service.updateChatMeta({ id: toChatId({ raw: 'c1' }), updater: () => meta });
 
     expect(mockProvider.saveChatMeta).toHaveBeenCalledWith({ meta });
+    expect(mockProvider.loadSettings).not.toHaveBeenCalled();
   });
 
   it('should not gate restore snapshots by the tool config persistence setting', async () => {
@@ -286,7 +269,7 @@ describe('StorageService Synchronization Wrapper', () => {
           },
         },
         hierarchy: { items: [] },
-        chatMetas: [{ id: 'c1', toolConfigs: [{ key: 'builtin.calculator' }] }],
+        chatMetas: [{ id: 'c1', toolConfigs: [{ key: 'builtin.calculator', status: 'enabled' }] }],
         chatGroups: [],
       },
       contentStream: (async function* () {})(),

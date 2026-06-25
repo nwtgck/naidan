@@ -166,6 +166,13 @@ describe('FeatureFlagsSettings.vue', () => {
     expect(useFeatureFlags().isFeatureEnabled({ feature: 'volume' })).toBe(true);
   });
 
+  it('describes persistence across Global, Chat Group, and Chat layers', () => {
+    const wrapper = mount(FeatureFlagsSettings);
+
+    expect(wrapper.text()).toContain('Saves Global, Chat Group, and Chat tool settings.');
+    expect(wrapper.text()).toContain('Saved settings remain active.');
+  });
+
   it('auto-saves the tool config persistence setting when toggled', async () => {
     const wrapper = mount(FeatureFlagsSettings);
     await wrapper.find('[data-testid="feature-tool-config-persistence-toggle"]').trigger('click');

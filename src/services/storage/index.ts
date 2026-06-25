@@ -14,39 +14,6 @@ import { idToRaw, toChatId } from '@/models/ids';
 
 
 /**
- * Tool config persistence is gated only for normal app metadata updates.
- *
- * Import, restore, and provider migration paths intentionally preserve their
- * input data because those operations are about reconstructing an existing
- * storage snapshot. When persistence is disabled, ordinary chat meta writes
- * strip toolConfigs so disabling the experimental feature also reduces future
- * persisted metadata.
- */
-async function shouldPersistToolConfigs({
-  loadSettings,
-}: {
-  loadSettings: () => Promise<Settings | null>;
-}): Promise<boolean> {
-  const settings = await loadSettings();
-  const persistence = settings?.experimental?.toolConfigPersistence ?? 'disabled';
-  switch (persistence) {
-  case 'disabled':
-    return false;
-  case 'enabled':
-    return true;
-  default: {
-    const _exhaustive: never = persistence;
-    throw new Error(`Unhandled tool config persistence setting: ${String(_exhaustive)}`);
-  }
-  }
-}
-
-function omitToolConfigsFromChatMeta({ meta }: { meta: ChatMeta }): ChatMeta {
-  const { toolConfigs: _toolConfigs, ...rest } = meta;
-  return rest;
-}
-
-/**
  * StorageService
  *
  * Orchestrates atomic storage operations across multiple tabs using Web Locks.
@@ -158,12 +125,7 @@ export class StorageService {
       await this.synchronizer.withLock({ fn: async () => {
         const current = await this.loadChatMeta({ id });
         const updated = await updater({ current: current });
-        const metaToSave = await shouldPersistToolConfigs({
-          loadSettings: () => this.loadSettings(),
-        })
-          ? updated
-          : omitToolConfigsFromChatMeta({ meta: updated });
-        await this.getProvider().saveChatMeta({ meta: metaToSave });
+        await this.getProvider().saveChatMeta({ meta: updated });
       }, lockKey: LOCK_METADATA, ...this.getLockOptions({ source: 'updateChatMeta' }) });
       this.notify({ event: { type: 'chat_meta_and_chat_group', id: idToRaw({ id }), timestamp: Date.now() } });
     } catch (e) {

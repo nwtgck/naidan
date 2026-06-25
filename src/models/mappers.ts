@@ -2,6 +2,10 @@
  * Mappers
  */
 import type { ToolConfig } from '@/services/tools/types';
+import type {
+  ExperimentalToolConfigDto,
+  ExperimentalToolConfigsDto,
+} from './experimental.dto';
 
 import type {
   RoleDto,
@@ -104,18 +108,76 @@ const fakeLmToExperimentalDto = ({
   }
 };
 
+const toolConfigToDomain = ({
+  dto,
+}: {
+  dto: ExperimentalToolConfigDto;
+}): ToolConfig => {
+  switch (dto.key) {
+  case 'builtin.calculator':
+  case 'builtin.choices':
+  case 'builtin.wikipedia':
+    return {
+      key: dto.key,
+      status: dto.status,
+    };
+  case 'builtin.wesh':
+    return {
+      key: dto.key,
+      status: dto.status,
+      naidanSysfs: {
+        accessScope: dto.naidanSysfs.accessScope,
+      },
+    };
+  default: {
+    const _ex: never = dto;
+    throw new Error(`Unhandled tool config DTO: ${String(_ex)}`);
+  }
+  }
+};
+
+const toolConfigToDto = ({
+  domain,
+}: {
+  domain: ToolConfig;
+}): ExperimentalToolConfigDto => {
+  switch (domain.key) {
+  case 'builtin.calculator':
+  case 'builtin.choices':
+  case 'builtin.wikipedia':
+    return {
+      key: domain.key,
+      status: domain.status,
+    };
+  case 'builtin.wesh':
+    return {
+      key: domain.key,
+      status: domain.status,
+      naidanSysfs: {
+        accessScope: domain.naidanSysfs.accessScope,
+      },
+    };
+  default: {
+    const _ex: never = domain;
+    throw new Error(`Unhandled tool config domain: ${String(_ex)}`);
+  }
+  }
+};
+
 const toolConfigsToDomain = ({
   toolConfigs,
 }: {
-  toolConfigs: ToolConfig[] | undefined;
-}): ToolConfig[] | undefined => toolConfigs;
+  toolConfigs: ExperimentalToolConfigsDto | undefined;
+}): ToolConfig[] | undefined => toolConfigs?.map(dto => toolConfigToDomain({ dto }));
 
 const toolConfigsToExperimentalDto = ({
   toolConfigs,
 }: {
   toolConfigs: ToolConfig[] | undefined;
-}): { toolConfigs: ToolConfig[] | undefined } | undefined => {
-  return toolConfigs === undefined ? undefined : { toolConfigs };
+}): { toolConfigs: ExperimentalToolConfigsDto | undefined } | undefined => {
+  return toolConfigs === undefined
+    ? undefined
+    : { toolConfigs: toolConfigs.map(domain => toolConfigToDto({ domain })) };
 };
 
 const mountToDomain = ({ dto }: { dto: MountDto }): Mount => {
@@ -230,7 +292,7 @@ export const chatMetaToDomain = ({ dto }: { dto: ChatMetaDto }): ChatMeta => ({
   originChatId: dto.originChatId === undefined ? undefined : toChatId({ raw: dto.originChatId }),
   originMessageId: dto.originMessageId === undefined ? undefined : toMessageId({ raw: dto.originMessageId }),
   mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
-  toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
+  toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
 });
 
 /**
@@ -294,6 +356,7 @@ export const chatGroupToDomain = (
     systemPrompt: dto.systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: dto.lmParameters }),
     mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
   };
 };
 
@@ -309,6 +372,7 @@ export const chatGroupToDto = ({ domain }: { domain: ChatGroup }): ChatGroupDto 
   systemPrompt: domain.systemPrompt,
   lmParameters: lmParametersToDto({ domain: domain.lmParameters }),
   mounts: domain.mounts?.map(domain => mountToDto({ domain })),
+  experimental: toolConfigsToExperimentalDto({ toolConfigs: domain.toolConfigs }),
 });
 
 export const lmParametersToDomain = (
@@ -888,7 +952,7 @@ export const chatToDomain = ({ dto }: { dto: ChatDto }): Chat => {
     systemPrompt: systemPrompt as SystemPrompt | undefined,
     lmParameters: lmParametersToDomain({ dto: lmParameters }),
     mounts: dto.mounts?.map(dto => mountToDomain({ dto })),
-    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs as ToolConfig[] | undefined }),
+    toolConfigs: toolConfigsToDomain({ toolConfigs: dto.experimental?.toolConfigs }),
   };
 };
 
@@ -1049,6 +1113,7 @@ export const settingsToDomain = ({ dto }: { dto: SettingsDto }): Settings => {
         ? {}
         : { markdownRendering: rest.experimental.markdownRendering }),
       toolConfigPersistence: rest.experimental?.toolConfigPersistence ?? 'disabled',
+      toolConfigs: toolConfigsToDomain({ toolConfigs: rest.experimental?.toolConfigs }),
       fakeLm: rest.experimental?.fakeLm ?? 'disabled',
       sidebarSendMessageReorder: rest.experimental?.sidebarSendMessageReorder ?? 'disabled',
       ...(rest.experimental?.unreadable === undefined
@@ -1134,6 +1199,7 @@ export const settingsToDto = ({ domain }: { domain: Settings }): SettingsDto => 
       toolConfigPersistence: toolConfigPersistenceToExperimentalDto({
         persistence: rest.experimental?.toolConfigPersistence,
       }),
+      toolConfigs: rest.experimental?.toolConfigs?.map(domain => toolConfigToDto({ domain })),
       fakeLm: fakeLmToExperimentalDto({
         status: rest.experimental?.fakeLm,
       }),

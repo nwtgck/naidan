@@ -28,6 +28,7 @@ import {
   abortProcessingForChat,
 } from '@/composables/chat/chat-scoped/chat-processing-abort';
 import type { ChatId, ChatGroupId, MessageId } from '@/models/ids';
+import { cloneToolConfigs } from '@/services/tools/tool-config';
 import {
   useChatNavigation,
 } from '@/composables/chat/ui/useChatNavigation';
@@ -258,6 +259,7 @@ async function forkChatFromTarget({
     createdAt: Date.now(),
     updatedAt: Date.now(),
     modelId: mutableChat.modelId,
+    toolConfigs: cloneToolConfigs({ toolConfigs: mutableChat.toolConfigs }),
   });
 
   registerLiveInstance({ chat: newChat });
