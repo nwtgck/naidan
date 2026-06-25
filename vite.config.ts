@@ -18,6 +18,7 @@ import { fileProtocolStandalone } from './build/file-protocol-standalone/index.j
 import { FILE_PROTOCOL_STANDALONE_WORKER_HUB_ID } from './src/models/constants';
 import { createLicenseModulePlugins } from './build/license-module';
 import { omitBuildOutputFilesPlugin } from './build/omit-build-output-files';
+import { createBoundaryStringsPlugin } from './build/boundary-strings';
 import type { BuildLicenseDependency } from './build/license-dependencies';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -267,6 +268,7 @@ export default defineConfig(({ mode }) => {
       ],
     },
     plugins: [
+      createBoundaryStringsPlugin(),
       VueRouter({
         /* options */
       }),

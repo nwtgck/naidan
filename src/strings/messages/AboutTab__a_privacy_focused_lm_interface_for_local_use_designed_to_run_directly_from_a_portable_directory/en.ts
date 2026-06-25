@@ -1,0 +1,1 @@
+export const AboutTab__a_privacy_focused_lm_interface_for_local_use_designed_to_run_directly_from_a_portable_directory = (): string => 'A privacy-focused LLM interface for local use, designed to run directly from a portable directory.';

@@ -1,0 +1,1 @@
+export const GlobalToolsSettings__set_the_defaults_for_every_chat_chat_groups_and_individual_chats_can_override_each_tool_independently = (): string => 'Set the defaults for every chat. Chat groups and individual chats can override each tool independently.';

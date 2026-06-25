@@ -1,0 +1,1 @@
+export const GlobalToolsSettings__set_the_defaults_for_every_chat_chat_groups_and_individual_chats_can_override_each_tool_independently = (): string => 'すべてのチャットに適用する既定値を設定します。チャットグループや個別のチャットでは、各ツールを個別に上書きできます。';

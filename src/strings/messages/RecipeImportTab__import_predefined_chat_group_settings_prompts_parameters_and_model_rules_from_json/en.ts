@@ -1,0 +1,1 @@
+export const RecipeImportTab__import_predefined_chat_group_settings_prompts_parameters_and_model_rules_from_json = (): string => 'Import predefined chat group settings (prompts, parameters, and model rules) from JSON.';

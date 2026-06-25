@@ -11,6 +11,7 @@ import requireDefineExposeTestOnly from './eslint-local-rules/require-define-exp
 import requireIconSuffix from './eslint-local-rules/require-icon-suffix.js';
 import requireWorkerClientFacade from './eslint-local-rules/require-worker-client-facade.js';
 import requireNamedArgs from './eslint-local-rules/require-named-args.js';
+import requireStaticStringAccess from './eslint-local-rules/require-static-string-access.js';
 import noRawVHtml from './eslint-local-rules/no-raw-v-html.js';
 import noAllowedHtmlCast from './eslint-local-rules/no-allowed-html-cast.js';
 import noNaidanIdCast from './eslint-local-rules/no-naidan-id-cast.js';
@@ -203,6 +204,7 @@ export default tseslint.config(
   requireIconSuffix,
   requireWorkerClientFacade,
   requireNamedArgs,
+  requireStaticStringAccess,
   noRawVHtml,
   noAllowedHtmlCast,
   noNaidanIdCast,

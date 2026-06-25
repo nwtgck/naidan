@@ -1,0 +1,1 @@
+export const AboutTab__naidan_is_built_with_incredible_open_source_software_we_are_grateful_to_the_community_for_their_contributions = (): string => 'Naidan is built with incredible open-source software. We are grateful to the community for their contributions.';
