@@ -214,39 +214,39 @@ defineExpose({
     </div>
 
     <div
-      class="grid grid-cols-1 gap-2.5"
+      class="grid grid-cols-1 gap-2"
       :class="scope === 'global' ? 'sm:grid-cols-1' : 'sm:grid-cols-2'"
     >
       <article
         v-for="tool in visibleToolDefinitions"
         :key="tool.key"
-        class="overflow-hidden rounded-2xl border transition-all duration-300 active:scale-[0.995]"
+        class="overflow-hidden rounded-xl border transition-all duration-300 active:scale-[0.995]"
         :class="[
-          scope === 'global' ? 'h-16' : 'h-[84px]',
+          'h-[52px]',
           isEffectivelyEnabled({ key: tool.key })
-            ? 'border-blue-300/70 bg-blue-50/50 shadow-sm dark:border-blue-500/40 dark:bg-blue-500/10'
+            ? 'border-blue-200 bg-blue-50/30 shadow-sm dark:border-blue-500/30 dark:bg-blue-500/5'
             : 'border-gray-100 bg-white/70 hover:border-gray-200 dark:border-gray-700/60 dark:bg-gray-800/40 dark:hover:border-gray-700',
         ]"
         :data-testid="`tool-config-card-${tool.key}`"
       >
         <div
-          class="grid h-full items-center gap-3 px-3 py-2"
-          :class="scope === 'global' ? 'grid-cols-[auto_minmax(0,1fr)_4rem]' : 'grid-cols-[auto_minmax(0,1fr)_4.25rem]'"
+          class="grid h-full items-center gap-2.5 px-3 py-2 grid-cols-[auto_minmax(0,1fr)_auto]"
         >
           <div
-            class="grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-all duration-300"
+            class="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-all duration-300"
             :class="isEffectivelyEnabled({ key: tool.key })
-              ? 'scale-[1.02] bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-gray-100 text-gray-400 dark:bg-gray-900 dark:text-gray-500'"
+              ? 'scale-[1.02] bg-blue-600 text-white shadow-sm shadow-blue-500/10'
+              : 'bg-gray-50 text-gray-400 dark:bg-gray-800 dark:text-gray-500'"
           >
-            <component :is="tool.icon" class="h-5 w-5" />
+            <component :is="tool.icon" class="h-4.5 w-4.5" />
           </div>
 
           <div class="min-w-0">
-            <div class="truncate text-xs font-bold tracking-tight" :class="isEffectivelyEnabled({ key: tool.key }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-700 dark:text-gray-200'">
-              {{ tool.name }}
+            <div class="flex items-center gap-1.5">
+              <span class="truncate text-xs font-bold tracking-tight" :class="isEffectivelyEnabled({ key: tool.key }) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'">{{ tool.name }}</span>
+              <span v-if="isEffectivelyEnabled({ key: tool.key })" class="h-1 w-1 shrink-0 rounded-full bg-blue-500 animate-pulse"></span>
             </div>
-            <p class="mt-0.5 truncate text-[10px] text-gray-500 dark:text-gray-400">
+            <p class="mt-0.5 truncate text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
               {{ tool.description }}
             </p>
           </div>
@@ -258,7 +258,7 @@ defineExpose({
             <button
               type="button"
               role="switch"
-              class="relative h-[26px] w-14 rounded-full border border-white/10 transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+              class="relative h-[22px] w-[46px] rounded-full border border-white/10 transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
               :class="isEffectivelyEnabled({ key: tool.key })
                 ? 'bg-blue-600 ring-4 ring-blue-500/10'
                 : 'bg-gray-300 dark:bg-gray-600'"
@@ -269,57 +269,32 @@ defineExpose({
               @click="toggleStatus({ key: tool.key })"
             >
               <span
-                class="absolute inset-y-0 flex items-center text-[8px] font-black tracking-[0.08em] text-white"
-                :class="isEffectivelyEnabled({ key: tool.key }) ? 'left-2' : 'right-1.5'"
+                class="absolute inset-y-0 flex items-center text-[7px] font-black tracking-[0.08em] text-white"
+                :class="isEffectivelyEnabled({ key: tool.key }) ? 'left-1.5' : 'right-1.5'"
               >
                 {{ isEffectivelyEnabled({ key: tool.key }) ? 'ON' : 'OFF' }}
               </span>
               <span
-                class="absolute left-[3px] top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
-                :class="isEffectivelyEnabled({ key: tool.key }) ? 'translate-x-[30px]' : 'translate-x-0'"
+                class="absolute left-[2px] top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
+                :class="isEffectivelyEnabled({ key: tool.key }) ? 'translate-x-[24px]' : 'translate-x-0'"
               ></span>
             </button>
           </div>
 
           <div
             v-else
-            class="grid h-16 grid-rows-[26px_20px] content-center justify-items-end gap-4"
+            class="flex items-center gap-2"
             :data-testid="`tool-config-${tool.key}-control-stack`"
           >
-            <button
-              type="button"
-              role="switch"
-              class="relative h-[26px] w-14 rounded-full border border-white/10 transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-              :class="isEffectivelyEnabled({ key: tool.key })
-                ? 'bg-blue-600 ring-4 ring-blue-500/10'
-                : 'bg-gray-300 dark:bg-gray-600'"
-              :disabled="!isEditable"
-              :aria-checked="isEffectivelyEnabled({ key: tool.key })"
-              :aria-label="`${isEffectivelyEnabled({ key: tool.key }) ? 'Turn off' : 'Turn on'} ${tool.name}`"
-              :data-testid="`tool-config-${tool.key}-toggle`"
-              @click="toggleStatus({ key: tool.key })"
-            >
-              <span
-                class="absolute inset-y-0 flex items-center text-[8px] font-black tracking-[0.08em] text-white"
-                :class="isEffectivelyEnabled({ key: tool.key }) ? 'left-2' : 'right-1.5'"
-              >
-                {{ isEffectivelyEnabled({ key: tool.key }) ? 'ON' : 'OFF' }}
-              </span>
-              <span
-                class="absolute left-[3px] top-[3px] h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
-                :class="isEffectivelyEnabled({ key: tool.key }) ? 'translate-x-[30px]' : 'translate-x-0'"
-              ></span>
-            </button>
-
             <div
-              class="flex h-5 w-full items-center justify-end"
+              class="flex items-center"
               :data-testid="`tool-config-${tool.key}-reset-slot`"
             >
               <Transition name="parent-reset">
                 <button
                   v-if="explicitConfig({ key: tool.key }) !== undefined"
                   type="button"
-                  class="inline-flex h-5 min-w-[64px] items-center justify-center rounded-md border border-gray-200 bg-white/60 px-1.5 text-[8px] font-bold text-gray-500 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/30 dark:text-gray-400 dark:hover:border-blue-600 dark:hover:bg-blue-500/10 dark:hover:text-blue-400"
+                  class="inline-flex h-[22px] items-center justify-center rounded-lg border border-gray-200 bg-white/60 px-2 text-[9px] font-bold text-gray-500 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/30 dark:text-gray-400 dark:hover:border-blue-600 dark:hover:bg-blue-500/10 dark:hover:text-blue-400 shrink-0"
                   :disabled="!isEditable"
                   :data-testid="`tool-config-${tool.key}-inherit`"
                   @click="emit('reset-tool', { key: tool.key })"
@@ -328,6 +303,31 @@ defineExpose({
                 </button>
               </Transition>
             </div>
+
+            <button
+              type="button"
+              role="switch"
+              class="relative h-[22px] w-[46px] rounded-full border border-white/10 transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+              :class="isEffectivelyEnabled({ key: tool.key })
+                ? 'bg-blue-600 ring-4 ring-blue-500/10'
+                : 'bg-gray-300 dark:bg-gray-600'"
+              :disabled="!isEditable"
+              :aria-checked="isEffectivelyEnabled({ key: tool.key })"
+              :aria-label="`${isEffectivelyEnabled({ key: tool.key }) ? 'Turn off' : 'Turn on'} ${tool.name}`"
+              :data-testid="`tool-config-${tool.key}-toggle`"
+              @click="toggleStatus({ key: tool.key })"
+            >
+              <span
+                class="absolute inset-y-0 flex items-center text-[7px] font-black tracking-[0.08em] text-white"
+                :class="isEffectivelyEnabled({ key: tool.key }) ? 'left-1.5' : 'right-1.5'"
+              >
+                {{ isEffectivelyEnabled({ key: tool.key }) ? 'ON' : 'OFF' }}
+              </span>
+              <span
+                class="absolute left-[2px] top-[2px] h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
+                :class="isEffectivelyEnabled({ key: tool.key }) ? 'translate-x-[24px]' : 'translate-x-0'"
+              ></span>
+            </button>
           </div>
         </div>
       </article>

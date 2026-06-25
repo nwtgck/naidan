@@ -92,8 +92,8 @@ describe('ToolConfigHierarchySettings', () => {
     const inheritedToggle = inheritedWrapper.get('[data-testid="tool-config-builtin.calculator-toggle"]');
 
     expect(inheritedToggle.attributes('aria-checked')).toBe('false');
-    expect(inheritedWrapper.get('[data-testid="tool-config-card-builtin.calculator"]').classes()).toContain('h-[84px]');
-    expect(inheritedWrapper.get('[data-testid="tool-config-builtin.calculator-control-stack"]').classes()).toContain('gap-4');
+    expect(inheritedWrapper.get('[data-testid="tool-config-card-builtin.calculator"]').classes()).toContain('h-[52px]');
+    expect(inheritedWrapper.get('[data-testid="tool-config-builtin.calculator-control-stack"]').classes()).toContain('gap-2');
     expect(inheritedWrapper.find('[data-testid="tool-config-builtin.calculator-inherit"]').exists()).toBe(false);
     expect(inheritedWrapper.text()).not.toContain('Inherited from Global Settings');
 
@@ -122,7 +122,7 @@ describe('ToolConfigHierarchySettings', () => {
     const wrapper = mountSettings({ scope: 'global' });
 
     expect(wrapper.get('[data-testid="tool-config-builtin.calculator-toggle"]').attributes('aria-checked')).toBe('false');
-    expect(wrapper.get('[data-testid="tool-config-card-builtin.calculator"]').classes()).toContain('h-16');
+    expect(wrapper.get('[data-testid="tool-config-card-builtin.calculator"]').classes()).toContain('h-[52px]');
     expect(wrapper.find('[data-testid="tool-config-builtin.calculator-inherit"]').exists()).toBe(false);
   });
 
