@@ -6,6 +6,7 @@ import type { Dependency as RollupLicenseDependency } from 'rollup-plugin-licens
 import type { OutputChunk } from 'rolldown'
 import type { Plugin, ResolvedConfig } from 'vite'
 
+import { serializeLicenseDependencies } from './license-payload'
 import {
   collectDevelopmentLicenseDependencies,
   convertRollupLicenseDependency,
@@ -106,7 +107,7 @@ export function createLicenseModulePlugins({ getAdditionalDependencies }: {
         const dependencies = mergeBuildLicenseDependencies({
           dependencyGroups: [await developmentDependenciesPromise, getAdditionalDependencies()],
         })
-        return `const licenses = ${JSON.stringify(dependencies)}; export default licenses;`
+        return `const licenses = ${serializeLicenseDependencies({ dependencies })}; export default licenses;`
       }
       case 'build':
         return `const licenses = ${licensePayloadPlaceholder}; export default licenses;`
@@ -151,7 +152,12 @@ export function createLicenseModulePlugins({ getAdditionalDependencies }: {
       const dependencies = mergeBuildLicenseDependencies({
         dependencyGroups: [mainDependencies, getAdditionalDependencies()],
       })
-      const serializedDependencies = JSON.stringify(dependencies)
+      // generateBundle runs after rendering and identifier renaming, so inject
+      // one self-contained expression rather than separate dictionary variables
+      // that could refer to a pre-render name. The serializer derives sharing
+      // only from actual licenseText values and includes its direct reconstruction
+      // expressions, keeping the lazy module independent from application code.
+      const serializedDependencies = serializeLicenseDependencies({ dependencies })
       const licenseChunks = Object.values(bundle)
         .filter((output): output is OutputChunk => output.type === 'chunk' && output.moduleIds.includes(resolvedLicenseModuleId))
       if (licenseChunks.length !== 1) {

@@ -85,6 +85,40 @@ function flattenBuildOutputs({ result }: {
   return (Array.isArray(result) ? result : [result]).flatMap((item) => item.output)
 }
 
+function containsDependencyName({ source, name }: {
+  source: string
+  name: string
+}): boolean {
+  return source.includes(`name:${JSON.stringify(name)}`)
+    || source.includes(`"name":${JSON.stringify(name)}`)
+}
+
+function evaluateSystemRegisterDefault({ source }: {
+  source: string
+}): unknown {
+  let defaultExport: unknown
+  const System = {
+    register(
+      _dependencies: readonly string[],
+      declare: (
+        exportValue: (name: string, value: unknown) => void,
+        context: Readonly<Record<string, never>>,
+      ) => Readonly<{
+        setters: readonly ((dependency: unknown) => void)[]
+        execute: () => void
+      }>,
+    ) {
+      const registration = declare((name, value) => {
+        if (name === 'default') defaultExport = value
+      }, {})
+      expect(registration.setters).toHaveLength(0)
+      registration.execute()
+    },
+  }
+  new Function('System', source)(System)
+  return defaultExport
+}
+
 function createSyntheticDependency({ version }: { version: string }): BuildLicenseDependency {
   return {
     name: 'synthetic-standalone-dependency',
@@ -179,8 +213,8 @@ describe('createLicenseModulePlugins', () => {
 
     expect(licenseChunk).toBeDefined()
     expect(licenseChunk?.isDynamicEntry).toBe(true)
-    expect(licenseChunk?.code).toContain('"name":"zod"')
-    expect(licenseChunk?.code).toContain('"name":"synthetic-standalone-dependency"')
+    expect(licenseChunk === undefined ? false : containsDependencyName({ source: licenseChunk.code, name: 'zod' })).toBe(true)
+    expect(licenseChunk === undefined ? false : containsDependencyName({ source: licenseChunk.code, name: 'synthetic-standalone-dependency' })).toBe(true)
     expect(licenseChunk?.code).toContain('synthetic license 1.0.0')
     expect(licenseChunk?.code).not.toContain('__NAIDAN_LICENSE_PAYLOAD_')
     expect(licenseChunk?.code).not.toContain('JSON.parse')
@@ -231,8 +265,8 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
     const firstLicenseChunk = findLicenseChunk(firstOutputs)
     const secondLicenseChunk = findLicenseChunk(secondOutputs)
 
-    expect(firstLicenseChunk?.code).toContain('"name":"zod"')
-    expect(secondLicenseChunk?.code).not.toContain('"name":"zod"')
+    expect(firstLicenseChunk === undefined ? false : containsDependencyName({ source: firstLicenseChunk.code, name: 'zod' })).toBe(true)
+    expect(secondLicenseChunk === undefined ? false : containsDependencyName({ source: secondLicenseChunk.code, name: 'zod' })).toBe(false)
     expect(secondLicenseChunk?.fileName).not.toBe(firstLicenseChunk?.fileName)
   }, 30_000)
 
@@ -293,13 +327,19 @@ globalThis.loadLicenses = async () => (await import('${NAIDAN_LICENSE_MODULE_ID}
         fileName,
         source: await fs.readFile(path.join(outDir, 'assets', fileName), 'utf8'),
       })))
-    const licenseAsset = javaScriptSources.find(({ source }) => source.includes('"name":"systemjs"'))
+    const licenseAsset = javaScriptSources.find(({ source }) => containsDependencyName({ source, name: 'systemjs' }))
     const html = await fs.readFile(path.join(outDir, 'index.html'), 'utf8')
 
     expect(licenseAsset?.source).toContain('System.register')
-    expect(licenseAsset?.source).toContain('"name":"zod"')
+    expect(licenseAsset === undefined ? false : containsDependencyName({ source: licenseAsset.source, name: 'zod' })).toBe(true)
     expect(licenseAsset?.source).not.toContain('__NAIDAN_LICENSE_PAYLOAD_')
     expect(licenseAsset?.source).not.toContain('JSON.parse')
+    expect(evaluateSystemRegisterDefault({ source: licenseAsset?.source ?? '' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'systemjs' }),
+        expect.objectContaining({ name: 'zod' }),
+      ]),
+    )
     expect(html).not.toContain(licenseAsset?.fileName ?? 'missing-license-file')
     await expect(fs.access(path.join(outDir, 'THIRD_PARTY_LICENSES.txt'))).rejects.toThrow()
     await expect(fs.access(path.join(outDir, 'licenses.json'))).rejects.toThrow()
