@@ -15,8 +15,56 @@ export const rule = {
     },
   },
   create(context) {
-    const importedBindings = new Set();
-    const invalidAliasedBindings = new Set();
+    const importedVariables = [];
+
+    function validateReference({ canonicalName, identifier, isAliased }) {
+      if (isAliased) {
+        context.report({
+          node: identifier,
+          messageId: 'directCall',
+          data: { name: identifier.name },
+        });
+        return;
+      }
+      const member = identifier.parent;
+      const call = member?.parent;
+      if (
+        member?.type !== 'MemberExpression'
+        || member.object !== identifier
+        || member.computed !== false
+        || member.property.type !== 'Identifier'
+        || call?.type !== 'CallExpression'
+        || call.callee !== member
+      ) {
+        context.report({
+          node: identifier,
+          messageId: 'directCall',
+          data: { name: canonicalName },
+        });
+        return;
+      }
+
+      if (call.arguments.length === 0) {
+        return;
+      }
+      const [argument] = call.arguments;
+      if (
+        call.arguments.length !== 1
+        || argument?.type !== 'ObjectExpression'
+        || argument.properties.some((property) => {
+          return property.type === 'SpreadElement'
+            || property.computed === true
+            || property.type !== 'Property'
+            || property.kind !== 'init'
+            || property.method === true;
+        })
+      ) {
+        context.report({
+          node: call,
+          messageId: 'directArguments',
+        });
+      }
+    }
 
     return {
       ImportDeclaration(node) {
@@ -33,9 +81,19 @@ export const rule = {
           if (!supportedImports.has(importedName)) {
             continue;
           }
-          importedBindings.add(specifier.local.name);
-          if (specifier.local.name !== importedName) {
-            invalidAliasedBindings.add(specifier.local.name);
+          const variable = context.sourceCode.getDeclaredVariables(specifier).find((candidate) => {
+            return candidate.name === specifier.local.name;
+          });
+          if (variable === undefined) {
+            throw new Error(`Failed to resolve Boundary Strings import ${specifier.local.name}.`);
+          }
+          const isAliased = specifier.local.name !== importedName;
+          importedVariables.push({
+            canonicalName: importedName,
+            isAliased,
+            variable,
+          });
+          if (isAliased) {
             context.report({
               node: specifier,
               messageId: 'noAlias',
@@ -44,58 +102,18 @@ export const rule = {
           }
         }
       },
-      Identifier(node) {
-        if (!importedBindings.has(node.name)) {
-          return;
-        }
-        if (node.parent?.type === 'ImportSpecifier') {
-          return;
-        }
-        if (invalidAliasedBindings.has(node.name)) {
-          context.report({
-            node,
-            messageId: 'directCall',
-            data: { name: node.name },
-          });
-          return;
-        }
-        const member = node.parent;
-        const call = member?.parent;
-        if (
-          member?.type !== 'MemberExpression'
-          || member.object !== node
-          || member.computed !== false
-          || member.property.type !== 'Identifier'
-          || call?.type !== 'CallExpression'
-          || call.callee !== member
-        ) {
-          context.report({
-            node,
-            messageId: 'directCall',
-            data: { name: node.name },
-          });
-          return;
-        }
-
-        if (call.arguments.length === 0) {
-          return;
-        }
-        const [argument] = call.arguments;
-        if (
-          call.arguments.length !== 1
-          || argument?.type !== 'ObjectExpression'
-          || argument.properties.some((property) => {
-            return property.type === 'SpreadElement'
-              || property.computed === true
-              || property.type !== 'Property'
-              || property.kind !== 'init'
-              || property.method === true;
-          })
-        ) {
-          context.report({
-            node: call,
-            messageId: 'directArguments',
-          });
+      'Program:exit'() {
+        for (const imported of importedVariables) {
+          for (const reference of imported.variable.references) {
+            if (reference.identifier.parent?.type === 'ImportSpecifier') {
+              continue;
+            }
+            validateReference({
+              canonicalName: imported.canonicalName,
+              identifier: reference.identifier,
+              isAliased: imported.isAliased,
+            });
+          }
         }
       },
     };

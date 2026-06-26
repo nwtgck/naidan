@@ -141,6 +141,11 @@ export function createBoundaryStringsPlugin(): Plugin[] {
 
     const boundaryId = createBoundaryId({ moduleId });
     const previousBoundary = boundaries.get(boundaryId);
+    if (previousBoundary !== undefined && previousBoundary.moduleId !== moduleId) {
+      throw new Error(
+        `[naidan-boundary-strings] Boundary ID collision between ${previousBoundary.moduleId} and ${moduleId}.`,
+      );
+    }
     if (
       previousBoundary !== undefined
       && previousBoundary.moduleId === moduleId
@@ -155,6 +160,19 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       moduleId,
     });
     boundaryIdsByModuleId.set(moduleId, boundaryId);
+  }
+
+  function invalidateBoundaryVirtualModules({ boundaryIds, server }: {
+    boundaryIds: ReadonlySet<string> | undefined;
+    server: import('vite').ViteDevServer;
+  }): void {
+    for (const moduleNode of server.moduleGraph.idToModuleMap.values()) {
+      const boundaryId = parseResolvedBoundaryModuleId({ id: moduleNode.id ?? '' })
+        ?? parseResolvedPackModuleId({ id: moduleNode.id ?? '' })?.boundaryId;
+      if (boundaryId !== undefined && (boundaryIds === undefined || boundaryIds.has(boundaryId))) {
+        server.moduleGraph.invalidateModule(moduleNode);
+      }
+    }
   }
 
   const analysisPlugin: Plugin = {
@@ -212,7 +230,7 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       }
       return undefined;
     },
-    handleHotUpdate({ file, server }) {
+    async handleHotUpdate({ file, read, server }) {
       const config = requireResolvedConfig();
       const normalizedFile = normalizeModuleId({ moduleId: file });
       const relativePath = projectRelativeModulePath({
@@ -223,26 +241,40 @@ export function createBoundaryStringsPlugin(): Plugin[] {
       const isCatalog = relativePath === 'src/strings/catalogs/en.ts'
         || relativePath === 'src/strings/catalogs/ja.ts';
 
-      const boundaryId = boundaryIdsByModuleId.get(normalizedFile);
-      if (boundaryId !== undefined) {
-        const boundaryModule = server.moduleGraph.getModuleById(`\0${boundaryModuleId({ boundaryId })}`);
-        if (boundaryModule !== undefined) {
-          server.moduleGraph.invalidateModule(boundaryModule);
-        }
+      if (isMessageModule || isCatalog) {
+        messages = readBoundaryStringMessages({ root: config.root });
+        invalidateBoundaryVirtualModules({ boundaryIds: undefined, server });
+        server.ws.send({ type: 'full-reload' });
+        return [];
       }
 
-      if (!isMessageModule && !isCatalog) {
+      if (!shouldParseProjectSource({ moduleId: normalizedFile, root: config.root })) {
         return undefined;
       }
-      messages = readBoundaryStringMessages({ root: config.root });
-      for (const moduleNode of server.moduleGraph.idToModuleMap.values()) {
-        if (
-          parseResolvedBoundaryModuleId({ id: moduleNode.id ?? '' }) !== undefined
-          || parseResolvedPackModuleId({ id: moduleNode.id ?? '' }) !== undefined
-        ) {
-          server.moduleGraph.invalidateModule(moduleNode);
-        }
+
+      const previousAnalysis = sourceAnalyses.get(normalizedFile);
+      const previousBoundaryId = boundaryIdsByModuleId.get(normalizedFile);
+      const nextAnalysis = analyzeBoundaryStringSource({
+        moduleId: normalizedFile,
+        sourceCode: await read(),
+      });
+      sourceAnalyses.set(normalizedFile, nextAnalysis);
+      if (shouldCreateBoundary({ moduleId: normalizedFile, root: config.root })) {
+        updateBoundary({ analysis: nextAnalysis, moduleId: normalizedFile });
       }
+
+      if (previousAnalysis !== undefined && sameKeys({
+        left: previousAnalysis.keys,
+        right: nextAnalysis.keys,
+      })) {
+        return undefined;
+      }
+
+      const nextBoundaryId = boundaryIdsByModuleId.get(normalizedFile);
+      const affectedBoundaryIds = new Set(
+        [previousBoundaryId, nextBoundaryId].filter((value): value is string => value !== undefined),
+      );
+      invalidateBoundaryVirtualModules({ boundaryIds: affectedBoundaryIds, server });
       server.ws.send({ type: 'full-reload' });
       return [];
     },

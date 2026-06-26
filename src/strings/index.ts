@@ -1,5 +1,7 @@
 export {
   currentLocale,
+  prepareLocale,
+  resolveBrowserLocale,
   setLocale,
   lazyStrings,
   ensureStrings,

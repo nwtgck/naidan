@@ -8,6 +8,8 @@ Message directories and catalog properties must use this format:
 
 The directory name, English catalog property, every locale catalog property,
 and properties accessed after `lazyStrings.` or `ensureStrings.` must match exactly.
+Every message directory must be registered in every locale catalog. Application
+code must not import locale catalogs or message implementation modules directly.
 
 ## Scope ownership
 
@@ -95,7 +97,10 @@ English and must not be moved into this directory.
 
 Each locale module must use a named export whose identifier exactly matches the
 message directory and catalog key. Individual message modules must not use a
-default export.
+default export. Message functions must return `string` synchronously. Do not add
+`async` message functions or `Promise<string>` results; asynchronous localization
+requires a separate API because `lazyStrings` must be able to return a temporary
+empty string before a pack is available.
 
 Do not import the English message type into every locale module and do not add
 per-message `satisfies` expressions. Each locale implementation declares its

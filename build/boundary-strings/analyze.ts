@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 
 import {
   compileScript,
@@ -205,6 +206,85 @@ function importedBoundaryStringSymbols({ checker, sourceFile }: {
   return symbols;
 }
 
+function isBoundaryStringsInternalModule({ moduleId }: {
+  moduleId: string;
+}): boolean {
+  const normalizedModuleId = stripModuleQuery({ moduleId }).replaceAll('\\', '/');
+  return normalizedModuleId.includes('/src/strings/');
+}
+
+function isDirectLocaleModuleSpecifier({ moduleId, moduleSpecifier }: {
+  moduleId: string;
+  moduleSpecifier: string;
+}): boolean {
+  const withoutQuery = moduleSpecifier.split(/[?#]/u, 1)[0] ?? moduleSpecifier;
+  const normalizedSpecifier = path.posix.normalize(withoutQuery.replaceAll('\\', '/'));
+  if (
+    normalizedSpecifier.startsWith('@/strings/messages/')
+    || normalizedSpecifier.startsWith('@/strings/catalogs/')
+    || normalizedSpecifier.startsWith('/src/strings/messages/')
+    || normalizedSpecifier.startsWith('/src/strings/catalogs/')
+  ) {
+    return true;
+  }
+  if (!normalizedSpecifier.startsWith('.')) {
+    return false;
+  }
+
+  const resolvedPath = path.resolve(
+    path.dirname(stripModuleQuery({ moduleId })),
+    normalizedSpecifier,
+  ).replaceAll('\\', '/');
+  return resolvedPath.includes('/src/strings/messages/')
+    || resolvedPath.includes('/src/strings/catalogs/');
+}
+
+function validateNoDirectLocaleImports({ moduleId, sourceFile }: {
+  moduleId: string;
+  sourceFile: ts.SourceFile;
+}): void {
+  if (isBoundaryStringsInternalModule({ moduleId })) {
+    return;
+  }
+
+  function reject({ moduleSpecifier }: { moduleSpecifier: string }): never {
+    throw new Error(
+      `[naidan-boundary-strings] ${moduleId} imports ${moduleSpecifier} directly. `
+      + 'Application code must access messages through @/strings.',
+    );
+  }
+
+  function visit(node: ts.Node): void {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
+      && node.moduleSpecifier !== undefined
+      && ts.isStringLiteral(node.moduleSpecifier)
+      && isDirectLocaleModuleSpecifier({
+        moduleId,
+        moduleSpecifier: node.moduleSpecifier.text,
+      })
+    ) {
+      reject({ moduleSpecifier: node.moduleSpecifier.text });
+    }
+    if (
+      ts.isCallExpression(node)
+      && node.expression.kind === ts.SyntaxKind.ImportKeyword
+      && node.arguments.length === 1
+    ) {
+      const argument = node.arguments[0];
+      if (
+        argument !== undefined
+        && ts.isStringLiteral(argument)
+        && isDirectLocaleModuleSpecifier({ moduleId, moduleSpecifier: argument.text })
+      ) {
+        reject({ moduleSpecifier: argument.text });
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+}
+
 function analyzeScript({ lang, moduleId, sourceCode }: {
   lang: string | undefined;
   moduleId: string;
@@ -215,6 +295,7 @@ function analyzeScript({ lang, moduleId, sourceCode }: {
     scriptKind: scriptKindForModule({ lang, moduleId }),
     sourceCode,
   });
+  validateNoDirectLocaleImports({ moduleId, sourceFile });
   const checker = createTypeChecker({ moduleId, sourceCode, sourceFile });
   const importedSymbols = importedBoundaryStringSymbols({ checker, sourceFile });
   const importedBindingNames = new Set(importedSymbols.values());

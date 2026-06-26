@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSettings } from './useSettings';
 import { DEFAULT_SETTINGS } from '@/models/types';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
 import { flushPromises } from '@vue/test-utils';
+import { currentLocale, setLocale as setStringLocale } from '@/strings/runtime';
 
 const { mockAddErrorEvent, mockListModels, mockShowConfirm, mockImportFromBase64, mockPreloadFakeLmLanguagePacks } = vi.hoisted(() => ({
   mockAddErrorEvent: vi.fn(),
@@ -75,11 +76,70 @@ vi.mock('../services/lm/ollama', () => ({
 describe('useSettings Initialization and Bootstrap', () => {
   const { TEST_ONLY: { __testOnlyReset } } = useSettings();
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     localStorage.clear();
     __testOnlyReset();
     mocks.loadSettings.mockResolvedValue(null);
+    await setStringLocale({ locale: 'en' });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses the browser locale without persisting it during initialization', async () => {
+    vi.stubGlobal('navigator', { language: 'ja-JP' });
+    localStorage.setItem(STORAGE_BOOTSTRAP_KEY, 'local');
+
+    const { init, settings } = useSettings();
+    await init({ storageTypeOverride: undefined, dataZipBase64: undefined });
+
+    expect(currentLocale.value).toBe('ja');
+    expect(settings.value.experimental?.locale).toBeUndefined();
+    expect(mocks.updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('persists an explicitly selected locale in experimental settings', async () => {
+    const current = {
+      ...DEFAULT_SETTINGS,
+      endpointType: 'openai' as const,
+      storageType: 'local' as const,
+      experimental: {
+        fakeLm: 'disabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(current);
+    const { setLocale, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: current });
+
+    await setLocale({ locale: 'ja' });
+
+    expect(settings.value.experimental).toEqual({
+      fakeLm: 'disabled',
+      locale: 'ja',
+    });
+    expect(currentLocale.value).toBe('ja');
+  });
+
+  it('keeps the current locale unchanged when persistence fails', async () => {
+    const current = {
+      ...DEFAULT_SETTINGS,
+      endpointType: 'openai' as const,
+      storageType: 'local' as const,
+      experimental: {
+        fakeLm: 'disabled' as const,
+      },
+    };
+    mocks.loadSettings.mockResolvedValue(current);
+    mocks.updateSettings.mockRejectedValueOnce(new Error('Failed to persist settings'));
+    const { setLocale, settings, TEST_ONLY: { __testOnlySetSettings } } = useSettings();
+    __testOnlySetSettings({ newSettings: current });
+
+    await expect(setLocale({ locale: 'ja' })).rejects.toThrow('Failed to persist settings');
+
+    expect(currentLocale.value).toBe('en');
+    expect(settings.value.experimental?.locale).toBeUndefined();
   });
 
   it('should initialize StorageService with correct type from bootstrap key', async () => {

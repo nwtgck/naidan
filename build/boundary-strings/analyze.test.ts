@@ -139,6 +139,39 @@ const rows = [];
     })).toEqual(['ChatInput__real']);
   });
 
+  it('rejects direct locale implementation imports from application code', () => {
+    expect(() => collectBoundaryStringKeys({
+      moduleId: '/src/example.ts',
+      sourceCode: `\
+import { ChatInput__type_a_message } from '@/strings/messages/ChatInput__type_a_message/en';
+
+ChatInput__type_a_message();
+`,
+    })).toThrow('Application code must access messages through @/strings.');
+  });
+
+  it('rejects relative locale implementation imports from application code', () => {
+    expect(() => collectBoundaryStringKeys({
+      moduleId: '/project/src/components/Example.ts',
+      sourceCode: `\
+import { ChatInput__type_a_message } from '../strings/messages/ChatInput__type_a_message/en';
+
+ChatInput__type_a_message();
+`,
+    })).toThrow('Application code must access messages through @/strings.');
+  });
+
+  it('allows locale implementation imports inside the strings subsystem', () => {
+    expect(collectBoundaryStringKeys({
+      moduleId: '/src/strings/catalogs/en.ts',
+      sourceCode: `\
+import { ChatInput__type_a_message } from '@/strings/messages/ChatInput__type_a_message/en';
+
+export const en = { ChatInput__type_a_message };
+`,
+    })).toEqual([]);
+  });
+
   it('rejects accessor shapes that the plugin cannot bundle safely', () => {
     const sourceCode = `\
 import { lazyStrings } from '@/strings';

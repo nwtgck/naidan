@@ -24,16 +24,18 @@ function createFixtureRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'naidan-boundary-build-'));
   temporaryDirectories.push(root);
 
-  writeFile({
-    filePath: path.join(root, 'src/strings/catalogs/en.ts'),
-    source: `\
-import { ${messageKey} } from '@/strings/messages/${messageKey}/en';
+  for (const locale of ['en', 'ja']) {
+    writeFile({
+      filePath: path.join(root, `src/strings/catalogs/${locale}.ts`),
+      source: `\
+import { ${messageKey} } from '@/strings/messages/${messageKey}/${locale}';
 
-export const en = {
+export const ${locale} = {
   ${messageKey},
 };
 `,
-  });
+    });
+  }
   for (const locale of ['en', 'ja']) {
     writeFile({
       filePath: path.join(root, `src/strings/messages/${messageKey}/${locale}.ts`),
@@ -72,6 +74,27 @@ function outputChunks({ output }: {
   });
 }
 
+function staticChunkClosure({ chunks, entryFileName }: {
+  chunks: readonly OutputChunk[];
+  entryFileName: string;
+}): ReadonlySet<string> {
+  const chunksByFileName = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
+  const visited = new Set<string>();
+  const pending = [entryFileName];
+  while (pending.length > 0) {
+    const fileName = pending.pop();
+    if (fileName === undefined || visited.has(fileName)) {
+      continue;
+    }
+    visited.add(fileName);
+    const chunk = chunksByFileName.get(fileName);
+    if (chunk !== undefined) {
+      pending.push(...chunk.imports);
+    }
+  }
+  return visited;
+}
+
 async function buildFixture({ plugins, root }: {
   plugins: PluginOption[];
   root: string;
@@ -105,6 +128,42 @@ afterEach(() => {
 });
 
 describe('Boundary Strings Vite plugin', () => {
+  it('keeps root-boundary locale implementations out of the initial static graph', async () => {
+    const root = createFixtureRoot();
+    writeFile({
+      filePath: path.join(root, 'src/main.ts'),
+      source: `\
+import { lazyStrings } from '@/strings';
+
+export const message = lazyStrings.${messageKey}();
+`,
+    });
+
+    const chunks = await buildFixture({
+      plugins: createBoundaryStringsPlugin(),
+      root,
+    });
+    const entry = chunks.find((chunk) => chunk.isEntry);
+    expect(entry).toBeDefined();
+    const staticFiles = staticChunkClosure({
+      chunks,
+      entryFileName: entry?.fileName ?? '',
+    });
+    const staticModuleIds = chunks
+      .filter((chunk) => staticFiles.has(chunk.fileName))
+      .flatMap((chunk) => Object.keys(chunk.modules));
+
+    expect(staticModuleIds.some((moduleId) => {
+      return moduleId.startsWith('\0virtual:naidan-boundary-strings/boundary/');
+    })).toBe(true);
+    expect(staticModuleIds.some((moduleId) => {
+      return moduleId.startsWith('\0virtual:naidan-boundary-strings/pack/');
+    })).toBe(false);
+    expect(staticModuleIds.some((moduleId) => {
+      return moduleId.replaceAll('\\', '/').includes('/src/strings/messages/');
+    })).toBe(false);
+  });
+
   it('emits one locale implementation module when two lazy boundaries use the same message', async () => {
     const root = createFixtureRoot();
     writeFile({

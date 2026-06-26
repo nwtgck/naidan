@@ -555,6 +555,7 @@ describe('StorageTab.vue Tests', () => {
         setOnboardingDraft: vi.fn(),
         setHeavyContentAlertDismissed: vi.fn(),
         setFakeLmDebugModeStatus: vi.fn(),
+        setLocale: vi.fn(),
         setSearchPreviewMode: vi.fn(),
         setSearchContextSize: vi.fn(),
         TEST_ONLY: {

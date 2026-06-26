@@ -3,16 +3,20 @@ import { computed, ref } from 'vue';
 
 import {
   currentLocale,
-  setLocale,
   lazyStrings,
   type UiLocale,
 } from '@/strings';
+import { useSettings } from '@/composables/useSettings';
+
+const settingsStore = useSettings();
 
 const isChangingLocale = ref(false);
 const selectedLocale = computed({
   get: () => currentLocale.value,
   set: (locale: UiLocale) => {
-    void changeLocale({ locale });
+    void changeLocale({ locale }).catch((error: unknown) => {
+      console.error('Failed to change locale:', error);
+    });
   },
 });
 
@@ -21,7 +25,7 @@ async function changeLocale({ locale }: {
 }): Promise<void> {
   isChangingLocale.value = true;
   try {
-    await setLocale({ locale });
+    await settingsStore.setLocale({ locale });
   } finally {
     isChangingLocale.value = false;
   }

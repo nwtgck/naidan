@@ -31,10 +31,12 @@ function createFixtureRoot(): string {
   }
   const catalogDirectory = path.join(root, 'src/strings/catalogs');
   fs.mkdirSync(catalogDirectory, { recursive: true });
-  fs.writeFileSync(
-    path.join(catalogDirectory, 'en.ts'),
-    `import { ${key} } from '@/strings/messages/${key}/en';\n\nexport const en = {\n  ${key},\n};\n`,
-  );
+  for (const locale of ['en', 'ja']) {
+    fs.writeFileSync(
+      path.join(catalogDirectory, `${locale}.ts`),
+      `import { ${key} } from '@/strings/messages/${key}/${locale}';\n\nexport const ${locale} = {\n  ${key},\n};\n`,
+    );
+  }
   return root;
 }
 
@@ -104,7 +106,7 @@ describe('Boundary Strings virtual modules', () => {
     );
   });
 
-  it('ignores message directories that are not registered in the English catalog', () => {
+  it('rejects message directories that are not registered in the English catalog', () => {
     const root = createFixtureRoot();
     const orphanDirectory = path.join(root, 'src/strings/messages/LanguageSelector__english');
     fs.mkdirSync(orphanDirectory, { recursive: true });
@@ -112,7 +114,33 @@ describe('Boundary Strings virtual modules', () => {
       path.join(orphanDirectory, 'ja.ts'),
       'export const LanguageSelector__english = (): string => "English";\n',
     );
-    expect(readBoundaryStringMessages({ root })).toHaveLength(1);
+    expect(() => readBoundaryStringMessages({ root })).toThrow(
+      'Message directories are not registered in the English catalog: LanguageSelector__english.',
+    );
+  });
+
+  it('rejects locale catalogs with a different key set', () => {
+    const root = createFixtureRoot();
+    const catalogPath = path.join(root, 'src/strings/catalogs/ja.ts');
+    fs.writeFileSync(
+      catalogPath,
+      'export const ja = {};\n',
+    );
+    expect(() => readBoundaryStringMessages({ root })).toThrow(
+      'Japanese catalog does not match the English catalog (missing: ChatInput__type_a_message).',
+    );
+  });
+
+  it('rejects locale catalog imports that point to another locale', () => {
+    const root = createFixtureRoot();
+    const catalogPath = path.join(root, 'src/strings/catalogs/ja.ts');
+    fs.writeFileSync(
+      catalogPath,
+      fs.readFileSync(catalogPath, 'utf8').replace("/ja'", "/en'"),
+    );
+    expect(() => readBoundaryStringMessages({ root })).toThrow(
+      'Japanese catalog entry "ChatInput__type_a_message" has no matching named import.',
+    );
   });
 
   it('rejects a catalog message when a locale implementation is missing', () => {

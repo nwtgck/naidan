@@ -1430,6 +1430,11 @@ import { weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell } fr
 import { weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue } from '@/strings/messages/weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue/en';
 import { weshTerminal__wesh_terminal } from '@/strings/messages/weshTerminal__wesh_terminal/en';
 
+/* eslint-disable local-rules-named-args/require-named-args -- This catalog contract accepts either supported message signature without weakening each message's exact type. */
+type BoundaryStringMessage = (() => string) | ((args: never) => string);
+/* eslint-enable local-rules-named-args/require-named-args */
+type BoundaryStringCatalog = Readonly<Record<string, BoundaryStringMessage>>;
+
 export const en = {
   SHARED__all_chats,
   SHARED__assistant,
@@ -2860,7 +2865,7 @@ export const en = {
   weshTerminal__no_sessions_press_new_to_start_a_worker_backed_shell,
   weshTerminal__this_will_dispose_the_worker_and_lose_the_session_history_continue,
   weshTerminal__wesh_terminal,
-};
+} satisfies BoundaryStringCatalog;
 
 export type Strings = typeof en;
 export type StringKey = keyof Strings;

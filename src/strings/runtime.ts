@@ -1,8 +1,7 @@
 import { readonly, shallowRef } from 'vue';
 
 import type { Strings, StringKey } from '@/strings/catalogs/en';
-import { STORAGE_KEY_PREFIX } from '@/models/constants';
-import { UiLocaleSchema, type UiLocale } from '@/strings/types';
+import type { UiLocale } from '@/strings/types';
 
 export type StringBoundaryModule = Partial<Strings> & Partial<Record<string, Strings[StringKey]>>;
 
@@ -17,28 +16,29 @@ type StringBoundaryRegistration = {
   loaders: StringBoundaryLoaders;
 };
 
-const localeStorageKey = `${STORAGE_KEY_PREFIX}ui_locale`;
 const registries: Record<UiLocale, StringBoundaryModule> = {
   en: {},
   ja: {},
 };
 const boundaryRegistrations = new Map<string, StringBoundaryRegistration>();
 const boundaryIdsByKey = new Map<string, Set<string>>();
+const loadedBoundaryModules: Record<UiLocale, Map<string, StringBoundaryModule>> = {
+  en: new Map(),
+  ja: new Map(),
+};
 const loadingBoundaries = new Map<string, Promise<void>>();
 const usedBoundaryIds = new Set<string>();
 const warmedBoundaryIds = new Set<string>();
 const scheduledBoundaryWarmups = new Map<string, () => void>();
+const nonMessageAccessorProperties = new Set([
+  '_isVue',
+  'then',
+  'toJSON',
+]);
 const revision = shallowRef(0);
 let localeSwitchRequest = 0;
 
-function resolveInitialLocale(): UiLocale {
-  if (typeof localStorage !== 'undefined') {
-    const saved = UiLocaleSchema.safeParse(localStorage.getItem(localeStorageKey));
-    if (saved.success) {
-      return saved.data;
-    }
-  }
-
+export function resolveBrowserLocale(): UiLocale {
   const browserLocale = typeof navigator === 'undefined' ? undefined : navigator.language;
   if (browserLocale?.toLowerCase().startsWith('ja') === true) {
     return 'ja';
@@ -46,7 +46,17 @@ function resolveInitialLocale(): UiLocale {
   return 'en';
 }
 
-const currentLocaleState = shallowRef<UiLocale>(resolveInitialLocale());
+function applyDocumentLocale({ locale }: {
+  locale: UiLocale;
+}): void {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = locale;
+  }
+}
+
+const initialLocale = resolveBrowserLocale();
+const currentLocaleState = shallowRef<UiLocale>(initialLocale);
+applyDocumentLocale({ locale: initialLocale });
 export const currentLocale = readonly(currentLocaleState);
 
 function boundaryLoadKey({ boundaryId, locale }: {
@@ -61,37 +71,83 @@ async function ensureBoundaryLoaded({ boundaryId, locale }: {
   locale: UiLocale;
 }): Promise<void> {
   const loadKey = boundaryLoadKey({ boundaryId, locale });
-  const existing = loadingBoundaries.get(loadKey);
-  if (existing !== undefined) {
-    await existing;
-    return;
-  }
 
-  const registration = boundaryRegistrations.get(boundaryId);
-  if (registration === undefined) {
-    throw new Error(`Missing Boundary Strings registration for ${boundaryId}.`);
-  }
-
-  const promise = registration.loaders[locale]().then((module) => {
-    Object.assign(registries[locale], module);
-    if (locale === currentLocaleState.value) {
-      revision.value += 1;
+  while (!loadedBoundaryModules[locale].has(boundaryId)) {
+    const existing = loadingBoundaries.get(loadKey);
+    if (existing !== undefined) {
+      await existing;
+      continue;
     }
-  }).catch((error: unknown) => {
-    loadingBoundaries.delete(loadKey);
-    throw error;
-  });
-  loadingBoundaries.set(loadKey, promise);
-  await promise;
+
+    const registration = boundaryRegistrations.get(boundaryId);
+    if (registration === undefined) {
+      throw new Error(`Missing Boundary Strings registration for ${boundaryId}.`);
+    }
+
+    const promise = (async () => {
+      const module = await registration.loaders[locale]();
+      if (boundaryRegistrations.get(boundaryId) !== registration) {
+        return;
+      }
+
+      const loadedMessages: StringBoundaryModule = {};
+      for (const key of registration.keys) {
+        const message = module[key];
+        if (typeof message !== 'function') {
+          throw new Error(
+            `Boundary Strings boundary ${boundaryId} did not provide message ${key} for locale ${locale}.`,
+          );
+        }
+        loadedMessages[key] = message;
+      }
+      loadedBoundaryModules[locale].set(boundaryId, loadedMessages);
+      Object.assign(registries[locale], loadedMessages);
+      if (locale === currentLocaleState.value) {
+        revision.value += 1;
+      }
+    })();
+    loadingBoundaries.set(loadKey, promise);
+    try {
+      await promise;
+    } finally {
+      if (loadingBoundaries.get(loadKey) === promise) {
+        loadingBoundaries.delete(loadKey);
+      }
+    }
+  }
 }
 
-function resolveBoundaryId({ key }: {
+function resolveBoundaryId({ key, locale }: {
   key: string;
+  locale: UiLocale;
 }): string {
   const boundaryIds = boundaryIdsByKey.get(key);
-  const boundaryId = boundaryIds?.values().next().value as string | undefined;
-  if (boundaryId === undefined) {
+  if (boundaryIds === undefined || boundaryIds.size === 0) {
     throw new Error(`Boundary Strings key ${String(key)} has not been registered by a loaded module.`);
+  }
+
+  const candidates = [...boundaryIds].map((boundaryId) => {
+    const registration = boundaryRegistrations.get(boundaryId);
+    if (registration === undefined) {
+      throw new Error(`Missing Boundary Strings registration for ${boundaryId}.`);
+    }
+    return {
+      boundaryId,
+      isLoadedOrLoading: loadedBoundaryModules[locale].has(boundaryId)
+        || loadingBoundaries.has(boundaryLoadKey({ boundaryId, locale })),
+      keyCount: registration.keys.length,
+    };
+  });
+  candidates.sort((left, right) => {
+    if (left.isLoadedOrLoading !== right.isLoadedOrLoading) {
+      return left.isLoadedOrLoading ? -1 : 1;
+    }
+    return left.keyCount - right.keyCount || left.boundaryId.localeCompare(right.boundaryId);
+  });
+
+  const boundaryId = candidates[0]?.boundaryId;
+  if (boundaryId === undefined) {
+    throw new Error(`Boundary Strings key ${String(key)} has no usable boundary registration.`);
   }
   return boundaryId;
 }
@@ -104,7 +160,7 @@ async function ensureKeyLoaded({ key, locale }: {
     return;
   }
 
-  const boundaryId = resolveBoundaryId({ key });
+  const boundaryId = resolveBoundaryId({ key, locale });
   usedBoundaryIds.add(boundaryId);
   await ensureBoundaryLoaded({ boundaryId, locale });
 }
@@ -152,11 +208,42 @@ function scheduleBoundaryWarmup({ boundaryId }: {
   });
 }
 
+function promoteScheduledBoundaryWarmups(): void {
+  for (const [boundaryId, cancel] of scheduledBoundaryWarmups) {
+    cancel();
+    scheduledBoundaryWarmups.delete(boundaryId);
+    warmedBoundaryIds.add(boundaryId);
+  }
+}
+
+function rebuildRegistryMessage({ key, locale }: {
+  key: string;
+  locale: UiLocale;
+}): void {
+  const boundaryIds = boundaryIdsByKey.get(key);
+  if (boundaryIds !== undefined) {
+    for (const boundaryId of boundaryIds) {
+      const message = loadedBoundaryModules[locale].get(boundaryId)?.[key];
+      if (typeof message === 'function') {
+        registries[locale][key] = message;
+        return;
+      }
+    }
+  }
+  delete registries[locale][key];
+}
+
 export function registerStringBoundary({ boundaryId, keys, loaders }: {
   boundaryId: string;
   keys: readonly string[];
   loaders: StringBoundaryLoaders;
 }): void {
+  if (keys.length === 0 || new Set(keys).size !== keys.length) {
+    throw new Error(
+      `Boundary Strings boundary ${boundaryId} must register a non-empty list of unique message keys.`,
+    );
+  }
+
   const previous = boundaryRegistrations.get(boundaryId);
   if (previous !== undefined) {
     for (const key of previous.keys) {
@@ -164,6 +251,15 @@ export function registerStringBoundary({ boundaryId, keys, loaders }: {
       boundaryIds?.delete(boundaryId);
       if (boundaryIds?.size === 0) {
         boundaryIdsByKey.delete(key);
+      }
+    }
+    scheduledBoundaryWarmups.get(boundaryId)?.();
+    scheduledBoundaryWarmups.delete(boundaryId);
+    for (const locale of ['en', 'ja'] as const) {
+      loadedBoundaryModules[locale].delete(boundaryId);
+      loadingBoundaries.delete(boundaryLoadKey({ boundaryId, locale }));
+      for (const key of previous.keys) {
+        rebuildRegistryMessage({ key, locale });
       }
     }
   }
@@ -193,9 +289,14 @@ export function registerStringBoundary({ boundaryId, keys, loaders }: {
  * again after the boundary registration updates the reactive revision.
  */
 export const lazyStrings = new Proxy({}, {
-  get(_target, property) {
-    if (typeof property !== 'string') {
-      return undefined;
+  get(target, property) {
+    if (
+      typeof property !== 'string'
+      || property in target
+      || property.startsWith('__v_')
+      || nonMessageAccessorProperties.has(property)
+    ) {
+      return Reflect.get(target, property);
     }
     const key = property;
     // This Proxy adapter must preserve both zero-argument and one-object message signatures.
@@ -234,9 +335,14 @@ export type EnsureStrings = {
  * for a confirmation, prompt, toast, or another one-shot imperative action.
  */
 export const ensureStrings = new Proxy({}, {
-  get(_target, property) {
-    if (typeof property !== 'string') {
-      return undefined;
+  get(target, property) {
+    if (
+      typeof property !== 'string'
+      || property in target
+      || property.startsWith('__v_')
+      || nonMessageAccessorProperties.has(property)
+    ) {
+      return Reflect.get(target, property);
     }
     const key = property;
     // This Proxy adapter must preserve both zero-argument and one-object message signatures.
@@ -253,10 +359,10 @@ export const ensureStrings = new Proxy({}, {
   },
 }) as EnsureStrings;
 
-export async function setLocale({ locale }: {
+export async function prepareLocale({ locale }: {
   locale: UiLocale;
 }): Promise<void> {
-  const request = ++localeSwitchRequest;
+  promoteScheduledBoundaryWarmups();
   const activeBoundaryIds = new Set([
     ...usedBoundaryIds,
     ...warmedBoundaryIds,
@@ -264,14 +370,21 @@ export async function setLocale({ locale }: {
   await Promise.all([...activeBoundaryIds].map(async (boundaryId) => {
     await ensureBoundaryLoaded({ boundaryId, locale });
   }));
+}
+
+export async function setLocale({ locale }: {
+  locale: UiLocale;
+}): Promise<void> {
+  const request = ++localeSwitchRequest;
+  await prepareLocale({ locale });
   if (request !== localeSwitchRequest) {
     return;
   }
 
-  currentLocaleState.value = locale;
-  revision.value += 1;
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(localeStorageKey, locale);
+  if (currentLocaleState.value !== locale) {
+    currentLocaleState.value = locale;
+    applyDocumentLocale({ locale });
+    revision.value += 1;
   }
 }
 
@@ -286,17 +399,20 @@ export const TEST_ONLY = {
       await ensureBoundaryLoaded({ boundaryId, locale });
     }));
     currentLocaleState.value = locale;
+    applyDocumentLocale({ locale });
     revision.value += 1;
   },
-  localeStorageKey,
+  loadedBoundaryModules,
   loadingBoundaries,
   registries,
-  resolveInitialLocale,
+  resolveBrowserLocale,
   reset(): void {
     registries.en = {};
     registries.ja = {};
     boundaryRegistrations.clear();
     boundaryIdsByKey.clear();
+    loadedBoundaryModules.en.clear();
+    loadedBoundaryModules.ja.clear();
     loadingBoundaries.clear();
     for (const cancel of scheduledBoundaryWarmups.values()) {
       cancel();
@@ -306,6 +422,7 @@ export const TEST_ONLY = {
     warmedBoundaryIds.clear();
     localeSwitchRequest = 0;
     currentLocaleState.value = 'en';
+    applyDocumentLocale({ locale: 'en' });
     revision.value += 1;
   },
   scheduledBoundaryWarmups,

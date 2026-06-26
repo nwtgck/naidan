@@ -66,6 +66,21 @@ localizedStrings.ChatInput__type_a_message();
     ]);
   });
 
+  it('does not treat a shadowing local variable as the imported accessor', async () => {
+    const [result] = await lint({
+      code: `\
+import { lazyStrings } from '@/strings';
+
+function render(lazyStrings: OtherStrings): string {
+  return lazyStrings.dynamicMessage();
+}
+
+const message = lazyStrings.ChatInput__type_a_message();
+`,
+    });
+    expect(result?.messages).toEqual([]);
+  });
+
   it('rejects indirect, spread, and computed message argument objects', async () => {
     const [result] = await lint({
       code: `\

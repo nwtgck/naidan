@@ -24,6 +24,7 @@ export type Role = 'user' | 'assistant' | 'system' | 'tool';
 export type StorageType = 'local' | 'opfs' | 'memory';
 export type EndpointType = 'openai' | 'ollama' | 'transformers_js';
 export type ToolConfigPersistence = 'disabled' | 'enabled';
+export type UiLocale = 'en' | 'ja';
 
 export type Reasoning = {
   effort: 'none' | 'low' | 'medium' | 'high' | undefined,
@@ -365,6 +366,7 @@ export interface Settings {
   systemPrompt?: string,
   lmParameters?: LmParameters,
   experimental?: {
+    locale?: UiLocale,
     markdownRendering?: 'block_markdown' | 'monolithic_html',
     /**
      * Controls whether tool configuration changes are persisted.

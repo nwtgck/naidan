@@ -1,6 +1,18 @@
 import { ref, readonly, computed, type ComputedRef, type Ref } from 'vue';
-import { ensureStrings } from '@/strings';
-import { type Settings, type EndpointType, DEFAULT_SETTINGS, type StorageType, type ProviderProfile } from '@/models/types';
+import {
+  ensureStrings,
+  prepareLocale,
+  resolveBrowserLocale,
+  setLocale as setStringLocale,
+} from '@/strings';
+import {
+  type Settings,
+  type EndpointType,
+  DEFAULT_SETTINGS,
+  type StorageType,
+  type ProviderProfile,
+  type UiLocale,
+} from '@/models/types';
 import { storageService } from '@/services/storage';
 import { checkOPFSSupport } from '@/services/storage/opfs-detection';
 import { STORAGE_BOOTSTRAP_KEY } from '@/models/constants';
@@ -51,6 +63,7 @@ interface UseSettingsApi {
   setOnboardingDraft: ({ draft }: { draft: { url: string, type: EndpointType, headers?: [string, string][], models: string[], selectedModel: string } | null }) => void,
   setHeavyContentAlertDismissed: ({ dismissed }: { dismissed: boolean }) => void,
   setFakeLmDebugModeStatus: ({ status }: { status: FakeLmDebugModeStatus }) => Promise<void>,
+  setLocale: ({ locale }: { locale: UiLocale }) => Promise<void>,
   setSearchPreviewMode: ({ mode }: { mode: SearchPreviewMode }) => void,
   setSearchContextSize: ({ size }: { size: number }) => void,
   TEST_ONLY: {
@@ -65,10 +78,17 @@ let initPromise: Promise<void> | null = null;
 
 storageService.subscribeToChanges({ listener: async ({ event }) => {
   if (event.type === 'settings' || event.type === 'migration') {
-    const fresh = await storageService.loadSettings();
-    if (fresh) {
-      _settings.value = fresh;
-      preloadFakeLmIfEnabled({ status: fresh.experimental?.fakeLm ?? 'disabled' });
+    try {
+      const fresh = await storageService.loadSettings();
+      if (fresh) {
+        _settings.value = fresh;
+        preloadFakeLmIfEnabled({ status: fresh.experimental?.fakeLm ?? 'disabled' });
+        await setStringLocale({
+          locale: fresh.experimental?.locale ?? resolveBrowserLocale(),
+        });
+      }
+    } catch (error) {
+      console.error('Failed to synchronize settings:', error);
     }
   }
 } });
@@ -225,6 +245,9 @@ export function useSettings(): UseSettingsApi {
         if (s) {
           _settings.value = s;
           preloadFakeLmIfEnabled({ status: s.experimental?.fakeLm ?? 'disabled' });
+          await setStringLocale({
+            locale: s.experimental?.locale ?? resolveBrowserLocale(),
+          });
           if (s.endpointUrl || s.endpointType === 'transformers_js') {
             // Initial fetch of models if we have an endpoint
             fetchModels({});
@@ -232,6 +255,7 @@ export function useSettings(): UseSettingsApi {
         } else {
           // If no settings saved yet (new user), ensure defaults are clean but functional
           _settings.value.endpointType = 'openai';
+          await setStringLocale({ locale: resolveBrowserLocale() });
         }
       } finally {
         loading.value = false;
@@ -407,6 +431,19 @@ export function useSettings(): UseSettingsApi {
     preloadFakeLmIfEnabled({ status });
   }
 
+  async function setLocale({ locale }: {
+    locale: UiLocale,
+  }): Promise<void> {
+    await prepareLocale({ locale });
+    await updateExperimental({
+      updater: ({ experimental }) => ({
+        ...experimental,
+        locale,
+      }),
+    });
+    await setStringLocale({ locale });
+  }
+
   function setSearchPreviewMode({ mode }: { mode: SearchPreviewMode }) {
     _searchPreviewMode.value = mode;
   }
@@ -456,6 +493,7 @@ export function useSettings(): UseSettingsApi {
     setOnboardingDraft,
     setHeavyContentAlertDismissed,
     setFakeLmDebugModeStatus,
+    setLocale,
     setSearchPreviewMode,
     setSearchContextSize,
     TEST_ONLY: {

@@ -208,6 +208,7 @@ describe('Settings Mapping', () => {
     expect(domain.experimental?.toolConfigPersistence).toBe('disabled');
     expect(domain.experimental?.fakeLm).toBe('disabled');
     expect(domain.experimental?.sidebarSendMessageReorder).toBe('disabled');
+    expect(domain.experimental?.locale).toBeUndefined();
   });
 
   it('omits disabled fake LM mode from the settings DTO', () => {
@@ -247,6 +248,7 @@ describe('Settings Mapping', () => {
       systemPrompt: undefined,
       lmParameters: undefined,
       experimental: {
+        locale: 'ja',
         markdownRendering: undefined,
         toolConfigPersistence: 'enabled',
         fakeLm: 'enabled',
@@ -258,9 +260,11 @@ describe('Settings Mapping', () => {
     const mapped = settingsToDomain({ dto });
 
     expect(dto.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(dto.experimental?.locale).toBe('ja');
     expect(dto.experimental?.fakeLm).toBe('enabled');
     expect(dto.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
     expect(mapped.experimental?.toolConfigPersistence).toBe('enabled');
+    expect(mapped.experimental?.locale).toBe('ja');
     expect(mapped.experimental?.fakeLm).toBe('enabled');
     expect(mapped.experimental?.sidebarSendMessageReorder).toBe('move_sent_chat');
   });
