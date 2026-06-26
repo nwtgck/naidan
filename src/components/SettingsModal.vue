@@ -272,11 +272,14 @@ defineExpose({
         <!-- Sidebar (Tabs) -->
         <aside class="w-full md:w-72 flex-shrink-0 bg-gray-50/50 dark:bg-black/20 border-b md:border-b-0 md:border-r border-gray-100 dark:border-gray-800/50 flex flex-col min-h-0 transition-colors">
           <!-- Header -->
-          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center gap-3 shrink-0">
-            <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-              <Settings2Icon class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+          <div class="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800/50 flex items-center justify-between gap-3 shrink-0">
+            <div class="flex items-center gap-3">
+              <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                <Settings2Icon class="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
+              </div>
+              <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.SettingsModal__settings() }}</h2>
             </div>
-            <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.SettingsModal__settings() }}</h2>
+            <LanguageSelector />
           </div>
 
           <!-- Navigation -->
@@ -379,8 +382,6 @@ defineExpose({
             <div class="w-28 shrink-0">
               <ThemeToggle />
             </div>
-
-            <LanguageSelector />
 
             <a
               v-if="isHostedMode"

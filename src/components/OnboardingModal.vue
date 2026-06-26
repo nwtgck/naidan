@@ -11,6 +11,8 @@ import { defineAsyncComponentAndLoadOnMounted } from '@/utils/vue';
 
 // IMPORTANT: ThemeToggle is part of the core onboarding UI.
 import ThemeToggle from './ThemeToggle.vue';
+// IMPORTANT: LanguageSelector is part of the core onboarding UI.
+import LanguageSelector from './LanguageSelector.vue';
 // IMPORTANT: Logo is part of the core onboarding UI.
 import Logo from './Logo.vue';
 // IMPORTANT: ModelSelector is part of the core onboarding UI.
@@ -370,15 +372,20 @@ defineExpose({
 <template>
   <div class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4">
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-4xl md:h-[640px] max-h-[95vh] md:max-h-[90vh] overflow-hidden flex flex-col border border-gray-200 dark:border-gray-800 relative modal-content-zoom">
-      <!-- Close Button (Top Right) -->
-
-      <button
-        @click="handleClose"
-        class="absolute top-4 right-4 z-10 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
-        data-testid="onboarding-close-x"
-      >
-        <XIcon class="w-5 h-5" />
-      </button>
+      <!-- Header Actions (Top Right) -->
+      <div class="absolute top-4 right-4 z-10 flex items-center gap-2">
+        <div class="w-20 md:w-28 shrink-0">
+          <ThemeToggle />
+        </div>
+        <LanguageSelector />
+        <button
+          @click="handleClose"
+          class="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl transition-colors"
+          data-testid="onboarding-close-x"
+        >
+          <XIcon class="w-5 h-5" />
+        </button>
+      </div>
 
       <div class="px-6 md:px-10 py-4 flex items-center gap-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 shrink-0">
         <div class="p-2 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
@@ -387,9 +394,6 @@ defineExpose({
         <div class="text-left flex-1">
           <h2 class="text-base md:text-lg font-bold text-gray-800 dark:text-white tracking-tight">{{ lazyStrings.OnboardingModal__setup_endpoint() }}</h2>
           <p class="hidden sm:block text-xs text-gray-600 dark:text-gray-400">{{ lazyStrings.OnboardingModal__setup_endpoint_description() }}</p>
-        </div>
-        <div class="w-24 md:w-32 flex-shrink-0 mr-8">
-          <ThemeToggle />
         </div>
       </div>
 

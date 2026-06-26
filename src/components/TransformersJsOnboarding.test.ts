@@ -67,6 +67,7 @@ vi.mock('lucide-vue-next', () => ({
   DownloadIcon: { template: '<span>Download</span>' },
   FolderOpenIcon: { template: '<span>FolderOpen</span>' },
   RefreshCcwIcon: { template: '<span>RefreshCcw</span>' },
+  GlobeIcon: { template: '<span>Globe</span>' },
   ChevronDownIcon: { template: '<span>ChevronDown</span>' },
   HardDriveDownloadIcon: { template: '<span>HardDriveDownload</span>' },
   BrainCircuitIcon: { template: '<span>BrainCircuit</span>' },

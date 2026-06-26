@@ -5,6 +5,7 @@ import GeneratedImageBlock from './GeneratedImageBlock.vue';
 import { storageService } from '@/services/storage';
 import { useImagePreview } from '@/composables/useImagePreview';
 import { ImageDownloadHydrator } from '@/components/ImageDownloadHydrator';
+import { ensureAllStringsForTest } from '@/strings/test-utils';
 
 // Mock storage service
 vi.mock('../../services/storage', () => ({
@@ -78,6 +79,7 @@ describe('GeneratedImageBlock', () => {
   });
 
   it('renders error state when image fails to load', async () => {
+    await ensureAllStringsForTest({ locale: 'en' });
     vi.mocked(storageService.getFile).mockResolvedValue(null);
 
     const wrapper = mount(GeneratedImageBlock, {
