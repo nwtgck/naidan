@@ -6,6 +6,7 @@ import SettingsModal from './SettingsModal.vue';
 import StorageTab from './StorageTab.vue';
 import { useSettings } from '@/composables/useSettings';
 import { useConfirm } from '@/composables/useConfirm';
+import { ensureStrings } from '@/strings';
 
 // Mock vue-router
 vi.mock('vue-router', () => ({
@@ -115,8 +116,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await wait();
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
+    const unsupportedLabel = await ensureStrings.StorageTab__unsupported();
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
-    expect(opfsOption.text()).toContain('Unsupported');
+    await flushPromises();
+    expect(opfsOption.text()).toContain(unsupportedLabel);
   });
 
   it('should disable OPFS option if not in secure context', async () => {
@@ -141,8 +144,10 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await wait();
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
+    const unsupportedLabel = await ensureStrings.StorageTab__unsupported();
     expect(opfsOption.classes()).toContain('cursor-not-allowed');
-    expect(opfsOption.text()).toContain('Unsupported');
+    await flushPromises();
+    expect(opfsOption.text()).toContain(unsupportedLabel);
   });
 
   it('should enable OPFS option if supported and secure', async () => {
@@ -171,8 +176,9 @@ describe('SettingsModal OPFS and Error Handling', () => {
     await wait();
 
     const opfsOption = wrapper.get('[data-testid="storage-opfs"]');
+    const unsupportedLabel = await ensureStrings.StorageTab__unsupported();
     expect(opfsOption.classes()).not.toContain('cursor-not-allowed');
-    expect(opfsOption.text()).not.toContain('Unsupported');
+    expect(opfsOption.text()).not.toContain(unsupportedLabel);
   });
 
   it('should show error dialog if save/migration fails', async () => {
